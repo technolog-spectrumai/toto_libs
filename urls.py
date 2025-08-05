@@ -14,8 +14,6 @@ urlpatterns = [
     path("nest/", include("oya.urls")),
     path('captcha/', include('captcha.urls')),
     path('', lambda request: redirect('nest/home')),
-    path('forum/', include('forum.urls')),
-    path('kodama/', include('kodama.urls')),
     path('netogami/', include('netogami.urls')),
 ]
 
