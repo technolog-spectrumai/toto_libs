@@ -56,9 +56,9 @@ INSTALLED_APPS = [
     'django_json_widget',
     'rest_framework',
     'import_export',
+    "gervazy",
     "oya",
     "captcha",
-    "gervazy",
     "netogami"
 ]
 
