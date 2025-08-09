@@ -241,6 +241,7 @@ LOGGING = {
     },
 }
 
+LOGIN_URL = '/nest/login/'
 
 CELERY_BROKER_URL = "redis://localhost:6379/0"
 
