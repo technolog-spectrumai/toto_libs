@@ -38,8 +38,6 @@ if DJANGO_ENV != "PROD":
 else:
     DEBUG = False
 
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost']
-
 
 ACME_CHALLENGE_ROOT = os.path.join(BASE_DIR, 'acme-challenges')
 
@@ -165,50 +163,45 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media/')
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+DJANGO_HOST_IP = os.getenv("DJANGO_HOST_IP", "127.0.0.1")  # Default fallback
+
+DEBUG = DJANGO_ENV != "PROD"
+
+ALLOWED_HOSTS = [DJANGO_HOST_IP, 'localhost']
+
 CSRF_TRUSTED_ORIGINS = [
-    'http://localhost:8080',
-    'http://127.0.0.1:8080',
-    'http://localhost:8443',
-    "https://127.0.0.1:8443"
+    f"http://{DJANGO_HOST_IP}:8080",
+    f"http://localhost:8080",
+    f"http://{DJANGO_HOST_IP}:8443",
+    f"https://{DJANGO_HOST_IP}:8443",
+    "http://localhost:8443",
+    "https://localhost:8443"
 ]
 
 CSRF_ALLOWED_ORIGINS = [
-    'http://localhost:8080',
-    'http://127.0.0.1:8080',
-    'http://localhost:8443',
-    "https://127.0.0.1:8443"
+    f"http://{DJANGO_HOST_IP}:8080",
+    f"http://localhost:8080",
+    f"http://{DJANGO_HOST_IP}:8443",
+    f"https://{DJANGO_HOST_IP}:8443",
+    "http://localhost:8443",
+    "https://localhost:8443"
 ]
-
-# SECURE_SSL_REDIRECT = False
-# SESSION_COOKIE_SECURE = False
-# CSRF_COOKIE_SECURE = False
-# CSRF_ALLOWED_ORIGINS = [
-#     'http://localhost:8080/*',
-#     'http://127.0.0.1:8080/*'
-# ]
 
 if DJANGO_ENV == "PROD":
     print("=== PROD ===")
     SECURE_SSL_REDIRECT = True
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
     SESSION_COOKIE_SECURE = True
-    #CORS_ORIGIN_ALLOW_ALL = True
 
-    CSRF_COOKIE_SECURE = True  # If using HTTPS
+    CSRF_COOKIE_SECURE = True
     CSRF_COOKIE_HTTPONLY = True
     CSRF_COOKIE_SAMESITE = 'Lax'
 else:
     SECURE_SSL_REDIRECT = False
-    #CSRF_COOKIE_DOMAIN = "localhost"
-    CSRF_COOKIE_DOMAIN = '127.0.0.1'
-    CSRF_TRUSTED_ORIGINS = ['http://127.0.0.1/', 'http://localhost/']
+    CSRF_COOKIE_DOMAIN = DJANGO_HOST_IP
     CSRF_COOKIE_SECURE = False
     CSRF_COOKIE_HTTPONLY = False
     #CSRF_COOKIE_SAMESITE = "None"
-    CSRF_ALLOWED_ORIGINS = [
-        'http://localhost:8080',
-        'http://127.0.0.1:8080'
-    ]
 
 CACHES = {
     "default": {
