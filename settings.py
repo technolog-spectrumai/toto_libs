@@ -40,6 +40,8 @@ else:
 ALLOWED_HOSTS = ['127.0.0.1', 'localhost']
 
 
+ACME_CHALLENGE_ROOT = os.path.join(BASE_DIR, 'acme-challenges')
+
 # Application definition
 
 INSTALLED_APPS = [
