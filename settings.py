@@ -30,6 +30,7 @@ SECRET_KEY = 'django-insecure--g0q3jqz@81_kbndpgay5&s3fx3t08x10@#32@0xdik!nb!699
 
 # SECURITY WARNING: don't run with debug turned on in production!
 #DEBUG = os.getenv("DJANGO_DEBUG", False) == True
+#DEBUG = True
 DJANGO_ENV = os.getenv("DJANGO_ENV", "dev")
 
 if DJANGO_ENV != "PROD":
@@ -78,6 +79,12 @@ MIDDLEWARE = [
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.middleware.locale.LocaleMiddleware"
 ]
+
+STORAGES = {
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 ROOT_URLCONF = 'toto.urls'
 
@@ -145,8 +152,8 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = 'static/'
-STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
+STATIC_URL = '/static/'
+#STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
 # If you need to serve static files in production, use this:
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
