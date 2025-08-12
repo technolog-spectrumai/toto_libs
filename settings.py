@@ -178,6 +178,8 @@ CSRF_TRUSTED_ORIGINS = [
     f"http://localhost:8080",
     f"http://{DJANGO_HOST_IP}:8443",
     f"https://{DJANGO_HOST_IP}:8443",
+    f"http://{DJANGO_HOST_IP}:443",
+    f"https://{DJANGO_HOST_IP}:443",
     "http://localhost:8443",
     "https://localhost:8443"
 ]
@@ -187,25 +189,17 @@ CSRF_ALLOWED_ORIGINS = [
     f"http://localhost:8080",
     f"http://{DJANGO_HOST_IP}:8443",
     f"https://{DJANGO_HOST_IP}:8443",
+    f"http://{DJANGO_HOST_IP}:443",
+    f"https://{DJANGO_HOST_IP}:443",
     "http://localhost:8443",
     "https://localhost:8443"
 ]
 
-if DJANGO_ENV == "PROD":
-    print("=== PROD ===")
-    SECURE_SSL_REDIRECT = True
-    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-    SESSION_COOKIE_SECURE = True
-
-    CSRF_COOKIE_SECURE = True
-    CSRF_COOKIE_HTTPONLY = True
-    CSRF_COOKIE_SAMESITE = 'Lax'
-else:
-    SECURE_SSL_REDIRECT = False
-    CSRF_COOKIE_DOMAIN = DJANGO_HOST_IP
-    CSRF_COOKIE_SECURE = False
-    CSRF_COOKIE_HTTPONLY = False
-    #CSRF_COOKIE_SAMESITE = "None"
+SECURE_SSL_REDIRECT = True
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+CSRF_COOKIE_HTTPONLY = True
 
 CACHES = {
     "default": {
