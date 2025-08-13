@@ -1,0 +1,74 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}Profile | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<div
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300">
+
+  <div class="max-w-3xl mx-auto">
+    <h1 class="text-4xl font-extrabold mb-6 tracking-tight"
+        :class="darkMode ? 'text-text-main-dark' : 'text-text-main-light'">
+      Your Profile
+    </h1>
+
+    {% if profile %}
+    <div
+      :class="darkMode
+        ? 'bg-bubble-bg-dark text-text-main-dark'
+        : 'bg-bubble-bg-light text-text-main-light'"
+      class="p-6 rounded-xl shadow-md transition-colors duration-300">
+
+      <div class="flex items-center space-x-4 mb-4">
+        {% if profile.avatar %}
+          <img src="{{ profile.avatar.url }}" alt="Avatar"
+               class="w-20 h-20 rounded-full object-cover border border-accent-1 dark:border-accent-dark">
+        {% else %}
+          <div
+            :class="darkMode
+              ? 'bg-gray-700 text-white'
+              : 'bg-gray-300 text-gray-800'"
+            class="w-20 h-20 rounded-full flex items-center justify-center text-sm font-medium">
+            No avatar
+          </div>
+        {% endif %}
+        <div>
+          <h2 class="text-2xl font-semibold">{{ profile.display_name }}</h2>
+          <p class="text-sm opacity-80">Joined: {{ profile.joined_date|date:"F j, Y" }}</p>
+        </div>
+      </div>
+
+      <p class="mb-4 opacity-90">{{ profile.bio|default:"No bio provided." }}</p>
+
+      <h3 class="text-lg font-semibold mb-2">Memberships:</h3>
+      <ul class="list-disc list-inside">
+        {% for branch in profile.membership.all %}
+          <li>{{ branch.name }} ({{ branch.platform.site_name }})</li>
+        {% empty %}
+          <li>No memberships assigned.</li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    {% else %}
+    <div
+      :class="darkMode
+        ? 'bg-bubble-bg-dark text-text-main-dark'
+        : 'bg-bubble-bg-light text-text-main-light'"
+      class="p-6 rounded-xl shadow-md transition-colors duration-300">
+
+      <h2 class="text-2xl font-semibold mb-4">Basic Account Info</h2>
+      <ul class="text-left space-y-2">
+        <li><strong>Username:</strong> {{ username }}</li>
+        <li><strong>Email:</strong> {{ email|default:"Not provided" }}</li>
+      </ul>
+      <p class="mt-4 text-sm opacity-80">You are not yet a member of the community.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

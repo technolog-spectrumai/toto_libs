@@ -1,0 +1,52 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}Application Submitted | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="flex items-center justify-center px-6 py-16 min-h-screen transition-colors duration-300">
+
+  <div
+    :class="darkMode
+      ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
+      : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+    class="w-full max-w-md p-6 rounded-lg shadow-md border space-y-6 transition-colors duration-300 text-center">
+
+    <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-xl font-bold">
+      Thank you for applying!
+    </h2>
+
+    <p class="text-sm">
+      We've received your application. You'll get a confirmation code by email soon.
+      Once verified, you'll gain access to member features.
+    </p>
+
+    {% if username %}
+      <p class="text-center text-sm text-gray-500 dark:text-gray-400">
+        Already have a verification code?
+        <a href="{% url 'membership_verification' username %}"
+           class="font-medium underline text-accent-light dark:text-accent-dark hover:opacity-80">
+          Submit Code
+        </a>
+      </p>
+    {% else %}
+      <p class="text-center text-sm text-gray-500 dark:text-gray-400">
+        Verification available after submitting
+      </p>
+    {% endif %}
+
+    <a href="{% url 'home' %}"
+       :class="darkMode
+         ? 'bg-accent-dark text-primary-bg-dark'
+         : 'bg-accent-light text-primary-bg-light'"
+       class="inline-block px-4 py-2 mt-4 rounded font-semibold hover:opacity-90 transition text-sm">
+      Back to Home
+    </a>
+
+  </div>
+</section>
+{% endblock %}

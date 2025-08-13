@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Pages</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 text-gray-900 font-sans min-h-screen">
+    <div class="max-w-4xl mx-auto py-10 px-4">
+        <h1 class="text-3xl font-bold mb-6 border-b pb-2">Available Pages</h1>
+
+        {% if pages %}
+            <ul class="space-y-4">
+                {% for page in pages %}
+                    <li class="bg-white rounded shadow p-4 hover:bg-blue-50 transition duration-150">
+                        <a href="{% url 'page_detail' page.slug page.language %}" class="text-blue-600 font-medium hover:underline">
+                            {{ page.slug }}
+                        </a>
+                        <p class="text-sm text-gray-600 mt-1">
+                            by <span class="font-semibold">{{ page.author.username }}</span>
+                            <span class="ml-2">🌐 {{ page.language }}</span>
+                        </p>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <div class="text-gray-500 italic">No pages published yet.</div>
+        {% endif %}
+    </div>
+</body>
+</html>

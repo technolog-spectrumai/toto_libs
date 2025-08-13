@@ -1,0 +1,74 @@
+<header x-data="{ navOpen: false }"
+        :class="darkMode
+          ? `bg-appbar-bg-dark text-text-main-dark {{ platform.theme.header_classes_dark }}`
+          : `bg-appbar-bg-light text-text-main-light {{ platform.theme.header_classes_light }}`"
+        class="w-full px-4 sm:px-6 py-3">
+
+
+  <div class="max-w-6xl mx-auto flex justify-between items-center">
+    <!-- Site Name -->
+    <h1 class="text-2xl font-bold tracking-tight">
+      {{ platform.site_name }}
+    </h1>
+
+    <!-- Desktop Nav -->
+    <div class="hidden sm:flex items-center gap-3">
+      {% for link in header.nav_links %}
+      <a href="{{ link.url }}"
+         class="flex items-center gap-2 px-3 py-1 rounded text-sm font-medium border shadow-sm transition hover:opacity-90"
+         :class="darkMode
+           ? 'bg-accent-dark text-primary-bg-dark border-accent-2'
+           : 'bg-accent-light text-primary-bg-light border-accent-1'">
+        <i class="{{ link.icon }} text-base"></i>
+        <span>{{ link.name }}</span>
+      </a>
+      {% endfor %}
+
+      <!-- Theme Toggle -->
+      <button @click="darkMode = !darkMode"
+              class="flex items-center gap-2 px-3 py-1 rounded text-sm font-medium border shadow-sm transition hover:opacity-90"
+              :class="darkMode
+                ? 'bg-accent-dark text-primary-bg-dark border-accent-2'
+                : 'bg-accent-light text-primary-bg-light border-accent-1'">
+        <i :class="darkMode ? 'fas fa-moon' : 'fas fa-sun'" class="text-base"></i>
+        <span x-text="darkMode ? 'Light Mode' : 'Dark Mode'"></span>
+      </button>
+    </div>
+
+    <!-- Mobile Menu Toggle -->
+    <button @click="navOpen = !navOpen"
+            class="sm:hidden flex items-center gap-2 px-3 py-1 rounded text-sm font-medium border shadow-sm transition hover:opacity-90"
+            :class="darkMode
+              ? 'bg-accent-dark text-primary-bg-dark border-accent-2'
+              : 'bg-accent-light text-primary-bg-light border-accent-1'">
+      <i class="fas fa-bars text-base"></i>
+    </button>
+  </div>
+
+  <!-- Mobile Dropdown -->
+  <div x-show="navOpen" x-transition
+       class="sm:hidden mt-3 px-4">
+    <div class="flex flex-col gap-3">
+      {% for link in header.nav_links %}
+      <a href="{{ link.url }}"
+         class="flex items-center gap-2 px-3 py-2 rounded text-sm font-medium border shadow-sm transition hover:opacity-90"
+         :class="darkMode
+           ? 'bg-accent-dark text-primary-bg-dark border-accent-2'
+           : 'bg-accent-light text-primary-bg-light border-accent-1'">
+        <i class="{{ link.icon }} text-base"></i>
+        <span>{{ link.name }}</span>
+      </a>
+      {% endfor %}
+
+      <!-- Theme Toggle (Mobile) -->
+      <button @click="darkMode = !darkMode"
+              class="flex items-center gap-2 px-3 py-2 rounded text-sm font-medium border shadow-sm transition hover:opacity-90"
+              :class="darkMode
+                ? 'bg-accent-dark text-primary-bg-dark border-accent-2'
+                : 'bg-accent-light text-primary-bg-light border-accent-1'">
+        <i :class="darkMode ? 'fas fa-moon' : 'fas fa-sun'" class="text-base"></i>
+        <span x-text="darkMode ? 'Light Mode' : 'Dark Mode'"></span>
+      </button>
+    </div>
+  </div>
+</header>
