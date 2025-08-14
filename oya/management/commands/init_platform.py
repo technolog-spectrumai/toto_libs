@@ -36,6 +36,8 @@ class Command(BaseCommand):
         self.clear_db()
 
         self.stdout.write(self.style.NOTICE("Running migrations..."))
+        call_command("makemigrations")
+        call_command("migrate")
         self.auto_create_migrations()
         call_command("makemigrations")
         call_command("migrate")
