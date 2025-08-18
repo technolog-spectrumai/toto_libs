@@ -2,6 +2,7 @@ from django.contrib import admin
 from .models import Platform, DashboardBlock, Font, Theme, AppIngress
 from django_json_widget.widgets import JSONEditorWidget
 from django.db.models import JSONField
+from django.contrib import admin, messages
 
 
 @admin.register(Font)
@@ -45,9 +46,21 @@ class AppIngressAdmin(admin.ModelAdmin):
     list_display = ("app_name", "scheduled_at")
     actions = ["run_ingress"]
 
+
     @admin.action(description="Run ingress command for selected entries")
     def run_ingress(self, request, queryset):
         for ingress in queryset:
-            result = ingress.run_ingress_command()
-            self.message_user(request, result)
+            result, code = ingress.run_ingress_command()
+
+            # Map return code to Django message level
+            if code == 0:
+                level = messages.SUCCESS
+            elif code == -1:
+                level = messages.WARNING
+            elif code == 1:
+                level = messages.ERROR
+            else:
+                level = messages.INFO
+
+            self.message_user(request, result, level=level)
 

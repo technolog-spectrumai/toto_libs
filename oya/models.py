@@ -181,10 +181,10 @@ class AppIngress(models.Model):
 
             if os.path.isfile(cmd_path):
                 call_command("ingress", **self.args)
-                return f"✅ Success: Ran ingress for {self.app_name}"
+                return f"Success: Ran ingress for {self.app_name}", 0
             else:
-                return f"⚠️ No ingress command found for {self.app_name}"
+                return f"No ingress command found for {self.app_name}", -1
         except Exception as e:
-            return f"❌ Error running ingress for {self.app_name}: {str(e)}"
+            return f"Error running ingress for {self.app_name}: {str(e)}", 1
 
 
