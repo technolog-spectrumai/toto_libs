@@ -5,12 +5,16 @@ import sys
 
 
 def main():
-    if "--prod" in sys.argv:
-        os.environ["DJANGO_ENV"] = "PROD"
-        sys.argv.remove("--prod")
-    else:
+    # if "--prod" in sys.argv:
+    #     os.environ["DJANGO_ENV"] = "PROD"
+    # else:
+    # if "--prod" in sys.argv:
+    #     sys.argv.remove("--dev")
+    #     os.environ["DJANGO_ENV"] = "dev"
+    if os.environ["DJANGO_ENV"] != "PROD":
         print("=== Running in developer mode ===")
-        os.environ["DJANGO_ENV"] = "dev"
+    else:
+        print("=== Running in PRODUCTION mode ===")
     """Run administrative tasks."""
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'toto.settings')
     try:
