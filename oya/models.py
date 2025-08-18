@@ -161,6 +161,7 @@ class AppIngress(models.Model):
     )
     args = models.JSONField(
         default=dict,
+        blank=True,
         help_text="Arguments to pass to the ingress command"
     )
     scheduled_at = models.DateTimeField(
