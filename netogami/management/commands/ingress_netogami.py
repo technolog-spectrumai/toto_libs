@@ -1,7 +1,7 @@
 from django.core.management.base import BaseCommand
 from django.contrib.auth.models import User
 from netogami.models import Template, Page
-
+from oya.models import Platform
 
 class Command(BaseCommand):
     help = "Create a demo Tailwind+Alpine.js-based Template and Page"
@@ -65,6 +65,13 @@ class Command(BaseCommand):
             language="en",
             defaults={"data": page_data}
         )
+
+        for platform in Platform.objects.filter(active=True):
+            platform.index_url = page.get_url()
+            platform.save()
+            self.stdout.write(self.style.SUCCESS(
+                f"Updated Platform '{platform.site_name}' index_url to: {platform.index_url}"
+            ))
 
         self.stdout.write(self.style.SUCCESS(
             f"{'Created' if created else 'Updated'} page: {page.slug} for user {user.username}"

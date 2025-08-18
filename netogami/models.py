@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.utils.text import slugify
 import uuid
+from django.urls import reverse
 
 
 class Template(models.Model):
@@ -31,6 +32,9 @@ class Page(models.Model):
 
     def __str__(self):
         return f"{self.slug} by {self.author.username}"
+
+    def get_url(self):
+        return reverse('page_detail', kwargs={'slug': self.slug, 'language': self.language})
 
 
 # class Image(models.Model):
