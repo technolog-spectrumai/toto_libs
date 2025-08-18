@@ -173,37 +173,43 @@ DEBUG = DJANGO_ENV != "PROD"
 
 ALLOWED_HOSTS = [DJANGO_HOST_IP, 'localhost']
 
-CSRF_TRUSTED_ORIGINS = [
-    f"http://{DJANGO_HOST_IP}:8080",
-    f"http://localhost:8080",
-    f"http://{DJANGO_HOST_IP}:8443",
-    f"https://{DJANGO_HOST_IP}:8443",
-    f"http://{DJANGO_HOST_IP}:443",
-    f"https://{DJANGO_HOST_IP}:443",
-    "http://localhost:8443",
-    "https://localhost:8443"
-]
+if DJANGO_ENV == "PROD":
+    CSRF_TRUSTED_ORIGINS = [
+        f"https://{DJANGO_HOST_IP}:443",
+        f"https://{DJANGO_HOST_IP}:8443",
+        "https://localhost:443",
+        "https://localhost:8443"
+    ]
 
-CSRF_ALLOWED_ORIGINS = [
-    f"http://{DJANGO_HOST_IP}:8080",
-    f"http://localhost:8080",
-    f"http://{DJANGO_HOST_IP}:8443",
-    f"https://{DJANGO_HOST_IP}:8443",
-    f"http://{DJANGO_HOST_IP}:443",
-    f"https://{DJANGO_HOST_IP}:443",
-    "http://localhost:8443",
-    "https://localhost:8443"
-]
-
-if not DEBUG:
-    SECURE_SSL_REDIRECT = True
-    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
-    CSRF_COOKIE_HTTPONLY = True
+    CSRF_ALLOWED_ORIGINS = [
+        f"https://{DJANGO_HOST_IP}:443",
+        f"https://{DJANGO_HOST_IP}:8443",
+        "https://localhost:443",
+        "https://localhost:8443"
+    ]
 else:
-    SESSION_COOKIE_SECURE = False
-    CSRF_COOKIE_SECURE = False
+    CSRF_TRUSTED_ORIGINS = [
+        f"http://{DJANGO_HOST_IP}:8000",
+        f"http://{DJANGO_HOST_IP}:8080",
+        "http://localhost:8000",
+        "http://localhost:8080"
+    ]
+
+    CSRF_ALLOWED_ORIGINS = [
+        f"http://{DJANGO_HOST_IP}:8000",
+        f"http://{DJANGO_HOST_IP}:8080",
+        "http://localhost:8000",
+        "http://localhost:8080"
+    ]
+
+
+
+if DJANGO_ENV == "PROD":
+    SECURE_SSL_REDIRECT = DJANGO_ENV == "PROD"
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SESSION_COOKIE_SECURE = DJANGO_ENV == "PROD"
+    CSRF_COOKIE_SECURE = DJANGO_ENV == "PROD"
+    CSRF_COOKIE_HTTPONLY = True
 
 CACHES = {
     "default": {
