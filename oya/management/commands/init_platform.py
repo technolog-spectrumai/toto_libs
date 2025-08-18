@@ -97,10 +97,6 @@ class Command(BaseCommand):
         call_command("create_user", "admin", "admin", admin=True)
         self.stdout.write(self.style.SUCCESS("Superuser created."))
 
-        self.stdout.write(self.style.NOTICE("Creating homepage..."))
-        call_command("create_page")
-        self.stdout.write(self.style.SUCCESS("Homepage created."))
-
         self.stdout.write(self.style.NOTICE("Creating fonts..."))
         self.create_fonts()
         self.stdout.write(self.style.SUCCESS("Fonts created."))

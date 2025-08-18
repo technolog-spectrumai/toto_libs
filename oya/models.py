@@ -179,10 +179,10 @@ class AppIngress(models.Model):
         """
         try:
             app_config = apps.get_app_config(self.app_name)
-            cmd_path = os.path.join(app_config.path, "management", "commands", "ingress.py")
+            cmd_path = os.path.join(app_config.path, "management", "commands", f"ingress_{self.app_name}.py")
 
             if os.path.isfile(cmd_path):
-                call_command("ingress", **self.args)
+                call_command(f"ingress_{self.app_name}", **self.args)
                 return f"Success: Ran ingress for {self.app_name}", 0
             else:
                 return f"No ingress command found for {self.app_name}", -1
