@@ -7,33 +7,10 @@ import uuid
 class Template(models.Model):
     name = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True, null=True)
-    header = models.TextField(
-        blank=True,
-        null=True,
-        help_text="HTML or Django template code for the <head> section"
-    )
     content = models.TextField(
-        help_text="Django template body content with {{ variables }}"
+        help_text="Full Django template content including <head> and body with {{ variables }}"
     )
     created_at = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return self.name
-
-
-
-class Image(models.Model):
-    author = models.ForeignKey(User, on_delete=models.CASCADE, related_name='images')
-    name = models.CharField(max_length=100)
-    slug = models.SlugField(max_length=255, unique=True, blank=True)
-    image = models.ImageField(upload_to='uploads/images/')
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    def save(self, *args, **kwargs):
-        if not self.slug:
-            base = slugify(self.name)
-            self.slug = f"{base}-{uuid.uuid4().hex[:6]}"
-        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.name
@@ -54,5 +31,22 @@ class Page(models.Model):
 
     def __str__(self):
         return f"{self.slug} by {self.author.username}"
+
+
+# class Image(models.Model):
+#     author = models.ForeignKey(User, on_delete=models.CASCADE, related_name='images')
+#     name = models.CharField(max_length=100)
+#     slug = models.SlugField(max_length=255, unique=True, blank=True)
+#     image = models.ImageField(upload_to='uploads/images/')
+#     created_at = models.DateTimeField(auto_now_add=True)
+#
+#     def save(self, *args, **kwargs):
+#         if not self.slug:
+#             base = slugify(self.name)
+#             self.slug = f"{base}-{uuid.uuid4().hex[:6]}"
+#         super().save(*args, **kwargs)
+#
+#     def __str__(self):
+#         return self.name
 
 

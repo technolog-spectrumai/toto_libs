@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Template, Page, Image
+from .models import Template, Page
 from django_json_widget.widgets import JSONEditorWidget
 from django.db.models import JSONField
 
@@ -7,9 +7,10 @@ from django.db.models import JSONField
 @admin.register(Template)
 class TemplateAdmin(admin.ModelAdmin):
     list_display = ('name', 'created_at')
-    search_fields = ('name', 'description', 'content', 'header')
+    search_fields = ('name', 'description', 'content')  # Removed 'header'
     ordering = ('-created_at',)
     readonly_fields = ('created_at',)
+
 
 
 @admin.register(Page)
@@ -26,9 +27,9 @@ class PageAdmin(admin.ModelAdmin):
     readonly_fields = ('created_at', )
 
 
-@admin.register(Image)
-class ImageAdmin(admin.ModelAdmin):
-    list_display = ('name', 'author', 'slug', 'created_at')
-    search_fields = ('name', 'slug', 'author__username')
-    readonly_fields = ('created_at', )
-    autocomplete_fields = ('author',)
+# @admin.register(Image)
+# class ImageAdmin(admin.ModelAdmin):
+#     list_display = ('name', 'author', 'slug', 'created_at')
+#     search_fields = ('name', 'slug', 'author__username')
+#     readonly_fields = ('created_at', )
+#     autocomplete_fields = ('author',)

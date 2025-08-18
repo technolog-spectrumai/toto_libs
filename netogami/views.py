@@ -9,23 +9,21 @@ def page_list(request, language):
         'language': language
     })
 
-def render_parts(template_obj, context_data):
+def render_template(template_obj, context_data):
     context = Context(context_data or {})
-    rendered_head = DjangoTemplate(template_obj.header or '').render(context)
-    rendered_body = DjangoTemplate(template_obj.content or '').render(context)
-    return rendered_head, rendered_body
+    rendered_html = DjangoTemplate(template_obj.content or '').render(context)
+    return rendered_html
+\
 
 def page_detail(request, language, slug):
     page = get_object_or_404(Page, language=language, slug=slug)
 
     try:
-        rendered_head, rendered_body = render_parts(page.template, page.data)
+        rendered_html = render_template(page.template, page.data)
     except Exception as e:
-        rendered_head = ''
-        rendered_body = f"<pre style='color:red;'>Template rendering error: {e}</pre>"
+        rendered_html = f"<pre style='color:red;'>Template rendering error: {e}</pre>"
 
     return render(request, 'netogami/page_detail.html', {
         'page': page,
-        'rendered_head': rendered_head,
-        'rendered_body': rendered_body,
+        'rendered_html': rendered_html,
     })
