@@ -1,5 +1,9 @@
-from django.db import models
 from django_jsonform.models.fields import JSONField
+from django.db import models
+from django.utils import timezone
+from django.core.management import call_command
+from django.apps import apps
+import os
 
 
 class Font(models.Model):
@@ -144,5 +148,43 @@ class DashboardBlock(models.Model):
     def __str__(self):
         return self.title
 
+
+ALLOWED_APPS = [
+    'oya'
+]
+
+class AppIngress(models.Model):
+    app_name = models.CharField(
+        max_length=64,
+        choices=[(app, app) for app in ALLOWED_APPS],
+        help_text="Target app for ingress"
+    )
+    args = models.JSONField(
+        default=dict,
+        help_text="Arguments to pass to the ingress command"
+    )
+    scheduled_at = models.DateTimeField(
+        default=timezone.now,
+        help_text="When this ingress should be executed"
+    )
+
+    def __str__(self):
+        return f"Ingress for {self.app_name} at {self.scheduled_at}"
+
+    def run_ingress_command(self):
+        """
+        Runs the 'ingress' management command for the specified app.
+        """
+        try:
+            app_config = apps.get_app_config(self.app_name)
+            cmd_path = os.path.join(app_config.path, "management", "commands", "ingress.py")
+
+            if os.path.isfile(cmd_path):
+                call_command("ingress", **self.args)
+                return f"✅ Success: Ran ingress for {self.app_name}"
+            else:
+                return f"⚠️ No ingress command found for {self.app_name}"
+        except Exception as e:
+            return f"❌ Error running ingress for {self.app_name}: {str(e)}"
 
 

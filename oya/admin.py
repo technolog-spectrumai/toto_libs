@@ -1,5 +1,7 @@
 from django.contrib import admin
-from .models import Platform, DashboardBlock, Font, Theme
+from .models import Platform, DashboardBlock, Font, Theme, AppIngress
+from django_json_widget.widgets import JSONEditorWidget
+from django.db.models import JSONField
 
 
 @admin.register(Font)
@@ -33,3 +35,19 @@ class DashboardBlockAdmin(admin.ModelAdmin):
     list_display = ('title', 'icon', 'description', 'link')
     search_fields = ('title', 'description', 'icon', 'link')
     ordering = ('title',)
+
+
+@admin.register(AppIngress)
+class AppIngressAdmin(admin.ModelAdmin):
+    formfield_overrides = {
+        JSONField: {'widget': JSONEditorWidget}
+    }
+    list_display = ("app_name", "scheduled_at")
+    actions = ["run_ingress"]
+
+    @admin.action(description="Run ingress command for selected entries")
+    def run_ingress(self, request, queryset):
+        for ingress in queryset:
+            result = ingress.run_ingress_command()
+            self.message_user(request, result)
+

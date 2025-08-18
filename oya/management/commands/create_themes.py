@@ -20,34 +20,6 @@ class Command(BaseCommand):
             status = "Created" if created else "Already exists"
             self.stdout.write(self.style.SUCCESS(f"{status} Font: {name}"))
 
-        # 🚢 MaritimeDonjon – high drama coastal
-        maritime_colors = {
-            "colors": {
-                "primary-bg-light": "#ffffff",
-                "header-bg-light": "#e0f2ff",
-                "appbar-bg-light": "#aad4f5",
-                "bubble-bg-light": "#f6fbff",
-                "text-main-light": "#000000",
-                "primary-bg-dark": "#0a121e",
-                "header-bg-dark": "#142a42",
-                "appbar-bg-dark": "#1e3d57",
-                "bubble-bg-dark": "#0f1929",
-                "text-main-dark": "#ffffff",
-                "accent-light": "#003c71",
-                "accent-dark": "#9de4ff",
-                "warn-light": "#ff2400",
-                "warn-dark": "#ffdfd6",
-                "accent-1": "#118f00",
-                "accent-2": "#ffe600"
-            }
-        }
-
-        theme1, created1 = Theme.objects.get_or_create(
-            name="MaritimeDonjon",
-            defaults={"theme": maritime_colors, "font": fonts["Roboto"]}
-        )
-        self.stdout.write(self.style.SUCCESS(f"{'Created' if created1 else 'Already exists'} Theme: MaritimeDonjon"))
-
         # ☕ AlmondLatte – cozy clarity
         almond_colors = {
             "colors": {
@@ -70,11 +42,11 @@ class Command(BaseCommand):
             }
         }
 
-        theme2, created2 = Theme.objects.get_or_create(
+        theme_latte, created_latte = Theme.objects.get_or_create(
             name="AlmondLatte",
             defaults={"theme": almond_colors, "font": fonts["Playfair Display"]}
         )
-        self.stdout.write(self.style.SUCCESS(f"{'Created' if created2 else 'Already exists'} Theme: AlmondLatte"))
+        self.stdout.write(self.style.SUCCESS(f"{'Created' if created_latte else 'Already exists'} Theme: AlmondLatte"))
 
         # 🎩 ElegantSpectrum – minimalist precision
         spectre_colors = {
@@ -98,11 +70,11 @@ class Command(BaseCommand):
             }
         }
 
-        theme3, created3 = Theme.objects.get_or_create(
+        theme_spectrum, created_spectrum = Theme.objects.get_or_create(
             name="ElegantSpectrum",
             defaults={"theme": spectre_colors, "font": fonts["Roboto"]}
         )
-        self.stdout.write(self.style.SUCCESS(f"{'Created' if created3 else 'Already exists'} Theme: ElegantSpectrum"))
+        self.stdout.write(self.style.SUCCESS(f"{'Created' if created_spectrum else 'Already exists'} Theme: ElegantSpectrum"))
 
         inkwell_colors = {
             "colors": {
@@ -111,13 +83,11 @@ class Command(BaseCommand):
                 "appbar-bg-light": "#dcdcdc",
                 "bubble-bg-light": "#f6f6f6",
                 "text-main-light": "#101010",
-
                 "primary-bg-dark": "#080808",
                 "header-bg-dark": "#111111",
                 "appbar-bg-dark": "#1a1a1a",
                 "bubble-bg-dark": "#0a0a0a",
                 "text-main-dark": "#f5f5f5",
-
                 "accent-light": "#5661a8",
                 "accent-dark": "#4dc1d2",
                 "warn-light": "#905a78",
