@@ -5,13 +5,7 @@ import sys
 
 
 def main():
-    # if "--prod" in sys.argv:
-    #     os.environ["DJANGO_ENV"] = "PROD"
-    # else:
-    # if "--prod" in sys.argv:
-    #     sys.argv.remove("--dev")
-    #     os.environ["DJANGO_ENV"] = "dev"
-    if os.environ["DJANGO_ENV"] != "PROD":
+    if os.environ.get("DJANGO_ENV", "dev") != "PROD":
         print("=== Running in developer mode ===")
     else:
         print("=== Running in PRODUCTION mode ===")
