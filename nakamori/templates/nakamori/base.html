@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en" x-data="{ darkMode: false }">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}{{ config.site_name }}{% endblock %}</title>
+
+  <!-- Google Fonts -->
+  <link href="{{ font.cdn_link }}" rel="stylesheet" />
+
+  <!-- Tailwind & Alpine -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css"
+        integrity="sha512-Evv84Mr4kqVGRNSgIGL/F/aIDqQb7xQ2vcrdIwxfjThSH8CSR7PBEakCr51Ck+w+/U6swU2Im1vVX0SVk9ABhg=="
+        crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <!-- Tailwind Config -->
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['{{ font.name }}', '{{ font.style_family|default:"sans-serif" }}'],
+          },
+          colors: {{ theme.theme.colors|safe }}
+        }
+      }
+    };
+  </script>
+
+  <style>
+    body {
+      font-family: '{{ font.name }}', {{ font.style_family|default:"sans-serif" }};
+    }
+  </style>
+
+  {% block start_script %}{% endblock %}
+</head>
+<body
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="transition-colors duration-300 min-h-screen flex flex-col">
+
+  <div class="header">
+      {% include "oya/header.html" with site=platform header=header %}
+  </div>
+
+  <!-- Main Content -->
+  <main class="flex-grow">
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- Footer -->
+  <footer
+    :class="darkMode ? 'bg-appbar-bg-dark text-text-main-dark' : 'bg-appbar-bg-light text-text-main-light'"
+    class="py-4 mt-8 text-center shadow-lg">
+    <p>&copy; {{ platform.site_name }} {{ platform.site_title }}. All rights reserved.</p>
+  </footer>
+
+  {% block end_script %}{% endblock %}
+</body>
+</html>

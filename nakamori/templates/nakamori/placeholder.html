@@ -1,0 +1,50 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}Not Implemented | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<div
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300">
+
+  <div class="max-w-3xl mx-auto text-center">
+    <h1 class="text-4xl font-extrabold mb-6 tracking-tight">
+      Not Implemented – Work in Progress
+    </h1>
+
+    <p :class="darkMode ? 'text-text-main-dark' : 'text-text-main-light'"
+       class="text-lg opacity-80 leading-relaxed mb-8">
+      This feature or page is not yet available. We're working on it!
+    </p>
+
+    <!-- Striped Progress Bar -->
+    <div class="w-full bg-gray-300 dark:bg-gray-700 rounded-full h-6 overflow-hidden mb-10">
+      <div class="h-full animate-stripes bg-gradient-to-r from-accent-light to-accent-dark bg-[length:200%_100%]"></div>
+    </div>
+
+    <a href="{% url 'dashboard' %}"
+       class="inline-block px-6 py-3 rounded-lg font-semibold transition
+              hover:scale-105 focus:outline-none"
+       :class="darkMode
+         ? 'bg-accent-dark text-white hover:bg-opacity-90'
+         : 'bg-accent-light text-white hover:bg-opacity-90'">
+      ← Back to Dashboard
+    </a>
+  </div>
+</div>
+
+<!-- Custom animation for stripes -->
+<style>
+  @keyframes stripes {
+    0% { background-position: 0% 0%; }
+    100% { background-position: 200% 0%; }
+  }
+
+  .animate-stripes {
+    animation: stripes 2s linear infinite;
+  }
+</style>
+{% endblock %}

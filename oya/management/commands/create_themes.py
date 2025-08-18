@@ -128,11 +128,8 @@ class Command(BaseCommand):
         }
 
         inkwell_header = {
-            "border": "border-b-4",
-            "color_light": "border-accent-1",
-            "color_dark": "border-white",
-            "radius": "rounded-sm",
-            "shadow": "shadow-md"
+            "light": "border-b-4 border-accent-1 rounded-sm shadow-md",
+            "dark": "border-b-4 border-white rounded-sm shadow-md"
         }
 
         theme_ronin, created = Theme.objects.get_or_create(
@@ -144,50 +141,8 @@ class Command(BaseCommand):
             }
         )
 
-
         self.stdout.write(self.style.SUCCESS(f"{'Created' if created else 'Already exists'} Theme: InkwellRonin"))
 
-        banzai_colors = {
-            "colors": {
-                "primary-bg-light": "#fef9f8",
-                "header-bg-light": "#fdecea",
-                "appbar-bg-light": "#fbd4d2",
-                "bubble-bg-light": "#fff5f5",
-                "text-main-light": "#1c0a0a",
-
-                "primary-bg-dark": "#0b0404",
-                "header-bg-dark": "#1f0b0b",
-                "appbar-bg-dark": "#330d0d",
-                "bubble-bg-dark": "#160606",
-                "text-main-dark": "#fefefe",
-
-                "accent-light": "#d30000",
-                "accent-dark": "#ff5959",
-                "warn-light": "#ff2e00",
-                "warn-dark": "#ffe4e4",
-                "accent-1": "#840000",
-                "accent-2": "#DADBDC"
-            }
-        }
-
-        banzai_header = {
-            "border": "border-b-4",
-            "color_light": "border-accent-1",
-            "color_dark": "border-accent-2",
-            "radius": "rounded-md",
-            "shadow": "shadow-lg"
-        }
-
-        theme_banzai, created = Theme.objects.get_or_create(
-            name="Cyber Banzai",
-            defaults={
-                "theme": banzai_colors,
-                "font": fonts["Orbitron"],
-                "header": banzai_header
-            }
-        )
-
-        self.stdout.write(self.style.SUCCESS(f"{'Created' if created else 'Already exists'} Theme: Banzai"))
 
 
 

@@ -6,23 +6,13 @@ from datetime import datetime
 
 class ViewSmokeTests(TestCase):
     def setUp(self):
-        # Create address
-        self.address = Address.objects.create(
-            country_name="US",
-            state_or_province_name="California",
-            locality_name="San Francisco",
-            street="123 Business St",
-            building="HQ Tower"
-        )
 
         # Create platform config
         self.config = PlatformConfig.objects.create(
             domain="example.com",
-            site_name="Sicilian Blue Journal",
-            company_name="Blue Media Inc.",
+            site_name="Blue Journal",
             publication_year=datetime.now().year,
-            active=True,
-            address=self.address
+            active=True
         )
 
         # Create user for authenticated views

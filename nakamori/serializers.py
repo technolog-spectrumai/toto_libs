@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from oya.models import Platform, Font, Theme
+from oya.models import Theme, Platform, Font
 
 
 class FontSerializer(serializers.ModelSerializer):
@@ -14,6 +14,8 @@ class FontSerializer(serializers.ModelSerializer):
 
 
 class ThemeSerializer(serializers.ModelSerializer):
+    header_classes_light = serializers.SerializerMethodField()
+    header_classes_dark = serializers.SerializerMethodField()
     font = FontSerializer()
     class Meta:
         model = Theme
@@ -22,20 +24,12 @@ class ThemeSerializer(serializers.ModelSerializer):
             "name",
             "theme",
             "font",
-            "header"
+            "header_classes_light",
+            "header_classes_dark"
         ]
 
+    def get_header_classes_light(self, obj):
+        return obj.get_header_classes(dark_mode=False)
 
-class PlatformSerializer(serializers.ModelSerializer):
-    theme = ThemeSerializer()
-    class Meta:
-        model = Platform
-        fields = [
-            "id",
-            "domain",
-            "site_name",
-            "publication_year",
-            "active",
-            "index_url",
-            "theme"
-        ]
+    def get_header_classes_dark(self, obj):
+        return obj.get_header_classes(dark_mode=True)

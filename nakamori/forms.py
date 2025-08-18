@@ -1,5 +1,5 @@
 from django import forms
-from oya.models import MembershipApplication, ReferenceRequest, CommunityMember
+from nakamori.models import MembershipApplication, ReferenceRequest, CommunityMember
 
 
 class LoginForm(forms.Form):

@@ -1,0 +1,50 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}Dashboard | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<div
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300">
+
+  <div class="max-w-6xl mx-auto">
+    <h1 class="text-4xl font-extrabold mb-10 tracking-tight">
+      Dashboard
+    </h1>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-8">
+      {% for block in blocks %}
+      <div
+        :class="darkMode
+          ? 'bg-bubble-bg-dark border border-accent-1 border-l-8'
+          : 'bg-bubble-bg-light border border-accent-2 border-l-8'"
+        class="p-6 rounded-xl shadow-lg flex items-start transition-all duration-300 hover:shadow-xl hover:scale-[1.015]">
+
+        <i class="text-3xl mr-4"
+           :class="darkMode
+             ? 'text-accent-dark {{ block.icon }}'
+             : 'text-accent-light {{ block.icon }}'"></i>
+
+        <div>
+          <h2 class="text-xl font-semibold mb-2">
+            <a href="{{ block.link }}" target="_blank"
+               class="hover:underline focus:outline-none transition"
+               :class="darkMode
+                 ? 'text-accent-dark'
+                 : 'text-accent-light'">
+              {{ block.title }}
+            </a>
+          </h2>
+          <p :class="darkMode ? 'text-text-main-dark' : 'text-text-main-light'" class="text-sm leading-relaxed opacity-90">
+            {{ block.description }}
+          </p>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

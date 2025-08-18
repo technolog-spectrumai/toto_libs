@@ -1,0 +1,36 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}Home | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="flex flex-col items-center justify-center px-6 py-12 transition-colors duration-300">
+
+  <div
+    :class="darkMode
+      ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
+      : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+    class="w-full max-w-md text-center rounded-lg shadow-md p-6 border space-y-4 transition-colors duration-300">
+
+    <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-2xl font-bold">
+      Welcome to {{ platform.site_name }}
+    </h2>
+
+    <p class="text-sm opacity-80">
+      A compact portal into the {{ platform.company.name }} —
+      streamlined, ready, and built to explore.
+    </p>
+
+    <a href="{% url 'dashboard' %}"
+       :class="darkMode
+         ? 'bg-accent-dark text-primary-bg-dark'
+         : 'bg-accent-light text-primary-bg-light'"
+       class="inline-block px-4 py-2 font-semibold rounded hover:opacity-90 transition text-sm">
+      Enter Dashboard
+    </a>
+
+  </div>
+</section>
+{% endblock %}
