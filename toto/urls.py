@@ -12,13 +12,15 @@ admin.site.site_title = 'Administracja'
 urlpatterns = [
     path('admin/', admin.site.urls),
     path("nest/", include("oya.urls")),
+    path("nakamori/", include("nakamori.urls", namespace='nakamori')),
     path('captcha/', include('captcha.urls')),
     path('', lambda request: redirect('nest/root')),
     path('netogami/', include('netogami.urls')),
     path("gervazy/", include("gervazy.urls")),
     path('.well-known/acme-challenge/<path:path>', serve, {
         'document_root': settings.ACME_CHALLENGE_ROOT,
-    })
+    }),
+    #path('accounts/', include('django.contrib.auth.urls'))
 ]
 
 

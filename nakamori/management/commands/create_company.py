@@ -1,6 +1,5 @@
 from django.core.management.base import BaseCommand
-from oya.models import Company, Address  # Adjust import if needed
-from datetime import datetime
+from nakamori.models import Company, Address
 
 
 class Command(BaseCommand):

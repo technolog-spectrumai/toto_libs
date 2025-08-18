@@ -60,7 +60,8 @@ INSTALLED_APPS = [
     "gervazy",
     "oya",
     "captcha",
-    "netogami"
+    "netogami",
+    "nakamori"
 ]
 
 
