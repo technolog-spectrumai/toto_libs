@@ -45,7 +45,7 @@ def root_view(request):
         index_url = processor.config.index_url
         if not index_url:
             raise Http404("No index URL configured for active platform.")
-        return redirect(f"/{index_url}/")
+        return redirect(f"{index_url}")
     except Http404:
         raise
     except Exception:
