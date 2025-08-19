@@ -4,9 +4,9 @@ from django_json_widget.widgets import JSONEditorWidget
 from django.db.models import JSONField
 from django.urls import reverse
 from django.utils.html import format_html
-from django.conf import settings
-from django import forms
 import os
+from django import forms
+from .models import TemplateGenerator
 
 
 @admin.register(Template)
@@ -40,9 +40,18 @@ class PageAdmin(admin.ModelAdmin):
 
     full_url.short_description = "Page URL"
 
+class TemplateSourceForm(forms.ModelForm):
+    class Meta:
+        model = TemplateSource
+        fields = '__all__'
+        widgets = {
+            'token': forms.PasswordInput(render_value=True),
+        }
 
 @admin.register(TemplateSource)
 class TemplateSourceAdmin(admin.ModelAdmin):
+    form = TemplateSourceForm
+
     list_display = ('name', 'repo_url', 'branch')
     search_fields = ('name', 'repo_url', 'branch')
     actions = ['pull_repo']
@@ -72,11 +81,6 @@ class TemplateSourceAdmin(admin.ModelAdmin):
 
     pull_repo.short_description = "Pull selected repositories"
 
-
-
-from django import forms
-from .models import TemplateGenerator
-import os
 
 class TemplateGeneratorForm(forms.ModelForm):
     class Meta:

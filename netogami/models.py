@@ -9,6 +9,7 @@ import tempfile
 import shutil
 import uuid
 from urllib.parse import urlparse
+from encrypted_model_fields.fields import EncryptedCharField
 
 
 class Template(models.Model):
@@ -47,7 +48,7 @@ class TemplateSource(models.Model):
     name = models.CharField(max_length=100, unique=True)
     repo_url = models.URLField()
     branch = models.CharField(max_length=100, default='main')
-    token = models.CharField(max_length=100, default='main')
+    token = EncryptedCharField(max_length=100, default='main')
 
     def __str__(self):
         return f"{self.name} [{self.branch}]"

@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     'django_json_widget',
     'rest_framework',
     'import_export',
+    'encrypted_model_fields',
     'adminsortable2',
     "gervazy",
     "oya",
@@ -252,6 +253,7 @@ LOGIN_URL = '/nest/login/'
 
 CELERY_BROKER_URL = "redis://localhost:6379/0"
 
+FIELD_ENCRYPTION_KEY = 'GYVe39sJIvujld8u5NlnFStQXEkZnLDAXxtD6p2UfWs='
 
 
 
