@@ -1,11 +1,10 @@
 acme==4.2.0
 amqp==5.3.1
 asgiref==3.8.1
-asymmetric-jwt-auth==1.2.0
+asymmetric-jwt-auth==1.0.0
 billiard==4.2.1
 celery==5.5.3
 certbot==4.2.0
-certbot-django==0.2.0
 certifi==2025.4.26
 cffi==1.17.1
 charset-normalizer==3.4.2
@@ -20,6 +19,7 @@ cryptography==45.0.3
 diff-match-patch==20241021
 distro==1.9.0
 Django==4.2.23
+django-admin-sortable2==2.2.8
 django-celery-beat==2.8.1
 django-cors-headers==4.7.0
 django-import-export==4.3.8

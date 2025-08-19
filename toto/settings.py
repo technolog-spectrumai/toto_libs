@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     'django_json_widget',
     'rest_framework',
     'import_export',
+    'adminsortable2',
     "gervazy",
     "oya",
     "captcha",

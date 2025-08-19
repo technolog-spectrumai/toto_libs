@@ -40,12 +40,13 @@ class Command(BaseCommand):
             deck.save()
             self.stdout.write(self.style.SUCCESS(f"Created deck: {deck.title} with tags: {', '.join(t.name for t in selected_tags)}"))
 
-            for card_title, card_content in sample_cards:
+            for i, (card_title, card_content) in enumerate(sample_cards):
                 MemoCard.objects.create(
                     deck=deck,
                     title=card_title,
                     content=card_content,
-                    mermaid_code=""
+                    mermaid_code="",
+                    order=i  # Assign order based on position
                 )
             self.stdout.write(self.style.SUCCESS(f"Added {len(sample_cards)} cards to deck: {deck.title}"))
 

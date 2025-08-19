@@ -1,5 +1,6 @@
 from django.contrib import admin
 from .models import MemoDeck, MemoCard, InfoTag
+from adminsortable2.admin import SortableAdminMixin
 
 @admin.register(InfoTag)
 class TagAdmin(admin.ModelAdmin):
@@ -23,8 +24,9 @@ class MemoDeckAdmin(admin.ModelAdmin):
 
 
 @admin.register(MemoCard)
-class MemoCardAdmin(admin.ModelAdmin):
-    list_display = ('title', 'deck', 'deck_author', 'has_mermaid_code')
+class MemoCardAdmin(SortableAdminMixin, admin.ModelAdmin):
+    list_display = ('title', 'deck', 'deck_author', 'order', 'has_mermaid_code')
+    list_editable = ('order',)
     search_fields = ('title', 'content', 'deck__title', 'deck__author__username')
     list_filter = ('deck__title',)
     autocomplete_fields = ('deck',)
@@ -37,3 +39,4 @@ class MemoCardAdmin(admin.ModelAdmin):
         return bool(obj.mermaid_code.strip())
     has_mermaid_code.boolean = True
     has_mermaid_code.short_description = "Mermaid Code?"
+

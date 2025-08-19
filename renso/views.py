@@ -20,7 +20,7 @@ class MemoCardListView(ListView):
 
     def get_queryset(self):
         deck_id = self.kwargs['deck_id']
-        return MemoCard.objects.filter(deck_id=deck_id).order_by('title')
+        return MemoCard.objects.filter(deck_id=deck_id).order_by('order')
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)

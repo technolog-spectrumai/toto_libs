@@ -24,6 +24,11 @@ class MemoCard(models.Model):
     title = models.CharField(max_length=200)
     content = models.TextField()
     mermaid_code = models.TextField(blank=True)
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['order']  # Ensures cards are always sorted by order
 
     def __str__(self):
         return f"{self.title} ({self.deck.title})"
+
