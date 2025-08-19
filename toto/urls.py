@@ -17,6 +17,7 @@ urlpatterns = [
     path('', lambda request: redirect('nest/root')),
     path('netogami/', include('netogami.urls')),
     path("gervazy/", include("gervazy.urls")),
+    path("memo/", include("renso.urls")),
     path('.well-known/acme-challenge/<path:path>', serve, {
         'document_root': settings.ACME_CHALLENGE_ROOT,
     }),

@@ -152,7 +152,8 @@ class DashboardBlock(models.Model):
 ALLOWED_APPS = [
     'oya',
     'netogami',
-    "nakamori"
+    "nakamori",
+    "renso"
 ]
 
 class AppIngress(models.Model):
