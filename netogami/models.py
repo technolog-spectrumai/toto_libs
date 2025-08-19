@@ -1,11 +1,9 @@
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils.text import slugify
-import uuid
 from django.urls import reverse
 import git
 import os
-import tempfile
 import shutil
 import uuid
 from urllib.parse import urlparse
@@ -44,15 +42,13 @@ class Page(models.Model):
         return reverse('page_detail', kwargs={'slug': self.slug, 'language': self.language})
 
 
-class TemplateSource(models.Model):
+class Repository(models.Model):
     name = models.CharField(max_length=100, unique=True)
     repo_url = models.URLField()
-    branch = models.CharField(max_length=100, default='main')
     token = EncryptedCharField(max_length=100, default='main')
 
     def __str__(self):
-        return f"{self.name} [{self.branch}]"
-
+        return f"{self.name} repo"
 
     def get_local_path(self):
         from django.conf import settings
@@ -64,45 +60,53 @@ class TemplateSource(models.Model):
         parsed = urlparse(self.repo_url)
         return f"https://{self.token}@{parsed.hostname}{parsed.path}"
 
-    def _checkout(self, repo_path):
+    def checkout(self, repo_path, branch='main'):
         repo = git.Repo(repo_path)
-        repo.git.checkout(self.branch)
+        repo.git.checkout(branch)
         repo.remotes.origin.pull()
         return repo
 
-    def _clone(self, repo_path):
-        return git.Repo.clone_from(self._get_secure_url(), repo_path, branch=self.branch)
+    def clone(self, repo_path, branch='main'):
+        return git.Repo.clone_from(self._get_secure_url(), repo_path, branch=branch)
 
-    def pull_repo(self):
-        repo_path = self.get_local_path()
+
+class Codebase(models.Model):
+    repo = models.ForeignKey(Repository, on_delete=models.CASCADE, related_name='generators')
+    branch = models.CharField(max_length=100, default='main')
+    last_synced = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"repo:{self.repo.name} | branch: {self.branch}"
+
+    def update_codebase(self):
+        repo_path = self.repo.get_local_path()
         try:
             if os.path.exists(repo_path):
-                repo = self._checkout(repo_path)
+                repo = self.repo.checkout(repo_path, branch=self.branch)
             else:
-                repo = self._clone(repo_path)
+                repo = self.repo.clone(repo_path, branch=self.branch)
         except Exception as e:
             shutil.rmtree(repo_path)
             raise RuntimeError(f"Git pull failed: {e}")
         return repo
 
 
-class TemplateGenerator(models.Model):
-    source = models.ForeignKey(TemplateSource, on_delete=models.CASCADE, related_name='generators')
-    target = models.ForeignKey(Template, on_delete=models.CASCADE, related_name='generators')
+class TemplateArtifact(models.Model):
+    source = models.ForeignKey(Codebase, on_delete=models.CASCADE, related_name='artifact')
+    target = models.ForeignKey(Template, on_delete=models.CASCADE, related_name='artifact')
     file_path = models.CharField(max_length=255, blank=True, help_text="Relative path to the template file in the repo")
-    last_synced = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"{self.target.name} ← {self.file_path} in {self.source.name}"
+        return f"{self.target.name} <- {self.file_path} in {self.source.repo.name}"
+
 
     def get_full_file_path(self):
-        return os.path.join(self.source.get_local_path(), self.file_path)
+        return os.path.join(self.source.repo.get_local_path(), self.file_path)
 
     def sync_template(self):
         """
         Pulls the latest repo and updates the target Template content from the file.
         """
-        repo = self.source.pull_repo()
         file_full_path = self.get_full_file_path()
 
         if not os.path.exists(file_full_path):
@@ -114,7 +118,6 @@ class TemplateGenerator(models.Model):
 
         self.save()
         return self.target
-
 
 # class Image(models.Model):
 #     author = models.ForeignKey(User, on_delete=models.CASCADE, related_name='images')
