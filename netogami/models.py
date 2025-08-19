@@ -37,6 +37,8 @@ class Page(models.Model):
         return reverse('page_detail', kwargs={'slug': self.slug, 'language': self.language})
 
 
+
+
 # class Image(models.Model):
 #     author = models.ForeignKey(User, on_delete=models.CASCADE, related_name='images')
 #     name = models.CharField(max_length=100)
