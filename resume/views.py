@@ -30,7 +30,7 @@ def download_resume_pdf(request, resume_id):
         'education_entries': resume.education_entries.all(),
         'distinctions': resume.distinctions.all(),
         'languages': resume.languages.all(),
-        'skills': resume.skills.all(),
+        'skills': resume.skills.all()
     }
 
     html_string = render_to_string('resume/export_pdf.html', context)

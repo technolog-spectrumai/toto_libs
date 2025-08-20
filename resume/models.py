@@ -6,6 +6,7 @@ class Resume(models.Model):
     email = models.EmailField()
     citizenship = models.CharField(max_length=100)
     created_at = models.DateTimeField(auto_now_add=True)
+    disclaimer = models.CharField(max_length=1024, blank=True)
 
     def __str__(self):
         return self.full_name
