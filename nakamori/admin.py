@@ -1,0 +1,104 @@
+from django.contrib import admin
+from django.utils.html import format_html
+from django.utils import timezone
+from .models import (
+    Company,
+    CommunityMember,
+    Address,
+    MembershipApplication,
+    Branch,
+    ReferenceRequest
+)
+
+# Inline for displaying branches under a company
+class BranchInline(admin.TabularInline):
+    model = Branch
+    extra = 0
+    readonly_fields = ('created_at', 'updated_at')
+
+
+@admin.register(Address)
+class AddressAdmin(admin.ModelAdmin):
+    list_display = ('street', 'building', 'apartment', 'locality_name', 'state_or_province_name', 'country_name')
+    search_fields = ('street', 'locality_name', 'state_or_province_name', 'country_name')
+    list_filter = ('country_name', 'state_or_province_name')
+    ordering = ('locality_name', 'street')
+
+
+@admin.register(Company)
+class CompanyAdmin(admin.ModelAdmin):
+    list_display = ('name', 'address', 'established_year', 'created_at')
+    search_fields = ('name',)
+    ordering = ('name',)
+    inlines = [BranchInline]
+
+
+@admin.register(Branch)
+class BranchAdmin(admin.ModelAdmin):
+    list_display = ('name', 'company', 'address', 'created_at', 'updated_at')
+    search_fields = ('name', 'company__name', 'address__locality_name', 'address__street')
+    list_filter = ('company', 'created_at')
+    ordering = ('-created_at',)
+    readonly_fields = ('created_at', 'updated_at')
+
+
+@admin.register(CommunityMember)
+class CommunityMemberAdmin(admin.ModelAdmin):
+    list_display = ('display_name', 'user', 'joined_date', 'avatar_preview')
+    search_fields = ('display_name', 'user__username', 'user__email')
+    list_filter = ('joined_date',)
+    ordering = ('-joined_date',)
+    filter_horizontal = ('membership',)
+
+    def avatar_preview(self, obj):
+        if obj.avatar:
+            return format_html('<img src="{}" style="height: 40px; border-radius: 4px;" />', obj.avatar.url)
+        return "-"
+    avatar_preview.short_description = "Avatar"
+
+
+# Custom action for verifying applications
+@admin.action(description='Mark selected applications as verified')
+def mark_as_verified(modeladmin, request, queryset):
+    queryset.update(status='verified', verified_at=timezone.now())
+
+
+@admin.register(MembershipApplication)
+class MembershipApplicationAdmin(admin.ModelAdmin):
+    list_display = ('email', 'code', 'branch', 'status', 'is_verified_display', 'expires_at')
+    list_filter = ('branch', 'status', 'expires_at')
+    search_fields = ('email', 'code', 'branch__name')
+    ordering = ('-created_at',)
+    readonly_fields = ('created_at', 'verified_at')
+    actions = [mark_as_verified]
+
+    @admin.display(boolean=True, description='Verified')
+    def is_verified_display(self, obj):
+        return obj.is_verified
+
+
+@admin.register(ReferenceRequest)
+class ReferenceRequestAdmin(admin.ModelAdmin):
+    list_display = (
+        'application',
+        'referrer',
+        'status',
+        'created_at',
+        'responded_at',
+        'is_accepted_display'
+    )
+    list_filter = (
+        'status',
+        'created_at',
+        'responded_at'
+    )
+    search_fields = (
+        'application__email',
+        'referrer__display_name'
+    )
+    ordering = ('-created_at',)
+    readonly_fields = ('created_at', 'responded_at')
+
+    @admin.display(boolean=True, description='Accepted')
+    def is_accepted_display(self, obj):
+        return obj.is_accepted
