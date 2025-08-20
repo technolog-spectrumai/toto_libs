@@ -116,9 +116,9 @@
             <a href="{% url 'resume_list' %}" class="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition">
                 <i class="fas fa-arrow-left"></i> Back to Resume List
             </a>
-            <button class="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition">
-                <i class="fas fa-download"></i> Download Resume
-            </button>
+            <a href="{% url 'download_resume_pdf' resume.id %}" class="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition">
+                <i class="fas fa-download"></i> Download
+            </a>
         </div>
     </div>
 </body>

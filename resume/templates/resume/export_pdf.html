@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; padding: 40px; color: #333; }
+        h1 { font-size: 24px; margin-bottom: 10px; }
+        h2 { font-size: 18px; margin-top: 30px; border-bottom: 1px solid #ccc; padding-bottom: 5px; }
+        p, li { font-size: 14px; margin: 4px 0; }
+        ul { padding-left: 20px; }
+    </style>
+</head>
+<body>
+    <h1>{{ resume.full_name }}</h1>
+    <p><strong>Email:</strong> {{ resume.email }}</p>
+    <p><strong>Phone:</strong> {{ resume.phone_number }}</p>
+    <p><strong>Citizenship:</strong> {{ resume.citizenship }}</p>
+    <p><strong>Created:</strong> {{ resume.created_at|date:"F j, Y" }}</p>
+
+    <h2>Work Experience</h2>
+    {% for job in work_experiences %}
+        <p><strong>{{ job.title }}</strong> at {{ job.company }} ({{ job.start_date }} – {{ job.end_date }})</p>
+        <p>{{ job.location }}</p>
+        <p>{{ job.description }}</p>
+    {% endfor %}
+
+    <h2>Education</h2>
+    {% for edu in education_entries %}
+        <p><strong>{{ edu.degree }}</strong> in {{ edu.specialization }} at {{ edu.institution }} ({{ edu.start_date }} – {{ edu.end_date }})</p>
+    {% endfor %}
+
+    <h2>Distinctions</h2>
+    {% for award in distinctions %}
+        <p>{{ award.date_awarded }} – {{ award.title }}</p>
+    {% endfor %}
+
+    <h2>Languages</h2>
+    <ul>
+        {% for lang in languages %}
+            <li>{{ lang.name }} ({{ lang.get_proficiency_display }})</li>
+        {% endfor %}
+    </ul>
+
+    <h2>Skills</h2>
+    <ul>
+        {% for skill in skills %}
+            <li><strong>{{ skill.category }}</strong>: {{ skill.description }}</li>
+        {% endfor %}
+    </ul>
+</body>
+</html>
