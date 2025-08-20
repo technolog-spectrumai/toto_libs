@@ -4,72 +4,124 @@
     <meta charset="UTF-8">
     <title>{{ resume.full_name }} - Resume</title>
     <script src="https://cdn.tailwindcss.com"></script>
+      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css"
+            integrity="sha512-Evv84Mr4kqVGRNSgIGL/F/aIDqQb7xQ2vcrdIwxfjThSH8CSR7PBEakCr51Ck+w+/U6swU2Im1vVX0SVk9ABhg=="
+            crossorigin="anonymous" referrerpolicy="no-referrer" />
 </head>
 <body class="bg-gray-50 text-gray-800 font-sans">
-    <div class="max-w-4xl mx-auto p-6">
-        <header class="mb-8 border-b pb-4">
-            <h1 class="text-3xl font-bold text-gray-900">{{ resume.full_name }}</h1>
-            <p class="mt-2 text-sm text-gray-600">📧 {{ resume.email }} | 📞 {{ resume.phone_number }}</p>
-            <p class="text-sm text-gray-600">🌍 Citizenship: {{ resume.citizenship }}</p>
-            <p class="text-sm text-gray-500">🕒 Created: {{ resume.created_at|date:"F j, Y" }}</p>
-        </header>
+    <div class="max-w-4xl mx-auto px-6 py-10">
 
-        <section class="mb-10">
-            <h2 class="text-xl font-semibold border-b pb-2 mb-4 text-gray-700">Work Experience</h2>
-            {% for job in work_experiences %}
-                <div class="mb-4">
-                    <h3 class="font-medium text-gray-800">{{ job.title }} at {{ job.company }}</h3>
-                    <p class="text-sm text-gray-600">{{ job.start_date }} – {{ job.end_date }}</p>
-                    <p class="text-sm text-gray-600 italic">{{ job.location }}</p>
-                    <p class="mt-1 text-gray-700">{{ job.description }}</p>
-                </div>
-            {% empty %}
-                <p class="text-gray-500">No work experience listed.</p>
-            {% endfor %}
-        </section>
+        <!-- Resume Card -->
+        <div class="border border-gray-200 rounded-xl bg-white shadow-sm p-8">
+            <header class="mb-8 border-b border-gray-200 pb-4">
+                <h1 class="text-3xl font-bold text-gray-900">
+                    <i class="fas fa-user text-blue-600 mr-2"></i>{{ resume.full_name }}
+                </h1>
+                <p class="mt-2 text-sm text-gray-600">
+                    <i class="fas fa-envelope text-gray-500 mr-1"></i>{{ resume.email }}
+                    |
+                    <i class="fas fa-phone text-gray-500 mr-1"></i>{{ resume.phone_number }}
+                </p>
+                <p class="text-sm text-gray-600">
+                    <i class="fas fa-passport text-gray-500 mr-1"></i>Citizenship: {{ resume.citizenship }}
+                </p>
+                <p class="text-sm text-gray-500">
+                    <i class="fas fa-calendar-alt text-gray-400 mr-1"></i>Created: {{ resume.created_at|date:"F j, Y" }}
+                </p>
+            </header>
 
-        <section class="mb-10">
-            <h2 class="text-xl font-semibold border-b pb-2 mb-4 text-gray-700">Education</h2>
-            {% for edu in education_entries %}
-                <div class="mb-4">
-                    <p class="font-medium text-gray-800">{{ edu.degree }} in {{ edu.specialization }}</p>
-                    <p class="text-sm text-gray-600">{{ edu.institution }} ({{ edu.start_date }} – {{ edu.end_date }})</p>
-                </div>
-            {% empty %}
-                <p class="text-gray-500">No education listed.</p>
-            {% endfor %}
-        </section>
-
-        <section class="mb-10">
-            <h2 class="text-xl font-semibold border-b pb-2 mb-4 text-gray-700">Distinctions</h2>
-            {% for award in distinctions %}
-                <p class="mb-2 text-gray-700">🏅 {{ award.date_awarded }} – {{ award.title }}</p>
-            {% empty %}
-                <p class="text-gray-500">No distinctions listed.</p>
-            {% endfor %}
-        </section>
-
-        <section class="mb-10">
-            <h2 class="text-xl font-semibold border-b pb-2 mb-4 text-gray-700">Languages</h2>
-            <ul class="list-disc list-inside text-gray-700">
-                {% for lang in languages %}
-                    <li>{{ lang.name }} ({{ lang.get_proficiency_display }})</li>
+            <!-- Work Experience -->
+            <section class="mb-10">
+                <h2 class="text-xl font-semibold border-b pb-2 mb-4 text-gray-700">
+                    <i class="fas fa-briefcase text-blue-500 mr-2"></i>Work Experience
+                </h2>
+                {% for job in work_experiences %}
+                    <div class="mb-4">
+                        <h3 class="font-medium text-gray-800">{{ job.title }} at {{ job.company }}</h3>
+                        <p class="text-sm text-gray-600">
+                            <i class="fas fa-calendar text-gray-400 mr-1"></i>{{ job.start_date }} – {{ job.end_date }}
+                        </p>
+                        <p class="text-sm italic text-gray-500">
+                            <i class="fas fa-location-dot text-gray-400 mr-1"></i>{{ job.location }}
+                        </p>
+                        <p class="mt-1 text-gray-700">{{ job.description }}</p>
+                    </div>
                 {% empty %}
-                    <li class="text-gray-500">No languages listed.</li>
+                    <p class="text-gray-500">No work experience listed.</p>
                 {% endfor %}
-            </ul>
-        </section>
+            </section>
 
-        <section>
-            <h2 class="text-xl font-semibold border-b pb-2 mb-4 text-gray-700">Skills</h2>
-            <ul class="list-disc list-inside text-gray-700">
-                {% for skill in skills %}
-                    <li><strong>{{ skill.category }}</strong>: {{ skill.description }}</li>
+            <!-- Education -->
+            <section class="mb-10">
+                <h2 class="text-xl font-semibold border-b pb-2 mb-4 text-gray-700">
+                    <i class="fas fa-graduation-cap text-blue-500 mr-2"></i>Education
+                </h2>
+                {% for edu in education_entries %}
+                    <div class="mb-4">
+                        <p class="font-medium text-gray-800">{{ edu.degree }} in {{ edu.specialization }}</p>
+                        <p class="text-sm text-gray-600">
+                            <i class="fas fa-university text-gray-400 mr-1"></i>{{ edu.institution }} ({{ edu.start_date }} – {{ edu.end_date }})
+                        </p>
+                    </div>
                 {% empty %}
-                    <li class="text-gray-500">No skills listed.</li>
+                    <p class="text-gray-500">No education listed.</p>
                 {% endfor %}
-            </ul>
-        </section>
+            </section>
+
+            <!-- Distinctions -->
+            <section class="mb-10">
+                <h2 class="text-xl font-semibold border-b pb-2 mb-4 text-gray-700">
+                    <i class="fas fa-award text-blue-500 mr-2"></i>Distinctions
+                </h2>
+                {% for award in distinctions %}
+                    <p class="mb-2 text-gray-700">
+                        <i class="fas fa-medal text-yellow-500 mr-1"></i>{{ award.date_awarded }} – {{ award.title }}
+                    </p>
+                {% empty %}
+                    <p class="text-gray-500">No distinctions listed.</p>
+                {% endfor %}
+            </section>
+
+            <!-- Languages -->
+            <section class="mb-10">
+                <h2 class="text-xl font-semibold border-b pb-2 mb-4 text-gray-700">
+                    <i class="fas fa-language text-blue-500 mr-2"></i>Languages
+                </h2>
+                <ul class="list-disc list-inside text-gray-700">
+                    {% for lang in languages %}
+                        <li>{{ lang.name }} ({{ lang.get_proficiency_display }})</li>
+                    {% empty %}
+                        <li class="text-gray-500">No languages listed.</li>
+                    {% endfor %}
+                </ul>
+            </section>
+
+            <!-- Skills -->
+            <section class="mb-10">
+                <h2 class="text-xl font-semibold border-b pb-2 mb-4 text-gray-700">
+                    <i class="fas fa-lightbulb text-blue-500 mr-2"></i>Skills
+                </h2>
+                <ul class="list-disc list-inside text-gray-700">
+                    {% for skill in skills %}
+                        <li><strong>{{ skill.category }}</strong>: {{ skill.description }}</li>
+                    {% empty %}
+                        <li class="text-gray-500">No skills listed.</li>
+                    {% endfor %}
+                </ul>
+            </section>
+        </div>
+
+        <!-- Navigation Buttons -->
+        <div class="mt-8 flex justify-between">
+            <a href="{% url 'resume_list' %}" class="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition">
+                <i class="fas fa-arrow-left"></i> Back to Resume List
+            </a>
+            <button class="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition">
+                <i class="fas fa-download"></i> Download Resume
+            </button>
+        </div>
     </div>
 </body>
 </html>
+
+
