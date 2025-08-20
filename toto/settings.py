@@ -64,7 +64,8 @@ INSTALLED_APPS = [
     "captcha",
     "netogami",
     "nakamori",
-    "renso"
+    "renso",
+    "resume"
 ]
 
 

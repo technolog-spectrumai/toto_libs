@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ resume.full_name }} - Resume</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans">
+    <div class="max-w-4xl mx-auto p-6">
+        <header class="mb-8 border-b pb-4">
+            <h1 class="text-3xl font-bold text-gray-900">{{ resume.full_name }}</h1>
+            <p class="mt-2 text-sm text-gray-600">📧 {{ resume.email }} | 📞 {{ resume.phone_number }}</p>
+            <p class="text-sm text-gray-600">🌍 Citizenship: {{ resume.citizenship }}</p>
+            <p class="text-sm text-gray-500">🕒 Created: {{ resume.created_at|date:"F j, Y" }}</p>
+        </header>
+
+        <section class="mb-10">
+            <h2 class="text-xl font-semibold border-b pb-2 mb-4 text-gray-700">Work Experience</h2>
+            {% for job in work_experiences %}
+                <div class="mb-4">
+                    <h3 class="font-medium text-gray-800">{{ job.title }} at {{ job.company }}</h3>
+                    <p class="text-sm text-gray-600">{{ job.start_date }} – {{ job.end_date }}</p>
+                    <p class="text-sm text-gray-600 italic">{{ job.location }}</p>
+                    <p class="mt-1 text-gray-700">{{ job.description }}</p>
+                </div>
+            {% empty %}
+                <p class="text-gray-500">No work experience listed.</p>
+            {% endfor %}
+        </section>
+
+        <section class="mb-10">
+            <h2 class="text-xl font-semibold border-b pb-2 mb-4 text-gray-700">Education</h2>
+            {% for edu in education_entries %}
+                <div class="mb-4">
+                    <p class="font-medium text-gray-800">{{ edu.degree }} in {{ edu.specialization }}</p>
+                    <p class="text-sm text-gray-600">{{ edu.institution }} ({{ edu.start_date }} – {{ edu.end_date }})</p>
+                </div>
+            {% empty %}
+                <p class="text-gray-500">No education listed.</p>
+            {% endfor %}
+        </section>
+
+        <section class="mb-10">
+            <h2 class="text-xl font-semibold border-b pb-2 mb-4 text-gray-700">Distinctions</h2>
+            {% for award in distinctions %}
+                <p class="mb-2 text-gray-700">🏅 {{ award.date_awarded }} – {{ award.title }}</p>
+            {% empty %}
+                <p class="text-gray-500">No distinctions listed.</p>
+            {% endfor %}
+        </section>
+
+        <section class="mb-10">
+            <h2 class="text-xl font-semibold border-b pb-2 mb-4 text-gray-700">Languages</h2>
+            <ul class="list-disc list-inside text-gray-700">
+                {% for lang in languages %}
+                    <li>{{ lang.name }} ({{ lang.get_proficiency_display }})</li>
+                {% empty %}
+                    <li class="text-gray-500">No languages listed.</li>
+                {% endfor %}
+            </ul>
+        </section>
+
+        <section>
+            <h2 class="text-xl font-semibold border-b pb-2 mb-4 text-gray-700">Skills</h2>
+            <ul class="list-disc list-inside text-gray-700">
+                {% for skill in skills %}
+                    <li><strong>{{ skill.category }}</strong>: {{ skill.description }}</li>
+                {% empty %}
+                    <li class="text-gray-500">No skills listed.</li>
+                {% endfor %}
+            </ul>
+        </section>
+    </div>
+</body>
+</html>

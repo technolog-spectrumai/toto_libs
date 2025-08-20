@@ -153,7 +153,8 @@ ALLOWED_APPS = [
     'oya',
     'netogami',
     "nakamori",
-    "renso"
+    "renso",
+    "resume"
 ]
 
 class AppIngress(models.Model):
