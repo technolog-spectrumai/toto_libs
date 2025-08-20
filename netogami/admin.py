@@ -1,5 +1,5 @@
 from django.contrib import admin, messages
-from .models import Template, Page, Repository, Codebase, TemplateArtifact
+from .models import Template, Page, Repository, Codebase, TemplateArtifact, Image
 from django_json_widget.widgets import JSONEditorWidget
 from django.db.models import JSONField
 from django.urls import reverse
@@ -32,8 +32,7 @@ class PageAdmin(admin.ModelAdmin):
     def full_url(self, obj):
         try:
             url = reverse('page_detail', kwargs={'slug': obj.slug, 'language': obj.language})
-            full_url = f"{url}"
-            return format_html('<a href="{}" target="_blank">{}</a>', full_url, full_url)
+            return format_html('<a href="{}" target="_blank">{}</a>', url, url)
         except Exception:
             return "Invalid URL"
 
@@ -175,9 +174,18 @@ class TemplateArtifactAdmin(admin.ModelAdmin):
 
     sync_templates.short_description = "Sync selected templates"
 
-# @admin.register(Image)
-# class ImageAdmin(admin.ModelAdmin):
-#     list_display = ('name', 'author', 'slug', 'created_at')
-#     search_fields = ('name', 'slug', 'author__username')
-#     readonly_fields = ('created_at', )
-#     autocomplete_fields = ('author',)
+@admin.register(Image)
+class ImageAdmin(admin.ModelAdmin):
+    list_display = ('name', 'author', 'slug', 'created_at', 'full_url')
+    search_fields = ('name', 'slug', 'author__username')
+    readonly_fields = ('created_at', )
+    autocomplete_fields = ('author',)
+
+    def full_url(self, obj):
+        try:
+            url = reverse('image_url', kwargs={'slug': obj.slug})
+            return format_html('<a href="{}" target="_blank">{}</a>', url, url)
+        except Exception:
+            return "Invalid URL"
+
+    full_url.short_description = "Image URL"

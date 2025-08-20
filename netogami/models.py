@@ -119,20 +119,20 @@ class TemplateArtifact(models.Model):
         self.save()
         return self.target
 
-# class Image(models.Model):
-#     author = models.ForeignKey(User, on_delete=models.CASCADE, related_name='images')
-#     name = models.CharField(max_length=100)
-#     slug = models.SlugField(max_length=255, unique=True, blank=True)
-#     image = models.ImageField(upload_to='uploads/images/')
-#     created_at = models.DateTimeField(auto_now_add=True)
-#
-#     def save(self, *args, **kwargs):
-#         if not self.slug:
-#             base = slugify(self.name)
-#             self.slug = f"{base}-{uuid.uuid4().hex[:6]}"
-#         super().save(*args, **kwargs)
-#
-#     def __str__(self):
-#         return self.name
+class Image(models.Model):
+    author = models.ForeignKey(User, on_delete=models.CASCADE, related_name='images')
+    name = models.CharField(max_length=100)
+    slug = models.SlugField(max_length=255, unique=True, blank=True)
+    image = models.ImageField(upload_to='uploads/images/')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            base = slugify(self.name)
+            self.slug = f"{base}-{uuid.uuid4().hex[:6]}"
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.name
 
 

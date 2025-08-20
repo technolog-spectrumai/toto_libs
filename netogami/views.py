@@ -1,6 +1,8 @@
 from django.shortcuts import render, get_object_or_404
 from django.template import Template as DjangoTemplate, Context
-from .models import Page
+from .models import Page, Image
+from django.shortcuts import get_object_or_404, redirect
+
 
 def page_list(request, language):
     pages = Page.objects.select_related('template', 'author').filter(language=language)
@@ -27,3 +29,8 @@ def page_detail(request, language, slug):
         'page': page,
         'rendered_html': rendered_html,
     })
+
+def image_view(request, slug):
+    image = get_object_or_404(Image, slug=slug)
+    return redirect(image.image.url)
+
