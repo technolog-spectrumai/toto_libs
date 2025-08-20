@@ -1,78 +1,88 @@
-from django.core.management.base import BaseCommand
-from django.contrib.auth.models import User
-from netogami.models import Template, Page
-from oya.models import Platform
+from django.core.management.base import BaseCommand, CommandError
+from django.core.management import call_command
+import json
 
 class Command(BaseCommand):
-    help = "Create a demo Tailwind+Alpine.js-based Template and Page"
+    help = 'Ingress command to create repo and pages'
+
+    def add_arguments(self, parser):
+        parser.add_argument('--repo_url', type=str, default="https://github.com/technolog-spectrumai/websites",help='Git repository URL')
+        parser.add_argument('--access_token', type=str, default="???", help='Access token for the repository')
+        parser.add_argument('--repo_name', type=str, help='Optional name for the repository')
+        parser.add_argument('--branch', type=str, default='main', help='Branch to use')
+        parser.add_argument('--username', type=str, default='admin', help='Author username')
 
     def handle(self, *args, **options):
-        self.stdout.write(self.style.NOTICE("Creating Tailwind/Alpine.js template..."))
+        repo_url = options['repo_url']
+        token = options['access_token']
+        repo_name = options.get('repo_name') or repo_url.split('/')[-1].replace('.git', '')
+        branch = options['branch']
+        username = options['username']
 
-        # Full HTML content including head and body
-        full_content = """
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>{{ title }}</title>
-            <script src="https://cdn.tailwindcss.com"></script>
-            <script src="https://unpkg.com/alpinejs" defer></script>
-        </head>
-        <body>
-            <div class="min-h-screen bg-gray-100 flex items-center justify-center p-6">
-                <div class="max-w-md w-full bg-white shadow-md rounded p-6" x-data="{ open: false }">
-                    <h1 class="text-2xl font-bold mb-4">{{ title }}</h1>
-                    <p class="text-gray-700 mb-4">{{ description }}</p>
-                    <button 
-                        class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition"
-                        @click="open = !open">
-                        Toggle Info
-                    </button>
-                    <div x-show="open" class="mt-4 text-sm text-gray-600">
-                        <p>{{ extra_info }}</p>
-                    </div>
-                </div>
-            </div>
-        </body>
-        </html>
-        """
+        try:
+            # Step 1: Create repository
+            self.stdout.write(self.style.NOTICE("Creating repository..."))
+            call_command('create_repo', repo_url, token, '--name', repo_name)
 
-        template, _ = Template.objects.get_or_create(
-            name="Tailwind Demo",
-            defaults={
-                "description": "A responsive template using Tailwind and Alpine.js",
-                "content": full_content.strip(),
-            }
-        )
+            # Step 2: Create SpectrumAI page
+            self.stdout.write(self.style.NOTICE("Creating SpectrumAI page..."))
 
-        # Use the first superuser or any user as the author
-        user = User.objects.filter(is_superuser=True).first() or User.objects.first()
-        if not user:
-            self.stdout.write(self.style.ERROR("No users found to assign as author."))
-            return
+            args_json = json.dumps({
+                "site_title": "SpectrumAI",
+                "fontawesome_url": "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css",
+                "logo_dark_url": "https://i.ibb.co/PXwkgwK/octropus-tr.png",
+                "logo_light_url": "https://i.ibb.co/KzWrv8Rj/octropus-tr-black.png",
+                "logo_alt": "SpectrumAI Logo",
+                "brand_name": "SPECTRUM",
+                "brand_suffix": "AI",
+                "nav_about": "About",
+                "nav_portfolio": "Portfolio",
+                "nav_contact": "Contact",
+                "switch_light": "Switch to Light Mode",
+                "switch_dark": "Switch to Dark Mode",
+                "hero_title": "Investing in the Future of Intelligence",
+                "hero_description": "SpectrumAI is a shareholder in AI-driven startups, focused on innovation, precision, and strategic growth.",
+                "features": [
+                    { "title": "AI Security", "desc": "Cutting-edge defense intelligence and proactive protection." },
+                    { "title": "Cognitive Robotics", "desc": "Teaching autonomous systems to reason and adapt." },
+                    { "title": "Medical AI", "desc": "Accelerating diagnostics and precision healthcare." },
+                    { "title": "Industrial AI", "desc": "Smart manufacturing and predictive logistics." },
+                    { "title": "Financial Innovation", "desc": "Blockchain and decentralized finance systems." },
+                    { "title": "Real-Time Analytics", "desc": "Live data pipelines, predictive dashboards, and decision intelligence." }
+                ],
+                "portfolio_title": "Portfolio",
+                "portfolio_description": "We proudly invest in bold ventures redefining autonomy and intelligence. Meet Basilisk Systems.",
+                "portfolio_1_url": "https://basilisk-systems.netlify.app/",
+                "portfolio_1_image_dark": "https://i.ibb.co/ZzQnJpzC/banner-basilisk.png",
+                "portfolio_1_image_light": "https://i.ibb.co/M5RXrcwT/basilisk-light.png",
+                "portfolio_1_name": "Basilisk Systems",
+                "portfolio_1_tagline": "Smarter Skies Begin Here",
+                "portfolio_1_description": "Autonomous drone transport built on vision, security, and relentless innovation—from defense-ready platforms to cloud-integrated navigation.",
+                "portfolio_2_url": "https://spontaneous-swan-18b446.netlify.app",
+                "portfolio_2_image_dark": "https://i.ibb.co/G4n2fB6G/vo2.png",
+                "portfolio_2_image_light": "https://i.ibb.co/mVL6trB6/vo1.png",
+                "portfolio_2_name": "Sport Spectrum",
+                "portfolio_2_tagline": "Intelligence in Motion",
+                "portfolio_2_description": "AI-powered performance analytics for athletes, teams, and sports organizations. From biometric tracking to predictive game strategy, SportSpectrum redefines competitive edge.",
+                "visit_text": "Visit Website →",
+                "footer_year": "2025",
+                "footer_tagline": "Precision. Clarity. Leadership.",
+                "contact_label": "Contact us at",
+                "contact_email": "technolog@spectrumai.pl"
+            })
 
-        page_data = {
-            "title": "Welcome to Netogami",
-            "description": "This page was generated using Tailwind CSS and Alpine.js.",
-            "extra_info": "Dynamic UI with Alpine.js is just a click away!"
-        }
+            call_command(
+                'create_page',
+                repo_name,
+                branch,
+                'spectrumai.html',
+                'spectrumai',
+                args_json,
+                '--username',
+                username
+            )
 
-        page, created = Page.objects.get_or_create(
-            template=template,
-            author=user,
-            language="en",
-            defaults={"data": page_data}
-        )
+            self.stdout.write(self.style.SUCCESS("Ingress completed successfully."))
 
-        for platform in Platform.objects.filter(active=True):
-            platform.index_url = page.get_url()
-            platform.save()
-            self.stdout.write(self.style.SUCCESS(
-                f"Updated Platform '{platform.site_name}' index_url to: {platform.index_url}"
-            ))
-
-        self.stdout.write(self.style.SUCCESS(
-            f"{'Created' if created else 'Updated'} page: {page.slug} for user {user.username}"
-        ))
+        except CommandError as e:
+            self.stderr.write(self.style.ERROR(f"Ingress failed: {e}"))
