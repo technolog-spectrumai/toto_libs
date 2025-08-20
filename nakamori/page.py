@@ -1,6 +1,5 @@
 from oya.models import Platform
 from django.http import Http404
-from django.urls import reverse
 from oya.serializers import PlatformSerializer
 
 
