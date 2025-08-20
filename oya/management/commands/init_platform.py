@@ -8,9 +8,18 @@ import django
 class Command(BaseCommand):
     help = "Initialize platform"
 
+    def add_arguments(self, parser):
+        parser.add_argument(
+            '--admin-password',
+            type=str,
+            help='Password for the admin user',
+            default='admin'  # Optional: set a default if not provided
+        )
+
     def handle(self, *args, **options):
         try:
-            self.run()
+            admin_password = options.get('admin_password', 'admin')
+            self.run(admin_password)
         except CommandError as e:
             self.stderr.write(self.style.ERROR(f"Error initializing platform: {e}"))
 
@@ -80,7 +89,7 @@ class Command(BaseCommand):
                 "--header", json.dumps(theme.get("header", {}))
             )
 
-    def run(self):
+    def run(self, admin_password):
         self.clear_db()
 
         self.stdout.write(self.style.NOTICE("Running migrations..."))
@@ -94,7 +103,7 @@ class Command(BaseCommand):
         domain = "spectrumai.pl"
 
         self.stdout.write(self.style.NOTICE("Creating superuser..."))
-        call_command("create_user", "admin", "admin", admin=True)
+        call_command("create_user", "admin", admin_password, admin=True)
         self.stdout.write(self.style.SUCCESS("Superuser created."))
 
         self.stdout.write(self.style.NOTICE("Creating fonts..."))
