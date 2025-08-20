@@ -1,9 +1,9 @@
-import os
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.core.management import call_command
 import os
 import django
+
 
 class Command(BaseCommand):
     help = "Initialize platform"
@@ -13,13 +13,22 @@ class Command(BaseCommand):
             '--admin-password',
             type=str,
             help='Password for the admin user',
-            default='admin'  # Optional: set a default if not provided
+            default='admin'
+        )
+        parser.add_argument(
+            '--github-token',
+            type=str,
+            help='GitHub access token for ingress operations',
+            default=os.environ.get('GITHUB_TOKEN', '')
         )
 
     def handle(self, *args, **options):
         try:
             admin_password = options.get('admin_password', 'admin')
-            self.run(admin_password)
+            github_token = options.get('github_token', '')
+            self.auto_create_migrations()
+            self.create_fonts()
+            self.run(admin_password, github_token)
         except CommandError as e:
             self.stderr.write(self.style.ERROR(f"Error initializing platform: {e}"))
 
@@ -89,7 +98,40 @@ class Command(BaseCommand):
                 "--header", json.dumps(theme.get("header", {}))
             )
 
-    def run(self, admin_password):
+    def create_netogami_ingress(self, github_token):
+        """
+        Creates and runs an AppIngress instance for the 'netogami' app.
+        """
+        from oya.models import AppIngress
+
+        repo_url = "https://github.com/technolog-spectrumai/websites"
+        access_token = github_token
+
+        if not access_token:
+            self.stderr.write(self.style.ERROR("Missing GITHUB_ACCESS_TOKEN in environment."))
+            return
+
+        ingress_args = {
+            "repo_url": repo_url,
+            "access_token": access_token
+        }
+
+        ingress = AppIngress.objects.create(
+            app_name="netogami",
+            args=ingress_args
+        )
+
+        self.stdout.write(self.style.NOTICE(f"Running ingress for {ingress.app_name}..."))
+        result, code = ingress.run_ingress_command()
+
+        if code == 0:
+            self.stdout.write(self.style.SUCCESS(result))
+        elif code == -1:
+            self.stderr.write(self.style.WARNING(result))
+        else:
+            self.stderr.write(self.style.ERROR(result))
+
+    def run(self, admin_password, github_token):
         self.clear_db()
 
         self.stdout.write(self.style.NOTICE("Running migrations..."))
@@ -143,6 +185,7 @@ class Command(BaseCommand):
                      "--description=Manage your personal information and settings.",
                      "--icon=fas fa-user", "--link=/nest/not-implemented/")
         self.stdout.write(self.style.SUCCESS("Dashboard blocks created successfully."))
+        self.create_netogami_ingress(github_token)
 
     def get_theme(self, name):
         """Fetches the latest Theme ID to be used in platform creation"""
@@ -161,11 +204,9 @@ class Command(BaseCommand):
             return None
 
     def clear_db(self):
-        """Removes the existing database file if present"""
-        db_path = settings.DATABASES.get("default", {}).get("NAME")
-        if db_path and os.path.exists(db_path):
-            self.stdout.write(self.style.WARNING("Removing existing database..."))
-            os.remove(db_path)
-            self.stdout.write(self.style.SUCCESS("Database removed successfully."))
+        """Flushes all data from the database without deleting the file"""
+        self.stdout.write(self.style.WARNING("Flushing database..."))
+        call_command('flush', '--noinput')
+        self.stdout.write(self.style.SUCCESS("Database flushed successfully."))
 
 
