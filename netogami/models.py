@@ -2,7 +2,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.utils.text import slugify
 from django.urls import reverse
-import git
+#import git
 import os
 import shutil
 import uuid
@@ -61,13 +61,14 @@ class Repository(models.Model):
         return f"https://{self.token}@{parsed.hostname}{parsed.path}"
 
     def checkout(self, repo_path, branch='main'):
-        repo = git.Repo(repo_path)
-        repo.git.checkout(branch)
-        repo.remotes.origin.pull()
-        return repo
+        return None
+        # repo = git.Repo(repo_path)
+        # repo.git.checkout(branch)
+        # repo.remotes.origin.pull()
+        # return repo
 
     def clone(self, repo_path, branch='main'):
-        return git.Repo.clone_from(self._get_secure_url(), repo_path, branch=branch)
+        return None#git.Repo.clone_from(self._get_secure_url(), repo_path, branch=branch)
 
 
 class Codebase(models.Model):
