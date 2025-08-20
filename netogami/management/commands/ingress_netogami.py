@@ -28,7 +28,8 @@ class Command(BaseCommand):
         # Hardcoded page definitions
         pages = [
             { "name": "spectrumai.html", "template": "spectrumai", "json_file": "spectrumai.json" },
-            { "name": "basilisk.html", "template": "basilisk", "json_file": "basilisk.json" }
+            { "name": "basilisk.html", "template": "basilisk", "json_file": "basilisk.json" },
+            {"name": "sport.html", "template": "sport", "json_file": "sport.json"}
         ]
 
         try:
