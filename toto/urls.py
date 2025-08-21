@@ -15,7 +15,6 @@ urlpatterns = [
     path("nakamori/", include("nakamori.urls", namespace='nakamori')),
     path('captcha/', include('captcha.urls')),
     path('', lambda request: redirect('nest/root')),
-    path('netogami/', include('netogami.urls')),
     path("gervazy/", include("gervazy.urls")),
     path("memo/", include("renso.urls")),
     path("resume/", include("resume.urls")),

@@ -62,7 +62,6 @@ INSTALLED_APPS = [
     "gervazy",
     "oya",
     "captcha",
-    "netogami",
     "nakamori",
     "renso",
     "resume",

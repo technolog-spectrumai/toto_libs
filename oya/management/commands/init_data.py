@@ -15,12 +15,6 @@ class Command(BaseCommand):
             help='Password for the admin user',
             default='admin'
         )
-        parser.add_argument(
-            '--github-token',
-            type=str,
-            help='GitHub access token for ingress operations',
-            default=os.environ.get('GITHUB_TOKEN', '')
-        )
 
     def handle(self, *args, **options):
         try:
@@ -78,39 +72,6 @@ class Command(BaseCommand):
                 "--header", json.dumps(theme.get("header", {}))
             )
 
-    def create_netogami_ingress(self, github_token):
-        """
-        Creates and runs an AppIngress instance for the 'netogami' app.
-        """
-        from oya.models import AppIngress
-
-        repo_url = "https://github.com/technolog-spectrumai/websites"
-        access_token = github_token
-
-        if not access_token:
-            self.stderr.write(self.style.ERROR("Missing GITHUB_ACCESS_TOKEN in environment."))
-            return
-
-        ingress_args = {
-            "repo_url": repo_url,
-            "access_token": access_token
-        }
-
-        ingress = AppIngress.objects.create(
-            app_name="netogami",
-            args=ingress_args
-        )
-
-        self.stdout.write(self.style.NOTICE(f"Running ingress for {ingress.app_name}..."))
-        result, code = ingress.run_ingress_command()
-
-        if code == 0:
-            self.stdout.write(self.style.SUCCESS(result))
-        elif code == -1:
-            self.stderr.write(self.style.WARNING(result))
-        else:
-            self.stderr.write(self.style.ERROR(result))
-
     def run(self, admin_password, github_token):
 
         domain = "spectrumai.pl"
@@ -156,7 +117,6 @@ class Command(BaseCommand):
                      "--description=Manage your personal information and settings.",
                      "--icon=fas fa-user", "--link=/nest/not-implemented/")
         self.stdout.write(self.style.SUCCESS("Dashboard blocks created successfully."))
-        self.create_netogami_ingress(github_token)
 
     def get_theme(self, name):
         """Fetches the latest Theme ID to be used in platform creation"""

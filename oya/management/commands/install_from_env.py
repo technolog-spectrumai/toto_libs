@@ -20,14 +20,10 @@ class Command(BaseCommand):
         env_path = Path(options['env_path']).resolve()
         load_dotenv(dotenv_path=env_path)
 
-        #print("ADMIN_PASSWORD:", os.getenv("ADMIN_PASSWORD"))
-        #print("GITHUB_TOKEN:", os.getenv("GITHUB_TOKEN"))
-
         # Fetch values from environment
         admin_password = os.getenv('ADMIN_PASSWORD', 'admin')
-        github_token = os.getenv('GITHUB_TOKEN', '????')
 
         # Call the init_platform command with the loaded values
-        call_command('init_platform', admin_password=admin_password, github_token=github_token)
+        call_command('init_platform', admin_password=admin_password)
 
         self.stdout.write(self.style.SUCCESS("install_debug completed successfully."))

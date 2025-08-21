@@ -15,12 +15,6 @@ class Command(BaseCommand):
             type=str,
             help='Password for the admin user'
         )
-        parser.add_argument(
-            '--github_token',
-            type=str,
-            default=os.environ.get('GITHUB_TOKEN', '????'),
-            help='GitHub token for integration'
-        )
 
     def auto_create_migrations(self):
         # Set up Django environment
@@ -42,7 +36,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
 
-        self.clear_db()
+        #self.clear_db()
 
         self.stdout.write(self.style.NOTICE("Running migrations..."))
         call_command("makemigrations")
@@ -55,17 +49,16 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS("Migrations completed."))
 
         admin_password = options['admin_password']
-        github_token = options['github_token']
-        call_command("init_data", admin_password=admin_password, github_token=github_token)
+        call_command("init_data", admin_password=admin_password)
         self.stdout.write(self.style.SUCCESS(f"Installation completed."))
 
-    def clear_db(self):
-        """Flushes all data from the database without deleting the file"""
-        db_path = settings.DATABASES.get("default", {}).get("NAME")
-        if db_path and os.path.exists(db_path):
-            self.stdout.write(self.style.WARNING("Flushing database..."))
-            call_command('flush', '--noinput')
-            self.stdout.write(self.style.SUCCESS("Database flushed successfully."))
+    # def clear_db(self):
+    #     """Flushes all data from the database without deleting the file"""
+    #     db_path = settings.DATABASES.get("default", {}).get("NAME")
+    #     if db_path and os.path.exists(db_path):
+    #         self.stdout.write(self.style.WARNING("Flushing database..."))
+    #         call_command('flush', '--noinput')
+    #         self.stdout.write(self.style.SUCCESS("Database flushed successfully."))
 
 
     def auto_create_migrations(self):
@@ -86,8 +79,8 @@ class Command(BaseCommand):
             except Exception as e:
                 print(f"Skipping {app}: {e}")
 
-    def clear_db(self):
-        """Flushes all data from the database without deleting the file"""
-        self.stdout.write(self.style.WARNING("Flushing database..."))
-        call_command('flush', '--noinput')
-        self.stdout.write(self.style.SUCCESS("Database flushed successfully."))
+    # def clear_db(self):
+    #     """Flushes all data from the database without deleting the file"""
+    #     self.stdout.write(self.style.WARNING("Flushing database..."))
+    #     call_command('flush', '--noinput')
+    #     self.stdout.write(self.style.SUCCESS("Database flushed successfully."))
