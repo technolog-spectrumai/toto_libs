@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en" x-data="{ dark: (new Date().getHours() < 8 || new Date().getHours() >= 18), open: false }" :class="{ 'dark': dark }">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <title>{{ site_title }}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js" defer></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" />
+</head>
+
+<body :class="dark ? 'bg-gray-950 text-white' : 'bg-gradient-to-b from-white via-indigo-50 to-violet-100 text-gray-800'">
+
+<!-- Navbar -->
+<header class="relative px-4 py-5 flex justify-between items-center" :class="dark ? 'bg-gray-900 text-gray-300 shadow' : 'bg-blue-900 text-indigo-100 shadow'">
+  <div class="flex items-center gap-3">
+    <img :src="dark ? '{{ logo_dark }}' : '{{ logo_light }}'" alt="Logo" class="w-10 h-10" />
+    <h1 class="text-4xl sm:text-5xl font-extrabold text-indigo-300">{{ site_title }}</h1>
+  </div>
+
+  <button @click="open = !open" class="sm:hidden text-white text-2xl focus:outline-none" aria-label="Toggle navigation">
+    <i :class="open ? 'fas fa-times' : 'fas fa-bars'"></i>
+  </button>
+
+  <nav class="hidden sm:flex sm:flex-row sm:space-x-6 sm:text-xl items-center">
+    {% for item in navigation %}
+      <a href="{{ item.href }}" class="text-gray-300 hover:text-indigo-400">{{ item.label }}</a>
+    {% endfor %}
+    <button @click="dark = !dark" class="text-xl p-2 rounded-full text-white transition" aria-label="Toggle Theme">
+      <i :class="dark ? 'fas fa-moon' : 'fas fa-sun'"></i>
+    </button>
+  </nav>
+
+  <nav x-show="open" x-transition x-cloak class="absolute top-full left-0 w-full flex flex-col bg-gray-950 space-y-4 text-xl text-center mt-4 px-4 sm:hidden z-50">
+    {% for item in navigation %}
+      <a href="{{ item.href }}" class="text-white hover:text-indigo-400">{{ item.label }}</a>
+    {% endfor %}
+    <button @click="dark = !dark" class="text-xl p-2 rounded-full text-white transition mx-auto" aria-label="Toggle Theme">
+      <i :class="dark ? 'fas fa-moon' : 'fas fa-sun'"></i>
+    </button>
+  </nav>
+</header>
+
+<!-- Hero Section -->
+<section class="relative h-screen bg-cover bg-center flex items-center" :style="`background-image: url(${dark ? '{{ background_dark }}' : '{{ background_light }}'})`">
+  <div class="absolute inset-0 bg-blue-300 bg-opacity-20 mix-blend-multiply backdrop-blur-sm"></div>
+  <div class="relative z-10 max-w-4xl mx-auto px-4 text-center">
+    <div class="p-8 rounded-md backdrop-blur-md bg-black bg-opacity-20">
+      <h2 class="text-5xl sm:text-6xl font-extrabold mb-4 text-indigo-300">{{ portfolio.name }}</h2>
+      <p class="text-xl sm:text-2xl mb-6 text-gray-300">{{ portfolio.tagline }}</p>
+      <a href="{{ portfolio.link }}" class="inline-block px-6 py-3 font-semibold rounded bg-indigo-500 hover:bg-indigo-400 text-white">
+        {{ portfolio.visit_text }}
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- Technology -->
+<section id="technology" :class="dark ? 'py-20 bg-gray-900' : 'py-20 bg-white'" class="transition-colors duration-300">
+  <div class="max-w-5xl mx-auto px-4 text-center">
+    <h3 class="text-3xl sm:text-4xl font-bold mb-8 text-indigo-400">{{ technology.title }}</h3>
+    <p class="text-base sm:text-lg mb-6 text-gray-300">{{ technology.intro }}</p>
+    <p class="text-sm sm:text-base mb-4 text-gray-400">{{ technology.details }}</p>
+    <p class="text-sm sm:text-base italic text-gray-500">{{ technology.footer }}</p>
+  </div>
+</section>
+
+<!-- Services -->
+<section id="services" :class="dark ? 'py-20 bg-gray-950' : 'py-20 bg-indigo-100'" class="transition-colors duration-300">
+  <div class="max-w-6xl mx-auto px-4 text-center">
+    <h3 :class="dark ? 'text-indigo-400' : 'text-indigo-800'" class="text-4xl sm:text-5xl font-bold mb-10">
+      {{ services.title }}
+    </h3>
+    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-8 text-left">
+      {% for service in services.items %}
+        <div :class="dark ? 'bg-gray-900' : 'bg-white'" class="p-6 rounded shadow hover:shadow-xl transition-colors duration-300">
+          <h4 :class="dark ? 'text-white' : 'text-indigo-800'" class="text-xl sm:text-2xl font-semibold mb-2">{{ service.title }}</h4>
+          <p :class="dark ? 'text-gray-400' : 'text-gray-600'" class="text-base sm:text-lg">{{ service.description }}</p>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- Platform -->
+<section id="platform" :class="dark ? 'py-20 bg-gray-900' : 'py-20 bg-white'" class="transition-colors duration-300">
+  <div class="max-w-6xl mx-auto px-4 text-center">
+    <h3 class="text-3xl sm:text-4xl font-bold mb-8 text-indigo-400">{{ platform.title }}</h3>
+    <p class="text-base sm:text-lg mb-6 text-gray-300">{{ platform.intro }}</p>
+    <p class="text-sm sm:text-base mb-6 text-gray-400">{{ platform.details }}</p>
+    <p class="text-sm sm:text-base italic text-gray-500">{{ platform.footer }}</p>
+  </div>
+</section>
+
+<!-- About -->
+<section id="about" :class="dark ? 'py-20 bg-gray-950' : 'py-20 bg-indigo-100'" class="transition-colors duration-300">
+  <div class="max-w-6xl mx-auto px-4 text-center">
+    <h3 class="text-3xl sm:text-4xl font-bold mb-8 text-indigo-400">{{ about.title }}</h3>
+    <p class="text-base sm:text-lg mb-6 text-gray-300">{{ about.intro }}</p>
+    <p class="text-sm sm:text-base mb-6 text-gray-400">{{ about.details }}</p>
+    <p class="text-sm sm:text-base italic text-gray-500">{{ about.footer }}</p>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer class="py-12 transition-colors duration-300"
+  :class="dark ? 'bg-gray-950 text-gray-400 border-t border-gray-800' : 'bg-blue-900 text-indigo-100 border-t border-blue-800'">
+  <div class="max-w-7xl mx-auto px-4 grid md:grid-cols-3 gap-8">
+    <!-- Branding -->
+    <div>
+      <h4 class="text-lg sm:text-xl font-bold mb-4 text-indigo-400">{{ footer.brand.title }}</h4>
+      <p class="text-sm sm:text-base mb-4">{{ footer.brand.description }}</p>
+      <p class="text-xs sm:text-sm mb-2">&copy; {{ footer.brand.year }} {{ footer.brand.title }}. All rights reserved.</p>
+      <p class="text-xs sm:text-sm">
+        A proud member of
+        <a href="{{ footer.brand.group_url }}" target="_blank" rel="noopener noreferrer" class="underline text-indigo-400 hover:text-white">
+          {{ footer.brand.group_name }}
+        </a>.
+      </p>
+    </div>
+
+    <!-- Navigation -->
+    <div>
+      <h4 class="text-base sm:text-lg font-semibold mb-4 text-indigo-400">{{ footer.navigation.title }}</h4>
+      <ul class="space-y-2 text-sm sm:text-base">
+        {% for item in footer.navigation.items %}
+          <li><a href="{{ item.href }}" class="text-gray-300 hover:text-white">{{ item.label }}</a></li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <!-- Contact -->
+    <div>
+      <h4 class="text-base sm:text-lg font-semibold mb-4 text-indigo-400">{{ footer.contact.title }}</h4>
+      <p class="text-sm sm:text-base mb-1">{{ footer.contact.email }}</p>
+      <div class="flex space-x-4 mt-4">
+        {% for social in footer.contact.social %}
+          <a href="{{ social.url }}" aria-label="{{ social.label }}" class="text-indigo-400 hover:text-white">
+            {% if social.label|lower == "linkedin" %}
+              <i class="fab fa-linkedin w-5 h-5"></i>
+            {% elif social.label|lower == "twitter" %}
+              <i class="fab fa-twitter w-5 h-5"></i>
+            {% elif social.label|lower == "github" %}
+              <i class="fab fa-github w-5 h-5"></i>
+            {% else %}
+              <i class="fas fa-globe w-5 h-5"></i>
+            {% endif %}
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WebfrontConfig",
+  "type": "object",
+  "properties": {
+    "site_title": { "type": "string" },
+    "logo_light": { "type": "string", "format": "uri" },
+    "logo_dark": { "type": "string", "format": "uri" },
+
+    "navigation": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "label": { "type": "string" },
+          "href": { "type": "string", "format": "uri" }
+        },
+        "required": ["label", "href"]
+      }
+    },
+
+    "background_light": { "type": "string", "format": "uri" },
+    "background_dark": { "type": "string", "format": "uri" },
+
+    "portfolio": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "tagline": { "type": "string" },
+        "link": { "type": "string", "format": "uri" },
+        "visit_text": { "type": "string" }
+      },
+      "required": ["name", "tagline", "link", "visit_text"]
+    },
+
+    "technology": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "intro": { "type": "string" },
+        "details": { "type": "string" },
+        "footer": { "type": "string" }
+      },
+      "required": ["title", "intro", "details", "footer"]
+    },
+
+    "services": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "title": { "type": "string" },
+              "description": { "type": "string" }
+            },
+            "required": ["title", "description"]
+          }
+        }
+      },
+      "required": ["title", "items"]
+    },
+
+    "platform": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "intro": { "type": "string" },
+        "details": { "type": "string" },
+        "footer": { "type": "string" }
+      },
+      "required": ["title", "intro", "details", "footer"]
+    },
+
+    "about": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "intro": { "type": "string" },
+        "details": { "type": "string" },
+        "footer": { "type": "string" }
+      },
+      "required": ["title", "intro", "details", "footer"]
+    },
+
+    "footer": {
+      "type": "object",
+      "properties": {
+        "brand": {
+          "type": "object",
+          "properties": {
+            "title": { "type": "string" },
+            "description": { "type": "string" },
+            "year": { "type": "integer", "minimum": 1900 },
+            "group_name": { "type": "string" },
+            "group_url": { "type": "string", "format": "uri" }
+          },
+          "required": ["title", "description", "year", "group_name", "group_url"]
+        },
+        "navigation": {
+          "type": "object",
+          "properties": {
+            "title": { "type": "string" },
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "label": { "type": "string" },
+                  "href": { "type": "string", "format": "uri" }
+                },
+                "required": ["label", "href"]
+              }
+            }
+          },
+          "required": ["title", "items"]
+        },
+        "contact": {
+          "type": "object",
+          "properties": {
+            "title": { "type": "string" },
+            "email": { "type": "string", "format": "email" },
+            "social": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "label": { "type": "string" },
+                  "url": { "type": "string", "format": "uri" }
+                },
+                "required": ["label", "url"]
+              }
+            }
+          },
+          "required": ["title", "email", "social"]
+        }
+      },
+      "required": ["brand", "navigation", "contact"]
+    }
+  },
+  "required": [
+    "site_title", "logo_light", "logo_dark",
+    "navigation", "background_light", "background_dark",
+    "portfolio", "technology", "services", "platform",
+    "about", "footer"
+  ]
+}

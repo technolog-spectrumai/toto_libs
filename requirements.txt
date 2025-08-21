@@ -2,6 +2,7 @@ acme==4.2.0
 amqp==5.3.1
 asgiref==3.8.1
 asymmetric-jwt-auth==1.0.0
+attrs==25.3.0
 billiard==4.2.1
 Brotli==1.1.0
 celery==5.5.3
@@ -47,6 +48,8 @@ gunicorn==23.0.0
 idna==3.10
 joblib==1.5.1
 josepy==2.1.0
+jsonschema==4.25.1
+jsonschema-specifications==2025.4.1
 kombu==5.5.4
 Markdown==3.8
 mongoengine==0.29.1
@@ -66,10 +69,13 @@ pyphen==0.17.2
 pyRFC3339==2.0.1
 python-crontab==3.2.0
 python-dateutil==2.9.0.post0
+python-dotenv==1.1.1
 pytz==2025.2
 qrcode==8.2
 redis==6.2.0
+referencing==0.36.2
 requests==2.32.3
+rpds-py==0.27.0
 scikit-learn==1.7.0
 scipy==1.15.3
 six==1.17.0

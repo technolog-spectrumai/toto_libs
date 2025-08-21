@@ -19,6 +19,7 @@ urlpatterns = [
     path("gervazy/", include("gervazy.urls")),
     path("memo/", include("renso.urls")),
     path("resume/", include("resume.urls")),
+    path("webfront/", include("webfront.urls")),
     path('.well-known/acme-challenge/<path:path>', serve, {
         'document_root': settings.ACME_CHALLENGE_ROOT,
     }),

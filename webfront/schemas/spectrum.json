@@ -1,0 +1,106 @@
+{
+  "type": "object",
+  "properties": {
+    "site": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "brand_name": { "type": "string" },
+        "brand_suffix": { "type": "string" },
+        "logo_light_url": { "type": "string", "format": "uri" },
+        "logo_dark_url": { "type": "string", "format": "uri" },
+        "logo_alt": { "type": "string" },
+        "fontawesome_url": { "type": "string", "format": "uri" }
+      },
+      "required": ["title", "brand_name", "logo_light_url", "logo_dark_url", "logo_alt"]
+    },
+
+    "navigation": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": { "type": "string" },
+              "href": { "type": "string" }
+            },
+            "required": ["label", "href"]
+          }
+        },
+        "switch_light": { "type": "string" },
+        "switch_dark": { "type": "string" }
+      },
+      "required": ["items"]
+    },
+
+    "hero": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" }
+      },
+      "required": ["title", "description"]
+    },
+
+    "features": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string" },
+          "desc": { "type": "string" }
+        },
+        "required": ["title", "desc"]
+      }
+    },
+
+    "portfolio": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "tagline": { "type": "string" },
+              "description": { "type": "string" },
+              "url": { "type": "string", "format": "uri" },
+              "image_light": { "type": "string", "format": "uri" },
+              "image_dark": { "type": "string", "format": "uri" }
+            },
+            "required": ["name", "tagline", "description", "url", "image_light", "image_dark"]
+          }
+        }
+      },
+      "required": ["title", "description", "items"]
+    },
+
+    "footer": {
+      "type": "object",
+      "properties": {
+        "year": { "type": "integer" },
+        "tagline": { "type": "string" },
+        "contact_label": { "type": "string" },
+        "contact_email": { "type": "string", "format": "email" },
+        "social_links": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": { "type": "string" },
+              "url": { "type": "string", "format": "uri" }
+            },
+            "required": ["label", "url"]
+          }
+        }
+      },
+      "required": ["year", "tagline", "contact_label", "contact_email"]
+    }
+  },
+  "required": ["site", "navigation", "hero", "features", "portfolio", "footer"]
+}

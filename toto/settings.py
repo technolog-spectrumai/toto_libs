@@ -65,7 +65,8 @@ INSTALLED_APPS = [
     "netogami",
     "nakamori",
     "renso",
-    "resume"
+    "resume",
+    "webfront"
 ]
 
 
