@@ -23,10 +23,10 @@
         :class="dark ? 'bg-white/5 border-gray-700' : 'bg-neutral-300/5 text-neutral-900 border-neutral-400'">
   <div class="flex justify-between items-center px-8 py-4 max-w-7xl mx-auto">
     <div class="flex items-center gap-4">
-      <img :src="dark ? '{{ logo.dark }}' : '{{ logo.light }}'" alt="{{ logo.alt }}" class="h-10 w-10" />
+      <img :src="dark ? '{{ logo_dark }}' : '{{ logo_light }}'" alt="{{ logo_alt }}" class="h-10 w-10" />
       <h1 class="text-3xl font-extrabold tracking-wider">
-        <span :class="dark ? 'text-white' : 'text-neutral-900'">{{ brand.name }}</span>
-        <span class="text-red-500">{{ brand.suffix }}</span>
+        <span :class="dark ? 'text-white' : 'text-neutral-900'">{{ brand_name }}</span>
+        <span class="text-red-500">{{ brand_suffix }}</span>
       </h1>
     </div>
 
@@ -43,7 +43,7 @@
       {% endfor %}
       <button @click="dark = !dark" class="text-xl p-2 rounded-full transition"
               :class="dark ? 'text-white' : 'text-neutral-700 hover:text-neutral-900'"
-              :aria-label="dark ? '{{ theme_switch.light }}' : '{{ theme_switch.dark }}'">
+              :aria-label="dark ? '{{ switch_light }}' : '{{ switch_dark }}'">
         <i :class="dark ? 'fas fa-sun' : 'fas fa-moon'"></i>
       </button>
     </nav>
@@ -65,8 +65,8 @@
   <!-- Hero Section -->
   <section class="text-center py-28 relative overflow-hidden">
     <div class="absolute inset-0 bg-white/5 dark:bg-white/10 blur-[120px] opacity-20 pointer-events-none rounded-full"></div>
-    <h2 class="text-5xl md:text-6xl font-bold mb-6" :class="dark ? 'text-white' : 'text-neutral-800'">{{ hero.title }}</h2>
-    <p class="max-w-2xl mx-auto text-lg" :class="dark ? 'text-gray-400' : 'text-neutral-600'">{{ hero.description }}</p>
+    <h2 class="text-5xl md:text-6xl font-bold mb-6" :class="dark ? 'text-white' : 'text-neutral-800'">{{ hero_title }}</h2>
+    <p class="max-w-2xl mx-auto text-lg" :class="dark ? 'text-gray-400' : 'text-neutral-600'">{{ hero_description }}</p>
   </section>
 
   <!-- Features -->
@@ -84,10 +84,10 @@
   <section id="portfolio" class="py-24 text-center"
            :class="dark ? 'bg-gradient-to-b from-gray-950 to-gray-900 text-white' : 'bg-neutral-200 text-neutral-900'">
     <div class="max-w-6xl mx-auto px-4">
-      <h2 class="text-4xl font-bold mb-4">{{ portfolio.title }}</h2>
-      <p class="mb-16 text-lg" :class="dark ? 'text-gray-400' : 'text-neutral-700'">{{ portfolio.description }}</p>
+      <h2 class="text-4xl font-bold mb-4">{{ portfolio_title }}</h2>
+      <p class="mb-16 text-lg" :class="dark ? 'text-gray-400' : 'text-neutral-700'">{{ portfolio_description }}</p>
 
-      {% for item in portfolio.items %}
+      {% for item in portfolio_items %}
         <a href="{{ item.url }}" target="_blank" rel="noopener noreferrer">
           <div :class="dark ? 'bg-gray-900' : 'bg-neutral-100'" class="rounded-xl overflow-hidden shadow-lg hover:shadow-2xl transition max-w-5xl mx-auto {% if not forloop.first %}mt-12{% endif %}">
             <div class="relative h-72 bg-cover bg-center"
@@ -100,7 +100,7 @@
               <h4 class="text-2xl font-semibold mb-2" :class="dark ? 'text-white' : 'text-neutral-900'">{{ item.tagline }}</h4>
               <p class="mb-4" :class="dark ? 'text-gray-400' : 'text-neutral-700'">{{ item.description }}</p>
               <span class="inline-block font-semibold hover:underline"
-                    :class="dark ? 'text-indigo-400' : 'text-indigo-900'">{{ portfolio.visit_text }}</span>
+                    :class="dark ? 'text-indigo-400' : 'text-indigo-900'">Visit Website →</span>
             </div>
           </div>
         </a>
@@ -113,14 +113,14 @@
 <footer class="text-center py-8 border-t text-sm transition-colors space-y-2"
         :class="dark ? 'text-gray-500 border-white/10 bg-transparent' : 'text-neutral-800 border-neutral-400 bg-neutral-300'">
   <div>
-    © {{ footer.year }} {{ brand.name }}. {{ footer.tagline }}
+    © {{ footer_year }} {{ brand_name }}. {{ footer_tagline }}
   </div>
   <div>
-    {{ footer.contact.label }}
-    <a href="mailto:{{ footer.contact.email }}"
+    {{ footer_contact_label }}
+    <a href="mailto:{{ footer_contact_email }}"
        class="underline hover:text-red-500 transition-colors"
        :class="dark ? 'text-gray-400' : 'text-neutral-700'">
-      {{ footer.contact.email }}
+      {{ footer_contact_email }}
     </a>
   </div>
 </footer>
