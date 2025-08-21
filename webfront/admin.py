@@ -38,7 +38,7 @@ class DynamicPageAdmin(admin.ModelAdmin):
     search_fields = ('name', 'slug', 'template_key')
     list_filter = ('language', 'template_key')
 
-    
+
 @admin.register(Image)
 class ImageAdmin(admin.ModelAdmin):
     list_display = ('name', 'slug', 'created_at', 'full_url')

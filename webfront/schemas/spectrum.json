@@ -1,48 +1,32 @@
 {
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WebfrontConfig",
   "type": "object",
   "properties": {
-    "site": {
-      "type": "object",
-      "properties": {
-        "title": { "type": "string" },
-        "brand_name": { "type": "string" },
-        "brand_suffix": { "type": "string" },
-        "logo_light_url": { "type": "string", "format": "uri" },
-        "logo_dark_url": { "type": "string", "format": "uri" },
-        "logo_alt": { "type": "string" },
-        "fontawesome_url": { "type": "string", "format": "uri" }
-      },
-      "required": ["title", "brand_name", "logo_light_url", "logo_dark_url", "logo_alt"]
-    },
+    "site_title": { "type": "string" },
+    "brand_name": { "type": "string" },
+    "brand_suffix": { "type": "string" },
+    "logo_light": { "type": "string", "format": "uri" },
+    "logo_dark": { "type": "string", "format": "uri" },
+    "logo_alt": { "type": "string" },
+    "fontawesome_url": { "type": "string", "format": "uri" },
 
     "navigation": {
-      "type": "object",
-      "properties": {
-        "items": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "label": { "type": "string" },
-              "href": { "type": "string" }
-            },
-            "required": ["label", "href"]
-          }
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "label": { "type": "string" },
+          "href": { "type": "string", "format": "uri" }
         },
-        "switch_light": { "type": "string" },
-        "switch_dark": { "type": "string" }
-      },
-      "required": ["items"]
+        "required": ["label", "href"]
+      }
     },
+    "switch_light": { "type": "string" },
+    "switch_dark": { "type": "string" },
 
-    "hero": {
-      "type": "object",
-      "properties": {
-        "title": { "type": "string" },
-        "description": { "type": "string" }
-      },
-      "required": ["title", "description"]
-    },
+    "hero_title": { "type": "string" },
+    "hero_description": { "type": "string" },
 
     "features": {
       "type": "array",
@@ -56,51 +40,56 @@
       }
     },
 
-    "portfolio": {
-      "type": "object",
-      "properties": {
-        "title": { "type": "string" },
-        "description": { "type": "string" },
-        "items": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "name": { "type": "string" },
-              "tagline": { "type": "string" },
-              "description": { "type": "string" },
-              "url": { "type": "string", "format": "uri" },
-              "image_light": { "type": "string", "format": "uri" },
-              "image_dark": { "type": "string", "format": "uri" }
-            },
-            "required": ["name", "tagline", "description", "url", "image_light", "image_dark"]
-          }
-        }
-      },
-      "required": ["title", "description", "items"]
+    "portfolio_title": { "type": "string" },
+    "portfolio_description": { "type": "string" },
+    "portfolio_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "tagline": { "type": "string" },
+          "description": { "type": "string" },
+          "url": { "type": "string", "format": "uri" },
+          "image_light": { "type": "string", "format": "uri" },
+          "image_dark": { "type": "string", "format": "uri" }
+        },
+        "required": ["name", "tagline", "description", "url", "image_light", "image_dark"]
+      }
     },
 
-    "footer": {
-      "type": "object",
-      "properties": {
-        "year": { "type": "integer" },
-        "tagline": { "type": "string" },
-        "contact_label": { "type": "string" },
-        "contact_email": { "type": "string", "format": "email" },
-        "social_links": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "label": { "type": "string" },
-              "url": { "type": "string", "format": "uri" }
-            },
-            "required": ["label", "url"]
-          }
-        }
-      },
-      "required": ["year", "tagline", "contact_label", "contact_email"]
+    "footer_year": { "type": "integer" },
+    "footer_tagline": { "type": "string" },
+    "footer_contact_label": { "type": "string" },
+    "footer_contact_email": { "type": "string", "format": "email" },
+    "footer_social_links": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "label": { "type": "string" },
+          "url": { "type": "string", "format": "uri" }
+        },
+        "required": ["label", "url"]
+      }
     }
   },
-  "required": ["site", "navigation", "hero", "features", "portfolio", "footer"]
+  "required": [
+    "site_title",
+    "brand_name",
+    "logo_light",
+    "logo_dark",
+    "logo_alt",
+    "navigation",
+    "hero_title",
+    "hero_description",
+    "features",
+    "portfolio_title",
+    "portfolio_description",
+    "portfolio_items",
+    "footer_year",
+    "footer_tagline",
+    "footer_contact_label",
+    "footer_contact_email"
+  ]
 }

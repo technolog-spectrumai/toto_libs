@@ -151,7 +151,7 @@ class DashboardBlock(models.Model):
 
 ALLOWED_APPS = [
     'oya',
-    'netogami',
+    'webfront',
     "nakamori",
     "renso",
     "resume"
