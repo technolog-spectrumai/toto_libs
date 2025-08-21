@@ -10,7 +10,7 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
-            '--admin_password',
+            '--password',
             default=os.environ.get('ADMIN_PASSWORD', 'admin'),
             type=str,
             help='Password for the admin user'
@@ -48,8 +48,8 @@ class Command(BaseCommand):
         call_command("migrate")
         self.stdout.write(self.style.SUCCESS("Migrations completed."))
 
-        admin_password = options['admin_password']
-        call_command("init_data", admin_password=admin_password)
+        admin_password = options['password']
+        call_command("init_data", password=admin_password)
         self.stdout.write(self.style.SUCCESS(f"Installation completed."))
 
     # def clear_db(self):

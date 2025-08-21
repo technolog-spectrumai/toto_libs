@@ -10,7 +10,7 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
-            '--admin-password',
+            '--password',
             type=str,
             help='Password for the admin user',
             default='admin'
@@ -18,9 +18,8 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         try:
-            admin_password = options.get('admin_password', 'admin')
-            github_token = options.get('github_token', '')
-            self.run(admin_password, github_token)
+            admin_password = options.get('password', 'admin')
+            self.run(admin_password)
         except CommandError as e:
             self.stderr.write(self.style.ERROR(f"Error initializing platform: {e}"))
 
@@ -72,7 +71,7 @@ class Command(BaseCommand):
                 "--header", json.dumps(theme.get("header", {}))
             )
 
-    def run(self, admin_password, github_token):
+    def run(self, admin_password):
 
         domain = "spectrumai.pl"
 
