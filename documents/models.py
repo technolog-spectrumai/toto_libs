@@ -102,3 +102,22 @@ class Section(models.Model):
 
     def __str__(self):
         return f"{self.report.title} – Section {self.order}: {self.heading}"
+
+
+class SubSection(models.Model):
+    section = models.ForeignKey(
+        Section,
+        on_delete=models.CASCADE,
+        related_name='subsections'
+    )
+    order = models.PositiveIntegerField()
+    title = models.CharField(max_length=255)
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['order']
+
+    def __str__(self):
+        return f"{self.section.heading} – SubSection {self.order}: {self.title}"
+

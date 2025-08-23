@@ -59,6 +59,7 @@ INSTALLED_APPS = [
     'import_export',
     'encrypted_model_fields',
     'adminsortable2',
+    'nested_admin',
     "gervazy",
     "oya",
     "captcha",

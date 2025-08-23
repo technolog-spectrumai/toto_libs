@@ -1,8 +1,9 @@
 from django.views.generic import ListView, DetailView
-from .models import Document, Department
+from .models import Document, Department, SubSection
 from .mixins import PageDecoratedMixin
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
+from django.db.models import Prefetch
 
 
 class DocumentListView(PageDecoratedMixin, ListView):
@@ -32,7 +33,12 @@ class DocumentDetailView(PageDecoratedMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         document = self.get_object()
-        context['sections'] = document.sections.all()
+        # Prefetch subsections for each section
+        sections = document.sections.prefetch_related(
+            Prefetch('subsections', queryset=SubSection.objects.order_by('order'))
+        )
+
+        context['sections'] = sections
         context['tags'] = document.tags.all()
         return context
 

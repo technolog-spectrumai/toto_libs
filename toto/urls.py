@@ -14,6 +14,7 @@ urlpatterns = [
     path("nest/", include("oya.urls")),
     path("nakamori/", include("nakamori.urls", namespace='nakamori')),
     path('captcha/', include('captcha.urls')),
+    path(r'^_nested_admin/', include('nested_admin.urls')),
     path('', lambda request: redirect('nest/root')),
     path("gervazy/", include("gervazy.urls")),
     path("memo/", include("memo.urls")),
