@@ -8,21 +8,35 @@
   :class="darkMode
     ? 'bg-primary-bg-dark text-text-main-dark'
     : 'bg-primary-bg-light text-text-main-light'"
-  class="flex items-center justify-center px-6 py-20 min-h-screen transition-colors duration-300">
+  class="px-6 py-20 min-h-screen transition-colors duration-300">
 
   <div
     :class="darkMode
       ? 'bg-bubble-bg-dark border border-accent-1 text-text-main-dark'
       : 'bg-bubble-bg-light border border-accent-2 text-text-main-light'"
-    class="w-full max-w-5xl p-8 rounded-xl shadow-lg space-y-10 transition-colors duration-300">
+    class="max-w-6xl mx-auto p-8 rounded-xl shadow-lg space-y-10 transition-colors duration-300">
 
-    <header class="text-center space-y-2">
-      <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-3xl font-extrabold tracking-tight">
-        All Documents
-      </h2>
+    <header class="space-y-4 text-center">
+      <h1 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-3xl font-extrabold tracking-tight">
+        Documents
+      </h1>
       <p class="text-sm text-gray-500 dark:text-gray-400">
-        Browse through active plans, reports, designs, and analyses.
+        Explore all documents by type, office, and status.
       </p>
+
+      <form method="get" class="max-w-sm mx-auto">
+        <label for="office" class="block text-sm font-medium mb-1">Filter by Office</label>
+        <select name="office" id="office"
+                class="w-full px-3 py-2 rounded border dark:bg-gray-800 dark:text-gray-200"
+                onchange="this.form.submit()">
+          <option value="">All Offices</option>
+          {% for office in offices %}
+            <option value="{{ office.pk }}" {% if office.pk|stringformat:"s" == selected_office %}selected{% endif %}>
+              {{ office.name }}
+            </option>
+          {% endfor %}
+        </select>
+      </form>
     </header>
 
     {% if documents %}
@@ -32,21 +46,24 @@
             <li class="py-4 group">
               <a href="{% url 'document-detail' document.slug %}" class="block hover:underline">
                 <div class="flex justify-between items-center">
-                  <span class="font-medium text-lg">{{ document.title|truncatechars:80 }}</span>
-                  <span class="text-xs text-gray-400 dark:text-gray-500">
-                    {{ document.document_type }} | {{ document.created_at|date:"M d, Y" }}
-                  </span>
+                  <div>
+                    <h3 class="font-semibold text-lg">{{ document.title|truncatechars:80 }}</h3>
+                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                      {{ document.summary|truncatechars:100 }}
+                    </p>
+                  </div>
+                  <div class="text-right text-xs text-gray-400 dark:text-gray-500">
+                    <p>{{ document.document_type }}</p>
+                    <p>{{ document.created_at|date:"M d, Y" }}</p>
+                  </div>
                 </div>
-                <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                  {{ document.summary|truncatechars:100 }}
-                </p>
               </a>
             </li>
           {% endfor %}
         </ul>
       </section>
     {% else %}
-      <p class="text-center text-gray-400 dark:text-gray-500">No documents found.</p>
+      <p class="text-center text-gray-400 dark:text-gray-500">No documents found for this office.</p>
     {% endif %}
 
   </div>
