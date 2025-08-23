@@ -1,6 +1,10 @@
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils.text import slugify
+from weasyprint import HTML
+from django.template.loader import render_to_string
+import tempfile
+from django.utils.timezone import now
 
 
 class Tag(models.Model):
@@ -57,6 +61,20 @@ class Document(models.Model):
                 counter += 1
             self.slug = slug
         super().save(*args, **kwargs)
+
+    def generate_pdf(self):
+        # Load HTML template with context
+        html_string = render_to_string("documents/pdf.html", {
+            "document": self,
+            "sections": self.sections.all(),
+            "copyright_holder": "SpectrumAi.pl",
+            "now": now()
+        })
+
+        # Create a temporary file to store the PDF
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as output:
+            HTML(string=html_string).write_pdf(output.name)
+            return output.name  # Returns the path to the generated PDF
 
 
 class Section(models.Model):

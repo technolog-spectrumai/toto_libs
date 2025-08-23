@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body {
+      font-family: "Helvetica", sans-serif;
+      margin: 40px;
+      color: #333;
+    }
+    header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+    h1 {
+      font-size: 28px;
+      margin-bottom: 10px;
+    }
+    .meta {
+      font-size: 14px;
+      color: #666;
+    }
+    .seal {
+      max-height: 80px;
+      margin-bottom: 10px;
+    }
+    .section {
+      margin-bottom: 30px;
+    }
+    .section h2 {
+      font-size: 18px;
+      margin-bottom: 8px;
+      color: #444;
+    }
+    .section p {
+      font-size: 14px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid #ccc;
+      margin: 30px 0;
+    }
+    footer {
+      font-size: 12px;
+      text-align: center;
+      color: #aaa;
+      margin-top: 60px;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    {% if document.department.seal %}
+      <img src="{{ document.department.seal.url }}" class="seal" alt="Department Seal">
+    {% endif %}
+    <h1>{{ document.title }}</h1>
+    <div class="meta">
+      <p><strong>Department:</strong> {{ document.department.name }}</p>
+      <p><strong>Author:</strong> {{ document.author.get_full_name|default:"Unknown" }}</p>
+      <p><strong>Type:</strong> {{ document.type }} | <strong>Status:</strong> {{ document.status }}</p>
+      <p><strong>Created:</strong> {{ document.created_at|date:"F j, Y" }}</p>
+      {% if document.tags.exists %}
+        <p><strong>Tags:</strong> {{ document.tags.all|join:", " }}</p>
+      {% endif %}
+    </div>
+  </header>
+
+  <hr>
+
+  <section>
+    <h2>Summary</h2>
+    <p>{{ document.summary|linebreaksbr }}</p>
+  </section>
+
+  <hr>
+
+  {% for section in sections %}
+    <div class="section">
+      <h2>{{ section.order }}. {{ section.heading }}</h2>
+      <p>{{ section.content|safe }}</p>
+    </div>
+  {% endfor %}
+
+<footer>
+  <p>© {{ now|date:"Y" }} {{ copyright_holder }}. All rights reserved.</p>
+  <p style="margin-top: 10px; font-size: 11px; color: #999;">
+    This document is confidential and intended solely for the use of the individual or entity to whom it is addressed.
+    Unauthorized distribution, reproduction, or disclosure is strictly prohibited.
+  </p>
+</footer>
+
+</body>
+</html>

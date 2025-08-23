@@ -1,6 +1,8 @@
 from django.views.generic import ListView, DetailView
 from .models import Document, Department
 from .mixins import PageDecoratedMixin
+from django.http import FileResponse, Http404
+from django.shortcuts import get_object_or_404
 
 
 class DocumentListView(PageDecoratedMixin, ListView):
@@ -33,3 +35,13 @@ class DocumentDetailView(PageDecoratedMixin, DetailView):
         context['sections'] = document.sections.all()
         context['tags'] = document.tags.all()
         return context
+
+
+def document_pdf_view(request, slug):
+    document = get_object_or_404(Document, slug=slug)
+    pdf_path = document.generate_pdf()
+
+    try:
+        return FileResponse(open(pdf_path, 'rb'), content_type='application/pdf')
+    except FileNotFoundError:
+        raise Http404("PDF could not be generated.")
