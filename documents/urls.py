@@ -5,8 +5,6 @@ from django.urls import reverse_lazy
 from .views import (
     DocumentListView,
     DocumentDetailView,
-    SectionDetailView,
-    # OfficeListView, OfficeDetailView  # Uncomment when needed
 )
 
 urlpatterns = [
@@ -18,8 +16,4 @@ urlpatterns = [
     path('documents/', DocumentListView.as_view(), name='document-list'),
     path('documents/<slug:slug>/', DocumentDetailView.as_view(), name='document-detail'),
 
-    path('sections/<int:pk>/', SectionDetailView.as_view(), name='section-detail'),
-
-    # path('offices/', OfficeListView.as_view(), name='office-list'),
-    # path('offices/<int:pk>/', OfficeDetailView.as_view(), name='office-detail'),
 ]

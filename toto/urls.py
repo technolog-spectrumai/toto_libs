@@ -19,9 +19,10 @@ urlpatterns = [
     path("memo/", include("memo.urls")),
     path("resume/", include("resume.urls")),
     path("webfront/", include("webfront.urls")),
-    path('.well-known/acme-challenge/<path:path>', serve, {
-        'document_root': settings.ACME_CHALLENGE_ROOT,
-    }),
+    path("documents/", include("documents.urls")),
+    # path('.well-known/acme-challenge/<path:path>', serve, {
+    #     'document_root': settings.ACME_CHALLENGE_ROOT,
+    # }),
     #path('accounts/', include('django.contrib.auth.urls'))
 ]
 

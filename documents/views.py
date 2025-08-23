@@ -22,31 +22,18 @@ from .mixins import PageDecoratedMixin
 
 class DocumentListView(PageDecoratedMixin, ListView):
     model = Document
-    template_name = 'document/document_list.html'
+    template_name = 'documents/document_list.html'
     context_object_name = 'documents'
 
 
 class DocumentDetailView(PageDecoratedMixin, DetailView):
     model = Document
-    template_name = 'document/document_detail.html'
+    template_name = 'documents/document_detail.html'
     context_object_name = 'document'
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         document = self.get_object()
-        context['sections'] = document.sections.all() if document.type == 'Report' else None
+        context['sections'] = document.sections.all()
         context['tags'] = document.tags.all()
-        return context
-
-
-# 📎 Sections (Report only)
-class SectionDetailView(PageDecoratedMixin, DetailView):
-    model = Section
-    template_name = 'document/section_detail.html'
-    context_object_name = 'section'
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        section = self.get_object()
-        context['report'] = section.report
         return context
