@@ -1,12 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils.text import slugify
-from weasyprint import HTML
-from django.template.loader import render_to_string
-import tempfile
-from django.utils.timezone import now
-from django.conf import settings
-import os
 
 
 class Tag(models.Model):
@@ -64,26 +58,6 @@ class Document(models.Model):
             self.slug = slug
         super().save(*args, **kwargs)
 
-    def generate_pdf(self):
-        seal_path = None
-        if self.department.seal:
-            seal_path = os.path.join(settings.MEDIA_ROOT, self.department.seal.name)
-        html_string = render_to_string("documents/pdf.html", {
-            "document": self,
-            "sections": self.sections.all(),
-            "copyright_holder": "SpectrumAi.pl",
-            "now": now(),
-            "seal_path": seal_path
-        })
-
-        # Use MEDIA_ROOT as base_url so WeasyPrint can resolve image paths
-        media_root = settings.MEDIA_ROOT
-        base_url = os.path.join(media_root)
-
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as output:
-            HTML(string=html_string, base_url=".").write_pdf(output.name)
-            return output.name
-
 
 class Section(models.Model):
     report = models.ForeignKey(
@@ -104,6 +78,17 @@ class Section(models.Model):
         return f"{self.report.title} – Section {self.order}: {self.heading}"
 
 
+class Image(models.Model):
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    file = models.ImageField(upload_to='subsection_images/')
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.title
+
+
+
 class SubSection(models.Model):
     section = models.ForeignKey(
         Section,
@@ -113,6 +98,13 @@ class SubSection(models.Model):
     order = models.PositiveIntegerField()
     title = models.CharField(max_length=255)
     content = models.TextField()
+    image = models.ForeignKey(
+        'Image',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='subsections'
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -120,4 +112,7 @@ class SubSection(models.Model):
 
     def __str__(self):
         return f"{self.section.heading} – SubSection {self.order}: {self.title}"
+
+
+
 

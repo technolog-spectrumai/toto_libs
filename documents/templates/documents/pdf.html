@@ -77,12 +77,36 @@
 
   <hr>
 
-  {% for section in sections %}
-    <div class="section">
-      <h2>{{ section.order }}. {{ section.heading }}</h2>
-      <p>{{ section.content|safe }}</p>
-    </div>
-  {% endfor %}
+    {% for section in sections %}
+      <div class="section">
+        <h2>{{ section.order }}. {{ section.heading }}</h2>
+        <p>{{ section.content|safe }}</p>
+
+        {% if section.subsections %}
+          <div style="margin-top: 15px; padding-left: 15px;">
+            {% for sub in section.subsections %}
+              <div style="margin-bottom: 20px;">
+                <p style="font-size: 13px; color: #666;">
+                  <strong>{{ sub.order }}. {{ sub.title }}</strong><br>
+                  {{ sub.created_at|date:"F j, Y" }}
+                </p>
+                <p style="font-size: 14px; line-height: 1.6; white-space: pre-wrap;">{{ sub.content|safe }}</p>
+
+                {% if sub.image_path %}
+                  <div style="margin-top: 10px;">
+                    <img src="file://{{ sub.image_path }}" alt="{{ sub.image.title }}"
+                         style="max-width: 100%; height: auto; border: 1px solid #ccc; padding: 4px;">
+                    <p style="font-size: 12px; color: #888; font-style: italic;">
+                      {{ sub.image.title }}{% if sub.image.description %} – {{ sub.image.description }}{% endif %}
+                    </p>
+                  </div>
+                {% endif %}
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </div>
+    {% endfor %}
 
 <footer>
   <p>© {{ now|date:"Y" }} {{ copyright_holder }}. All rights reserved.</p>

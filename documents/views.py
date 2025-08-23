@@ -4,6 +4,7 @@ from .mixins import PageDecoratedMixin
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
 from django.db.models import Prefetch
+from .pdf import generate_document_pdf
 
 
 class DocumentListView(PageDecoratedMixin, ListView):
@@ -45,7 +46,7 @@ class DocumentDetailView(PageDecoratedMixin, DetailView):
 
 def document_pdf_view(request, slug):
     document = get_object_or_404(Document, slug=slug)
-    pdf_path = document.generate_pdf()
+    pdf_path = generate_document_pdf(document)
 
     try:
         return FileResponse(open(pdf_path, 'rb'), content_type='application/pdf')

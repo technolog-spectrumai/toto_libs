@@ -2,7 +2,8 @@ from django.contrib import admin
 from django import forms
 from django_tiptap.widgets import TipTapWidget
 from nested_admin import NestedModelAdmin, NestedStackedInline
-from .models import Tag, Department, Document, Section, SubSection
+from .models import Tag, Department, Document, Section, SubSection, Image
+from adminsortable2.admin import SortableAdminMixin
 
 SHOW_INLINE = True
 SHOW_TABLE = True
@@ -74,20 +75,26 @@ class DocumentAdmin(NestedModelAdmin):
     filter_horizontal = ['tags']
     inlines = [inline for inline in [SectionInline] if inline]
 
+if SHOW_TABLE:
+    @admin.register(Section)
+    class SectionAdmin(SortableAdminMixin, admin.ModelAdmin):
+        form = SectionAdminForm
+        list_display = ['report', 'order', 'heading', 'created_at']
+        list_filter = ['report', 'created_at']
+        search_fields = ['heading', 'content']
 
-# 📚 Section Admin
-@admin.register(Section)
-class SectionAdmin(admin.ModelAdmin):
-    form = SectionAdminForm
-    list_display = ['report', 'order', 'heading', 'created_at']
-    list_filter = ['report', 'created_at']
-    search_fields = ['heading', 'content']
+
+if SHOW_TABLE:
+    @admin.register(SubSection)
+    class SubSectionAdmin(SortableAdminMixin, admin.ModelAdmin):
+        form = SubSectionInlineForm
+        list_display = ['section', 'order', 'title', 'created_at']
+        list_filter = ['section']
+        search_fields = ['title', 'content']
 
 
-# 📘 SubSection Admin (optional)
-@admin.register(SubSection)
-class SubSectionAdmin(admin.ModelAdmin):
-    form = SubSectionInlineForm
-    list_display = ['section', 'order', 'title', 'created_at']
-    list_filter = ['section']
-    search_fields = ['title', 'content']
+@admin.register(Image)
+class ImageAdmin(admin.ModelAdmin):
+    list_display = ['title', 'description', 'uploaded_at']
+    search_fields = ['title', 'description']
+    list_filter = ['uploaded_at']
