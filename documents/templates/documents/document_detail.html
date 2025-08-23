@@ -24,6 +24,7 @@
         {{ document.summary|linebreaksbr }}
       </p>
       <p class="text-xs text-gray-400 dark:text-gray-500">
+        Department: {{ document.department.name }}<br>
         Type: {{ document.document_type }}<br>
         Status: {{ document.status }} | Created: {{ document.created_at|date:"M d, Y" }}
       </p>

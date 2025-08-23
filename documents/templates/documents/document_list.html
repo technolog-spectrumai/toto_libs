@@ -21,18 +21,18 @@
         Documents
       </h1>
       <p class="text-sm text-gray-500 dark:text-gray-400">
-        Explore all documents by type, office, and status.
+        Explore all documents by type, department, and status.
       </p>
 
       <form method="get" class="max-w-sm mx-auto">
-        <label for="office" class="block text-sm font-medium mb-1">Filter by Office</label>
-        <select name="office" id="office"
+        <label for="department" class="block text-sm font-medium mb-1">Filter by Department</label>
+        <select name="department" id="department"
                 class="w-full px-3 py-2 rounded border dark:bg-gray-800 dark:text-gray-200"
                 onchange="this.form.submit()">
-          <option value="">All Offices</option>
-          {% for office in offices %}
-            <option value="{{ office.pk }}" {% if office.pk|stringformat:"s" == selected_office %}selected{% endif %}>
-              {{ office.name }}
+          <option value="">All Departments</option>
+          {% for department in departments %}
+            <option value="{{ department.pk }}" {% if department.pk|stringformat:"s" == selected_department %}selected{% endif %}>
+              {{ department.name }}
             </option>
           {% endfor %}
         </select>
@@ -63,7 +63,7 @@
         </ul>
       </section>
     {% else %}
-      <p class="text-center text-gray-400 dark:text-gray-500">No documents found for this office.</p>
+      <p class="text-center text-gray-400 dark:text-gray-500">No documents found for this department.</p>
     {% endif %}
 
   </div>

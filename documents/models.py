@@ -10,10 +10,10 @@ class Tag(models.Model):
         return self.name
 
 
-class Office(models.Model):
+class Department(models.Model):
     name = models.CharField(max_length=255)
-    seal = models.ImageField(upload_to='office_seals/', blank=True, null=True)
-    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='owned_offices')
+    seal = models.ImageField(upload_to='department_seals/', blank=True, null=True)
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='owned_departments')
 
     def __str__(self):
         return self.name
@@ -40,7 +40,7 @@ class Document(models.Model):
     type = models.CharField(max_length=50, choices=DOCUMENT_TYPES)
     status = models.CharField(max_length=50, choices=STATUS_CHOICES, default='Draft')
     created_at = models.DateTimeField(auto_now_add=True)
-    office = models.ForeignKey('Office', on_delete=models.CASCADE, related_name='documents')
+    department = models.ForeignKey('Department', on_delete=models.CASCADE, related_name='documents')
     author = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='authored_documents')
     tags = models.ManyToManyField('Tag', blank=True, related_name='documents')
 
@@ -57,7 +57,6 @@ class Document(models.Model):
                 counter += 1
             self.slug = slug
         super().save(*args, **kwargs)
-
 
 
 class Section(models.Model):
