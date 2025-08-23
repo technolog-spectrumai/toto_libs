@@ -65,7 +65,8 @@ INSTALLED_APPS = [
     "nakamori",
     "memo",
     "resume",
-    "webfront"
+    "webfront",
+    "documents"
 ]
 
 
