@@ -88,6 +88,6 @@ class Command(BaseCommand):
                             title=sub_title,
                             content=f"{sub_content} (for {heading})"
                         )
-                self.stdout.write(self.style.SUCCESS(f"Added {len(section_data[title])]} sections with subsections to '{title}'"))
+                self.stdout.write(self.style.SUCCESS(f"Added {len(section_data[title])} sections and subsections to {title}"))
 
         self.stdout.write(self.style.SUCCESS("Ingress complete."))
