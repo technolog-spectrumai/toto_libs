@@ -154,7 +154,8 @@ ALLOWED_APPS = [
     'webfront',
     "nakamori",
     "memo",
-    "resume"
+    "resume",
+    "documents"
 ]
 
 class AppIngress(models.Model):

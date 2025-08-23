@@ -27,8 +27,8 @@ else:
 
 @admin.register(Document)
 class DocumentAdmin(admin.ModelAdmin):
-    list_display = ['title', 'document_type', 'status', 'office', 'author', 'created_at']
-    list_filter = ['document_type', 'status', 'office', 'tags']
+    list_display = ['title', 'type', 'status', 'office', 'author', 'created_at']
+    list_filter = ['type', 'status', 'office', 'tags']
     search_fields = ['title', 'summary', 'slug']
     readonly_fields = ['created_at']
     date_hierarchy = 'created_at'

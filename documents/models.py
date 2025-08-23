@@ -37,7 +37,7 @@ class Document(models.Model):
     slug = models.SlugField(max_length=255, primary_key=True, unique=True)
     title = models.CharField(max_length=255)
     summary = models.TextField()
-    document_type = models.CharField(max_length=50, choices=DOCUMENT_TYPES)
+    type = models.CharField(max_length=50, choices=DOCUMENT_TYPES)
     status = models.CharField(max_length=50, choices=STATUS_CHOICES, default='Draft')
     created_at = models.DateTimeField(auto_now_add=True)
     office = models.ForeignKey('Office', on_delete=models.CASCADE, related_name='documents')
@@ -45,7 +45,7 @@ class Document(models.Model):
     tags = models.ManyToManyField('Tag', blank=True, related_name='documents')
 
     def __str__(self):
-        return f"{self.title} ({self.document_type})"
+        return f"{self.title} ({self.type})"
 
     def save(self, *args, **kwargs):
         if not self.slug:
