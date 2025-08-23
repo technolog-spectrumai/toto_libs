@@ -4,6 +4,7 @@ from django.utils.text import slugify
 import os
 from django.conf import settings
 from mermaid_cli import render_mermaid_file_sync
+import matplotlib.pyplot as plt
 
 
 class Tag(models.Model):
@@ -150,6 +151,31 @@ class Diagram(models.Model):
             output_format=output_format,
             mermaid_config={"theme": theme}
         )
+
+        return output_path
+
+
+class Formula(models.Model):
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    latex_code = models.TextField(help_text="Enter valid LaTeX code here.")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.title
+
+    def render_image(self):
+        output_dir = os.path.join(settings.MEDIA_ROOT, 'formulas')
+        os.makedirs(output_dir, exist_ok=True)
+
+        output_path = os.path.join(output_dir, f"{self.id}.png")
+
+        plt.rc('text', usetex=True)
+        plt.figure(figsize=(4, 1))
+        plt.text(0.5, 0.5, f"${self.latex_code}$", fontsize=20, ha='center', va='center')
+        plt.axis('off')
+        plt.savefig(output_path, bbox_inches='tight', pad_inches=0.1)
+        plt.close()
 
         return output_path
 
