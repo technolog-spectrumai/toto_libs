@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand
 from django.contrib.auth.models import User
-from memo.models import MemoDeck, MemoCard, InfoTag
+from memo.models import MemoDeck, MemoCard, Tag
 import random
 
 
@@ -17,7 +17,7 @@ class Command(BaseCommand):
         tags = []
 
         for name in tag_names:
-            tag, created = InfoTag.objects.get_or_create(name=name)
+            tag, created = Tag.objects.get_or_create(name=name)
             tags.append(tag)
             if created:
                 self.stdout.write(self.style.SUCCESS(f"Created tag: {name}"))
