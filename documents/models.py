@@ -114,5 +114,14 @@ class SubSection(models.Model):
         return f"{self.section.heading} – SubSection {self.order}: {self.title}"
 
 
+class Diagram(models.Model):
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    code = models.TextField(help_text="Paste valid Mermaid.js syntax here.")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.title
+
 
 
