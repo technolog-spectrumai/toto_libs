@@ -69,7 +69,59 @@ INSTALLED_APPS = [
     "documents"
 ]
 
-
+DJANGO_TIPTAP_CONFIG = {
+    "width": "500px",
+    "height": "500px",
+    "extensions": [
+        "bold",
+        "italic",
+        "underline",
+        "strikethrough",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "textAlign",
+        "indent",
+        "bulletList",
+        "orderedList",
+        "typography",
+        "clearFormat"
+    ],
+    "placeholderText": "Begin typing here...",
+    "unsavedChangesWarningText": "You have unsaved changes",
+    "lang": "EN",
+    "tooltips": {
+        "bold": "Bold | (ctrl / ⌘) + B",
+        "italic": "Italic | (ctrl / ⌘) + I",
+        "underline": "Underline | (ctrl / ⌘) + U",
+        "strike": "Strikethrough | (ctrl / ⌘) + shift + X",
+        "h1": "Header 1 | (ctrl + alt) / (⌘ + ⌥) + 1",
+        "h2": "Header 2 | (ctrl + alt) / (⌘ + ⌥) + 2",
+        "h3": "Header 3 | (ctrl + alt) / (⌘ + ⌥) + 3",
+        "h4": "Header 4 | (ctrl + alt) / (⌘ + ⌥) + 4",
+        "h5": "Header 5 | (ctrl + alt) / (⌘ + ⌥) + 5",
+        "h6": "Header 6 | (ctrl + alt) / (⌘ + ⌥) + 6",
+        "alignLeft": "Align Left | (ctrl + shift ⇧) / (⌘ + shift ⇧) + L",
+        "alignCenter": "Align Center | (ctrl + shift ⇧) / (⌘ + shift ⇧) + E",
+        "alignRight": "Align Right | (ctrl + shift ⇧) / (⌘ + shift ⇧) + R",
+        "alignJustify": "Justify | (ctrl + shift ⇧) / (⌘ + shift ⇧) + J",
+        "indent": "Indent (Tab ↹)",
+        "outdent": "Outdent (shift ⇧ + Tab ↹)",
+        "bulletList": "Bullet List | (ctrl + shift ⇧) / (⌘ + shift ⇧) + 8",
+        "orderedList": "Numbered List | (ctrl + shift ⇧) / (⌘ + shift ⇧) + 7",
+        "clearFormat": "Clear Format",
+    },
+    "translations": {
+        "row": "Row",
+        "column": "Column",
+        "add": "Add"
+    },
+    "custom_extensions": [],
+    "tiptapOutputFormat": "html"
+}
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',

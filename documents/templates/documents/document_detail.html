@@ -48,9 +48,9 @@
                    class="text-gray-500 text-lg transition duration-300"></i>
               </button>
 
-              <div x-show="open" x-transition class="mt-3 text-sm text-gray-600 dark:text-gray-300">
-                <p>{{ section.content|linebreaksbr }}</p>
-              </div>
+            <div x-show="open" x-transition class="mt-3 text-sm text-gray-600 dark:text-gray-300">
+              <p>{{ section.content|safe }}</p>
+            </div>
             </li>
           {% endfor %}
         </ul>
