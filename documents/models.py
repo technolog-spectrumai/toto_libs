@@ -5,6 +5,8 @@ from weasyprint import HTML
 from django.template.loader import render_to_string
 import tempfile
 from django.utils.timezone import now
+from django.conf import settings
+import os
 
 
 class Tag(models.Model):
@@ -63,18 +65,24 @@ class Document(models.Model):
         super().save(*args, **kwargs)
 
     def generate_pdf(self):
-        # Load HTML template with context
+        seal_path = None
+        if self.department.seal:
+            seal_path = os.path.join(settings.MEDIA_ROOT, self.department.seal.name)
         html_string = render_to_string("documents/pdf.html", {
             "document": self,
             "sections": self.sections.all(),
             "copyright_holder": "SpectrumAi.pl",
-            "now": now()
+            "now": now(),
+            "seal_path": seal_path
         })
 
-        # Create a temporary file to store the PDF
+        # Use MEDIA_ROOT as base_url so WeasyPrint can resolve image paths
+        media_root = settings.MEDIA_ROOT
+        base_url = os.path.join(media_root)
+
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as output:
-            HTML(string=html_string).write_pdf(output.name)
-            return output.name  # Returns the path to the generated PDF
+            HTML(string=html_string, base_url=".").write_pdf(output.name)
+            return output.name
 
 
 class Section(models.Model):

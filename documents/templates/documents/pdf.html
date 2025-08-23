@@ -53,8 +53,8 @@
 <body>
 
   <header>
-    {% if document.department.seal %}
-      <img src="{{ document.department.seal.url }}" class="seal" alt="Department Seal">
+    {% if seal_path %}
+      <img src="file://{{ seal_path }}" class="seal" alt="Department Seal">
     {% endif %}
     <h1>{{ document.title }}</h1>
     <div class="meta">
