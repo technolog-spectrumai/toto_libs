@@ -63,7 +63,7 @@ INSTALLED_APPS = [
     "oya",
     "captcha",
     "nakamori",
-    "renso",
+    "memo",
     "resume",
     "webfront"
 ]

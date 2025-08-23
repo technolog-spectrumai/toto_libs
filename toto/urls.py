@@ -16,7 +16,7 @@ urlpatterns = [
     path('captcha/', include('captcha.urls')),
     path('', lambda request: redirect('nest/root')),
     path("gervazy/", include("gervazy.urls")),
-    path("memo/", include("renso.urls")),
+    path("memo/", include("memo.urls")),
     path("resume/", include("resume.urls")),
     path("webfront/", include("webfront.urls")),
     path('.well-known/acme-challenge/<path:path>', serve, {

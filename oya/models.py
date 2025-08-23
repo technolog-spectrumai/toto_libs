@@ -153,7 +153,7 @@ ALLOWED_APPS = [
     'oya',
     'webfront',
     "nakamori",
-    "renso",
+    "memo",
     "resume"
 ]
 

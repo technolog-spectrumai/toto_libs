@@ -1,12 +1,18 @@
 from django.contrib import admin
-from .models import MemoDeck, MemoCard, InfoTag
+from .models import MemoDeck, MemoCard, Tag
 from adminsortable2.admin import SortableAdminMixin
 
-@admin.register(InfoTag)
+@admin.register(Tag)
 class TagAdmin(admin.ModelAdmin):
     list_display = ('name',)
     search_fields = ('name',)
     ordering = ('name',)
+
+
+class MemoCardInline(admin.TabularInline):
+    model = MemoCard
+    extra = 1
+    ordering = ['order']
 
 
 @admin.register(MemoDeck)
@@ -17,6 +23,7 @@ class MemoDeckAdmin(admin.ModelAdmin):
     ordering = ('-created_at',)
     autocomplete_fields = ('author', 'tags')
     readonly_fields = ('created_at',)
+    inlines = [MemoCardInline]
 
     def tag_list(self, obj):
         return ", ".join(tag.name for tag in obj.tags.all())

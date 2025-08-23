@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand
 from django.contrib.auth.models import User
-from renso.models import MemoDeck, MemoCard, InfoTag
+from memo.models import MemoDeck, MemoCard, InfoTag
 import random
 
 

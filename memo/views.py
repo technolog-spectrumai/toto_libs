@@ -5,7 +5,7 @@ from .page import PageProcessor
 
 class MemoDeckListView(ListView):
     model = MemoDeck
-    template_name = 'renso/deck_list.html'
+    template_name = 'memo/deck_list.html'
     context_object_name = 'decks'
 
     def get_context_data(self, **kwargs):
@@ -15,7 +15,7 @@ class MemoDeckListView(ListView):
 
 class MemoCardListView(ListView):
     model = MemoCard
-    template_name = 'renso/card_list.html'
+    template_name = 'memo/card_list.html'
     context_object_name = 'cards'
 
     def get_queryset(self):
@@ -31,7 +31,7 @@ class MemoCardListView(ListView):
 
 class MemoCardDetailView(DetailView):
     model = MemoCard
-    template_name = 'renso/card_detail.html'
+    template_name = 'memo/card_detail.html'
     context_object_name = 'card'
 
     def get_context_data(self, **kwargs):
