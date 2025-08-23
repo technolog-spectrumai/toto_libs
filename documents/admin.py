@@ -1,10 +1,12 @@
-from django.contrib import admin
 from django import forms
 from django_tiptap.widgets import TipTapWidget
 from nested_admin import NestedModelAdmin, NestedStackedInline
 from .models import Tag, Department, Document, Section, SubSection, Image, Diagram
 from adminsortable2.admin import SortableAdminMixin
-from django.utils.safestring import mark_safe
+from django.contrib import admin
+from django.utils.html import mark_safe
+from django.utils.timezone import now
+from django.core.files import File
 
 
 SHOW_INLINE = True
@@ -106,10 +108,11 @@ class ImageAdmin(admin.ModelAdmin):
 class DiagramAdmin(admin.ModelAdmin):
     list_display = ['title', 'created_at']
     readonly_fields = ['created_at', 'render_mermaid_preview']
-    fields = ['title', 'description', 'code', 'render_mermaid_preview']  # exclude created_at here
+    fields = ['title', 'description', 'code', 'render_mermaid_preview']
     search_fields = ['title', 'description', 'code']
     list_filter = ['created_at']
     ordering = ['-created_at']
+    actions = ['convert_to_image']
 
     def render_mermaid_preview(self, obj):
         if not obj.code:
@@ -120,6 +123,30 @@ class DiagramAdmin(admin.ModelAdmin):
             </div>
         """)
     render_mermaid_preview.short_description = "Diagram Preview"
+
+    def convert_to_image(self, request, queryset):
+        count = 0
+        for diagram in queryset:
+            timestamp = now().strftime("%Y%m%d_%H%M%S")
+            filename = f"{diagram.id}_{timestamp}.png"
+            try:
+                output_path = diagram.render_image(output_format='png')
+
+                # Create Image model instance
+                with open(output_path, 'rb') as f:
+                    image_instance = Image.objects.create(
+                        title=f"Diagram: {diagram.title}",
+                        description=diagram.description,
+                        file=File(f, name=filename)
+                    )
+                count += 1
+
+            except Exception as e:
+                self.message_user(request, f"Failed to render diagram '{diagram.title}': {e}", level='error')
+
+        self.message_user(request, f"Successfully rendered and saved {count} diagram(s) as image(s).")
+
+    convert_to_image.short_description = "Convert selected diagrams to image"
 
     class Media:
         js = [
@@ -136,5 +163,6 @@ class DiagramAdmin(admin.ModelAdmin):
         """
         def render(self):
             return mark_safe('\n'.join([f'<script src="{js}"></script>' for js in self.js]) + self.custom_js)
+
 
 

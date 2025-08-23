@@ -1,6 +1,9 @@
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils.text import slugify
+import os
+from django.conf import settings
+from mermaid_cli import render_mermaid_file_sync
 
 
 class Tag(models.Model):
@@ -122,6 +125,34 @@ class Diagram(models.Model):
 
     def __str__(self):
         return self.title
+
+    def render_image(self, output_format='png', theme='default'):
+        """
+        Renders Mermaid diagram to an image using mermaid-cli (Python).
+        Returns the path to the generated image.
+        """
+        # Define output directory
+        output_dir = os.path.join(settings.MEDIA_ROOT, 'diagrams')
+        os.makedirs(output_dir, exist_ok=True)
+
+        # Define file paths
+        input_path = os.path.join(output_dir, f"diagram{self.pk}.mmd")
+        output_path = os.path.join(output_dir, f"diagram{self.pk}.{output_format}")
+
+        # Write Mermaid code to input file
+        with open(input_path, 'w') as f:
+            f.write(self.code)
+
+        # Render diagram using synchronous wrapper
+        render_mermaid_file_sync(
+            input_file=input_path,
+            output_file=output_path,
+            output_format=output_format,
+            mermaid_config={"theme": theme}
+        )
+
+        return output_path
+
 
 
 
