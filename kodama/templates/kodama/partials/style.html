@@ -1,42 +1,42 @@
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=IBM+Plex+Mono&display=swap');
+  @import url('{{ theme.import_url }}');
 
   :root {
-    --bg-top: #e0f7fa;
-    --bg-bottom: #ffffff;
-    --text-main: #2c2c2c;
-    --text-muted: #555555;
-    --accent: #0077ff;
-    --card-bg: #f4f4f4;
-    --border: #00f0ff;
-    --nav-bg: linear-gradient(to right, #d0eaff, #e0f7fa);
-    --nav-text: #0077ff;
-    --nav-shadow: rgba(0, 119, 255, 0.25);
-    --footer-bg: #f4f4f4;
+    --bg-top: {{ theme.light_bg_top }};
+    --bg-bottom: {{ theme.light_bg_bottom }};
+    --text-main: {{ theme.light_text_main }};
+    --text-muted: {{ theme.light_text_muted }};
+    --accent: {{ theme.light_accent }};
+    --card-bg: {{ theme.light_card_bg }};
+    --border: {{ theme.light_border }};
+    --nav-bg: {{ theme.light_nav_bg }};
+    --nav-text: {{ theme.light_nav_text }};
+    --nav-shadow: {{ theme.light_nav_shadow }};
+    --footer-bg: {{ theme.light_footer_bg }};
   }
 
   .dark {
-    --bg-top: #0a0a0a;
-    --bg-bottom: #1a1a1a;
-    --text-main: #ffffff;
-    --text-muted: #cccccc;
-    --accent: #00ff99;
-    --card-bg: #1a1a1a;
-    --border: #0077ff;
-    --nav-bg: linear-gradient(to right, #003344, #001a33);
-    --nav-text: #00ff99;
-    --nav-shadow: rgba(0, 255, 153, 0.25);
-    --footer-bg: #1a1a1a;
+    --bg-top: {{ theme.dark_bg_top }};
+    --bg-bottom: {{ theme.dark_bg_bottom }};
+    --text-main: {{ theme.dark_text_main }};
+    --text-muted: {{ theme.dark_text_muted }};
+    --accent: {{ theme.dark_accent }};
+    --card-bg: {{ theme.dark_card_bg }};
+    --border: {{ theme.dark_border }};
+    --nav-bg: {{ theme.dark_nav_bg }};
+    --nav-text: {{ theme.dark_nav_text }};
+    --nav-shadow: {{ theme.dark_nav_shadow }};
+    --footer-bg: {{ theme.dark_footer_bg }};
   }
 
   body {
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: '{{ theme.body_font.name }}', monospace;
     background: linear-gradient(to bottom, var(--bg-top), var(--bg-bottom));
     color: var(--text-main);
   }
 
   h1, h2, h3 {
-    font-family: 'Orbitron', sans-serif;
+    font-family: '{{ theme.heading_font.name }}', sans-serif;
     color: var(--accent);
   }
 
@@ -62,14 +62,14 @@
     border-color: var(--accent);
   }
 
-.dropdown-enter {
-  opacity: 0;
-  transform: scale(0.95);
-}
-.dropdown-enter-active {
-  opacity: 1;
-  transform: scale(1);
-  transition: all 200ms ease-out;
-}
+  .dropdown-enter {
+    opacity: 0;
+    transform: scale(0.95);
+  }
 
+  .dropdown-enter-active {
+    opacity: 1;
+    transform: scale(1);
+    transition: all 200ms ease-out;
+  }
 </style>

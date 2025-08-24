@@ -31,6 +31,7 @@ class KodamaSiteMixin:
         context['menus'] = self.get_menus(site)
         context['categories'] = Category.objects.filter(site=site).order_by('name')
         context['tags'] = Tag.objects.filter(site=site).order_by('name')
+        context['theme'] = site.theme
         return context
 
 

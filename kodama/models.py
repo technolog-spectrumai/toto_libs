@@ -3,6 +3,54 @@ from django.contrib.auth.models import User
 from django.utils.text import slugify
 
 
+class Font(models.Model):
+    name = models.CharField(max_length=100)
+    import_url = models.URLField()
+    fallback = models.CharField(max_length=100, default='sans-serif')
+
+    def __str__(self):
+        return self.name
+
+
+class Theme(models.Model):
+    name = models.CharField(max_length=100)
+
+    heading_font = models.ForeignKey(Font, on_delete=models.SET_NULL, null=True, related_name='heading_themes')
+    body_font = models.ForeignKey(Font, on_delete=models.SET_NULL, null=True, related_name='body_themes')
+
+    # Light mode colors
+    light_bg_top = models.CharField(max_length=7, default='#ffffff')
+    light_bg_bottom = models.CharField(max_length=7, default='#ffffff')
+    light_text_main = models.CharField(max_length=7, default='#000000')
+    light_text_muted = models.CharField(max_length=7, default='#666666')
+    light_accent = models.CharField(max_length=7, default='#0077ff')
+    light_border = models.CharField(max_length=7, default='#00f0ff')
+    light_card_bg = models.CharField(max_length=7, default='#f4f4f4')
+    light_footer_bg = models.CharField(max_length=7, default='#f4f4f4')
+    light_nav_bg_start = models.CharField(max_length=7, default='#d0eaff')
+    light_nav_bg_end = models.CharField(max_length=7, default='#e0f7fa')
+    light_nav_text = models.CharField(max_length=7, default='#0077ff')
+    light_nav_shadow = models.CharField(max_length=30, default='rgba(0, 119, 255, 0.25)')
+
+    # Dark mode colors
+    dark_bg_top = models.CharField(max_length=7, default='#0a0a0a')
+    dark_bg_bottom = models.CharField(max_length=7, default='#1a1a1a')
+    dark_text_main = models.CharField(max_length=7, default='#ffffff')
+    dark_text_muted = models.CharField(max_length=7, default='#cccccc')
+    dark_accent = models.CharField(max_length=7, default='#00ff99')
+    dark_border = models.CharField(max_length=7, default='#0077ff')
+    dark_card_bg = models.CharField(max_length=7, default='#1a1a1a')
+    dark_footer_bg = models.CharField(max_length=7, default='#1a1a1a')
+    dark_nav_bg_start = models.CharField(max_length=7, default='#003344')
+    dark_nav_bg_end = models.CharField(max_length=7, default='#001a33')
+    dark_nav_text = models.CharField(max_length=7, default='#00ff99')
+    dark_nav_shadow = models.CharField(max_length=30, default='rgba(0, 255, 153, 0.25)')
+
+    def __str__(self):
+        return self.name
+
+
+
 class Site(models.Model):
     name = models.CharField(max_length=100, unique=True)
     slug = models.SlugField(max_length=100, unique=True)
@@ -25,6 +73,13 @@ class Site(models.Model):
     footer_about = models.TextField(
         blank=True,
         default="Kodama is a digital sanctuary for slow thought, cultural clarity, and independent voices."
+    )
+    theme = models.ForeignKey(
+        Theme,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='sites'
     )
 
     def __str__(self):

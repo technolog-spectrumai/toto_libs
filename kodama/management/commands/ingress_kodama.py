@@ -2,7 +2,7 @@ from django.core.management.base import BaseCommand
 from django.contrib.auth.models import User
 from django.utils.text import slugify
 from django.utils.timezone import now
-from kodama.models import Site, Tag, Category, Article, Section, SubSection, Menu, CategoryLink
+from kodama.models import Site, Tag, Category, Article, Section, SubSection, Menu, CategoryLink, Font, Theme
 import random
 
 LOREM = (
@@ -16,7 +16,9 @@ class Command(BaseCommand):
 
     def handle(self, *args, **kwargs):
         self.owner = self.get_or_create_owner()
-        self.site = self.get_or_create_site()
+        fonts = self.create_fonts()
+        themes = self.create_themes(fonts)
+        self.site = self.get_or_create_site(themes['isotopic'])
         self.tags = self.create_tags()
         self.categories = self.create_categories()
         self.create_articles()
@@ -30,7 +32,7 @@ class Command(BaseCommand):
         )
         return owner
 
-    def get_or_create_site(self):
+    def get_or_create_site(self, theme):
         site, _ = Site.objects.get_or_create(
             slug='kodama',
             defaults={
@@ -38,7 +40,8 @@ class Command(BaseCommand):
                 'domain': 'https://kodama.local',
                 'creation_year': now().year,
                 'active': True,
-                'owner': self.owner
+                'owner': self.owner,
+                'theme': theme
             }
         )
         self.stdout.write(self.style.SUCCESS(f"Site created: {site.name}"))
@@ -175,5 +178,122 @@ class Command(BaseCommand):
                 f"Dropdown Menu created: {spec['title']} with categories: {', '.join(spec['categories'])}"
             ))
 
+    def create_fonts(self):
+        fonts = {}
 
+        fonts['Orbitron'], _ = Font.objects.get_or_create(
+            name='Orbitron',
+            defaults={
+                'import_url': 'https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&display=swap',
+                'fallback': 'sans-serif'
+            }
+        )
+
+        fonts['IBM Plex Mono'], _ = Font.objects.get_or_create(
+            name='IBM Plex Mono',
+            defaults={
+                'import_url': 'https://fonts.googleapis.com/css2?family=IBM+Plex+Mono&display=swap',
+                'fallback': 'monospace'
+            }
+        )
+
+        fonts['Playfair Display'], _ = Font.objects.get_or_create(
+            name='Playfair Display',
+            defaults={
+                'import_url': 'https://fonts.googleapis.com/css2?family=Playfair+Display&display=swap',
+                'fallback': 'serif'
+            }
+        )
+
+        fonts['Inter'], _ = Font.objects.get_or_create(
+            name='Inter',
+            defaults={
+                'import_url': 'https://fonts.google.com/share?selection.family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900',
+                'fallback': 'sans-serif'
+            }
+        )
+
+        self.stdout.write(self.style.SUCCESS(f"Fonts created: {', '.join(fonts.keys())}"))
+        return fonts
+
+    def create_themes(self, fonts):
+        # Ensure the original theme is named "Isotopic"
+        isotopic, created = Theme.objects.update_or_create(
+            name='Isotopic',
+            defaults={
+                'heading_font': fonts['Orbitron'],
+                'body_font': fonts['IBM Plex Mono'],
+
+                # Light mode
+                'light_bg_top': '#e0f7fa',
+                'light_bg_bottom': '#ffffff',
+                'light_text_main': '#2c2c2c',
+                'light_text_muted': '#555555',
+                'light_accent': '#0077ff',
+                'light_border': '#00f0ff',
+                'light_card_bg': '#f4f4f4',
+                'light_footer_bg': '#f4f4f4',
+                'light_nav_bg_start': '#d0eaff',
+                'light_nav_bg_end': '#e0f7fa',
+                'light_nav_text': '#0077ff',
+                'light_nav_shadow': 'rgba(0, 119, 255, 0.25)',
+
+                # Dark mode
+                'dark_bg_top': '#0a0a0a',
+                'dark_bg_bottom': '#1a1a1a',
+                'dark_text_main': '#ffffff',
+                'dark_text_muted': '#cccccc',
+                'dark_accent': '#00ff99',
+                'dark_border': '#0077ff',
+                'dark_card_bg': '#1a1a1a',
+                'dark_footer_bg': '#1a1a1a',
+                'dark_nav_bg_start': '#003344',
+                'dark_nav_bg_end': '#001a33',
+                'dark_nav_text': '#00ff99',
+                'dark_nav_shadow': 'rgba(0, 255, 153, 0.25)'
+            }
+        )
+
+        # Create new theme "Orbital" based on Tailwind config
+        orbital, created = Theme.objects.get_or_create(
+            name='Orbital',
+            defaults={
+                'heading_font': fonts['Orbitron'],  # Futuristic, NASA-style
+                'body_font': fonts['IBM Plex Mono'],  # Terminal-style, telemetry feel
+
+                # Light mode — Launchpad dawn
+                'light_bg_top': '#dbe9f4',  # stratospheric blue
+                'light_bg_bottom': '#f0f8ff',  # ion mist
+                'light_text_main': '#1a1a2e',  # mission control ink
+                'light_text_muted': '#4b5d67',  # telemetry gray
+                'light_accent': '#ff6f00',  # booster orange
+                'light_border': '#a0c4ff',  # HUD blue
+                'light_card_bg': '#ffffff',  # clean module shell
+                'light_footer_bg': '#e3f2fd',
+                'light_nav_bg_start': '#dbe9f4',
+                'light_nav_bg_end': '#f0f8ff',
+                'light_nav_text': '#ff6f00',
+                'light_nav_shadow': 'rgba(255, 111, 0, 0.25)',
+
+                # Dark mode — Deep space telemetry
+                'dark_bg_top': '#0b0c10',  # void black
+                'dark_bg_bottom': '#1f2833',  # cockpit steel
+                'dark_text_main': '#c5c6c7',  # console glow
+                'dark_text_muted': '#45a29e',  # nebula teal
+                'dark_accent': '#66fcf1',  # plasma blue
+                'dark_border': '#2d3e50',  # hull graphite
+                'dark_card_bg': '#121212',  # stealth matte
+                'dark_footer_bg': '#1f2833',
+                'dark_nav_bg_start': '#0b0c10',
+                'dark_nav_bg_end': '#1f2833',
+                'dark_nav_text': '#66fcf1',
+                'dark_nav_shadow': 'rgba(102, 252, 241, 0.25)'
+            }
+        )
+
+        self.stdout.write(self.style.SUCCESS(f"{'Created' if created else 'Found'} theme: Orbital"))
+        return {
+            'isotopic': isotopic,
+            'orbital': orbital
+        }
 

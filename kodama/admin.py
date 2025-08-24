@@ -3,10 +3,51 @@ from django.contrib import admin
 from nested_admin import NestedModelAdmin, NestedStackedInline, NestedTabularInline
 from adminsortable2.admin import SortableAdminMixin
 from django_tiptap.widgets import TipTapWidget
-from .models import Site, Tag, Article, Section, SubSection, Image, Menu, Category, CategoryLink
-# 🔖 Tags
-admin.site.register(Tag)
+from .models import Site, Tag, Article, Section, SubSection, Image, Menu, Category, CategoryLink, Theme, Font
 
+
+@admin.register(Font)
+class FontAdmin(admin.ModelAdmin):
+    list_display = ('name', 'import_url', 'fallback')
+    search_fields = ('name',)
+    ordering = ('name',)
+
+
+@admin.register(Theme)
+class ThemeAdmin(admin.ModelAdmin):
+    list_display = ('name', 'heading_font', 'body_font')
+    search_fields = ('name',)
+    ordering = ('name',)
+    fieldsets = (
+        ('General', {
+            'fields': ('name', 'heading_font', 'body_font')
+        }),
+        ('Light Mode Colors', {
+            'classes': ('collapse',),
+            'fields': (
+                'light_bg_top', 'light_bg_bottom',
+                'light_text_main', 'light_text_muted',
+                'light_accent', 'light_border',
+                'light_card_bg', 'light_footer_bg',
+                'light_nav_bg_start', 'light_nav_bg_end',
+                'light_nav_text', 'light_nav_shadow',
+            )
+        }),
+        ('Dark Mode Colors', {
+            'classes': ('collapse',),
+            'fields': (
+                'dark_bg_top', 'dark_bg_bottom',
+                'dark_text_main', 'dark_text_muted',
+                'dark_accent', 'dark_border',
+                'dark_card_bg', 'dark_footer_bg',
+                'dark_nav_bg_start', 'dark_nav_bg_end',
+                'dark_nav_text', 'dark_nav_shadow',
+            )
+        }),
+    )
+
+
+admin.site.register(Tag)
 
 
 class CategoryLinkInline(NestedTabularInline):
@@ -15,6 +56,7 @@ class CategoryLinkInline(NestedTabularInline):
     fields = ['category', 'order']
     autocomplete_fields = ['category']
     ordering = ['order']
+
 
 class MenuInline(NestedStackedInline):
     model = Menu
@@ -50,7 +92,7 @@ class CategoryLinkAdmin(SortableAdminMixin, admin.ModelAdmin):
 
 @admin.register(Site)
 class SiteAdmin(NestedModelAdmin):
-    list_display = ['name', 'slug', 'domain', 'creation_year', 'active', 'owner', 'created_at']
+    list_display = ['name', 'slug', 'domain', 'creation_year', 'active', 'owner', 'created_at', 'theme']
     list_filter = ['active', 'creation_year']
     search_fields = ['name', 'slug', 'domain']
     prepopulated_fields = {'slug': ('name',)}
@@ -58,7 +100,7 @@ class SiteAdmin(NestedModelAdmin):
 
     fieldsets = (
         ('Configuration', {
-            'fields': ('description', 'active', 'owner', 'slug'),
+            'fields': ('description', 'active', 'owner', 'slug', 'theme'),
             'description': "General site settings and ownership."
         }),
         ('Header', {
@@ -72,13 +114,14 @@ class SiteAdmin(NestedModelAdmin):
     )
     readonly_fields = ['created_at']
 
-# ✏Forms
+
 class SectionForm(forms.ModelForm):
     content = forms.CharField(widget=TipTapWidget())
 
     class Meta:
         model = Section
         fields = '__all__'
+
 
 class SubSectionForm(forms.ModelForm):
     content = forms.CharField(widget=TipTapWidget())
@@ -87,12 +130,13 @@ class SubSectionForm(forms.ModelForm):
         model = SubSection
         fields = '__all__'
 
-# Inlines
+
 class SubSectionInline(NestedStackedInline):
     model = SubSection
     form = SubSectionForm
     extra = 1
     ordering = ['order']
+
 
 class SectionInline(NestedStackedInline):
     model = Section
@@ -101,7 +145,7 @@ class SectionInline(NestedStackedInline):
     ordering = ['order']
     inlines = [SubSectionInline]
 
-# Article Admin
+
 @admin.register(Article)
 class ArticleAdmin(NestedModelAdmin):
     list_display = ['title', 'site', 'author', 'created_at']
@@ -113,7 +157,7 @@ class ArticleAdmin(NestedModelAdmin):
     filter_horizontal = ['tags']
     inlines = [SectionInline]
 
-# Section Admin (optional table view)
+
 @admin.register(Section)
 class SectionAdmin(SortableAdminMixin, admin.ModelAdmin):
     form = SectionForm
@@ -121,7 +165,7 @@ class SectionAdmin(SortableAdminMixin, admin.ModelAdmin):
     list_filter = ['article']
     search_fields = ['heading', 'content']
 
-# SubSection Admin (optional table view)
+
 @admin.register(SubSection)
 class SubSectionAdmin(SortableAdminMixin, admin.ModelAdmin):
     form = SubSectionForm
@@ -129,7 +173,7 @@ class SubSectionAdmin(SortableAdminMixin, admin.ModelAdmin):
     list_filter = ['section']
     search_fields = ['title', 'content']
 
-# 🖼Image Admin
+
 @admin.register(Image)
 class ImageAdmin(admin.ModelAdmin):
     list_display = ['title', 'description', 'uploaded_at']
