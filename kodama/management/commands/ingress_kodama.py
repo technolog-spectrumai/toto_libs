@@ -2,7 +2,7 @@ from django.core.management.base import BaseCommand
 from django.contrib.auth.models import User
 from django.utils.text import slugify
 from django.utils.timezone import now
-from kodama.models import Site, Tag, Category, Article, Section, SubSection
+from kodama.models import Site, Tag, Category, Article, Section, SubSection, Menu, CategoryLink
 import random
 
 LOREM = (
@@ -12,7 +12,7 @@ LOREM = (
 )
 
 class Command(BaseCommand):
-    help = "Seed Kodama with one site, tags, categories, articles, sections, and subsections using lorem ipsum"
+    help = "Seed Kodama with one site, tags, categories, articles, sections, subsections, and menu using lorem ipsum"
 
     def handle(self, *args, **kwargs):
         # Create or get owner
@@ -31,15 +31,12 @@ class Command(BaseCommand):
         )
         self.stdout.write(self.style.SUCCESS(f"Site created: {site.name}"))
 
-        # Create site-specific tags
+        # Create tags
         tag_names = ['Politics', 'Science', 'Culture', 'Energy']
-        tags = []
-        for name in tag_names:
-            tag, _ = Tag.objects.get_or_create(name=name, site=site)
-            tags.append(tag)
+        tags = [Tag.objects.get_or_create(name=name, site=site)[0] for name in tag_names]
         self.stdout.write(self.style.SUCCESS(f"Tags created: {', '.join(tag.name for tag in tags)}"))
 
-        # Create site-specific categories
+        # Create categories
         category_names = ['Fusion', 'Fission', 'Policy', 'Innovation', 'Global Impact']
         categories = []
         for name in category_names:
@@ -60,9 +57,8 @@ class Command(BaseCommand):
                 category=category
             )
             article.tags.set(random.sample(tags, k=random.randint(1, 3)))
-            article.save()
 
-            # Create sections
+            # Create sections and subsections
             for s in range(1, random.randint(2, 4)):
                 section = Section.objects.create(
                     article=article,
@@ -70,8 +66,6 @@ class Command(BaseCommand):
                     heading=f"Section {s} of {title}",
                     content=LOREM
                 )
-
-                # Create subsections
                 for ss in range(1, random.randint(2, 3)):
                     SubSection.objects.create(
                         section=section,
@@ -82,5 +76,19 @@ class Command(BaseCommand):
 
             self.stdout.write(self.style.SUCCESS(f"Article created: {article.title} (Category: {category.name})"))
 
-        self.stdout.write(self.style.SUCCESS("Kodama ingress complete."))
+        # Create a default menu and link categories
+        menu, _ = Menu.objects.get_or_create(
+            site=site,
+            slug='main',
+            defaults={'title': 'Main Navigation'}
+        )
 
+        for idx, category in enumerate(random.sample(categories, k=4)):
+            CategoryLink.objects.get_or_create(
+                menu=menu,
+                category=category,
+                defaults={'order': idx}
+            )
+
+        self.stdout.write(self.style.SUCCESS(f"Menu created: {menu.title} with linked categories"))
+        self.stdout.write(self.style.SUCCESS("Kodama ingress complete."))

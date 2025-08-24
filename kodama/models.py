@@ -67,6 +67,28 @@ class Category(models.Model):
         super().save(*args, **kwargs)
 
 
+class Menu(models.Model):
+    site = models.ForeignKey('Site', on_delete=models.CASCADE, related_name='menus')
+    title = models.CharField(max_length=100)
+    slug = models.SlugField(unique=True)
+    categories = models.ManyToManyField(Category, through='CategoryLink', related_name='menus')
+
+    def __str__(self):
+        return f"{self.title} ({self.site.name})"
+
+class CategoryLink(models.Model):
+    menu = models.ForeignKey(Menu, on_delete=models.CASCADE, related_name='category_links')
+    category = models.ForeignKey(Category, on_delete=models.CASCADE)
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        unique_together = ('menu', 'category')
+        ordering = ['order']
+
+    def __str__(self):
+        return f"{self.category.name} in {self.menu.title}"
+
+
 class Article(models.Model):
     slug = models.SlugField(max_length=255, primary_key=True, unique=True)
     site = models.ForeignKey(

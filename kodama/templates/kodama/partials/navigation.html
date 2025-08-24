@@ -1,0 +1,33 @@
+<div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+
+    <!-- Logo / Site Title -->
+    <div class="text-xl font-bold tracking-wide text-[var(--accent)]">⚛️ Peaceful Power</div>
+
+    <!-- Navigation Links + Dark Mode Toggle -->
+    <div class="flex items-center space-x-6">
+
+      <!-- Dynamic Menu Rendering -->
+      {% if menu %}
+      <ul class="flex space-x-6 text-sm text-[var(--text-muted)]">
+        {% for link in menu.category_links.all %}
+          <li>
+            <a href="{% url 'article-list' site.slug %}?category={{ link.category.slug }}"
+               class="hover:text-[var(--accent)]">
+              {{ link.category.name }}
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <ul class="flex space-x-6 text-sm text-[var(--text-muted)]">
+        <li><a href="{% url 'article-list' site.slug %}" class="hover:text-[var(--accent)]">Articles</a></li>
+        <li><a href="#" class="hover:text-[var(--accent)]">Contact</a></li>
+      </ul>
+      {% endif %}
+
+      <!-- Dark Mode Toggle -->
+      <button @click="darkMode = !darkMode" class="text-[var(--nav-text)] hover:text-[var(--accent)] text-xl">
+        <i :class="darkMode ? 'fas fa-sun' : 'fas fa-moon'"></i>
+      </button>
+    </div>
+</div>

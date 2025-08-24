@@ -1,20 +1,40 @@
 from django import forms
 from django.contrib import admin
-from nested_admin import NestedModelAdmin, NestedStackedInline
+from nested_admin import NestedModelAdmin, NestedStackedInline, NestedTabularInline
 from adminsortable2.admin import SortableAdminMixin
 from django_tiptap.widgets import TipTapWidget
-from .models import Site, Tag, Article, Section, SubSection, Image
+from .models import Site, Tag, Article, Section, SubSection, Image, Menu, Category, CategoryLink
 
 # 🔖 Tags
 admin.site.register(Tag)
 
-# Site Admin
+class CategoryLinkInline(NestedTabularInline):
+    model = CategoryLink
+    extra = 1
+    fields = ['category', 'order']
+    autocomplete_fields = ['category']
+    ordering = ['order']
+
+class MenuInline(NestedStackedInline):
+    model = Menu
+    extra = 1
+    fields = ['title', 'slug']
+    show_change_link = True
+    inlines = [CategoryLinkInline]
+
+@admin.register(Category)
+class CategoryAdmin(admin.ModelAdmin):
+    list_display = ['name', 'slug']
+    search_fields = ['name', 'slug']
+
+
 @admin.register(Site)
-class SiteAdmin(admin.ModelAdmin):
+class SiteAdmin(NestedModelAdmin):
     list_display = ['name', 'slug', 'domain', 'creation_year', 'active', 'owner', 'created_at']
     list_filter = ['active', 'creation_year']
     search_fields = ['name', 'slug', 'domain']
     prepopulated_fields = {'slug': ('name',)}
+    inlines = [MenuInline]
 
 # ✏Forms
 class SectionForm(forms.ModelForm):
@@ -79,3 +99,4 @@ class ImageAdmin(admin.ModelAdmin):
     list_display = ['title', 'description', 'uploaded_at']
     search_fields = ['title', 'description']
     list_filter = ['uploaded_at']
+
