@@ -31,6 +31,7 @@ class Theme(models.Model):
     light_nav_bg_end = models.CharField(max_length=7, default='#e0f7fa')
     light_nav_text = models.CharField(max_length=7, default='#0077ff')
     light_nav_shadow = models.CharField(max_length=30, default='rgba(0, 119, 255, 0.25)')
+    light_banner_overlay = models.CharField(max_length=30, default='rgba(0, 119, 255, 0.25)')
 
     # Dark mode colors
     dark_bg_top = models.CharField(max_length=7, default='#0a0a0a')
@@ -45,6 +46,7 @@ class Theme(models.Model):
     dark_nav_bg_end = models.CharField(max_length=7, default='#001a33')
     dark_nav_text = models.CharField(max_length=7, default='#00ff99')
     dark_nav_shadow = models.CharField(max_length=30, default='rgba(0, 255, 153, 0.25)')
+    dark_banner_overlay = models.CharField(max_length=30, default='rgba(0, 255, 153, 0.25)')
 
     def __str__(self):
         return self.name
@@ -80,6 +82,12 @@ class Site(models.Model):
         null=True,
         blank=True,
         related_name='sites'
+    )
+    banner_image = models.ImageField(
+        upload_to='site_banners/',
+        null=True,
+        blank=True,
+        help_text="Upload a banner image for the site header"
     )
 
     def __str__(self):

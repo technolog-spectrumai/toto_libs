@@ -32,6 +32,11 @@ class KodamaSiteMixin:
         context['categories'] = Category.objects.filter(site=site).order_by('name')
         context['tags'] = Tag.objects.filter(site=site).order_by('name')
         context['theme'] = site.theme
+        if site.banner_image:
+            banner_url = site.banner_image.url#self.request.build_absolute_uri(site.banner_image.url)
+        else:
+            banner_url = None
+        context['banner_image'] = banner_url
         return context
 
 

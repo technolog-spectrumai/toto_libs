@@ -2,13 +2,17 @@
 {% block title %}Articles — {{ site.name }}{% endblock %}
 
 {% block content %}
+
 <!-- Hero Section -->
-<section class="relative h-[60vh] bg-cover bg-center pt-20"
-  style="background-image: url('https://upload.wikimedia.org/wikipedia/commons/3/3f/Nuclear_fusion_reactor_interior.jpg');">
-  <div class="absolute inset-0 bg-[var(--card-bg)] bg-opacity-60 flex items-center justify-center">
+  {% if banner_image %}
+    <section class="relative h-[60vh] pt-20" style="background-image: url('{{ banner_image | safe }}');">
+  {% else %}
+    <section class="relative h-[60vh] bg-[var(--bg-top)] pt-20">
+  {% endif %}
+  <div class="absolute inset-0 flex items-center justify-center" style="background-color: var(--banner-overlay)">
     <div class="text-center px-6">
       <h1 class="text-5xl md:text-6xl font-bold mb-4">Latest from {{ site.name }}</h1>
-      <p class="text-xl md:text-2xl italic text-[var(--text-muted)]">Skazani na Atom — Bound by Clean Energy</p>
+      <p class="text-xl md:text-2xl italic text-[var(--text-muted)]">{{site.head_slogan}} </p>
     </div>
   </div>
 </section>

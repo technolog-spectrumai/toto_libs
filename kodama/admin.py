@@ -104,7 +104,7 @@ class SiteAdmin(NestedModelAdmin):
             'description': "General site settings and ownership."
         }),
         ('Header', {
-            'fields': ('name', 'domain', 'head_slogan'),
+            'fields': ('name', 'domain', 'head_slogan', 'banner_image'),
             'description': "Site identity and header branding."
         }),
         ('Footer', {

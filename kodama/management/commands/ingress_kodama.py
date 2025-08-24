@@ -237,6 +237,7 @@ class Command(BaseCommand):
                 'light_nav_bg_end': '#e0f7fa',
                 'light_nav_text': '#0077ff',
                 'light_nav_shadow': 'rgba(0, 119, 255, 0.25)',
+                'light_banner_overlay': 'rgba(244, 244, 244, 0.25)',
 
                 # Dark mode
                 'dark_bg_top': '#0a0a0a',
@@ -250,7 +251,8 @@ class Command(BaseCommand):
                 'dark_nav_bg_start': '#003344',
                 'dark_nav_bg_end': '#001a33',
                 'dark_nav_text': '#00ff99',
-                'dark_nav_shadow': 'rgba(0, 255, 153, 0.25)'
+                'dark_nav_shadow': 'rgba(0, 255, 153, 0.25)',
+                'dark_banner_overlay': 'rgba(26, 26, 26, 0.5)'
             }
         )
 
@@ -274,6 +276,7 @@ class Command(BaseCommand):
                 'light_nav_bg_end': '#f0f8ff',
                 'light_nav_text': '#ff6f00',
                 'light_nav_shadow': 'rgba(255, 111, 0, 0.25)',
+                'light_banner_overlay': 'rgba(255, 255, 255, 0.25)',
 
                 # Dark mode — Deep space telemetry
                 'dark_bg_top': '#0b0c10',  # void black
@@ -287,7 +290,8 @@ class Command(BaseCommand):
                 'dark_nav_bg_start': '#0b0c10',
                 'dark_nav_bg_end': '#1f2833',
                 'dark_nav_text': '#66fcf1',
-                'dark_nav_shadow': 'rgba(102, 252, 241, 0.25)'
+                'dark_nav_shadow': 'rgba(102, 252, 241, 0.25)',
+                'dark_banner_overlay': 'rgba(18, 18, 18, 0.5)',
             }
         )
 
