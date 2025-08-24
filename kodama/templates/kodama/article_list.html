@@ -16,16 +16,39 @@
 <!-- Main Grid -->
 <main class="grid grid-cols-1 md:grid-cols-12 gap-6 px-6 md:px-12 py-20 max-w-7xl mx-auto">
 
-  <!-- Left: Categories -->
-  <aside class="md:col-span-2 space-y-4 text-[var(--text-muted)]">
-    <h2 class="text-xl font-bold text-[var(--accent)]">Categories</h2>
-    <ul class="space-y-2">
-      {% for cat in categories %}
-        <li><a href="?category={{ cat.slug }}" class="hover:text-[var(--accent)]">{{ cat.name }}</a></li>
-      {% empty %}
-        <li>No categories available.</li>
-      {% endfor %}
-    </ul>
+  <!-- Left: Filters -->
+  <aside class="md:col-span-2 space-y-8 text-[var(--text-muted)]">
+    <!-- Categories -->
+    <div>
+      <h2 class="text-xl font-bold text-[var(--accent)]">Categories</h2>
+      <ul class="space-y-2 mt-2">
+        {% for cat in categories %}
+          <li>
+            <a href="?category={{ cat.slug }}" class="hover:text-[var(--accent)] {% if category == cat.slug %}font-semibold{% endif %}">
+              {{ cat.name }}
+            </a>
+          </li>
+        {% empty %}
+          <li>No categories available.</li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <!-- Tags (optional) -->
+    {% if tags %}
+    <div>
+      <h2 class="text-xl font-bold text-[var(--accent)]">Tags</h2>
+      <ul class="space-y-2 mt-2">
+        {% for tag in tags %}
+          <li>
+            <a href="?tag={{ tag.name }}" class="hover:text-[var(--accent)] {% if tag.name == tag %}font-semibold{% endif %}">
+              {{ tag.name }}
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
   </aside>
 
   <!-- Center: Articles -->

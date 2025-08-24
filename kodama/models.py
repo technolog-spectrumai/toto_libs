@@ -2,14 +2,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.utils.text import slugify
 
-# Tag model
-class Tag(models.Model):
-    name = models.CharField(max_length=50, unique=True)
 
-    def __str__(self):
-        return self.name
-
-# Site model for multitenancy
 class Site(models.Model):
     name = models.CharField(max_length=100, unique=True)
     slug = models.SlugField(max_length=100, unique=True)
@@ -40,7 +33,40 @@ class Site(models.Model):
             self.slug = slug
         super().save(*args, **kwargs)
 
-# Article model
+
+class Tag(models.Model):
+    name = models.CharField(max_length=50, unique=True)
+    site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name='tag_set')
+
+    def __str__(self):
+        return self.name
+
+
+class Category(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    slug = models.SlugField(max_length=100, unique=True)
+    description = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name='category_set')
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            base_slug = slugify(self.name)
+            slug = base_slug
+            counter = 1
+            while Category.objects.filter(slug=slug).exists():
+                slug = f"{base_slug}-{counter}"
+                counter += 1
+            self.slug = slug
+        super().save(*args, **kwargs)
+
+
 class Article(models.Model):
     slug = models.SlugField(max_length=255, primary_key=True, unique=True)
     site = models.ForeignKey(
@@ -59,6 +85,13 @@ class Article(models.Model):
         related_name='authored_articles'
     )
     tags = models.ManyToManyField(Tag, blank=True, related_name='articles')
+    category = models.ForeignKey(
+        Category,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='articles'
+    )
 
     def __str__(self):
         return self.title
@@ -74,7 +107,7 @@ class Article(models.Model):
             self.slug = slug
         super().save(*args, **kwargs)
 
-# Section model
+
 class Section(models.Model):
     article = models.ForeignKey(
         Article,
@@ -92,7 +125,7 @@ class Section(models.Model):
     def __str__(self):
         return f"{self.article.title} – Section {self.order}: {self.heading}"
 
-# Image model
+
 class Image(models.Model):
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
@@ -102,7 +135,7 @@ class Image(models.Model):
     def __str__(self):
         return self.title
 
-# SubSection model
+
 class SubSection(models.Model):
     section = models.ForeignKey(
         Section,

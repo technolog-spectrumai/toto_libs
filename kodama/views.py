@@ -1,7 +1,7 @@
 from django.views.generic import ListView, DetailView
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
-from .models import Site, Article, Section, SubSection, Tag
+from .models import Site, Article, Section, SubSection, Tag, Category
 
 # 📰 List articles for a specific site, with optional filters
 class FilteredArticleListView(ListView):
@@ -41,6 +41,8 @@ class FilteredArticleListView(ListView):
         context['query'] = self.request.GET.get('q', '')
         context['tag'] = self.request.GET.get('tag', '')
         context['category'] = self.request.GET.get('category', '')
+        context['categories'] = Category.objects.filter(site=self.site).order_by('name')
+        context['tags'] = Tag.objects.filter(site=self.site).order_by('name')
         return context
 
 
