@@ -1,0 +1,129 @@
+from django.db import models
+from django.contrib.auth.models import User
+from django.utils.text import slugify
+
+# Tag model
+class Tag(models.Model):
+    name = models.CharField(max_length=50, unique=True)
+
+    def __str__(self):
+        return self.name
+
+# Site model for multitenancy
+class Site(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    slug = models.SlugField(max_length=100, unique=True)
+    domain = models.URLField(unique=True)
+    description = models.TextField(blank=True)
+    creation_year = models.PositiveIntegerField()
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    owner = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='owned_sites'
+    )
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            base_slug = slugify(self.name)
+            slug = base_slug
+            counter = 1
+            while Site.objects.filter(slug=slug).exists():
+                slug = f"{base_slug}-{counter}"
+                counter += 1
+            self.slug = slug
+        super().save(*args, **kwargs)
+
+# Article model
+class Article(models.Model):
+    slug = models.SlugField(max_length=255, primary_key=True, unique=True)
+    site = models.ForeignKey(
+        Site,
+        on_delete=models.CASCADE,
+        related_name='articles'
+    )
+    title = models.CharField(max_length=255)
+    summary = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    author = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='authored_articles'
+    )
+    tags = models.ManyToManyField(Tag, blank=True, related_name='articles')
+
+    def __str__(self):
+        return self.title
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            base_slug = slugify(self.title)
+            slug = base_slug
+            counter = 1
+            while Article.objects.filter(slug=slug).exists():
+                slug = f"{base_slug}-{counter}"
+                counter += 1
+            self.slug = slug
+        super().save(*args, **kwargs)
+
+# Section model
+class Section(models.Model):
+    article = models.ForeignKey(
+        Article,
+        on_delete=models.CASCADE,
+        related_name='sections'
+    )
+    order = models.PositiveIntegerField()
+    heading = models.CharField(max_length=255)
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['order']
+
+    def __str__(self):
+        return f"{self.article.title} – Section {self.order}: {self.heading}"
+
+# Image model
+class Image(models.Model):
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    file = models.ImageField(upload_to='subsection_images/')
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.title
+
+# SubSection model
+class SubSection(models.Model):
+    section = models.ForeignKey(
+        Section,
+        on_delete=models.CASCADE,
+        related_name='subsections'
+    )
+    order = models.PositiveIntegerField()
+    title = models.CharField(max_length=255)
+    content = models.TextField()
+    image = models.ForeignKey(
+        Image,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='subsections'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['order']
+
+    def __str__(self):
+        section_order = self.section.order if self.section else '?'
+        return f"{self.section.heading} – SubSection {self.order}.{section_order}: {self.title}"

@@ -155,7 +155,8 @@ ALLOWED_APPS = [
     "nakamori",
     "memo",
     "resume",
-    "documents"
+    "documents",
+    "kodama"
 ]
 
 class AppIngress(models.Model):

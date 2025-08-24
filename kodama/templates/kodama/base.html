@@ -1,0 +1,46 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en" x-data="{ darkMode: false }" :class="{ 'dark': darkMode }">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}Kodama News{% endblock %}</title>
+
+  <!-- Font Awesome + Tailwind + Alpine -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" crossorigin="anonymous" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/alpinejs" defer></script>
+
+  <!-- Fonts + Theme -->
+  {% include 'kodama/partials/style.html' %}
+</head>
+<body>
+
+<!-- Navigation -->
+<nav class="fixed top-0 left-0 right-0 z-40 bg-[var(--nav-bg)] backdrop-blur-md border-b border-[var(--border)] shadow-sm">
+  <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+    <div class="text-xl font-bold tracking-wide text-[var(--accent)]">⚛️ Peaceful Power</div>
+    <div class="flex items-center space-x-6">
+      <ul class="flex space-x-6 text-sm text-[var(--text-muted)]">
+        <li><a href="{% url 'article-list' site.slug %}" class="hover:text-[var(--accent)]">Articles</a></li>
+        <li><a href="#" class="hover:text-[var(--accent)]">Contact</a></li>
+      </ul>
+      <button @click="darkMode = !darkMode" class="text-[var(--nav-text)] hover:text-[var(--accent)] text-xl">
+        <i :class="darkMode ? 'fas fa-sun' : 'fas fa-moon'"></i>
+      </button>
+    </div>
+  </div>
+</nav>
+
+<!-- Page Content -->
+<div class="pt-24">
+  {% block content %}{% endblock %}
+</div>
+
+<!-- Footer -->
+<footer class="bg-[var(--footer-bg)] border-t border-[var(--border)] text-[var(--text-muted)] text-sm text-center py-8">
+  <p>© 2025 Peaceful Power. Engineered with electrons by Malakay. Skazani na Atom ⚛️</p>
+</footer>
+
+</body>
+</html>

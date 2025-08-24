@@ -1,0 +1,64 @@
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=IBM+Plex+Mono&display=swap');
+
+  :root {
+    --bg-top: #e0f7fa;
+    --bg-bottom: #ffffff;
+    --text-main: #2c2c2c;
+    --text-muted: #555555;
+    --accent: #0077ff;
+    --card-bg: #f4f4f4;
+    --border: #00f0ff;
+    --nav-bg: linear-gradient(to right, #d0eaff, #e0f7fa);
+    --nav-text: #0077ff;
+    --nav-shadow: rgba(0, 119, 255, 0.25);
+    --footer-bg: #f4f4f4;
+  }
+
+  .dark {
+    --bg-top: #0a0a0a;
+    --bg-bottom: #1a1a1a;
+    --text-main: #ffffff;
+    --text-muted: #cccccc;
+    --accent: #00ff99;
+    --card-bg: #1a1a1a;
+    --border: #0077ff;
+    --nav-bg: linear-gradient(to right, #003344, #001a33);
+    --nav-text: #00ff99;
+    --nav-shadow: rgba(0, 255, 153, 0.25);
+    --footer-bg: #1a1a1a;
+  }
+
+  body {
+    font-family: 'IBM Plex Mono', monospace;
+    background: linear-gradient(to bottom, var(--bg-top), var(--bg-bottom));
+    color: var(--text-main);
+  }
+
+  h1, h2, h3 {
+    font-family: 'Orbitron', sans-serif;
+    color: var(--accent);
+  }
+
+  a {
+    color: var(--accent);
+    transition: color 0.3s ease;
+  }
+
+  a:hover {
+    color: var(--text-muted);
+  }
+
+  .card {
+    background-color: var(--card-bg);
+    border: 2px solid var(--border);
+    padding: 1.5rem;
+    border-radius: 1rem;
+    transition: transform 0.3s ease, border-color 0.3s ease;
+  }
+
+  .card:hover {
+    transform: translateY(-4px);
+    border-color: var(--accent);
+  }
+</style>

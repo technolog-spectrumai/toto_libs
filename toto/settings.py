@@ -67,7 +67,8 @@ INSTALLED_APPS = [
     "memo",
     "resume",
     "webfront",
-    "documents"
+    "documents",
+    "kodama"
 ]
 
 DJANGO_TIPTAP_CONFIG = {
