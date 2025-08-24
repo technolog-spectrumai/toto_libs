@@ -4,9 +4,10 @@ from nested_admin import NestedModelAdmin, NestedStackedInline, NestedTabularInl
 from adminsortable2.admin import SortableAdminMixin
 from django_tiptap.widgets import TipTapWidget
 from .models import Site, Tag, Article, Section, SubSection, Image, Menu, Category, CategoryLink
-
 # 🔖 Tags
 admin.site.register(Tag)
+
+
 
 class CategoryLinkInline(NestedTabularInline):
     model = CategoryLink
@@ -22,10 +23,30 @@ class MenuInline(NestedStackedInline):
     show_change_link = True
     inlines = [CategoryLinkInline]
 
+
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
     list_display = ['name', 'slug']
     search_fields = ['name', 'slug']
+
+
+@admin.register(Menu)
+class MenuAdmin(SortableAdminMixin, admin.ModelAdmin):
+    list_display = ['title', 'slug', 'site', 'order']
+    list_filter = ['site']
+    search_fields = ['title', 'slug']
+    prepopulated_fields = {'slug': ('title',)}
+    inlines = [CategoryLinkInline]
+    ordering = ['order']
+
+
+@admin.register(CategoryLink)
+class CategoryLinkAdmin(SortableAdminMixin, admin.ModelAdmin):
+    list_display = ['category', 'menu', 'order']
+    list_filter = ['menu']
+    autocomplete_fields = ['category']
+    ordering = ['order']
+
 
 @admin.register(Site)
 class SiteAdmin(NestedModelAdmin):
@@ -34,6 +55,22 @@ class SiteAdmin(NestedModelAdmin):
     search_fields = ['name', 'slug', 'domain']
     prepopulated_fields = {'slug': ('name',)}
     inlines = [MenuInline]
+
+    fieldsets = (
+        ('Configuration', {
+            'fields': ('description', 'active', 'owner', 'slug'),
+            'description': "General site settings and ownership."
+        }),
+        ('Header', {
+            'fields': ('name', 'domain', 'head_slogan'),
+            'description': "Site identity and header branding."
+        }),
+        ('Footer', {
+            'fields': ('creation_year', 'foot_slogan', 'footer_about', 'created_at'),
+            'description': "Customize the footer messaging and metadata."
+        }),
+    )
+    readonly_fields = ['created_at']
 
 # ✏Forms
 class SectionForm(forms.ModelForm):

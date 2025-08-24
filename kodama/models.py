@@ -19,6 +19,14 @@ class Site(models.Model):
         related_name='owned_sites'
     )
 
+    # 🧩 New Config Fields
+    head_slogan = models.CharField(max_length=150, default="Peaceful Power")
+    foot_slogan = models.CharField(max_length=150, default="Engineered with electrons")
+    footer_about = models.TextField(
+        blank=True,
+        default="Kodama is a digital sanctuary for slow thought, cultural clarity, and independent voices."
+    )
+
     def __str__(self):
         return self.name
 
@@ -32,6 +40,11 @@ class Site(models.Model):
                 counter += 1
             self.slug = slug
         super().save(*args, **kwargs)
+
+    @property
+    def footer_text(self):
+        return f"© {self.creation_year} {self.head_slogan}. {self.foot_slogan} by {self.owner or 'Unknown'}. {self.name}"
+
 
 
 class Tag(models.Model):
