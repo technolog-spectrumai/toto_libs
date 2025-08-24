@@ -61,9 +61,13 @@ class Command(BaseCommand):
         return categories
 
     def create_articles(self):
+        fruits = ['Kiwi', 'Banana', 'Cherry', 'Mango', 'Apple', 'Kiwi', "Plum"]
+
         for i in range(1, 7):
-            title = f"Kodama Article #{i}"
+            fruit = random.choice(fruits)
             category = random.choice(self.categories)
+            title = f"{fruit} {category.name} Article #{i}"
+
             article = Article.objects.create(
                 site=self.site,
                 title=title,
@@ -73,8 +77,26 @@ class Command(BaseCommand):
             )
             article.tags.set(random.sample(self.tags, k=random.randint(1, 3)))
 
-            for s in range(1, random.randint(2, 4)):
-                section = Section.objects.create(
+            # Use fruit + category name as the first section heading
+            section_heading = f"{fruit} {category.name}"
+            section = Section.objects.create(
+                article=article,
+                order=1,
+                heading=section_heading,
+                content=LOREM
+            )
+
+            for ss in range(1, random.randint(2, 3)):
+                SubSection.objects.create(
+                    section=section,
+                    order=ss,
+                    title=f"SubSection 1.{ss}",
+                    content=LOREM
+                )
+
+            # Add additional sections if needed
+            for s in range(2, random.randint(3, 5)):
+                sec = Section.objects.create(
                     article=article,
                     order=s,
                     heading=f"Section {s} of {title}",
@@ -82,19 +104,21 @@ class Command(BaseCommand):
                 )
                 for ss in range(1, random.randint(2, 3)):
                     SubSection.objects.create(
-                        section=section,
+                        section=sec,
                         order=ss,
                         title=f"SubSection {s}.{ss}",
                         content=LOREM
                     )
 
-            self.stdout.write(self.style.SUCCESS(f"Article created: {article.title} (Category: {category.name})"))
+            self.stdout.write(self.style.SUCCESS(
+                f"Article created: {title} (Fruit: {fruit}, Category: {category.name}, First Section: {section_heading})"
+            ))
 
     def create_menus(self):
-        # Create explicit "News" menu with direct category link — always first
+        # Create "News" menu as a direct link
         news_category = next((c for c in self.categories if c.name == 'News'), None)
         if news_category:
-            news_menu, _ = Menu.objects.get_or_create(
+            Menu.objects.get_or_create(
                 site=self.site,
                 slug='news',
                 defaults={
@@ -105,41 +129,51 @@ class Command(BaseCommand):
             )
             self.stdout.write(self.style.SUCCESS(f"Direct Link Menu created: News → {news_category.name}"))
 
-        # Shift other menus to start from order 1
-        menu_specs = [
-            ('main', 'Main Navigation', 1),
-            ('footer', 'Footer Links', 2),
-            ('topics', 'Topics Menu', 3),
+        # Define dropdown menus with curated categories
+        dropdown_menus = [
+            {
+                'slug': 'technology',
+                'title': 'Technology',
+                'order': 1,
+                'categories': ['Fusion', 'Innovation']
+            },
+            {
+                'slug': 'economy',
+                'title': 'Economy',
+                'order': 2,
+                'categories': ['Policy', 'Global Impact']
+            },
+            {
+                'slug': 'innovation',
+                'title': 'Innovation',
+                'order': 3,
+                'categories': ['Innovation', 'Fusion']
+            },
         ]
 
-        for slug, title, order in menu_specs:
-            is_direct_link = random.choice([True, False])
-            category_link = random.choice(self.categories) if is_direct_link else None
-
+        for spec in dropdown_menus:
             menu, _ = Menu.objects.get_or_create(
                 site=self.site,
-                slug=slug,
+                slug=spec['slug'],
                 defaults={
-                    'title': title,
-                    'order': order,
-                    'category_link': category_link
+                    'title': spec['title'],
+                    'order': spec['order'],
+                    'category_link': None
                 }
             )
 
-            if not is_direct_link:
-                linked_categories = random.sample(self.categories, k=min(3, len(self.categories)))
-                for idx, category in enumerate(linked_categories):
+            for idx, cat_name in enumerate(spec['categories']):
+                category = next((c for c in self.categories if c.name == cat_name), None)
+                if category:
                     CategoryLink.objects.get_or_create(
                         menu=menu,
                         category=category,
                         defaults={'order': idx}
                     )
-                self.stdout.write(self.style.SUCCESS(
-                    f"Dropdown Menu created: {menu.title} with {len(linked_categories)} categories"
-                ))
-            else:
-                self.stdout.write(self.style.SUCCESS(
-                    f"Direct Link Menu created: {menu.title} → {category_link.name}"
-                ))
+
+            self.stdout.write(self.style.SUCCESS(
+                f"Dropdown Menu created: {spec['title']} with categories: {', '.join(spec['categories'])}"
+            ))
+
 
 
