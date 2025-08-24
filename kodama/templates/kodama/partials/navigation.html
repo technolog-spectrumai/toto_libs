@@ -7,24 +7,33 @@
   <div class="flex items-center space-x-6">
 
     {% if menus %}
-      {% for menu in menus %}
-        <div x-data="{ open: false }" class="relative">
-          <button @click="open = !open" class="text-sm text-[var(--text-muted)] hover:text-[var(--accent)]">
-            {{ menu.title }} <i class="fas fa-chevron-down text-xs ml-1"></i>
-          </button>
-            <ul x-show="open" @click.away="open = false"
-                class="absolute mt-2 bg-[var(--card-bg)] border border-[var(--border)] shadow-lg rounded-md py-2 w-48 z-50">
-            {% for link in menu.category_links.all %}
-              <li>
-                <a href="{% url 'article-list' site.slug %}?category={{ link.category.slug }}"
-                   class="block px-4 py-2 text-sm text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--hover-bg)]">
-                  {{ link.category.name }}
-                </a>
-              </li>
-            {% endfor %}
-          </ul>
-        </div>
-      {% endfor %}
+        {% for menu in menus %}
+          {% if menu.category_link %}
+            <!-- Direct category link -->
+            <a href="{% url 'article-list' site.slug %}?category={{ menu.category_link.slug }}"
+               class="text-sm text-[var(--text-muted)] hover:text-[var(--accent)]">
+              {{ menu.title }}
+            </a>
+          {% elif menu.category_links.all %}
+            <!-- Dropdown menu -->
+            <div x-data="{ open: false }" class="relative">
+              <button @click="open = !open" class="text-sm text-[var(--text-muted)] hover:text-[var(--accent)]">
+                {{ menu.title }} <i class="fas fa-chevron-down text-xs ml-1"></i>
+              </button>
+              <ul x-show="open" @click.away="open = false"
+                  class="absolute mt-2 bg-[var(--card-bg)] border border-[var(--border)] shadow-lg rounded-md py-2 w-48 z-50">
+                {% for link in menu.category_links.all %}
+                  <li>
+                    <a href="{% url 'article-list' site.slug %}?category={{ link.category.slug }}"
+                       class="block px-4 py-2 text-sm text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--hover-bg)]">
+                      {{ link.category.name }}
+                    </a>
+                  </li>
+                {% endfor %}
+              </ul>
+            </div>
+          {% endif %}
+        {% endfor %}
     {% else %}
       <ul class="flex space-x-6 text-sm text-[var(--text-muted)]">
         <li><a href="{% url 'article-list' site.slug %}" class="hover:text-[var(--accent)]">Articles</a></li>

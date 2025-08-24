@@ -1,7 +1,8 @@
 from django.views.generic import ListView, DetailView
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
-from .models import Site, Article, Section, SubSection, Tag, Category, Menu
+from .models import Site, Article, Section, SubSection, Tag, Category, Menu, CategoryLink
+from django.db.models import Prefetch
 
 
 class KodamaSiteMixin:
@@ -12,7 +13,16 @@ class KodamaSiteMixin:
         return get_object_or_404(Site, slug=slug, active=True)
 
     def get_menus(self, site):
-        return Menu.objects.filter(site=site).prefetch_related('category_links__category').order_by('order')
+        return (
+            Menu.objects.filter(site=site)
+            .order_by('order')
+            .prefetch_related(
+                Prefetch(
+                    'category_links',
+                    queryset=CategoryLink.objects.select_related('category').order_by('order')
+                )
+            )
+        )
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)

@@ -18,7 +18,7 @@ class CategoryLinkInline(NestedTabularInline):
 class MenuInline(NestedStackedInline):
     model = Menu
     extra = 1
-    fields = ['title', 'slug', 'order']
+    fields = ['title', 'slug', 'order', 'category_link']
     show_change_link = True
     inlines = [CategoryLinkInline]
 
