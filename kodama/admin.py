@@ -18,7 +18,7 @@ class CategoryLinkInline(NestedTabularInline):
 class MenuInline(NestedStackedInline):
     model = Menu
     extra = 1
-    fields = ['title', 'slug']
+    fields = ['title', 'slug', 'order']
     show_change_link = True
     inlines = [CategoryLinkInline]
 
@@ -26,7 +26,6 @@ class MenuInline(NestedStackedInline):
 class CategoryAdmin(admin.ModelAdmin):
     list_display = ['name', 'slug']
     search_fields = ['name', 'slug']
-
 
 @admin.register(Site)
 class SiteAdmin(NestedModelAdmin):

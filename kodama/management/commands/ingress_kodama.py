@@ -12,7 +12,7 @@ LOREM = (
 )
 
 class Command(BaseCommand):
-    help = "Seed Kodama with one site, tags, categories, articles, sections, subsections, and menu using lorem ipsum"
+    help = "Seed Kodama with one site, tags, categories, articles, sections, subsections, and multiple menus using lorem ipsum"
 
     def handle(self, *args, **kwargs):
         # Create or get owner
@@ -58,7 +58,6 @@ class Command(BaseCommand):
             )
             article.tags.set(random.sample(tags, k=random.randint(1, 3)))
 
-            # Create sections and subsections
             for s in range(1, random.randint(2, 4)):
                 section = Section.objects.create(
                     article=article,
@@ -76,19 +75,29 @@ class Command(BaseCommand):
 
             self.stdout.write(self.style.SUCCESS(f"Article created: {article.title} (Category: {category.name})"))
 
-        # Create a default menu and link categories
-        menu, _ = Menu.objects.get_or_create(
-            site=site,
-            slug='main',
-            defaults={'title': 'Main Navigation'}
-        )
+        # Create multiple menus
+        menu_specs = [
+            ('main', 'Main Navigation', 0),
+            ('footer', 'Footer Links', 1),
+            ('topics', 'Topics Menu', 2),
+        ]
 
-        for idx, category in enumerate(random.sample(categories, k=4)):
-            CategoryLink.objects.get_or_create(
-                menu=menu,
-                category=category,
-                defaults={'order': idx}
+        for slug, title, order in menu_specs:
+            menu, _ = Menu.objects.get_or_create(
+                site=site,
+                slug=slug,
+                defaults={'title': title, 'order': order}
             )
 
-        self.stdout.write(self.style.SUCCESS(f"Menu created: {menu.title} with linked categories"))
+            linked_categories = random.sample(categories, k=min(3, len(categories)))
+            for idx, category in enumerate(linked_categories):
+                CategoryLink.objects.get_or_create(
+                    menu=menu,
+                    category=category,
+                    defaults={'order': idx}
+                )
+
+            self.stdout.write(self.style.SUCCESS(f"Menu created: {menu.title} with {len(linked_categories)} categories"))
+
         self.stdout.write(self.style.SUCCESS("Kodama ingress complete."))
+

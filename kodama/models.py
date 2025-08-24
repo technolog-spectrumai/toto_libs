@@ -72,6 +72,7 @@ class Menu(models.Model):
     title = models.CharField(max_length=100)
     slug = models.SlugField(unique=True)
     categories = models.ManyToManyField(Category, through='CategoryLink', related_name='menus')
+    order = models.PositiveIntegerField(default=0)
 
     def __str__(self):
         return f"{self.title} ({self.site.name})"

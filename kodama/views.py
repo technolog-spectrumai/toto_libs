@@ -3,7 +3,7 @@ from django.shortcuts import get_object_or_404
 from django.db.models import Q
 from .models import Site, Article, Section, SubSection, Tag, Category, Menu
 
-# Shared mixin for site-aware views
+
 class KodamaSiteMixin:
     site_slug_kwarg = 'site_slug'
 
@@ -11,17 +11,18 @@ class KodamaSiteMixin:
         slug = self.kwargs.get(self.site_slug_kwarg)
         return get_object_or_404(Site, slug=slug, active=True)
 
-    def get_menu(self, site):
-        return Menu.objects.filter(site=site, slug='main').prefetch_related('category_links__category').first()
+    def get_menus(self, site):
+        return Menu.objects.filter(site=site).prefetch_related('category_links__category').order_by('order')
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         site = getattr(self, 'site', None) or self.get_site()
         context['site'] = site
-        context['menu'] = self.get_menu(site)
+        context['menus'] = self.get_menus(site)
         context['categories'] = Category.objects.filter(site=site).order_by('name')
         context['tags'] = Tag.objects.filter(site=site).order_by('name')
         return context
+
 
 # List articles for a specific site, with optional filters
 class FilteredArticleListView(KodamaSiteMixin, ListView):
