@@ -53,8 +53,8 @@ class ColorMixAdmin(admin.ModelAdmin):
 
 @admin.register(Task)
 class TaskAdmin(admin.ModelAdmin):
-    list_display = ('title', 'column', 'assignee', 'due_date', 'completed', 'position', 'story_points')
-    list_filter = ('completed', 'due_date')
+    list_display = ('title', 'column', 'assignee', 'due_date', 'position')
+    list_filter = ('due_date', )
     search_fields = ('title', 'description')
     ordering = ('position',)
 

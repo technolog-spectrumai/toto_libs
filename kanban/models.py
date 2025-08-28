@@ -67,9 +67,7 @@ class Task(models.Model):
     description = models.TextField(blank=True)
     assignee = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     due_date = models.DateField(null=True, blank=True)
-    completed = models.BooleanField(default=False)
     position = models.PositiveIntegerField(default=0)
-    story_points = models.PositiveIntegerField(default=1)
 
 
 class TimePeriod(models.Model):
