@@ -1,31 +1,36 @@
 from django import forms
 from kanban.models import Task
-from oya.models import Theme
-
+from django.contrib.auth.models import User
 
 class TaskForm(forms.ModelForm):
-    def __init__(self, *args, theme: Theme = None, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        # Fallback if no theme is passed
-        colors = theme.theme.get("colors", {}) if theme else {}
-
-        # Extract desired styles (optional, if you want to inline styles)
-        bg_color = colors.get("primary-bg-light", "#f8f9fa")
-        text_color = colors.get("text-main-light", "#212529")
-
-        # Apply Tailwind + Alpine darkMode binding
-        self.fields["title"].widget.attrs.update({
-            "class": "w-full px-4 py-2 rounded border focus:outline-none focus:ring-2 transition duration-300",
-            "x-bind:class": "darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'",
-            "placeholder": "Task title"
-        })
-        self.fields["description"].widget.attrs.update({
-            "class": "w-full px-4 py-2 rounded border focus:outline-none focus:ring-2 transition duration-300",
-            "x-bind:class": "darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'",
-            "placeholder": "Task description"
-        })
-
     class Meta:
         model = Task
-        fields = ["title", "description"]
+        fields = [
+            "title", "description", "assignee",
+            "due_date", "completed",
+        ]
+        widgets = {
+            "title": forms.TextInput(attrs={
+                "class": "w-full px-4 py-2 rounded border focus:outline-none focus:ring-2 transition duration-300",
+                "x-bind:class": "darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'",
+                "placeholder": "Task title"
+            }),
+            "description": forms.Textarea(attrs={
+                "class": "w-full px-4 py-2 rounded border focus:outline-none focus:ring-2 transition duration-300",
+                "x-bind:class": "darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'",
+                "placeholder": "Task description",
+                "rows": 4
+            }),
+            "assignee": forms.Select(attrs={
+                "class": "w-full px-4 py-2 rounded border focus:outline-none focus:ring-2 transition duration-300",
+                "x-bind:class": "darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+            }),
+            "due_date": forms.DateInput(attrs={
+                "type": "date",
+                "class": "w-full px-4 py-2 rounded border focus:outline-none focus:ring-2 transition duration-300",
+                "x-bind:class": "darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+            }),
+            "completed": forms.CheckboxInput(attrs={
+                "class": "form-checkbox h-5 w-5 text-green-600 transition duration-300",
+            })
+        }
