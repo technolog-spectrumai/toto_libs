@@ -29,11 +29,20 @@
 
 {% block content %}
 <section
-  :class="darkMode
-    ? 'bg-primary-bg-dark text-text-main-dark'
-    : 'bg-primary-bg-light text-text-main-light'"
+  x-data="{
+    openModal: false,
+    action: '',
+    formHtml: '',
+    async openEdit(url) {
+      const res = await fetch(url);
+      this.formHtml = await res.text();
+      this.action = url;
+      this.openModal = true;
+    }
+  }"
+  @edit-task.window="openEdit($event.detail.url)"
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
   class="px-6 py-12 min-h-screen transition-colors duration-300"
-  x-data="{ openModal: false }"
 >
 
   <div

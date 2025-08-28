@@ -1,52 +1,44 @@
-{# kanban/templates/kanban/_task.html #}
-<div 
-  x-data="{ open: false }"
+<div
+  x-data="{ open: false, editModal: false }"
   class="task relative overflow-hidden p-3 rounded border transition-shadow hover:shadow-md"
-  style="
-    background-color: {{ bg }};
-    color: {{ text }};
-  "
+  style="background-color: {{ bg }}; color: {{ text }};"
   draggable="true"
 >
-  {# overlay to tint the background #}
-  <div
-    class="absolute inset-0 bg-white bg-opacity-20"
-    x-show="darkMode"
-  ></div>
-  <div
-    class="absolute inset-0 bg-black bg-opacity-20"
-    x-show="!darkMode"
-  ></div>
+  <!-- overlays -->
+  <div class="absolute inset-0 bg-white bg-opacity-20" x-show="darkMode"></div>
+  <div class="absolute inset-0 bg-black bg-opacity-20" x-show="!darkMode"></div>
 
-  {# actual content sits above the overlay #}
+  <!-- content -->
   <div class="relative z-10">
     <div class="flex justify-between items-center">
       <div>
         <span class="font-bold task-title">{{ task.title }}</span>
         {% if task.assignee %}
           <span class="text-sm ml-2">
-            <i class="fa-solid fa-user"></i>
-            {{ task.assignee.username }}
+            <i class="fa-solid fa-user"></i> {{ task.assignee.username }}
           </span>
         {% endif %}
       </div>
-      <i
-        class="fa-solid transition-transform duration-300 cursor-pointer"
-        :class="open ? 'fa-chevron-up' : 'fa-chevron-down'"
-        @click="open = !open"
-      ></i>
+      <div class="flex items-center gap-2">
+        <i
+          class="fa-solid transition-transform duration-300 cursor-pointer"
+          :class="open ? 'fa-chevron-up' : 'fa-chevron-down'"
+          @click="open = !open"
+        ></i>
+      </div>
     </div>
 
     <div x-show="open" x-transition class="mt-2 text-sm space-y-1">
       <p>{{ task.description }}</p>
-
       {% if task.due_date %}
-        <p>
-          <i class="fa-regular fa-calendar"></i>
-          Due: {{ task.due_date }}
-        </p>
+        <p><i class="fa-regular fa-calendar"></i> Due: {{ task.due_date }}</p>
       {% endif %}
-
+      <button
+          @click="$dispatch('edit-task', { id: {{ task.id }}, url: '' })"
+          class="text-xs text-blue-600 hover:underline"
+        >
+          Edit
+      </button>
     </div>
   </div>
 </div>
