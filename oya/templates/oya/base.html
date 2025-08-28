@@ -33,7 +33,7 @@
       font-family: '{{ font.name }}', {{ font.style_family|default:"sans-serif" }};
     }
   </style>
-
+<script src="https://unpkg.com/htmx.org@1.9.2"></script>
   {% block start_script %}{% endblock %}
 </head>
 <body
@@ -57,5 +57,10 @@
   </footer>
 
   {% block end_script %}{% endblock %}
+<script>
+  document.body.addEventListener('htmx:configRequest', (event) => {
+    event.detail.headers['X-CSRFToken'] = '{{ csrf_token }}';
+  });
+</script>
 </body>
 </html>

@@ -1,33 +1,3 @@
-<div
-  x-show="openModal"
-  x-transition:enter="transition ease-out duration-300"
-  x-transition:enter-start="opacity-0 scale-95"
-  x-transition:enter-end="opacity-100 scale-100"
-  x-transition:leave="transition ease-in duration-200"
-  x-transition:leave-start="opacity-100 scale-100"
-  x-transition:leave-end="opacity-0 scale-95"
-  class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm"
->
-  <div
-    @click.away="openModal = false"
-    :class="darkMode
-      ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
-      : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
-    class="w-full max-w-md p-6 rounded-lg shadow-xl border transform transition-all space-y-6"
-  >
-    <div class="flex justify-between items-center">
-      <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-xl font-semibold">
-        New Task
-      </h2>
-      <button
-        @click="openModal = false"
-        class="text-gray-500 dark:text-gray-300 hover:text-gray-700 dark:hover:text-white text-2xl focus:outline-none"
-        aria-label="Close modal"
-      >
-        &times;
-      </button>
-    </div>
-
  <form method="POST" action="{{ action }}" enctype="multipart/form-data"
         :class="darkMode
           ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
@@ -64,6 +34,3 @@
       </button>
     </div>
   </form>
-
-  </div>
-</div>

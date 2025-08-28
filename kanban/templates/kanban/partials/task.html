@@ -33,12 +33,10 @@
       {% if task.due_date %}
         <p><i class="fa-regular fa-calendar"></i> Due: {{ task.due_date }}</p>
       {% endif %}
-      <button
-          @click="$dispatch('edit-task', { id: {{ task.id }}, url: '' })"
-          class="text-xs text-blue-600 hover:underline"
-        >
-          Edit
-      </button>
+        <a class="text-blue-600 hover:underline"
+         href="{% url 'kanban:edit_task' column.id %}">
+            <i class="fas fa-edit"> </i> Edit Task
+        </a>
     </div>
   </div>
 </div>

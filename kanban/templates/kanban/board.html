@@ -85,9 +85,10 @@
               {% include "kanban/partials/task.html" with task=task %}
             {% endfor %}
           </div>
-            <button @click="openModal = true" class="text-blue-600 hover:underline">
+            <a class="text-blue-600 hover:underline"
+             href="{% url 'kanban:add_task' column.id %}">
               + Add Task
-            </button>
+            </a>
         </div>
 
       {% endfor %}
@@ -105,18 +106,6 @@
       </a>
     </div>
   </div>
-<div
-  x-show="openModal"
-  x-transition:enter="transition ease-out duration-300"
-  x-transition:enter-start="opacity-0 scale-95"
-  x-transition:enter-end="opacity-100 scale-100"
-  x-transition:leave="transition ease-in duration-200"
-  x-transition:leave-start="opacity-100 scale-100"
-  x-transition:leave-end="opacity-0 scale-95"
-  class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm"
->
-    {% include "kanban/partials/form.html" with form=form %}
-</div>
 
 </section>
 
