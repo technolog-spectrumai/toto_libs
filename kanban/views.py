@@ -10,6 +10,10 @@ from django.views.generic.edit import FormView
 from django.shortcuts import get_object_or_404, render
 from .models import Column
 from .forms import TaskForm
+from django.views.generic.edit import DeleteView
+from django.urls import reverse_lazy
+from django.shortcuts import get_object_or_404
+
 
 
 class BoardDetailView(DetailView):
@@ -48,6 +52,31 @@ class TaskEditView(UpdateView):
     form_class = TaskForm
     template_name = "kanban/edit_task.html"
     pk_url_kwarg = "task_pk"  # assuming your URL uses task_pk
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context = PageProcessor().decorate(context, self.request)
+
+        task = self.get_object()
+        column = task.column
+        board = column.board
+
+        context.update({
+            "task": task,
+            "column": column,
+            "board": board,
+        })
+        return context
+
+
+class TaskDeleteView(DeleteView):
+    model = Task
+    template_name = "kanban/confirm_delete_task.html"
+    pk_url_kwarg = "task_pk"
+
+    def get_success_url(self):
+        task = self.get_object()
+        return reverse_lazy("kanban:view_board", kwargs={"board_pk": task.column.board.pk})
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)

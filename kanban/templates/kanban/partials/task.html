@@ -33,10 +33,24 @@
       {% if task.due_date %}
         <p><i class="fa-regular fa-calendar"></i> Due: {{ task.due_date }}</p>
       {% endif %}
-        <a class="text-blue-600 hover:underline"
-         href="{% url 'kanban:edit_task' column.id %}">
-            <i class="fas fa-edit"> </i> Edit Task
-        </a>
+        <div class="flex items-center gap-4 text-sm mt-2">
+          <a href="{% url 'kanban:edit_task' column.id %}"
+             :class="darkMode
+               ? 'text-accent-dark hover:underline'
+               : 'text-accent-light hover:underline'"
+             class="flex items-center gap-1 font-medium transition-opacity hover:opacity-80">
+            <i class="fas fa-edit"></i> Edit Task
+          </a>
+
+          <a href="{% url 'kanban:delete_task' task.id %}"
+             :class="darkMode
+               ? 'text-accent-dark hover:underline'
+               : 'text-accent-light hover:underline'"
+             class="flex items-center gap-1 font-medium transition-opacity hover:opacity-80"
+             @click.prevent="if(confirm('Delete this task?')) window.location.href = $el.href">
+            <i class="fas fa-trash-alt"></i> Delete Task
+          </a>
+        </div>
     </div>
   </div>
 </div>

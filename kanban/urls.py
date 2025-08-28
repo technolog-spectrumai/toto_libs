@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import BoardDetailView, TaskCreateView, TaskEditView
+from .views import BoardDetailView, TaskCreateView, TaskEditView, TaskDeleteView
 
 app_name = 'kanban'
 
@@ -19,4 +19,5 @@ urlpatterns = [
         TaskEditView.as_view(),
         name='edit_task'
     ),
+    path("task/<int:task_pk>/delete/", TaskDeleteView.as_view(), name="delete_task")
 ]
