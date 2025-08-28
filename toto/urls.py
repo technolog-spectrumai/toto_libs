@@ -21,6 +21,7 @@ urlpatterns = [
     path("resume/", include("resume.urls")),
     path("webfront/", include("webfront.urls")),
     path("documents/", include("documents.urls")),
+    path("kanban/", include("kanban.urls")),
     # path('.well-known/acme-challenge/<path:path>', serve, {
     #     'document_root': settings.ACME_CHALLENGE_ROOT,
     # }),
