@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import User, Group
 from colorfield.fields import ColorField
+from django.urls import reverse
 
 
 class Project(models.Model):
@@ -14,6 +15,8 @@ class Board(models.Model):
     project = models.ForeignKey(Project, on_delete=models.CASCADE)
     name = models.CharField(max_length=100)
 
+    def get_absolute_url(self):
+        return reverse('kanban:board-detail', kwargs={'pk': self.pk})
 
 class ColorMix(models.Model):
     name = models.CharField(max_length=50, unique=True)

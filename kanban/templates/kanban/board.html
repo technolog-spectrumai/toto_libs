@@ -33,6 +33,7 @@
     ? 'bg-primary-bg-dark text-text-main-dark'
     : 'bg-primary-bg-light text-text-main-light'"
   class="px-6 py-12 min-h-screen transition-colors duration-300"
+  x-data="{ openModal: false }"
 >
 
   <div
@@ -75,7 +76,11 @@
               {% include "kanban/partials/task.html" with task=task %}
             {% endfor %}
           </div>
+            <button @click="openModal = true" class="text-blue-600 hover:underline">
+              + Add Task
+            </button>
         </div>
+
       {% endfor %}
     </div>
 
@@ -91,5 +96,8 @@
       </a>
     </div>
   </div>
+
+   {% include "kanban/partials/form.html" with form=form %}
 </section>
+
 {% endblock %}

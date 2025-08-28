@@ -1,0 +1,20 @@
+{% extends "oya/base.html" %}
+{% block content %}
+<div class="container mt-5">
+  <div class="card shadow-sm">
+    <div class="card-header bg-primary text-white">
+      <h4 class="mb-0">{{ view.object|default_if_none:"New Task" }}</h4>
+    </div>
+    <div class="card-body">
+      <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <div class="d-flex justify-content-between mt-3">
+          <button type="submit" class="btn btn-success"> Save</button>
+          <a href="{{ view.get_success_url }}" class="btn btn-outline-secondary">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
