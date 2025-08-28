@@ -60,6 +60,7 @@ INSTALLED_APPS = [
     'encrypted_model_fields',
     'adminsortable2',
     'nested_admin',
+    'colorfield',
     "gervazy",
     "oya",
     "captcha",

@@ -1,48 +1,30 @@
+{# kanban/templates/kanban/board.html #}
 {% extends "oya/base.html" %}
 {% load static %}
 
 {% block title %}Kanban Board | {{ board.name }}{% endblock %}
 
 {% block start_script %}
-<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
-<script>
-  document.addEventListener('DOMContentLoaded', () => {
-    document.querySelectorAll('.sortable').forEach(list => {
-      new Sortable(list, {
-        group: {
-          name: 'tasks',
-          pull: true,
-          put: true
-        },
-        animation: 150,
-        ghostClass: 'bg-blue-100',
-        fallbackOnBody: true,
-        swapThreshold: 0.65,
-        onEnd: evt => {
-          const task = evt.item;
-          const newColumn = evt.to.id;
-          const taskTitle = task.querySelector('.task-title')?.innerText || 'Unknown Task';
-          console.log(`Moved "${taskTitle}" to ${newColumn}`);
-
-          // Optional: send AJAX to persist new column assignment
-          // Example:
-          // fetch('/update-task-column/', {
-          //   method: 'POST',
-          //   headers: {
-          //     'Content-Type': 'application/json',
-          //     'X-CSRFToken': getCookie('csrftoken') // if using Django
-          //   },
-          //   body: JSON.stringify({
-          //     task_id: task.dataset.id,
-          //     new_column_id: newColumn
-          //   })
-          // });
-        }
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      document.querySelectorAll(".sortable").forEach(list => {
+        new Sortable(list, {
+          group: { name: "tasks", pull: true, put: true },
+          animation: 150,
+          //ghostClass: "bg-blue-500",
+          fallbackOnBody: true,
+          swapThreshold: 0.65,
+          onEnd: evt => {
+            const taskEl   = evt.item;
+            const newColEl = evt.to;
+            // TODO: AJAX persist move
+            // e.g. fetch("/update-task-column/", …
+          }
+        });
       });
     });
-  });
-</script>
-
+  </script>
 {% endblock %}
 
 {% block content %}
@@ -50,64 +32,64 @@
   :class="darkMode
     ? 'bg-primary-bg-dark text-text-main-dark'
     : 'bg-primary-bg-light text-text-main-light'"
-  class="px-6 py-12 min-h-screen transition-colors duration-300">
+  class="px-6 py-12 min-h-screen transition-colors duration-300"
+>
 
   <div
     :class="darkMode
       ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
       : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
-    class="rounded-lg shadow-md border p-6 space-y-6 transition-colors duration-300">
+    class="rounded-lg shadow-md border p-6 space-y-6 transition-colors duration-300"
+  >
 
-    <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-2xl font-bold text-center">
+    <h2
+      :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+      class="text-2xl font-bold text-center"
+    >
       {{ board.name }}
     </h2>
-    <p class="text-center text-sm text-gray-500 dark:text-gray-400">
+
+    <p class="text-center text-sm text-gray-500">
       Project: {{ board.project.name }}
     </p>
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
       {% for column in columns %}
-        <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow">
+        <div
+          x-data
+          class="rounded-lg p-4 shadow transition-colors duration-300"
+          data-bg-light="{{ column.color_mix.bg_color_light|default:'#F3F4F6' }}"
+          data-text-light="{{ column.color_mix.text_color_light|default:'#111827' }}"
+          data-bg-dark="{{ column.color_mix.bg_color_dark|default:'#1a1a1a' }}"
+          data-text-dark="{{ column.color_mix.text_color_dark|default:'#ffffff' }}"
+          :style="
+            darkMode
+              ? `background-color: ${$el.dataset.bgDark}; color: ${$el.dataset.textDark}`
+              : `background-color: ${$el.dataset.bgLight}; color: ${$el.dataset.textLight}`
+          "
+        >
           <h3 class="text-lg font-semibold mb-4">{{ column.name }}</h3>
+
           <div id="column-{{ column.id }}" class="sortable space-y-4 min-h-[200px]">
             {% for task in column.task_set.all %}
-              <div x-data="{ open: false }"
-                   class="task bg-gray-50 dark:bg-gray-700 p-3 rounded border border-gray-200 dark:border-gray-600"
-               draggable="true">
-                <div class="flex justify-between items-center">
-                  <span class="font-bold">{{ task.title }}</span>
-                  <i :class="open ? 'fa-chevron-up' : 'fa-chevron-down'"
-                     class="fa-solid transition-transform duration-300 cursor-pointer"  @click="open = !open"></i>
-                </div>
-                <div x-show="open" x-transition class="mt-2 text-sm space-y-1">
-                  <p>{{ task.description }}</p>
-                  {% if task.assignee %}
-                    <p>👤 Assigned to: {{ task.assignee.username }}</p>
-                  {% endif %}
-                  {% if task.due_date %}
-                    <p>📅 Due: {{ task.due_date }}</p>
-                  {% endif %}
-                  <p>⭐ Story Points: {{ task.story_points }}</p>
-                  <p>{% if task.completed %}✅ Completed{% else %}⏳ In Progress{% endif %}</p>
-                </div>
-              </div>
+              {% include "kanban/partials/task.html" with task=task %}
             {% endfor %}
-
           </div>
         </div>
       {% endfor %}
     </div>
 
     <div class="text-center mt-8">
-      <a href="{% url 'home' %}"
-         :class="darkMode
-           ? 'bg-accent-dark text-primary-bg-dark'
-           : 'bg-accent-light text-primary-bg-light'"
-         class="inline-block px-4 py-2 rounded font-semibold hover:opacity-90 transition text-sm">
+      <a
+        href="{% url 'home' %}"
+        :class="darkMode
+          ? 'bg-accent-dark text-primary-bg-dark'
+          : 'bg-accent-light text-primary-bg-light'"
+        class="inline-block px-4 py-2 rounded font-semibold hover:opacity-90 transition text-sm"
+      >
         Back to Home
       </a>
     </div>
-
   </div>
 </section>
 {% endblock %}

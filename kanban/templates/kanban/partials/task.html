@@ -1,0 +1,66 @@
+{# kanban/templates/kanban/_task.html #}
+<div 
+  x-data="{ open: false }"
+  class="task relative overflow-hidden p-3 rounded border transition-shadow hover:shadow-md"
+  style="
+    background-color: {{ bg }};
+    color: {{ text }};
+  "
+  draggable="true"
+>
+  {# overlay to tint the background #}
+  <div
+    class="absolute inset-0 bg-white bg-opacity-20"
+    x-show="darkMode"
+  ></div>
+  <div
+    class="absolute inset-0 bg-black bg-opacity-20"
+    x-show="!darkMode"
+  ></div>
+
+  {# actual content sits above the overlay #}
+  <div class="relative z-10">
+    <div class="flex justify-between items-center">
+      <div>
+        <span class="font-bold task-title">{{ task.title }}</span>
+        {% if task.assignee %}
+          <span class="text-sm text-gray-700 dark:text-gray-300 ml-2">
+            <i class="fa-solid fa-user"></i>
+            {{ task.assignee.username }}
+          </span>
+        {% endif %}
+      </div>
+      <i
+        class="fa-solid transition-transform duration-300 cursor-pointer"
+        :class="open ? 'fa-chevron-up' : 'fa-chevron-down'"
+        @click="open = !open"
+      ></i>
+    </div>
+
+    <div x-show="open" x-transition class="mt-2 text-sm space-y-1">
+      <p>{{ task.description }}</p>
+
+      {% if task.due_date %}
+        <p>
+          <i class="fa-regular fa-calendar"></i>
+          Due: {{ task.due_date }}
+        </p>
+      {% endif %}
+
+      <p>
+        <i class="fa-solid fa-star"></i>
+        Story Points: {{ task.story_points }}
+      </p>
+
+      <p>
+        {% if task.completed %}
+          <i class="fa-solid fa-check-circle text-green-500"></i>
+          Completed
+        {% else %}
+          <i class="fa-solid fa-hourglass-half text-yellow-500"></i>
+          In Progress
+        {% endif %}
+      </p>
+    </div>
+  </div>
+</div>
