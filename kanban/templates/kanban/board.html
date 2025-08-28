@@ -6,21 +6,43 @@
 {% block start_script %}
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 <script>
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.sortable').forEach(list => {
+      new Sortable(list, {
+        group: {
+          name: 'tasks',
+          pull: true,
+          put: true
+        },
+        animation: 150,
+        ghostClass: 'bg-blue-100',
+        fallbackOnBody: true,
+        swapThreshold: 0.65,
+        onEnd: evt => {
+          const task = evt.item;
+          const newColumn = evt.to.id;
+          const taskTitle = task.querySelector('.task-title')?.innerText || 'Unknown Task';
+          console.log(`Moved "${taskTitle}" to ${newColumn}`);
 
-  document.querySelectorAll('.sortable').forEach(list => {
-    new Sortable(list, {
-      group: 'tasks',
-      animation: 150,
-      ghostClass: 'bg-blue-100',
-      onEnd: evt => {
-        const task = evt.item;
-        const newColumn = evt.to.id;
-        console.log(`Moved "${task.querySelector('.task-title').innerText}" to ${newColumn}`);
-        // Optional: send AJAX to persist new column assignment
-      }
+          // Optional: send AJAX to persist new column assignment
+          // Example:
+          // fetch('/update-task-column/', {
+          //   method: 'POST',
+          //   headers: {
+          //     'Content-Type': 'application/json',
+          //     'X-CSRFToken': getCookie('csrftoken') // if using Django
+          //   },
+          //   body: JSON.stringify({
+          //     task_id: task.dataset.id,
+          //     new_column_id: newColumn
+          //   })
+          // });
+        }
+      });
     });
   });
 </script>
+
 {% endblock %}
 
 {% block content %}
@@ -49,7 +71,9 @@
           <h3 class="text-lg font-semibold mb-4">{{ column.name }}</h3>
           <div id="column-{{ column.id }}" class="sortable space-y-4 min-h-[200px]">
             {% for task in column.task_set.all %}
-              <div x-data="{ open: false }" class="task bg-gray-50 dark:bg-gray-700 p-3 rounded border border-gray-200 dark:border-gray-600">
+              <div x-data="{ open: false }"
+                   class="task bg-gray-50 dark:bg-gray-700 p-3 rounded border border-gray-200 dark:border-gray-600"
+               draggable="true">
                 <div class="flex justify-between items-center">
                   <span class="font-bold">{{ task.title }}</span>
                   <i :class="open ? 'fa-chevron-up' : 'fa-chevron-down'"
