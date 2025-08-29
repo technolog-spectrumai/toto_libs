@@ -94,9 +94,7 @@ class Command(BaseCommand):
                 description='This is a sample task.',
                 assignee=user,
                 due_date=timezone.now().date() + timedelta(days=i),
-                completed=False,
-                position=i,
-                story_points=(i % 3) + 1
+                position=i
             )
             tasks.append(task)
 

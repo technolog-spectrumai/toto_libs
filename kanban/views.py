@@ -1,5 +1,4 @@
 from django.views.generic import DetailView, CreateView, UpdateView
-from django.shortcuts import get_object_or_404
 from kanban.models import Board, Column, Task
 from kanban.page import PageProcessor
 from django.urls import reverse
@@ -7,7 +6,7 @@ from kanban.forms import TaskForm
 from oya.models import Theme
 # views.py
 from django.views.generic.edit import FormView
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, render, redirect
 from .models import Column
 from .forms import TaskForm
 from django.views.generic.edit import DeleteView
@@ -46,6 +45,17 @@ class TaskCreateView(FormView):
         })
         return context
 
+    def form_valid(self, form):
+        column = get_object_or_404(Column, pk=self.kwargs["column_pk"])
+        task = form.save(commit=False)
+        task.column = column
+        task.save()
+        return super().form_valid(form)
+
+    def get_success_url(self):
+        column = get_object_or_404(Column, pk=self.kwargs["column_pk"])
+        return reverse("kanban:board", kwargs={"pk": column.board.pk})
+
 
 class TaskEditView(UpdateView):
     model = Task
@@ -76,7 +86,7 @@ class TaskDeleteView(DeleteView):
 
     def get_success_url(self):
         task = self.get_object()
-        return reverse_lazy("kanban:view_board", kwargs={"board_pk": task.column.board.pk})
+        return reverse_lazy("kanban:board", kwargs={"board_pk": task.column.board.pk})
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -93,3 +103,15 @@ class TaskDeleteView(DeleteView):
         })
         return context
 
+def confirm_delete_task(request, board_pk, task_pk):
+    board = get_object_or_404(Board, pk=board_pk)
+    task = get_object_or_404(Task, pk=task_pk)
+    context = {
+        'board': board,
+        'task': task,
+    }
+    context = PageProcessor().decorate(context, request)
+    if request.method == "POST":
+        task.delete()
+        return redirect('kanban:board', pk=board.pk)
+    return render(request, 'kanban/confirm_delete.html', context)
