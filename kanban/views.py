@@ -126,7 +126,6 @@ def move_task(request, task_id):
             return JsonResponse({"error": "Missing column_id"}, status=400)
 
         new_order = data.get("order")
-        print("--->", new_order)
         if new_order is None:
             return JsonResponse({"error": "Missing order"}, status=400)
 
