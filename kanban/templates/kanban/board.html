@@ -32,23 +32,25 @@ function handleTaskDrop(evt) {
 
   const taskId = taskEl.dataset.taskId;
   const newColumnId = newColEl.dataset.columnId;
+  const order = taskEl.dataset.order;
+  //alert(order);
 
   if (taskId && newColumnId) {
-    sendTaskMoveRequest(taskId, newColumnId);
+    sendTaskMoveRequest(taskId, newColumnId, order);
   } else {
     console.warn("Missing taskId or columnId");
   }
 }
 
 // Send AJAX request to persist move
-function sendTaskMoveRequest(taskId, columnId) {
+function sendTaskMoveRequest(taskId, columnId, order) {
   fetch(`/kanban/task/${taskId}/move/`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "X-CSRFToken": getCookie("csrftoken"),
     },
-    body: JSON.stringify({ column_id: columnId })
+    body: JSON.stringify({ column_id: columnId, order: order })
   })
   .then(res => {
     console.log(res);

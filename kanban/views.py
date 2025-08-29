@@ -124,10 +124,23 @@ def move_task(request, task_id):
         new_column_id = data.get("column_id")
         if not new_column_id:
             return JsonResponse({"error": "Missing column_id"}, status=400)
+
+        new_order = data.get("order")
+        print("--->", new_order)
+        if new_order is None:
+            return JsonResponse({"error": "Missing order"}, status=400)
+
         task = get_object_or_404(Task, pk=task_id)
         new_column = get_object_or_404(Column, pk=new_column_id)
 
         task.column = new_column
+        # Shift other tasks in the column
+        siblings = Task.objects.filter(column=new_column).exclude(pk=task.pk).order_by("position")
+        new_order = int(new_order)
+        for i, sibling in enumerate(siblings):
+            sibling.position = i if i < new_order else i + 1
+            sibling.save()
+        task.position = new_order
         task.save()
 
         return JsonResponse({
