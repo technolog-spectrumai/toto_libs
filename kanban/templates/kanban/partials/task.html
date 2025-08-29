@@ -1,6 +1,7 @@
 <div
   x-data="{ open: false, editModal: false }"
   class="task relative overflow-hidden p-3 rounded border transition-shadow hover:shadow-md"
+  data-task-id="{{ task.id }}"
   style="background-color: {{ bg }}; color: {{ text }};"
   draggable="true"
 >

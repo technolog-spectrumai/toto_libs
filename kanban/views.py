@@ -4,15 +4,15 @@ from kanban.page import PageProcessor
 from django.urls import reverse
 from kanban.forms import TaskForm
 from oya.models import Theme
-# views.py
 from django.views.generic.edit import FormView
 from django.shortcuts import get_object_or_404, render, redirect
 from .models import Column
 from .forms import TaskForm
 from django.views.generic.edit import DeleteView
 from django.urls import reverse_lazy
-from django.shortcuts import get_object_or_404
-
+from django.views.decorators.http import require_POST
+from django.http import JsonResponse
+import json
 
 
 class BoardDetailView(DetailView):
@@ -115,3 +115,28 @@ def confirm_delete_task(request, board_pk, task_pk):
         task.delete()
         return redirect('kanban:board', pk=board.pk)
     return render(request, 'kanban/confirm_delete.html', context)
+
+
+@require_POST
+def move_task(request, task_id):
+    try:
+        data = json.loads(request.body)
+        new_column_id = data.get("column_id")
+        if not new_column_id:
+            return JsonResponse({"error": "Missing column_id"}, status=400)
+        task = get_object_or_404(Task, pk=task_id)
+        new_column = get_object_or_404(Column, pk=new_column_id)
+
+        task.column = new_column
+        task.save()
+
+        return JsonResponse({
+            "status": "success",
+            "task_id": task.id,
+            "new_column_id": new_column.id
+        })
+
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)

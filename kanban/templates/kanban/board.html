@@ -7,23 +7,77 @@
 {% block start_script %}
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
   <script>
-    document.addEventListener("DOMContentLoaded", () => {
-      document.querySelectorAll(".sortable").forEach(list => {
-        new Sortable(list, {
-          group: { name: "tasks", pull: true, put: true },
-          animation: 150,
-          //ghostClass: "bg-blue-500",
-          fallbackOnBody: true,
-          swapThreshold: 0.65,
-          onEnd: evt => {
-            const taskEl   = evt.item;
-            const newColEl = evt.to;
-            // TODO: AJAX persist move
-            // e.g. fetch("/update-task-column/", …
-          }
-        });
-      });
+
+document.addEventListener("DOMContentLoaded", () => {
+  initSortableLists();
+});
+
+// Initialize Sortable.js on all lists
+function initSortableLists() {
+  document.querySelectorAll(".sortable").forEach(list => {
+    new Sortable(list, {
+      group: { name: "tasks", pull: true, put: true },
+      animation: 150,
+      fallbackOnBody: true,
+      swapThreshold: 0.65,
+      onEnd: handleTaskDrop
     });
+  });
+}
+
+// Handle drop event and trigger AJAX
+function handleTaskDrop(evt) {
+  const taskEl = evt.item;
+  const newColEl = evt.to;
+
+  const taskId = taskEl.dataset.taskId;
+  const newColumnId = newColEl.dataset.columnId;
+
+  if (taskId && newColumnId) {
+    sendTaskMoveRequest(taskId, newColumnId);
+  } else {
+    console.warn("Missing taskId or columnId");
+  }
+}
+
+// Send AJAX request to persist move
+function sendTaskMoveRequest(taskId, columnId) {
+  fetch(`/kanban/task/${taskId}/move/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRFToken": getCookie("csrftoken"),
+    },
+    body: JSON.stringify({ column_id: columnId })
+  })
+  .then(res => {
+    console.log(res);
+    if (!res.ok) throw new Error("Failed to update task position");
+    return res.json();
+  })
+  .then(data => {
+    console.log("✅ Task moved:", data);
+  })
+  .catch(err => {
+    console.error("❌ Error moving task:", err);
+  });
+}
+
+// CSRF token helper
+function getCookie(name) {
+  let cookieValue = null;
+  if (document.cookie && document.cookie !== "") {
+    const cookies = document.cookie.split(";");
+    for (let i = 0; i < cookies.length; i++) {
+      const cookie = cookies[i].trim();
+      if (cookie.substring(0, name.length + 1) === name + "=") {
+        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+        break;
+      }
+    }
+  }
+  return cookieValue;
+}
   </script>
 {% endblock %}
 
@@ -80,7 +134,7 @@
         >
           <h3 class="text-lg font-semibold mb-4">{{ column.name }}</h3>
 
-          <div id="column-{{ column.id }}" class="sortable space-y-4 min-h-[200px]">
+          <div id="column-{{ column.id }}" class="sortable space-y-4 min-h-[200px]" data-column-id="{{ column.id }}">
             {% for task in column.task_set.all %}
               {% include "kanban/partials/task.html" with task=task %}
             {% endfor %}
