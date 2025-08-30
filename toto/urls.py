@@ -1,11 +1,10 @@
 from django.contrib import admin
-from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from django.shortcuts import redirect
-from django.views.static import serve
 from django.views.generic import RedirectView
 from django.urls import path, include, reverse_lazy
+
 
 admin.site.site_header = 'Nasza Aplikacja'
 admin.site.index_title = 'Nasze Sprawy'

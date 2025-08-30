@@ -27,6 +27,7 @@ distro==1.9.0
 Django==4.2.23
 django-admin-sortable2==2.2.8
 django-celery-beat==2.8.1
+django-colorfield==0.14.0
 django-cors-headers==4.7.0
 django-encrypted-model-fields==0.6.5
 django-import-export==4.3.8
