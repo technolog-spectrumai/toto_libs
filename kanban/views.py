@@ -15,9 +15,12 @@ from django.views.decorators.http import require_POST
 from django.http import JsonResponse
 import json
 from django.contrib.auth.models import AnonymousUser
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.contrib.auth.decorators import login_required
 
 
-class BoardDetailView(DetailView):
+
+class BoardDetailView(LoginRequiredMixin, DetailView):
     model = Board
     template_name = 'kanban/board.html'
     context_object_name = 'board'
@@ -31,7 +34,7 @@ class BoardDetailView(DetailView):
         return context
 
 
-class TaskCreateView(FormView):
+class TaskCreateView(LoginRequiredMixin, FormView):
     form_class = TaskForm
     template_name = "kanban/edit_task.html"
 
@@ -59,7 +62,7 @@ class TaskCreateView(FormView):
         return reverse("kanban:board", kwargs={"pk": column.board.pk})
 
 
-class TaskEditView(UpdateView):
+class TaskEditView(LoginRequiredMixin, UpdateView):
     model = Task
     form_class = TaskForm
     template_name = "kanban/edit_task.html"
@@ -83,8 +86,7 @@ class TaskEditView(UpdateView):
     def get_success_url(self):
         return reverse("kanban:board", kwargs={"pk": self.object.column.board.pk})
 
-
-class TaskDeleteView(DeleteView):
+class TaskDeleteView(LoginRequiredMixin, DeleteView):
     model = Task
     template_name = "kanban/confirm_delete_task.html"
     pk_url_kwarg = "task_pk"
@@ -109,6 +111,7 @@ class TaskDeleteView(DeleteView):
         return context
 
 
+@login_required
 def confirm_delete_task(request, board_pk, task_pk):
     board = get_object_or_404(Board, pk=board_pk)
     task = get_object_or_404(Task, pk=task_pk)
@@ -160,7 +163,7 @@ def move_task(request, task_id):
         return JsonResponse({"error": str(e)}, status=500)
 
 
-class BoardListView(ListView):
+class BoardListView(LoginRequiredMixin, ListView):
     model = Board
     template_name = 'kanban/board_list.html'
     context_object_name = 'boards'
