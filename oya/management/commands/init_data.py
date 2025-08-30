@@ -105,15 +105,6 @@ class Command(BaseCommand):
         call_command("create_platform", *create_platform_args)
         self.stdout.write(self.style.SUCCESS("Platform created."))
 
-        self.stdout.write(self.style.NOTICE("Creating default dashboard blocks..."))
-        call_command("create_dashboard_block", "Forum",
-                     "--description=Engage in discussions with the community.",
-                     "--icon=fas fa-comments", "--link=/nest/not-implemented/")
-        call_command("create_dashboard_block", "Profile",
-                     "--description=Manage your personal information and settings.",
-                     "--icon=fas fa-user", "--link=/nest/not-implemented/")
-        self.stdout.write(self.style.SUCCESS("Dashboard blocks created successfully."))
-
     def get_theme(self, name):
         """Fetches the latest Theme ID to be used in platform creation"""
         from oya.models import Theme  # Import locally to avoid circular imports
