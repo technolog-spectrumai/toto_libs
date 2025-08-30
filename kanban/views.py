@@ -1,4 +1,5 @@
-from django.views.generic import DetailView, CreateView, UpdateView
+from django.views.generic import DetailView, CreateView, UpdateView, ListView
+from django.db.models import Q
 from kanban.models import Board, Column, Task
 from kanban.page import PageProcessor
 from django.urls import reverse
@@ -156,3 +157,21 @@ def move_task(request, task_id):
         return JsonResponse({"error": "Invalid JSON"}, status=400)
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
+
+
+class BoardListView(ListView):
+    model = Board
+    template_name = 'kanban/board_list.html'
+    context_object_name = 'boards'
+
+    def get_queryset(self):
+        # Get boards where the user is either the owner or a collaborator
+        return Board.objects.filter(
+            Q(project__owner=self.request.user) |
+            Q(project__collaborators=self.request.user)
+        ).distinct().select_related('project')
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context = PageProcessor().decorate(context, self.request)
+        return context

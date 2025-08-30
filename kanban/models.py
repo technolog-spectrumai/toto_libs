@@ -18,6 +18,7 @@ class Board(models.Model):
     def get_absolute_url(self):
         return reverse('kanban:board-detail', kwargs={'pk': self.pk})
 
+
 class ColorMix(models.Model):
     name = models.CharField(max_length=50, unique=True)
 

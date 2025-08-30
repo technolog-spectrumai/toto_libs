@@ -1,11 +1,15 @@
 from django.urls import path
-from .views import BoardDetailView, TaskCreateView, TaskEditView, TaskDeleteView, confirm_delete_task, move_task
+from .views import (
+    BoardDetailView, BoardListView, TaskCreateView, 
+    TaskEditView, TaskDeleteView, confirm_delete_task, move_task
+)
 
 app_name = 'kanban'
 
 urlpatterns = [
+    path('', BoardListView.as_view(), name='board_list'),
     path('board/<int:pk>/', BoardDetailView.as_view(), name='board'),
-
+    
     # Create a new task under column with pk=column_pk
     path(
         'column/<int:column_pk>/task/add/',
