@@ -4,6 +4,8 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.shortcuts import redirect
 from django.views.static import serve
+from django.views.generic import RedirectView
+from django.urls import path, include, reverse_lazy
 
 admin.site.site_header = 'Nasza Aplikacja'
 admin.site.index_title = 'Nasze Sprawy'
@@ -15,6 +17,13 @@ urlpatterns = [
     path("nakamori/", include("nakamori.urls", namespace='nakamori')),
     path('captcha/', include('captcha.urls')),
     path(r'^_nested_admin/', include('nested_admin.urls')),
+    path(
+        '',
+        RedirectView.as_view(
+            url=reverse_lazy('nest:root'),
+            permanent=not settings.DEBUG
+        )
+    ),
     path('', lambda request: redirect('nest/root')),
     path("gervazy/", include("gervazy.urls")),
     path("memo/", include("memo.urls")),
