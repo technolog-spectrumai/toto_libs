@@ -6,6 +6,7 @@ from django.apps import apps
 import os
 from io import StringIO
 from colorfield.fields import ColorField
+import sys
 
 
 class Font(models.Model):
@@ -247,6 +248,7 @@ class AppIngress(models.Model):
                 out = StringIO()
                 call_command(f"ingress_{self.app_name}", **self.args, stdout=out, stderr=out)
                 output = out.getvalue()
+                sys.stdout.write(output)
                 return f"Success: Ran ingress for {self.app_name}", 0
             else:
                 return f"No ingress command found for {self.app_name}", -1

@@ -11,14 +11,14 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
-            '--themes-dir',
+            '--dir',
             type=str,
             default=self.DEFAULT_THEMES_DIR,
             help=f"Path to the directory containing theme JSON files (default: {self.DEFAULT_THEMES_DIR})"
         )
 
     def handle(self, *args, **options):
-        themes_dir = options['themes_dir']
+        themes_dir = options['dir']
 
         if not os.path.isdir(themes_dir):
             raise CommandError(f"Provided path is not a directory: {themes_dir}")
