@@ -15,6 +15,11 @@ class Command(BaseCommand):
             type=str,
             help='Password for the admin user'
         )
+        parser.add_argument(
+            '--reset',
+            action='store_true',
+            help='Flush the database before running migrations'
+        )
 
     def auto_create_migrations(self):
         # Set up Django environment
@@ -36,7 +41,8 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
 
-        #self.clear_db()
+        if options.get('reset'):
+            self.clear_db()
 
         self.stdout.write(self.style.NOTICE("Running migrations..."))
         call_command("makemigrations")
@@ -52,14 +58,20 @@ class Command(BaseCommand):
         call_command("init_data", password=admin_password)
         self.stdout.write(self.style.SUCCESS(f"Installation completed."))
 
-    # def clear_db(self):
-    #     """Flushes all data from the database without deleting the file"""
-    #     db_path = settings.DATABASES.get("default", {}).get("NAME")
-    #     if db_path and os.path.exists(db_path):
-    #         self.stdout.write(self.style.WARNING("Flushing database..."))
-    #         call_command('flush', '--noinput')
-    #         self.stdout.write(self.style.SUCCESS("Database flushed successfully."))
+    def clear_db(self):
+        """Deletes the SQLite database file if it exists, otherwise flushes the DB"""
+        db_config = settings.DATABASES.get("default", {})
+        db_path = db_config.get("NAME")
+        db_engine = db_config.get("ENGINE", "")
 
+        if db_engine == "django.db.backends.sqlite3" and db_path and os.path.exists(db_path):
+            self.stdout.write(self.style.WARNING(f"Deleting SQLite database file: {db_path}"))
+            os.remove(db_path)
+            self.stdout.write(self.style.SUCCESS("SQLite database file deleted successfully."))
+        else:
+            self.stdout.write(self.style.WARNING("Flushing database..."))
+            call_command('flush', '--noinput')
+            self.stdout.write(self.style.SUCCESS("Database flushed successfully."))
 
     def auto_create_migrations(self):
         # Set up Django environment
@@ -78,9 +90,3 @@ class Command(BaseCommand):
                     call_command('makemigrations', app)
             except Exception as e:
                 print(f"Skipping {app}: {e}")
-
-    # def clear_db(self):
-    #     """Flushes all data from the database without deleting the file"""
-    #     self.stdout.write(self.style.WARNING("Flushing database..."))
-    #     call_command('flush', '--noinput')
-    #     self.stdout.write(self.style.SUCCESS("Database flushed successfully."))
