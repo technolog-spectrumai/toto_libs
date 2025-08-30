@@ -2,19 +2,22 @@ import os
 import json
 from django.core.management.base import BaseCommand, CommandError
 from django.core.management import call_command
+from django.conf import settings
 
 
 class Command(BaseCommand):
     help = "Ingress themes from a directory of JSON files"
 
-    DEFAULT_THEMES_DIR = os.path.join(os.path.dirname(__file__), '../../../../data/themes')
-
     def add_arguments(self, parser):
+        if settings.DEBUG:
+            default_dir = os.path.join(os.path.dirname(__file__), '../../../../data/themes')
+        else:
+            default_dir = os.path.join(os.path.dirname(__file__), '../../../data/themes')
         parser.add_argument(
             '--dir',
             type=str,
-            default=self.DEFAULT_THEMES_DIR,
-            help=f"Path to the directory containing theme JSON files (default: {self.DEFAULT_THEMES_DIR})"
+            default=default_dir,
+            help=f"Path to the directory containing theme JSON files (default: {default_dir})"
         )
 
     def handle(self, *args, **options):
