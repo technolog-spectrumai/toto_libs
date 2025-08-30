@@ -92,7 +92,7 @@ class Command(BaseCommand):
         THEMES_DIR = os.path.join(os.path.dirname(__file__), '../../../../data/themes')
         self.create_theme_from_file(os.path.join(THEMES_DIR, "spectre.json"))
         self.stdout.write(self.style.SUCCESS("Fonts and theme created."))
-        theme = self.get_theme("ElegantSpectrum")
+        theme = self.get_theme("Elegant Spectrum")
         if theme is None:
             self.stderr.write(self.style.ERROR("Theme not found. Initialization aborted."))
             return

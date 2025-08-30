@@ -14,6 +14,7 @@ from django.urls import reverse_lazy
 from django.views.decorators.http import require_POST
 from django.http import JsonResponse
 import json
+from django.contrib.auth.models import AnonymousUser
 
 
 class BoardDetailView(DetailView):
@@ -165,10 +166,13 @@ class BoardListView(ListView):
     context_object_name = 'boards'
 
     def get_queryset(self):
-        # Get boards where the user is either the owner or a collaborator
+        user = self.request.user
+        if isinstance(user, AnonymousUser) or not user.is_authenticated:
+            return Board.objects.none()  # Return empty queryset for anonymous users
+
         return Board.objects.filter(
-            Q(project__owner=self.request.user) |
-            Q(project__collaborators=self.request.user)
+            Q(project__owner=user) |
+            Q(project__collaborators=user)
         ).distinct().select_related('project')
 
     def get_context_data(self, **kwargs):
