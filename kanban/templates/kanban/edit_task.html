@@ -1,4 +1,4 @@
-{# kanban/templates/kanban/board.html #}
+{# kanban/templates/kanban/edit_task.html #}
 {% extends "oya/base.html" %}
 {% load static %}
 
@@ -23,9 +23,18 @@
     class="w-full max-w-md p-6 rounded-lg shadow-xl border transform transition-all space-y-6"
   >
     <div class="flex justify-between items-center">
-      <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-xl font-semibold">
-        New Task
-      </h2>
+      <div>
+        <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-xl font-semibold">
+          {% if task %}
+            Edit Task
+          {% else %}
+            New Task
+          {% endif %}
+        </h2>
+        <p class="text-sm text-gray-500 dark:text-gray-400">
+          Column: {{ column.name }} (ID: {{ column.id }})
+        </p>
+      </div>
       <a href="{% url 'kanban:board' board.id %}"
         class="text-gray-500 dark:text-gray-300 hover:text-gray-700 dark:hover:text-white text-2xl focus:outline-none"
         aria-label="Close modal"
@@ -40,5 +49,3 @@
 </div>
 
 {% endblock %}
-
-

@@ -78,6 +78,9 @@ class TaskEditView(UpdateView):
         })
         return context
 
+    def get_success_url(self):
+        return reverse("kanban:board", kwargs={"pk": self.object.column.board.pk})
+
 
 class TaskDeleteView(DeleteView):
     model = Task
@@ -102,6 +105,7 @@ class TaskDeleteView(DeleteView):
             "board": board,
         })
         return context
+
 
 def confirm_delete_task(request, board_pk, task_pk):
     board = get_object_or_404(Board, pk=board_pk)

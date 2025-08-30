@@ -14,7 +14,7 @@
   <div class="relative z-10">
     <div class="flex justify-between items-center">
       <div>
-        <span class="font-bold task-title">#{{ task.position }} - {{ task.title }}</span>
+        <span class="font-bold task-title">{{ task.title }}</span>
         {% if task.assignee %}
           <span class="text-sm ml-2">
             <i class="fa-solid fa-user"></i> {{ task.assignee.username }}
@@ -36,7 +36,7 @@
         <p><i class="fa-regular fa-calendar"></i> Due: {{ task.due_date }}</p>
       {% endif %}
         <div class="flex items-center gap-4 text-sm mt-2">
-          <a href="{% url 'kanban:edit_task' column.id %}"
+          <a href="{% url 'kanban:edit_task' task.id %}"
              :class="darkMode
                ? 'text-accent-dark hover:underline'
                : 'text-accent-light hover:underline'"

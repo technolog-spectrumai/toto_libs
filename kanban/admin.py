@@ -14,12 +14,18 @@ class BoardAdmin(admin.ModelAdmin):
     list_display = ('name', 'project')
     search_fields = ('name',)
 
+class TaskInline(admin.TabularInline):
+    model = Task
+    extra = 1
+    fields = ('title', 'assignee', 'due_date', 'position')
+    ordering = ('position',)
+
 @admin.register(Column)
 class ColumnAdmin(admin.ModelAdmin):
     list_display = ('name', 'board', 'position', 'color_mix')
     list_filter = ('board',)
     ordering = ('position',)
-
+    inlines = [TaskInline]
 
 @admin.register(ColorMix)
 class ColorMixAdmin(admin.ModelAdmin):
