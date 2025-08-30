@@ -27,7 +27,8 @@ class Command(BaseCommand):
         font_data = {
             "Roboto": "https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap",
             "Playfair Display": "https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&display=swap",
-            "Orbitron": "https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap"
+            "Orbitron": "https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap",
+            "Cormorant Garamond": "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;700&display=swap"
         }
 
         for name, cdn in font_data.items():
