@@ -3,7 +3,8 @@ from django.db.models import JSONField
 from django_json_widget.widgets import JSONEditorWidget
 from django.urls import reverse
 from django.utils.html import format_html
-from .models import Language, StaticPage, DynamicPage, Image
+from django.template import TemplateDoesNotExist
+from .models import Language, StaticPage, DynamicPage, Image, PageGenerator
 
 
 @admin.register(Language)
@@ -19,11 +20,19 @@ class StaticPageAdmin(admin.ModelAdmin):
     list_filter = ('language',)
 
 
+@admin.register(PageGenerator)
+class PageGeneratorAdmin(admin.ModelAdmin):
+    list_display = ('name', 'slug')
+    search_fields = ('name', 'slug')
+
+
 @admin.register(DynamicPage)
 class DynamicPageAdmin(admin.ModelAdmin):
     formfield_overrides = {
         JSONField: {'widget': JSONEditorWidget}
     }
+
+    readonly_fields = ('render_check',)
 
     def full_url(self, obj):
         try:
@@ -34,9 +43,25 @@ class DynamicPageAdmin(admin.ModelAdmin):
 
     full_url.short_description = "Page URL"
 
-    list_display = ('name', 'slug', 'language', 'template_key', 'full_url')
-    search_fields = ('name', 'slug', 'template_key')
-    list_filter = ('language', 'template_key')
+    def generator_name(self, obj):
+        return obj.generator.name
+    generator_name.short_description = "Generator"
+
+    def render_check(self, obj):
+        try:
+            obj.render_to_string()
+            return format_html('<span style="color:green;">Rendered successfully</span>')
+        except TemplateDoesNotExist as e:
+            return format_html('<span style="color:red;">Template not found: {}</span>', str(e))
+        except Exception as e:
+            return format_html('<span style="color:red;">Error: {}</span>', str(e))
+
+    render_check.short_description = "Render Status"
+
+    list_display = ('name', 'slug', 'language', 'generator_name', 'full_url')
+    search_fields = ('name', 'slug', 'generator__name')
+    list_filter = ('language', 'generator')
+
 
 
 @admin.register(Image)

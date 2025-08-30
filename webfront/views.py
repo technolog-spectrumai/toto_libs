@@ -1,4 +1,3 @@
-
 from .models import StaticPage, DynamicPage, Language, Image
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
@@ -14,11 +13,15 @@ def static_page_view(request, slug, language):
 def dynamic_page_view(request, slug, lang):
     language = get_object_or_404(Language, slug=lang)
     page = get_object_or_404(DynamicPage, slug=slug, language=language)
+
     try:
-        rendered_template = render(request, f"webfront/{page.template_key}.html", page.config_json)
-    except Exception:
-        raise Http404("Template rendering failed.")
-    return rendered_template
+        html = page.render_to_string()
+        return HttpResponse(html)
+    except Http404 as e:
+        raise e
+    except Exception as e:
+        raise Http404(f"Unexpected error during rendering: {e}")
+
 
 def image_view(request, slug):
     image = get_object_or_404(Image, slug=slug)
