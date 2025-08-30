@@ -1,6 +1,6 @@
 import json
 from django.core.management.base import BaseCommand
-from oya.models import Font, Theme
+from oya.models import Font, Theme, ColorMix
 
 
 class Command(BaseCommand):
@@ -32,10 +32,12 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.ERROR("Invalid JSON for --header"))
                 return
 
+        color_mix = self.get_or_create_color_mix(options['name'], color_data)
+
         theme, created = Theme.objects.get_or_create(
             name=options['name'],
             defaults={
-                "theme": {"colors": color_data},
+                "color_mix": color_mix,
                 "font": font,
                 **({"header": header_data} if header_data else {})
             }
@@ -44,8 +46,14 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(f"{'Created' if created else 'Already exists'} Theme: {options['name']}"))
 
     def get_font(self, name):
-        """Fetches a Font object by name"""
         try:
             return Font.objects.get(name=name)
         except Font.DoesNotExist:
             return None
+
+    def get_or_create_color_mix(self, name, colors):
+        """Creates a ColorMix from a flat color dict"""
+        color_fields = {f.name for f in ColorMix._meta.fields if isinstance(f, (ColorMix._meta.get_field('accent_1').__class__))}
+        color_kwargs = {k.replace('-', '_'): v for k, v in colors.items() if k.replace('-', '_') in color_fields}
+
+        return ColorMix.objects.get_or_create(name=name, defaults=color_kwargs)[0]

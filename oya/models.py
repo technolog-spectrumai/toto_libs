@@ -5,6 +5,8 @@ from django.core.management import call_command
 from django.apps import apps
 import os
 from io import StringIO
+from colorfield.fields import ColorField
+
 
 class Font(models.Model):
     FONT_FAMILY_CHOICES = [
@@ -82,6 +84,38 @@ _HEADER = {
 }
 
 
+class ColorMix(models.Model):
+    name = models.CharField(
+        max_length=64,
+        unique=True,
+        help_text="Name of the color mix"
+    )
+
+    # Light mode colors
+    primary_bg_light = ColorField(default="#FFFFFF")
+    header_bg_light = ColorField(default="#FFFFFF")
+    appbar_bg_light = ColorField(default="#FFFFFF")
+    bubble_bg_light = ColorField(default="#FFFFFF")
+    text_main_light = ColorField(default="#000000")
+    accent_light = ColorField(default="#FF4081")
+    warn_light = ColorField(default="#FFC107")
+
+    # Dark mode colors
+    primary_bg_dark = ColorField(default="#121212")
+    header_bg_dark = ColorField(default="#1F1F1F")
+    appbar_bg_dark = ColorField(default="#1F1F1F")
+    bubble_bg_dark = ColorField(default="#2C2C2C")
+    text_main_dark = ColorField(default="#FFFFFF")
+    accent_dark = ColorField(default="#FF4081")
+    warn_dark = ColorField(default="#FF5722")
+
+    # Accent colors
+    accent_1 = ColorField(default="#03A9F4")
+    accent_2 = ColorField(default="#4CAF50")
+
+    def __str__(self):
+        return self.name
+
 
 class Theme(models.Model):
 
@@ -93,10 +127,11 @@ class Theme(models.Model):
         help_text="Name of the theme"
     )
 
-    theme = JSONField(
-        schema=_SCHEMA,
-        default={},
-        help_text="Tailwind classes for page-level layout elements"
+    color_mix = models.ForeignKey(
+        ColorMix,
+        on_delete=models.CASCADE,
+        related_name="themes",
+        help_text="Color palette used for this theme"
     )
 
     font = models.ForeignKey(
@@ -116,6 +151,29 @@ class Theme(models.Model):
 
     def __str__(self):
         return self.name
+
+    @property
+    def theme(self):
+        return {
+            "colors": {
+                "primary-bg-light": self.color_mix.primary_bg_light,
+                "header-bg-light": self.color_mix.header_bg_light,
+                "appbar-bg-light": self.color_mix.appbar_bg_light,
+                "bubble-bg-light": self.color_mix.bubble_bg_light,
+                "text-main-light": self.color_mix.text_main_light,
+                "primary-bg-dark": self.color_mix.primary_bg_dark,
+                "header-bg-dark": self.color_mix.header_bg_dark,
+                "appbar-bg-dark": self.color_mix.appbar_bg_dark,
+                "bubble-bg-dark": self.color_mix.bubble_bg_dark,
+                "text-main-dark": self.color_mix.text_main_dark,
+                "accent-light": self.color_mix.accent_light,
+                "accent-dark": self.color_mix.accent_dark,
+                "warn-light": self.color_mix.warn_light,
+                "warn-dark": self.color_mix.warn_dark,
+                "accent-1": self.color_mix.accent_1,
+                "accent-2": self.color_mix.accent_2
+            }
+        }
 
 
 class Platform(models.Model):

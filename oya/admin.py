@@ -1,8 +1,10 @@
-from django.contrib import admin
-from .models import Platform, DashboardBlock, Font, Theme, AppIngress
+
+from .models import Platform, DashboardBlock, Font, Theme, AppIngress, ColorMix
 from django_json_widget.widgets import JSONEditorWidget
 from django.db.models import JSONField
 from django.contrib import admin, messages
+from django.utils.html import format_html
+
 
 
 @admin.register(Font)
@@ -12,6 +14,73 @@ class FontAdmin(admin.ModelAdmin):
     search_fields = ('name', 'cdn_link')
     ordering = ('name',)
 
+@admin.register(ColorMix)
+class ColorMixAdmin(admin.ModelAdmin):
+    list_display = ('name', 'preview_light', 'preview_dark')
+    readonly_fields = ('preview_light', 'preview_dark')
+
+    fieldsets = (
+        (None, {
+            'fields': ('name',)
+        }),
+        ('Light Mode Colors', {
+            'fields': (
+                'primary_bg_light', 'text_main_light',
+                'header_bg_light', 'appbar_bg_light', 'bubble_bg_light',
+                'accent_light', 'warn_light',
+                'preview_light'
+            )
+        }),
+        ('Dark Mode Colors', {
+            'fields': (
+                'primary_bg_dark', 'text_main_dark',
+                'header_bg_dark', 'appbar_bg_dark', 'bubble_bg_dark',
+                'accent_dark', 'warn_dark',
+                'preview_dark'
+            )
+        }),
+        ('Accent Colors', {
+            'fields': ('accent_1', 'accent_2')
+        }),
+    )
+
+    def preview_light(self, obj):
+        return self._render_preview_set(
+            bg=obj.primary_bg_light,
+            bubble=obj.bubble_bg_light,
+            text=obj.text_main_light,
+            label="Light"
+        )
+    preview_light.short_description = "Light Preview"
+
+    def preview_dark(self, obj):
+        return self._render_preview_set(
+            bg=obj.primary_bg_dark,
+            bubble=obj.bubble_bg_dark,
+            text=obj.text_main_dark,
+            label="Dark"
+        )
+    preview_dark.short_description = "Dark Preview"
+
+    def _render_preview_set(self, bg, bubble, text, label):
+        return format_html(
+            '''
+            <div style="display: flex; gap: 8px;">
+                <div style="background-color:{}; color:{}; padding:8px; border-radius:4px; width:120px; text-align:center;">
+                    {} BG
+                </div>
+                <div style="background-color:{}; color:{}; padding:8px; border-radius:4px; width:120px; text-align:center;">
+                    Bubble
+                </div>
+                <div style="background-color:#fff; color:{}; padding:8px; border-radius:4px; width:120px; text-align:center; border:1px solid #ccc;">
+                    Text
+                </div>
+            </div>
+            ''',
+            bg, text, label,
+            bubble, text,
+            text
+        )
 
 @admin.register(Theme)
 class ThemeAdmin(admin.ModelAdmin):

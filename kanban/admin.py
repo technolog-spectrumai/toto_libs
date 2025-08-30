@@ -59,6 +59,8 @@ class ColorMixAdmin(admin.ModelAdmin):
             bg, text
         )
 
+
+
 class TaskAdminForm(forms.ModelForm):
     description = forms.CharField(widget=TipTapWidget())
 
