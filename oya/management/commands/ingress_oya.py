@@ -5,25 +5,34 @@ from django.core.management import call_command
 
 
 class Command(BaseCommand):
-    help = "Ingress themes from a hardcoded directory of JSON files"
+    help = "Ingress themes from a directory of JSON files"
 
-    # 🔒 Hardcoded path to your themes directory
-    THEMES_DIR = os.path.join(os.path.dirname(__file__), '../../../../data/themes')
+    DEFAULT_THEMES_DIR = os.path.join(os.path.dirname(__file__), '../../../../data/themes')
+
+    def add_arguments(self, parser):
+        parser.add_argument(
+            '--themes-dir',
+            type=str,
+            default=self.DEFAULT_THEMES_DIR,
+            help=f"Path to the directory containing theme JSON files (default: {self.DEFAULT_THEMES_DIR})"
+        )
 
     def handle(self, *args, **options):
-        if not os.path.isdir(self.THEMES_DIR):
-            raise CommandError(f"Hardcoded path is not a directory: {self.THEMES_DIR}")
+        themes_dir = options['themes_dir']
+
+        if not os.path.isdir(themes_dir):
+            raise CommandError(f"Provided path is not a directory: {themes_dir}")
 
         theme_files = [
-            f for f in os.listdir(self.THEMES_DIR)
-            if f.endswith('.json') and os.path.isfile(os.path.join(self.THEMES_DIR, f))
+            f for f in os.listdir(themes_dir)
+            if f.endswith('.json') and os.path.isfile(os.path.join(themes_dir, f))
         ]
 
         if not theme_files:
-            raise CommandError("No JSON files found in the hardcoded directory.")
+            raise CommandError("No JSON files found in the specified directory.")
 
         for filename in theme_files:
-            file_path = os.path.join(self.THEMES_DIR, filename)
+            file_path = os.path.join(themes_dir, filename)
             try:
                 with open(file_path, 'r', encoding='utf-8') as f:
                     theme = json.load(f)
