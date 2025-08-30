@@ -14,6 +14,7 @@ class FontAdmin(admin.ModelAdmin):
     search_fields = ('name', 'cdn_link')
     ordering = ('name',)
 
+
 @admin.register(ColorMix)
 class ColorMixAdmin(admin.ModelAdmin):
     list_display = ('name', 'preview_light', 'preview_dark')
@@ -49,8 +50,10 @@ class ColorMixAdmin(admin.ModelAdmin):
             bg=obj.primary_bg_light,
             bubble=obj.bubble_bg_light,
             text=obj.text_main_light,
+            accent_mode=obj.accent_light,
             label="Light"
         )
+
     preview_light.short_description = "Light Preview"
 
     def preview_dark(self, obj):
@@ -58,28 +61,32 @@ class ColorMixAdmin(admin.ModelAdmin):
             bg=obj.primary_bg_dark,
             bubble=obj.bubble_bg_dark,
             text=obj.text_main_dark,
+            accent_mode=obj.accent_dark,
             label="Dark"
         )
+
     preview_dark.short_description = "Dark Preview"
 
-    def _render_preview_set(self, bg, bubble, text, label):
+    def _render_preview_set(self, bg, bubble, text, accent_mode, label):
         return format_html(
             '''
-            <div style="display: flex; gap: 8px;">
-                <div style="background-color:{}; color:{}; padding:8px; border-radius:4px; width:120px; text-align:center;">
-                    {} BG
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <div style="background-color:{bg}; color:{text}; padding:8px; border-radius:4px; width:120px; text-align:center;">
+                    {label} BG
                 </div>
-                <div style="background-color:{}; color:{}; padding:8px; border-radius:4px; width:120px; text-align:center;">
+                <div style="background-color:{bubble}; color:{text}; padding:8px; border-radius:4px; width:120px; text-align:center;">
                     Bubble
                 </div>
-                <div style="background-color:#fff; color:{}; padding:8px; border-radius:4px; width:120px; text-align:center; border:1px solid #ccc;">
-                    Text
+                <div style="background-color:{accent}; color:{text}; padding:8px; border-radius:4px; width:120px; text-align:center;">
+                    Accent {label}
                 </div>
             </div>
             ''',
-            bg, text, label,
-            bubble, text,
-            text
+            bg=bg,
+            bubble=bubble,
+            text=text,
+            accent=accent_mode,
+            label=label
         )
 
 @admin.register(Theme)

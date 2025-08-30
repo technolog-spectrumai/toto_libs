@@ -3,6 +3,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.core.management import call_command
 import os
 import django
+import json
 
 
 class Command(BaseCommand):
@@ -28,49 +29,43 @@ class Command(BaseCommand):
             "Roboto": "https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap",
             "Playfair Display": "https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&display=swap",
             "Orbitron": "https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap",
-            "Cormorant Garamond": "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;700&display=swap"
+            "Cormorant Garamond": "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;700&display=swap",
+            "Exo": "https://fonts.googleapis.com/css2?family=Exo:wght@400;700&display=swap"
         }
 
         for name, cdn in font_data.items():
             self.stdout.write(self.style.NOTICE(f"Creating font: {name}"))
             call_command("create_font", "--name", name, "--cdn", cdn)
 
-    def create_themes(self):
-        import json
-        themes = [
-            {
-                "name": "ElegantSpectrum",
-                "font": "Roboto",
-                "colors": {
-                    "primary-bg-light": "#ffffff",
-                    "header-bg-light": "#efefef",
-                    "appbar-bg-light": "#dbdbdb",
-                    "bubble-bg-light": "#f8f8f8",
-                    "text-main-light": "#000000",
-                    "primary-bg-dark": "#000000",
-                    "header-bg-dark": "#1a1a1a",
-                    "appbar-bg-dark": "#2f2f2f",
-                    "bubble-bg-dark": "#0a0a0a",
-                    "text-main-dark": "#ffffff",
-                    "accent-light": "#a00020",
-                    "accent-dark": "#ff3b5c",
-                    "warn-light": "#ff8800",
-                    "warn-dark": "#fff0cc",
-                    "accent-1": "#444c56",
-                    "accent-2": "#c8d1db"
-                }
-            }
-        ]
+    def create_theme_from_file(self, file_path):
+        if not os.path.isfile(file_path):
+            if self.stderr:
+                self.stderr.write(f"Theme file not found: {file_path}")
+            return
 
-        for theme in themes:
-            self.stdout.write(self.style.NOTICE(f"Creating theme: {theme['name']}"))
-            call_command(
-                "create_theme",
-                "--name", theme["name"],
-                "--font", theme["font"],
-                "--colors", json.dumps(theme["colors"]),
-                "--header", json.dumps(theme.get("header", {}))
-            )
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                theme = json.load(f)
+        except json.JSONDecodeError as e:
+            if self.stderr:
+                self.stderr.write(f"Invalid JSON in theme file: {e}")
+            return
+
+        if not all(k in theme for k in ['name', 'font', 'colors']):
+            if self.stderr:
+                self.stderr.write("Missing required keys in theme file")
+            return
+
+        if self.stdout:
+            self.stdout.write(f"Creating theme: {theme['name']}")
+
+        call_command(
+            "create_theme",
+            "--name", theme["name"],
+            "--font", theme["font"],
+            "--colors", json.dumps(theme["colors"]),
+            "--header", json.dumps(theme.get("header", {}))
+        )
 
     def run(self, admin_password):
 
@@ -94,7 +89,8 @@ class Command(BaseCommand):
         ]
 
         self.stdout.write(self.style.NOTICE("Creating fonts and theme..."))
-        self.create_themes()
+        THEMES_DIR = os.path.join(os.path.dirname(__file__), '../../../../data/themes')
+        self.create_theme_from_file(os.path.join(THEMES_DIR, "spectre.json"))
         self.stdout.write(self.style.SUCCESS("Fonts and theme created."))
         theme = self.get_theme("ElegantSpectrum")
         if theme is None:
