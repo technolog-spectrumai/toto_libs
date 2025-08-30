@@ -254,3 +254,13 @@ class AppIngress(models.Model):
             return f"Error running ingress for {self.app_name}: {str(e)}", 1
 
 
+class LogEntry(models.Model):
+    timestamp = models.DateTimeField(auto_now_add=True)
+    stream = models.CharField(max_length=10)  # 'stdout' or 'stderr'
+    message = models.TextField()
+
+    def __str__(self):
+        return f"[{self.timestamp}] {self.stream.upper()}: {self.message[:50]}"
+
+
+
