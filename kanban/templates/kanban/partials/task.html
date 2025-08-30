@@ -31,7 +31,7 @@
     </div>
 
     <div x-show="open" x-transition class="mt-2 text-sm space-y-1">
-      <p>{{ task.description }}</p>
+      <p>{{ task.description|safe }}</p>
       {% if task.due_date %}
         <p><i class="fa-regular fa-calendar"></i> Due: {{ task.due_date }}</p>
       {% endif %}
