@@ -22,6 +22,9 @@ class StaticPageAdmin(admin.ModelAdmin):
 
 @admin.register(PageGenerator)
 class PageGeneratorAdmin(admin.ModelAdmin):
+    formfield_overrides = {
+        JSONField: {'widget': JSONEditorWidget}
+    }
     list_display = ('name', 'slug')
     search_fields = ('name', 'slug')
 
@@ -32,7 +35,7 @@ class DynamicPageAdmin(admin.ModelAdmin):
         JSONField: {'widget': JSONEditorWidget}
     }
 
-    readonly_fields = ('render_check',)
+    readonly_fields = ('render_check', 'schema_check')
 
     def full_url(self, obj):
         try:
@@ -40,7 +43,6 @@ class DynamicPageAdmin(admin.ModelAdmin):
             return format_html('<a href="{}" target="_blank">{}</a>', url, url)
         except Exception:
             return "Invalid URL"
-
     full_url.short_description = "Page URL"
 
     def generator_name(self, obj):
@@ -51,12 +53,22 @@ class DynamicPageAdmin(admin.ModelAdmin):
         try:
             obj.render_to_string()
             return format_html('<span style="color:green;">Rendered successfully</span>')
-        except TemplateDoesNotExist as e:
-            return format_html('<span style="color:red;">Template not found: {}</span>', str(e))
+        except TemplateDoesNotExist:
+            return format_html('<span style="color:red;">Template not found</span>')
         except Exception as e:
-            return format_html('<span style="color:red;">Error: {}</span>', str(e))
-
+            return format_html('<span style="color:red;">Render error - {}</span>', str(e))
     render_check.short_description = "Render Status"
+
+    def schema_check(self, obj):
+        import jsonschema
+        try:
+            jsonschema.validate(instance=obj.config_json, schema=obj.generator.json_schema)
+            return format_html('<span style="color:green;">Valid</span>')
+        except jsonschema.ValidationError as e:
+            return format_html('<span style="color:red;">{}</span>', e.message)
+        except Exception as e:
+            return format_html('<span style="color:red;">Schema error</span>')
+    schema_check.short_description = "Schema Validation"
 
     list_display = ('name', 'slug', 'language', 'generator_name', 'full_url')
     search_fields = ('name', 'slug', 'generator__name')

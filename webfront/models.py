@@ -4,7 +4,7 @@ from django.utils.translation import gettext_lazy as _
 from django.utils.text import slugify
 import jsonschema
 import uuid
-from django.template.loader import render_to_string
+from django.template import Template, Context
 
 
 class Language(models.Model):
@@ -57,11 +57,14 @@ class DynamicPage(BasePage):
         except jsonschema.ValidationError as e:
             raise ValidationError({'config_json': _(str(e))})
 
+    @staticmethod
+    def _render_template_from_string(template_text, context=None):
+        context = context or {}
+        template = Template(template_text)
+        return template.render(Context(context))
+
     def render_to_string(self):
-        return render_to_string(
-            template_name=self.generator.html_template,
-            context=self.config_json
-        )
+        return self._render_template_from_string(self.generator.html_template, self.config_json)
 
 
 class Image(models.Model):
