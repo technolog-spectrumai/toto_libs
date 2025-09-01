@@ -27,9 +27,17 @@ class AddressAdmin(admin.ModelAdmin):
 
 @admin.register(Company)
 class CompanyAdmin(admin.ModelAdmin):
-    list_display = ('name', 'address', 'established_year', 'head_display', 'created_at')
-    search_fields = ('name', 'head__display_name')
+    list_display = (
+        'name',
+        'slug',
+        'address',
+        'established_year',
+        'head_display',
+        'created_at',
+    )
+    search_fields = ('name', 'slug', 'head__display_name')
     ordering = ('name',)
+    prepopulated_fields = {'slug': ('name',)}
     inlines = [BranchInline]
 
     def head_display(self, obj):

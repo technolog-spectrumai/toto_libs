@@ -211,12 +211,13 @@ class OrgChartView(TemplateView):
 
 
 def org_chart_data(request):
-    company_id = request.GET.get("company")
-    if not company_id:
+    company_slug = request.GET.get("company")
+    print("---->", company_slug)
+    if not company_slug:
         return JsonResponse({"nodes": []})
 
     try:
-        company = Company.objects.get(pk=company_id)
+        company = Company.objects.get(slug=company_slug)
     except Company.DoesNotExist:
         return JsonResponse({"nodes": []})
 
@@ -248,13 +249,8 @@ def org_chart_data(request):
                 "id": f"member-{member.id}-b{branch.id}",
                 "pid": branch_id,
                 "name": member.display_name,
-                "title": f"Member",
+                "title": "Member",
                 "img": member.avatar.url if member.avatar else None
             })
 
     return JsonResponse({"nodes": nodes})
-
-
-
-
-

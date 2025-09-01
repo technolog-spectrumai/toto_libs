@@ -9,22 +9,22 @@
 
     <header class="space-y-4 text-center">
       <h1 class="text-3xl font-extrabold">Organization Chart</h1>
-      <form method="get" class="max-w-sm mx-auto">
-        <label for="company" class="block text-sm font-medium mb-1">Choose Company</label>
-            <select name="company" id="company"
-              :class="darkMode
-                ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
-                : 'bg-primary-bg-light text-text-main-light border-accent-2'"
-              class="w-full px-3 py-2 rounded border transition-colors duration-300"
-              onchange="this.form.submit()">
-
+      <div class="max-w-sm mx-auto">
+        <label for="company" class="block text-sm font-medium mb-1 text-text-main-light dark:text-text-main-dark">
+          Choose Company
+        </label>
+        <select name="company" id="company"
+          :class="darkMode
+            ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
+            : 'bg-primary-bg-light text-text-main-light border-accent-2'"
+          class="w-full px-3 py-2 rounded border transition-colors duration-300">
           {% for company in companies %}
-            <option value="{{ company.pk }}" {% if company.pk|stringformat:"s" == selected_company_id %}selected{% endif %}>
+            <option value="{{ company.slug }}" {% if company.slug == selected_company_slug %}selected{% endif %}>
               {{ company.name }}
             </option>
           {% endfor %}
         </select>
-      </form>
+      </div>
     </header>
 
     <div id="orgchart-container" class="w-full overflow-x-auto"></div>
@@ -44,11 +44,20 @@
     }
   });
 
-fetch("{% url 'community:org-chart-data' %}?company={{ selected_company_id }}")
-  .then(response => response.json())
-  .then(data => {
-    console.log("Org chart data:", data); // 👈 This prints the data to the browser console
-    chart.load(data.nodes);
+  function loadChart(companySlug) {
+    fetch(`/community/org-chart/data/?company=${companySlug}`)
+      .then(response => response.json())
+      .then(data => {
+        chart.load(data.nodes);
+      })
+      .catch(error => console.error("Error loading chart data:", error));
+  }
+
+  const companySelect = document.getElementById("company");
+  loadChart(companySelect.value);
+
+  companySelect.addEventListener("change", () => {
+    loadChart(companySelect.value);
   });
 </script>
 {% endblock %}

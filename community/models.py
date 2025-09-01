@@ -2,7 +2,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
 import random
-
+from django.utils.text import slugify
 
 
 class Address(models.Model):
@@ -20,8 +20,10 @@ class Address(models.Model):
         full = f"{base}, {self.locality_name}, {self.state_or_province_name}, {self.country_name}"
         return full
 
+
 class Company(models.Model):
     name = models.CharField(max_length=255, help_text="Legal or brand name of the company")
+    slug = models.SlugField(unique=True, blank=True, help_text="URL-friendly identifier for the company")
     address = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True, blank=True)
     established_year = models.IntegerField(null=True, blank=True, help_text="Year the company was founded")
     head = models.ForeignKey(
@@ -37,6 +39,17 @@ class Company(models.Model):
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            base_slug = slugify(self.name)
+            slug = base_slug
+            counter = 1
+            while Company.objects.filter(slug=slug).exists():
+                slug = f"{base_slug}-{counter}"
+                counter += 1
+            self.slug = slug
+        super().save(*args, **kwargs)
 
 
 class Branch(models.Model):
