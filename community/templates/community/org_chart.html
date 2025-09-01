@@ -2,7 +2,24 @@
 {% load static %}
 
 {% block title %}Org Chart | {{ platform.site_name }}{% endblock %}
+{% block start_script %}
 
+<style>
+:root {
+  --bg-color: #ffffff;
+  --text-color: #333333;
+}
+[data-theme="dark"] {
+  --bg-color: #1a1a1a;
+  --text-color: #eaeaea;
+}
+body {
+  background-color: var(--bg-color);
+  color: var(--text-color);
+}
+</style>
+
+{% endblock %}
 {% block content %}
 <section class="px-6 py-20 min-h-screen">
   <div class="max-w-6xl mx-auto p-8 rounded-xl shadow-lg space-y-10">
@@ -34,30 +51,64 @@
 
 <script src="https://balkan.app/js/OrgChart.js"></script>
 <script>
-  const chart = new OrgChart(document.getElementById("orgchart-container"), {
-    template: "luba",
-    enableSearch: false,
-    nodeBinding: {
-      field_0: "name",
-      field_1: "title",
-      img_0: "img"
+  document.addEventListener("DOMContentLoaded", () => {
+    const container = document.getElementById("orgchart-container");
+    const companySelect = document.getElementById("company");
+
+    const toggleButton = document.getElementById("themeToggleButton");
+    console.log(toggleButton);
+    if (!toggleButton) return;
+
+    toggleButton.addEventListener("click", () => {
+        console.log("!!!!");
+    });
+    
+    let chart;
+
+    function getThemeTemplate() {
+      const root = document.documentElement;
+      const darkMode = Alpine.evaluate(root, 'darkMode');
+      return darkMode ? "luba" : "ana";
     }
-  });
 
-  function loadChart(companySlug) {
-    fetch(`/community/org-chart/data/?company=${companySlug}`)
-      .then(response => response.json())
-      .then(data => {
-        chart.load(data.nodes);
-      })
-      .catch(error => console.error("Error loading chart data:", error));
-  }
+    chart = new OrgChart(container, {
+      template: getThemeTemplate(),
+      enableSearch: false,
+      nodeBinding: {
+        field_0: "name",
+        field_1: "title",
+        img_0: "img"
+      },
+      nodeMenu: {
+        details: { text: "View Profile" }
+      }
+    });
 
-  const companySelect = document.getElementById("company");
-  loadChart(companySelect.value);
+    const loadChart = async (companySlug) => {
+      if (!companySlug) return;
 
-  companySelect.addEventListener("change", () => {
+      // Optional: show loading state
+      container.classList.add("opacity-50");
+
+      try {
+        const response = await fetch(`/community/org-chart/data/?company=${companySlug}`);
+        const { nodes } = await response.json();
+        chart.load(nodes);
+      } catch (error) {
+        console.error("Failed to load org chart:", error);
+      } finally {
+        container.classList.remove("opacity-50");
+      }
+    };
+
+    // Initial load
     loadChart(companySelect.value);
+
+    // Reload on change
+    companySelect.addEventListener("change", (e) => {
+      loadChart(e.target.value);
+    });
   });
 </script>
+
 {% endblock %}

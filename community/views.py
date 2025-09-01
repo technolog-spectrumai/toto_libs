@@ -212,7 +212,6 @@ class OrgChartView(TemplateView):
 
 def org_chart_data(request):
     company_slug = request.GET.get("company")
-    print("---->", company_slug)
     if not company_slug:
         return JsonResponse({"nodes": []})
 
@@ -221,36 +220,37 @@ def org_chart_data(request):
     except Company.DoesNotExist:
         return JsonResponse({"nodes": []})
 
-    nodes = []
+    # Get all relevant people: head, branch heads, members
+    people = set()
 
-    # Company head
     if company.head:
-        nodes.append({
-            "id": f"company-{company.id}",
-            "name": company.name,
-            "title": f"Head: {company.head.display_name}",
-            "img": company.head.avatar.url if company.head.avatar else None
-        })
+        people.add(company.head)
 
-    # Branches and heads
     for branch in company.branches.all():
-        branch_id = f"branch-{branch.id}"
-        nodes.append({
-            "id": branch_id,
-            "pid": f"company-{company.id}",
-            "name": branch.name,
-            "title": f"Head: {branch.head.display_name if branch.head else '—'}",
-            "img": branch.head.avatar.url if branch.head and branch.head.avatar else None
-        })
-
-        # Members
+        if branch.head:
+            people.add(branch.head)
         for member in branch.members.all():
-            nodes.append({
-                "id": f"member-{member.id}-b{branch.id}",
-                "pid": branch_id,
-                "name": member.display_name,
-                "title": "Member",
-                "img": member.avatar.url if member.avatar else None
-            })
+            people.add(member)
+
+    nodes = []
+    for person in people:
+        nodes.append({
+            "id": f"person-{person.id}",
+            "pid": f"person-{person.patron.id}" if person.patron else None,
+            "name": person.display_name,
+            "title": get_role(person, company),
+            "img": person.avatar.url if person.avatar else None
+        })
 
     return JsonResponse({"nodes": nodes})
+
+
+def get_role(person, company):
+    if person == company.head:
+        return "Head of Company"
+    for branch in company.branches.all():
+        if person == branch.head:
+            return f"Head of Department: {branch.name}"
+        if person in branch.members.all():
+            return "Member"
+    return "Contributor"
