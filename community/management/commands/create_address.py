@@ -1,5 +1,5 @@
 from django.core.management.base import BaseCommand
-from nakamori.models import Address
+from community.models import Address
 
 
 class Command(BaseCommand):

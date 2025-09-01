@@ -1,5 +1,5 @@
 from django import forms
-from nakamori.models import MembershipApplication, ReferenceRequest, CommunityMember
+from community.models import MembershipApplication, ReferenceRequest, CommunityMember
 
 
 class LoginForm(forms.Form):

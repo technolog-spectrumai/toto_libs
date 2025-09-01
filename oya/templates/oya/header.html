@@ -25,7 +25,7 @@
 
       {% if user.is_authenticated %}
       <!-- Logout Button -->
-      <a href="{% url 'nakamori:logout' %}"
+      <a href="{% url 'community:logout' %}"
          class="flex items-center gap-2 px-3 py-1 rounded text-sm font-medium border shadow-sm transition hover:opacity-90"
          :class="darkMode
            ? 'bg-accent-dark text-primary-bg-dark border-accent-2'
@@ -35,7 +35,7 @@
       </a>
       {% else %}
       <!-- Login Button -->
-      <a href="{% url 'nakamori:login' %}"
+      <a href="{% url 'community:login' %}"
          class="flex items-center gap-2 px-3 py-1 rounded text-sm font-medium border shadow-sm transition hover:opacity-90"
          :class="darkMode
            ? 'bg-accent-dark text-primary-bg-dark border-accent-2'
@@ -82,7 +82,7 @@
 
       {% if user.is_authenticated %}
       <!-- Logout Button (Mobile) -->
-      <a href="{% url 'nakamori:logout' %}"
+      <a href="{% url 'community:logout' %}"
          class="flex items-center gap-2 px-3 py-2 rounded text-sm font-medium border shadow-sm transition hover:opacity-90"
          :class="darkMode
            ? 'bg-accent-dark text-primary-bg-dark border-accent-2'
@@ -92,7 +92,7 @@
       </a>
       {% else %}
       <!-- Login Button (Mobile) -->
-      <a href="{% url 'nakamori:login' %}"
+      <a href="{% url 'community:login' %}"
          class="flex items-center gap-2 px-3 py-2 rounded text-sm font-medium border shadow-sm transition hover:opacity-90"
          :class="darkMode
            ? 'bg-accent-dark text-primary-bg-dark border-accent-2'

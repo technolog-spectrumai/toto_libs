@@ -1,18 +1,18 @@
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect
-from nakamori.models import MembershipApplication, generate_code, CommunityMember
+from community.models import MembershipApplication, generate_code, CommunityMember
 from .page import PageProcessor
 import os
 from django.contrib.auth import authenticate, login
 from django.contrib.auth import logout
-from nakamori.forms import LoginForm, MembershipApplicationForm, CodeVerificationForm, ReferenceRequestForm
+from community.forms import LoginForm, MembershipApplicationForm, CodeVerificationForm, ReferenceRequestForm
 from django.utils import timezone
 from django.contrib.auth.models import User
 from django.shortcuts import render, get_object_or_404
 from django.http import Http404
 
 
-template_dir = "nakamori"
+template_dir = "community"
 
 
 def _get_template(name):
@@ -74,7 +74,7 @@ def membership_application_view(request):
 
             # TODO: trigger email with code here
 
-        return redirect("nakamori:application_success", username=user.username)
+        return redirect("community:application_success", username=user.username)
 
     return render(request, _get_template("membership_application.html"), processor.decorate(context, request))
 

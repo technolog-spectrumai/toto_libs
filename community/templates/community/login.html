@@ -8,7 +8,7 @@
   :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
   class="flex items-center justify-center px-6 py-16 min-h-screen transition-colors duration-300">
 
-  <form method="POST" action="{% url 'nakamori:login' %}"
+  <form method="POST" action="{% url 'community:login' %}"
         :class="darkMode
           ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
           : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
@@ -43,7 +43,7 @@
 
     <p class="text-center text-sm text-gray-500 dark:text-gray-400">
       Don’t have an account?
-      <a href="{% url 'nakamori:membership_application' %}"
+      <a href="{% url 'community:membership_application' %}"
          class="font-medium underline text-accent-light dark:text-accent-dark hover:opacity-80">
         Apply for membership
       </a>

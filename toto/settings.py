@@ -64,7 +64,7 @@ INSTALLED_APPS = [
     "gervazy",
     "oya",
     "captcha",
-    "nakamori",
+    "community",
     "memo",
     "resume",
     "webfront",
@@ -306,7 +306,7 @@ LOGGING = {
     },
 }
 
-LOGIN_URL = '/nakamori/login/'
+LOGIN_URL = '/community/login/'
 
 CELERY_BROKER_URL = "redis://localhost:6379/0"
 

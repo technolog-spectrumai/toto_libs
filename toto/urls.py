@@ -13,7 +13,7 @@ admin.site.site_title = 'Administracja'
 urlpatterns = [
     path('admin/', admin.site.urls),
     path("nest/", include("oya.urls", namespace='nest')),
-    path("nakamori/", include("nakamori.urls", namespace='nakamori')),
+    path("community/", include("community.urls", namespace='community')),
     path('captcha/', include('captcha.urls')),
     path(r'^_nested_admin/', include('nested_admin.urls')),
     path(
