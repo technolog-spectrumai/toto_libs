@@ -12,5 +12,7 @@ urlpatterns = [
     path("verify/success/", views.verification_success_view, name="application_verified"),
     path("reference/submit/<int:application_id>/", views.reference_request_view, name="reference_request"),
     path("reference/next/<int:application_id>/", views.reference_next, name="reference_next"),
-    path("profile/", views.profile_view, name="profile")
+    path("profile/", views.profile_view, name="profile"),
+    path("org-chart/", views.OrgChartView.as_view(), name="org-chart"),
+    path("org-chart/data/", views.org_chart_data, name="org-chart-data"),
 ]

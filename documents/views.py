@@ -52,3 +52,5 @@ def document_pdf_view(request, slug):
         return FileResponse(open(pdf_path, 'rb'), content_type='application/pdf')
     except FileNotFoundError:
         raise Http404("PDF could not be generated.")
+
+

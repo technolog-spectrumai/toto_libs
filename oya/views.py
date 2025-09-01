@@ -1,10 +1,10 @@
-from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect
 from oya.models import DashboardBlock
 from .page import PageProcessor
 import os
 from django.shortcuts import render
 from django.http import Http404
+
 
 
 template_dir = "oya"
@@ -50,6 +50,9 @@ def root_view(request):
         raise
     except Exception:
         raise Http404("Failed to determine platform index URL.")
+
+
+
 
 
 

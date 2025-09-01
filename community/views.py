@@ -9,7 +9,9 @@ from community.forms import LoginForm, MembershipApplicationForm, CodeVerificati
 from django.utils import timezone
 from django.contrib.auth.models import User
 from django.shortcuts import render, get_object_or_404
-from django.http import Http404
+from django.http import JsonResponse
+from django.views.generic import TemplateView
+from community.models import Company
 
 
 template_dir = "community"
@@ -195,6 +197,62 @@ def profile_view(request):
     }
 
     return render(request, _get_template("profile.html"), processor.decorate(context, request))
+
+
+class OrgChartView(TemplateView):
+    template_name = "community/org_chart.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["companies"] = Company.objects.all()
+        context["selected_company_id"] = self.request.GET.get("company")
+        processor = PageProcessor()
+        return processor.decorate(context, self.request)
+
+
+def org_chart_data(request):
+    company_id = request.GET.get("company")
+    if not company_id:
+        return JsonResponse({"nodes": []})
+
+    try:
+        company = Company.objects.get(pk=company_id)
+    except Company.DoesNotExist:
+        return JsonResponse({"nodes": []})
+
+    nodes = []
+
+    # Company head
+    if company.head:
+        nodes.append({
+            "id": f"company-{company.id}",
+            "name": company.name,
+            "title": f"Head: {company.head.display_name}",
+            "img": company.head.avatar.url if company.head.avatar else None
+        })
+
+    # Branches and heads
+    for branch in company.branches.all():
+        branch_id = f"branch-{branch.id}"
+        nodes.append({
+            "id": branch_id,
+            "pid": f"company-{company.id}",
+            "name": branch.name,
+            "title": f"Head: {branch.head.display_name if branch.head else '—'}",
+            "img": branch.head.avatar.url if branch.head and branch.head.avatar else None
+        })
+
+        # Members
+        for member in branch.members.all():
+            nodes.append({
+                "id": f"member-{member.id}-b{branch.id}",
+                "pid": branch_id,
+                "name": member.display_name,
+                "title": f"Member",
+                "img": member.avatar.url if member.avatar else None
+            })
+
+    return JsonResponse({"nodes": nodes})
 
 
 
