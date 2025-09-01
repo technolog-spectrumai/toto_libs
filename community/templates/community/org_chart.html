@@ -44,7 +44,7 @@ body {
       </div>
     </header>
 
-    <div id="orgchart-container" class="w-full overflow-x-auto"></div>
+    <div @notify="alert('huj')" id="orgchart-container" @themeToggled="alert('foo was dispatched')" class="w-full overflow-x-auto"></div>
 
   </div>
 </section>
@@ -55,15 +55,16 @@ body {
     const container = document.getElementById("orgchart-container");
     const companySelect = document.getElementById("company");
 
-    const toggleButton = document.getElementById("themeToggleButton");
+    let chart;
+
+    const toggleButton = document.querySelector(".site-theme-toggle-button");
     console.log(toggleButton);
     if (!toggleButton) return;
 
     toggleButton.addEventListener("click", () => {
-        console.log("!!!!");
+        chart.config.template = getThemeTemplate();
+        chart.draw();
     });
-    
-    let chart;
 
     function getThemeTemplate() {
       const root = document.documentElement;
