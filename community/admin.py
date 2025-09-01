@@ -27,25 +27,33 @@ class AddressAdmin(admin.ModelAdmin):
 
 @admin.register(Company)
 class CompanyAdmin(admin.ModelAdmin):
-    list_display = ('name', 'address', 'established_year', 'created_at')
-    search_fields = ('name',)
+    list_display = ('name', 'address', 'established_year', 'head_display', 'created_at')
+    search_fields = ('name', 'head__display_name')
     ordering = ('name',)
     inlines = [BranchInline]
+
+    def head_display(self, obj):
+        return obj.head.display_name if obj.head else "-"
+    head_display.short_description = "Head of Company"
 
 
 @admin.register(Branch)
 class BranchAdmin(admin.ModelAdmin):
-    list_display = ('name', 'company', 'address', 'created_at', 'updated_at')
-    search_fields = ('name', 'company__name', 'address__locality_name', 'address__street')
+    list_display = ('name', 'company', 'address', 'head_display', 'created_at', 'updated_at')
+    search_fields = ('name', 'company__name', 'address__locality_name', 'address__street', 'head__display_name')
     list_filter = ('company', 'created_at')
     ordering = ('-created_at',)
     readonly_fields = ('created_at', 'updated_at')
 
+    def head_display(self, obj):
+        return obj.head.display_name if obj.head else "-"
+    head_display.short_description = "Head of Branch"
+
 
 @admin.register(CommunityMember)
 class CommunityMemberAdmin(admin.ModelAdmin):
-    list_display = ('display_name', 'user', 'joined_date', 'avatar_preview')
-    search_fields = ('display_name', 'user__username', 'user__email')
+    list_display = ('display_name', 'user', 'patron_display', 'joined_date', 'avatar_preview')
+    search_fields = ('display_name', 'user__username', 'user__email', 'patron__display_name')
     list_filter = ('joined_date',)
     ordering = ('-joined_date',)
     filter_horizontal = ('membership',)
@@ -55,6 +63,10 @@ class CommunityMemberAdmin(admin.ModelAdmin):
             return format_html('<img src="{}" style="height: 40px; border-radius: 4px;" />', obj.avatar.url)
         return "-"
     avatar_preview.short_description = "Avatar"
+
+    def patron_display(self, obj):
+        return obj.patron.display_name if obj.patron else "-"
+    patron_display.short_description = "Patron"
 
 
 # Custom action for verifying applications

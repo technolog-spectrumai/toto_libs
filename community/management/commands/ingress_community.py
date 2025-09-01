@@ -1,34 +1,43 @@
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import BaseCommand
 from django.core.management import call_command
+from django.contrib.auth.models import User
+from community.models import Address, Company, Branch, CommunityMember
+from django.utils import timezone
+import random
 
 
 class Command(BaseCommand):
-    help = "Initialize platform by clearing the database, running migrations, generating TLS certificate, creating an address, setting up config, and creating a superuser"
+    help = "Initialize platform with fake data: address, company, branches, members, and relationships"
 
     def handle(self, *args, **options):
-
         self.stdout.write(self.style.NOTICE("Creating company address..."))
         address_args = self.get_address_arguments()
         call_command("create_address", **address_args)
-        self.stdout.write(self.style.SUCCESS("Company address created."))
-
-        latest_address_id = self.get_latest_address_id()
-        if latest_address_id is None:
-            self.stderr.write(self.style.ERROR("No address found. Initialization aborted."))
+        address_id = self.get_latest_address_id()
+        if not address_id:
+            self.stderr.write(self.style.ERROR("Address creation failed."))
             return
 
-        company_name = "Our Thing Inc."
         self.stdout.write(self.style.NOTICE("Creating company..."))
-        call_command("create_company", company_name, str(latest_address_id), "--established_year=2024")
-        self.stdout.write(self.style.SUCCESS("Company created."))
-
-        latest_company_id = self.get_latest_company_id()
-        if latest_company_id is None:
-            self.stderr.write(self.style.ERROR("No company found. Initialization aborted."))
+        call_command("create_company", "Our Thing Inc.", str(address_id), "--established_year=2024")
+        company = self.get_latest_company()
+        if not company:
+            self.stderr.write(self.style.ERROR("Company creation failed."))
             return
+
+        self.stdout.write(self.style.NOTICE("Creating community members..."))
+        members = self.create_fake_members(count=5)
+
+        self.stdout.write(self.style.NOTICE("Assigning head of company..."))
+        company.head = random.choice(members)
+        company.save()
+
+        self.stdout.write(self.style.NOTICE("Creating branches..."))
+        branches = self.create_fake_branches(company, members)
+
+        self.stdout.write(self.style.SUCCESS("Platform initialized with fake data."))
 
     def get_address_arguments(self):
-        """Returns a dictionary of address arguments"""
         return {
             "country_name": "US",
             "state_or_province_name": "California",
@@ -39,14 +48,47 @@ class Command(BaseCommand):
         }
 
     def get_latest_address_id(self):
-        """Fetches the latest Address ID to be used in platform creation"""
-        from community.models import Address  # Import inside method to avoid potential issues
-        latest_address = Address.objects.order_by("-id").first()
-        return latest_address.id if latest_address else None
+        latest = Address.objects.order_by("-id").first()
+        return latest.id if latest else None
 
-    def get_latest_company_id(self):
-        """Fetches the latest Company ID to be used in platform creation"""
-        from community.models import Company  # Import locally to avoid circular imports
-        latest_company = Company.objects.order_by("-id").first()
-        return latest_company.id if latest_company else None
+    def get_latest_company(self):
+        return Company.objects.order_by("-id").first()
 
+    def create_fake_members(self, count=5):
+        members = []
+        for i in range(count):
+            username = f"user{i}"
+            user, _ = User.objects.get_or_create(username=username, defaults={"email": f"{username}@example.com"})
+            member = CommunityMember.objects.create(
+                user=user,
+                display_name=f"Member {i}",
+                bio=f"This is bio for Member {i}",
+                joined_date=timezone.now()
+            )
+            if i > 0:
+                member.patron = members[0]  # First member is patron of others
+                member.save()
+            members.append(member)
+        return members
+
+    def create_fake_branches(self, company, members):
+        branches = []
+        for i in range(3):
+            address = Address.objects.create(
+                country_name="US",
+                state_or_province_name="California",
+                locality_name=f"Branch City {i}",
+                street=f"{100+i} Branch Ave",
+                building=f"B{i}",
+                apartment=None
+            )
+            branch = Branch.objects.create(
+                company=company,
+                name=f"Branch {i}",
+                address=address,
+                head=random.choice(members)
+            )
+            for member in random.sample(members, k=3):
+                member.membership.add(branch)
+            branches.append(branch)
+        return branches

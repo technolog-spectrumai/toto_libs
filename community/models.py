@@ -24,6 +24,14 @@ class Company(models.Model):
     name = models.CharField(max_length=255, help_text="Legal or brand name of the company")
     address = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True, blank=True)
     established_year = models.IntegerField(null=True, blank=True, help_text="Year the company was founded")
+    head = models.ForeignKey(
+        'CommunityMember',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='headed_companies',
+        help_text="Community member who leads the company"
+    )
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -49,6 +57,14 @@ class Branch(models.Model):
         blank=True,
         help_text="Branch address"
     )
+    head = models.ForeignKey(
+        'CommunityMember',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='headed_branches',
+        help_text="Community member who leads this branch"
+    )
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -57,6 +73,7 @@ class Branch(models.Model):
 
     class Meta:
         verbose_name_plural = "Branches"
+
 
 
 class CommunityMember(models.Model):
@@ -70,6 +87,14 @@ class CommunityMember(models.Model):
         Branch,
         related_name='members',
         help_text='Branches this member belongs to'
+    )
+    patron = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='mentees',
+        help_text='Another member who acts as a patron or mentor'
     )
     display_name = models.CharField(max_length=150)
     bio = models.TextField(null=True, blank=True)
