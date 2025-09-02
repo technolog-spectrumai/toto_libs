@@ -44,7 +44,7 @@ body {
       </div>
     </header>
 
-    <div @notify="alert('huj')" id="orgchart-container" @themeToggled="alert('foo was dispatched')" class="w-full overflow-x-auto"></div>
+    <div id="orgchart-container" class="w-full overflow-x-auto"></div>
 
   </div>
 </section>
@@ -58,7 +58,6 @@ body {
     let chart;
 
     const toggleButton = document.querySelector(".site-theme-toggle-button");
-    console.log(toggleButton);
     if (!toggleButton) return;
 
     toggleButton.addEventListener("click", () => {
@@ -66,10 +65,36 @@ body {
         chart.draw();
     });
 
+    let colors = {{ theme.theme.colors|safe }};
+
     function getThemeTemplate() {
       const root = document.documentElement;
       const darkMode = Alpine.evaluate(root, 'darkMode');
-      return darkMode ? "luba" : "ana";
+
+      // Determine theme suffix
+      const themeSuffix = darkMode ? 'dark' : 'light';
+        const canvasColor = colors[`primary-bg-${themeSuffix}`];
+
+        const svg = document.querySelector("#orgchart-container");
+        if (svg) {
+          svg.style.backgroundColor = canvasColor;
+          svg.style.transition = "background-color 0.3s ease";
+        }
+      // Pull colors from your Tailwind-defined map
+      const bgColor = colors[`bubble-bg-${themeSuffix}`];
+      const textColor = colors[`text-main-${themeSuffix}`];
+      const accentColor = colors[`accent-${themeSuffix}`];
+
+      // Clone and customize the template
+      OrgChart.templates.customTemplate = Object.assign({}, OrgChart.templates.ana);
+      OrgChart.templates.customTemplate.node = `
+        <rect x="0" y="0" width="{w}" height="{h}" fill="${bgColor}" rx="10" ry="10"></rect>
+        <text class="field_0" x="20" y="30" fill="${textColor}" font-size="16">{val}</text>
+        <text class="field_1" x="20" y="50" fill="${accentColor}" font-size="12">{val}</text>
+        <image preserveAspectRatio="xMidYMid slice" x="220" y="10" width="40" height="40" xlink:href="{img}"></image>
+      `;
+
+      return "customTemplate";
     }
 
     chart = new OrgChart(container, {
