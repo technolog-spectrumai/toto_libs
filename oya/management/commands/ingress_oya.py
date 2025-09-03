@@ -9,7 +9,8 @@ class Command(IngressCommand):
     help = "Ingress themes from a directory of JSON files"
 
     def process(self,data):
-        themes_dir = data['dir']
+        default_dir = os.path.join(os.path.dirname(__file__), '../../../../data/themes')
+        themes_dir = data.get('dir', default_dir)
 
         if not os.path.isdir(themes_dir):
             raise CommandError(f"Provided path is not a directory: {themes_dir}")

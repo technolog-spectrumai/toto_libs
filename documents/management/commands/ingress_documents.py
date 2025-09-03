@@ -1,20 +1,32 @@
-from django.core.management.base import BaseCommand
 from django.utils.text import slugify
 from django.contrib.auth.models import User
 from documents.models import Document, Department, Tag, Section, SubSection
+from oya.ingress import IngressCommand  # Your custom base class
 
-class Command(BaseCommand):
+
+class Command(IngressCommand):
     help = "Populate the database with sample documents and nested sections"
 
-    def handle(self, *args, **options):
-        # Ensure there's at least one user
-        user, _ = User.objects.get_or_create(username='demo_user', defaults={'email': 'demo@example.com'})
+    def process(self, _):
+        # Hardcoded dashboard block
+        self.create_dashboard_item(
+            title="Document Ingress",
+            icon="file-alt",
+            description="Creates sample documents with nested sections and tags.",
+            link="/documents/"
+        )
+
+        # Ensure demo user exists
+        user, _ = User.objects.get_or_create(
+            username='demo_user',
+            defaults={'email': 'demo@example.com'}
+        )
 
         # Create departments
         dept1, _ = Department.objects.get_or_create(name='Strategy Department', defaults={'owner': user})
         dept2, _ = Department.objects.get_or_create(name='Operations Department', defaults={'owner': user})
 
-        # Tags
+        # Create tags
         tag_names = ['Urgent', 'Finance', 'Strategy', 'Internal']
         tags = [Tag.objects.get_or_create(name=name)[0] for name in tag_names]
 
@@ -26,6 +38,7 @@ class Command(BaseCommand):
             ('Annual Report', 'Comprehensive summary of yearly activities.', 'Report', dept2),
         ]
 
+        # Sections and subsections
         section_data = {
             'Q3 Analysis': [
                 ('Executive Summary', 'Overview of Q3 performance highlights.'),
@@ -54,10 +67,11 @@ class Command(BaseCommand):
             ('Notes', 'Additional commentary or observations.'),
         ]
 
+        # Create documents and nested content
         for title, summary, doc_type, department in samples:
             slug = slugify(title)
             if Document.objects.filter(slug=slug).exists():
-                self.stdout.write(self.style.WARNING(f"Skipped existing document: {title}"))
+                self.stdout.write(self.style.WARNING(f"⚠️ Skipped existing document: {title}"))
                 continue
 
             doc = Document.objects.create(
@@ -70,7 +84,7 @@ class Command(BaseCommand):
                 author=user
             )
             doc.tags.set(tags[:2])
-            self.stdout.write(self.style.SUCCESS(f"Created document: {title} in {department.name}"))
+            self.stdout.write(self.style.SUCCESS(f"📄 Created document: {title} in {department.name}"))
 
             # Add sections and subsections
             if title in section_data:
@@ -88,6 +102,6 @@ class Command(BaseCommand):
                             title=sub_title,
                             content=f"{sub_content} (for {heading})"
                         )
-                self.stdout.write(self.style.SUCCESS(f"Added {len(section_data[title])} sections and subsections to {title}"))
+                self.stdout.write(self.style.SUCCESS(f"🧩 Added {len(section_data[title])} sections and subsections to {title}"))
 
-        self.stdout.write(self.style.SUCCESS("Ingress complete."))
+        self.stdout.write(self.style.SUCCESS("✅ Document ingress complete."))

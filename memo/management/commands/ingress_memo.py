@@ -1,53 +1,74 @@
-from django.core.management.base import BaseCommand
+from django.utils.text import slugify
 from django.contrib.auth.models import User
 from memo.models import MemoDeck, MemoCard, Tag
+from oya.ingress import IngressCommand
 import random
 
 
-class Command(BaseCommand):
-    help = 'Builds sample MemoDecks, MemoCards, and InfoTags for testing or demo purposes'
+class Command(IngressCommand):
+    help = "Populate the database with sample MemoDecks, MemoCards, and Tags"
 
-    def handle(self, *args, **kwargs):
-        user = User.objects.first()
-        if not user:
-            self.stdout.write(self.style.ERROR("No users found. Please create a user first."))
-            return
+    def process(self, _):
+        # Dashboard block
+        self.create_dashboard_item(
+            title="MemoDeck Ingress",
+            icon="book-open",
+            description="Creates sample decks with cards and tags for demo/testing.",
+            link="/memo/"
+        )
 
+        # Ensure demo user exists
+        user, _ = User.objects.get_or_create(
+            username='demo_user',
+            defaults={'email': 'demo@example.com'}
+        )
+
+        # Create tags
         tag_names = ['django', 'python', 'study', 'backend', 'frontend', 'devtools', 'testing']
-        tags = []
+        tags = [Tag.objects.get_or_create(name=name)[0] for name in tag_names]
 
-        for name in tag_names:
-            tag, created = Tag.objects.get_or_create(name=name)
-            tags.append(tag)
-            if created:
-                self.stdout.write(self.style.SUCCESS(f"Created tag: {name}"))
+        # Sample decks and cards
+        decks = {
+            'Django Basics': [
+                ('What is Django?', 'Django is a high-level Python web framework.'),
+                ('What is a QuerySet?', 'A QuerySet is a collection of database queries.'),
+                ('What is a model?', 'A model is a Python class that maps to a database table.')
+            ],
+            'Python Tricks': [
+                ('List Comprehensions', 'Concise way to create lists.'),
+                ('Decorators', 'Functions that modify other functions.'),
+                ('Generators', 'Functions that yield values lazily.')
+            ],
+            'Testing Strategies': [
+                ('Unit Testing', 'Testing individual units of code.'),
+                ('Integration Testing', 'Testing combined parts of a system.'),
+                ('Mocking', 'Simulating parts of code for isolated testing.')
+            ]
+        }
 
-        deck_titles = ['Django Basics', 'Python Tricks', 'Testing Strategies']
-        sample_cards = [
-            ('What is Django?', 'Django is a high-level Python web framework.'),
-            ('What is a QuerySet?', 'A QuerySet is a collection of database queries.'),
-            ('What is a model?', 'A model is a Python class that maps to a database table.')
-        ]
+        # Create decks and cards
+        for deck_title, cards in decks.items():
+            slug = slugify(deck_title)
+            if MemoDeck.objects.filter(title=deck_title).exists():
+                self.stdout.write(self.style.WARNING(f"⚠️ Skipped existing deck: {deck_title}"))
+                continue
 
-        for title in deck_titles:
             deck = MemoDeck.objects.create(
-                title=title,
-                description=f"A deck about {title}.",
+                title=deck_title,
+                description=f"A deck about {deck_title}.",
                 author=user
             )
-            selected_tags = random.sample(tags, k=3)
-            deck.tags.set(selected_tags)
-            deck.save()
-            self.stdout.write(self.style.SUCCESS(f"Created deck: {deck.title} with tags: {', '.join(t.name for t in selected_tags)}"))
+            deck.tags.set(random.sample(tags, k=min(3, len(tags))))
+            self.stdout.write(self.style.SUCCESS(f"📘 Created deck: {deck_title}"))
 
-            for i, (card_title, card_content) in enumerate(sample_cards):
+            for i, (card_title, card_content) in enumerate(cards, start=1):
                 MemoCard.objects.create(
                     deck=deck,
                     title=card_title,
                     content=card_content,
                     mermaid_code="",
-                    order=i  # Assign order based on position
+                    order=i
                 )
-            self.stdout.write(self.style.SUCCESS(f"Added {len(sample_cards)} cards to deck: {deck.title}"))
+            self.stdout.write(self.style.SUCCESS(f"🃏 Added {len(cards)} cards to deck: {deck_title}"))
 
-        self.stdout.write(self.style.SUCCESS("✅ Sample decks, cards, and tags created successfully!"))
+        self.stdout.write(self.style.SUCCESS("✅ MemoDeck ingress complete."))

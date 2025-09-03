@@ -13,7 +13,7 @@ class Command(IngressCommand):
             title="Kanban Demo",
             icon="clipboard-list",
             description="A demo kanban board with tasks, columns, and sprint setup.",
-            link="kanban/"
+            link="/kanban/"
         )
 
         # Create demo user
