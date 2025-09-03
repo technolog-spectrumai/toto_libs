@@ -90,11 +90,12 @@ body {
         OrgChart.templates.customTemplate.node = `
           <rect x="0" y="0" width="{w}" height="{h}" fill="${bgColor}" rx="10" ry="10"
                 stroke="${accentColor}" stroke-width="2"></rect>
-          <text class="field_0" x="20" y="30" fill="${textColor}" font-size="16">{val}</text>
-          <text class="field_1" x="20" y="50" fill="${textColor}" font-size="12">{val}</text>
+
+
           <image preserveAspectRatio="xMidYMid slice" x="220" y="10" width="40" height="40" xlink:href="{img}"></image>
         `;
-
+        OrgChart.templates.customTemplate.field_0 =`<text class="field_0" x="20" y="30" fill="${textColor}" font-size="16">{val}</text>`;
+        OrgChart.templates.customTemplate.field_1 =`<text class="field_1" x="20" y="50" fill="${textColor}" font-size="12">{val}</text>`;
       return "customTemplate";
     }
 
@@ -105,9 +106,6 @@ body {
         field_0: "name",
         field_1: "title",
         img_0: "img"
-      },
-      nodeMenu: {
-        details: { text: "View Profile" }
       }
     });
 
