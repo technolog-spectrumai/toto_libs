@@ -10,9 +10,9 @@ class Command(IngressCommand):
     def process(self, _):
         # Hardcoded dashboard block
         self.create_dashboard_item(
-            title="Document Ingress",
+            title="Documents",
             icon="file-alt",
-            description="Creates sample documents with nested sections and tags.",
+            description="Documents with nested sections and tags.",
             link="/documents/"
         )
 

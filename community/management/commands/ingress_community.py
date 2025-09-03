@@ -11,10 +11,10 @@ class Command(IngressCommand):
     def process(self, _):
         # Dashboard block
         self.create_dashboard_item(
-            title="Community Ingress",
+            title="Community",
             icon="users",
             description="Company, branches, and community members with relationships.",
-            link="/org-chart/"
+            link="/community/org-chart/"
         )
 
         self.stdout.write(self.style.NOTICE("📍 Creating company address..."))

@@ -10,9 +10,9 @@ class Command(IngressCommand):
 
     def process(self, _):
         self.create_dashboard_item(
-            title="Kanban Demo",
+            title="Kanban",
             icon="clipboard-list",
-            description="A demo kanban board with tasks, columns, and sprint setup.",
+            description="A kanban board with tasks, columns, and sprint setup.",
             link="/kanban/"
         )
 
