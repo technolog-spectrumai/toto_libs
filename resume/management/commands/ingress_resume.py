@@ -1,23 +1,42 @@
-from django.core.management.base import BaseCommand
-from resume.models import Resume, WorkExperience, Education, Distinction, Language, Skill
 import random
 from faker import Faker
+from resume.models import Resume, WorkExperience, Education, Distinction, Language, Skill
+from django.utils.text import slugify
+from django.contrib.auth.models import User
+from oya.ingress import IngressCommand  # Your custom base class
 
 fake = Faker()
 
-class Command(BaseCommand):
-    help = 'Populate the database with dummy resume data'
+class Command(IngressCommand):
+    help = "Populate the database with dummy resume data for testing and demo purposes"
 
-    def handle(self, *args, **kwargs):
-        self.stdout.write("Starting dummy data generation...")
+    def process(self, _):
+        # Dashboard block
+        self.create_dashboard_item(
+            title="Resume Ingress",
+            icon="id-card",
+            description="Creates sample resumes with work experience, education, skills, and more.",
+            link="/resumes/"
+        )
 
-        for _ in range(10):  # Create 10 resumes
+        # Ensure demo user exists
+        user, _ = User.objects.get_or_create(
+            username='demo_user',
+            defaults={'email': 'demo@example.com'}
+        )
+
+        self.stdout.write(self.style.SUCCESS("👤 Using demo user for resume generation"))
+
+        for i in range(10):  # Create 10 resumes
+            full_name = fake.name()
             resume = Resume.objects.create(
-                full_name=fake.name(),
+                full_name=full_name,
                 phone_number=fake.phone_number(),
                 email=fake.email(),
-                citizenship=fake.country()
+                citizenship=fake.country(),
+                owner=user
             )
+            self.stdout.write(self.style.SUCCESS(f"📄 Created resume: {full_name}"))
 
             # Work Experience
             for _ in range(random.randint(1, 3)):
@@ -66,4 +85,6 @@ class Command(BaseCommand):
                     description=fake.sentence()
                 )
 
-        self.stdout.write(self.style.SUCCESS("Dummy resumes successfully created!"))
+            self.stdout.write(self.style.SUCCESS(f"🧩 Added experience, education, and skills to: {full_name}"))
+
+        self.stdout.write(self.style.SUCCESS("✅ Resume ingress complete."))

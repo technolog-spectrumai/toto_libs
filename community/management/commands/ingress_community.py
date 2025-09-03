@@ -1,41 +1,48 @@
-from django.core.management.base import BaseCommand
+import random
 from django.core.management import call_command
 from django.contrib.auth.models import User
-from community.models import Address, Company, Branch, CommunityMember
 from django.utils import timezone
-import random
+from community.models import Address, Company, Branch, CommunityMember
+from oya.ingress import IngressCommand  # Your custom base class
 
+class Command(IngressCommand):
+    help = "Populate the platform with fake community data: address, company, branches, members, and relationships"
 
-class Command(BaseCommand):
-    help = "Initialize platform with fake data: address, company, branches, members, and relationships"
+    def process(self, _):
+        # Dashboard block
+        self.create_dashboard_item(
+            title="Community Ingress",
+            icon="users",
+            description="Company, branches, and community members with relationships.",
+            link="/org-chart/"
+        )
 
-    def handle(self, *args, **options):
-        self.stdout.write(self.style.NOTICE("Creating company address..."))
+        self.stdout.write(self.style.NOTICE("📍 Creating company address..."))
         address_args = self.get_address_arguments()
         call_command("create_address", **address_args)
         address_id = self.get_latest_address_id()
         if not address_id:
-            self.stderr.write(self.style.ERROR("Address creation failed."))
+            self.stderr.write(self.style.ERROR("❌ Address creation failed."))
             return
 
-        self.stdout.write(self.style.NOTICE("Creating company..."))
+        self.stdout.write(self.style.NOTICE("🏢 Creating company..."))
         call_command("create_company", "Our Thing Inc.", str(address_id), "--established_year=2024")
         company = self.get_latest_company()
         if not company:
-            self.stderr.write(self.style.ERROR("Company creation failed."))
+            self.stderr.write(self.style.ERROR("❌ Company creation failed."))
             return
 
-        self.stdout.write(self.style.NOTICE("Creating community members..."))
+        self.stdout.write(self.style.NOTICE("🧑‍🤝‍🧑 Creating community members..."))
         members = self.create_fake_members(count=5)
 
-        self.stdout.write(self.style.NOTICE("Assigning head of company..."))
+        self.stdout.write(self.style.NOTICE("👑 Assigning head of company..."))
         company.head = random.choice(members)
         company.save()
 
-        self.stdout.write(self.style.NOTICE("Creating branches..."))
+        self.stdout.write(self.style.NOTICE("🏬 Creating branches..."))
         branches = self.create_fake_branches(company, members)
 
-        self.stdout.write(self.style.SUCCESS("Platform initialized with fake data."))
+        self.stdout.write(self.style.SUCCESS("✅ Community ingress complete."))
 
     def get_address_arguments(self):
         return {

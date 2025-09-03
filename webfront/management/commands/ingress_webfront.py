@@ -1,13 +1,12 @@
 import os
 import json
-from django.core.management.base import BaseCommand
 from django.utils.text import slugify
 from django.core.exceptions import ValidationError
 from webfront.models import Language, DynamicPage, PageGenerator
+from oya.ingress import IngressCommand  # Your custom base class
 
-
-class Command(BaseCommand):
-    help = "Create ingress DynamicPages for Sport, Spectrum, and Basilisk"
+class Command(IngressCommand):
+    help = "Populate the database with DynamicPages for Sport, Spectrum, and Basilisk"
 
     def add_arguments(self, parser):
         base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', 'data'))
@@ -30,25 +29,27 @@ class Command(BaseCommand):
             help='Directory containing config JSON files for DynamicPages'
         )
 
-    def handle(self, *args, **options):
-        html_dir = options['htmldir']
-        schema_dir = options['schemadir']
-        config_dir = options['configdir']
+    def process(self, options):
+        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', 'data'))
+        html_dir = options.get('htmldir', os.path.join(base_dir, "html"))
+        schema_dir = options.get('schemadir', os.path.join(base_dir, "schema"))
+        config_dir = options.get('configdir', os.path.join(base_dir, "config"))
         language_slug = 'en'
 
         language, _ = Language.objects.get_or_create(
             slug=language_slug,
             defaults={"name": "English"}
         )
-        self.stdout.write(self.style.SUCCESS(f"Using Language: {language.name}"))
+        self.stdout.write(self.style.SUCCESS(f"🌐 Using Language: {language.name}"))
 
+        # Validate directories
         if not all(map(os.path.isdir, [html_dir, schema_dir, config_dir])):
-            self.stderr.write(self.style.ERROR("One or more data directories do not exist."))
+            self.stderr.write(self.style.ERROR("❌ One or more data directories do not exist."))
             return
 
         config_files = [f for f in os.listdir(config_dir) if f.endswith('.json')]
         if not config_files:
-            self.stderr.write(self.style.WARNING(f"No config JSON files found in {config_dir}"))
+            self.stderr.write(self.style.WARNING(f"⚠️ No config JSON files found in {config_dir}"))
             return
 
         for filename in config_files:
@@ -60,7 +61,7 @@ class Command(BaseCommand):
             config_path = os.path.join(config_dir, filename)
 
             if not os.path.isfile(html_path) or not os.path.isfile(schema_path):
-                self.stderr.write(self.style.WARNING(f"Missing template or schema for: {name_token}"))
+                self.stderr.write(self.style.WARNING(f"⚠️ Missing template or schema for: {name_token}"))
                 continue
 
             try:
@@ -90,9 +91,11 @@ class Command(BaseCommand):
 
                 dp.full_clean()
                 dp.save()
-                self.stdout.write(self.style.SUCCESS(f"Created DynamicPage: {dp.name}"))
+                self.stdout.write(self.style.SUCCESS(f"📄 Created DynamicPage: {dp.name}"))
 
             except ValidationError as ve:
-                self.stderr.write(self.style.ERROR(f"Validation failed for {name_token}: {ve}"))
+                self.stderr.write(self.style.ERROR(f"❌ Validation failed for {name_token}: {ve}"))
             except Exception as e:
-                self.stderr.write(self.style.ERROR(f"Error processing {name_token}: {e}"))
+                self.stderr.write(self.style.ERROR(f"❌ Error processing {name_token}: {e}"))
+
+        self.stdout.write(self.style.SUCCESS("✅ DynamicPage ingress complete."))
