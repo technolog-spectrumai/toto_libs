@@ -239,19 +239,26 @@ class AppIngress(models.Model):
 
     def run_ingress_command(self):
         """
-        Runs the 'ingress' management command for the specified app.
+        Runs the 'ingress' management command for the specified app,
+        passing args as a JSON string.
         """
         try:
             app_config = apps.get_app_config(self.app_name)
             cmd_path = os.path.join(app_config.path, "management", "commands", f"ingress_{self.app_name}.py")
+
             if os.path.isfile(cmd_path):
                 out = StringIO()
-                call_command(f"ingress_{self.app_name}", **self.args, stdout=out, stderr=out)
+                json_args = json.dumps(self.args)
+
+                # Pass the JSON string using the --json argument
+                call_command(f"ingress_{self.app_name}", json=json_args, stdout=out, stderr=out)
+
                 output = out.getvalue()
                 sys.stdout.write(output)
-                return f"Success: Ran ingress for {self.app_name}", 0
+                return f"✅ Success: Ran ingress for {self.app_name}", 0
             else:
                 return f"No ingress command found for {self.app_name}", -1
+
         except Exception as e:
             return f"Error running ingress for {self.app_name}: {str(e)}", 1
 

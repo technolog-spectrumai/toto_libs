@@ -2,22 +2,14 @@ import os
 import json
 from django.core.management.base import BaseCommand, CommandError
 from django.core.management import call_command
+from oya.ingress import IngressCommand
 
 
-class Command(BaseCommand):
+class Command(IngressCommand):
     help = "Ingress themes from a directory of JSON files"
 
-    def add_arguments(self, parser):
-        default_dir = os.path.join(os.path.dirname(__file__), '../../../../data/themes')
-        parser.add_argument(
-            '--dir',
-            type=str,
-            default=default_dir,
-            help=f"Path to the directory containing theme JSON files (default: {default_dir})"
-        )
-
-    def handle(self, *args, **options):
-        themes_dir = options['dir']
+    def process(self,data):
+        themes_dir = data['dir']
 
         if not os.path.isdir(themes_dir):
             raise CommandError(f"Provided path is not a directory: {themes_dir}")
