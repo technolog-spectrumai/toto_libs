@@ -87,12 +87,13 @@ body {
 
       // Clone and customize the template
       OrgChart.templates.customTemplate = Object.assign({}, OrgChart.templates.ana);
-      OrgChart.templates.customTemplate.node = `
-        <rect x="0" y="0" width="{w}" height="{h}" fill="${bgColor}" rx="10" ry="10"></rect>
-        <text class="field_0" x="20" y="30" fill="${textColor}" font-size="16">{val}</text>
-        <text class="field_1" x="20" y="50" fill="${accentColor}" font-size="12">{val}</text>
-        <image preserveAspectRatio="xMidYMid slice" x="220" y="10" width="40" height="40" xlink:href="{img}"></image>
-      `;
+        OrgChart.templates.customTemplate.node = `
+          <rect x="0" y="0" width="{w}" height="{h}" fill="${bgColor}" rx="10" ry="10"
+                stroke="${accentColor}" stroke-width="2"></rect>
+          <text class="field_0" x="20" y="30" fill="${textColor}" font-size="16">{val}</text>
+          <text class="field_1" x="20" y="50" fill="${textColor}" font-size="12">{val}</text>
+          <image preserveAspectRatio="xMidYMid slice" x="220" y="10" width="40" height="40" xlink:href="{img}"></image>
+        `;
 
       return "customTemplate";
     }
