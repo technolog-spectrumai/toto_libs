@@ -45,28 +45,4 @@ class Command(IngressCommand):
                 "--header", json.dumps(theme.get("header", {}))
             )
 
-        dashboard_blocks = [
-            {
-                "name": "Kanban",
-                "description": "Organize tasks and workflows visually.",
-                "icon": "fas fa-columns",
-                "link": "/kanban"
-            },
-            {
-                "name": "Documents",
-                "description": "Access and manage your documents.",
-                "icon": "fas fa-file-alt",
-                "link": "/documents"
-            }
-        ]
-
-        for block in dashboard_blocks:
-            call_command(
-                "create_dashboard_block",
-                block["name"],
-                f"--description={block['description']}",
-                f"--icon={block['icon']}",
-                f"--link={block['link']}"
-            )
-
-        self.stdout.write(self.style.SUCCESS("Themes and dashboard blocks created successfully."))
+        self.stdout.write(self.style.SUCCESS("Themes created successfully."))
