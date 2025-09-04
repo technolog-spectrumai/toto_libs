@@ -12,10 +12,10 @@ import os
 SHOW_INLINE = True
 SHOW_TABLE = True
 
-# 🏷️ Tags
+# Tags
 admin.site.register(Tag)
 
-# 🏢 Departments
+# Departments
 @admin.register(Department)
 class DepartmentAdmin(admin.ModelAdmin):
     list_display = ['name', 'owner']
@@ -23,7 +23,7 @@ class DepartmentAdmin(admin.ModelAdmin):
     list_filter = ['owner']
 
 
-# ✏️ Forms
+# ✏Forms
 class SectionAdminForm(forms.ModelForm):
     content = forms.CharField(widget=TipTapWidget())
 
@@ -48,7 +48,7 @@ class SubSectionInlineForm(forms.ModelForm):
         fields = '__all__'
 
 
-# 📑 Inlines
+# Inlines
 class SubSectionInline(NestedStackedInline):
     model = SubSection
     form = SubSectionInlineForm
@@ -67,7 +67,7 @@ else:
     SectionInline = None
 
 
-# 📄 Document Admin
+# Document Admin
 @admin.register(Document)
 class DocumentAdmin(NestedModelAdmin):
     list_display = ['title', 'type', 'status', 'department', 'author', 'created_at']
