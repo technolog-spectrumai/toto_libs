@@ -53,11 +53,25 @@ class DocumentDetailView(PageDecoratedMixin, DetailView):
 
 
 def document_pdf_view(request, slug):
-    document = get_object_or_404(Document, slug=slug)
-    pdf_path = generate_document_pdf(document)
+    document = get_object_or_404(
+        Document.objects.select_related('department', 'author').prefetch_related('tags'),
+        slug=slug
+    )
+
+    sections = document.sections.prefetch_related(
+        Prefetch('html_subsections'),
+        Prefetch('latex_subsections')
+    )
+
+    document.sections_prefetched = sections
 
     try:
-        with open(pdf_path, 'rb') as pdf_file:
-            return FileResponse(pdf_file, content_type='application/pdf')
+        pdf_path = generate_document_pdf(document)
+        if not pdf_path:
+            raise Http404("PDF could not be generated.")
+        # with open(pdf_path, 'rb') as pdf_file:
+        #     return FileResponse(pdf_file, content_type='application/pdf')
+        pdf_file = open(pdf_path, 'rb')  # ✅ Keep file open
+        return FileResponse(pdf_file, content_type='application/pdf')
     except FileNotFoundError:
         raise Http404("PDF could not be generated.")

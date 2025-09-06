@@ -95,6 +95,13 @@ class Section(models.Model):
     def __str__(self):
         return f"{self.document.title} – Section {self.order}: {self.heading}"
 
+    @property
+    def all_subsections(self):
+        return sorted(
+            list(self.html_subsections.all()) + list(self.latex_subsections.all()),
+            key=lambda s: s.order
+        )
+
 
 class HTMLSubSection(models.Model):
     section = models.ForeignKey(Section, on_delete=models.CASCADE, related_name='html_subsections')
