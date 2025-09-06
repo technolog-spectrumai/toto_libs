@@ -39,6 +39,10 @@ class Document(PolymorphicModel):
     ], default='Draft')
     created_at = models.DateTimeField(auto_now_add=True)
 
+    @property
+    def document_type(self):
+        return self.get_real_instance_class().get_type()
+
 
     def save(self, *args, **kwargs):
         if not self.slug:
@@ -62,6 +66,10 @@ class HtmlDocument(Document):
         verbose_name = "HTML Document"
         verbose_name_plural = "HTML Documents"
 
+    @staticmethod
+    def get_type():
+        return "HTML"
+
 
 class LatexDocument(Document):
     compile_flags = models.JSONField(default=dict, blank=True)
@@ -69,6 +77,10 @@ class LatexDocument(Document):
     class Meta:
         verbose_name = "LaTeX Document"
         verbose_name_plural = "LaTeX Documents"
+
+    @staticmethod
+    def get_type():
+        return "Latex"
 
 
 class Section(models.Model):

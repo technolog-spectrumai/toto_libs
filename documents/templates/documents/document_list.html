@@ -24,40 +24,61 @@
         Explore all documents by type, department, and status.
       </p>
 
-      <form method="get" class="max-w-sm mx-auto">
-        <label for="department" class="block text-sm font-medium mb-1">Filter by Department</label>
-        <select name="department" id="department"
-                class="w-full px-3 py-2 rounded border dark:bg-gray-800 dark:text-gray-200"
-                onchange="this.form.submit()">
-          <option value="">All Departments</option>
-          {% for department in departments %}
-            <option value="{{ department.pk }}" {% if department.pk|stringformat:"s" == selected_department %}selected{% endif %}>
-              {{ department.name }}
-            </option>
-          {% endfor %}
-        </select>
-      </form>
+    <form method="get" class="max-w-sm mx-auto space-y-2">
+      <label for="department"
+             :class="darkMode ? 'text-text-main-dark' : 'text-text-main-light'"
+             class="block text-sm font-medium mb-1">
+        Filter by Department
+      </label>
+
+      <select name="department" id="department"
+              :class="darkMode
+                ? 'bg-gray-800 text-gray-200 border-accent-1'
+                : 'bg-white text-gray-800 border-accent-2'"
+              class="w-full px-3 py-2 rounded border transition-colors duration-300"
+              onchange="this.form.submit()">
+        <option value="">All Departments</option>
+        {% for department in departments %}
+          <option value="{{ department.pk }}"
+                  {% if department.pk|stringformat:"s" == selected_department %}selected{% endif %}>
+            {{ department.name }}
+          </option>
+        {% endfor %}
+      </select>
+    </form>
     </header>
 
     {% if documents %}
       <section class="space-y-4">
         <ul class="divide-y divide-gray-200 dark:divide-gray-700">
           {% for document in documents %}
-            <li class="py-4 group">
-              <a href="{% url 'document-detail' document.slug %}" class="block hover:underline">
-                <div class="flex justify-between items-center">
-                  <div>
-                    <h3 class="font-semibold text-lg">{{ document.title|truncatechars:80 }}</h3>
-                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                      {{ document.summary|truncatechars:100 }}
-                    </p>
-                  </div>
-                  <div class="text-right text-xs text-gray-400 dark:text-gray-500">
-                    <p>{{ document.document_type }}</p>
-                    <p>{{ document.created_at|date:"M d, Y" }}</p>
-                  </div>
-                </div>
-              </a>
+            <li x-data="{ open: false }"
+                :class="darkMode
+                  ? 'bg-primary-bg-dark text-text-main-dark'
+                  : 'bg-primary-bg-light text-text-main-light'"
+                class="border-l-4 pl-4 rounded-md shadow-sm p-4 space-y-3 transition-colors duration-300 my-2">
+
+              <!-- Document Title -->
+              <div class="flex justify-between items-center">
+                <h3 class="text-lg font-bold hover:underline">
+                  <a href="{% url 'document-detail' document.slug %}">{{ document.title }}</a>
+                </h3>
+
+                <!-- Document Type (Muted) -->
+                <span class="text-xs font-medium opacity-60 italic">
+                    {{document.document_type}}
+                </span>
+              </div>
+
+              <!-- Optional Description -->
+              {% if document.description %}
+                <p class="text-sm opacity-70">{{ document.description|truncatewords:20 }}</p>
+              {% endif %}
+
+              <!-- Optional Metadata -->
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                Status: {{ document.status }} | Created: {{ document.created_at|date:"M d, Y" }}
+              </p>
             </li>
           {% endfor %}
         </ul>

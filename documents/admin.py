@@ -101,7 +101,7 @@ class LatexDocumentAdmin(PolymorphicChildModelAdmin, NestedModelAdmin):
 class DocumentAdmin(PolymorphicParentModelAdmin):
     base_model = Document
     child_models = (HtmlDocument, LatexDocument)
-    list_display = ['title', 'slug', 'author', 'status', 'created_at', 'department']
+    list_display = ['title', 'slug', 'author', 'status', 'created_at', 'department', 'document_type']
     list_filter = ['title', 'status', 'author', 'department']
     readonly_fields = ['created_at']
     filter_horizontal = ['tags']
