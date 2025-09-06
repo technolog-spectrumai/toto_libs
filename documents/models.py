@@ -81,7 +81,7 @@ class Section(models.Model):
         ordering = ['order']
 
     def __str__(self):
-        return f"{self.document.project.title} – Section {self.order}: {self.heading}"
+        return f"{self.document.title} – Section {self.order}: {self.heading}"
 
 
 class HTMLSubSection(models.Model):
@@ -104,6 +104,7 @@ class LaTeXSubSection(models.Model):
     title = models.CharField(max_length=255)
     content = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
+    use_light_mode = models.BooleanField(default=False)
 
     class Meta:
         ordering = ['order']

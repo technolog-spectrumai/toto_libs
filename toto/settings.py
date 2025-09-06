@@ -62,6 +62,7 @@ INSTALLED_APPS = [
     'nested_admin',
     'colorfield',
     'polymorphic',
+    'django_ace',
     "gervazy",
     "oya",
     "captcha",

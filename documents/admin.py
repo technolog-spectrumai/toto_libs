@@ -12,6 +12,8 @@ from .models import (
     Section, HTMLSubSection, LaTeXSubSection, Image, Diagram, Formula
 )
 import os
+from django_ace import AceWidget
+
 
 SHOW_INLINE = True
 SHOW_TABLE = False
@@ -42,7 +44,13 @@ class HTMLSubSectionForm(forms.ModelForm):
 
 
 class LaTeXSubSectionForm(forms.ModelForm):
-    content = forms.CharField(widget=TipTapWidget())
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        instance = kwargs.get('instance')
+        theme = 'chrome'
+        if instance and instance.use_light_mode is False:
+            theme = 'monokai'
+        self.fields['content'].widget = AceWidget(mode='latex', theme=theme)
 
     class Meta:
         model = LaTeXSubSection

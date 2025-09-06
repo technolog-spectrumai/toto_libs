@@ -25,6 +25,7 @@ cycler==0.12.1
 diff-match-patch==20241021
 distro==1.9.0
 Django==4.2.23
+django-ace==1.42.0
 django-admin-sortable2==2.2.8
 django-celery-beat==2.8.1
 django-colorfield==0.14.0
