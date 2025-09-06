@@ -310,7 +310,9 @@ LOGGING = {
 
 LOGIN_URL = '/community/login/'
 
-CELERY_BROKER_URL = "redis://localhost:6379/0"
+CELERY_BROKER_URL = 'redis://localhost:6379/0'
+CELERY_TIMEZONE = 'UTC'
+CELERY_ENABLE_UTC = True
 
 FIELD_ENCRYPTION_KEY = 'GYVe39sJIvujld8u5NlnFStQXEkZnLDAXxtD6p2UfWs='
 
