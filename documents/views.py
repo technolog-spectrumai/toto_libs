@@ -1,48 +1,54 @@
 from django.views.generic import ListView, DetailView
-from .models import Document, HtmlDocument, Department, HTMLSubSection
-from .mixins import PageDecoratedMixin
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
 from django.db.models import Prefetch
+
+from .models import Document, Department, Section, HTMLSubSection, LaTeXSubSection
+from .mixins import PageDecoratedMixin
 from .pdf import generate_document_pdf
 
 
 class DocumentListView(PageDecoratedMixin, ListView):
-    model = HtmlDocument
-    template_name = 'documents/document_list.html'
+    model = Document
+    template_name = 'document/document_list.html'
     context_object_name = 'documents'
 
     def get_queryset(self):
-        queryset = super().get_queryset().select_related('project', 'author')
-        project_id = self.request.GET.get('project')
-        if project_id:
-            queryset = queryset.filter(project_id=project_id)
+        queryset = super().get_queryset().select_related('department', 'author')
+        department_id = self.request.GET.get('department')
+        if department_id:
+            queryset = queryset.filter(department_id=department_id)
         return queryset
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['projects'] = Project.objects.all()
-        context['selected_project'] = self.request.GET.get('project')
+        context.update({
+            'departments': Department.objects.all(),
+            'selected_department': self.request.GET.get('department')
+        })
         return context
 
 
 class DocumentDetailView(PageDecoratedMixin, DetailView):
-    model = HtmlDocument
+    model = Document
     template_name = 'documents/document_detail.html'
     context_object_name = 'document'
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        document = self.get_object()
+        document = self.object
 
-        # Prefetch HTML subsections only
+        # Prefetch both HTML and LaTeX subsections for each section
         sections = document.sections.prefetch_related(
-            Prefetch('html_subsections', queryset=HTMLSubSection.objects.order_by('order'))
+            Prefetch('html_subsections', queryset=HTMLSubSection.objects.order_by('order')),
+            Prefetch('latex_subsections', queryset=LaTeXSubSection.objects.order_by('order'))
         )
 
-        context['sections'] = sections
-        context['tags'] = document.project.tags.all()
-        context['department'] = document.project.department
+        context.update({
+            'sections': sections,
+            'tags': document.tags.all(),
+            'department': document.department
+        })
         return context
 
 
@@ -51,8 +57,7 @@ def document_pdf_view(request, slug):
     pdf_path = generate_document_pdf(document)
 
     try:
-        return FileResponse(open(pdf_path, 'rb'), content_type='application/pdf')
+        with open(pdf_path, 'rb') as pdf_file:
+            return FileResponse(pdf_file, content_type='application/pdf')
     except FileNotFoundError:
         raise Http404("PDF could not be generated.")
-
-
