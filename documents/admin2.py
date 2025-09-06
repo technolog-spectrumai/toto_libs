@@ -14,12 +14,12 @@ from .models import (
 import os
 
 SHOW_INLINE = True
-SHOW_TABLE = False
+SHOW_TABLE = True
 
-
+# Tags
 admin.site.register(Tag)
 
-
+# Departments
 @admin.register(Department)
 class DepartmentAdmin(admin.ModelAdmin):
     list_display = ['name', 'owner']
@@ -27,11 +27,20 @@ class DepartmentAdmin(admin.ModelAdmin):
     list_filter = ['owner']
 
 
+# @admin.register(Project)
+# class ProjectAdmin(admin.ModelAdmin):
+#     list_display = ['title', 'slug', 'department', 'created_at']
+#     search_fields = ['title', 'slug']
+#     list_filter = ['department', 'tags']
+#     prepopulated_fields = {'slug': ('title',)}
+#     filter_horizontal = ['tags']
+#     readonly_fields = ['created_at']
+
+# ✏Forms
 class SectionForm(forms.ModelForm):
     class Meta:
         model = Section
         fields = '__all__'
-
 
 class HTMLSubSectionForm(forms.ModelForm):
     content = forms.CharField(widget=TipTapWidget())
@@ -40,7 +49,6 @@ class HTMLSubSectionForm(forms.ModelForm):
         model = HTMLSubSection
         fields = '__all__'
 
-
 class LaTeXSubSectionForm(forms.ModelForm):
     content = forms.CharField(widget=TipTapWidget())
 
@@ -48,13 +56,12 @@ class LaTeXSubSectionForm(forms.ModelForm):
         model = LaTeXSubSection
         fields = '__all__'
 
-
+# Inlines
 class HTMLSubSectionInline(NestedStackedInline):
     model = HTMLSubSection
     form = HTMLSubSectionForm
     extra = 1
     ordering = ['order']
-
 
 class LaTeXSubSectionInline(NestedStackedInline):
     model = LaTeXSubSection
@@ -62,32 +69,31 @@ class LaTeXSubSectionInline(NestedStackedInline):
     extra = 1
     ordering = ['order']
 
-
-class HtmlSectionInline(NestedStackedInline):
+class SectionInline(NestedStackedInline):
     model = Section
     form = SectionForm
     extra = 1
     ordering = ['order']
-    inlines = [HTMLSubSectionInline]
 
+    def get_inline(self, request, obj=None):
+        if obj and hasattr(obj, 'polymorphic_ctype'):
+            print("--->", obj.polymorphic_ctype)
+            if obj.polymorphic_ctype.model == 'htmldocument':
+                self.inlines = [HTMLSubSectionInline]
+            elif obj.polymorphic_ctype.model == 'latexdocument':
+                self.inlines = [LaTeXSubSectionInline]
+        return super().get_inline_instances(request, obj)
 
-class LatexSectionInline(NestedStackedInline):
-    model = Section
-    form = SectionForm
-    extra = 1
-    ordering = ['order']
-    inlines = [LaTeXSubSectionInline]
-
-
-class HtmlDocumentAdmin(PolymorphicChildModelAdmin, NestedModelAdmin):
+# Polymorphic Document Admins
+class HtmlDocumentAdmin(PolymorphicChildModelAdmin):
     base_model = HtmlDocument
-    inlines = [HtmlSectionInline]
+    inlines = [SectionInline]
+    #fieldsets = ((None, {'fields': ['project', 'author', 'status', 'summary']}),)
 
-
-class LatexDocumentAdmin(PolymorphicChildModelAdmin, NestedModelAdmin):
+class LatexDocumentAdmin(PolymorphicChildModelAdmin):
     base_model = LatexDocument
-    inlines = [LatexSectionInline]
-
+    inlines = [SectionInline]
+    #fieldsets = ((None, {'fields': ['project', 'author', 'status', 'compile_flags']}),)
 
 @admin.register(Document)
 class DocumentAdmin(PolymorphicParentModelAdmin):
@@ -96,40 +102,34 @@ class DocumentAdmin(PolymorphicParentModelAdmin):
     list_display = ['title', 'slug', 'author', 'status', 'created_at', 'department']
     list_filter = ['title', 'status', 'author', 'department']
     readonly_fields = ['created_at']
-    filter_horizontal = ['tags']
 
 admin.site.register(HtmlDocument, HtmlDocumentAdmin)
 admin.site.register(LatexDocument, LatexDocumentAdmin)
 
-if SHOW_TABLE:
-    @admin.register(HTMLSubSection)
-    class HTMLSubSectionAdmin(SortableAdminMixin, admin.ModelAdmin):
-        form = HTMLSubSectionForm
-        list_display = ['section', 'order', 'title', 'created_at']
-        list_filter = ['section']
-        search_fields = ['title', 'content']
-
-    @admin.register(LaTeXSubSection)
-    class LaTeXSubSectionAdmin(SortableAdminMixin, admin.ModelAdmin):
-        form = LaTeXSubSectionForm
-        list_display = ['section', 'order', 'title', 'created_at']
-        list_filter = ['section']
-        search_fields = ['title', 'content']
+# # Section Table Admin
+# if SHOW_TABLE:
+#     @admin.register(Section)
+#     class SectionAdmin(SortableAdminMixin, admin.ModelAdmin):
+#         form = SectionForm
+#         list_display = ['document', 'order', 'heading', 'created_at']
+#         list_filter = ['document']
+#         search_fields = ['heading']
 
 
-    class SectionAdminForm(forms.ModelForm):
-        content = forms.CharField(widget=TipTapWidget())
+@admin.register(HTMLSubSection)
+class HTMLSubSectionAdmin(SortableAdminMixin, admin.ModelAdmin):
+    form = HTMLSubSectionForm
+    list_display = ['section', 'order', 'title', 'created_at']
+    list_filter = ['section']
+    search_fields = ['title', 'content']
 
-        class Meta:
-            model = Section
-            fields = '__all__'
+@admin.register(LaTeXSubSection)
+class LaTeXSubSectionAdmin(SortableAdminMixin, admin.ModelAdmin):
+    form = LaTeXSubSectionForm
+    list_display = ['section', 'order', 'title', 'created_at']
+    list_filter = ['section']
+    search_fields = ['title', 'content']
 
-    @admin.register(Section)
-    class SectionAdmin(SortableAdminMixin, admin.ModelAdmin):
-        form = SectionAdminForm
-        list_display = ['document', 'order', 'heading', 'created_at']
-        list_filter = ['document', 'created_at']
-        search_fields = ['heading', 'content']
 
 
 @admin.register(Image)

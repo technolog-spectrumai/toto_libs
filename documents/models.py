@@ -5,6 +5,7 @@ import os
 from django.conf import settings
 from mermaid_cli import render_mermaid_file_sync
 import matplotlib.pyplot as plt
+from polymorphic.models import PolymorphicModel
 
 
 class Tag(models.Model):
@@ -23,33 +24,21 @@ class Department(models.Model):
         return self.name
 
 
-class Document(models.Model):
-    DOCUMENT_TYPES = [
-        ('Analysis', 'Analysis'),
-        ('Report', 'Report'),
-        ('Design', 'Design'),
-        ('Plan', 'Plan'),
-    ]
-
-    STATUS_CHOICES = [
+class Document(PolymorphicModel):
+    title = models.CharField(max_length=255)
+    slug = models.SlugField(unique=True)
+    description = models.TextField(blank=True)
+    department = models.ForeignKey('Department', on_delete=models.SET_NULL, null=True, blank=True)
+    tags = models.ManyToManyField('Tag', blank=True)
+    author = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    status = models.CharField(max_length=50, choices=[
         ('Draft', 'Draft'),
         ('Active', 'Active'),
         ('Deprecated', 'Deprecated'),
         ('Archived', 'Archived'),
-    ]
-
-    slug = models.SlugField(max_length=255, primary_key=True, unique=True)
-    title = models.CharField(max_length=255)
-    summary = models.TextField()
-    type = models.CharField(max_length=50, choices=DOCUMENT_TYPES)
-    status = models.CharField(max_length=50, choices=STATUS_CHOICES, default='Draft')
+    ], default='Draft')
     created_at = models.DateTimeField(auto_now_add=True)
-    department = models.ForeignKey('Department', on_delete=models.CASCADE, related_name='documents')
-    author = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='authored_documents')
-    tags = models.ManyToManyField('Tag', blank=True, related_name='documents')
 
-    def __str__(self):
-        return f"{self.title} ({self.type})"
 
     def save(self, *args, **kwargs):
         if not self.slug:
@@ -62,16 +51,57 @@ class Document(models.Model):
             self.slug = slug
         super().save(*args, **kwargs)
 
+    def __str__(self):
+        return f"{self.title} ({self.get_real_instance_class().__name__})"
+
+
+class HtmlDocument(Document):
+    summary = models.TextField(blank=True)
+
+    class Meta:
+        verbose_name = "HTML Document"
+        verbose_name_plural = "HTML Documents"
+
+
+class LatexDocument(Document):
+    compile_flags = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        verbose_name = "LaTeX Document"
+        verbose_name_plural = "LaTeX Documents"
+
 
 class Section(models.Model):
-    report = models.ForeignKey(
-        Document,
-        on_delete=models.CASCADE,
-        related_name='sections',
-        limit_choices_to={'type': 'Report'}
-    )
+    document = models.ForeignKey(Document, on_delete=models.CASCADE, related_name='sections')
     order = models.PositiveIntegerField()
     heading = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['order']
+
+    def __str__(self):
+        return f"{self.document.project.title} – Section {self.order}: {self.heading}"
+
+
+class HTMLSubSection(models.Model):
+    section = models.ForeignKey(Section, on_delete=models.CASCADE, related_name='html_subsections')
+    order = models.PositiveIntegerField()
+    title = models.CharField(max_length=255)
+    content = models.TextField()
+    image = models.ForeignKey('Image', on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['order']
+
+    def __str__(self):
+        return f"{self.section.heading} – HTML SubSection {self.order}: {self.title}"
+
+class LaTeXSubSection(models.Model):
+    section = models.ForeignKey(Section, on_delete=models.CASCADE, related_name='latex_subsections')
+    order = models.PositiveIntegerField()
+    title = models.CharField(max_length=255)
     content = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -79,7 +109,7 @@ class Section(models.Model):
         ordering = ['order']
 
     def __str__(self):
-        return f"{self.report.title} – Section {self.order}: {self.heading}"
+        return f"{self.section.heading} – LaTeX SubSection {self.order}: {self.title}"
 
 
 class Image(models.Model):
@@ -90,32 +120,6 @@ class Image(models.Model):
 
     def __str__(self):
         return self.title
-
-
-
-class SubSection(models.Model):
-    section = models.ForeignKey(
-        Section,
-        on_delete=models.CASCADE,
-        related_name='subsections'
-    )
-    order = models.PositiveIntegerField()
-    title = models.CharField(max_length=255)
-    content = models.TextField()
-    image = models.ForeignKey(
-        'Image',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='subsections'
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ['order']
-
-    def __str__(self):
-        return f"{self.section.heading} – SubSection {self.order}: {self.title}"
 
 
 class Diagram(models.Model):

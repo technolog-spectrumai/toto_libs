@@ -1,25 +1,21 @@
 from django import forms
+from django_tiptap.widgets import TipTapWidget
+from nested_admin import NestedModelAdmin, NestedStackedInline
+from .models import Tag, Department, Document, Section, SubSection, Image, Diagram, Formula
+from adminsortable2.admin import SortableAdminMixin
 from django.contrib import admin
 from django.utils.html import mark_safe
 from django.utils.timezone import now
 from django.core.files import File
-from django_tiptap.widgets import TipTapWidget
-from nested_admin import NestedModelAdmin, NestedStackedInline
-from polymorphic.admin import PolymorphicParentModelAdmin, PolymorphicChildModelAdmin
-from adminsortable2.admin import SortableAdminMixin
-from .models import (
-    Tag, Department, Document, HtmlDocument, LatexDocument,
-    Section, HTMLSubSection, LaTeXSubSection, Image, Diagram, Formula
-)
 import os
 
 SHOW_INLINE = True
-SHOW_TABLE = False
+SHOW_TABLE = True
 
-
+# Tags
 admin.site.register(Tag)
 
-
+# Departments
 @admin.register(Department)
 class DepartmentAdmin(admin.ModelAdmin):
     list_display = ['name', 'owner']
@@ -27,109 +23,78 @@ class DepartmentAdmin(admin.ModelAdmin):
     list_filter = ['owner']
 
 
-class SectionForm(forms.ModelForm):
+# ✏Forms
+class SectionAdminForm(forms.ModelForm):
+    content = forms.CharField(widget=TipTapWidget())
+
     class Meta:
         model = Section
         fields = '__all__'
 
 
-class HTMLSubSectionForm(forms.ModelForm):
+class SectionInlineForm(forms.ModelForm):
     content = forms.CharField(widget=TipTapWidget())
 
     class Meta:
-        model = HTMLSubSection
+        model = Section
         fields = '__all__'
 
 
-class LaTeXSubSectionForm(forms.ModelForm):
+class SubSectionInlineForm(forms.ModelForm):
     content = forms.CharField(widget=TipTapWidget())
 
     class Meta:
-        model = LaTeXSubSection
+        model = SubSection
         fields = '__all__'
 
 
-class HTMLSubSectionInline(NestedStackedInline):
-    model = HTMLSubSection
-    form = HTMLSubSectionForm
+# Inlines
+class SubSectionInline(NestedStackedInline):
+    model = SubSection
+    form = SubSectionInlineForm
     extra = 1
     ordering = ['order']
 
 
-class LaTeXSubSectionInline(NestedStackedInline):
-    model = LaTeXSubSection
-    form = LaTeXSubSectionForm
-    extra = 1
-    ordering = ['order']
+if SHOW_INLINE:
+    class SectionInline(NestedStackedInline):  # Use NestedStackedInline for nesting
+        model = Section
+        form = SectionInlineForm
+        extra = 1
+        ordering = ['order']
+        inlines = [SubSectionInline]
+else:
+    SectionInline = None
 
 
-class HtmlSectionInline(NestedStackedInline):
-    model = Section
-    form = SectionForm
-    extra = 1
-    ordering = ['order']
-    inlines = [HTMLSubSectionInline]
-
-
-class LatexSectionInline(NestedStackedInline):
-    model = Section
-    form = SectionForm
-    extra = 1
-    ordering = ['order']
-    inlines = [LaTeXSubSectionInline]
-
-
-class HtmlDocumentAdmin(PolymorphicChildModelAdmin, NestedModelAdmin):
-    base_model = HtmlDocument
-    inlines = [HtmlSectionInline]
-
-
-class LatexDocumentAdmin(PolymorphicChildModelAdmin, NestedModelAdmin):
-    base_model = LatexDocument
-    inlines = [LatexSectionInline]
-
-
+# Document Admin
 @admin.register(Document)
-class DocumentAdmin(PolymorphicParentModelAdmin):
-    base_model = Document
-    child_models = (HtmlDocument, LatexDocument)
-    list_display = ['title', 'slug', 'author', 'status', 'created_at', 'department']
-    list_filter = ['title', 'status', 'author', 'department']
+class DocumentAdmin(NestedModelAdmin):
+    list_display = ['title', 'type', 'status', 'department', 'author', 'created_at']
+    list_filter = ['type', 'status', 'department', 'tags']
+    search_fields = ['title', 'summary', 'slug']
     readonly_fields = ['created_at']
+    date_hierarchy = 'created_at'
+    prepopulated_fields = {'slug': ('title',)}
     filter_horizontal = ['tags']
-
-admin.site.register(HtmlDocument, HtmlDocumentAdmin)
-admin.site.register(LatexDocument, LatexDocumentAdmin)
+    inlines = [inline for inline in [SectionInline] if inline]
 
 if SHOW_TABLE:
-    @admin.register(HTMLSubSection)
-    class HTMLSubSectionAdmin(SortableAdminMixin, admin.ModelAdmin):
-        form = HTMLSubSectionForm
-        list_display = ['section', 'order', 'title', 'created_at']
-        list_filter = ['section']
-        search_fields = ['title', 'content']
-
-    @admin.register(LaTeXSubSection)
-    class LaTeXSubSectionAdmin(SortableAdminMixin, admin.ModelAdmin):
-        form = LaTeXSubSectionForm
-        list_display = ['section', 'order', 'title', 'created_at']
-        list_filter = ['section']
-        search_fields = ['title', 'content']
-
-
-    class SectionAdminForm(forms.ModelForm):
-        content = forms.CharField(widget=TipTapWidget())
-
-        class Meta:
-            model = Section
-            fields = '__all__'
-
     @admin.register(Section)
     class SectionAdmin(SortableAdminMixin, admin.ModelAdmin):
         form = SectionAdminForm
-        list_display = ['document', 'order', 'heading', 'created_at']
-        list_filter = ['document', 'created_at']
+        list_display = ['report', 'order', 'heading', 'created_at']
+        list_filter = ['report', 'created_at']
         search_fields = ['heading', 'content']
+
+
+if SHOW_TABLE:
+    @admin.register(SubSection)
+    class SubSectionAdmin(SortableAdminMixin, admin.ModelAdmin):
+        form = SubSectionInlineForm
+        list_display = ['section', 'order', 'title', 'created_at']
+        list_filter = ['section']
+        search_fields = ['title', 'content']
 
 
 @admin.register(Image)

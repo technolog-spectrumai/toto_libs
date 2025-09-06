@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     'adminsortable2',
     'nested_admin',
     'colorfield',
+    'polymorphic',
     "gervazy",
     "oya",
     "captcha",
