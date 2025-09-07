@@ -1,10 +1,11 @@
-from django.shortcuts import render, redirect
+from django.shortcuts import redirect
 from oya.models import DashboardBlock
 from .page import PageProcessor
 import os
 from django.shortcuts import render
 from django.http import Http404
-
+from .apps import OyaConfig
+from django.urls import reverse
 
 
 template_dir = "oya"
@@ -44,7 +45,8 @@ def root_view(request):
         processor = PageProcessor()
         index_url = processor.config.index_url
         if not index_url:
-            raise Http404("No index URL configured for active platform.")
+            url_app_name = OyaConfig.url_name
+            return redirect(reverse(f"{url_app_name}:home"))
         return redirect(f"{index_url}")
     except Http404:
         raise

@@ -9,13 +9,15 @@ def convert_html_to_latex_task(document_id):
         for section in doc.sections.all():
             HTMLToLaTeXConverter(section).convert()
 
-        LatexDocument.objects.create(
-            project=doc.project,
+        new_doc = LatexDocument.objects.create(
             author=doc.author,
             status=doc.status,
-        ).sections.set(doc.sections.all())
-
-        doc.delete()
+            department=doc.department,
+            title=doc.title
+        )
+        new_doc.tags.set(doc.tags.all())
+        new_doc.sections.set(doc.sections.all())
+        #doc.delete()
     except Exception as e:
         return f"Conversion failed: {str(e)}"
     return "Conversion successful"
@@ -27,14 +29,16 @@ def convert_latex_to_html_task(document_id):
         for section in doc.sections.all():
             LaTeXToHTMLConverter(section).convert()
 
-        HtmlDocument.objects.create(
-            project=doc.project,
+        new_doc = HtmlDocument.objects.create(
             author=doc.author,
             status=doc.status,
+            department=doc.department,
+            title=doc.title,
             summary=""
-        ).sections.set(doc.sections.all())
-
-        doc.delete()
+        )
+        new_doc.tags.set(doc.tags.all())
+        new_doc.sections.set(doc.sections.all())
+        #doc.delete()
     except Exception as e:
         return f"Conversion failed: {str(e)}"
     return "Conversion successful"

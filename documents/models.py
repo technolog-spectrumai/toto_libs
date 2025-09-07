@@ -58,6 +58,10 @@ class Document(PolymorphicModel):
     def __str__(self):
         return f"{self.title} ({self.get_real_instance_class().__name__})"
 
+    @staticmethod
+    def get_type():
+        return "Generic"
+
 
 class HtmlDocument(Document):
     summary = models.TextField(blank=True)

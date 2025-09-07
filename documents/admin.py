@@ -1,5 +1,5 @@
 from django import forms
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.utils.html import mark_safe
 from django.utils.timezone import now
 from django.core.files import File
@@ -13,6 +13,7 @@ from .models import (
 )
 import os
 from django_ace import AceWidget
+from .tasks import convert_html_to_latex_task, convert_latex_to_html_task
 
 
 SHOW_INLINE = True
@@ -105,9 +106,52 @@ class DocumentAdmin(PolymorphicParentModelAdmin):
     list_filter = ['title', 'status', 'author', 'department']
     readonly_fields = ['created_at']
     filter_horizontal = ['tags']
+    actions = ['convert_to_latex', 'convert_to_html']
+
+    @staticmethod
+    def _convert(direction, queryset):
+        conversion_map = {
+            LatexDocument.get_type(): {
+                "task": convert_html_to_latex_task,
+                "target": LatexDocument.get_type(),
+                "source": HtmlDocument.get_type()
+            },
+            HtmlDocument.get_type(): {
+                "task": convert_latex_to_html_task,
+                "target": HtmlDocument.get_type(),
+                "source": LatexDocument.get_type()
+            }
+        }
+
+        config = conversion_map[direction]
+        converted = 0
+        skipped = 0
+
+        for doc in queryset:
+            if doc.document_type == config["target"]:
+                skipped += 1
+            elif doc.document_type == config["source"]:
+                config["task"].delay(doc.id)
+                converted += 1
+
+        msg_done = f"{converted} document(s) scheduled for {config['target']} conversion."
+        msg_skip = f"{skipped} already in {config['target']} format."
+        return f"{msg_done} {msg_skip}"
+
+    def convert_to_latex(self, request, queryset):
+        msg = self._convert(LatexDocument.get_type(), queryset)
+        self.message_user(request, msg, messages.INFO)
+    convert_to_latex.short_description = "Convert selected documents to LaTeX"
+
+    def convert_to_html(self, request, queryset):
+        msg = self._convert(HtmlDocument.get_type(), queryset)
+        self.message_user(request, msg, messages.INFO)
+    convert_to_html.short_description = "Convert selected documents to HTML"
+
 
 admin.site.register(HtmlDocument, HtmlDocumentAdmin)
 admin.site.register(LatexDocument, LatexDocumentAdmin)
+
 
 if SHOW_TABLE:
     @admin.register(HTMLSubSection)
