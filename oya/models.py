@@ -8,8 +8,7 @@ from io import StringIO
 from colorfield.fields import ColorField
 import sys
 import json
-from dataclasses import dataclass
-from enum import IntEnum
+from django.conf import settings
 
 
 class Font(models.Model):
@@ -211,15 +210,7 @@ class DashboardBlock(models.Model):
         return self.title
 
 
-ALLOWED_APPS = [
-    'oya',
-    'webfront',
-    "community",
-    "memo",
-    "resume",
-    "documents",
-    "kanban"
-]
+_INGRESS_ALLOWED_APPS = getattr(settings, "INGRESS_ALLOWED_APPS", [])
 
 class AppIngress(models.Model):
 
@@ -232,10 +223,10 @@ class AppIngress(models.Model):
     class IngressCommandExecutionFailed(IngressCommandError):
         """Raised when the command execution throws an error."""
 
-
+    INGRESS_ALLOWED_APPS = _INGRESS_ALLOWED_APPS
     app_name = models.CharField(
         max_length=64,
-        choices=[(app, app) for app in ALLOWED_APPS],
+        choices=[(app, app) for app in _INGRESS_ALLOWED_APPS],
         help_text="Target app for ingress"
     )
     args = models.JSONField(

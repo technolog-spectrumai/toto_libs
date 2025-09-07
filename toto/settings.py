@@ -316,5 +316,13 @@ CELERY_ENABLE_UTC = True
 
 FIELD_ENCRYPTION_KEY = 'GYVe39sJIvujld8u5NlnFStQXEkZnLDAXxtD6p2UfWs='
 
+INGRESS_ALLOWED_APPS = [
+    'oya',
+    'webfront',
+    "memo",
+    "documents",
+    "kanban"
+]
+
 
 
