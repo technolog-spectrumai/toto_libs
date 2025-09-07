@@ -7,6 +7,9 @@ import os
 from io import StringIO
 from colorfield.fields import ColorField
 import sys
+import json
+from dataclasses import dataclass
+from enum import IntEnum
 
 
 class Font(models.Model):
@@ -219,6 +222,17 @@ ALLOWED_APPS = [
 ]
 
 class AppIngress(models.Model):
+
+    class IngressCommandError(Exception):
+        """Base class for ingress command errors."""
+
+    class IngressCommandNotFound(IngressCommandError):
+        """Raised when the ingress command file is missing."""
+
+    class IngressCommandExecutionFailed(IngressCommandError):
+        """Raised when the command execution throws an error."""
+
+
     app_name = models.CharField(
         max_length=64,
         choices=[(app, app) for app in ALLOWED_APPS],
@@ -241,26 +255,27 @@ class AppIngress(models.Model):
         """
         Runs the 'ingress' management command for the specified app,
         passing args as a JSON string.
+        Raises:
+            IngressCommandNotFound: if the command file doesn't exist
+            IngressCommandExecutionFailed: if execution fails
         """
+        app_config = apps.get_app_config(self.app_name)
+        cmd_path = os.path.join(app_config.path, "management", "commands", f"ingress_{self.app_name}.py")
+
+        if not os.path.isfile(cmd_path):
+            raise self.IngressCommandNotFound(f"No ingress command found for '{self.app_name}'")
+
         try:
-            app_config = apps.get_app_config(self.app_name)
-            cmd_path = os.path.join(app_config.path, "management", "commands", f"ingress_{self.app_name}.py")
+            out = StringIO()
+            json_args = json.dumps(self.args)
 
-            if os.path.isfile(cmd_path):
-                out = StringIO()
-                json_args = json.dumps(self.args)
+            call_command(f"ingress_{self.app_name}", json=json_args, stdout=out, stderr=out)
 
-                # Pass the JSON string using the --json argument
-                call_command(f"ingress_{self.app_name}", json=json_args, stdout=out, stderr=out)
-
-                output = out.getvalue()
-                sys.stdout.write(output)
-                return f"✅ Success: Ran ingress for {self.app_name}", 0
-            else:
-                return f"No ingress command found for {self.app_name}", -1
+            output = out.getvalue()
+            sys.stdout.write(output)
 
         except Exception as e:
-            return f"Error running ingress for {self.app_name}: {str(e)}", 1
+            raise self.IngressCommandExecutionFailed(f"Error running ingress for '{self.app_name}': {str(e)}")
 
 
 class LogEntry(models.Model):

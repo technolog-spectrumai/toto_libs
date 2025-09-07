@@ -122,21 +122,32 @@ class AppIngressAdmin(admin.ModelAdmin):
     list_display = ("app_name", "scheduled_at")
     actions = ["run_ingress"]
 
-
     @admin.action(description="Run ingress command for selected entries")
     def run_ingress(self, request, queryset):
         for ingress in queryset:
-            result, code = ingress.run_ingress_command()
-
-            # Map return code to Django message level
-            if code == 0:
-                level = messages.SUCCESS
-            elif code == -1:
-                level = messages.WARNING
-            elif code == 1:
-                level = messages.ERROR
-            else:
-                level = messages.INFO
-
-            self.message_user(request, result, level=level)
+            try:
+                ingress.run_ingress_command()
+                self.message_user(
+                    request,
+                    f"Success: Ran ingress for {ingress.app_name}",
+                    level=messages.SUCCESS
+                )
+            except AppIngress.IngressCommandNotFound as nf:
+                self.message_user(
+                    request,
+                    f"Not Found: {nf}",
+                    level=messages.WARNING
+                )
+            except AppIngress.IngressCommandExecutionFailed as ef:
+                self.message_user(
+                    request,
+                    f"Execution Failed: {ef}",
+                    level=messages.ERROR
+                )
+            except AppIngress.IngressCommandError as e:
+                self.message_user(
+                    request,
+                    f"Unknown Error: {e}",
+                    level=messages.ERROR
+                )
 
