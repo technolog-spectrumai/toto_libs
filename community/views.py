@@ -244,7 +244,8 @@ def org_chart_data(request):
             "name": person.display_name,
             "title": get_role(person, company),
             "img": person.avatar.url if person.avatar else None,
-            "activity": person.slug
+            "activity": person.slug,
+            "profile": person.slug,
         })
 
     return JsonResponse({"nodes": nodes})

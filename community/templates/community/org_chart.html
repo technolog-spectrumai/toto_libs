@@ -126,18 +126,32 @@ editForm.prototype.show = function (nodeId) {
                 </td>
             </tr>`;
 
+    const renderers = {
+        activity: (value, accentColor, textColor) =>
+            `<td class="t-val" style="padding: 8px; color: ${textColor}; font-weight: normal;">
+                <a href="/community/posts/${value}" style="color: ${accentColor}; text-decoration: underline;">Recent Posts</a>
+            </td>`,
+
+        profile: (value, accentColor, textColor) =>
+            `<td class="t-val" style="padding: 8px; color: ${textColor}; font-weight: normal;">
+                <a href="/community/profile/${value}" style="color: ${accentColor}; text-decoration: underline;">Profile</a>
+            </td>`
+    };
+
+    function renderRow(key, value, textColor, accentColor) {
+        const labelCell = `<td class="t-name" style="padding: 8px; color: ${textColor}; font-weight: bold;">${key}</td>`;
+        const valueCell = renderers[key]
+            ? renderers[key](value, accentColor, textColor)
+            : `<td class="t-val" style="padding: 8px; color: ${textColor}; font-weight: normal;">${value}</td>`;
+        return `<tr>${labelCell}${valueCell}</tr>`;
+    }
+
     editHtml += `<tr><td class="t-name" style="height: 8px;"></td><td class="t-val"></td></tr>`;
-    for (let p in node) {
-        if (p != 'id' && p != 'pid' && p != 'img') {
-            editHtml += `<tr>`;
-            editHtml += `<td class="t-name" style="padding: 8px; color: ${textColor}; font-weight: bold;">${p}</td>`;
-            if (p == 'activity') {
-                editHtml += `<td class="t-val" style="padding: 8px; color: ${textColor}; font-weight: normal;">
-                <a href="/community/posts/${node[p]}" style="color: ${accentColor}; text-decoration: underline;">Recent Posts</a></td>`;
-            } else {
-                editHtml += `<td class="t-val" style="padding: 8px; color: ${textColor}; font-weight: normal;">${node[p]}</td>`;
-            }
-            editHtml += `</tr>`;
+    const excludedKeys = ['id', 'pid', 'img'];
+
+    for (const key in node) {
+        if (!excludedKeys.includes(key)) {
+            editHtml += renderRow(key, node[key], textColor, accentColor);
         }
     }
     editHtml += `<tr><td class="t-name" style="height: 8px;"></td><td class="t-val"></td></tr></table>`;
@@ -186,7 +200,7 @@ editForm.prototype.hide = function (showldUpdateTheNode) {
       try {
         const response = await fetch(`/community/org-chart/data/?company=${companySlug}`);
         const { nodes } = await response.json();
-        console.log(nodes[0]);
+        //console.log("===>", nodes[0]);
         chart.load(nodes);
       } catch (error) {
         console.error("Failed to load org chart:", error);
