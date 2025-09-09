@@ -99,6 +99,65 @@ body {
       return "customTemplate";
     }
 
+let editForm = function () {
+};
+
+editForm.prototype.init = function (obj) {
+    this.chart = obj; 
+};
+
+editForm.prototype.show = function (nodeId) {
+    this.hide();
+    let node = this.chart.get(nodeId);
+    const darkMode = Alpine.evaluate(document.documentElement, 'darkMode');
+    const themeSuffix = darkMode ? 'dark' : 'light';
+    const bgColor = colors[`bubble-bg-${themeSuffix}`];
+    const textColor = colors[`text-main-${themeSuffix}`];
+    const accentColor = colors[`accent-${themeSuffix}`];
+
+    let editHtml =
+        `<table cellpadding="0" cellspacing="0" class="t" style="border: 2px solid ${accentColor}; border-radius: 8px;">
+            <tr>
+                <td colspan="2" class="t-img" style="padding: 12px; text-align: center;">
+                    <img height="85" style="border-radius: 50%; border: 2px solid ${accentColor};" src="${node.Image}" />
+                </td>
+            </tr>`;
+
+    editHtml += `<tr><td class="t-name" style="height: 8px;"></td><td class="t-val"></td></tr>`;
+    for (let p in node) {
+        if (p != 'id' && p != 'pid' && p != 'Image') {
+            editHtml += `<tr>`;
+            editHtml += `<td class="t-name" style="padding: 8px; color: ${textColor}; font-weight: bold;">${p}</td>`;
+            editHtml += `<td class="t-val" style="padding: 8px; color: ${textColor};">${node[p]}</td>`;
+            editHtml += `</tr>`;
+        }
+    }
+    editHtml += `<tr><td class="t-name" style="height: 8px;"></td><td class="t-val"></td></tr></table>`;
+
+    let div = document.createElement("div");
+    div.id = 'edit-form';
+    div.innerHTML = editHtml;
+    div.style.position = 'absolute';
+    div.style.top = '10px';
+    div.style.right = '-100px';
+    div.style.opacity = 0;
+    div.style.backgroundColor = bgColor;
+    div.style.boxShadow = `0 4px 6px -1px rgba(0, 0, 0, 0.1)`;
+    div.style.borderRadius = '8px';
+    div.style.transition = 'background-color 0.3s ease';
+
+    this.chart.element.appendChild(div);
+
+    OrgChart.animate(div, { opacity: 0, right: -100 }, { opacity: 1, right: 10 }, 300, OrgChart.anim.outSin);
+};
+
+editForm.prototype.hide = function (showldUpdateTheNode) {
+    let form = this.chart.element.querySelector('#edit-form');
+    if (form) {
+        form.parentNode.removeChild(form);
+    }
+};
+
     chart = new OrgChart(container, {
       template: getThemeTemplate(),
       enableSearch: false,
@@ -106,7 +165,8 @@ body {
         field_0: "name",
         field_1: "title",
         img_0: "img"
-      }
+      },
+      editUI: new editForm(),
     });
 
     const loadChart = async (companySlug) => {

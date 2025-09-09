@@ -90,7 +90,6 @@ def application_success_view(request, username):
     return render(request, _get_template("application_success.html"), processor.decorate(context, request))
 
 
-
 def verify_application_view(request, username):
     processor = PageProcessor()
     form = CodeVerificationForm(request.POST or None)
