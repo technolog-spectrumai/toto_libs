@@ -23,6 +23,13 @@ def _get_template(name):
     return os.path.join(template_dir, name)
 
 
+def _get_next(request):
+    next_url = request.GET.get('next')
+    if next_url:
+        return next_url
+    return 'nest:dashboard'
+
+
 def login_view(request):
     processor = PageProcessor()
     form = LoginForm(request.POST or None)
@@ -36,14 +43,14 @@ def login_view(request):
         )
         if user:
             login(request, user)
-            return redirect("dashboard")
+            return redirect(_get_next(request))
         context["error"] = "Invalid credentials."
 
     return render(request, _get_template("login.html"), processor.decorate(context, request))
 
 def logout_view(request):
     logout(request)
-    return redirect("home")
+    return redirect(_get_next(request))
 
 def membership_application_view(request):
     processor = PageProcessor()
