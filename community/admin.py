@@ -7,7 +7,8 @@ from .models import (
     Address,
     MembershipApplication,
     Branch,
-    ReferenceRequest
+    ReferenceRequest,
+    Post
 )
 
 # Inline for displaying branches under a company
@@ -122,3 +123,16 @@ class ReferenceRequestAdmin(admin.ModelAdmin):
     @admin.display(boolean=True, description='Accepted')
     def is_accepted_display(self, obj):
         return obj.is_accepted
+
+
+@admin.register(Post)
+class PostAdmin(admin.ModelAdmin):
+    list_display = ('author', 'content_preview', 'branch', 'visibility', 'created_at')
+    list_filter = ('visibility', 'branch', 'created_at')
+    search_fields = ('content', 'author__display_name', 'branch__name')
+    ordering = ('-created_at',)
+    readonly_fields = ('created_at',)
+
+    def content_preview(self, obj):
+        return obj.content[:50] + '...' if len(obj.content) > 50 else obj.content
+    content_preview.short_description = 'Content'
