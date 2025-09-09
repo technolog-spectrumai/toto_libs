@@ -258,7 +258,7 @@ def get_role(person, company):
         return "Head of Company"
     for branch in company.branches.all():
         if person == branch.head:
-            return f"Head of Department: {branch.name}"
+            return f"Head of {branch.name}"
         if person in branch.members.all():
             return "Member"
     return "Contributor"
@@ -274,7 +274,7 @@ class PostListView(ListView):
     def get_queryset(self):
         queryset = Post.objects.filter(
             visibility='public'
-        ).select_related('author', 'branch')
+        ).select_related('author')
 
         if 'username' in self.kwargs:
             queryset = queryset.filter(author__user__username=self.kwargs['username'])

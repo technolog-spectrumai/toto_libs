@@ -94,7 +94,6 @@ class Command(IngressCommand):
                     author=member,
                     content=random.choice(sample_contents),
                     visibility=random.choice(['public', 'members', 'branch']),
-                    branch=random.choice(branches),
                     created_at=timezone.now() - timezone.timedelta(days=random.randint(0, 30))
                 )
 

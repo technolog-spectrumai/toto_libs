@@ -230,12 +230,6 @@ class Post(models.Model):
         default='members',
         help_text='Who can see this post'
     )
-    branch = models.ForeignKey(
-        Branch,
-        on_delete=models.CASCADE,
-        related_name='posts',
-        help_text='Branch this post belongs to'
-    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

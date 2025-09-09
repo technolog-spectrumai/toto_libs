@@ -87,15 +87,18 @@ body {
 
       // Clone and customize the template
       OrgChart.templates.customTemplate = Object.assign({}, OrgChart.templates.ana);
+      OrgChart.templates.customTemplate.img =
+        `<clipPath id="{randId}">
+            <rect fill="${bgColor}" stroke="${textColor}" stroke-width="5" x="10" y="10" rx="10" ry="10" width="80" height="100"></rect>
+        </clipPath>
+        <image preserveAspectRatio="xMidYMid slice" clip-path="url(#{randId})" xlink:href="{val}" x="10" y="10" width="80" height="100"></image>
+        <rect fill="none" stroke="${accentColor}" stroke-width="2" x="10" y="10" rx="10" ry="10" width="80" height="100"></rect>`;
         OrgChart.templates.customTemplate.node = `
           <rect x="0" y="0" width="{w}" height="{h}" fill="${bgColor}" rx="10" ry="10"
                 stroke="${accentColor}" stroke-width="2"></rect>
-
-
-          <image preserveAspectRatio="xMidYMid slice" x="220" y="10" width="40" height="40" xlink:href="{img}"></image>
         `;
-        OrgChart.templates.customTemplate.field_0 =`<text class="field_0" x="20" y="30" fill="${textColor}" font-size="16">{val}</text>`;
-        OrgChart.templates.customTemplate.field_1 =`<text class="field_1" x="20" y="50" fill="${textColor}" font-size="12">{val}</text>`;
+        OrgChart.templates.customTemplate.field_0 =`<text class="field_0" x="120" y="30" fill="${textColor}" font-size="16">{val}</text>`;
+        OrgChart.templates.customTemplate.field_1 =`<text class="field_1" x="120" y="50" fill="${textColor}" font-size="12">{val}</text>`;
       return "customTemplate";
     }
 
@@ -119,19 +122,22 @@ editForm.prototype.show = function (nodeId) {
         `<table cellpadding="0" cellspacing="0" class="t" style="border: 2px solid ${accentColor}; border-radius: 8px;">
             <tr>
                 <td colspan="2" class="t-img" style="padding: 12px; text-align: center;">
-                    <img height="85" style="border-radius: 50%; border: 2px solid ${accentColor};" src="${node.Image}" />
+                    <img height="32px" width="32px"  style="border-radius: 50%; border: 2px solid ${accentColor};" src="${node.img}" />
                 </td>
             </tr>`;
 
     editHtml += `<tr><td class="t-name" style="height: 8px;"></td><td class="t-val"></td></tr>`;
     for (let p in node) {
-        if (p != 'id' && p != 'pid' && p != 'Image') {
+        if (p != 'id' && p != 'pid' && p != 'img') {
             editHtml += `<tr>`;
             editHtml += `<td class="t-name" style="padding: 8px; color: ${textColor}; font-weight: bold;">${p}</td>`;
             editHtml += `<td class="t-val" style="padding: 8px; color: ${textColor};">${node[p]}</td>`;
             editHtml += `</tr>`;
         }
     }
+    editHtml += `<tr><td class="t-name" style="padding: 8px; color: ${textColor}; font-weight: bold;">Activity:</td>
+    <td class="t-val" style="padding: 8px; color: ${textColor}; font-weight: normal;">
+    <a href="/community/posts/${node['name']}">Recent Posts</a></td></tr>`;
     editHtml += `<tr><td class="t-name" style="height: 8px;"></td><td class="t-val"></td></tr></table>`;
 
     let div = document.createElement("div");
@@ -164,7 +170,7 @@ editForm.prototype.hide = function (showldUpdateTheNode) {
       nodeBinding: {
         field_0: "name",
         field_1: "title",
-        img_0: "img"
+        img: "img"
       },
       editUI: new editForm(),
     });
@@ -178,6 +184,7 @@ editForm.prototype.hide = function (showldUpdateTheNode) {
       try {
         const response = await fetch(`/community/org-chart/data/?company=${companySlug}`);
         const { nodes } = await response.json();
+        console.log(nodes[0]);
         chart.load(nodes);
       } catch (error) {
         console.error("Failed to load org chart:", error);
