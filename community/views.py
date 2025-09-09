@@ -188,20 +188,16 @@ def reference_next(request, application_id):
 
 
 @login_required
-def profile_view(request):
+def profile_view(request, slug):
     processor = PageProcessor()
-    user = request.user
-
-    try:
-        profile = user.community_profile
-    except CommunityMember.DoesNotExist:
-        profile = None
+    member = get_object_or_404(CommunityMember, slug=slug)
 
     context = {
-        "page_title": "Your Profile",
-        "profile": profile,
-        "username": user.username,
-        "email": user.email,
+        "page_title": f"{member.display_name}'s Profile",
+        "profile": member,
+        "username": member.user.username,
+        "email": member.user.email,
+        "is_own_profile": member.user == request.user,
     }
 
     return render(request, _get_template("profile.html"), processor.decorate(context, request))

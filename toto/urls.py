@@ -15,7 +15,7 @@ urlpatterns = [
     path("nest/", include("oya.urls", namespace='nest')),
     path("community/", include("community.urls", namespace='community')),
     path('captcha/', include('captcha.urls')),
-    path(r'^_nested_admin/', include('nested_admin.urls')),
+    #path(r'^_nested_admin/', include('nested_admin.urls')),
     path(
         '',
         RedirectView.as_view(
