@@ -1,9 +1,16 @@
 from django.urls import path
 from . import views
+from django.views.generic import RedirectView
+from django.urls import reverse_lazy
+from django.conf import settings
 
 app_name = 'community'
 
 urlpatterns = [
+    path('', RedirectView.as_view(
+        url=reverse_lazy(f'{app_name}:org-chart'),
+        permanent=not settings.DEBUG
+    ), name='index'),
     path("login/", views.login_view, name="login"),
     path("logout/", views.logout_view, name="logout"),
     path("apply/membership/", views.membership_application_view, name="membership_application"),
