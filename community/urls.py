@@ -22,5 +22,5 @@ urlpatterns = [
     path("profile/<slug:slug>", views.profile_view, name="profile"),
     path("org-chart/", views.OrgChartView.as_view(), name="org-chart"),
     path("org-chart/data/", views.org_chart_data, name="org-chart-data"),
-    path('posts/<str:member_slug>/', views.PostListView.as_view(), name='user_posts')
+    path('posts/<str:member_slug>/', views.PostListView.as_view(), name='post_list')
 ]

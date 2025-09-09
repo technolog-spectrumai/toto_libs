@@ -68,6 +68,18 @@
         <p class="text-lg">No posts yet.</p>
       </div>
     {% endif %}
+    <div class="mt-8 text-center">
+      <a href="{% url 'community:index' %}"
+         class="inline-block px-6 py-2 rounded-lg font-medium transition-colors duration-300
+                bg-accent-1 text-white hover:bg-accent-2 dark:bg-accent-dark dark:hover:bg-accent-1">
+        ← Back to Community Home
+      </a>
+      <a href="{% url 'community:profile' current_member_slug %}"
+         class="inline-block px-6 py-2 rounded-lg font-medium transition-colors duration-300
+                bg-accent-1 text-white hover:bg-accent-2 dark:bg-accent-dark dark:hover:bg-accent-1">
+        See Profile →
+      </a>
+    </div>
   </div>
 </div>
 {% endblock %}

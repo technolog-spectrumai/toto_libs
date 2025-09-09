@@ -282,6 +282,6 @@ class PostListView(ListView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context['page_title'] = 'Posts'
-        #context['current_member_slug'] = self.kwargs.get('member_slug')
+        context['current_member_slug'] = self.kwargs.get('member_slug')
         processor = PageProcessor()
         return processor.decorate(context, self.request)
