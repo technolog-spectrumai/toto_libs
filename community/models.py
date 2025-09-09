@@ -112,9 +112,21 @@ class CommunityMember(models.Model):
     bio = models.TextField(null=True, blank=True)
     avatar = models.ImageField(upload_to='avatars/', null=True, blank=True)
     joined_date = models.DateTimeField(default=timezone.now)
+    slug = models.SlugField(unique=True, blank=True, help_text="URL-friendly identifier for the member")
 
     def __str__(self):
         return self.display_name
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            base_slug = slugify(self.display_name)
+            slug = base_slug
+            counter = 1
+            while CommunityMember.objects.filter(slug=slug).exists():
+                slug = f"{base_slug}-{counter}"
+                counter += 1
+            self.slug = slug
+        super().save(*args, **kwargs)
 
 
 def generate_code(k=6):

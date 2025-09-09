@@ -131,13 +131,15 @@ editForm.prototype.show = function (nodeId) {
         if (p != 'id' && p != 'pid' && p != 'img') {
             editHtml += `<tr>`;
             editHtml += `<td class="t-name" style="padding: 8px; color: ${textColor}; font-weight: bold;">${p}</td>`;
-            editHtml += `<td class="t-val" style="padding: 8px; color: ${textColor};">${node[p]}</td>`;
+            if (p == 'activity') {
+                editHtml += `<td class="t-val" style="padding: 8px; color: ${textColor}; font-weight: normal;">
+                <a href="/community/posts/${node[p]}" style="color: ${accentColor}; text-decoration: underline;">Recent Posts</a></td>`;
+            } else {
+                editHtml += `<td class="t-val" style="padding: 8px; color: ${textColor}; font-weight: normal;">${node[p]}</td>`;
+            }
             editHtml += `</tr>`;
         }
     }
-    editHtml += `<tr><td class="t-name" style="padding: 8px; color: ${textColor}; font-weight: bold;">Activity:</td>
-    <td class="t-val" style="padding: 8px; color: ${textColor}; font-weight: normal;">
-    <a href="/community/posts/${node['name']}">Recent Posts</a></td></tr>`;
     editHtml += `<tr><td class="t-name" style="height: 8px;"></td><td class="t-val"></td></tr></table>`;
 
     let div = document.createElement("div");

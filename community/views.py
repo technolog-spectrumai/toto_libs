@@ -247,7 +247,8 @@ def org_chart_data(request):
             "pid": f"person-{person.patron.id}" if person.patron else None,
             "name": person.display_name,
             "title": get_role(person, company),
-            "img": person.avatar.url if person.avatar else None
+            "img": person.avatar.url if person.avatar else None,
+            "activity": person.slug
         })
 
     return JsonResponse({"nodes": nodes})
@@ -276,15 +277,14 @@ class PostListView(ListView):
             visibility='public'
         ).select_related('author')
 
-        if 'username' in self.kwargs:
-            queryset = queryset.filter(author__user__username=self.kwargs['username'])
-            print(queryset)
+        if 'member_slug' in self.kwargs:
+            queryset = queryset.filter(author__slug=self.kwargs['member_slug'])
 
         return queryset
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context['page_title'] = 'Posts'
-        context['current_user'] = self.kwargs.get('username')
+        #context['current_member_slug'] = self.kwargs.get('member_slug')
         processor = PageProcessor()
         return processor.decorate(context, self.request)

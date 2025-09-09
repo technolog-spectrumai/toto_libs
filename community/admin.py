@@ -61,7 +61,7 @@ class BranchAdmin(admin.ModelAdmin):
 
 @admin.register(CommunityMember)
 class CommunityMemberAdmin(admin.ModelAdmin):
-    list_display = ('display_name', 'user', 'patron_display', 'joined_date', 'avatar_preview')
+    list_display = ('display_name', 'user', 'patron_display', 'joined_date', 'avatar_preview', 'slug')
     search_fields = ('display_name', 'user__username', 'user__email', 'patron__display_name')
     list_filter = ('joined_date',)
     ordering = ('-joined_date',)

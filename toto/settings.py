@@ -321,7 +321,8 @@ INGRESS_ALLOWED_APPS = [
     'webfront',
     "memo",
     "documents",
-    "kanban"
+    "kanban",
+    "community"
 ]
 
 
