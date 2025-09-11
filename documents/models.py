@@ -208,5 +208,25 @@ class Formula(models.Model):
         return output_path
 
 
+class Scratchpad(models.Model):
+    CONTENT_TYPE_CHOICES = [
+        ('plain', 'Plain Text'),
+        ('html', 'HTML'),
+        ('latex', 'LaTeX'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='scratchpads')
+    title = models.CharField(max_length=255, blank=True)
+    content = models.TextField(blank=True)
+    content_type = models.CharField(max_length=10, choices=CONTENT_TYPE_CHOICES, default='plain')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.title or f"Scratchpad #{self.pk}"
+
+
 
 

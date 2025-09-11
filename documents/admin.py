@@ -9,7 +9,7 @@ from polymorphic.admin import PolymorphicParentModelAdmin, PolymorphicChildModel
 from adminsortable2.admin import SortableAdminMixin
 from .models import (
     Tag, Department, Document, HtmlDocument, LatexDocument,
-    Section, HTMLSubSection, LaTeXSubSection, Image, Diagram, Formula
+    Section, HTMLSubSection, LaTeXSubSection, Image, Diagram, Formula, Scratchpad
 )
 import os
 from django_ace import AceWidget
@@ -298,6 +298,15 @@ class FormulaAdmin(admin.ModelAdmin):
                 self.message_user(request, f"Failed to render formula '{formula.title}': {e}", level='error')
         self.message_user(request, f"Successfully rendered {count} formula(s) to image.")
     convert_to_image.short_description = "Convert selected formulas to image"
+
+
+@admin.register(Scratchpad)
+class ScratchpadAdmin(admin.ModelAdmin):
+    list_display = ('title', 'user', 'content_type', 'created_at')
+    list_filter = ('content_type', 'created_at')
+    search_fields = ('title', 'content', 'user__username')
+    ordering = ('-created_at',)
+
 
 
 
