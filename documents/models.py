@@ -220,6 +220,7 @@ class Scratchpad(models.Model):
     content = models.TextField(blank=True)
     content_type = models.CharField(max_length=10, choices=CONTENT_TYPE_CHOICES, default='plain')
     created_at = models.DateTimeField(auto_now_add=True)
+    use_light_mode = models.BooleanField(default=False)
 
     class Meta:
         ordering = ['-created_at']
