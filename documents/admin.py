@@ -300,8 +300,30 @@ class FormulaAdmin(admin.ModelAdmin):
     convert_to_image.short_description = "Convert selected formulas to image"
 
 
+class ScratchpadAdminForm(forms.ModelForm):
+    class Meta:
+        model = Scratchpad
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        instance = kwargs.get('instance')
+
+        if instance:
+            if instance.content_type == 'html':
+                self.fields['content'].widget = TipTapWidget()
+            elif instance.content_type == 'latex':
+                theme = 'chrome'
+                if hasattr(instance, 'use_light_mode') and instance.use_light_mode is False:
+                    theme = 'monokai'
+                self.fields['content'].widget = AceWidget(mode='latex', theme=theme)
+            else:
+                self.fields['content'].widget = forms.Textarea()
+
+
 @admin.register(Scratchpad)
 class ScratchpadAdmin(admin.ModelAdmin):
+    form = ScratchpadAdminForm
     list_display = ('title', 'user', 'content_type', 'created_at')
     list_filter = ('content_type', 'created_at')
     search_fields = ('title', 'content', 'user__username')
