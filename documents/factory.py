@@ -90,7 +90,7 @@ class LatexDocumentFactory(DocumentFactory):
             section = Section.objects.create(document=document, order=section_order, heading=heading)
 
             subsection_order = 1
-            for sub_cmd in section_cmd.contents.find_all('subsection'):
+            for sub_cmd in section_cmd.find_all('subsection'):
                 title = str(sub_cmd.string).strip()
                 body = ''.join(str(x) for x in sub_cmd.contents).strip()
                 LaTeXSubSection.objects.create(
