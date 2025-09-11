@@ -101,6 +101,7 @@ six==1.17.0
 smmap==5.0.2
 sqlparse==0.5.3
 tablib==3.8.0
+TexSoup==0.3.1
 threadpoolctl==3.6.0
 tinycss2==1.4.0
 tinyhtml5==2.0.0

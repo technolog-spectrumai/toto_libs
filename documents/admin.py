@@ -14,7 +14,7 @@ from .models import (
 import os
 from django_ace import AceWidget
 from .tasks import convert_html_to_latex_task, convert_latex_to_html_task
-
+from .factory import get_document_factory
 
 SHOW_INLINE = True
 SHOW_TABLE = False
@@ -328,6 +328,29 @@ class ScratchpadAdmin(admin.ModelAdmin):
     list_filter = ('content_type', 'created_at')
     search_fields = ('title', 'content', 'user__username')
     ordering = ('-created_at',)
+    actions = ['promote_to_document']
+
+    def promote_to_document(self, request, queryset):
+        success_count = 0
+        for scratchpad in queryset:
+            try:
+                factory = get_document_factory(scratchpad)
+                factory.create_document()
+                success_count += 1
+            except Exception as e:
+                self.message_user(
+                    request,
+                    f"Failed to promote '{scratchpad.title}': {str(e)}",
+                    level=messages.ERROR
+                )
+        if success_count:
+            self.message_user(
+                request,
+                f"{success_count} scratchpad(s) successfully promoted to document(s).",
+                level=messages.SUCCESS
+            )
+
+
 
 
 
