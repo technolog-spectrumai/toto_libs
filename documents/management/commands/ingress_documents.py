@@ -51,10 +51,10 @@ class Command(IngressCommand):
         html_preset = HTMLPreset.objects.create(
             name="HTML Preset",
             description="Default HTML setup",
-            css_classes={"body": "bg-white text-black", "header": "font-bold"},
+            css_classes={}, #{"body": "bg-white text-black", "header": "font-bold"}
             style_mapping={
-                "h1": "text-4xl font-bold mt-8 mb-4",
-                "h2": "text-3xl font-semibold mt-6 mb-3",
+                "h1": "text-3xl font-bold mt-8 mb-4",
+                "h2": "text-2xl font-semibold mt-6 mb-3",
                 "h3": "text-2xl font-medium mt-4 mb-2",
                 "p": "mb-4 leading-relaxed",
                 "div.summary": "text-sm italic text-gray-600 dark:text-gray-400 mb-6"

@@ -83,7 +83,7 @@ class LaTeXToHTMLConverter:
         self.pandoc = PandocConverter('latex', 'html')
 
     def convert_document(self, document: LatexDocument):
-        html_parts = [f"<h1>{document.title}</h1>"]
+        html_parts = [] #f"<h1>{document.title}</h1>"
 
         if document.summary:
             html_parts.append(f"<div class='summary'>{self.pandoc.convert(document.summary)}</div>")

@@ -217,8 +217,10 @@ class HTMLPreview(models.Model):
         if self.preset and self.preset.style_mapping:
             for tag, classes in self.preset.style_mapping.items():
                 if '.' in tag:  # e.g. 'div.summary'
+                    tag1 = tag.split('.')[0]
+                    class1 = tag.split('.')[1]
                     styled = styled.replace(
-                        f"<{tag}>",
+                        f"<{tag1} class='{class1}'>",
                         f"<{tag} class='{classes}'>"
                     )
                 else:
