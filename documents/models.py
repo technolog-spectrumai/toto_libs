@@ -1,3 +1,150 @@
 from django.db import models
+from django.contrib.auth.models import User
+from polymorphic.models import PolymorphicModel
+from django_jsonform.models.fields import JSONField
 
-# Create your models here.
+# ────────────────────────────────────────────────
+# 📦 JSON Schemas
+# ────────────────────────────────────────────────
+
+_LATEX_PACKAGES_SCHEMA = {
+    "type": "array",
+    "items": {"type": "string"},
+    "title": "LaTeX Packages"
+}
+
+_SCRIPT_INCLUDES_SCHEMA = {
+    "type": "array",
+    "items": {"type": "string", "format": "uri"},
+    "title": "Script URLs"
+}
+
+_CSS_CLASSES_SCHEMA = {
+    'type': 'dict',
+    'keys': {
+        'name': {'type': 'string'},
+    },
+    "title": "CSS Classes by Element",
+    "additionalProperties": {
+        "type": "string"
+    }
+}
+
+# ────────────────────────────────────────────────
+# 🔖 Tag Model
+# ────────────────────────────────────────────────
+
+class Tag(models.Model):
+    name = models.CharField(max_length=50, unique=True)
+
+    def __str__(self):
+        return self.name
+
+# ────────────────────────────────────────────────
+# 🏢 Department Model
+# ────────────────────────────────────────────────
+
+class Department(models.Model):
+    name = models.CharField(max_length=255)
+    seal = models.ImageField(upload_to='department_seals/', blank=True, null=True)
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='owned_departments')
+
+    def __str__(self):
+        return self.name
+
+# ────────────────────────────────────────────────
+# ⚙️ Preset Base Model (Polymorphic)
+# ────────────────────────────────────────────────
+
+class Preset(PolymorphicModel):
+    ENGINE_CHOICES = [
+        ('latex', 'LaTeX'),
+        ('html', 'HTML'),
+    ]
+
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+    engine = models.CharField(max_length=10, choices=ENGINE_CHOICES)
+
+    def __str__(self):
+        return f"{self.name} [{self.engine}]"
+
+# ────────────────────────────────────────────────
+# 🧪 LaTeX Preset
+# ────────────────────────────────────────────────
+
+class LatexPreset(Preset):
+    document_class = models.CharField(max_length=100, default='article')
+    preamble = models.TextField(blank=True)
+    packages = JSONField(
+        schema=_LATEX_PACKAGES_SCHEMA,
+        default=list,
+        help_text="List of LaTeX packages to include"
+    )
+    footer_note = models.TextField(blank=True)
+
+# ────────────────────────────────────────────────
+# 🌐 HTML Preset
+# ────────────────────────────────────────────────
+
+class HTMLPreset(Preset):
+    template_name = models.CharField(max_length=255)
+    css_classes = JSONField(
+        schema=_CSS_CLASSES_SCHEMA,
+        default=dict,
+        help_text="CSS classes for HTML elements"
+    )
+    script_includes = JSONField(
+        schema=_SCRIPT_INCLUDES_SCHEMA,
+        default=list,
+        help_text="List of JS script URLs to include"
+    )
+    footer_html = models.TextField(blank=True)
+
+# ────────────────────────────────────────────────
+# 📄 Document Model
+# ────────────────────────────────────────────────
+
+class Document(models.Model):
+    title = models.CharField(max_length=255)
+    preset = models.ForeignKey(Preset, on_delete=models.SET_NULL, null=True)
+    summary = models.TextField(blank=True, help_text="Brief summary of the document")
+    version = models.CharField(max_length=10, default="1.0", help_text="Version number in major.minor format")
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    tags = models.ManyToManyField(Tag, blank=True, related_name='documents')
+    department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True, related_name='documents')
+
+    def __str__(self):
+        return f"{self.title} (v{self.version})"
+
+    @property
+    def engine(self):
+        return self.preset.engine if self.preset else None
+
+    def save(self, *args, **kwargs):
+        if not self.pk:
+            latest = Document.objects.filter(created_by=self.created_by).order_by('-created_at').first()
+            if latest:
+                major, minor = map(int, latest.version.split('.'))
+                self.version = f"{major}.{minor + 1}"
+            else:
+                self.version = "1.1"
+        super().save(*args, **kwargs)
+
+# ────────────────────────────────────────────────
+# 📚 Section Model
+# ────────────────────────────────────────────────
+
+class Section(models.Model):
+    document = models.ForeignKey(Document, on_delete=models.CASCADE, related_name='sections')
+    title = models.CharField(max_length=255)
+    order = models.PositiveIntegerField(default=0)
+    content = models.TextField(help_text="Plain text content of the section")
+
+    class Meta:
+        ordering = ['order']
+
+    def __str__(self):
+        return f"Section {self.order}: {self.title}"
