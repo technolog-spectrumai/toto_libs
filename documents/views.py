@@ -50,24 +50,14 @@ class DocumentDetailView(PageDecoratedMixin, DetailView):
             sections = document.sections.prefetch_related(
                 Prefetch('subsections', queryset=SubSection.objects.order_by('order'))
             ).order_by('order')
-
-            structured = []
-            for section in sections:
-                subsections = list(section.subsections.all().order_by('order')) if section.deep else []
-                structured.append({
-                    'section': section,
-                    'subsections': subsections,
-                    'content': None if section.deep else section.content
-                })
-
             content = None
         else:
-            structured = []
+            sections = []
             content = document.content
 
         context.update({
             'content': content,
-            'sections': structured,
+            'sections': sections,
             'tags': document.tags.all(),
             'department': document.department,
             'preset': document.preset,

@@ -6,6 +6,7 @@ from weasyprint import HTML as WeasyHTML
 from pylatex import Document as LaTeXDoc, Section as LaTeXSection, Subsection as LaTeXSubsection, Command
 from pylatex.utils import NoEscape
 from .models import Document
+from django.conf import settings
 
 
 # ────────────────────────────────────────────────
@@ -16,20 +17,47 @@ class HTMLToPDFConverter:
     def __init__(self, document: Document):
         self.document = document
 
-    def render_html(self):
-        sections = self.document.sections.prefetch_related('subsections').order_by('order') if self.document.deep else []
-        context = {
-            'document': self.document,
-            'sections': sections,
-            'generated_at': now(),
-            'preset': self.document.preset,
-        }
-        return render_to_string('documents/pdf.html', context)
-
     def generate_pdf(self):
-        html_content = self.render_html()
+
+        # Sections and subsections
+        sections = self.document.sections.prefetch_related('subsections').order_by('order') if self.document.deep else []
+
+        structured_sections = []
+        for section in sections:
+            subsections = section.subsections.all().order_by('order') if section.deep else []
+            structured_sections.append({
+                "order": section.order+1,
+                "heading": section.title,
+                "content": section.content if not section.deep else None,
+                "all_subsections": [
+                    {
+                        "order": f"{section.order+1}.{sub.order+1}",
+                        "title": sub.title,
+                        "content": sub.content
+                    }
+                    for sub in subsections
+                ]
+            })
+
+        # Confidential notice
+        notice = (
+            "This document is confidential and intended solely for the use of the individual or entity to whom it is addressed. "
+            "Unauthorized distribution, reproduction, or disclosure is strictly prohibited."
+        )
+
+        # Render HTML
+        html_string = render_to_string("documents/pdf.html", {
+            "document": self.document,
+            "sections_prefetched": structured_sections,
+            "copyright_holder": "SpectrumAi.pl",
+            "copyright_notice": notice,
+            "now": now(),
+        })
+
+        # Generate PDF
+        base_url = settings.MEDIA_ROOT
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as output:
-            WeasyHTML(string=html_content).write_pdf(output.name)
+            WeasyHTML(string=html_string, base_url=base_url).write_pdf(output.name)
             return output.name
 
 
