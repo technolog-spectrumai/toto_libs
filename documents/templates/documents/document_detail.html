@@ -15,17 +15,28 @@
       ? 'bg-bubble-bg-dark border border-accent-1 text-text-main-dark'
       : 'bg-bubble-bg-light border border-accent-2 text-text-main-light'"
     class="w-full max-w-4xl p-8 rounded-xl shadow-lg space-y-10 transition-colors duration-300"
-    x-data="{ openSections: {}, openSubsections: {} }">
+    x-data="{ showSummary: false }">
 
     <!-- Header -->
     <header class="text-center space-y-2">
       <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-3xl font-extrabold tracking-tight">
         {{ document.title }}
       </h2>
-      <p class="text-sm text-gray-500 dark:text-gray-400">
-        {{ document.summary|linebreaksbr }}
-      </p>
-      <p class="text-xs text-gray-400 dark:text-gray-500">
+
+      <!-- Collapsible Summary -->
+      <div class="space-y-2">
+        <button @click="showSummary = !showSummary"
+                class="flex items-center justify-between w-full text-left font-semibold text-sm">
+          <span>Summary</span>
+          <i :class="showSummary ? 'fa-chevron-up' : 'fa-chevron-down'"
+             class="fa-solid transition-transform duration-200"></i>
+        </button>
+        <div x-show="showSummary" x-transition class="text-sm text-gray-500 dark:text-gray-400">
+          {{ document.summary|linebreaksbr }}
+        </div>
+      </div>
+
+      <p class="text-xs text-gray-400 dark:text-gray-500 pt-2">
         Department: {{ document.department.name }}<br>
         Engine: {{ engine }} | Depth: {{ depth }}<br>
         Created: {{ document.created_at|date:"M d, Y" }}

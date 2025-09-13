@@ -56,36 +56,43 @@
         <ul class="grid gap-6">
           {% for document in documents %}
             <li
+              x-data="{ showSummary: false }"
               :class="darkMode
-                ? 'bg-gray-900 border border-gray-700 text-text-main-dark'
-                : 'bg-white border border-gray-200 text-text-main-light'"
-              class="rounded-lg p-6 shadow-sm hover:shadow-md transition-shadow duration-300">
+                ? 'bg-primary-bg-dark border border-accent-1 text-text-main-dark'
+                : 'bg-primary-bg-light border border-accent-2 text-text-main-light'"
+              class="rounded-lg p-6 shadow-sm hover:shadow-md transition-shadow duration-300 space-y-2">
 
-              <div class="flex justify-between items-center mb-2">
+              <!-- Title + Chevron -->
+              <div class="flex justify-between items-center">
                 <h3 class="text-lg font-bold hover:text-accent-light transition-colors">
                   <a href="{% url 'document-detail' document.slug %}">{{ document.title }}</a>
                 </h3>
-                <span class="text-xs font-medium italic opacity-60">
-                  {{ document.engine }}
-                </span>
+                <button @click="showSummary = !showSummary" class="text-accent-light hover:opacity-80">
+                  <i :class="showSummary ? 'fa-chevron-up' : 'fa-chevron-down'"
+                     class="fa-solid transition-transform duration-200"></i>
+                </button>
               </div>
 
+              <!-- Inline Metadata -->
+              <div class="text-xs opacity-70 flex flex-wrap gap-4 items-center">
+                <span>By {{ document.created_by.username }}</span>
+                <span class="italic">{{ document.engine }}</span>
+                <span>Dept: {{ document.department.name }}</span>
+                <span>Created: {{ document.created_at|date:"M d, Y" }}</span>
+              </div>
+
+              <!-- Collapsible Summary -->
               {% if document.summary %}
-                <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                  {{ document.summary|truncatewords:20 }}
-                </p>
+                <div x-show="showSummary" x-transition class="text-sm opacity-80 pt-2">
+                  {{ document.summary|linebreaksbr }}
+                </div>
               {% endif %}
-
-              <div class="text-xs text-gray-500 dark:text-gray-400">
-                Department: {{ document.department.name }}<br>
-                Created: {{ document.created_at|date:"M d, Y" }}
-              </div>
             </li>
           {% endfor %}
         </ul>
       </section>
     {% else %}
-      <p class="text-center text-gray-400 dark:text-gray-500">No documents found for this department.</p>
+      <p class="text-center text-warn-light dark:text-warn-dark">No documents found for this department.</p>
     {% endif %}
 
   </div>
