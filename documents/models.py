@@ -83,15 +83,6 @@ class HTMLPreset(Preset):
         default=dict,
         help_text="CSS classes for HTML elements"
     )
-    script_includes = JSONField(
-        schema={
-            "type": "array",
-            "items": {"type": "string", "format": "uri"},
-            "title": "Script URLs"
-        },
-        default=list,
-        help_text="List of JS script URLs to include"
-    )
     footer_html = models.TextField(blank=True)
 
 # ────────────────────────────────────────────────

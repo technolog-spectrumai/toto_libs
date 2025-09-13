@@ -3,6 +3,9 @@ from django.contrib import admin
 from nested_admin import NestedModelAdmin, NestedStackedInline
 from django_tiptap.widgets import TipTapWidget
 from django_ace import AceWidget
+from documents.parsers import HTMLParser, LaTeXParser
+from django.contrib import messages
+
 
 from .models import (
     Tag, Department,
@@ -197,8 +200,9 @@ class DocumentAdmin(NestedModelAdmin):
     search_fields = ['title', 'summary', 'version', 'slug']
     filter_horizontal = ['tags']
     readonly_fields = ['created_at']
+    actions = ['expand']
 
-    prepopulated_fields = {'slug': ('title',)}  # 👈 Auto-fill slug from title
+    prepopulated_fields = {'slug': ('title',)}
 
     def get_inline_instances(self, request, obj=None):
         if not obj or not obj.preset:
@@ -232,6 +236,33 @@ class DocumentAdmin(NestedModelAdmin):
             base_fields.append('content')
         return base_fields
 
+    def expand(self, request, queryset):
+        created_total = 0
+
+        for document in queryset:
+            if document.depth != 1:
+                self.message_user(
+                    request,
+                    f"Document '{document.title}' is depth {document.depth}. Only depth 1 documents can be expanded.",
+                    level=messages.WARNING
+                )
+                continue
+
+            parser = HTMLParser() if document.engine == 'html' else LaTeXParser()
+            sections = parser.build_sections(document=document, content=document.content or "")
+
+            Section.objects.bulk_create(sections)
+            created_total += len(sections)
+
+        self.message_user(
+            request,
+            f"Expanded {created_total} sections from selected documents.",
+            level=messages.SUCCESS
+        )
+
+    expand.short_description = "Expand content into sections"
+
+
 
 # ────────────────────────────────────────────────
 # 📘 Section Admin
@@ -244,3 +275,38 @@ class SectionAdmin(admin.ModelAdmin):
     list_filter = ['document']
     search_fields = ['title', 'content']
     ordering = ['document', 'order']
+    actions = ['expand']
+
+    def expand(self, request, queryset):
+        count = 0
+        for section in queryset:
+            document = section.document
+            engine = document.engine
+
+            # Choose parser
+            if engine == 'html':
+                parser = HTMLParser()
+            elif engine == 'latex':
+                parser = LaTeXParser()
+            else:
+                self.message_user(request, f"Unknown engine for document '{document.title}'", level=messages.WARNING)
+                continue
+
+            # Build subsections from section content
+            subsections = parser.build_subsections(section, section.content or "")
+            SubSection.objects.bulk_create(subsections)
+            count += len(subsections)
+
+        self.message_user(request, f"Expanded {count} subsections from selected sections.", level=messages.SUCCESS)
+
+    expand.short_description = "Expand content into subsections"
+
+
+@admin.register(SubSection)
+class SubSectionAdmin(admin.ModelAdmin):
+    form = SubSectionForm
+    list_display = ['title', 'section', 'order']
+    list_filter = ['section__document']
+    search_fields = ['title', 'content']
+    ordering = ['section__document', 'section', 'order']
+
