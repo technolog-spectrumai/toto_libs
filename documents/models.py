@@ -24,6 +24,20 @@ class Department(models.Model):
     seal = models.ImageField(upload_to='department_seals/', blank=True, null=True)
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='owned_departments')
 
+    # New fields
+    copyright_holder = models.CharField(
+        max_length=255,
+        default="SpectrumAi.pl",
+        help_text="Name of the entity holding copyright for documents issued by this department"
+    )
+    copyright_notice = models.TextField(
+        default=(
+            "This document is confidential and intended solely for the use of the individual or entity to whom it is addressed. "
+            "Unauthorized distribution, reproduction, or disclosure is strictly prohibited."
+        ),
+        help_text="Legal notice to be included in generated documents"
+    )
+
     def __str__(self):
         return self.name
 

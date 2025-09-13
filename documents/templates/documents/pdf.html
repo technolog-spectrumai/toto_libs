@@ -36,6 +36,12 @@
       font-size: 14px;
       line-height: 1.6;
       white-space: pre-wrap;
+      margin-top: 0;
+    }
+    .sub-meta {
+      font-size: 13px;
+      color: #666;
+      margin-bottom: 4px;
     }
     hr {
       border: none;
@@ -59,8 +65,7 @@
     <h1>{{ document.title }}</h1>
     <div class="meta">
       <p><strong>Department:</strong> {{ document.department.name }}</p>
-      <p><strong>Author:</strong> {{ document.author.get_full_name|default:"Unknown" }}</p>
-      <p><strong>Type:</strong> {{ document.document_type }} | <strong>Status:</strong> {{ document.status }}</p>
+      <p><strong>Author:</strong> {{ document.created_by.get_full_name|default:"Unknown" }}</p>
       <p><strong>Created:</strong> {{ document.created_at|date:"F j, Y" }}</p>
       {% if document.tags.all %}
         <p><strong>Tags:</strong>
@@ -82,39 +87,35 @@
 
   <hr>
 
-{% for section in sections_prefetched %}
-  <div class="section">
-    <h2>{{ section.order }}. {{ section.heading }}</h2>
+  {% for section in sections_prefetched %}
+    <div class="section">
+      <h2>{{ section.order }}. {{ section.heading }}</h2>
 
-    {% if section.content %}
-      <p>{{ section.content|safe }}</p>
-    {% endif %}
+      {% if section.content %}
+        <p>{{ section.content|safe }}</p>
+      {% endif %}
 
-    {% if section.all_subsections %}
-      <div style="margin-top: 15px; padding-left: 15px;">
-        {% for sub in section.all_subsections %}
-          <div style="margin-bottom: 20px;">
-            <p style="font-size: 13px; color: #666;">
-              <strong>{{ sub.order }}. {{ sub.title }}</strong><br>
-              {{ sub.created_at|date:"F j, Y" }}
-            </p>
-
-            {% if sub.content %}
-              <p style="font-size: 14px; line-height: 1.6; white-space: pre-wrap;">
-                {{ sub.content|safe }}
+      {% if section.all_subsections %}
+        <div style="margin-top: 15px; padding-left: 15px;">
+          {% for sub in section.all_subsections %}
+            <div style="margin-bottom: 16px;">
+              <p class="sub-meta">
+                <strong>{{ sub.order }}. {{ sub.title }}</strong>
               </p>
-            {% endif %}
-          </div>
-        {% endfor %}
-      </div>
-    {% endif %}
-  </div>
-{% endfor %}
+              {% if sub.content %}
+                <p>{{ sub.content|safe }}</p>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>
+  {% endfor %}
 
   <footer>
     <p>© {{ now|date:"Y" }} {{ copyright_holder }}. All rights reserved.</p>
     <p style="margin-top: 10px; font-size: 11px; color: #999;">
-      {{copyright_notice}}
+      {{ copyright_notice }}
     </p>
   </footer>
 

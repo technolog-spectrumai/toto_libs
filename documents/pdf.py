@@ -18,6 +18,10 @@ class HTMLToPDFConverter:
         self.document = document
 
     def generate_pdf(self):
+        # Department seal
+        seal_path = None
+        if self.document.department and self.document.department.seal:
+            seal_path = os.path.join(settings.MEDIA_ROOT, self.document.department.seal.name)
 
         # Sections and subsections
         sections = self.document.sections.prefetch_related('subsections').order_by('order') if self.document.deep else []
@@ -26,12 +30,12 @@ class HTMLToPDFConverter:
         for section in sections:
             subsections = section.subsections.all().order_by('order') if section.deep else []
             structured_sections.append({
-                "order": section.order+1,
+                "order": section.order + 1,
                 "heading": section.title,
                 "content": section.content if not section.deep else None,
                 "all_subsections": [
                     {
-                        "order": f"{section.order+1}.{sub.order+1}",
+                        "order": f"{section.order + 1}.{sub.order + 1}",
                         "title": sub.title,
                         "content": sub.content
                     }
@@ -39,18 +43,25 @@ class HTMLToPDFConverter:
                 ]
             })
 
-        # Confidential notice
-        notice = (
-            "This document is confidential and intended solely for the use of the individual or entity to whom it is addressed. "
-            "Unauthorized distribution, reproduction, or disclosure is strictly prohibited."
+        # Legal metadata from department
+        department = self.document.department
+        copyright_holder = (
+            department and department.copyright_holder
+            or "SpectrumAi.pl"
+        )
+        copyright_notice = (
+            department and department.copyright_notice
+            or "This document is confidential and intended solely for the use of the individual or entity to whom it is addressed. "
+               "Unauthorized distribution, reproduction, or disclosure is strictly prohibited."
         )
 
         # Render HTML
         html_string = render_to_string("documents/pdf.html", {
             "document": self.document,
             "sections_prefetched": structured_sections,
-            "copyright_holder": "SpectrumAi.pl",
-            "copyright_notice": notice,
+            "seal_path": seal_path,
+            "copyright_holder": copyright_holder,
+            "copyright_notice": copyright_notice,
             "now": now(),
         })
 
@@ -59,6 +70,7 @@ class HTMLToPDFConverter:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as output:
             WeasyHTML(string=html_string, base_url=base_url).write_pdf(output.name)
             return output.name
+
 
 
 # ────────────────────────────────────────────────

@@ -20,11 +20,24 @@ class TagAdmin(admin.ModelAdmin):
     search_fields = ['name']
     list_display = ['name']
 
+
 @admin.register(Department)
 class DepartmentAdmin(admin.ModelAdmin):
-    list_display = ['name', 'owner']
-    search_fields = ['name']
+    list_display = ['name', 'owner', 'copyright_holder']
+    search_fields = ['name', 'copyright_holder']
     list_filter = ['owner']
+    readonly_fields = ['owner']  # Optional: prevent changing ownership in admin
+    fieldsets = (
+        (None, {
+            'fields': ['name', 'owner', 'seal']
+        }),
+        ('Legal Metadata', {
+            'fields': ['copyright_holder', 'copyright_notice'],
+            'description': 'Used in PDF generation for legal attribution and confidentiality.'
+        }),
+    )
+
+
 
 # ────────────────────────────────────────────────
 # ⚙️ Preset Admins

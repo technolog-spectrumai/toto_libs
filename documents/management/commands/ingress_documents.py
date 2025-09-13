@@ -31,18 +31,27 @@ class Command(IngressCommand):
         tag_names = ['Research', 'Internal', 'Public', 'Confidential', 'Draft']
         tags = [Tag.objects.get_or_create(name=name)[0] for name in tag_names]
 
-        # Departments
+        # Departments with legal metadata
         departments = [
-            Department.objects.create(name=f"Department {i+1}", owner=users[i % len(users)])
+            Department.objects.create(
+                name=f"Department {i+1}",
+                owner=users[i % len(users)],
+                copyright_holder="SpectrumAi.pl",
+                copyright_notice=(
+                    "This document is confidential and intended solely for the use "
+                    "of the individual or entity to whom it is addressed. "
+                    "Unauthorized distribution, reproduction, or disclosure is strictly prohibited."
+                )
+            )
             for i in range(3)
         ]
 
-        # Presets (no depth anymore)
+        # Presets
         presets = []
         for engine in ['latex', 'html']:
             if engine == 'latex':
                 preset = LatexPreset.objects.create(
-                    name=f"LaTeX Preset",
+                    name="LaTeX Preset",
                     engine='latex',
                     document_class='article',
                     preamble=lorem.paragraph(),
@@ -51,7 +60,7 @@ class Command(IngressCommand):
                 )
             else:
                 preset = HTMLPreset.objects.create(
-                    name=f"HTML Preset",
+                    name="HTML Preset",
                     engine='html',
                     template_name="template.html",
                     css_classes={"body": "bg-white text-black", "header": "font-bold"},
