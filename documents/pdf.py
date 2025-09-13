@@ -3,19 +3,32 @@ import tempfile
 from django.template.loader import render_to_string
 from django.utils.timezone import now
 from weasyprint import HTML as WeasyHTML
-from pylatex import Document as LaTeXDoc, Section as LaTeXSection, Subsection as LaTeXSubsection, Command
-from pylatex.utils import NoEscape
-from .models import Document
+from .models import Document, LatexPreset
 from django.conf import settings
+from pylatex import Document as LatexDoc, Section, Subsection, Command, Package
+from pylatex.utils import NoEscape
+from io import BytesIO
+from abc import ABC, abstractmethod
+from .models import Document
+
+
+class BasePDFConverter(ABC):
+    def __init__(self, document: Document):
+        if not isinstance(document, Document):
+            raise TypeError("Expected a Document instance.")
+        self.document = document
+
+    @abstractmethod
+    def generate_pdf(self):
+        """Generate a PDF and return it (path or bytes)."""
+        pass
 
 
 # ────────────────────────────────────────────────
 # 🌐 HTML to PDF Converter
 # ────────────────────────────────────────────────
 
-class HTMLToPDFConverter:
-    def __init__(self, document: Document):
-        self.document = document
+class HTMLToPDFConverter(BasePDFConverter):
 
     def generate_pdf(self):
         # Department seal
@@ -72,46 +85,69 @@ class HTMLToPDFConverter:
             return output.name
 
 
+class LaTeXToPDFConverter(BasePDFConverter):
 
-# ────────────────────────────────────────────────
-# 🧪 LaTeX to PDF Converter
-# ────────────────────────────────────────────────
+    def __init__(self, document):
+        if not document.engine == 'latex':
+            raise ValueError("Document engine must be LaTeX.")
+        if not isinstance(document.preset, LatexPreset):
+            raise TypeError("Preset must be a LatexPreset instance.")
+        super().__init__(document)
+        self.preset = document.preset
 
-class LaTeXToPDFConverter:
-    def __init__(self, document: Document):
-        self.document = document
+    def _build_document(self):
+        doc = LatexDoc(documentclass=self.preset.document_class)
 
-    def build_latex(self):
-        preset = self.document.preset
-        doc = LaTeXDoc(documentclass=NoEscape(preset.document_class if hasattr(preset, 'document_class') else 'article'))
-
+        for pkg in self.preset.packages:
+            doc.packages.append(Package(pkg))
+        #
+        # if self.preset.preamble:
+        #     doc.preamble.append(NoEscape(self.preset.preamble))
+        #
         doc.preamble.append(Command('title', self.document.title))
+        author = self.document.department.owner.get_full_name() if self.document.department else "Unknown"
+        doc.preamble.append(Command('author', author))
         doc.preamble.append(Command('date', NoEscape(r'\today')))
         doc.append(NoEscape(r'\maketitle'))
 
+        if self.document.summary:
+            doc.append(NoEscape(r'\begin{abstract}'))
+            doc.append(self.document.summary)
+            doc.append(NoEscape(r'\end{abstract}'))
+
+        if self.document.content:
+            with doc.create(Section(self.document.title)):
+                doc.append(self.document.content)
+
         if self.document.deep:
-            sections = self.document.sections.prefetch_relatead('subsections').order_by('order')
-            for section in sections:
-                sec = LaTeXSection(section.title)
-                if section.deep:
-                    for sub in section.subsections.all():
-                        subsec = LaTeXSubsection(sub.title)
-                        if sub.content:
-                            subsec.append(NoEscape(sub.content))
-                        sec.append(subsec)
-                else:
+            for section in self.document.sections.all():
+                with doc.create(Section(section.title)):
                     if section.content:
-                        sec.append(NoEscape(section.content))
-                doc.append(sec)
-        else:
-            if self.document.content:
-                doc.append(NoEscape(self.document.content))
+                        doc.append(section.content)
+                    if section.deep:
+                        for subsection in section.subsections.all():
+                            with doc.create(Subsection(subsection.title)):
+                                if subsection.content:
+                                    doc.append(subsection.content)
+
+        if self.preset.footer_note:
+            doc.append(NoEscape(r'\vfill'))
+            doc.append(NoEscape(r'\begin{center}'))
+            doc.append(NoEscape(r'\textit{' + self.preset.footer_note + '}'))
+            doc.append(NoEscape(r'\end{center}'))
 
         return doc
 
     def generate_pdf(self):
-        latex_doc = self.build_latex()
-        with tempfile.TemporaryDirectory() as tmpdir:
-            pdf_path = os.path.join(tmpdir, f"{self.document.slug}.pdf")
-            latex_doc.generate_pdf(pdf_path, clean=True, silent=True)
-            return pdf_path
+        doc = self._build_document()
+        filename = f"{self.document.slug}.pdf"
+        output_path = os.path.join(os.getcwd(), filename)
+        doc.generate_pdf(filepath=self.document.slug, clean_tex=False, compiler='pdflatex')
+
+        # Return the path to the generated PDF
+        if os.path.exists(output_path):
+            return output_path
+        else:
+            raise FileNotFoundError(f"PDF generation failed. {output_path}")
+
+

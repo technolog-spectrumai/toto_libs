@@ -54,7 +54,7 @@ class Command(IngressCommand):
                     name="LaTeX Preset",
                     engine='latex',
                     document_class='article',
-                    preamble=lorem.paragraph(),
+                    preamble="",
                     packages=["amsmath", "geometry", "graphicx"],
                     footer_note=lorem.sentence()
                 )

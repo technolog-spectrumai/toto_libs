@@ -1,6 +1,6 @@
 from django.views.generic import DetailView, ListView
 from django.db.models import Prefetch
-from django.http import FileResponse, Http404
+from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404
 from .models import Document, Department, Section, SubSection
 from .mixins import PageDecoratedMixin
@@ -79,7 +79,7 @@ def document_pdf_view(request, slug):
 
     try:
         # ─────────────────────────────────────────────────────────────
-        # Inline PDF Generator Dispatcher
+        # PDF Generator Dispatcher
         # ─────────────────────────────────────────────────────────────
         engine = document.engine
         if engine == 'latex':
@@ -89,12 +89,18 @@ def document_pdf_view(request, slug):
         else:
             raise ValueError("Unsupported document type")
 
-        pdf_path = generator.generate_pdf()
+        pdf_output = generator.generate_pdf()
+
         # ─────────────────────────────────────────────────────────────
-
-        if not pdf_path or not os.path.exists(pdf_path):
+        # Response Handling
+        # ─────────────────────────────────────────────────────────────
+        if isinstance(pdf_output, str) and os.path.exists(pdf_output):
+            # HTML: return file-based PDF
+            return FileResponse(open(pdf_output, 'rb'), content_type='application/pdf')
+        else:
             raise Http404("PDF could not be generated.")
-        return FileResponse(open(pdf_path, 'rb'), content_type='application/pdf')
 
-    except Exception:
-        raise Http404("PDF generation failed.")
+    except Exception as e:
+        # Optional: log the error for debugging
+        # logger.error(f"PDF generation failed: {e}")
+        raise Http404(f"PDF generation failed. {e}")
