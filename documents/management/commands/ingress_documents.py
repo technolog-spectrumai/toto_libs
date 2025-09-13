@@ -10,7 +10,7 @@ from documents.models import (
 )
 
 class Command(IngressCommand):
-    help = "Ingress documents with all engine-depth combinations using existing users"
+    help = "Seed documents with all engine-depth combinations using existing users"
 
     def process(self, _):
         self.create_dashboard_item(
@@ -20,31 +20,26 @@ class Command(IngressCommand):
             link="/documents/"
         )
 
-        self.stdout.write("Starting document ingress...")
+        self.stdout.write("🚀 Starting document ingress...")
 
-        # Use existing users only
         users = list(User.objects.all())
         if not users:
-            self.stdout.write(self.style.ERROR("No users found. Please create at least one user before running ingress."))
+            self.stdout.write(self.style.ERROR("❌ No users found. Create at least one user before running ingress."))
             return
 
-        # Create tags
+        # Tags
         tag_names = ['Research', 'Internal', 'Public', 'Confidential', 'Draft']
         tags = [Tag.objects.get_or_create(name=name)[0] for name in tag_names]
 
-        # Create departments
-        departments = []
-        for i in range(3):
-            dept = Department.objects.create(
-                name=f"Department {i+1}",
-                owner=users[i % len(users)]
-            )
-            departments.append(dept)
+        # Departments
+        departments = [
+            Department.objects.create(name=f"Department {i+1}", owner=users[i % len(users)])
+            for i in range(3)
+        ]
 
-        # Create presets for all combinations of engine × depth
+        # Presets
         presets = []
-        combinations = list(itertools.product(['latex', 'html'], [1, 2, 3]))
-        for engine, depth in combinations:
+        for engine, depth in itertools.product(['latex', 'html'], [1, 2, 3]):
             if engine == 'latex':
                 preset = LatexPreset.objects.create(
                     name=f"LaTeX Preset Depth {depth}",
@@ -67,9 +62,9 @@ class Command(IngressCommand):
                 )
             presets.append(preset)
 
-        # Create one document per preset
-        for i, preset in enumerate(presets, start=1):
-            doc = Document.objects.create(
+        # Documents
+        for i, preset in enumerate(presets):
+            doc = Document(
                 title=f"Document for {preset.name}",
                 preset=preset,
                 summary=lorem.sentence(),
@@ -77,18 +72,18 @@ class Command(IngressCommand):
                 department=departments[i % len(departments)],
                 created_at=timezone.now()
             )
-            doc.tags.set(tags)
 
-            # Populate content based on depth
             if preset.depth == 1:
                 doc.content = lorem.paragraph()
-                doc.save()
 
-            elif preset.depth == 2:
+            doc.save()  # Must save before assigning tags
+            doc.tags.set(tags)
+
+            if preset.depth == 2:
                 for j in range(3):
                     Section.objects.create(
                         document=doc,
-                        title=f"Section {j + 1}",
+                        title=f"Section {j+1}",
                         order=j,
                         content=lorem.paragraph()
                     )
@@ -97,7 +92,7 @@ class Command(IngressCommand):
                 for j in range(2):
                     section = Section.objects.create(
                         document=doc,
-                        title=f"Section {j + 1}",
+                        title=f"Section {j+1}",
                         order=j,
                         content=""
                     )
@@ -105,8 +100,8 @@ class Command(IngressCommand):
                         SubSection.objects.create(
                             section=section,
                             order=k,
-                            title=f"SubSection {j + 1}.{k + 1}",
+                            title=f"SubSection {j+1}.{k+1}",
                             content=lorem.paragraph()
                         )
 
-        self.stdout.write(self.style.SUCCESS("Ingress complete. All engine-depth combinations seeded using existing users."))
+        self.stdout.write(self.style.SUCCESS("✅ Ingress complete. All engine-depth combinations seeded."))

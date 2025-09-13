@@ -192,11 +192,13 @@ class DocumentForm(forms.ModelForm):
 @admin.register(Document)
 class DocumentAdmin(NestedModelAdmin):
     form = DocumentForm
-    list_display = ['title', 'version', 'created_by', 'created_at', 'engine', 'depth']
+    list_display = ['title', 'slug', 'version', 'created_by', 'created_at', 'engine', 'depth']
     list_filter = ['department', 'tags', 'created_at']
-    search_fields = ['title', 'summary', 'version']
+    search_fields = ['title', 'summary', 'version', 'slug']
     filter_horizontal = ['tags']
     readonly_fields = ['created_at']
+
+    prepopulated_fields = {'slug': ('title',)}  # 👈 Auto-fill slug from title
 
     def get_inline_instances(self, request, obj=None):
         if not obj or not obj.preset:
@@ -222,10 +224,14 @@ class DocumentAdmin(NestedModelAdmin):
         return []
 
     def get_fields(self, request, obj=None):
-        base_fields = ['title', 'preset', 'summary', 'version', 'created_by', 'tags', 'department', 'created_at']
+        base_fields = [
+            'title', 'slug', 'preset', 'summary', 'version',
+            'created_by', 'tags', 'department', 'created_at'
+        ]
         if obj and obj.preset and obj.preset.depth == 1:
             base_fields.append('content')
         return base_fields
+
 
 # ────────────────────────────────────────────────
 # 📘 Section Admin

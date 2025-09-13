@@ -1,0 +1,93 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}Documents | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="px-6 py-20 min-h-screen transition-colors duration-300">
+
+  <div
+    :class="darkMode
+      ? 'bg-bubble-bg-dark border border-accent-1 text-text-main-dark'
+      : 'bg-bubble-bg-light border border-accent-2 text-text-main-light'"
+    class="max-w-6xl mx-auto p-8 rounded-xl shadow-lg space-y-10 transition-colors duration-300">
+
+    <!-- Header -->
+    <header class="space-y-4 text-center">
+      <h1 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-3xl font-extrabold tracking-tight">
+        Documents
+      </h1>
+      <p class="text-sm text-gray-500 dark:text-gray-400">
+        Explore all documents by type, department, and status.
+      </p>
+
+      <!-- Filter Form -->
+      <form method="get" class="max-w-sm mx-auto space-y-2">
+        <label for="department"
+               :class="darkMode ? 'text-text-main-dark' : 'text-text-main-light'"
+               class="block text-sm font-medium mb-1">
+          Filter by Department
+        </label>
+
+        <select name="department" id="department"
+                :class="darkMode
+                  ? 'bg-gray-800 text-gray-200 border-accent-1'
+                  : 'bg-white text-gray-800 border-accent-2'"
+                class="w-full px-3 py-2 rounded border transition-colors duration-300"
+                onchange="this.form.submit()">
+          <option value="">All Departments</option>
+          {% for department in departments %}
+            <option value="{{ department.pk }}"
+                    {% if department.pk|stringformat:"s" == selected_department %}selected{% endif %}>
+              {{ department.name }}
+            </option>
+          {% endfor %}
+        </select>
+      </form>
+    </header>
+
+    <!-- Document List -->
+    {% if documents %}
+      <section class="space-y-6">
+        <ul class="grid gap-6">
+          {% for document in documents %}
+            <li
+              :class="darkMode
+                ? 'bg-gray-900 border border-gray-700 text-text-main-dark'
+                : 'bg-white border border-gray-200 text-text-main-light'"
+              class="rounded-lg p-6 shadow-sm hover:shadow-md transition-shadow duration-300">
+
+              <div class="flex justify-between items-center mb-2">
+                <h3 class="text-lg font-bold hover:text-accent-light transition-colors">
+                  <a href="{% url 'document-detail' document.slug %}">{{ document.title }}</a>
+                </h3>
+                <span class="text-xs font-medium italic opacity-60">
+                  {{ document.engine }}
+                </span>
+              </div>
+
+              {% if document.summary %}
+                <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                  {{ document.summary|truncatewords:20 }}
+                </p>
+              {% endif %}
+
+              <div class="text-xs text-gray-500 dark:text-gray-400">
+                Department: {{ document.department.name }}<br>
+                Created: {{ document.created_at|date:"M d, Y" }}
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      </section>
+    {% else %}
+      <p class="text-center text-gray-400 dark:text-gray-500">No documents found for this department.</p>
+    {% endif %}
+
+  </div>
+</section>
+{% endblock %}

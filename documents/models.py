@@ -3,33 +3,7 @@ from django.contrib.auth.models import User
 from polymorphic.models import PolymorphicModel
 from django_jsonform.models.fields import JSONField
 from django.core.validators import MinValueValidator, MaxValueValidator
-
-# ────────────────────────────────────────────────
-# 📦 JSON Schemas
-# ────────────────────────────────────────────────
-
-_LATEX_PACKAGES_SCHEMA = {
-    "type": "array",
-    "items": {"type": "string"},
-    "title": "LaTeX Packages"
-}
-
-_SCRIPT_INCLUDES_SCHEMA = {
-    "type": "array",
-    "items": {"type": "string", "format": "uri"},
-    "title": "Script URLs"
-}
-
-_CSS_CLASSES_SCHEMA = {
-    'type': 'dict',
-    'keys': {
-        'name': {'type': 'string'},
-    },
-    "title": "CSS Classes by Element",
-    "additionalProperties": {
-        "type": "string"
-    }
-}
+from django.utils.text import slugify
 
 # ────────────────────────────────────────────────
 # 🔖 Tag Model
@@ -83,7 +57,11 @@ class LatexPreset(Preset):
     document_class = models.CharField(max_length=100, default='article')
     preamble = models.TextField(blank=True)
     packages = JSONField(
-        schema=_LATEX_PACKAGES_SCHEMA,
+        schema={
+            "type": "array",
+            "items": {"type": "string"},
+            "title": "LaTeX Packages"
+        },
         default=list,
         help_text="List of LaTeX packages to include"
     )
@@ -96,12 +74,21 @@ class LatexPreset(Preset):
 class HTMLPreset(Preset):
     template_name = models.CharField(max_length=255)
     css_classes = JSONField(
-        schema=_CSS_CLASSES_SCHEMA,
+        schema={
+            'type': 'dict',
+            'keys': {'name': {'type': 'string'}},
+            "title": "CSS Classes by Element",
+            "additionalProperties": {"type": "string"}
+        },
         default=dict,
         help_text="CSS classes for HTML elements"
     )
     script_includes = JSONField(
-        schema=_SCRIPT_INCLUDES_SCHEMA,
+        schema={
+            "type": "array",
+            "items": {"type": "string", "format": "uri"},
+            "title": "Script URLs"
+        },
         default=list,
         help_text="List of JS script URLs to include"
     )
@@ -113,6 +100,7 @@ class HTMLPreset(Preset):
 
 class Document(models.Model):
     title = models.CharField(max_length=255)
+    slug = models.SlugField(max_length=255, unique=True, blank=True)
     preset = models.ForeignKey(Preset, on_delete=models.SET_NULL, null=True)
     summary = models.TextField(blank=True, help_text="Brief summary of the document")
     version = models.CharField(max_length=10, default="1.0", help_text="Version number in major.minor format")
@@ -121,20 +109,29 @@ class Document(models.Model):
 
     tags = models.ManyToManyField(Tag, blank=True, related_name='documents')
     department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True, related_name='documents')
-    content = models.TextField(help_text="Plain text content of the section")
-
-    @property
-    def depth(self):
-        return self.preset.depth
+    content = models.TextField(blank=True, null=True, help_text="Plain text content of the document")
 
     def __str__(self):
         return f"{self.title} (v{self.version})"
+
+    @property
+    def depth(self):
+        return self.preset.depth if self.preset else None
 
     @property
     def engine(self):
         return self.preset.engine if self.preset else None
 
     def save(self, *args, **kwargs):
+        if not self.slug:
+            base_slug = slugify(self.title)
+            slug = base_slug
+            counter = 1
+            while Document.objects.filter(slug=slug).exists():
+                slug = f"{base_slug}-{counter}"
+                counter += 1
+            self.slug = slug
+
         if not self.pk:
             latest = Document.objects.filter(created_by=self.created_by).order_by('-created_at').first()
             if latest:
@@ -142,20 +139,8 @@ class Document(models.Model):
                 self.version = f"{major}.{minor + 1}"
             else:
                 self.version = "1.1"
-        super().save(*args, **kwargs)
 
-    def get_content(self):
-        if self.preset.depth == 1:
-            return self.content
-        elif self.preset.depth == 2:
-            return "\n\n".join(section.content for section in self.sections.all())
-        elif self.preset.depth == 3:
-            return "\n\n".join(
-                subsection.content
-                for section in self.sections.all()
-                for subsection in section.subsections.all()
-            )
-        return ""
+        super().save(*args, **kwargs)
 
 # ────────────────────────────────────────────────
 # 📚 Section Model
@@ -165,7 +150,7 @@ class Section(models.Model):
     document = models.ForeignKey(Document, on_delete=models.CASCADE, related_name='sections')
     title = models.CharField(max_length=255)
     order = models.PositiveIntegerField(default=0)
-    content = models.TextField(help_text="Plain text content of the section")
+    content = models.TextField(blank=True, null=True, help_text="Plain text content of the section")
 
     class Meta:
         ordering = ['order']
@@ -173,12 +158,15 @@ class Section(models.Model):
     def __str__(self):
         return f"Section {self.order}: {self.title}"
 
+# ────────────────────────────────────────────────
+# 📘 SubSection Model
+# ────────────────────────────────────────────────
 
 class SubSection(models.Model):
     section = models.ForeignKey(Section, on_delete=models.CASCADE, related_name='subsections')
     order = models.PositiveIntegerField(default=0)
     title = models.CharField(max_length=255)
-    content = models.TextField(help_text="Plain text content of the subsection")
+    content = models.TextField(blank=True, null=True, help_text="Plain text content of the subsection")
 
     class Meta:
         ordering = ['order']
