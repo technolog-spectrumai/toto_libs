@@ -189,7 +189,7 @@ class HTMLSectionInline(NestedStackedInline):
 class HTMLDocumentAdmin(NestedModelAdmin):
     form = HTMLDocumentForm
     list_display = [
-        'title', 'slug', 'version', 'created_by', 'created_at', 'deep', 'linked_latex'
+        'title', 'slug', 'version', 'created_by', 'created_at', 'is_deep', 'linked_latex'
     ]
     list_filter = ['department', 'tags', 'created_at']
     search_fields = ['title', 'summary', 'version', 'slug', 'linked_latex__title']
@@ -209,17 +209,26 @@ class HTMLDocumentAdmin(NestedModelAdmin):
         }),
     )
 
+    @admin.display(boolean=True, description="Has Sections")
+    def is_deep(self, obj):
+        return obj.deep
+
     def get_inline_instances(self, request, obj=None):
         return [HTMLSectionInline(self.model, self.admin_site)] if obj and obj.deep else []
+
 
 
 @admin.register(HTMLSection)
 class HTMLSectionAdmin(admin.ModelAdmin):
     form = HTMLSectionForm
-    list_display = ['title', 'document', 'order', 'deep']
+    list_display = ['title', 'document', 'order', 'is_deep']
     list_filter = ['document']
     search_fields = ['title', 'content']
     ordering = ['document', 'order']
+
+    @admin.display(boolean=True, description="Has Subsections")
+    def is_deep(self, obj):
+        return obj.deep
 
 
 @admin.register(HTMLSubSection)
