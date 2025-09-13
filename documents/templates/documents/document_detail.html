@@ -44,7 +44,7 @@
     </header>
 
     <!-- Depth 1: Document-level content -->
-    {% if content %}
+    {% if content and not document.deep %}
       <section class="space-y-4">
         <h3 class="text-xl font-semibold border-b pb-2">Content</h3>
         <div class="prose dark:prose-invert">
@@ -54,9 +54,8 @@
     {% endif %}
 
     <!-- Depth 2 or 3: Sections -->
-    {% if sections %}
+    {% if sections and document.deep %}
       <section class="space-y-4">
-        <h3 class="text-xl font-semibold border-b pb-2">Sections</h3>
         <ul class="space-y-6">
           {% for section in sections %}
             <li x-data="{ open: false }" class="border-b pb-4">
@@ -66,13 +65,13 @@
               </button>
 
               <div x-show="open" x-transition class="mt-2 space-y-3">
-                {% if section.content %}
+                {% if section.content and not section.deep%}
                   <div class="prose dark:prose-invert">
                     {{ section.content|linebreaksbr }}
                   </div>
                 {% endif %}
 
-                {% if section.subsections.all %}
+                {% if section.subsections.all and section.deep %}
                   <ul class="mt-4 space-y-3 pl-4 border-l border-gray-300 dark:border-gray-600">
                     {% for subsection in section.subsections.all %}
                       <li x-data="{ subOpen: false }">

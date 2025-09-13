@@ -40,14 +40,10 @@ class Preset(PolymorphicModel):
     name = models.CharField(max_length=100)
     description = models.TextField(blank=True)
     engine = models.CharField(max_length=10, choices=ENGINE_CHOICES)
-    depth = models.PositiveSmallIntegerField(
-        default=1,
-        validators=[MinValueValidator(1), MaxValueValidator(3)],
-        help_text="Depth level from 1 (shallow) to 3 (deep)"
-    )
 
     def __str__(self):
         return f"{self.name} [{self.engine}]"
+
 
 # ────────────────────────────────────────────────
 # 🧪 LaTeX Preset
@@ -101,13 +97,10 @@ class Document(models.Model):
     tags = models.ManyToManyField(Tag, blank=True, related_name='documents')
     department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True, related_name='documents')
     content = models.TextField(blank=True, null=True, help_text="Plain text content of the document")
+    deep = models.BooleanField(default=False, help_text="Enable structured sections/subsections")
 
     def __str__(self):
         return f"{self.title} (v{self.version})"
-
-    @property
-    def depth(self):
-        return self.preset.depth if self.preset else None
 
     @property
     def engine(self):
@@ -129,9 +122,10 @@ class Document(models.Model):
                 major, minor = map(int, latest.version.split('.'))
                 self.version = f"{major}.{minor + 1}"
             else:
-                self.version = "1.1"
+                self.version = "1.0"
 
         super().save(*args, **kwargs)
+
 
 # ────────────────────────────────────────────────
 # 📚 Section Model
@@ -142,12 +136,14 @@ class Section(models.Model):
     title = models.CharField(max_length=255)
     order = models.PositiveIntegerField(default=0)
     content = models.TextField(blank=True, null=True, help_text="Plain text content of the section")
+    deep = models.BooleanField(default=False, help_text="Enable structured subsections")
 
     class Meta:
         ordering = ['order']
 
     def __str__(self):
         return f"Section {self.order}: {self.title}"
+
 
 # ────────────────────────────────────────────────
 # 📘 SubSection Model

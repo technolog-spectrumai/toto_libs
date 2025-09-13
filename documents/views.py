@@ -32,21 +32,15 @@ class DocumentDetailView(PageDecoratedMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         document = self.object
-        depth = document.depth
 
-        sections = []
-        if depth == 1:
-            content = document.content
-        elif depth == 2:
-            sections = document.sections.all().order_by('order')
-            content = None
-        elif depth == 3:
+        if document.deep:
             sections = document.sections.prefetch_related(
                 Prefetch('subsections', queryset=SubSection.objects.order_by('order'))
-            )
+            ).order_by('order')
             content = None
         else:
-            content = None
+            sections = []
+            content = document.content
 
         context.update({
             'content': content,
@@ -54,7 +48,7 @@ class DocumentDetailView(PageDecoratedMixin, DetailView):
             'tags': document.tags.all(),
             'department': document.department,
             'preset': document.preset,
-            'depth': depth,
             'engine': document.engine,
+            'deep': document.deep,
         })
         return context

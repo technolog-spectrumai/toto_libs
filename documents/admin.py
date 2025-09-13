@@ -1,12 +1,10 @@
 from django import forms
-from django.contrib import admin
+from django.contrib import admin, messages
 from nested_admin import NestedModelAdmin, NestedStackedInline
 from django_tiptap.widgets import TipTapWidget
 from django_ace import AceWidget
+
 from documents.parsers import HTMLParser, LaTeXParser
-from django.contrib import messages
-
-
 from .models import (
     Tag, Department,
     Preset, LatexPreset, HTMLPreset,
@@ -14,7 +12,7 @@ from .models import (
 )
 
 # ────────────────────────────────────────────────
-# 🔖 Tag & Department
+# 🔖 Tag & Department Admin
 # ────────────────────────────────────────────────
 
 @admin.register(Tag)
@@ -29,75 +27,61 @@ class DepartmentAdmin(admin.ModelAdmin):
     list_filter = ['owner']
 
 # ────────────────────────────────────────────────
-# ⚙️ Depth Label Utility
+# ⚙️ Preset Admins
 # ────────────────────────────────────────────────
-
-def get_depth_label(depth: int) -> str:
-    return {
-        1: "Document-level content",
-        2: "Section-level content",
-        3: "SubSection-level content"
-    }.get(depth, f"Unknown ({depth})")
-
-# ────────────────────────────────────────────────
-# ⚙️ Presets
-# ────────────────────────────────────────────────
-
 
 @admin.register(LatexPreset)
 class LatexPresetAdmin(admin.ModelAdmin):
-    list_display = ['name', 'document_class', 'depth_label']
+    list_display = ['name', 'document_class']
     search_fields = ['name', 'document_class']
-
-    def depth_label(self, obj):
-        return get_depth_label(obj.depth)
-    depth_label.short_description = "Content Depth"
-
 
 @admin.register(HTMLPreset)
 class HTMLPresetAdmin(admin.ModelAdmin):
-    list_display = ['name', 'template_name', 'depth_label']
+    list_display = ['name', 'template_name']
     search_fields = ['name', 'template_name']
 
-    def depth_label(self, obj):
-        return get_depth_label(obj.depth)
-    depth_label.short_description = "Content Depth"
-
-
-def configure_content_widget(fields, engine, depth, expected_depth, width="100%", height="300px"):
-    """
-    Dynamically configures or removes the 'content' field based on depth and engine.
-    """
-    if 'content' not in fields:
-        return
-
-    if depth == expected_depth:
-        fields['content'].widget = (
-            AceWidget(mode='latex', theme='chrome', width=width, height=height)
-            if engine == 'latex' else TipTapWidget()
-        )
-    else:
-        fields.pop('content', None)
-
+# ────────────────────────────────────────────────
+# 📘 SubSection Inline
+# ────────────────────────────────────────────────
 
 # ────────────────────────────────────────────────
-# 🧠 Section Form
+# 📄 Document Form
+# ────────────────────────────────────────────────
+
+class DocumentForm(forms.ModelForm):
+    class Meta:
+        model = Document
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        instance = kwargs.get('instance')
+        engine = getattr(instance.preset, 'engine', None) if instance and instance.preset else None
+
+        if engine == 'html' and 'summary' in self.fields:
+            self.fields['summary'].widget = TipTapWidget()
+
+        if 'content' in self.fields:
+            self.fields['content'].widget = (
+                AceWidget(mode='latex', theme='chrome', width="100%", height="300px")
+                if engine == 'latex' else TipTapWidget()
+            )
+
+# ────────────────────────────────────────────────
+# 📚 Section Form
 # ────────────────────────────────────────────────
 
 class SectionForm(forms.ModelForm):
     class Meta:
         model = Section
-        fields = ['title', 'order', 'content', 'document']
+        fields = ['title', 'order', 'content', 'document', 'deep']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
         document = self.instance.document if self.instance.pk else self.initial.get('document')
-        preset = getattr(document, 'preset', None) if document else None
-        engine = getattr(preset, 'engine', None) if preset else None
-        depth = getattr(preset, 'depth', None) if preset else None
+        engine = getattr(document.preset, 'engine', None) if document and document.preset else None
 
-        if depth == 2:
+        if self.instance.deep:
             self.fields['content'].widget = (
                 AceWidget(mode='latex', theme='chrome', width="100%", height="300px")
                 if engine == 'latex' else TipTapWidget()
@@ -105,7 +89,6 @@ class SectionForm(forms.ModelForm):
         else:
             self.fields['content'].widget = forms.HiddenInput()
             self.fields['content'].required = False
-
 
 # ────────────────────────────────────────────────
 # 📘 SubSection Form
@@ -118,14 +101,11 @@ class SubSectionForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        section = self.instance.section if self.instance.pk else self.initial.get('section')
+        document = section.document if section else None
+        engine = getattr(document.preset, 'engine', None) if document and document.preset else None
 
-        instance = kwargs.get('instance')
-        document = instance.section.document if instance and instance.section else None
-        preset = getattr(document, 'preset', None) if document else None
-        engine = getattr(preset, 'engine', None) if preset else None
-        depth = getattr(preset, 'depth', None) if preset else None
-
-        if depth == 3:
+        if section and section.deep:
             self.fields['content'].widget = (
                 AceWidget(mode='latex', theme='chrome')
                 if engine == 'latex' else TipTapWidget()
@@ -133,12 +113,6 @@ class SubSectionForm(forms.ModelForm):
         else:
             self.fields['content'].widget = forms.HiddenInput()
             self.fields['content'].required = False
-
-
-
-# ────────────────────────────────────────────────
-# 📚 SubSection Inline
-# ────────────────────────────────────────────────
 
 class SubSectionInline(NestedStackedInline):
     model = SubSection
@@ -158,99 +132,48 @@ class SectionInline(NestedStackedInline):
     inlines = [SubSectionInline]
 
 # ────────────────────────────────────────────────
-# 📄 Document Form
-# ───────────────────────────────────────────────
-
-class DocumentForm(forms.ModelForm):
-    class Meta:
-        model = Document
-        fields = '__all__'
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        instance = kwargs.get('instance')
-        preset = getattr(instance, 'preset', None)
-
-        if preset:
-            engine = preset.engine
-            depth = preset.depth
-
-            if engine == 'html' and 'summary' in self.fields:
-                self.fields['summary'].widget = TipTapWidget()
-
-            if depth == 1 and 'content' in self.fields:
-                self.fields['content'].widget = (
-                    AceWidget(mode='latex', theme='chrome', width="100%", height="300px")
-                    if engine == 'latex' else TipTapWidget()
-                )
-            elif 'content' in self.fields:
-                self.fields.pop('content')
-
-
-# ────────────────────────────────────────────────
 # 📄 Document Admin
 # ────────────────────────────────────────────────
 
 @admin.register(Document)
 class DocumentAdmin(NestedModelAdmin):
     form = DocumentForm
-    list_display = ['title', 'slug', 'version', 'created_by', 'created_at', 'engine', 'depth']
-    list_filter = ['department', 'tags', 'created_at']
+    list_display = ['title', 'slug', 'version', 'created_by', 'created_at', 'engine', 'deep']
+    list_filter = ['department', 'tags', 'created_at', 'deep']
     search_fields = ['title', 'summary', 'version', 'slug']
     filter_horizontal = ['tags']
-    readonly_fields = ['created_at']
+    readonly_fields = ['created_at', 'engine_display']
     actions = ['expand']
-
     prepopulated_fields = {'slug': ('title',)}
 
     def get_inline_instances(self, request, obj=None):
-        if not obj or not obj.preset:
+        if not obj or not obj.deep:
             return []
+        return [SectionInline(self.model, self.admin_site)]
 
-        depth = obj.preset.depth
-
-        if depth == 1:
-            return []
-
-        elif depth == 2:
-            class FlatSectionInline(NestedStackedInline):
-                model = Section
-                form = SectionForm
-                extra = 1
-                ordering = ['order']
-                inlines = []
-            return [FlatSectionInline(self.model, self.admin_site)]
-
-        elif depth == 3:
-            return [SectionInline(self.model, self.admin_site)]
-
-        return []
+    def engine_display(self, obj):
+        return obj.engine or "—"
+    engine_display.short_description = "Engine"
 
     def get_fields(self, request, obj=None):
-        base_fields = [
+        return [
             'title', 'slug', 'preset', 'summary', 'version',
-            'created_by', 'tags', 'department', 'created_at'
+            'created_by', 'tags', 'department', 'created_at', 'engine_display', 'deep', 'content'
         ]
-        if obj and obj.preset and obj.preset.depth == 1:
-            base_fields.append('content')
-        return base_fields
 
     def expand(self, request, queryset):
         created_total = 0
-
         for document in queryset:
-            if document.depth != 1:
+            if not document.deep:
                 self.message_user(
                     request,
-                    f"Document '{document.title}' is depth {document.depth}. Only depth 1 documents can be expanded.",
+                    f"Document '{document.title}' is not marked as deep. Skipping.",
                     level=messages.WARNING
                 )
                 continue
 
             parser = HTMLParser() if document.engine == 'html' else LaTeXParser()
             sections = parser.build_sections(document=document, content=document.content or "")
-
             Section.objects.bulk_create(sections)
             created_total += len(sections)
 
@@ -262,17 +185,15 @@ class DocumentAdmin(NestedModelAdmin):
 
     expand.short_description = "Expand content into sections"
 
-
-
 # ────────────────────────────────────────────────
-# 📘 Section Admin
+# 📚 Section Admin
 # ────────────────────────────────────────────────
 
 @admin.register(Section)
 class SectionAdmin(admin.ModelAdmin):
     form = SectionForm
-    list_display = ['title', 'document', 'order']
-    list_filter = ['document']
+    list_display = ['title', 'document', 'order', 'deep']
+    list_filter = ['document', 'deep']
     search_fields = ['title', 'content']
     ordering = ['document', 'order']
     actions = ['expand']
@@ -280,19 +201,12 @@ class SectionAdmin(admin.ModelAdmin):
     def expand(self, request, queryset):
         count = 0
         for section in queryset:
-            document = section.document
-            engine = document.engine
-
-            # Choose parser
-            if engine == 'html':
-                parser = HTMLParser()
-            elif engine == 'latex':
-                parser = LaTeXParser()
-            else:
-                self.message_user(request, f"Unknown engine for document '{document.title}'", level=messages.WARNING)
+            if not section.deep:
+                self.message_user(request, f"Section '{section.title}' is not marked as deep. Skipping.", level=messages.WARNING)
                 continue
 
-            # Build subsections from section content
+            document = section.document
+            parser = HTMLParser() if document.engine == 'html' else LaTeXParser()
             subsections = parser.build_subsections(section, section.content or "")
             SubSection.objects.bulk_create(subsections)
             count += len(subsections)
@@ -301,6 +215,9 @@ class SectionAdmin(admin.ModelAdmin):
 
     expand.short_description = "Expand content into subsections"
 
+# ────────────────────────────────────────────────
+# 📘 SubSection Admin
+# ────────────────────────────────────────────────
 
 @admin.register(SubSection)
 class SubSectionAdmin(admin.ModelAdmin):
@@ -309,4 +226,3 @@ class SubSectionAdmin(admin.ModelAdmin):
     list_filter = ['section__document']
     search_fields = ['title', 'content']
     ordering = ['section__document', 'section', 'order']
-
