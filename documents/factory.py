@@ -88,7 +88,6 @@ class LatexDocumentFactory(DocumentFactory):
         for section_cmd in soup.find_all('section'):
             heading = str(section_cmd.string).strip()
             section = Section.objects.create(document=document, order=section_order, heading=heading)
-
             subsection_order = 1
             for sub_cmd in section_cmd.find_all('subsection'):
                 title = str(sub_cmd.string).strip()
