@@ -1,12 +1,13 @@
-from django.contrib import admin
 from django import forms
+from django.contrib import admin
+from nested_admin import NestedModelAdmin, NestedStackedInline
 from django_tiptap.widgets import TipTapWidget
 from django_ace import AceWidget
 
 from .models import (
     Tag, Department,
     Preset, LatexPreset, HTMLPreset,
-    Document, Section
+    Document, Section, SubSection
 )
 
 # ────────────────────────────────────────────────
@@ -45,17 +46,16 @@ class HTMLPresetAdmin(admin.ModelAdmin):
     search_fields = ['name', 'template_name']
 
 # ────────────────────────────────────────────────
-# 🧠 Section Admin Form with Dynamic Widget
+# 🧠 Section Form with Dynamic Widget
 # ────────────────────────────────────────────────
 
-class SectionAdminForm(forms.ModelForm):
+class SectionForm(forms.ModelForm):
     class Meta:
         model = Section
         fields = ['title', 'order', 'content', 'document']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
         document = self.instance.document if self.instance.pk else self.initial.get('document')
         engine = getattr(document.preset, 'engine', None) if document and document.preset else None
 
@@ -65,22 +65,54 @@ class SectionAdminForm(forms.ModelForm):
             self.fields['content'].widget = TipTapWidget()
 
 # ────────────────────────────────────────────────
-# 📚 Section Inline for Document
+# 📘 SubSection Form with Dynamic Widget
 # ────────────────────────────────────────────────
 
-class SectionInline(admin.StackedInline):
-    model = Section
-    form = SectionAdminForm
+class SubSectionForm(forms.ModelForm):
+    class Meta:
+        model = SubSection
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        instance = kwargs.get('instance')
+        theme = 'chrome'
+        if instance and hasattr(instance.section.document, 'engine'):
+            engine = instance.section.document.engine
+            if engine == 'latex':
+                if hasattr(instance, 'use_light_mode') and instance.use_light_mode is False:
+                    theme = 'monokai'
+                self.fields['content'].widget = AceWidget(mode='latex', theme=theme)
+            elif engine == 'html':
+                self.fields['content'].widget = TipTapWidget()
+
+# ────────────────────────────────────────────────
+# 📚 SubSection Inline
+# ────────────────────────────────────────────────
+
+class SubSectionInline(NestedStackedInline):
+    model = SubSection
+    form = SubSectionForm
     extra = 1
-    fields = ['title', 'order', 'content']
     ordering = ['order']
 
 # ────────────────────────────────────────────────
-# 📄 Document Admin
+# 📚 Section Inline
+# ────────────────────────────────────────────────
+
+class SectionInline(NestedStackedInline):
+    model = Section
+    form = SectionForm
+    extra = 1
+    ordering = ['order']
+    inlines = [SubSectionInline]
+
+# ────────────────────────────────────────────────
+# 📄 Document Admin with Nested Sections
 # ────────────────────────────────────────────────
 
 @admin.register(Document)
-class DocumentAdmin(admin.ModelAdmin):
+class DocumentAdmin(NestedModelAdmin):
     list_display = ['title', 'version', 'created_by', 'created_at', 'engine', 'short_summary']
     list_filter = ['department', 'tags', 'created_at']
     search_fields = ['title', 'summary', 'version']
@@ -91,14 +123,13 @@ class DocumentAdmin(admin.ModelAdmin):
         return (obj.summary[:75] + '...') if obj.summary else "-"
     short_summary.short_description = "Summary"
 
-
 # ────────────────────────────────────────────────
 # 📘 Section Admin (Direct Access)
 # ────────────────────────────────────────────────
 
 @admin.register(Section)
 class SectionAdmin(admin.ModelAdmin):
-    form = SectionAdminForm
+    form = SectionForm
     list_display = ['title', 'document', 'order']
     list_filter = ['document']
     search_fields = ['title', 'content']

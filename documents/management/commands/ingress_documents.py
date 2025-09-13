@@ -6,18 +6,18 @@ from oya.ingress import IngressCommand
 from documents.models import (
     Tag, Department,
     LatexPreset, HTMLPreset,
-    Document, Section
+    Document, Section, SubSection  # 👈 Added SubSection
 )
 
 class Command(IngressCommand):
-    help = "Ingress documents with fake data: presets, departments, tags, documents, and sections"
+    help = "Ingress documents with fake data: presets, departments, tags, documents, sections, and subsections"
 
     def process(self, _):
         # Dashboard block
         self.create_dashboard_item(
             title="Documents",
             icon="file-text",
-            description="Presets, departments, and structured documents with sections.",
+            description="Presets, departments, and structured documents with sections and subsections.",
             link="/documents/"
         )
 
@@ -81,11 +81,20 @@ class Command(IngressCommand):
 
             # Create sections
             for j in range(random.randint(2, 5)):
-                Section.objects.create(
+                section = Section.objects.create(
                     document=doc,
                     title=f"Section {j + 1}",
                     order=j,
                     content=lorem.paragraph()
                 )
+
+                # Create subsections
+                for k in range(random.randint(1, 3)):
+                    SubSection.objects.create(
+                        section=section,
+                        order=k,
+                        title=f"SubSection {j + 1}.{k + 1}",
+                        content=lorem.paragraph()
+                    )
 
         self.stdout.write(self.style.SUCCESS("Ingress complete. Documents seeded successfully!"))

@@ -148,3 +148,16 @@ class Section(models.Model):
 
     def __str__(self):
         return f"Section {self.order}: {self.title}"
+
+
+class SubSection(models.Model):
+    section = models.ForeignKey(Section, on_delete=models.CASCADE, related_name='subsections')
+    order = models.PositiveIntegerField(default=0)
+    title = models.CharField(max_length=255)
+    content = models.TextField(help_text="Plain text content of the subsection")
+
+    class Meta:
+        ordering = ['order']
+
+    def __str__(self):
+        return f"SubSection {self.order}: {self.title}"
