@@ -100,6 +100,14 @@
 
     <!-- Footer Actions -->
     <div class="text-center pt-6 space-y-3">
+      <a href="{% url 'document-pdf' slug=document.slug %}"
+         :class="darkMode
+           ? 'bg-accent-1 text-text-main-dark'
+           : 'bg-accent-2 text-text-main-light'"
+         class="inline-block px-5 py-2 rounded font-medium hover:opacity-90 transition text-sm flex items-center justify-center gap-2">
+        <i class="fa-solid fa-file-pdf"></i>
+        Download PDF
+      </a>
       <a href="{% url 'document-list' %}"
          :class="darkMode
            ? 'bg-accent-1 text-text-main-dark'

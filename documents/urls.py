@@ -5,7 +5,8 @@ from django.urls import reverse_lazy
 
 from .views import (
     DocumentListView,
-    DocumentDetailView
+    DocumentDetailView,
+    document_pdf_view
 )
 
 urlpatterns = [
@@ -16,4 +17,5 @@ urlpatterns = [
 
     path('documents/', DocumentListView.as_view(), name='document-list'),
     path('documents/<slug:slug>/', DocumentDetailView.as_view(), name='document-detail'),
+    path('export/pdf/<slug:slug>/', document_pdf_view, name='document-pdf'),
 ]
