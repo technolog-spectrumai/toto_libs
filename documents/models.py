@@ -181,4 +181,17 @@ class HTMLSubSection(BaseDocumentItem):
     content = models.TextField(blank=True)
 
 
+class PDFFile(models.Model):
+    document = models.OneToOneField(
+        LatexDocument,
+        on_delete=models.CASCADE,
+        related_name='pdf_file'
+    )
+    file = models.FileField(upload_to='compiled_pdfs/')
+    created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"PDF for {self.document.title} (created {self.created_at.strftime('%Y-%m-%d')})"

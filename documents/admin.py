@@ -4,13 +4,17 @@ from nested_admin import NestedModelAdmin, NestedStackedInline
 from django_tiptap.widgets import TipTapWidget
 from django_ace import AceWidget
 from documents.parsers import LaTeXParser
+from .pdf import LaTeXToPDFConverter
+from django.core.files import File
+from django.utils.text import slugify
+import os
 
 
 from .models import (
     Tag, Department,
     LatexPreset, HTMLPreset,
     LatexDocument, LatexSection, LatexSubSection,
-    HTMLDocument, HTMLSection, HTMLSubSection
+    HTMLDocument, HTMLSection, HTMLSubSection, PDFFile
 )
 
 # ────────────────────────────────────────────────
@@ -117,9 +121,45 @@ class LatexDocumentAdmin(NestedModelAdmin):
     filter_horizontal = ['tags']
     readonly_fields = ['created_at']
     prepopulated_fields = {'slug': ('title',)}
+    actions = ["compile_pdf"]
 
     def get_inline_instances(self, request, obj=None):
         return [LatexSectionInline(self.model, self.admin_site)] if obj and obj.deep else []
+
+    @admin.action(description="Compile selected LaTeX documents to PDF")
+    def compile_pdf(self, request, queryset):
+        compiled = 0
+        failed = 0
+
+        for document in queryset:
+            try:
+                converter = LaTeXToPDFConverter(document)
+                pdf_path = converter.generate_pdf()
+
+                if not os.path.exists(pdf_path):
+                    raise FileNotFoundError("PDF file not found after generation.")
+
+                # Remove existing PDFFile if it exists
+                PDFFile.objects.filter(document=document).delete()
+
+                # Save PDF to media directory
+                with open(pdf_path, 'rb') as f:
+                    pdf_file = PDFFile.objects.create(
+                        document=document,
+                        file=File(f, name=f"{slugify(document.title)}.pdf")
+                    )
+
+                compiled += 1
+
+            except Exception as e:
+                failed += 1
+                self.message_user(request, f"❌ Failed to compile '{document.title}': {e}", level='error')
+
+        self.message_user(
+            request,
+            f"✅ Compiled {compiled} document(s) to PDF. {'⚠️ ' + str(failed) + ' failed.' if failed else ''}",
+            level='info'
+        )
 
 @admin.register(LatexSection)
 class LatexSectionAdmin(admin.ModelAdmin):
@@ -219,7 +259,6 @@ class HTMLDocumentAdmin(NestedModelAdmin):
         return [HTMLSectionInline(self.model, self.admin_site)] if obj and obj.deep else []
 
 
-
 @admin.register(HTMLSection)
 class HTMLSectionAdmin(admin.ModelAdmin):
     form = HTMLSectionForm
@@ -240,4 +279,15 @@ class HTMLSubSectionAdmin(admin.ModelAdmin):
     list_filter = ['section__document']
     search_fields = ['title', 'content']
     ordering = ['section__document', 'section', 'order']
+
+
+@admin.register(PDFFile)
+class PDFFileAdmin(admin.ModelAdmin):
+    list_display = ['document', 'created_at']
+    readonly_fields = ['created_at']
+    search_fields = ['document__title']
+    list_filter = ['created_at']
+    ordering = ['-created_at']
+
+
 

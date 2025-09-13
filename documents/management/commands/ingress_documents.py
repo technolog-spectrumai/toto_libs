@@ -8,8 +8,6 @@ from documents.models import (
     HTMLDocument, HTMLSection, HTMLSubSection,
     LatexDocument, LatexSection, LatexSubSection
 )
-from documents.models import LatexDocumentFactory, LatexScratchpad
-
 
 
 class Command(IngressCommand):
