@@ -151,36 +151,6 @@ class HTMLPreset(models.Model):
         return f"{self.name} [HTML]"
 
 
-class HTMLDocument(BaseDocument):
-    preset = models.ForeignKey(HTMLPreset, on_delete=models.SET_NULL, null=True, blank=True)
-    summary = models.TextField(blank=True)
-    linked_latex = models.ForeignKey(
-        'LatexDocument',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='linked_html_versions'
-    )
-
-    @property
-    def deep(self):
-        return self.sections.exists()
-
-
-class HTMLSection(BaseDocumentItem):
-    document = models.ForeignKey(HTMLDocument, on_delete=models.CASCADE, related_name='sections')
-    content = models.TextField(blank=True)
-
-    @property
-    def deep(self):
-        return self.subsections.exists()
-
-
-class HTMLSubSection(BaseDocumentItem):
-    section = models.ForeignKey(HTMLSection, on_delete=models.CASCADE, related_name='subsections')
-    content = models.TextField(blank=True)
-
-
 class PDFFile(models.Model):
     document = models.OneToOneField(
         LatexDocument,
@@ -195,3 +165,21 @@ class PDFFile(models.Model):
 
     def __str__(self):
         return f"PDF for {self.document.title} (created {self.created_at.strftime('%Y-%m-%d')})"
+
+
+class HTMLPreview(models.Model):
+    latex_document = models.OneToOneField(
+        LatexDocument,
+        on_delete=models.CASCADE,
+        related_name='html_preview'
+    )
+    content = models.TextField(blank=True) # use Tiptap
+
+    def __str__(self):
+        return f"HTML Preview for: {self.latex_document.title}"
+
+    @property
+    def author(self):
+        return self.latex_document.created_by
+
+

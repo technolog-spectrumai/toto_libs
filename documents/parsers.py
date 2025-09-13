@@ -1,7 +1,6 @@
 from bs4 import BeautifulSoup
 from TexSoup import TexSoup
 from documents.models import (
-    HTMLSection, HTMLSubSection,
     LatexSection, LatexSubSection
 )
 
@@ -30,58 +29,58 @@ class BaseParser:
 # 🌐 HTML Parser
 # ────────────────────────────────────────────────
 
-class HTMLParser(BaseParser):
-    def extract_sections(self, content):
-        soup = BeautifulSoup(content, "html.parser")
-        return [
-            {
-                "title": tag.get_text(strip=True),
-                "tag": tag.name,
-                "content": self._collect_content(tag)
-            }
-            for tag in soup.find_all(['h1', 'h2'])
-        ]
-
-    def extract_subsections(self, content):
-        soup = BeautifulSoup(content, "html.parser")
-        return [
-            {
-                "title": tag.get_text(strip=True),
-                "tag": tag.name,
-                "content": self._collect_content(tag)
-            }
-            for tag in soup.find_all(['h3', 'h4'])
-        ]
-
-    def build_sections(self, document, content):
-        return [
-            HTMLSection(
-                document=document,
-                title=data["title"],
-                order=i,
-                content=data["content"]
-            )
-            for i, data in enumerate(self.extract_sections(content))
-        ]
-
-    def build_subsections(self, section, content):
-        return [
-            HTMLSubSection(
-                section=section,
-                title=data["title"],
-                order=i,
-                content=data["content"]
-            )
-            for i, data in enumerate(self.extract_subsections(content))
-        ]
-
-    def _collect_content(self, tag):
-        content = []
-        for sibling in tag.find_next_siblings():
-            if sibling.name and sibling.name.startswith('h'):
-                break
-            content.append(sibling.get_text(strip=True))
-        return "\n".join(content)
+# class HTMLParser(BaseParser):
+#     def extract_sections(self, content):
+#         soup = BeautifulSoup(content, "html.parser")
+#         return [
+#             {
+#                 "title": tag.get_text(strip=True),
+#                 "tag": tag.name,
+#                 "content": self._collect_content(tag)
+#             }
+#             for tag in soup.find_all(['h1', 'h2'])
+#         ]
+#
+#     def extract_subsections(self, content):
+#         soup = BeautifulSoup(content, "html.parser")
+#         return [
+#             {
+#                 "title": tag.get_text(strip=True),
+#                 "tag": tag.name,
+#                 "content": self._collect_content(tag)
+#             }
+#             for tag in soup.find_all(['h3', 'h4'])
+#         ]
+#
+#     def build_sections(self, document, content):
+#         return [
+#             HTMLSection(
+#                 document=document,
+#                 title=data["title"],
+#                 order=i,
+#                 content=data["content"]
+#             )
+#             for i, data in enumerate(self.extract_sections(content))
+#         ]
+#
+#     def build_subsections(self, section, content):
+#         return [
+#             HTMLSubSection(
+#                 section=section,
+#                 title=data["title"],
+#                 order=i,
+#                 content=data["content"]
+#             )
+#             for i, data in enumerate(self.extract_subsections(content))
+#         ]
+#
+#     def _collect_content(self, tag):
+#         content = []
+#         for sibling in tag.find_next_siblings():
+#             if sibling.name and sibling.name.startswith('h'):
+#                 break
+#             content.append(sibling.get_text(strip=True))
+#         return "\n".join(content)
 
 
 # ────────────────────────────────────────────────

@@ -1,20 +1,18 @@
 from django.views.generic import DetailView, ListView
 from django.db.models import Prefetch
-from .models import Department, HTMLDocument, HTMLSection, HTMLSubSection
-from .mixins import PageDecoratedMixin
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
-from .models import HTMLDocument
+from .models import Department, LatexDocument, HTMLPreview
+from .mixins import PageDecoratedMixin
 from .pdf import LaTeXToPDFConverter
 import os
 
-
 # ────────────────────────────────────────────────
-# 📄 HTML Document List View
+# 📄 LaTeX Document List View
 # ────────────────────────────────────────────────
 
 class DocumentListView(PageDecoratedMixin, ListView):
-    model = HTMLDocument
+    model = LatexDocument
     template_name = 'documents/document_list.html'
     context_object_name = 'documents'
 
@@ -34,45 +32,37 @@ class DocumentListView(PageDecoratedMixin, ListView):
         return context
 
 # ────────────────────────────────────────────────
-# 📄 HTML Document Detail View
+# 📄 LaTeX Document Detail View + HTML Preview
 # ────────────────────────────────────────────────
 
 class DocumentDetailView(PageDecoratedMixin, DetailView):
-    model = HTMLDocument
+    model = LatexDocument
     template_name = 'documents/document_detail.html'
     context_object_name = 'document'
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        document = self.object
-
-        if document.deep:
-            sections = document.sections.prefetch_related(
-                Prefetch('subsections', queryset=HTMLSubSection.objects.order_by('order'))
-            ).order_by('order')
-        else:
-            sections = []
+        preview = getattr(self.object, 'html_preview', None)
 
         context.update({
-            'sections': sections,
-            'tags': document.tags.all(),
-            'department': document.department,
+            'preview': preview.content if preview else None,
+            'department': self.object.department,
+            'tags': self.object.tags.all(),
         })
         return context
 
+# ────────────────────────────────────────────────
+# 📄 PDF Export View
+# ────────────────────────────────────────────────
 
 def document_pdf_view(request, slug):
     document = get_object_or_404(
-        HTMLDocument.objects.select_related('department', 'created_by', 'linked_latex').prefetch_related('tags'),
+        LatexDocument.objects.select_related('department', 'created_by').prefetch_related('tags'),
         slug=slug
     )
 
-    latex_doc = document.linked_latex
-    if not latex_doc:
-        raise Http404("No linked LaTeX document found for PDF generation.")
-
     try:
-        generator = LaTeXToPDFConverter(latex_doc)
+        generator = LaTeXToPDFConverter(document)
         pdf_output = generator.generate_pdf()
         if isinstance(pdf_output, str) and os.path.exists(pdf_output):
             return FileResponse(open(pdf_output, 'rb'), content_type='application/pdf')

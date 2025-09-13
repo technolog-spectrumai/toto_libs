@@ -1,5 +1,5 @@
 import subprocess
-from .models import HTMLSection, HTMLSubSection, LatexSection, LatexSubSection
+from .models import LatexSection, LatexSubSection
 
 # ─────────────────────────────────────────────────────────────
 # 🔁 Pandoc Conversion Wrapper
@@ -43,32 +43,32 @@ class DocumentConverter:
         raise NotImplementedError("Subclasses must implement convert()")
 
 
-# ─────────────────────────────────────────────────────────────
-# 🌐 HTML → LaTeX Converter
-# ─────────────────────────────────────────────────────────────
-class HTMLToLaTeXConverter(DocumentConverter):
-    def __init__(self, section: HTMLSection):
-        super().__init__(section)
-        self.pandoc = PandocConverter('html', 'latex')
-
-    def convert(self):
-        for html_sub in self.section.subsections.all():
-            latex_content = self.pandoc.convert(html_sub.content)
-            LatexSubSection.objects.create(
-                section=self._get_latex_section(),
-                order=html_sub.order,
-                title=html_sub.title,
-                content=latex_content
-            )
-        self.section.subsections.all().delete()
-
-    def _get_latex_section(self):
-        # Assumes a corresponding LatexSection exists or is created elsewhere
-        return LatexSection.objects.get_or_create(
-            document=self.section.document.linked_latex,
-            order=self.section.order,
-            title=self.section.title
-        )[0]
+# # ─────────────────────────────────────────────────────────────
+# # 🌐 HTML → LaTeX Converter
+# # ─────────────────────────────────────────────────────────────
+# class HTMLToLaTeXConverter(DocumentConverter):
+#     def __init__(self, section: HTMLSection):
+#         super().__init__(section)
+#         self.pandoc = PandocConverter('html', 'latex')
+#
+#     def convert(self):
+#         for html_sub in self.section.subsections.all():
+#             latex_content = self.pandoc.convert(html_sub.content)
+#             LatexSubSection.objects.create(
+#                 section=self._get_latex_section(),
+#                 order=html_sub.order,
+#                 title=html_sub.title,
+#                 content=latex_content
+#             )
+#         self.section.subsections.all().delete()
+#
+#     def _get_latex_section(self):
+#         # Assumes a corresponding LatexSection exists or is created elsewhere
+#         return LatexSection.objects.get_or_create(
+#             document=self.section.document.linked_latex,
+#             order=self.section.order,
+#             title=self.section.title
+#         )[0]
 
 
 # ─────────────────────────────────────────────────────────────

@@ -5,19 +5,18 @@ from oya.ingress import IngressCommand
 from documents.models import (
     Tag, Department,
     HTMLPreset, LatexPreset,
-    HTMLDocument, HTMLSection, HTMLSubSection,
-    LatexDocument, LatexSection, LatexSubSection
+    LatexDocument, LatexSection, LatexSubSection,
+    HTMLPreview
 )
 
-
 class Command(IngressCommand):
-    help = "Seed HTML and LaTeX documents with sections and subsections using existing users"
+    help = "Seed LaTeX documents with sections, subsections, and HTML previews using existing users"
 
     def process(self, _):
         self.create_dashboard_item(
             title="Documents",
             icon="file-text",
-            description="HTML and LaTeX presets, departments, and structured documents with sections and subsections.",
+            description="LaTeX presets, departments, and structured documents with HTML previews.",
             link="/documents/"
         )
 
@@ -65,19 +64,17 @@ class Command(IngressCommand):
             footer_note=lorem.sentence()
         )
 
-        # 📄 Create LaTeX Documents
-        latex_docs = []
+        # 📄 Create LaTeX Documents + HTML Previews
         for i in range(4):
             latex_doc = LatexDocument.objects.create(
                 title=f"LaTeX Document {i+1}",
-                summary=lorem.sentence(),
+                summary="Summary - " + lorem.sentence(),
                 created_by=users[i % len(users)],
                 department=departments[i % len(departments)],
                 created_at=timezone.now(),
                 preset=latex_preset
             )
             latex_doc.tags.set(tags)
-            latex_docs.append(latex_doc)
 
             # Add sections and subsections
             for j in range(2):
@@ -95,33 +92,10 @@ class Command(IngressCommand):
                         content=lorem.paragraph()
                     )
 
-        # 🌐 Create HTML Documents and link to LaTeX
-        for i in range(4):
-            html_doc = HTMLDocument.objects.create(
-                title=f"HTML Document {i+1}",
-                summary=lorem.sentence(),
-                created_by=users[i % len(users)],
-                department=departments[i % len(departments)],
-                created_at=timezone.now(),
-                preset=html_preset,
-                linked_latex=latex_docs[i]  # 🔗 Link to LaTeX version
+            # 🌐 Create HTML Preview
+            HTMLPreview.objects.create(
+                latex_document=latex_doc,
+                content=f"<h1>Preview {latex_doc.title}</h1><p>{lorem.paragraph()}</p>"
             )
-            html_doc.tags.set(tags)
 
-            # Add sections and subsections
-            for j in range(2):
-                section = HTMLSection.objects.create(
-                    document=html_doc,
-                    title=f"Section {j+1}",
-                    order=j,
-                    content=lorem.paragraph()
-                )
-                for k in range(2):
-                    HTMLSubSection.objects.create(
-                        section=section,
-                        order=k,
-                        title=f"SubSection {j+1}.{k+1}",
-                        content=lorem.paragraph()
-                    )
-
-        self.stdout.write(self.style.SUCCESS("✅ Ingress complete. HTML and LaTeX documents seeded with full structure."))
+        self.stdout.write(self.style.SUCCESS("✅ Ingress complete. LaTeX documents and HTML previews seeded."))

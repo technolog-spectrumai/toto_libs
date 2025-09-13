@@ -8,13 +8,12 @@ from .pdf import LaTeXToPDFConverter
 from django.core.files import File
 from django.utils.text import slugify
 import os
-
+from .models import HTMLPreview
 
 from .models import (
     Tag, Department,
     LatexPreset, HTMLPreset,
-    LatexDocument, LatexSection, LatexSubSection,
-    HTMLDocument, HTMLSection, HTMLSubSection, PDFFile
+    LatexDocument, LatexSection, LatexSubSection, PDFFile
 )
 
 # ────────────────────────────────────────────────
@@ -178,108 +177,6 @@ class LatexSubSectionAdmin(admin.ModelAdmin):
     search_fields = ['title', 'content']
     ordering = ['section__document', 'section', 'order']
 
-# ────────────────────────────────────────────────
-# 🌐 HTML Admin
-# ────────────────────────────────────────────────
-
-class HTMLDocumentForm(forms.ModelForm):
-    class Meta:
-        model = HTMLDocument
-        fields = '__all__'
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fields['summary'].widget = TipTapWidget()
-
-
-class HTMLSubSectionForm(forms.ModelForm, HTMLWidgetMixin):
-    class Meta:
-        model = HTMLSubSection
-        fields = ['title', 'order', 'section', 'content']
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.configure_widgets()
-
-
-class HTMLSectionForm(forms.ModelForm, HTMLWidgetMixin):
-    class Meta:
-        model = HTMLSection
-        fields = ['title', 'order', 'document', 'content']
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.configure_widgets()
-
-
-class HTMLSubSectionInline(NestedStackedInline):
-    model = HTMLSubSection
-    form = HTMLSubSectionForm
-    extra = 1
-    ordering = ['order']
-
-
-class HTMLSectionInline(NestedStackedInline):
-    model = HTMLSection
-    form = HTMLSectionForm
-    extra = 1
-    ordering = ['order']
-    inlines = [HTMLSubSectionInline]
-
-
-@admin.register(HTMLDocument)
-class HTMLDocumentAdmin(NestedModelAdmin):
-    form = HTMLDocumentForm
-    list_display = [
-        'title', 'slug', 'version', 'created_by', 'created_at', 'is_deep', 'linked_latex'
-    ]
-    list_filter = ['department', 'tags', 'created_at']
-    search_fields = ['title', 'summary', 'version', 'slug', 'linked_latex__title']
-    filter_horizontal = ['tags']
-    readonly_fields = ['created_at']
-    prepopulated_fields = {'slug': ('title',)}
-
-    fieldsets = (
-        (None, {
-            'fields': [
-                'title', 'slug', 'summary', 'version',
-                'created_by', 'department', 'tags', 'preset', 'linked_latex'
-            ]
-        }),
-        ('Metadata', {
-            'fields': ['created_at']
-        }),
-    )
-
-    @admin.display(boolean=True, description="Has Sections")
-    def is_deep(self, obj):
-        return obj.deep
-
-    def get_inline_instances(self, request, obj=None):
-        return [HTMLSectionInline(self.model, self.admin_site)] if obj and obj.deep else []
-
-
-@admin.register(HTMLSection)
-class HTMLSectionAdmin(admin.ModelAdmin):
-    form = HTMLSectionForm
-    list_display = ['title', 'document', 'order', 'is_deep']
-    list_filter = ['document']
-    search_fields = ['title', 'content']
-    ordering = ['document', 'order']
-
-    @admin.display(boolean=True, description="Has Subsections")
-    def is_deep(self, obj):
-        return obj.deep
-
-
-@admin.register(HTMLSubSection)
-class HTMLSubSectionAdmin(admin.ModelAdmin):
-    form = HTMLSubSectionForm
-    list_display = ['title', 'section', 'order']
-    list_filter = ['section__document']
-    search_fields = ['title', 'content']
-    ordering = ['section__document', 'section', 'order']
-
 
 @admin.register(PDFFile)
 class PDFFileAdmin(admin.ModelAdmin):
@@ -288,6 +185,32 @@ class PDFFileAdmin(admin.ModelAdmin):
     search_fields = ['document__title']
     list_filter = ['created_at']
     ordering = ['-created_at']
+
+
+class HTMLPreviewForm(forms.ModelForm, HTMLWidgetMixin):
+    class Meta:
+        model = HTMLPreview
+        fields = ['latex_document', 'content']
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.configure_widgets()
+
+
+@admin.register(HTMLPreview)
+class HTMLPreviewAdmin(admin.ModelAdmin):
+    form = HTMLPreviewForm
+    list_display = ['latex_document', 'get_author']
+    search_fields = ['latex_document__title', 'latex_document__slug']
+    list_filter = ['latex_document__created_at']
+    readonly_fields = ['latex_document']
+
+    @admin.display(description="Author")
+    def get_author(self, obj):
+        return obj.latex_document.created_by.get_full_name() if obj.latex_document.created_by else "—"
+
+
+
 
 
 

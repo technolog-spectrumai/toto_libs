@@ -14,93 +14,38 @@
     :class="darkMode
       ? 'bg-bubble-bg-dark border border-accent-1 text-text-main-dark'
       : 'bg-bubble-bg-light border border-accent-2 text-text-main-light'"
-    class="w-full max-w-4xl p-8 rounded-xl shadow-lg space-y-10 transition-colors duration-300"
-    x-data="{ showSummary: false }">
+    class="w-full max-w-4xl p-8 rounded-xl shadow-lg space-y-10 transition-colors duration-300">
 
-    <!-- Header -->
     <header class="text-center space-y-2">
       <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-3xl font-extrabold tracking-tight">
         {{ document.title }}
       </h2>
 
-    {% if document.summary %}
-      <div class="space-y-2 text-center">
-        <button @click="showSummary = !showSummary"
-                class="flex items-center justify-between w-full font-semibold text-sm">
-          <span class="w-full text-center">Summary</span>
-          <i :class="showSummary ? 'fa-chevron-up' : 'fa-chevron-down'"
-             class="fa-solid transition-transform duration-200"></i>
-        </button>
-        <div x-show="showSummary" x-transition class="text-sm text-gray-500 dark:text-gray-400 text-center">
-          {{ document.summary|safe }}
-        </div>
-      </div>
-    {% endif %}
-
       <p class="text-xs text-gray-400 dark:text-gray-500 pt-2">
-        {% if document.department %}Department: {{ document.department.name }}<br>{% endif %}
+        {% if department %}Department: {{ department.name }}<br>{% endif %}
         Created: {{ document.created_at|date:"M d, Y" }}
       </p>
     </header>
 
-    <!-- Structured Sections -->
-    {% if sections %}
-      <section class="space-y-4">
-        <ul class="space-y-6">
-          {% for section in sections %}
-            <li x-data="{ open: false }" class="border-b pb-4">
-              <button @click="open = !open" class="flex items-center justify-between w-full text-left">
-                <h4 class="text-lg font-bold">{{ section.title }}</h4>
-                <i :class="open ? 'fa-chevron-up' : 'fa-chevron-down'" class="fa-solid transition-transform duration-200"></i>
-              </button>
-
-              <div x-show="open" x-transition class="mt-2 space-y-3">
-                {% if section.content %}
-                  <div class="prose dark:prose-invert">
-                    {{ section.content|safe }}
-                  </div>
-                {% endif %}
-
-                {% if section.subsections.all %}
-                  <ul class="mt-4 space-y-3 pl-4 border-l border-gray-300 dark:border-gray-600">
-                    {% for subsection in section.subsections.all %}
-                      <li x-data="{ subOpen: false }">
-                        <button @click="subOpen = !subOpen" class="flex items-center justify-between w-full text-left">
-                          <h5 class="font-semibold">{{ subsection.title }}</h5>
-                          <i :class="subOpen ? 'fa-chevron-up' : 'fa-chevron-down'" class="fa-solid transition-transform duration-200"></i>
-                        </button>
-
-                        <div x-show="subOpen" x-transition class="mt-2">
-                          {% if subsection.content %}
-                            <div class="prose dark:prose-invert">
-                              {{ subsection.content|safe }}
-                            </div>
-                          {% endif %}
-                        </div>
-                      </li>
-                    {% endfor %}
-                  </ul>
-                {% endif %}
-              </div>
-            </li>
-          {% endfor %}
-        </ul>
-      </section>
+    {% if preview %}
+      <div class="prose dark:prose-invert">
+        {{ preview|safe }}
+      </div>
+    {% else %}
+      <div class="text-center text-sm text-gray-500 dark:text-gray-400">
+        No preview available for this document.
+      </div>
     {% endif %}
 
-    <!-- Footer Actions -->
     <div class="text-center pt-6 space-y-3">
-
-      {% if document.linked_latex %}
-        <a href="{% url 'document-pdf' slug=document.slug %}"
-           :class="darkMode
-             ? 'bg-accent-1 text-text-main-dark'
-             : 'bg-accent-2 text-text-main-light'"
-           class="inline-block px-5 py-2 rounded font-medium hover:opacity-90 transition text-sm flex items-center justify-center gap-2">
-          <i class="fa-solid fa-file-pdf"></i>
-          Download PDF
-        </a>
-      {% endif %}
+      <a href="{% url 'document-pdf' slug=document.slug %}"
+         :class="darkMode
+           ? 'bg-accent-1 text-text-main-dark'
+           : 'bg-accent-2 text-text-main-light'"
+         class="inline-block px-5 py-2 rounded font-medium hover:opacity-90 transition text-sm flex items-center justify-center gap-2">
+        <i class="fa-solid fa-file-pdf"></i>
+        Download PDF
+      </a>
 
       <a href="{% url 'document-list' %}"
          :class="darkMode
