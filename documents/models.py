@@ -136,7 +136,6 @@ class LatexSubSection(BaseDocumentItem):
 class HTMLPreset(models.Model):
     name = models.CharField(max_length=100)
     description = models.TextField(blank=True)
-    template_name = models.CharField(max_length=255)
     css_classes = JSONField(
         schema={
             'type': 'dict',
@@ -145,10 +144,30 @@ class HTMLPreset(models.Model):
         },
         default=dict
     )
+    style_mapping = JSONField(
+        schema={
+            'type': 'object',
+            'properties': {
+                'h1': {'type': 'string'},
+                'h2': {'type': 'string'},
+                'h3': {'type': 'string'},
+                'p': {'type': 'string'},
+                'div.summary': {'type': 'string'}
+            },
+            'additionalProperties': {'type': 'string'}
+        },
+        default= {
+            "h1": "text-4xl font-bold mt-8 mb-4",
+            "h2": "text-3xl font-semibold mt-6 mb-3",
+            "h3": "text-2xl font-medium mt-4 mb-2",
+            "p": "mb-4 leading-relaxed",
+            "div.summary": "text-sm italic text-gray-600 dark:text-gray-400 mb-6"
+        }
+    )
     footer_html = models.TextField(blank=True)
 
     def __str__(self):
-        return f"{self.name} [HTML]"
+        return f"{self.name} [HTML Preset"
 
 
 class PDFFile(models.Model):
@@ -173,7 +192,14 @@ class HTMLPreview(models.Model):
         on_delete=models.CASCADE,
         related_name='html_preview'
     )
-    content = models.TextField(blank=True) # use Tiptap
+    content = models.TextField(blank=True)
+    preset = models.ForeignKey(
+        HTMLPreset,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='html_previews'
+    )
 
     def __str__(self):
         return f"HTML Preview for: {self.latex_document.title}"
@@ -181,5 +207,25 @@ class HTMLPreview(models.Model):
     @property
     def author(self):
         return self.latex_document.created_by
+
+    @property
+    def html(self):
+        if not self.content:
+            return ""
+
+        styled = self.content
+        if self.preset and self.preset.style_mapping:
+            for tag, classes in self.preset.style_mapping.items():
+                if '.' in tag:  # e.g. 'div.summary'
+                    styled = styled.replace(
+                        f"<{tag}>",
+                        f"<{tag} class='{classes}'>"
+                    )
+                else:
+                    styled = styled.replace(
+                        f"<{tag}>",
+                        f"<{tag} class='{classes}'>"
+                    )
+        return styled
 
 

@@ -1,5 +1,5 @@
 import subprocess
-from .models import HTMLSection, HTMLSubSection, LatexSection, LatexSubSection
+from .models import LatexDocument
 
 # ─────────────────────────────────────────────────────────────
 # 🔁 Pandoc Conversion Wrapper
@@ -43,65 +43,64 @@ class DocumentConverter:
         raise NotImplementedError("Subclasses must implement convert()")
 
 
-# ─────────────────────────────────────────────────────────────
-# 🌐 HTML → LaTeX Converter
-# ─────────────────────────────────────────────────────────────
-class HTMLToLaTeXConverter(DocumentConverter):
-    def __init__(self, section: HTMLSection):
-        super().__init__(section)
-        self.pandoc = PandocConverter('html', 'latex')
-
-    def convert(self):
-        linked_doc = self.section.document.linked_latex
-        if not linked_doc:
-            return  # No linked LaTeX document to convert into
-
-        # Get or create matching LaTeX section
-        latex_section, _ = LatexSection.objects.get_or_create(
-            document=linked_doc,
-            order=self.section.order,
-            title=self.section.title
-        )
-
-        for html_sub in self.section.subsections.all():
-            latex_content = self.pandoc.convert(html_sub.content)
-            LatexSubSection.objects.create(
-                section=latex_section,
-                order=html_sub.order,
-                title=html_sub.title,
-                content=latex_content
-            )
-
-        self.section.subsections.all().delete()
+# # ─────────────────────────────────────────────────────────────
+# # 🌐 HTML → LaTeX Converter
+# # ─────────────────────────────────────────────────────────────
+# class HTMLToLaTeXConverter(DocumentConverter):
+#     def __init__(self, section: HTMLSection):
+#         super().__init__(section)
+#         self.pandoc = PandocConverter('html', 'latex')
+#
+#     def convert(self):
+#         linked_doc = self.section.document.linked_latex
+#         if not linked_doc:
+#             return  # No linked LaTeX document to convert into
+#
+#         # Get or create matching LaTeX section
+#         latex_section, _ = LatexSection.objects.get_or_create(
+#             document=linked_doc,
+#             order=self.section.order,
+#             title=self.section.title
+#         )
+#
+#         for html_sub in self.section.subsections.all():
+#             latex_content = self.pandoc.convert(html_sub.content)
+#             LatexSubSection.objects.create(
+#                 section=latex_section,
+#                 order=html_sub.order,
+#                 title=html_sub.title,
+#                 content=latex_content
+#             )
+#
+#         self.section.subsections.all().delete()
 
 
 # ─────────────────────────────────────────────────────────────
 # 📄 LaTeX → HTML Converter
 # ─────────────────────────────────────────────────────────────
-class LaTeXToHTMLConverter(DocumentConverter):
-    def __init__(self, section: LatexSection):
-        super().__init__(section)
+class LaTeXToHTMLConverter:
+    def __init__(self):
         self.pandoc = PandocConverter('latex', 'html')
 
-    def convert(self):
-        linked_doc = self.section.document.linked_html_versions.first()
-        if not linked_doc:
-            return  # No linked HTML document to convert into
+    def convert_document(self, document: LatexDocument):
+        html_parts = [f"<h1>{document.title}</h1>"]
 
-        # Get or create matching HTML section
-        html_section, _ = HTMLSection.objects.get_or_create(
-            document=linked_doc,
-            order=self.section.order,
-            title=self.section.title
-        )
+        if document.summary:
+            html_parts.append(f"<div class='summary'>{self.pandoc.convert(document.summary)}</div>")
 
-        for latex_sub in self.section.subsections.all():
-            html_content = self.pandoc.convert(latex_sub.content)
-            HTMLSubSection.objects.create(
-                section=html_section,
-                order=latex_sub.order,
-                title=latex_sub.title,
-                content=html_content
-            )
+        for section in document.sections.all().order_by('order'):
+            html_parts.append(f"<h2>{section.title}</h2>")
+            if section.content:
+                html_parts.append(self.pandoc.convert(section.content))
 
-        self.section.subsections.all().delete()
+            for subsection in section.subsections.all().order_by('order'):
+                html_parts.append(f"<h3>{subsection.title}</h3>")
+                if subsection.content:
+                    html_parts.append(self.pandoc.convert(subsection.content))
+
+        full_html = "\n".join(html_parts)
+
+        return full_html
+
+
+

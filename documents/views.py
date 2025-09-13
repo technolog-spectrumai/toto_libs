@@ -44,8 +44,13 @@ class DocumentDetailView(PageDecoratedMixin, DetailView):
         context = super().get_context_data(**kwargs)
         preview = getattr(self.object, 'html_preview', None)
 
+        css_classes = ""
+        if preview and preview.preset and preview.preset.css_classes:
+            css_classes = " ".join(preview.preset.css_classes.values())
+
         context.update({
-            'preview': preview.content if preview else None,
+            'preview': preview.html if preview else None,
+            'preview_css': css_classes,
             'department': self.object.department,
             'tags': self.object.tags.all(),
         })

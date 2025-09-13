@@ -9,16 +9,13 @@ from django.core.files import File
 from django.utils.text import slugify
 import os
 from .models import HTMLPreview
-
+from .convert import LaTeXToHTMLConverter
 from .models import (
     Tag, Department,
     LatexPreset, HTMLPreset,
     LatexDocument, LatexSection, LatexSubSection, PDFFile
 )
 
-# ────────────────────────────────────────────────
-# 🔖 Basic Admins
-# ────────────────────────────────────────────────
 
 @admin.register(Tag)
 class TagAdmin(admin.ModelAdmin):
@@ -46,8 +43,25 @@ class LatexPresetAdmin(admin.ModelAdmin):
 
 @admin.register(HTMLPreset)
 class HTMLPresetAdmin(admin.ModelAdmin):
-    list_display = ['name', 'template_name']
-    search_fields = ['name', 'template_name']
+    list_display = ['name', 'has_style_mapping']
+    search_fields = ['name']
+    readonly_fields = []
+
+    fieldsets = (
+        (None, {
+            'fields': ['name', 'description']
+        }),
+        ('Styling Configuration', {
+            'fields': ['css_classes', 'style_mapping']
+        }),
+        ('Footer', {
+            'fields': ['footer_html']
+        }),
+    )
+
+    @admin.display(description="Has Style Mapping")
+    def has_style_mapping(self, obj):
+        return bool(obj.style_mapping)
 
 # ────────────────────────────────────────────────
 # 🧩 Widget Mixins
@@ -120,7 +134,7 @@ class LatexDocumentAdmin(NestedModelAdmin):
     filter_horizontal = ['tags']
     readonly_fields = ['created_at']
     prepopulated_fields = {'slug': ('title',)}
-    actions = ["compile_pdf"]
+    actions = ['compile_pdf', 'generate_html_preview']
 
     def get_inline_instances(self, request, obj=None):
         return [LatexSectionInline(self.model, self.admin_site)] if obj and obj.deep else []
@@ -160,6 +174,32 @@ class LatexDocumentAdmin(NestedModelAdmin):
             level='info'
         )
 
+    @admin.action(description="Generate HTML preview from LaTeX content")
+    def generate_html_preview(self, request, queryset):
+        generated = 0
+        failed = 0
+
+        for document in queryset:
+            try:
+                converter = LaTeXToHTMLConverter()
+                html_content = converter.convert_document(document)
+
+                HTMLPreview.objects.update_or_create(
+                    latex_document=document,
+                    defaults={'content': html_content}
+                )
+                generated += 1
+
+            except Exception as e:
+                failed += 1
+                self.message_user(request, f"❌ Failed to generate preview for '{document.title}': {e}", level='error')
+
+        self.message_user(
+            request,
+            f"✅ Generated previews for {generated} document(s). {'⚠️ ' + str(failed) + ' failed.' if failed else ''}",
+            level='info'
+        )
+
 @admin.register(LatexSection)
 class LatexSectionAdmin(admin.ModelAdmin):
     form = LatexSectionForm
@@ -190,7 +230,7 @@ class PDFFileAdmin(admin.ModelAdmin):
 class HTMLPreviewForm(forms.ModelForm, HTMLWidgetMixin):
     class Meta:
         model = HTMLPreview
-        fields = ['latex_document', 'content']
+        fields = ['latex_document', 'content', 'preset']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -200,14 +240,18 @@ class HTMLPreviewForm(forms.ModelForm, HTMLWidgetMixin):
 @admin.register(HTMLPreview)
 class HTMLPreviewAdmin(admin.ModelAdmin):
     form = HTMLPreviewForm
-    list_display = ['latex_document', 'get_author']
+    list_display = ['latex_document', 'get_author', 'get_preset']
     search_fields = ['latex_document__title', 'latex_document__slug']
-    list_filter = ['latex_document__created_at']
+    list_filter = ['latex_document__created_at', 'preset']
     readonly_fields = ['latex_document']
 
     @admin.display(description="Author")
     def get_author(self, obj):
         return obj.latex_document.created_by.get_full_name() if obj.latex_document.created_by else "—"
+
+    @admin.display(description="Preset")
+    def get_preset(self, obj):
+        return obj.preset.name if obj.preset else "—"
 
 
 

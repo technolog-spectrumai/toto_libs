@@ -28,8 +28,8 @@
     </header>
 
     {% if preview %}
-      <div class="prose dark:prose-invert">
-        {{ preview|safe }}
+      <div class="{{ preview_css }}">
+      {{ preview|safe }}
       </div>
     {% else %}
       <div class="text-center text-sm text-gray-500 dark:text-gray-400">
