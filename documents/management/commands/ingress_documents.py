@@ -8,6 +8,9 @@ from documents.models import (
     HTMLDocument, HTMLSection, HTMLSubSection,
     LatexDocument, LatexSection, LatexSubSection
 )
+from documents.models import LatexDocumentFactory, LatexScratchpad
+
+
 
 class Command(IngressCommand):
     help = "Seed HTML and LaTeX documents with sections and subsections using existing users"
@@ -122,5 +125,38 @@ class Command(IngressCommand):
                         title=f"SubSection {j+1}.{k+1}",
                         content=lorem.paragraph()
                     )
+        # 🏭 Create a LatexDocumentFactory
+        factory = LatexDocumentFactory.objects.create(
+            name="Default Factory",
+            owner=users[0],
+            department=departments[0],
+            preset=latex_preset
+        )
+
+        # ✏️ Create a LatexScratchpad linked to the factory
+        scratchpad = LatexScratchpad.objects.create(
+            name="Sample Scratchpad",
+            author=users[0],
+            factory=factory,
+            content=r"""
+            \section{Introduction}
+            This is the introduction section.
+
+            \subsection{Background}
+            Here is some background information.
+
+            \subsection{Objective}
+            The objective of this document is to demonstrate conversion.
+
+            \section{Methodology}
+            This section describes the methods used.
+
+            \subsection{Approach}
+            We used a hybrid approach combining theory and practice.
+
+            \subsection{Tools}
+            Tools included Python, Django, and LaTeX.
+            """
+        )
 
         self.stdout.write(self.style.SUCCESS("✅ Ingress complete. HTML and LaTeX documents seeded with full structure."))
