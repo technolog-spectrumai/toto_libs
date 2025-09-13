@@ -4,13 +4,16 @@ from nested_admin import NestedModelAdmin, NestedStackedInline
 from django_tiptap.widgets import TipTapWidget
 from django_ace import AceWidget
 
-
 from .models import (
     Tag, Department,
     LatexPreset, HTMLPreset,
-    Document, Section, SubSection
+    LatexDocument, LatexSection, LatexSubSection,
+    HTMLDocument, HTMLSection, HTMLSubSection
 )
 
+# ────────────────────────────────────────────────
+# 🔖 Basic Admins
+# ────────────────────────────────────────────────
 
 @admin.register(Tag)
 class TagAdmin(admin.ModelAdmin):
@@ -41,110 +44,188 @@ class HTMLPresetAdmin(admin.ModelAdmin):
     list_display = ['name', 'template_name']
     search_fields = ['name', 'template_name']
 
+# ────────────────────────────────────────────────
+# 🧩 Widget Mixins
+# ────────────────────────────────────────────────
 
-class DocumentForm(forms.ModelForm):
+class LatexWidgetMixin:
+    def configure_widgets(self):
+        self.fields['content'].widget = AceWidget(mode='latex', theme='chrome')
+
+
+class HTMLWidgetMixin:
+    def configure_widgets(self):
+        self.fields['content'].widget = TipTapWidget()
+
+# ────────────────────────────────────────────────
+# 📄 LaTeX Admin
+# ────────────────────────────────────────────────
+
+class LatexDocumentForm(forms.ModelForm):
     class Meta:
-        model = Document
+        model = LatexDocument
         fields = '__all__'
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        instance = kwargs.get('instance')
-
-        if instance:
-            self.fields['latex_summary'].widget = AceWidget(mode='latex', theme='chrome')
-            self.fields['html_summary'].widget = TipTapWidget()
+        self.fields['summary'].widget = AceWidget(mode='latex', theme='chrome')
 
 
-class ContentWidgetMixin:
-    def configure_widgets(self):
-        doc = getattr(self.instance, 'document', None) or getattr(self.instance, 'section', None)
-        if doc and hasattr(doc, 'document'):
-            doc = doc.document  # for SubSection
-
-        if doc and getattr(self.instance, 'deep', False):
-            self.fields['latex_content'].widget = (
-                AceWidget(mode='latex', theme='chrome') if doc.latex_preset else forms.HiddenInput()
-            )
-            self.fields['html_content'].widget = (
-                TipTapWidget() if doc.html_preset else forms.HiddenInput()
-            )
-        else:
-            self.fields['latex_content'].widget = forms.HiddenInput()
-            self.fields['html_content'].widget = forms.HiddenInput()
-
-
-class SectionForm(forms.ModelForm, ContentWidgetMixin):
+class LatexSubSectionForm(forms.ModelForm, LatexWidgetMixin):
     class Meta:
-        model = Section
-        fields = ['title', 'order', 'document', 'latex_content', 'html_content']
+        model = LatexSubSection
+        fields = ['title', 'order', 'section', 'content']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.configure_widgets()
 
 
-class SubSectionForm(forms.ModelForm, ContentWidgetMixin):
+class LatexSectionForm(forms.ModelForm, LatexWidgetMixin):
     class Meta:
-        model = SubSection
-        fields = ['title', 'order', 'section', 'latex_content', 'html_content']
+        model = LatexSection
+        fields = ['title', 'order', 'document', 'content']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.configure_widgets()
 
 
-class SubSectionInline(NestedStackedInline):
-    model = SubSection
-    form = SubSectionForm
+class LatexSubSectionInline(NestedStackedInline):
+    model = LatexSubSection
+    form = LatexSubSectionForm
     extra = 1
     ordering = ['order']
 
 
-class SectionInline(NestedStackedInline):
-    model = Section
-    form = SectionForm
+class LatexSectionInline(NestedStackedInline):
+    model = LatexSection
+    form = LatexSectionForm
     extra = 1
     ordering = ['order']
-    inlines = [SubSectionInline]
+    inlines = [LatexSubSectionInline]
 
 
-@admin.register(Document)
-class DocumentAdmin(NestedModelAdmin):
-    form = DocumentForm
+@admin.register(LatexDocument)
+class LatexDocumentAdmin(NestedModelAdmin):
+    form = LatexDocumentForm
     list_display = ['title', 'slug', 'version', 'created_by', 'created_at', 'deep']
     list_filter = ['department', 'tags', 'created_at']
-    search_fields = ['title', 'html_summary', 'latex_summary', 'version', 'slug']
+    search_fields = ['title', 'summary', 'version', 'slug']
     filter_horizontal = ['tags']
     readonly_fields = ['created_at']
     prepopulated_fields = {'slug': ('title',)}
 
     def get_inline_instances(self, request, obj=None):
-        if not obj or not obj.deep:
-            return []
-        return [SectionInline(self.model, self.admin_site)]
+        return [LatexSectionInline(self.model, self.admin_site)] if obj and obj.deep else []
 
-    def get_fields(self, request, obj=None):
-        return [
-            'title', 'slug', 'html_summary', 'latex_summary', 'version',
-            'created_by', 'tags', 'department', 'created_at',
-            'latex_preset', 'html_preset'
-        ]
-
-
-@admin.register(Section)
-class SectionAdmin(admin.ModelAdmin):
-    form = SectionForm
+@admin.register(LatexSection)
+class LatexSectionAdmin(admin.ModelAdmin):
+    form = LatexSectionForm
     list_display = ['title', 'document', 'order', 'deep']
     list_filter = ['document']
-    search_fields = ['title', 'latex_content', 'html_content']
+    search_fields = ['title', 'content']
     ordering = ['document', 'order']
 
 
-@admin.register(SubSection)
-class SubSectionAdmin(admin.ModelAdmin):
-    form = SubSectionForm
+@admin.register(LatexSubSection)
+class LatexSubSectionAdmin(admin.ModelAdmin):
+    form = LatexSubSectionForm
     list_display = ['title', 'section', 'order']
     list_filter = ['section__document']
-    search_fields = ['title', 'latex_content', 'html_content']
+    search_fields = ['title', 'content']
+    ordering = ['section__document', 'section', 'order']
+
+# ────────────────────────────────────────────────
+# 🌐 HTML Admin
+# ────────────────────────────────────────────────
+
+class HTMLDocumentForm(forms.ModelForm):
+    class Meta:
+        model = HTMLDocument
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['summary'].widget = TipTapWidget()
+
+
+class HTMLSubSectionForm(forms.ModelForm, HTMLWidgetMixin):
+    class Meta:
+        model = HTMLSubSection
+        fields = ['title', 'order', 'section', 'content']
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.configure_widgets()
+
+
+class HTMLSectionForm(forms.ModelForm, HTMLWidgetMixin):
+    class Meta:
+        model = HTMLSection
+        fields = ['title', 'order', 'document', 'content']
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.configure_widgets()
+
+
+class HTMLSubSectionInline(NestedStackedInline):
+    model = HTMLSubSection
+    form = HTMLSubSectionForm
+    extra = 1
+    ordering = ['order']
+
+
+class HTMLSectionInline(NestedStackedInline):
+    model = HTMLSection
+    form = HTMLSectionForm
+    extra = 1
+    ordering = ['order']
+    inlines = [HTMLSubSectionInline]
+
+
+@admin.register(HTMLDocument)
+class HTMLDocumentAdmin(NestedModelAdmin):
+    form = HTMLDocumentForm
+    list_display = [
+        'title', 'slug', 'version', 'created_by', 'created_at', 'deep', 'linked_latex'
+    ]
+    list_filter = ['department', 'tags', 'created_at']
+    search_fields = ['title', 'summary', 'version', 'slug', 'linked_latex__title']
+    filter_horizontal = ['tags']
+    readonly_fields = ['created_at']
+    prepopulated_fields = {'slug': ('title',)}
+
+    fieldsets = (
+        (None, {
+            'fields': [
+                'title', 'slug', 'summary', 'version',
+                'created_by', 'department', 'tags', 'preset', 'linked_latex'
+            ]
+        }),
+        ('Metadata', {
+            'fields': ['created_at']
+        }),
+    )
+
+    def get_inline_instances(self, request, obj=None):
+        return [HTMLSectionInline(self.model, self.admin_site)] if obj and obj.deep else []
+
+
+@admin.register(HTMLSection)
+class HTMLSectionAdmin(admin.ModelAdmin):
+    form = HTMLSectionForm
+    list_display = ['title', 'document', 'order', 'deep']
+    list_filter = ['document']
+    search_fields = ['title', 'content']
+    ordering = ['document', 'order']
+
+
+@admin.register(HTMLSubSection)
+class HTMLSubSectionAdmin(admin.ModelAdmin):
+    form = HTMLSubSectionForm
+    list_display = ['title', 'section', 'order']
+    list_filter = ['section__document']
+    search_fields = ['title', 'content']
     ordering = ['section__document', 'section', 'order']

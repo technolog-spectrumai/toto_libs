@@ -11,7 +11,7 @@ class LaTeXToPDFConverter:
         self.document = document
 
     def _build_document(self):
-        preset = self.document.latex_preset
+        preset = self.document.preset
         doc = LatexDoc(documentclass=preset.document_class)
 
         for pkg in preset.packages:
@@ -34,13 +34,13 @@ class LaTeXToPDFConverter:
         if self.document.deep:
             for section in self.document.sections.all():
                 with doc.create(Section(section.title)):
-                    if section.latex:
-                        doc.append(section.latex)
+                    if section.content:
+                        doc.append(section.content)
                     if section.deep:
                         for subsection in section.subsections.all():
                             with doc.create(Subsection(subsection.title)):
-                                if subsection.latex:
-                                    doc.append(subsection.latex)
+                                if subsection.content:
+                                    doc.append(subsection.content)
 
         if preset.footer_note:
             doc.append(NoEscape(r'\vfill'))

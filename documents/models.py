@@ -37,47 +37,7 @@ class Department(models.Model):
         return self.name
 
 # ────────────────────────────────────────────────
-# 🧪 LaTeX Preset
-# ────────────────────────────────────────────────
-
-class LatexPreset(models.Model):
-    name = models.CharField(max_length=100)
-    description = models.TextField(blank=True)
-    document_class = models.CharField(max_length=100, default='article')
-    preamble = models.TextField(blank=True)
-    packages = JSONField(
-        schema={"type": "array", "items": {"type": "string"}},
-        default=list
-    )
-    footer_note = models.TextField(blank=True)
-
-    def __str__(self):
-        return f"{self.name} [LaTeX]"
-
-# ────────────────────────────────────────────────
-# 🌐 HTML Preset
-# ────────────────────────────────────────────────
-
-class HTMLPreset(models.Model):
-    name = models.CharField(max_length=100)
-    description = models.TextField(blank=True)
-    template_name = models.CharField(max_length=255)
-    css_classes = JSONField(
-        schema={
-            'type': 'dict',
-            'keys': {'name': {'type': 'string'}},
-            "additionalProperties": {"type": "string"}
-        },
-        default=dict
-    )
-    footer_html = models.TextField(blank=True)
-
-    def __str__(self):
-        return f"{self.name} [HTML]"
-
-
-# ────────────────────────────────────────────────
-# 📄 Abstract BaseDocument
+# 🧩 Abstract Base Classes
 # ────────────────────────────────────────────────
 
 class BaseDocument(models.Model):
@@ -116,55 +76,106 @@ class BaseDocument(models.Model):
 
         super().save(*args, **kwargs)
 
-# ────────────────────────────────────────────────
-# 📚 Abstract DocumentItem
-# ────────────────────────────────────────────────
 
-class DocumentItem(models.Model):
+class BaseDocumentItem(models.Model):
     order = models.PositiveIntegerField(default=0)
     title = models.CharField(max_length=255)
-    latex_content = models.TextField(blank=True, null=True)
-    html_content = models.TextField(blank=True, null=True)
 
     class Meta:
         abstract = True
         ordering = ['order']
 
-    @property
-    def content(self):
-        return self.html_content or self.latex_content
-
-    @property
-    def latex(self):
-        return self.latex_content or ""
-
     def __str__(self):
         return f"{self.__class__.__name__} {self.order}: {self.title}"
 
+# ────────────────────────────────────────────────
+# 🧪 LaTeX Document Flow
+# ────────────────────────────────────────────────
 
-# 📄 Document Model
-class Document(BaseDocument):
-    latex_preset = models.ForeignKey(LatexPreset, on_delete=models.SET_NULL, null=True, blank=True)
-    html_preset = models.ForeignKey(HTMLPreset, on_delete=models.SET_NULL, null=True, blank=True)
-    latex_summary = models.TextField(blank=True)
-    html_summary = models.TextField(blank=True)
+class LatexPreset(models.Model):
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+    document_class = models.CharField(max_length=100, default='article')
+    preamble = models.TextField(blank=True)
+    packages = JSONField(
+        schema={"type": "array", "items": {"type": "string"}},
+        default=list
+    )
+    footer_note = models.TextField(blank=True)
 
-    @property
-    def summary(self):
-        return self.html_summary
+    def __str__(self):
+        return f"{self.name} [LaTeX]"
+
+
+class LatexDocument(BaseDocument):
+    preset = models.ForeignKey(LatexPreset, on_delete=models.SET_NULL, null=True, blank=True)
+    summary = models.TextField(blank=True)
 
     @property
     def deep(self):
         return self.sections.exists()
 
-# 📚 Section Model
-class Section(DocumentItem):
-    document = models.ForeignKey(Document, on_delete=models.CASCADE, related_name='sections')
+
+class LatexSection(BaseDocumentItem):
+    document = models.ForeignKey(LatexDocument, on_delete=models.CASCADE, related_name='sections')
+    content = models.TextField(blank=True)
 
     @property
     def deep(self):
         return self.subsections.exists()
 
-# 📘 SubSection Model
-class SubSection(DocumentItem):
-    section = models.ForeignKey(Section, on_delete=models.CASCADE, related_name='subsections')
+
+class LatexSubSection(BaseDocumentItem):
+    section = models.ForeignKey(LatexSection, on_delete=models.CASCADE, related_name='subsections')
+    content = models.TextField(blank=True)
+
+# ────────────────────────────────────────────────
+# 🌐 HTML Document Flow
+# ────────────────────────────────────────────────
+
+class HTMLPreset(models.Model):
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+    template_name = models.CharField(max_length=255)
+    css_classes = JSONField(
+        schema={
+            'type': 'dict',
+            'keys': {'name': {'type': 'string'}},
+            "additionalProperties": {"type": "string"}
+        },
+        default=dict
+    )
+    footer_html = models.TextField(blank=True)
+
+    def __str__(self):
+        return f"{self.name} [HTML]"
+
+
+class HTMLDocument(BaseDocument):
+    preset = models.ForeignKey(HTMLPreset, on_delete=models.SET_NULL, null=True, blank=True)
+    summary = models.TextField(blank=True)
+    linked_latex = models.ForeignKey(
+        'LatexDocument',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='linked_html_versions'
+    )
+
+    @property
+    def deep(self):
+        return self.sections.exists()
+
+
+class HTMLSection(BaseDocumentItem):
+    document = models.ForeignKey(HTMLDocument, on_delete=models.CASCADE, related_name='sections')
+    content = models.TextField(blank=True)
+
+    @property
+    def deep(self):
+        return self.subsections.exists()
+
+
+class HTMLSubSection(BaseDocumentItem):
+    section = models.ForeignKey(HTMLSection, on_delete=models.CASCADE, related_name='subsections')
+    content = models.TextField(blank=True)

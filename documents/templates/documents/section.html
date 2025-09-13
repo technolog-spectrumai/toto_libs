@@ -15,9 +15,9 @@
   <!-- Section Content -->
   <div x-show="open" x-transition class="space-y-4 pt-2">
 
-    {% if section.html_subsections.all %}
+    {% if section.subsections.all %}
       <div class="space-y-3">
-        {% for sub in section.html_subsections.all %}
+        {% for sub in section.subsections.all %}
           <div x-data="{ open: false }"
                :class="darkMode
                  ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark'
