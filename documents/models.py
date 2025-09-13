@@ -2,7 +2,6 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.utils.text import slugify
 from django_jsonform.models.fields import JSONField
-from TexSoup import TexSoup
 
 # ────────────────────────────────────────────────
 # 🔖 Tag Model
@@ -182,74 +181,4 @@ class HTMLSubSection(BaseDocumentItem):
     content = models.TextField(blank=True)
 
 
-class LatexDocumentFactory(models.Model):
-    name = models.CharField(max_length=255)
-    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='latex_factories')
-    department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True, related_name='latex_factories')
-    preset = models.ForeignKey(LatexPreset, on_delete=models.SET_NULL, null=True, blank=True, related_name='latex_factories')
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ['-created_at']
-
-    def __str__(self):
-        return f"{self.name} (Factory)"
-
-    def convert(self, scratchpad):
-        document = LatexDocument.objects.create(
-            title=scratchpad.name or f"Scratchpad #{scratchpad.pk}",
-            slug=slugify(scratchpad.name or f"Scratchpad-{scratchpad.pk}"),
-            created_by=scratchpad.author,
-            department=self.department,
-            preset=self.preset
-        )
-
-        self._parse_latex(scratchpad.content, document)
-        return document
-
-    def _parse_latex(self, content: str, document: LatexDocument):
-        soup = TexSoup(content)
-        section_order = 0
-
-        for section_cmd in soup.find_all('section'):
-            heading = str(section_cmd.string).strip()
-            section = LatexSection.objects.create(
-                document=document,
-                order=section_order,
-                title=heading,
-                content=''  # Optional: store raw section content here
-            )
-            subsection_order = 0
-            for sub_cmd in section_cmd.find_all('subsection'):
-                title = str(sub_cmd.string).strip()
-                body = ''.join(str(x) for x in sub_cmd.contents).strip()
-                LatexSubSection.objects.create(
-                    section=section,
-                    order=subsection_order,
-                    title=title,
-                    content=body
-                )
-                subsection_order += 1
-
-            section_order += 1
-
-
-class LatexScratchpad(models.Model):
-    name = models.CharField(max_length=255)
-    author = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='latex_scratchpads')
-    factory = models.ForeignKey(
-        'LatexDocumentFactory',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='scratchpads'
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-    content = models.TextField()
-
-    class Meta:
-        ordering = ['-created_at']
-
-    def __str__(self):
-        return f"{self.name} by {self.author.username if self.author else 'Unknown'}"
 

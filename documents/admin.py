@@ -3,12 +3,14 @@ from django.contrib import admin
 from nested_admin import NestedModelAdmin, NestedStackedInline
 from django_tiptap.widgets import TipTapWidget
 from django_ace import AceWidget
+from documents.parsers import LaTeXParser
+
 
 from .models import (
     Tag, Department,
     LatexPreset, HTMLPreset,
     LatexDocument, LatexSection, LatexSubSection,
-    HTMLDocument, HTMLSection, HTMLSubSection, LatexScratchpad, LatexDocumentFactory
+    HTMLDocument, HTMLSection, HTMLSubSection
 )
 
 # ────────────────────────────────────────────────
@@ -238,64 +240,4 @@ class HTMLSubSectionAdmin(admin.ModelAdmin):
     list_filter = ['section__document']
     search_fields = ['title', 'content']
     ordering = ['section__document', 'section', 'order']
-
-
-class LatexScratchpadForm(forms.ModelForm, LatexWidgetMixin):
-    class Meta:
-        model = LatexScratchpad
-        fields = ['name', 'author', 'content']
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.configure_widgets()
-
-
-@admin.register(LatexScratchpad)
-class LatexScratchpadAdmin(admin.ModelAdmin):
-    form = LatexScratchpadForm
-    list_display = ('name', 'author', 'factory', 'created_at')
-    list_filter = ('author', 'factory', 'created_at')
-    search_fields = ('name', 'content')
-    readonly_fields = ('created_at',)
-    ordering = ('-created_at',)
-    actions = ['convert_to_document']
-
-    def convert_to_document(self, request, queryset):
-        converted = 0
-        skipped = 0
-
-        for scratchpad in queryset:
-            factory = scratchpad.factory
-            if factory:
-                factory.convert(scratchpad)
-                converted += 1
-            else:
-                skipped += 1
-
-        self.message_user(
-            request,
-            f"Converted {converted} scratchpad(s) to LaTeXDocument. Skipped {skipped} without factory.",
-            level='info'
-        )
-
-    convert_to_document.short_description = "Convert to LaTeXDocument using linked factory"
-
-
-@admin.register(LatexDocumentFactory)
-class LatexDocumentFactoryAdmin(admin.ModelAdmin):
-    list_display = ('name', 'owner', 'department', 'preset', 'created_at')
-    list_filter = ('owner', 'department', 'preset', 'created_at')
-    search_fields = ('name',)
-    readonly_fields = ('created_at',)
-    ordering = ('-created_at',)
-
-    fieldsets = (
-        (None, {
-            'fields': ('name', 'owner', 'department', 'preset')
-        }),
-        ('Metadata', {
-            'fields': ('created_at',),
-            'classes': ('collapse',)
-        }),
-    )
 

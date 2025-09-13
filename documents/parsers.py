@@ -1,7 +1,9 @@
 from bs4 import BeautifulSoup
 from TexSoup import TexSoup
-from documents.models import Section, SubSection
-
+from documents.models import (
+    HTMLSection, HTMLSubSection,
+    LatexSection, LatexSubSection
+)
 
 # ────────────────────────────────────────────────
 # 🧱 Base Parser
@@ -53,7 +55,7 @@ class HTMLParser(BaseParser):
 
     def build_sections(self, document, content):
         return [
-            Section(
+            HTMLSection(
                 document=document,
                 title=data["title"],
                 order=i,
@@ -64,7 +66,7 @@ class HTMLParser(BaseParser):
 
     def build_subsections(self, section, content):
         return [
-            SubSection(
+            HTMLSubSection(
                 section=section,
                 title=data["title"],
                 order=i,
@@ -87,9 +89,11 @@ class HTMLParser(BaseParser):
 # ────────────────────────────────────────────────
 
 class LaTeXParser(BaseParser):
-
     def _unwrap(self, arg):
         return arg.string if hasattr(arg, "string") else str(arg).strip("{}")
+
+    def _flatten(self, contents):
+        return "\n".join(str(c).strip() for c in contents if str(c).strip())
 
     def extract_sections(self, content):
         soup = TexSoup(content)
@@ -113,7 +117,7 @@ class LaTeXParser(BaseParser):
 
     def build_sections(self, document, content):
         return [
-            Section(
+            LatexSection(
                 document=document,
                 title=data["title"],
                 order=i,
@@ -124,7 +128,7 @@ class LaTeXParser(BaseParser):
 
     def build_subsections(self, section, content):
         return [
-            SubSection(
+            LatexSubSection(
                 section=section,
                 title=data["title"],
                 order=i,
@@ -132,6 +136,3 @@ class LaTeXParser(BaseParser):
             )
             for i, data in enumerate(self.extract_subsections(content))
         ]
-
-    def _flatten(self, contents):
-        return "\n".join(str(c).strip() for c in contents if str(c).strip())
