@@ -22,7 +22,7 @@
         Documents
       </h1>
       <p class="text-sm text-gray-500 dark:text-gray-400">
-        Explore all documents by type, department, and status.
+        Explore all documents by department.
       </p>
 
       <!-- Filter Form -->
@@ -76,8 +76,9 @@
               <!-- Inline Metadata -->
               <div class="text-xs opacity-70 flex flex-wrap gap-4 items-center">
                 <span>By {{ document.created_by.username }}</span>
-                <span class="italic">{{ document.engine }}</span>
-                <span>Dept: {{ document.department.name }}</span>
+                {% if document.department %}
+                  <span>Dept: {{ document.department.name }}</span>
+                {% endif %}
                 <span>Created: {{ document.created_at|date:"M d, Y" }}</span>
               </div>
 

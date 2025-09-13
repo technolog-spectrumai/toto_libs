@@ -4,7 +4,7 @@ from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404
 from .models import Document, Department, Section, SubSection
 from .mixins import PageDecoratedMixin
-from .pdf import HTMLToPDFConverter, LaTeXToPDFConverter
+from .pdf import LaTeXToPDFConverter
 import os
 
 
@@ -50,19 +50,13 @@ class DocumentDetailView(PageDecoratedMixin, DetailView):
             sections = document.sections.prefetch_related(
                 Prefetch('subsections', queryset=SubSection.objects.order_by('order'))
             ).order_by('order')
-            content = None
         else:
             sections = []
-            content = document.content
 
         context.update({
-            'content': content,
             'sections': sections,
             'tags': document.tags.all(),
             'department': document.department,
-            'preset': document.preset,
-            'engine': document.engine,
-            'deep': document.deep,
         })
         return context
 
@@ -78,24 +72,9 @@ def document_pdf_view(request, slug):
     )
 
     try:
-        # ─────────────────────────────────────────────────────────────
-        # PDF Generator Dispatcher
-        # ─────────────────────────────────────────────────────────────
-        engine = document.engine
-        if engine == 'latex':
-            generator = LaTeXToPDFConverter(document)
-        elif engine == 'html':
-            generator = HTMLToPDFConverter(document)
-        else:
-            raise ValueError("Unsupported document type")
-
+        generator = LaTeXToPDFConverter(document)
         pdf_output = generator.generate_pdf()
-
-        # ─────────────────────────────────────────────────────────────
-        # Response Handling
-        # ─────────────────────────────────────────────────────────────
         if isinstance(pdf_output, str) and os.path.exists(pdf_output):
-            # HTML: return file-based PDF
             return FileResponse(open(pdf_output, 'rb'), content_type='application/pdf')
         else:
             raise Http404("PDF could not be generated.")

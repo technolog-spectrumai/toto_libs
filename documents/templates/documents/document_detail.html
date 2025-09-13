@@ -23,37 +23,27 @@
         {{ document.title }}
       </h2>
 
-      <!-- Collapsible Summary -->
-      <div class="space-y-2">
+    {% if document.summary %}
+      <div class="space-y-2 text-center">
         <button @click="showSummary = !showSummary"
-                class="flex items-center justify-between w-full text-left font-semibold text-sm">
-          <span>Summary</span>
+                class="flex items-center justify-between w-full font-semibold text-sm">
+          <span class="w-full text-center">Summary</span>
           <i :class="showSummary ? 'fa-chevron-up' : 'fa-chevron-down'"
              class="fa-solid transition-transform duration-200"></i>
         </button>
-        <div x-show="showSummary" x-transition class="text-sm text-gray-500 dark:text-gray-400">
-          {{ document.summary|linebreaksbr }}
+        <div x-show="showSummary" x-transition class="text-sm text-gray-500 dark:text-gray-400 text-center">
+          {{ document.summary|safe }}
         </div>
       </div>
+    {% endif %}
 
       <p class="text-xs text-gray-400 dark:text-gray-500 pt-2">
-        Department: {{ document.department.name }}<br>
-        Engine: {{ engine }} | Depth: {{ depth }}<br>
+        {% if document.department %}Department: {{ document.department.name }}<br>{% endif %}
         Created: {{ document.created_at|date:"M d, Y" }}
       </p>
     </header>
 
-    <!-- Depth 1: Document-level content -->
-    {% if content and not document.deep %}
-      <section class="space-y-4">
-        <h3 class="text-xl font-semibold border-b pb-2">Content</h3>
-        <div class="prose dark:prose-invert">
-          {{ content|safe }}
-        </div>
-      </section>
-    {% endif %}
-
-    <!-- Depth 2 or 3: Sections -->
+    <!-- Structured Sections -->
     {% if sections %}
       <section class="space-y-4">
         <ul class="space-y-6">
