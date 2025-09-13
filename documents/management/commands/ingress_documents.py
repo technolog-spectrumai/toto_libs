@@ -68,7 +68,7 @@ class Command(IngressCommand):
         for i in range(4):
             doc = Document.objects.create(
                 title=f"Structured Document {i+1}",
-                summary=lorem.sentence(),
+                html_summary=lorem.sentence(),
                 created_by=users[i % len(users)],
                 department=departments[i % len(departments)],
                 created_at=timezone.now(),

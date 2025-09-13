@@ -75,45 +75,39 @@ class HTMLPreset(models.Model):
     def __str__(self):
         return f"{self.name} [HTML]"
 
+
 # ────────────────────────────────────────────────
-# 📄 Document Model
+# 📄 Abstract BaseDocument
 # ────────────────────────────────────────────────
 
-class Document(models.Model):
+class BaseDocument(models.Model):
     title = models.CharField(max_length=255)
     slug = models.SlugField(max_length=255, unique=True, blank=True)
-    summary = models.TextField(blank=True)
     version = models.CharField(max_length=10, default="1.0")
     created_by = models.ForeignKey(User, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
 
-    tags = models.ManyToManyField(Tag, blank=True, related_name='documents')
-    department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True, related_name='documents')
+    tags = models.ManyToManyField(Tag, blank=True, related_name='%(class)s_tags')
+    department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True, related_name='%(class)s_documents')
 
-    latex_preset = models.ForeignKey(LatexPreset, on_delete=models.SET_NULL, null=True, blank=True)
-    html_preset = models.ForeignKey(HTMLPreset, on_delete=models.SET_NULL, null=True, blank=True)
-
-    deep = models.BooleanField(default=False)
+    class Meta:
+        abstract = True
 
     def __str__(self):
         return f"{self.title} (v{self.version})"
-
-    @property
-    def deep(self):
-        return self.sections.exists()
 
     def save(self, *args, **kwargs):
         if not self.slug:
             base_slug = slugify(self.title)
             slug = base_slug
             counter = 1
-            while Document.objects.filter(slug=slug).exists():
+            while type(self).objects.filter(slug=slug).exists():
                 slug = f"{base_slug}-{counter}"
                 counter += 1
             self.slug = slug
 
         if not self.pk:
-            latest = Document.objects.filter(created_by=self.created_by).order_by('-created_at').first()
+            latest = type(self).objects.filter(created_by=self.created_by).order_by('-created_at').first()
             if latest:
                 major, minor = map(int, latest.version.split('.'))
                 self.version = f"{major}.{minor + 1}"
@@ -123,55 +117,54 @@ class Document(models.Model):
         super().save(*args, **kwargs)
 
 # ────────────────────────────────────────────────
-# 📚 Section Model
+# 📚 Abstract DocumentItem
 # ────────────────────────────────────────────────
 
-class Section(models.Model):
-    document = models.ForeignKey(Document, on_delete=models.CASCADE, related_name='sections')
-    title = models.CharField(max_length=255)
+class DocumentItem(models.Model):
     order = models.PositiveIntegerField(default=0)
+    title = models.CharField(max_length=255)
     latex_content = models.TextField(blank=True, null=True)
     html_content = models.TextField(blank=True, null=True)
+
+    class Meta:
+        abstract = True
+        ordering = ['order']
+
+    @property
+    def content(self):
+        return self.html_content or self.latex_content
+
+    @property
+    def latex(self):
+        return self.latex_content or ""
+
+    def __str__(self):
+        return f"{self.__class__.__name__} {self.order}: {self.title}"
+
+
+# 📄 Document Model
+class Document(BaseDocument):
+    latex_preset = models.ForeignKey(LatexPreset, on_delete=models.SET_NULL, null=True, blank=True)
+    html_preset = models.ForeignKey(HTMLPreset, on_delete=models.SET_NULL, null=True, blank=True)
+    latex_summary = models.TextField(blank=True)
+    html_summary = models.TextField(blank=True)
+
+    @property
+    def summary(self):
+        return self.html_summary
+
+    @property
+    def deep(self):
+        return self.sections.exists()
+
+# 📚 Section Model
+class Section(DocumentItem):
+    document = models.ForeignKey(Document, on_delete=models.CASCADE, related_name='sections')
 
     @property
     def deep(self):
         return self.subsections.exists()
 
-    class Meta:
-        ordering = ['order']
-
-    @property
-    def content(self):
-        return self.html_content if self.html_content else self.latex_content
-
-    @property
-    def latex(self):
-        return self.latex_content if self.latex_content else ""
-
-    def __str__(self):
-        return f"Section {self.order}: {self.title}"
-
-# ────────────────────────────────────────────────
 # 📘 SubSection Model
-# ────────────────────────────────────────────────
-
-class SubSection(models.Model):
+class SubSection(DocumentItem):
     section = models.ForeignKey(Section, on_delete=models.CASCADE, related_name='subsections')
-    order = models.PositiveIntegerField(default=0)
-    title = models.CharField(max_length=255)
-    latex_content = models.TextField(blank=True, null=True)
-    html_content = models.TextField(blank=True, null=True)
-
-    @property
-    def content(self):
-        return self.html_content if self.html_content else self.latex_content
-
-    @property
-    def latex(self):
-        return self.latex_content if self.latex_content else ""
-
-    class Meta:
-        ordering = ['order']
-
-    def __str__(self):
-        return f"SubSection {self.order}: {self.title}"
