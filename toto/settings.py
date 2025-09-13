@@ -70,7 +70,6 @@ INSTALLED_APPS = [
     "memo",
     "resume",
     "webfront",
-    "documents",
     "kanban"
 ]
 
