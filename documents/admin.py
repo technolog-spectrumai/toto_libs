@@ -164,14 +164,15 @@ class DocumentAdmin(NestedModelAdmin):
     def expand(self, request, queryset):
         created_total = 0
         for document in queryset:
-            if not document.deep:
+            if document.deep:
                 self.message_user(
                     request,
-                    f"Document '{document.title}' is not marked as deep. Skipping.",
+                    f"Document '{document.title}' is ALREADY marked as deep. Skipping.",
                     level=messages.WARNING
                 )
                 continue
-
+            document.deep = True
+            document.save()
             parser = HTMLParser() if document.engine == 'html' else LaTeXParser()
             sections = parser.build_sections(document=document, content=document.content or "")
             Section.objects.bulk_create(sections)
@@ -201,10 +202,11 @@ class SectionAdmin(admin.ModelAdmin):
     def expand(self, request, queryset):
         count = 0
         for section in queryset:
-            if not section.deep:
-                self.message_user(request, f"Section '{section.title}' is not marked as deep. Skipping.", level=messages.WARNING)
+            if section.deep:
+                self.message_user(request, f"Section '{section.title}' is ALREADY marked as deep. Skipping.", level=messages.WARNING)
                 continue
-
+            section.deep = True
+            section.save()
             document = section.document
             parser = HTMLParser() if document.engine == 'html' else LaTeXParser()
             subsections = parser.build_subsections(section, section.content or "")
