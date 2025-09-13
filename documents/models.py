@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from polymorphic.models import PolymorphicModel
 from django_jsonform.models.fields import JSONField
+from django.core.validators import MinValueValidator, MaxValueValidator
 
 # ────────────────────────────────────────────────
 # 📦 JSON Schemas
@@ -65,6 +66,11 @@ class Preset(PolymorphicModel):
     name = models.CharField(max_length=100)
     description = models.TextField(blank=True)
     engine = models.CharField(max_length=10, choices=ENGINE_CHOICES)
+    depth = models.PositiveSmallIntegerField(
+        default=1,
+        validators=[MinValueValidator(1), MaxValueValidator(3)],
+        help_text="Depth level from 1 (shallow) to 3 (deep)"
+    )
 
     def __str__(self):
         return f"{self.name} [{self.engine}]"
@@ -115,6 +121,11 @@ class Document(models.Model):
 
     tags = models.ManyToManyField(Tag, blank=True, related_name='documents')
     department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True, related_name='documents')
+    content = models.TextField(help_text="Plain text content of the section")
+
+    @property
+    def depth(self):
+        return self.preset.depth
 
     def __str__(self):
         return f"{self.title} (v{self.version})"
@@ -132,6 +143,19 @@ class Document(models.Model):
             else:
                 self.version = "1.1"
         super().save(*args, **kwargs)
+
+    def get_content(self):
+        if self.preset.depth == 1:
+            return self.content
+        elif self.preset.depth == 2:
+            return "\n\n".join(section.content for section in self.sections.all())
+        elif self.preset.depth == 3:
+            return "\n\n".join(
+                subsection.content
+                for section in self.sections.all()
+                for subsection in section.subsections.all()
+            )
+        return ""
 
 # ────────────────────────────────────────────────
 # 📚 Section Model

@@ -26,27 +26,59 @@ class DepartmentAdmin(admin.ModelAdmin):
     list_filter = ['owner']
 
 # ────────────────────────────────────────────────
+# ⚙️ Depth Label Utility
+# ────────────────────────────────────────────────
+
+def get_depth_label(depth: int) -> str:
+    return {
+        1: "Document-level content",
+        2: "Section-level content",
+        3: "SubSection-level content"
+    }.get(depth, f"Unknown ({depth})")
+
+# ────────────────────────────────────────────────
 # ⚙️ Presets
 # ────────────────────────────────────────────────
 
-@admin.register(Preset)
-class PresetAdmin(admin.ModelAdmin):
-    list_display = ['name', 'engine', 'description']
-    list_filter = ['engine']
-    search_fields = ['name', 'description']
 
 @admin.register(LatexPreset)
 class LatexPresetAdmin(admin.ModelAdmin):
-    list_display = ['name', 'document_class']
+    list_display = ['name', 'document_class', 'depth_label']
     search_fields = ['name', 'document_class']
+
+    def depth_label(self, obj):
+        return get_depth_label(obj.depth)
+    depth_label.short_description = "Content Depth"
+
 
 @admin.register(HTMLPreset)
 class HTMLPresetAdmin(admin.ModelAdmin):
-    list_display = ['name', 'template_name']
+    list_display = ['name', 'template_name', 'depth_label']
     search_fields = ['name', 'template_name']
 
+    def depth_label(self, obj):
+        return get_depth_label(obj.depth)
+    depth_label.short_description = "Content Depth"
+
+
+def configure_content_widget(fields, engine, depth, expected_depth, width="100%", height="300px"):
+    """
+    Dynamically configures or removes the 'content' field based on depth and engine.
+    """
+    if 'content' not in fields:
+        return
+
+    if depth == expected_depth:
+        fields['content'].widget = (
+            AceWidget(mode='latex', theme='chrome', width=width, height=height)
+            if engine == 'latex' else TipTapWidget()
+        )
+    else:
+        fields.pop('content', None)
+
+
 # ────────────────────────────────────────────────
-# 🧠 Section Form with Dynamic Widget
+# 🧠 Section Form
 # ────────────────────────────────────────────────
 
 class SectionForm(forms.ModelForm):
@@ -56,35 +88,50 @@ class SectionForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        document = self.instance.document if self.instance.pk else self.initial.get('document')
-        engine = getattr(document.preset, 'engine', None) if document and document.preset else None
 
-        if engine == 'latex':
-            self.fields['content'].widget = AceWidget(mode='latex', theme='twilight', width="100%", height="300px")
+        document = self.instance.document if self.instance.pk else self.initial.get('document')
+        preset = getattr(document, 'preset', None) if document else None
+        engine = getattr(preset, 'engine', None) if preset else None
+        depth = getattr(preset, 'depth', None) if preset else None
+
+        if depth == 2:
+            self.fields['content'].widget = (
+                AceWidget(mode='latex', theme='chrome', width="100%", height="300px")
+                if engine == 'latex' else TipTapWidget()
+            )
         else:
-            self.fields['content'].widget = TipTapWidget()
+            self.fields['content'].widget = forms.HiddenInput()
+            self.fields['content'].required = False
+
 
 # ────────────────────────────────────────────────
-# 📘 SubSection Form with Dynamic Widget
+# 📘 SubSection Form
 # ────────────────────────────────────────────────
 
 class SubSectionForm(forms.ModelForm):
     class Meta:
         model = SubSection
-        fields = '__all__'
+        fields = ['title', 'order', 'content', 'section']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
         instance = kwargs.get('instance')
-        theme = 'chrome'
-        if instance and hasattr(instance.section.document, 'engine'):
-            engine = instance.section.document.engine
-            if engine == 'latex':
-                if hasattr(instance, 'use_light_mode') and instance.use_light_mode is False:
-                    theme = 'monokai'
-                self.fields['content'].widget = AceWidget(mode='latex', theme=theme)
-            elif engine == 'html':
-                self.fields['content'].widget = TipTapWidget()
+        document = instance.section.document if instance and instance.section else None
+        preset = getattr(document, 'preset', None) if document else None
+        engine = getattr(preset, 'engine', None) if preset else None
+        depth = getattr(preset, 'depth', None) if preset else None
+
+        if depth == 3:
+            self.fields['content'].widget = (
+                AceWidget(mode='latex', theme='chrome')
+                if engine == 'latex' else TipTapWidget()
+            )
+        else:
+            self.fields['content'].widget = forms.HiddenInput()
+            self.fields['content'].required = False
+
+
 
 # ────────────────────────────────────────────────
 # 📚 SubSection Inline
@@ -108,23 +155,80 @@ class SectionInline(NestedStackedInline):
     inlines = [SubSectionInline]
 
 # ────────────────────────────────────────────────
-# 📄 Document Admin with Nested Sections
+# 📄 Document Form
+# ───────────────────────────────────────────────
+
+class DocumentForm(forms.ModelForm):
+    class Meta:
+        model = Document
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        instance = kwargs.get('instance')
+        preset = getattr(instance, 'preset', None)
+
+        if preset:
+            engine = preset.engine
+            depth = preset.depth
+
+            if engine == 'html' and 'summary' in self.fields:
+                self.fields['summary'].widget = TipTapWidget()
+
+            if depth == 1 and 'content' in self.fields:
+                self.fields['content'].widget = (
+                    AceWidget(mode='latex', theme='chrome', width="100%", height="300px")
+                    if engine == 'latex' else TipTapWidget()
+                )
+            elif 'content' in self.fields:
+                self.fields.pop('content')
+
+
+# ────────────────────────────────────────────────
+# 📄 Document Admin
 # ────────────────────────────────────────────────
 
 @admin.register(Document)
 class DocumentAdmin(NestedModelAdmin):
-    list_display = ['title', 'version', 'created_by', 'created_at', 'engine', 'short_summary']
+    form = DocumentForm
+    list_display = ['title', 'version', 'created_by', 'created_at', 'engine', 'depth']
     list_filter = ['department', 'tags', 'created_at']
     search_fields = ['title', 'summary', 'version']
-    inlines = [SectionInline]
     filter_horizontal = ['tags']
+    readonly_fields = ['created_at']
 
-    def short_summary(self, obj):
-        return (obj.summary[:75] + '...') if obj.summary else "-"
-    short_summary.short_description = "Summary"
+    def get_inline_instances(self, request, obj=None):
+        if not obj or not obj.preset:
+            return []
+
+        depth = obj.preset.depth
+
+        if depth == 1:
+            return []
+
+        elif depth == 2:
+            class FlatSectionInline(NestedStackedInline):
+                model = Section
+                form = SectionForm
+                extra = 1
+                ordering = ['order']
+                inlines = []
+            return [FlatSectionInline(self.model, self.admin_site)]
+
+        elif depth == 3:
+            return [SectionInline(self.model, self.admin_site)]
+
+        return []
+
+    def get_fields(self, request, obj=None):
+        base_fields = ['title', 'preset', 'summary', 'version', 'created_by', 'tags', 'department', 'created_at']
+        if obj and obj.preset and obj.preset.depth == 1:
+            base_fields.append('content')
+        return base_fields
 
 # ────────────────────────────────────────────────
-# 📘 Section Admin (Direct Access)
+# 📘 Section Admin
 # ────────────────────────────────────────────────
 
 @admin.register(Section)
