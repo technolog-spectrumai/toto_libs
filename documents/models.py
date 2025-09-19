@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.utils.text import slugify
 from django_jsonform.models.fields import JSONField
+import reversion
 
 # ────────────────────────────────────────────────
 # 🔖 Tag Model
@@ -39,7 +40,7 @@ class Department(models.Model):
 # ────────────────────────────────────────────────
 # 🧩 Abstract Base Classes
 # ────────────────────────────────────────────────
-
+@reversion.register()
 class BaseDocument(models.Model):
     title = models.CharField(max_length=255)
     slug = models.SlugField(max_length=255, unique=True, blank=True)

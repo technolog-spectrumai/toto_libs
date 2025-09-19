@@ -15,6 +15,7 @@ from .models import (
     LatexPreset, HTMLPreset,
     LatexDocument, LatexSection, LatexSubSection, PDFFile
 )
+from reversion.admin import VersionAdmin
 
 
 @admin.register(Tag)
@@ -126,7 +127,7 @@ class LatexSectionInline(NestedStackedInline):
 
 
 @admin.register(LatexDocument)
-class LatexDocumentAdmin(NestedModelAdmin):
+class LatexDocumentAdmin(NestedModelAdmin, VersionAdmin):
     form = LatexDocumentForm
     list_display = ['title', 'slug', 'version', 'created_by', 'created_at', 'deep']
     list_filter = ['department', 'tags', 'created_at']

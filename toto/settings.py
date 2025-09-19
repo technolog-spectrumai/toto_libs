@@ -63,6 +63,7 @@ INSTALLED_APPS = [
     'colorfield',
     'polymorphic',
     'django_ace',
+    'reversion',
     "gervazy",
     "oya",
     "captcha",
