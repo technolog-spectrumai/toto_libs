@@ -202,7 +202,7 @@ class LatexDocumentAdmin(NestedModelAdmin, VersionAdmin):
         )
 
 @admin.register(LatexSection)
-class LatexSectionAdmin(admin.ModelAdmin):
+class LatexSectionAdmin(VersionAdmin):
     form = LatexSectionForm
     list_display = ['title', 'document', 'order', 'deep']
     list_filter = ['document']
@@ -211,7 +211,7 @@ class LatexSectionAdmin(admin.ModelAdmin):
 
 
 @admin.register(LatexSubSection)
-class LatexSubSectionAdmin(admin.ModelAdmin):
+class LatexSubSectionAdmin(VersionAdmin):
     form = LatexSubSectionForm
     list_display = ['title', 'section', 'order']
     list_filter = ['section__document']
