@@ -1,5 +1,5 @@
 import subprocess
-from .models import LatexDocument
+from .models import LatexDocument, HTMLDocument
 
 # ─────────────────────────────────────────────────────────────
 # 🔁 Pandoc Conversion Wrapper
@@ -43,64 +43,27 @@ class DocumentConverter:
         raise NotImplementedError("Subclasses must implement convert()")
 
 
-# # ─────────────────────────────────────────────────────────────
-# # 🌐 HTML → LaTeX Converter
-# # ─────────────────────────────────────────────────────────────
-# class HTMLToLaTeXConverter(DocumentConverter):
-#     def __init__(self, section: HTMLSection):
-#         super().__init__(section)
-#         self.pandoc = PandocConverter('html', 'latex')
-#
-#     def convert(self):
-#         linked_doc = self.section.document.linked_latex
-#         if not linked_doc:
-#             return  # No linked LaTeX document to convert into
-#
-#         # Get or create matching LaTeX section
-#         latex_section, _ = LatexSection.objects.get_or_create(
-#             document=linked_doc,
-#             order=self.section.order,
-#             title=self.section.title
-#         )
-#
-#         for html_sub in self.section.subsections.all():
-#             latex_content = self.pandoc.convert(html_sub.content)
-#             LatexSubSection.objects.create(
-#                 section=latex_section,
-#                 order=html_sub.order,
-#                 title=html_sub.title,
-#                 content=latex_content
-#             )
-#
-#         self.section.subsections.all().delete()
+class LatexDocumentConverter:
+    def __init__(self, document: LatexDocument):
+        if not isinstance(document, LatexDocument):
+            raise TypeError(f"Expected LatexDocument, got {type(document)}")
+        self.document = document
+
+    def to_html(self) -> str:
+        converter = PandocConverter(from_format='latex', to_format='html')
+        return converter.convert(self.document.content)
 
 
-# ─────────────────────────────────────────────────────────────
-# 📄 LaTeX → HTML Converter
-# ─────────────────────────────────────────────────────────────
-class LaTeXToHTMLConverter:
-    def __init__(self):
-        self.pandoc = PandocConverter('latex', 'html')
+class HTMLDocumentConverter:
+    def __init__(self, document: HTMLDocument):
+        if not isinstance(document, HTMLDocument):
+            raise TypeError(f"Expected HTMLDocument, got {type(document)}")
+        self.document = document
 
-    def convert_document(self, document: LatexDocument):
-        html_parts = [] #f"<h1>{document.title}</h1>"
+    def to_latex(self) -> str:
+        converter = PandocConverter(from_format='html', to_format='latex')
+        return converter.convert(self.document.content)
 
-        if document.summary:
-            html_parts.append(f"<div class='summary'>{self.pandoc.convert(document.summary)}</div>")
-
-        for section in document.sections.all().order_by('order'):
-            html_parts.append(f"<h2>{section.title}</h2>")
-            if section.content:
-                html_parts.append(self.pandoc.convert(section.content))
-
-            for subsection in section.subsections.all().order_by('order'):
-                html_parts.append(f"<h3>{subsection.title}</h3>")
-                if subsection.content:
-                    html_parts.append(self.pandoc.convert(subsection.content))
-
-        full_html = "\n".join(html_parts)
-
-        return full_html
 
 
 

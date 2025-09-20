@@ -7,7 +7,7 @@ from django.utils.text import slugify
 import os
 from nested_admin import NestedModelAdmin, NestedStackedInline
 from documents.collector import gather_editor_content
-
+from .convert import LatexDocumentConverter, HTMLDocumentConverter
 
 from reversion.admin import VersionAdmin
 from polymorphic.admin import (
@@ -115,13 +115,42 @@ class LatexDocumentForm(forms.ModelForm, LatexWidgetMixin):
         self.configure_widgets()
 
 
+
 @admin.register(LatexDocument)
 class LatexDocumentAdmin(PolymorphicChildModelAdmin, VersionAdmin):
     base_model = LatexDocument
     form = LatexDocumentForm
     list_display = ['title', 'slug', 'version', 'created_by', 'created_at']
     readonly_fields = ['created_at']
-    actions = ['compile_pdf']
+    actions = ['compile_pdf', "convert_to_html"]
+
+    @admin.action(description="🔁 Convert LaTeX to HTML (create new HTMLDocument)")
+    def convert_to_html(self, request, queryset):
+        created = 0
+        failed = 0
+
+        for document in queryset:
+            try:
+                html = LatexDocumentConverter(document).to_html()
+
+                html_doc = HTMLDocument.objects.create(
+                    title=f"{document.title} (HTML)",
+                    content=html,
+                    created_by=document.created_by,
+                    department=document.department
+                )
+                html_doc.tags.set(document.tags.all())
+                created += 1
+
+            except Exception as e:
+                failed += 1
+                self.message_user(request, f"❌ Failed to convert '{document.title}': {e}", level='error')
+
+        self.message_user(
+            request,
+            f"✅ Created {created} HTMLDocument(s). {'⚠️ ' + str(failed) + ' failed.' if failed else ''}",
+            level='info'
+        )
 
     @admin.action(description="Compile selected LaTeX documents to PDF")
     def compile_pdf(self, request, queryset):
@@ -176,6 +205,35 @@ class HTMLDocumentAdmin(PolymorphicChildModelAdmin, VersionAdmin):
     form = HTMLDocumentForm
     list_display = ['title', 'slug', 'version', 'created_by', 'created_at']
     readonly_fields = ['created_at']
+    actions = ["convert_to_latex"]
+
+    @admin.action(description="🔁 Convert HTML to LaTeX (create new LatexDocument)")
+    def convert_to_latex(self, request, queryset):
+        created = 0
+        failed = 0
+
+        for document in queryset:
+            try:
+                latex = HTMLDocumentConverter(document).to_latex()
+
+                latex_doc = LatexDocument.objects.create(
+                    title=f"{document.title} (LaTeX)",
+                    content=latex,
+                    created_by=document.created_by,
+                    department=document.department
+                )
+                latex_doc.tags.set(document.tags.all())
+                created += 1
+
+            except Exception as e:
+                failed += 1
+                self.message_user(request, f"❌ Failed to convert '{document.title}': {e}", level='error')
+
+        self.message_user(
+            request,
+            f"✅ Created {created} LatexDocument(s). {'⚠️ ' + str(failed) + ' failed.' if failed else ''}",
+            level='info'
+        )
 
 # ────────────────────────────────────────────────
 # 📎 PDF File Admin
