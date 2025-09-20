@@ -2,17 +2,17 @@ from django.views.generic import DetailView, ListView
 from django.db.models import Prefetch
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
-from .models import Department, LatexDocument, HTMLPreview
+from .models import Department, Document, LatexDocument, HTMLDocument
 from .mixins import PageDecoratedMixin
 from .pdf import LaTeXToPDFConverter
 import os
 
 # ────────────────────────────────────────────────
-# 📄 LaTeX Document List View
+# 📄 Document List View (All Types)
 # ────────────────────────────────────────────────
 
 class DocumentListView(PageDecoratedMixin, ListView):
-    model = LatexDocument
+    model = Document
     template_name = 'documents/document_list.html'
     context_object_name = 'documents'
 
@@ -32,32 +32,36 @@ class DocumentListView(PageDecoratedMixin, ListView):
         return context
 
 # ────────────────────────────────────────────────
-# 📄 LaTeX Document Detail View + HTML Preview
+# 📄 Document Detail View (Polymorphic)
 # ────────────────────────────────────────────────
 
 class DocumentDetailView(PageDecoratedMixin, DetailView):
-    model = LatexDocument
+    model = Document
     template_name = 'documents/document_detail.html'
     context_object_name = 'document'
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        preview = getattr(self.object, 'html_preview', None)
+        instance = self.object.get_real_instance()
 
-        css_classes = ""
-        if preview and preview.preset and preview.preset.css_classes:
-            css_classes = " ".join(preview.preset.css_classes.values())
+        preview_html = ""
+        preview_css = ""
+
+        if isinstance(instance, HTMLDocument):
+            preview_html = instance.html
+            if instance.preset and instance.preset.css_classes:
+                preview_css = " ".join(instance.preset.css_classes.values())
 
         context.update({
-            'preview': preview.html if preview else None,
-            'preview_css': css_classes,
-            'department': self.object.department,
-            'tags': self.object.tags.all(),
+            'preview': preview_html,
+            'preview_css': preview_css,
+            'department': instance.department,
+            'tags': instance.tags.all(),
         })
         return context
 
 # ────────────────────────────────────────────────
-# 📄 PDF Export View
+# 📄 PDF Export View (LaTeX Only)
 # ────────────────────────────────────────────────
 
 def document_pdf_view(request, slug):
