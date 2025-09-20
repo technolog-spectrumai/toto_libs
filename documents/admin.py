@@ -6,6 +6,7 @@ from django.core.files import File
 from django.utils.text import slugify
 import os
 from nested_admin import NestedModelAdmin, NestedStackedInline
+from documents.collector import gather_editor_content
 
 
 from reversion.admin import VersionAdmin
@@ -273,4 +274,27 @@ class DocumentEditorAdmin(NestedModelAdmin, VersionAdmin):
     readonly_fields = ['created_at']
     prepopulated_fields = {'slug': ('title',)}
     inlines = [EditorSectionInline]
+    actions = ['merge_into_document']
+
+    @admin.action(description="🧩 Merge editor content into linked document")
+    def merge_into_document(self, request, queryset):
+        merged = 0
+        failed = 0
+
+        for editor in queryset:
+            try:
+                content = gather_editor_content(editor)
+                doc = editor.document.get_real_instance()
+                doc.content = content
+                doc.save()
+                merged += 1
+            except Exception as e:
+                failed += 1
+                self.message_user(request, f"❌ Failed to merge '{editor.title}': {e}", level='error')
+
+        self.message_user(
+            request,
+            f"✅ Merged {merged} editor(s) into document. {'⚠️ ' + str(failed) + ' failed.' if failed else ''}",
+            level='info'
+        )
 

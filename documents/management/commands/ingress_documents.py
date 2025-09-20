@@ -5,17 +5,18 @@ from oya.ingress import IngressCommand
 from documents.models import (
     Tag, Department,
     HTMLPreset, LatexPreset,
-    LatexDocument, HTMLDocument
+    LatexDocument, HTMLDocument,
+    DocumentEditor, EditorSection, EditorSubSection
 )
 
 class Command(IngressCommand):
-    help = "Seed LaTeX and HTML documents using existing users"
+    help = "Seed LaTeX and HTML documents with editors, presets, departments, and tags"
 
     def process(self, _):
         self.create_dashboard_item(
             title="Documents",
             icon="file-text",
-            description="LaTeX and HTML documents with presets, departments, and tags.",
+            description="LaTeX and HTML documents with presets, departments, tags, and structured editors.",
             link="/documents/"
         )
 
@@ -69,15 +70,16 @@ class Command(IngressCommand):
             footer_note=lorem.sentence()
         )
 
-        # 📄 Create LaTeX and HTML Documents
-        for i in range(4):
+        # 📄 Create LaTeX and HTML Documents + Editors
+        for i in range(2):
             user = users[i % len(users)]
             department = departments[i % len(departments)]
 
+            # LaTeX
             latex_doc = LatexDocument.objects.create(
                 title=f"LaTeX Document {i+1}",
                 summary="Summary – " + lorem.sentence(),
-                content=lorem.paragraph(),
+                content="",
                 created_by=user,
                 department=department,
                 created_at=timezone.now(),
@@ -86,10 +88,33 @@ class Command(IngressCommand):
             latex_doc.tags.set(tags)
             self.stdout.write(f"📄 Created: {latex_doc.title}")
 
+            latex_editor = DocumentEditor.objects.create(
+                title=f"LaTeX Editor {i+1}",
+                created_by=user,
+                department=department,
+                document=latex_doc
+            )
+
+            for j in range(2):
+                section = EditorSection.objects.create(
+                    document=latex_editor,
+                    order=j,
+                    title=f"LaTeX Section {j+1}",
+                    content=lorem.paragraph()
+                )
+                for k in range(2):
+                    EditorSubSection.objects.create(
+                        section=section,
+                        order=k,
+                        title=f"LaTeX Subsection {j+1}.{k+1}",
+                        content=lorem.paragraph()
+                    )
+
+            # HTML
             html_doc = HTMLDocument.objects.create(
                 title=f"HTML Document {i+1}",
                 summary="Summary – " + lorem.sentence(),
-                content=f"<h1>Heading</h1><p>{lorem.paragraph()}</p>",
+                content="",
                 created_by=user,
                 department=department,
                 created_at=timezone.now(),
@@ -98,4 +123,26 @@ class Command(IngressCommand):
             html_doc.tags.set(tags)
             self.stdout.write(f"🌐 Created: {html_doc.title}")
 
-        self.stdout.write(self.style.SUCCESS("🎉 Ingress complete. Documents seeded."))
+            html_editor = DocumentEditor.objects.create(
+                title=f"HTML Editor {i+1}",
+                created_by=user,
+                department=department,
+                document=html_doc
+            )
+
+            for j in range(2):
+                section = EditorSection.objects.create(
+                    document=html_editor,
+                    order=j,
+                    title=f"HTML Section {j+1}",
+                    content=lorem.paragraph()
+                )
+                for k in range(2):
+                    EditorSubSection.objects.create(
+                        section=section,
+                        order=k,
+                        title=f"HTML Subsection {j+1}.{k+1}",
+                        content=lorem.paragraph()
+                    )
+
+        self.stdout.write(self.style.SUCCESS("🎉 Ingress complete. Documents and editors seeded."))
