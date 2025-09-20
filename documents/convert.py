@@ -2,6 +2,8 @@ import subprocess
 from .models import LatexDocument, HTMLDocument
 from pylatex import Document as LatexDoc, Command, Package
 from pylatex.utils import NoEscape
+import re
+from bs4 import BeautifulSoup
 
 
 # ─────────────────────────────────────────────────────────────
@@ -69,7 +71,19 @@ class HTMLDocumentConverter:
 
     def _convert_body(self) -> str:
         converter = PandocConverter(from_format='html', to_format='latex')
-        return converter.convert(self.document.content or "")
+        html = self.document.content
+        soup = BeautifulSoup(html, "html.parser")
+        html = soup.prettify()
+        out = converter.convert(html)
+        return out
+
+    @staticmethod
+    def _strip_hypertargets(latex: str) -> str:
+        # Remove \hypertarget{...}{%
+        latex = re.sub(r'\\hypertarget\{[^}]+\}\{\s*%', '', latex)
+        # Remove trailing } if it’s just closing the hypertarget block
+        latex = re.sub(r'\}\s*$', '', latex)
+        return latex
 
     def _build_document(self, body: str) -> LatexDoc:
         preset = self.document.preset

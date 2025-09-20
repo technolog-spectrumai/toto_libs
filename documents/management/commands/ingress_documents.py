@@ -1,27 +1,26 @@
-from django.utils import timezone
 from django.contrib.auth.models import User
 from lorem_text import lorem
 from oya.ingress import IngressCommand
 from documents.models import (
     Tag, Department,
     HTMLPreset, LatexPreset,
-    LatexDocument, HTMLDocument,
+    HTMLDocument, LatexDocument,
     HtmlDocumentEditor, LatexDocumentEditor,
     EditorSection, EditorSubSection
 )
 
 class Command(IngressCommand):
-    help = "Seed LaTeX and HTML documents with editors, presets, departments, and tags"
+    help = "Seed HTML and LaTeX editors linked to empty documents, with presets, departments, tags, and structured content"
 
     def process(self, _):
         self.create_dashboard_item(
-            title="Documents",
-            icon="file-text",
-            description="LaTeX and HTML documents with presets, departments, tags, and structured editors.",
+            title="Document Editors",
+            icon="edit",
+            description="HTML and LaTeX editors linked to empty documents, with structured sections and lorem content.",
             link="/documents/"
         )
 
-        self.stdout.write("🚀 Starting document ingress...")
+        self.stdout.write("🚀 Starting editor ingress...")
 
         users = list(User.objects.all())
         if not users:
@@ -41,81 +40,82 @@ class Command(IngressCommand):
         # 🌐 HTML Preset
         html_preset = HTMLPreset.objects.create(
             name="Default Web Style",
-            description="Standard HTML styling for web documents."
+            description="Standard HTML styling for web editors."
         )
 
         # 🧪 LaTeX Preset
         latex_preset = LatexPreset.objects.create(
             name="Academic Article",
-            description="LaTeX preset for academic papers.",
+            description="LaTeX preset for academic editors.",
             document_class="article",
             packages=["amsmath", "graphicx", "hyperref"],
             preamble=r"\usepackage{amsmath}\usepackage{graphicx}\usepackage{hyperref}"
         )
 
-        # 📄 HTML Document
+        # 📄 Empty HTML Document
         html_doc = HTMLDocument.objects.create(
-            title="HTML Sample Document",
+            title="Empty HTML Document",
             created_by=users[0],
             department=department,
             preset=html_preset,
-            content="<h1>Welcome</h1><p>This is an HTML document.</p>"
+            content=""
         )
         html_doc.tags.set(tags[:2])
 
-        # 📄 LaTeX Document
+        # 📄 Empty LaTeX Document
         latex_doc = LatexDocument.objects.create(
-            title="LaTeX Sample Document",
+            title="Empty LaTeX Document",
             created_by=users[0],
             department=department,
-            content=r"\section{Introduction}\nThis is a LaTeX document."
+            content=""
         )
         latex_doc.tags.set(tags[2:])
 
         # 🧑‍💻 HTML Editor
         html_editor = HtmlDocumentEditor.objects.create(
-            title="HTML Editor",
+            title="HTML Editor Seed",
             created_by=users[0],
             department=department,
             document=html_doc,
-            summary="Editor for HTML content."
+            summary=lorem.sentence()
         )
 
         # 🧑‍💻 LaTeX Editor
         latex_editor = LatexDocumentEditor.objects.create(
-            title="LaTeX Editor",
+            title="LaTeX Editor Seed",
             created_by=users[0],
             department=department,
             document=latex_doc,
             preset=latex_preset,
-            summary="Editor for LaTeX content."
+            summary=lorem.sentence()
         )
 
-        # 🧩 Editor Sections
+        # 🧩 HTML Sections
         html_section = EditorSection.objects.create(
             document=html_editor,
             order=1,
-            title="Introduction",
-            content="<h1>Intro</h1><p>HTML intro section.</p>"
+            title="HTML Introduction",
+            content=f"<h1>Intro</h1><p>{lorem.paragraph()}</p>"
         )
         EditorSubSection.objects.create(
             section=html_section,
             order=1,
-            title="Subsection A",
-            content="<p>Details about subsection A.</p>"
+            title="HTML Subsection A",
+            content=f"<p>{lorem.paragraph()}</p>"
         )
 
+        # 🧩 LaTeX Sections
         latex_section = EditorSection.objects.create(
             document=latex_editor,
             order=1,
-            title="Abstract",
-            content=r"\section{Abstract}\nThis is the abstract."
+            title="LaTeX Abstract",
+            content=f"\\section{{Abstract}} {lorem.paragraph()}"
         )
         EditorSubSection.objects.create(
             section=latex_section,
             order=1,
-            title="Subsection B",
-            content=r"\subsection{Details}\nMore LaTeX content here."
+            title="LaTeX Subsection B",
+            content=f"\\subsection{{Details}} {lorem.paragraph()}"
         )
 
-        self.stdout.write(self.style.SUCCESS("✅ Document ingress completed successfully."))
+        self.stdout.write(self.style.SUCCESS("✅ Editor ingress completed successfully."))
