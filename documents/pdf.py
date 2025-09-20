@@ -31,17 +31,6 @@ class LaTeXToPDFConverter:
             doc.append(self.document.summary)
             doc.append(NoEscape(r'\end{abstract}'))
 
-        if self.document.deep:
-            for section in self.document.sections.all():
-                with doc.create(Section(section.title)):
-                    if section.content:
-                        doc.append(section.content)
-                    if section.deep:
-                        for subsection in section.subsections.all():
-                            with doc.create(Subsection(subsection.title)):
-                                if subsection.content:
-                                    doc.append(subsection.content)
-
         if preset.footer_note:
             doc.append(NoEscape(r'\vfill'))
             doc.append(NoEscape(r'\begin{center}'))
