@@ -89,6 +89,10 @@ class LatexDocumentForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['summary'].widget = AceWidget(mode='latex', theme='chrome')
+        if self.instance and self.instance.flat:
+            self.fields['content'].widget = AceWidget(mode='latex', theme='chrome')
+        elif self.instance:
+            self.fields['content'].disabled = True
 
 
 class LatexSubSectionForm(forms.ModelForm, LatexWidgetMixin):

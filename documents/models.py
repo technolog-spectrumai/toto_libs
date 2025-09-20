@@ -111,6 +111,7 @@ class LatexPreset(models.Model):
 class LatexDocument(BaseDocument):
     preset = models.ForeignKey(LatexPreset, on_delete=models.SET_NULL, null=True, blank=True)
     summary = models.TextField(blank=True)
+    content = models.TextField(blank=True)
     flat = models.BooleanField(default=False)
 
     @property
