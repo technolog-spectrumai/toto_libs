@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.utils.text import slugify
 from django_jsonform.models.fields import JSONField
+from polymorphic.models import PolymorphicModel
 import reversion
 
 # ────────────────────────────────────────────────
@@ -38,8 +39,9 @@ class Department(models.Model):
         return self.name
 
 # ────────────────────────────────────────────────
-# 🧩 Abstract Base Classes
+# 🧩 Abstract Base Document
 # ────────────────────────────────────────────────
+
 @reversion.register()
 class BaseDocument(models.Model):
     title = models.CharField(max_length=255)
@@ -77,20 +79,8 @@ class BaseDocument(models.Model):
 
         super().save(*args, **kwargs)
 
-
-class BaseDocumentItem(models.Model):
-    order = models.PositiveIntegerField(default=0)
-    title = models.CharField(max_length=255)
-
-    class Meta:
-        abstract = True
-        ordering = ['order']
-
-    def __str__(self):
-        return f"{self.__class__.__name__} {self.order}: {self.title}"
-
 # ────────────────────────────────────────────────
-# 🧪 LaTeX Document Flow
+# 🧪 LaTeX Preset
 # ────────────────────────────────────────────────
 
 class LatexPreset(models.Model):
@@ -107,33 +97,8 @@ class LatexPreset(models.Model):
     def __str__(self):
         return f"{self.name} [LaTeX]"
 
-
-class LatexDocument(BaseDocument):
-    preset = models.ForeignKey(LatexPreset, on_delete=models.SET_NULL, null=True, blank=True)
-    summary = models.TextField(blank=True)
-    content = models.TextField(blank=True)
-    flat = models.BooleanField(default=False)
-
-    @property
-    def deep(self):
-        return self.sections.exists()
-
-
-class LatexSection(BaseDocumentItem):
-    document = models.ForeignKey(LatexDocument, on_delete=models.CASCADE, related_name='sections')
-    content = models.TextField(blank=True)
-
-    @property
-    def deep(self):
-        return self.subsections.exists()
-
-
-class LatexSubSection(BaseDocumentItem):
-    section = models.ForeignKey(LatexSection, on_delete=models.CASCADE, related_name='subsections')
-    content = models.TextField(blank=True)
-
 # ────────────────────────────────────────────────
-# 🌐 HTML Document Flow
+# 🌐 HTML Preset
 # ────────────────────────────────────────────────
 
 class HTMLPreset(models.Model):
@@ -159,7 +124,7 @@ class HTMLPreset(models.Model):
             },
             'additionalProperties': {'type': 'string'}
         },
-        default= {
+        default={
             "h1": "text-4xl font-bold mt-8 mb-4",
             "h2": "text-3xl font-semibold mt-6 mb-3",
             "h3": "text-2xl font-medium mt-4 mb-2",
@@ -170,8 +135,66 @@ class HTMLPreset(models.Model):
     footer_html = models.TextField(blank=True)
 
     def __str__(self):
-        return f"{self.name} [HTML Preset"
+        return f"{self.name} [HTML Preset]"
 
+# ────────────────────────────────────────────────
+# 📄 Polymorphic Document Base
+# ────────────────────────────────────────────────
+
+class Document(PolymorphicModel, BaseDocument):
+    summary = models.TextField(blank=True)
+    content = models.TextField(blank=True)
+
+    class Meta:
+        verbose_name = "Document"
+        verbose_name_plural = "Documents"
+
+    def __str__(self):
+        return f"{self.title} [{self.get_real_instance_class().__name__}] (v{self.version})"
+
+# ────────────────────────────────────────────────
+# 📄 LaTeX Document
+# ────────────────────────────────────────────────
+
+class LatexDocument(Document):
+    preset = models.ForeignKey(LatexPreset, on_delete=models.SET_NULL, null=True, blank=True)
+
+    class Meta:
+        verbose_name = "LaTeX Document"
+        verbose_name_plural = "LaTeX Documents"
+
+# ────────────────────────────────────────────────
+# 🌐 HTML Document
+# ────────────────────────────────────────────────
+
+class HTMLDocument(Document):
+    preset = models.ForeignKey(HTMLPreset, on_delete=models.SET_NULL, null=True, blank=True)
+
+    class Meta:
+        verbose_name = "HTML Document"
+        verbose_name_plural = "HTML Documents"
+
+    @property
+    def html(self):
+        styled = self.content or ""
+        if self.preset and self.preset.style_mapping:
+            for tag, classes in self.preset.style_mapping.items():
+                if '.' in tag:
+                    tag1, class1 = tag.split('.')
+                    styled = styled.replace(
+                        f"<{tag1} class='{class1}'>",
+                        f"<{tag} class='{classes}'>"
+                    )
+                else:
+                    styled = styled.replace(
+                        f"<{tag}>",
+                        f"<{tag} class='{classes}'>"
+                    )
+        return styled
+
+# ────────────────────────────────────────────────
+# 📎 PDF File for LaTeX Documents
+# ────────────────────────────────────────────────
 
 class PDFFile(models.Model):
     document = models.OneToOneField(
@@ -187,50 +210,3 @@ class PDFFile(models.Model):
 
     def __str__(self):
         return f"PDF for {self.document.title} (created {self.created_at.strftime('%Y-%m-%d')})"
-
-
-class HTMLPreview(models.Model):
-    latex_document = models.OneToOneField(
-        LatexDocument,
-        on_delete=models.CASCADE,
-        related_name='html_preview'
-    )
-    content = models.TextField(blank=True)
-    preset = models.ForeignKey(
-        HTMLPreset,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='html_previews'
-    )
-
-    def __str__(self):
-        return f"HTML Preview for: {self.latex_document.title}"
-
-    @property
-    def author(self):
-        return self.latex_document.created_by
-
-    @property
-    def html(self):
-        if not self.content:
-            return ""
-
-        styled = self.content
-        if self.preset and self.preset.style_mapping:
-            for tag, classes in self.preset.style_mapping.items():
-                if '.' in tag:  # e.g. 'div.summary'
-                    tag1 = tag.split('.')[0]
-                    class1 = tag.split('.')[1]
-                    styled = styled.replace(
-                        f"<{tag1} class='{class1}'>",
-                        f"<{tag} class='{classes}'>"
-                    )
-                else:
-                    styled = styled.replace(
-                        f"<{tag}>",
-                        f"<{tag} class='{classes}'>"
-                    )
-        return styled
-
-

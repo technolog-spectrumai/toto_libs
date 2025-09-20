@@ -94,7 +94,8 @@ DJANGO_TIPTAP_CONFIG = {
         "bulletList",
         "orderedList",
         "typography",
-        "clearFormat"
+        "clearFormat",
+        "images"
     ],
     "placeholderText": "Begin typing here...",
     "unsavedChangesWarningText": "You have unsaved changes",
@@ -119,6 +120,7 @@ DJANGO_TIPTAP_CONFIG = {
         "bulletList": "Bullet List | (ctrl + shift ⇧) / (⌘ + shift ⇧) + 8",
         "orderedList": "Numbered List | (ctrl + shift ⇧) / (⌘ + shift ⇧) + 7",
         "clearFormat": "Clear Format",
+        "images": "Insert Image"
     },
     "translations": {
         "row": "Row",
