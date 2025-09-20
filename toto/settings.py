@@ -72,7 +72,8 @@ INSTALLED_APPS = [
     "resume",
     "webfront",
     "documents",
-    "kanban"
+    "kanban",
+    "mandragora"
 ]
 
 DJANGO_TIPTAP_CONFIG = {
