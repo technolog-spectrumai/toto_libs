@@ -1,5 +1,6 @@
 from django.db import models
 from django.utils.safestring import mark_safe
+from RestrictedPython import compile_restricted, safe_globals
 
 
 class Workflow(models.Model):
@@ -58,7 +59,6 @@ class FunctionNode(Node):
     code = models.TextField(help_text="Define a Python function named `run(input_data)`")
 
     def execute(self, input_data):
-        from RestrictedPython import compile_restricted, safe_globals
         compiled = compile_restricted(self.code, filename="<function>", mode="exec")
         env = safe_globals.copy()
         env["input_data"] = input_data
@@ -144,6 +144,8 @@ class NodeRun(models.Model):
     input_data = models.JSONField(default=dict)
     output_data = models.JSONField(default=dict)
     error = models.TextField(blank=True)
+    task_id = models.CharField(max_length=255, null=True, blank=True)
+    terminated = models.BooleanField(default=False)
 
     def __str__(self):
         return f"{self.node.name} in run {self.workflow_run.id}"
