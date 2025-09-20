@@ -179,7 +179,6 @@ WSGI_APPLICATION = 'toto.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-
 if DJANGO_ENV == "PROD":
     DATABASES = {
         'default': {
@@ -327,8 +326,9 @@ LOGGING = {
 
 LOGIN_URL = '/community/login/'
 
-CELERY_BROKER_URL = 'redis://localhost:6379/0'
-CELERY_RESULT_BACKEND='redis://redis_toto:6379/0'
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost") if DJANGO_ENV != "PROD" else "redis_toto"
+CELERY_BROKER_URL = f'redis://{REDIS_HOST}:6379/0'
+CELERY_RESULT_BACKEND = f'redis://{REDIS_HOST}:6379/0'
 CELERY_TIMEZONE = 'UTC'
 CELERY_ENABLE_UTC = True
 
