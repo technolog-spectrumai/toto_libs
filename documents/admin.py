@@ -89,7 +89,7 @@ class HTMLWidgetMixin:
 # ────────────────────────────────────────────────
 
 @admin.register(Document)
-class DocumentAdmin(PolymorphicParentModelAdmin, VersionAdmin):
+class DocumentAdmin(PolymorphicParentModelAdmin):
     base_model = Document
     child_models = (LatexDocument, HTMLDocument)
     list_display = ['title', 'created_by', 'created_at', 'get_type']
@@ -300,7 +300,7 @@ def merge_editor_into_document(real_editor, collector=None):
 
 
 @admin.register(DocumentEditor)
-class DocumentEditorAdmin(PolymorphicParentModelAdmin, NestedModelAdmin, VersionAdmin):
+class DocumentEditorAdmin(PolymorphicParentModelAdmin, NestedModelAdmin):
     base_model = DocumentEditor
     child_models = (HtmlDocumentEditor, LatexDocumentEditor)
     list_display = ['title', 'slug', 'version', 'created_by', 'created_at']

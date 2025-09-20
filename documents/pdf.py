@@ -17,7 +17,8 @@ class LatexCompiler:
         with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as temp_file:
             output_path = temp_file.name
 
-        pdf = build_pdf(self.document.content)
+        clean_content = self.document.content.replace('\r\n', '\n').replace('\r', '\n')
+        pdf = build_pdf(clean_content)
         pdf.save_to(output_path)
 
         # Confirm the file exists and return its path
