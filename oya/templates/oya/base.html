@@ -52,7 +52,9 @@
 
   <!-- Footer -->
   <footer
-    :class="darkMode ? 'bg-appbar-bg-dark text-text-main-dark' : 'bg-appbar-bg-light text-text-main-light'"
+        :class="darkMode
+      ? `bg-appbar-bg-dark text-text-main-dark {{ platform.theme.header.dark }}`
+      : `bg-appbar-bg-light text-text-main-light {{ platform.theme.header.light }}`"
     class="py-4 mt-8 text-center shadow-lg">
     <p>&copy; {{ platform.site_name }} {{ platform.site_title }}. All rights reserved.</p>
   </footer>

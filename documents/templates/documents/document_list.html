@@ -93,7 +93,7 @@
         </ul>
       </section>
     {% else %}
-      <p class="text-center text-warn-light dark:text-warn-dark">No documents found for this department.</p>
+      <p :class="darkMode ? 'text-warn-dark text-center' : 'text-warn-light text-center'">No documents found for this department.</p>
     {% endif %}
 
   </div>
