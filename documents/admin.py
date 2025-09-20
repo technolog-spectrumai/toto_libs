@@ -224,14 +224,11 @@ class EditorSubSectionForm(forms.ModelForm, FormatAwareWidgetMixin):
 class FormatAwareInline(NestedStackedInline):
     form_class = None  # override in subclass
 
+    def get_document(self, obj):
+        return None
+
     def get_formset(self, request, obj=None, **kwargs):
-        document_instance = None
-        if obj and hasattr(obj, 'document'):
-            # obj is DocumentEditor or EditorSection
-            if hasattr(obj.document, 'document'):
-                document_instance = obj.document.document.get_real_instance()
-            else:
-                document_instance = obj.document.get_real_instance()
+        document_instance = self.get_document(obj)
 
         class InlineForm(self.form_class):
             def __init__(self2, *args, **form_kwargs):
@@ -241,12 +238,16 @@ class FormatAwareInline(NestedStackedInline):
         return super().get_formset(request, obj, **kwargs)
 
 
-
 class EditorSubSectionInline(FormatAwareInline):
     model = EditorSubSection
     form_class = EditorSubSectionForm
     extra = 1
     ordering = ['order']
+
+    def get_document(self, obj):
+        if obj and hasattr(obj, 'document'):
+            return obj.document.document.get_real_instance()
+        return None
 
 
 class EditorSectionInline(FormatAwareInline):
@@ -255,6 +256,11 @@ class EditorSectionInline(FormatAwareInline):
     extra = 1
     ordering = ['order']
     inlines = [EditorSubSectionInline]
+
+    def get_document(self, obj):
+        if obj and hasattr(obj, 'document'):
+            return obj.document.get_real_instance()
+        return None
 
 
 @admin.register(DocumentEditor)
