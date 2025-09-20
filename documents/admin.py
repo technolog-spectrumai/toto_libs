@@ -129,7 +129,7 @@ class LatexSectionInline(NestedStackedInline):
 @admin.register(LatexDocument)
 class LatexDocumentAdmin(NestedModelAdmin, VersionAdmin):
     form = LatexDocumentForm
-    list_display = ['title', 'slug', 'version', 'created_by', 'created_at', 'deep']
+    list_display = ['title', 'slug', 'version', 'created_by', 'created_at', 'deep', 'flat']
     list_filter = ['department', 'tags', 'created_at']
     search_fields = ['title', 'summary', 'version', 'slug']
     filter_horizontal = ['tags']
@@ -138,7 +138,9 @@ class LatexDocumentAdmin(NestedModelAdmin, VersionAdmin):
     actions = ['compile_pdf', 'generate_html_preview']
 
     def get_inline_instances(self, request, obj=None):
-        return [LatexSectionInline(self.model, self.admin_site)] if obj and obj.deep else []
+        if obj and obj.deep and not obj.flat:
+            return [LatexSectionInline(self.model, self.admin_site)]
+        return []
 
     @admin.action(description="Compile selected LaTeX documents to PDF")
     def compile_pdf(self, request, queryset):
