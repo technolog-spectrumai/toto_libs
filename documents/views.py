@@ -25,6 +25,8 @@ class DocumentListView(PageDecoratedMixin, ListView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        for doc in context['documents']:
+            doc.type_label = doc.document_type
         context.update({
             'departments': Department.objects.all(),
             'selected_department': self.request.GET.get('department')

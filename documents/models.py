@@ -152,6 +152,10 @@ class Document(PolymorphicModel, BaseDocument):
     def __str__(self):
         return f"{self.title} [{self.get_real_instance_class().__name__}] (v{self.version})"
 
+    @property
+    def document_type(self):
+        return self.get_real_instance_class().__name__.replace("Document", "")
+
 # ────────────────────────────────────────────────
 # 📄 LaTeX Document
 # ────────────────────────────────────────────────

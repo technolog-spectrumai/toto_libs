@@ -60,31 +60,44 @@
               :class="darkMode
                 ? 'bg-primary-bg-dark border border-accent-1 text-text-main-dark'
                 : 'bg-primary-bg-light border border-accent-2 text-text-main-light'"
-              class="rounded-lg p-6 shadow-sm hover:shadow-md transition-shadow duration-300 space-y-2">
-
-              <!-- Title + Chevron -->
+              class="rounded-lg p-6 shadow-sm hover:shadow-md transition-shadow duration-300 space-y-4"
+            >
+              <!-- Title + Toggle -->
               <div class="flex justify-between items-center">
-                <h3 class="text-lg font-bold hover:text-accent-light transition-colors">
-                  <a href="{% url 'document-detail' document.slug %}">{{ document.title }}</a>
+                <h3 class="text-lg font-bold transition-colors hover:text-accent-light">
+                  <a href="{% url 'document-detail' document.slug %}" class="focus:outline-none focus:ring">
+                    {{ document.title }}
+                  </a>
                 </h3>
-                <button @click="showSummary = !showSummary" class="text-accent-light hover:opacity-80">
-                  <i :class="showSummary ? 'fa-chevron-up' : 'fa-chevron-down'"
-                     class="fa-solid transition-transform duration-200"></i>
+                <button
+                  @click="showSummary = !showSummary"
+                  class="text-accent-light hover:opacity-80 focus:outline-none"
+                  aria-label="Toggle summary"
+                >
+                  <i
+                    :class="showSummary ? 'fa-chevron-up' : 'fa-chevron-down'"
+                    class="fa-solid transition-transform duration-200"
+                  ></i>
                 </button>
               </div>
 
-              <!-- Inline Metadata -->
+              <!-- Metadata -->
               <div class="text-xs opacity-70 flex flex-wrap gap-4 items-center">
                 <span>By {{ document.created_by.username }}</span>
                 {% if document.department %}
                   <span>Dept: {{ document.department.name }}</span>
                 {% endif %}
                 <span>Created: {{ document.created_at|date:"M d, Y" }}</span>
+                <span>Type: {{ document.type_label }}</span>
               </div>
 
-              <!-- Collapsible Summary -->
+              <!-- Summary -->
               {% if document.summary %}
-                <div x-show="showSummary" x-transition class="text-sm opacity-80 pt-2">
+                <div
+                  x-show="showSummary"
+                  x-transition
+                  class="text-sm opacity-80 pt-2"
+                >
                   {{ document.summary|linebreaksbr }}
                 </div>
               {% endif %}
