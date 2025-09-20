@@ -5,6 +5,8 @@ from django_tiptap.widgets import TipTapWidget
 from django.core.files import File
 from django.utils.text import slugify
 import os
+from nested_admin import NestedModelAdmin, NestedStackedInline
+
 
 from reversion.admin import VersionAdmin
 from polymorphic.admin import (
@@ -18,7 +20,7 @@ from .models import (
     Tag, Department,
     LatexPreset, HTMLPreset,
     Document, LatexDocument, HTMLDocument,
-    PDFFile
+    PDFFile, DocumentEditor, EditorSection, EditorSubSection
 )
 
 # ────────────────────────────────────────────────
@@ -98,7 +100,7 @@ class DocumentAdmin(PolymorphicParentModelAdmin, VersionAdmin):
 
     @admin.display(description="Type")
     def get_type(self, obj):
-        return obj.get_real_instance_class().__name__
+        return obj.document_type
 
 # ────────────────────────────────────────────────
 # 📄 LaTeX Document Admin
@@ -187,3 +189,82 @@ class PDFFileAdmin(admin.ModelAdmin):
     search_fields = ['document__title']
     list_filter = ['created_at']
     ordering = ['-created_at']
+
+
+class FormatAwareWidgetMixin:
+    def apply_format_widgets(self, fields, document_instance):
+        if isinstance(document_instance, HTMLDocument):
+            for field in fields:
+                self.fields[field].widget = TipTapWidget()
+        else:
+            for field in fields:
+                self.fields[field].widget = AceWidget(mode='latex', theme='chrome')
+
+
+class EditorSectionForm(forms.ModelForm, FormatAwareWidgetMixin):
+    class Meta:
+        model = EditorSection
+        fields = ['title', 'order', 'document', 'content']
+
+    def __init__(self, *args, document_instance=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.apply_format_widgets(['content'], document_instance)
+
+
+class EditorSubSectionForm(forms.ModelForm, FormatAwareWidgetMixin):
+    class Meta:
+        model = EditorSubSection
+        fields = ['title', 'order', 'section', 'content']
+
+    def __init__(self, *args, document_instance=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.apply_format_widgets(['content'], document_instance)
+
+
+class FormatAwareInline(NestedStackedInline):
+    form_class = None  # override in subclass
+
+    def get_formset(self, request, obj=None, **kwargs):
+        document_instance = None
+        if obj and hasattr(obj, 'document'):
+            # obj is DocumentEditor or EditorSection
+            if hasattr(obj.document, 'document'):
+                document_instance = obj.document.document.get_real_instance()
+            else:
+                document_instance = obj.document.get_real_instance()
+
+        class InlineForm(self.form_class):
+            def __init__(self2, *args, **form_kwargs):
+                super().__init__(*args, document_instance=document_instance, **form_kwargs)
+
+        kwargs['form'] = InlineForm
+        return super().get_formset(request, obj, **kwargs)
+
+
+
+class EditorSubSectionInline(FormatAwareInline):
+    model = EditorSubSection
+    form_class = EditorSubSectionForm
+    extra = 1
+    ordering = ['order']
+
+
+class EditorSectionInline(FormatAwareInline):
+    model = EditorSection
+    form_class = EditorSectionForm
+    extra = 1
+    ordering = ['order']
+    inlines = [EditorSubSectionInline]
+
+
+@admin.register(DocumentEditor)
+class DocumentEditorAdmin(NestedModelAdmin, VersionAdmin):
+    #form = DocumentEditorForm
+    list_display = ['title', 'slug', 'version', 'created_by', 'created_at', 'document']
+    list_filter = ['department', 'tags', 'created_at']
+    search_fields = ['title', 'summary', 'slug']
+    filter_horizontal = ['tags']
+    readonly_fields = ['created_at']
+    prepopulated_fields = {'slug': ('title',)}
+    inlines = [EditorSectionInline]
+

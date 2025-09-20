@@ -214,3 +214,38 @@ class PDFFile(models.Model):
 
     def __str__(self):
         return f"PDF for {self.document.title} (created {self.created_at.strftime('%Y-%m-%d')})"
+
+
+class DocumentEditor(BaseDocument):
+    document = models.ForeignKey(Document, on_delete=models.CASCADE, related_name='editors')
+
+    def __str__(self):
+        return f"Editor for {self.document.title} (v{self.version})"
+
+
+class EditorItem(models.Model):
+    order = models.PositiveIntegerField(default=0)
+    title = models.CharField(max_length=255)
+
+    class Meta:
+        abstract = True
+        ordering = ['order']
+
+    def __str__(self):
+        return f"{self.__class__.__name__} {self.order}: {self.title}"
+
+
+
+class EditorSection(EditorItem):
+    document = models.ForeignKey(DocumentEditor, on_delete=models.CASCADE, related_name='sections')
+    content = models.TextField(blank=True)
+
+    @property
+    def deep(self):
+        return self.subsections.exists()
+
+
+class EditorSubSection(EditorItem):
+    section = models.ForeignKey(EditorSection, on_delete=models.CASCADE, related_name='subsections')
+    content = models.TextField(blank=True)
+
