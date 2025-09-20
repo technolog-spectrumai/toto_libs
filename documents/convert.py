@@ -1,5 +1,60 @@
 import subprocess
 from .models import LatexDocument, HTMLDocument
+from pylatex import Document as LatexDoc, Command, Package
+from pylatex.utils import NoEscape
+
+
+class HTMLDocumentConverter:
+    def __init__(self, document: HTMLDocument):
+        if not isinstance(document, HTMLDocument):
+            raise TypeError(f"Expected HTMLDocument, got {type(document)}")
+        self.document = document
+
+    def to_latex(self) -> str:
+        body = self._convert_body()
+        return self._build_document(body).dumps()
+
+    def _convert_body(self) -> str:
+        converter = PandocConverter(from_format='html', to_format='latex')
+        return converter.convert(self.document.content or "")
+
+    def _build_document(self, body: str) -> LatexDoc:
+        preset = self.document.preset
+        doc = LatexDoc(documentclass=preset.document_class if preset and preset.document_class else "article")
+
+        # 📦 Packages
+        if preset and preset.packages:
+            for pkg in preset.packages:
+                doc.packages.append(Package(pkg))
+
+        # 📜 Preamble
+        if preset and preset.preamble:
+            doc.preamble.append(NoEscape(preset.preamble.strip()))
+
+        # 🖋️ Metadata
+        doc.preamble.append(Command('title', self.document.title))
+        author = self.document.department.owner.get_full_name() if self.document.department else "Unknown"
+        doc.preamble.append(Command('author', author))
+        doc.preamble.append(Command('date', NoEscape(r'\today')))
+        doc.append(NoEscape(r'\maketitle'))
+
+        # 🧠 Abstract
+        if hasattr(self.document, "summary") and self.document.summary:
+            doc.append(NoEscape(r'\begin{abstract}'))
+            doc.append(NoEscape(self.document.summary.strip()))
+            doc.append(NoEscape(r'\end{abstract}'))
+
+        # 🧩 Body (Pandoc output)
+        doc.append(NoEscape(body.strip()))
+
+        # 📝 Footer
+        if preset and preset.footer_html:
+            doc.append(NoEscape(r'\vfill'))
+            doc.append(NoEscape(r'\begin{center}'))
+            doc.append(NoEscape(r'\textit{' + preset.footer_html.strip() + '}'))
+            doc.append(NoEscape(r'\end{center}'))
+
+        return doc
 
 # ─────────────────────────────────────────────────────────────
 # 🔁 Pandoc Conversion Wrapper
@@ -61,8 +116,51 @@ class HTMLDocumentConverter:
         self.document = document
 
     def to_latex(self) -> str:
+        body = self._convert_body()
+        return self._build_document(body).dumps()
+
+    def _convert_body(self) -> str:
         converter = PandocConverter(from_format='html', to_format='latex')
-        return converter.convert(self.document.content)
+        return converter.convert(self.document.content or "")
+
+    def _build_document(self, body: str) -> LatexDoc:
+        preset = self.document.preset
+        doc = LatexDoc(documentclass="article")
+
+        # 📦 Packages
+        if preset and preset.packages:
+            for pkg in preset.packages:
+                doc.packages.append(Package(pkg))
+
+        # 📜 Preamble
+        if preset and preset.preamble:
+            doc.preamble.append(NoEscape(preset.preamble.strip()))
+
+        # 🖋️ Metadata
+        doc.preamble.append(Command('title', self.document.title))
+        author = self.document.department.owner.get_full_name() if self.document.department else "Unknown"
+        doc.preamble.append(Command('author', author))
+        doc.preamble.append(Command('date', NoEscape(r'\today')))
+        doc.append(NoEscape(r'\maketitle'))
+
+        # 🧠 Abstract
+        if hasattr(self.document, "summary") and self.document.summary:
+            doc.append(NoEscape(r'\begin{abstract}'))
+            doc.append(NoEscape(self.document.summary.strip()))
+            doc.append(NoEscape(r'\end{abstract}'))
+
+        # 🧩 Body (Pandoc output)
+        doc.append(NoEscape(body.strip()))
+
+        # 📝 Footer
+        if preset and preset.footer_html:
+            doc.append(NoEscape(r'\vfill'))
+            doc.append(NoEscape(r'\begin{center}'))
+            doc.append(NoEscape(r'\textit{' + preset.footer_html.strip() + '}'))
+            doc.append(NoEscape(r'\end{center}'))
+
+        return doc
+
 
 
 

@@ -6,8 +6,9 @@ from django.core.files import File
 from django.utils.text import slugify
 import os
 from nested_admin import NestedModelAdmin, NestedStackedInline
-from documents.collector import gather_editor_content
+from documents.collector import LaTeXCollector, HTMLCollector
 from .convert import LatexDocumentConverter, HTMLDocumentConverter
+from .batch import BatchAction
 
 from reversion.admin import VersionAdmin
 from polymorphic.admin import (
@@ -21,7 +22,8 @@ from .models import (
     Tag, Department,
     LatexPreset, HTMLPreset,
     Document, LatexDocument, HTMLDocument,
-    PDFFile, DocumentEditor, EditorSection, EditorSubSection
+    PDFFile, DocumentEditor, EditorSection, EditorSubSection,
+    HtmlDocumentEditor, LatexDocumentEditor
 )
 
 # ────────────────────────────────────────────────
@@ -126,64 +128,41 @@ class LatexDocumentAdmin(PolymorphicChildModelAdmin, VersionAdmin):
 
     @admin.action(description="🔁 Convert LaTeX to HTML (create new HTMLDocument)")
     def convert_to_html(self, request, queryset):
-        created = 0
-        failed = 0
+        def convert_one(document):
+            html = LatexDocumentConverter(document).to_html()
+            new_doc = HTMLDocument.objects.create(
+                title=f"{document.title} (HTML)",
+                content=html,
+                created_by=document.created_by,
+                department=document.department
+            )
+            new_doc.tags.set(document.tags.all())
+            return new_doc
 
-        for document in queryset:
-            try:
-                html = LatexDocumentConverter(document).to_html()
-
-                html_doc = HTMLDocument.objects.create(
-                    title=f"{document.title} (HTML)",
-                    content=html,
-                    created_by=document.created_by,
-                    department=document.department
-                )
-                html_doc.tags.set(document.tags.all())
-                created += 1
-
-            except Exception as e:
-                failed += 1
-                self.message_user(request, f"❌ Failed to convert '{document.title}': {e}", level='error')
-
-        self.message_user(
-            request,
-            f"✅ Created {created} HTMLDocument(s). {'⚠️ ' + str(failed) + ' failed.' if failed else ''}",
-            level='info'
-        )
+        result = BatchAction(queryset).run(convert_one)
+        BatchAction.display_messages(result, self.message_user, request, verb="convert")
 
     @admin.action(description="Compile selected LaTeX documents to PDF")
     def compile_pdf(self, request, queryset):
-        compiled = 0
-        failed = 0
+        def compile_one(document):
+            compiler = LatexCompiler(document)
+            pdf_path = compiler.generate_pdf()
 
-        for document in queryset:
-            try:
-                compiler = LatexCompiler(document)
-                pdf_path = compiler.generate_pdf()
+            if not os.path.exists(pdf_path):
+                raise FileNotFoundError("PDF file not found after generation.")
 
-                if not os.path.exists(pdf_path):
-                    raise FileNotFoundError("PDF file not found after generation.")
+            PDFFile.objects.filter(document=document).delete()
 
-                PDFFile.objects.filter(document=document).delete()
+            with open(pdf_path, 'rb') as f:
+                PDFFile.objects.create(
+                    document=document,
+                    file=File(f, name=f"{slugify(document.title)}.pdf")
+                )
 
-                with open(pdf_path, 'rb') as f:
-                    PDFFile.objects.create(
-                        document=document,
-                        file=File(f, name=f"{slugify(document.title)}.pdf")
-                    )
+            return document
 
-                compiled += 1
-
-            except Exception as e:
-                failed += 1
-                self.message_user(request, f"❌ Failed to compile '{document.title}': {e}", level='error')
-
-        self.message_user(
-            request,
-            f"✅ Compiled {compiled} document(s) to PDF. {'⚠️ ' + str(failed) + ' failed.' if failed else ''}",
-            level='info'
-        )
+        result = BatchAction(queryset).run(compile_one)
+        BatchAction.display_messages(result, self.message_user, request, verb="compile")
 
 # ────────────────────────────────────────────────
 # 🌐 HTML Document Admin
@@ -209,31 +188,19 @@ class HTMLDocumentAdmin(PolymorphicChildModelAdmin, VersionAdmin):
 
     @admin.action(description="🔁 Convert HTML to LaTeX (create new LatexDocument)")
     def convert_to_latex(self, request, queryset):
-        created = 0
-        failed = 0
+        def convert_one(document):
+            latex = HTMLDocumentConverter(document).to_latex()
+            new_doc = LatexDocument.objects.create(
+                title=f"{document.title} (LaTeX)",
+                content=latex,
+                created_by=document.created_by,
+                department=document.department
+            )
+            new_doc.tags.set(document.tags.all())
+            return new_doc
 
-        for document in queryset:
-            try:
-                latex = HTMLDocumentConverter(document).to_latex()
-
-                latex_doc = LatexDocument.objects.create(
-                    title=f"{document.title} (LaTeX)",
-                    content=latex,
-                    created_by=document.created_by,
-                    department=document.department
-                )
-                latex_doc.tags.set(document.tags.all())
-                created += 1
-
-            except Exception as e:
-                failed += 1
-                self.message_user(request, f"❌ Failed to convert '{document.title}': {e}", level='error')
-
-        self.message_user(
-            request,
-            f"✅ Created {created} LatexDocument(s). {'⚠️ ' + str(failed) + ' failed.' if failed else ''}",
-            level='info'
-        )
+        result = BatchAction(queryset).run(convert_one)
+        BatchAction.display_messages(result, self.message_user, request, verb="convert")
 
 # ────────────────────────────────────────────────
 # 📎 PDF File Admin
@@ -320,10 +287,23 @@ class EditorSectionInline(FormatAwareInline):
         return None
 
 
+def merge_editor_into_document(real_editor, collector=None):
+    if not real_editor.document:
+        raise RuntimeError(f"Editor {real_editor} has no linked document to merge into.")
+    if not collector:
+        raise ValueError("No collector instance provided. Collector must be explicitly passed.")
+    collector.collect()
+    document = real_editor.document.get_real_instance()
+    document.content = collector.render()
+    document.save()
+    return real_editor
+
+
 @admin.register(DocumentEditor)
-class DocumentEditorAdmin(NestedModelAdmin, VersionAdmin):
-    #form = DocumentEditorForm
-    list_display = ['title', 'slug', 'version', 'created_by', 'created_at', 'document']
+class DocumentEditorAdmin(PolymorphicParentModelAdmin, NestedModelAdmin, VersionAdmin):
+    base_model = DocumentEditor
+    child_models = (HtmlDocumentEditor, LatexDocumentEditor)
+    list_display = ['title', 'slug', 'version', 'created_by', 'created_at']
     list_filter = ['department', 'tags', 'created_at']
     search_fields = ['title', 'summary', 'slug']
     filter_horizontal = ['tags']
@@ -334,23 +314,35 @@ class DocumentEditorAdmin(NestedModelAdmin, VersionAdmin):
 
     @admin.action(description="🧩 Merge editor content into linked document")
     def merge_into_document(self, request, queryset):
-        merged = 0
-        failed = 0
+        def merge_one(editor):
+            real_editor = editor.get_real_instance()
+            if not real_editor.document:
+                raise RuntimeError("Editor {editor} has no linked document to merge into.")
+            document = real_editor.document.get_real_instance()
+            collector = None
+            if isinstance(document, LatexDocument):
+                collector = LaTeXCollector(real_editor)
+            elif isinstance(document, HTMLDocument):
+                collector = HTMLCollector(real_editor)
+            merge_editor_into_document(real_editor, collector)
+            return editor
+        result = BatchAction(queryset).run(merge_one)
+        BatchAction.display_messages(result, self.message_user, request, verb="merge")
 
-        for editor in queryset:
-            try:
-                content = gather_editor_content(editor)
-                doc = editor.document.get_real_instance()
-                doc.content = content
-                doc.save()
-                merged += 1
-            except Exception as e:
-                failed += 1
-                self.message_user(request, f"❌ Failed to merge '{editor.title}': {e}", level='error')
 
-        self.message_user(
-            request,
-            f"✅ Merged {merged} editor(s) into document. {'⚠️ ' + str(failed) + ' failed.' if failed else ''}",
-            level='info'
-        )
+@admin.register(HtmlDocumentEditor)
+class HtmlDocumentEditorAdmin(PolymorphicChildModelAdmin, VersionAdmin, NestedModelAdmin):
+    base_model = HtmlDocumentEditor
+    list_display = ['title', 'slug', 'version', 'created_by', 'created_at']
+    readonly_fields = ['created_at']
+    inlines = [EditorSectionInline]
+
+
+@admin.register(LatexDocumentEditor)
+class LatexDocumentEditorAdmin(PolymorphicChildModelAdmin, VersionAdmin, NestedModelAdmin):
+    base_model = LatexDocumentEditor
+    list_display = ['title', 'slug', 'version', 'created_by', 'created_at', 'preset']
+    readonly_fields = ['created_at']
+    inlines = [EditorSectionInline]
+
 

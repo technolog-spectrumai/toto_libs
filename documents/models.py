@@ -160,7 +160,7 @@ class Document(PolymorphicModel, BaseDocument):
 # ────────────────────────────────────────────────
 
 class LatexDocument(Document):
-    preset = models.ForeignKey(LatexPreset, on_delete=models.SET_NULL, null=True, blank=True)
+
 
     class Meta:
         verbose_name = "LaTeX Document"
@@ -215,12 +215,30 @@ class PDFFile(models.Model):
         return f"PDF for {self.document.title} (created {self.created_at.strftime('%Y-%m-%d')})"
 
 
-class DocumentEditor(BaseDocument):
-    document = models.ForeignKey(Document, on_delete=models.CASCADE, related_name='editors')
+class DocumentEditor(PolymorphicModel, BaseDocument):
     summary = models.TextField(blank=True, default="")
 
+    @property
+    def format(self):
+        return self.__class__.__name__.replace('DocumentEditor', '').lower()
+
     def __str__(self):
-        return f"Editor for {self.document.title} (v{self.version})"
+        return f"Editor for {self.title} (v{self.version})"
+
+
+class HtmlDocumentEditor(DocumentEditor):
+    document = models.ForeignKey(HTMLDocument, on_delete=models.CASCADE, related_name='editors', null=True, blank=True)
+
+    def __str__(self):
+        return f"HTML Editor for {self.title} (v{self.version})"
+
+class LatexDocumentEditor(DocumentEditor):
+
+    preset = models.ForeignKey(LatexPreset, on_delete=models.SET_NULL, null=True, blank=True)
+    document = models.ForeignKey(LatexDocument, on_delete=models.CASCADE, related_name='editors', null=True, blank=True)
+
+    def __str__(self):
+        return f"Latex Editor for {self.title} (v{self.version})"
 
 
 class EditorItem(models.Model):

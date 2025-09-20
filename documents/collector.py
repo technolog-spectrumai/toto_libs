@@ -18,8 +18,7 @@ class BaseCollector:
 class LaTeXCollector(BaseCollector):
     def __init__(self, editor: DocumentEditor):
         super().__init__(editor)
-        document = editor.document.get_real_instance()
-        preset = document.preset
+        preset = editor.preset
         self.doc = LatexDoc(documentclass=preset.document_class)
 
     def build_summary(self):
@@ -29,8 +28,7 @@ class LaTeXCollector(BaseCollector):
             self.doc.append(NoEscape(r'\end{abstract}'))
 
     def build_preamble(self):
-        document = self.editor.document.get_real_instance()
-        preset = document.preset
+        preset = self.editor.preset
         for pkg in preset.packages:
             self.doc.packages.append(Package(pkg))
         if preset.preamble:
@@ -45,8 +43,7 @@ class LaTeXCollector(BaseCollector):
         self.doc.append(NoEscape(r'\maketitle'))
 
     def build_footer(self):
-        document = self.editor.document.get_real_instance()
-        preset = document.preset
+        preset = self.editor.preset
         if preset.footer_note:
             self.doc.append(NoEscape(r'\vfill'))
             self.doc.append(NoEscape(r'\begin{center}'))
@@ -89,16 +86,13 @@ class HTMLCollector(BaseCollector):
     def render(self):
         return "\n".join(self.lines)
 
-
-def gather_editor_content(editor: DocumentEditor) -> str:
-    document = editor.document.get_real_instance()
+def get_collector_for_document(editor: DocumentEditor) -> BaseCollector:
+    real_editor = editor.get_real_instance()
+    document = real_editor.document.get_real_instance()
 
     if isinstance(document, LatexDocument):
-        collector = LaTeXCollector(editor)
+        return LaTeXCollector(real_editor)
     elif isinstance(document, HTMLDocument):
-        collector = HTMLCollector(editor)
+        return HTMLCollector(real_editor)
     else:
         raise TypeError(f"Unsupported document type: {type(document)}")
-
-    collector.collect()
-    return collector.render()
