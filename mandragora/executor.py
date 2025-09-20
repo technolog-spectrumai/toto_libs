@@ -26,7 +26,7 @@ class WorkflowExecutor:
             status="pending"
         )
 
-        current_app.send_task(
+        result = current_app.send_task(
             "mandragora.tasks.execute_node_task",
             args=[node_run.id],
             countdown=node.countdown,
@@ -38,6 +38,30 @@ class WorkflowExecutor:
                 'interval_max': node.countdown * 3,
             }
         )
+        node_run.task_id = result.id
+        node_run.save()
+
+    @staticmethod
+    def revoke_node_task(node_run_id, reason="Force terminated"):
+        node_run = NodeRun.objects.get(id=node_run_id)
+
+        if node_run.status in ["success", "failed", "terminated"]:
+            return  # Already completed
+
+        if node_run.task_id:
+            current_app.control.revoke(node_run.task_id, terminate=True, signal="SIGTERM")
+
+        node_run.status = "terminated"
+        node_run.error = reason
+        node_run.finished_at = timezone.now()
+        node_run.terminated = True
+        node_run.save()
+
+        workflow_run = node_run.workflow_run
+        workflow_run.status = "failed"
+        workflow_run.error = f"Node {node_run.node.name} was force terminated"
+        workflow_run.finished_at = timezone.now()
+        workflow_run.save()
 
     @staticmethod
     def execute_node(node_run_id):

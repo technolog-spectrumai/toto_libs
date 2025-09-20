@@ -148,7 +148,18 @@ class WorkflowRunAdmin(admin.ModelAdmin):
 
 @admin.register(NodeRun)
 class NodeRunAdmin(admin.ModelAdmin):
-    list_display = ("node", "workflow_run", "status", "started_at", "finished_at")
+    list_display = ("node", "workflow_run", "status", "started_at", "finished_at", "terminated")
     list_filter = ("status", "node__workflow")
     search_fields = ("node__name", "workflow_run__workflow__name")
     readonly_fields = ("started_at", "finished_at", "input_data", "output_data", "error")
+    actions = ["terminate_node_runs"]
+
+    def terminate_node_runs(self, request, queryset):
+        count = 0
+        for node_run in queryset:
+            if node_run.status not in ["success", "failed", "terminated"]:
+                WorkflowExecutor.revoke_node_task(node_run.id, reason="Terminated via admin")
+                count += 1
+        self.message_user(request, f"{count} node run(s) terminated.", level=messages.WARNING)
+
+    terminate_node_runs.short_description = "Force terminate selected node runs"
