@@ -16,7 +16,7 @@ from polymorphic.admin import (
     PolymorphicChildModelFilter
 )
 
-from .pdf import LaTeXToPDFConverter
+from .pdf import LatexCompiler
 from .models import (
     Tag, Department,
     LatexPreset, HTMLPreset,
@@ -75,13 +75,11 @@ class HTMLPresetAdmin(admin.ModelAdmin):
 
 class LatexWidgetMixin:
     def configure_widgets(self):
-        #self.fields['summary'].widget = AceWidget(mode='latex', theme='chrome')
         self.fields['content'].widget = AceWidget(mode='latex', theme='chrome')
 
 
 class HTMLWidgetMixin:
     def configure_widgets(self):
-        # self.fields['summary'].widget = TipTapWidget()
         self.fields['content'].widget = TipTapWidget()
 
 # ────────────────────────────────────────────────
@@ -94,7 +92,7 @@ class DocumentAdmin(PolymorphicParentModelAdmin, VersionAdmin):
     child_models = (LatexDocument, HTMLDocument)
     list_display = ['title', 'created_by', 'created_at', 'get_type']
     list_filter = [PolymorphicChildModelFilter, 'department', 'tags']
-    search_fields = ['title', 'summary', 'slug']
+    search_fields = ['title', 'slug']
     readonly_fields = ['created_at']
     filter_horizontal = ['tags']
     prepopulated_fields = {'slug': ('title',)}
@@ -132,7 +130,7 @@ class LatexDocumentAdmin(PolymorphicChildModelAdmin, VersionAdmin):
 
         for document in queryset:
             try:
-                converter = LaTeXToPDFConverter(document)
+                converter = LatexCompiler(document)
                 pdf_path = converter.generate_pdf()
 
                 if not os.path.exists(pdf_path):

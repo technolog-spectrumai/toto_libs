@@ -1,52 +1,26 @@
 import os
-from .models import LatexPreset
+from .models import LatexDocument
 from pylatex import Document as LatexDoc, Section, Subsection, Command, Package
 from pylatex.utils import NoEscape
 import tempfile
+from latex import build_pdf
 
 
-class LaTeXToPDFConverter:
-
-    def __init__(self, document):
+class LatexCompiler:
+    def __init__(self, document: LatexDocument):
         self.document = document
 
-    def _build_document(self):
-        preset = self.document.preset
-        doc = LatexDoc(documentclass=preset.document_class)
-
-        for pkg in preset.packages:
-            doc.packages.append(Package(pkg))
-
-        if preset.preamble:
-            doc.preamble.append(NoEscape(preset.preamble))
-
-        doc.preamble.append(Command('title', self.document.title))
-        author = self.document.department.owner.get_full_name() if self.document.department else "Unknown"
-        doc.preamble.append(Command('author', author))
-        doc.preamble.append(Command('date', NoEscape(r'\today')))
-        doc.append(NoEscape(r'\maketitle'))
-
-        if self.document.summary:
-            doc.append(NoEscape(r'\begin{abstract}'))
-            doc.append(self.document.summary)
-            doc.append(NoEscape(r'\end{abstract}'))
-
-        if preset.footer_note:
-            doc.append(NoEscape(r'\vfill'))
-            doc.append(NoEscape(r'\begin{center}'))
-            doc.append(NoEscape(r'\textit{' + preset.footer_note + '}'))
-            doc.append(NoEscape(r'\end{center}'))
-        return doc
+        if not isinstance(document, LatexDocument):
+            raise TypeError(f"Expected LatexDocument, got {type(document)}")
 
     def generate_pdf(self):
-        doc = self._build_document()
 
         ext = ".pdf"
         with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as temp_file:
             output_path = temp_file.name
 
-        # Generate the PDF directly to the temp file path
-        doc.generate_pdf(filepath=output_path.replace(ext, ""), clean_tex=False, compiler='pdflatex')
+        pdf = build_pdf(self.document.content)
+        pdf.save_to(output_path)
 
         # Confirm the file exists and return its path
         if os.path.exists(output_path):

@@ -78,7 +78,6 @@ class Command(IngressCommand):
             # LaTeX
             latex_doc = LatexDocument.objects.create(
                 title=f"LaTeX Document {i+1}",
-                summary="Summary – " + lorem.sentence(),
                 content="",
                 created_by=user,
                 department=department,
@@ -113,7 +112,6 @@ class Command(IngressCommand):
             # HTML
             html_doc = HTMLDocument.objects.create(
                 title=f"HTML Document {i+1}",
-                summary="Summary – " + lorem.sentence(),
                 content="",
                 created_by=user,
                 department=department,

@@ -4,7 +4,7 @@ from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
 from .models import Department, Document, LatexDocument, HTMLDocument
 from .mixins import PageDecoratedMixin
-from .pdf import LaTeXToPDFConverter
+from .pdf import LatexCompiler
 import os
 
 # ────────────────────────────────────────────────
@@ -73,7 +73,7 @@ def document_pdf_view(request, slug):
     )
 
     try:
-        generator = LaTeXToPDFConverter(document)
+        generator = LatexCompiler(document)
         pdf_output = generator.generate_pdf()
         if isinstance(pdf_output, str) and os.path.exists(pdf_output):
             return FileResponse(open(pdf_output, 'rb'), content_type='application/pdf')

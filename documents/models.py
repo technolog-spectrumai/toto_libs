@@ -142,7 +142,6 @@ class HTMLPreset(models.Model):
 # ────────────────────────────────────────────────
 
 class Document(PolymorphicModel, BaseDocument):
-    summary = models.TextField(blank=True)
     content = models.TextField(blank=True)
 
     class Meta:
@@ -218,6 +217,7 @@ class PDFFile(models.Model):
 
 class DocumentEditor(BaseDocument):
     document = models.ForeignKey(Document, on_delete=models.CASCADE, related_name='editors')
+    summary = models.TextField(blank=True, default="")
 
     def __str__(self):
         return f"Editor for {self.document.title} (v{self.version})"

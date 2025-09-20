@@ -21,27 +21,42 @@ class LaTeXCollector(BaseCollector):
         document = editor.document.get_real_instance()
         preset = document.preset
         self.doc = LatexDoc(documentclass=preset.document_class)
-        #📦 Packages
+
+    def build_summary(self):
+        if self.editor.summary:
+            self.doc.append(NoEscape(r'\begin{abstract}'))
+            self.doc.append(NoEscape(self.editor.summary))
+            self.doc.append(NoEscape(r'\end{abstract}'))
+
+    def build_preamble(self):
+        document = self.editor.document.get_real_instance()
+        preset = document.preset
         for pkg in preset.packages:
             self.doc.packages.append(Package(pkg))
-
-        # 📜 Preamble
         if preset.preamble:
             self.doc.preamble.append(NoEscape(preset.preamble))
-        # 🖋️ Metadata
+
+    def build_title(self):
+        document = self.editor.document.get_real_instance()
         self.doc.preamble.append(Command('title', document.title))
         author = document.department.owner.get_full_name() if document.department else "Unknown"
         self.doc.preamble.append(Command('author', author))
         self.doc.preamble.append(Command('date', NoEscape(r'\today')))
         self.doc.append(NoEscape(r'\maketitle'))
 
-        # 🧠 Abstract
-        if document.summary:
-            self.doc.append(NoEscape(r'\begin{abstract}'))
-            self.doc.append(NoEscape(document.summary))
-            self.doc.append(NoEscape(r'\end{abstract}'))
+    def build_footer(self):
+        document = self.editor.document.get_real_instance()
+        preset = document.preset
+        if preset.footer_note:
+            self.doc.append(NoEscape(r'\vfill'))
+            self.doc.append(NoEscape(r'\begin{center}'))
+            self.doc.append(NoEscape(r'\textit{' + preset.footer_note + '}'))
+            self.doc.append(NoEscape(r'\end{center}'))
 
     def collect(self):
+        self.build_preamble()
+        self.build_title()
+        self.build_summary()
         for section in self.editor.sections.all():
             with self.doc.create(Section(section.title)):
                 if section.content:
@@ -50,6 +65,7 @@ class LaTeXCollector(BaseCollector):
                     with self.doc.create(Subsection(subsection.title)):
                         if subsection.content:
                             self.doc.append(NoEscape(subsection.content))
+        self.build_footer()
 
     def render(self):
         return self.doc.dumps()
