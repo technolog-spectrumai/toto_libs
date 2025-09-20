@@ -201,7 +201,7 @@ class HTMLDocument(Document):
 
 class PDFFile(models.Model):
     document = models.OneToOneField(
-        LatexDocument,
+        Document,
         on_delete=models.CASCADE,
         related_name='pdf_file'
     )

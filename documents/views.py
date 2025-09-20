@@ -1,11 +1,12 @@
 from django.views.generic import DetailView, ListView
-from django.db.models import Prefetch
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
-from .models import Department, Document, LatexDocument, HTMLDocument
+from .models import Department, Document, LatexDocument, HTMLDocument, PDFFile
 from .mixins import PageDecoratedMixin
 from .pdf import LatexCompiler
 import os
+from django.core.files import File
+from django.utils.text import slugify
 
 # ────────────────────────────────────────────────
 # 📄 Document List View (All Types)
@@ -61,24 +62,3 @@ class DocumentDetailView(PageDecoratedMixin, DetailView):
             'tags': instance.tags.all(),
         })
         return context
-
-# ────────────────────────────────────────────────
-# 📄 PDF Export View (LaTeX Only)
-# ────────────────────────────────────────────────
-
-def document_pdf_view(request, slug):
-    document = get_object_or_404(
-        LatexDocument.objects.select_related('department', 'created_by').prefetch_related('tags'),
-        slug=slug
-    )
-
-    try:
-        generator = LatexCompiler(document)
-        pdf_output = generator.generate_pdf()
-        if isinstance(pdf_output, str) and os.path.exists(pdf_output):
-            return FileResponse(open(pdf_output, 'rb'), content_type='application/pdf')
-        else:
-            raise Http404("PDF could not be generated.")
-
-    except Exception as e:
-        raise Http404(f"PDF generation failed. {e}")
