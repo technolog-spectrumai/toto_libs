@@ -5,19 +5,17 @@ from oya.ingress import IngressCommand
 from documents.models import (
     Tag, Department,
     HTMLPreset, LatexPreset,
-    LatexDocument, LatexSection, LatexSubSection,
-    HTMLPreview
+    LatexDocument, HTMLDocument
 )
-from documents.convert import LaTeXToHTMLConverter
 
 class Command(IngressCommand):
-    help = "Seed LaTeX documents with sections, subsections, and styled HTML previews using existing users"
+    help = "Seed LaTeX and HTML documents using existing users"
 
     def process(self, _):
         self.create_dashboard_item(
             title="Documents",
             icon="file-text",
-            description="LaTeX presets, departments, and structured documents with HTML previews.",
+            description="LaTeX and HTML documents with presets, departments, and tags.",
             link="/documents/"
         )
 
@@ -51,7 +49,7 @@ class Command(IngressCommand):
         html_preset = HTMLPreset.objects.create(
             name="HTML Preset",
             description="Default HTML setup",
-            css_classes={}, #{"body": "bg-white text-black", "header": "font-bold"}
+            css_classes={},
             style_mapping={
                 "h1": "text-3xl font-bold mt-8 mb-4",
                 "h2": "text-2xl font-semibold mt-6 mb-3",
@@ -71,9 +69,7 @@ class Command(IngressCommand):
             footer_note=lorem.sentence()
         )
 
-        converter = LaTeXToHTMLConverter()
-
-        # 📄 Create LaTeX Documents + HTML Previews
+        # 📄 Create LaTeX and HTML Documents
         for i in range(4):
             user = users[i % len(users)]
             department = departments[i % len(departments)]
@@ -81,38 +77,25 @@ class Command(IngressCommand):
             latex_doc = LatexDocument.objects.create(
                 title=f"LaTeX Document {i+1}",
                 summary="Summary – " + lorem.sentence(),
+                content=lorem.paragraph(),
                 created_by=user,
                 department=department,
                 created_at=timezone.now(),
                 preset=latex_preset
             )
             latex_doc.tags.set(tags)
+            self.stdout.write(f"📄 Created: {latex_doc.title}")
 
-            # Add sections and subsections
-            for j in range(2):
-                section = LatexSection.objects.create(
-                    document=latex_doc,
-                    title=f"Section {j+1}",
-                    order=j,
-                    content=lorem.paragraph()
-                )
-                for k in range(2):
-                    LatexSubSection.objects.create(
-                        section=section,
-                        order=k,
-                        title=f"SubSection {j+1}.{k+1}",
-                        content=lorem.paragraph()
-                    )
-
-            # 🌐 Generate Styled HTML Preview
-            raw_html = converter.convert_document(latex_doc)
-
-            HTMLPreview.objects.create(
-                latex_document=latex_doc,
-                preset=html_preset,
-                content=raw_html
+            html_doc = HTMLDocument.objects.create(
+                title=f"HTML Document {i+1}",
+                summary="Summary – " + lorem.sentence(),
+                content=f"<h1>Heading</h1><p>{lorem.paragraph()}</p>",
+                created_by=user,
+                department=department,
+                created_at=timezone.now(),
+                preset=html_preset
             )
+            html_doc.tags.set(tags)
+            self.stdout.write(f"🌐 Created: {html_doc.title}")
 
-            self.stdout.write(f"✅ Created: {latex_doc.title} with styled preview")
-
-        self.stdout.write(self.style.SUCCESS("🎉 Ingress complete. All LaTeX documents and styled previews seeded."))
+        self.stdout.write(self.style.SUCCESS("🎉 Ingress complete. Documents seeded."))
