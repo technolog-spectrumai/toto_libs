@@ -130,8 +130,8 @@ class LatexDocumentAdmin(PolymorphicChildModelAdmin, VersionAdmin):
 
         for document in queryset:
             try:
-                converter = LatexCompiler(document)
-                pdf_path = converter.generate_pdf()
+                compiler = LatexCompiler(document)
+                pdf_path = compiler.generate_pdf()
 
                 if not os.path.exists(pdf_path):
                     raise FileNotFoundError("PDF file not found after generation.")
