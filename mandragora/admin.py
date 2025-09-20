@@ -5,6 +5,7 @@ from .models import (
 )
 from .executor import WorkflowExecutor
 from django.utils.safestring import mark_safe
+import json
 
 
 def render_mermaid_diagram(diagram: str) -> str:
@@ -151,7 +152,7 @@ class NodeRunAdmin(admin.ModelAdmin):
     list_display = ("node", "workflow_run", "status", "started_at", "finished_at", "terminated")
     list_filter = ("status", "node__workflow")
     search_fields = ("node__name", "workflow_run__workflow__name")
-    readonly_fields = ("started_at", "finished_at", "input_data", "output_data", "error")
+    readonly_fields = ("started_at", "finished_at", "pretty_input_data", "pretty_output_data", "error")
     actions = ["terminate_node_runs"]
 
     def terminate_node_runs(self, request, queryset):
@@ -163,3 +164,18 @@ class NodeRunAdmin(admin.ModelAdmin):
         self.message_user(request, f"{count} node run(s) terminated.", level=messages.WARNING)
 
     terminate_node_runs.short_description = "Force terminate selected node runs"
+
+    def pretty_input_data(self, obj):
+        return self._format_json(obj.input_data)
+    pretty_input_data.short_description = "Input Data"
+
+    def pretty_output_data(self, obj):
+        return self._format_json(obj.output_data)
+    pretty_output_data.short_description = "Output Data"
+
+    def _format_json(self, data):
+        try:
+            formatted = json.dumps(data, indent=2, ensure_ascii=False)
+            return mark_safe(f"<pre style='white-space: pre-wrap;'>{formatted}</pre>")
+        except Exception as e:
+            return f"Invalid JSON: {e}"
