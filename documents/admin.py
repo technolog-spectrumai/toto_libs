@@ -72,12 +72,13 @@ class HTMLPresetAdmin(admin.ModelAdmin):
 
 class LatexWidgetMixin:
     def configure_widgets(self):
-        self.fields['summary'].widget = AceWidget(mode='latex', theme='chrome')
+        #self.fields['summary'].widget = AceWidget(mode='latex', theme='chrome')
         self.fields['content'].widget = AceWidget(mode='latex', theme='chrome')
 
 
 class HTMLWidgetMixin:
     def configure_widgets(self):
+        # self.fields['summary'].widget = TipTapWidget()
         self.fields['content'].widget = TipTapWidget()
 
 # ────────────────────────────────────────────────
