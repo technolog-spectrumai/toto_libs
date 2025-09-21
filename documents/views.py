@@ -1,15 +1,10 @@
 from django.views.generic import DetailView, ListView
-from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
-from .models import Department, Document, LatexDocument, HTMLDocument, PDFFile
+from .models import Department, Document, HTMLFile
 from .mixins import PageDecoratedMixin
-from .pdf import LatexCompiler
-import os
-from django.core.files import File
-from django.utils.text import slugify
 
 # ────────────────────────────────────────────────
-# 📄 Document List View (All Types)
+# 📄 Document List View
 # ────────────────────────────────────────────────
 
 class DocumentListView(PageDecoratedMixin, ListView):
@@ -26,8 +21,6 @@ class DocumentListView(PageDecoratedMixin, ListView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        for doc in context['documents']:
-            doc.type_label = doc.document_type
         context.update({
             'departments': Department.objects.all(),
             'selected_department': self.request.GET.get('department')
@@ -35,7 +28,7 @@ class DocumentListView(PageDecoratedMixin, ListView):
         return context
 
 # ────────────────────────────────────────────────
-# 📄 Document Detail View (Polymorphic)
+# 📄 Document Detail View (HTML Preview Only)
 # ────────────────────────────────────────────────
 
 class DocumentDetailView(PageDecoratedMixin, DetailView):
@@ -45,20 +38,25 @@ class DocumentDetailView(PageDecoratedMixin, DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        instance = self.object.get_real_instance()
+        html_file = getattr(self.object, 'html_file', None)
 
         preview_html = ""
         preview_css = ""
 
-        if isinstance(instance, HTMLDocument):
-            preview_html = instance.html
-            if instance.preset and instance.preset.css_classes:
-                preview_css = " ".join(instance.preset.css_classes.values())
+        if html_file and html_file.file:
+            try:
+                with html_file.file.open('r') as f:
+                    preview_html = f.read()
+            except Exception:
+                preview_html = "<p class='text-red-600'>Error loading HTML preview.</p>"
+
+            if html_file.preset and html_file.preset.style_mapping:
+                preview_css = " ".join(html_file.preset.style_mapping.values())
 
         context.update({
             'preview': preview_html,
             'preview_css': preview_css,
-            'department': instance.department,
-            'tags': instance.tags.all(),
+            'department': self.object.department,
+            'tags': self.object.tags.all(),
         })
         return context

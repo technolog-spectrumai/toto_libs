@@ -1,26 +1,29 @@
 from django.contrib.auth.models import User
 from lorem_text import lorem
 from oya.ingress import IngressCommand
+from django.core.files.base import ContentFile
+from django.utils.text import slugify
+
 from documents.models import (
     Tag, Department,
-    HTMLPreset, LatexPreset,
-    HTMLDocument, LatexDocument,
-    HtmlDocumentEditor, LatexDocumentEditor,
-    EditorSection, EditorSubSection
+    LatexPreset, HTMLPreset,
+    Document, DocumentSection, DocumentSubSection,
+    HTMLFile
 )
+from documents.convert import LatexDocumentConverter  # your converter class
 
 class Command(IngressCommand):
-    help = "Seed HTML and LaTeX editors linked to empty documents, with presets, departments, tags, and structured content"
+    help = "Seed a LaTeX document with tags, department, presets, structured content, and HTML conversion"
 
     def process(self, _):
         self.create_dashboard_item(
-            title="Document Editors",
-            icon="edit",
-            description="HTML and LaTeX editors linked to empty documents, with structured sections and lorem content.",
+            title="Seeded Document",
+            icon="file-text",
+            description="LaTeX document with structured sections and HTML preview.",
             link="/documents/"
         )
 
-        self.stdout.write("🚀 Starting editor ingress...")
+        self.stdout.write("🚀 Starting document ingress...")
 
         users = list(User.objects.all())
         if not users:
@@ -37,85 +40,54 @@ class Command(IngressCommand):
             owner=users[0]
         )
 
-        # 🌐 HTML Preset
-        html_preset = HTMLPreset.objects.create(
-            name="Default Web Style",
-            description="Standard HTML styling for web editors."
-        )
-
         # 🧪 LaTeX Preset
         latex_preset = LatexPreset.objects.create(
             name="Academic Article",
-            description="LaTeX preset for academic editors.",
             document_class="article",
             packages=["amsmath", "graphicx", "hyperref"],
-            preamble=r"\usepackage{amsmath}\usepackage{graphicx}\usepackage{hyperref}"
+            preamble=r"\usepackage{amsmath}\usepackage{graphicx}\usepackage{hyperref}",
+            footer_note="This document is confidential and intended solely for internal use."
         )
 
-        # 📄 Empty HTML Document
-        html_doc = HTMLDocument.objects.create(
-            title="Empty HTML Document",
-            created_by=users[0],
-            department=department,
-            preset=html_preset,
-            content=""
-        )
-        html_doc.tags.set(tags[:2])
-
-        # 📄 Empty LaTeX Document
-        latex_doc = LatexDocument.objects.create(
-            title="Empty LaTeX Document",
-            created_by=users[0],
-            department=department,
-            content=""
-        )
-        latex_doc.tags.set(tags[2:])
-
-        # 🧑‍💻 HTML Editor
-        html_editor = HtmlDocumentEditor.objects.create(
-            title="HTML Editor Seed",
-            created_by=users[0],
-            department=department,
-            document=html_doc,
-            summary=lorem.sentence()
+        # 🌐 HTML Preset
+        html_preset = HTMLPreset.objects.create(
+            name="Default Web Style"
         )
 
-        # 🧑‍💻 LaTeX Editor
-        latex_editor = LatexDocumentEditor.objects.create(
-            title="LaTeX Editor Seed",
+        # 📄 Document
+        document = Document.objects.create(
+            title="Seeded LaTeX Document",
             created_by=users[0],
             department=department,
-            document=latex_doc,
             preset=latex_preset,
-            summary=lorem.sentence()
+            content="\\section{Introduction} This is the opening paragraph."
+        )
+        document.tags.set(tags[:3])
+
+        # 🧩 Sections
+        section = DocumentSection.objects.create(
+            document=document,
+            order=1,
+            title="Abstract",
+            content=lorem.paragraph()
         )
 
-        # 🧩 HTML Sections
-        html_section = EditorSection.objects.create(
-            document=html_editor,
+        DocumentSubSection.objects.create(
+            section=section,
             order=1,
-            title="HTML Introduction",
-            content=f"<h1>Intro</h1><p>{lorem.paragraph()}</p>"
-        )
-        EditorSubSection.objects.create(
-            section=html_section,
-            order=1,
-            title="HTML Subsection A",
-            content=f"<p>{lorem.paragraph()}</p>"
+            title="Details",
+            content=lorem.paragraph()
         )
 
-        # 🧩 LaTeX Sections
-        latex_section = EditorSection.objects.create(
-            document=latex_editor,
-            order=1,
-            title="LaTeX Abstract",
-            content=f"\\section{{Abstract}} {lorem.paragraph()}"
-        )
-        EditorSubSection.objects.create(
-            section=latex_section,
-            order=1,
-            title="LaTeX Subsection B",
-            content=f"\\subsection{{Details}} {lorem.paragraph()}"
+        # 🔁 Convert to HTML and store as HTMLFile
+        html_content = LatexDocumentConverter(document).to_html()
+
+        HTMLFile.objects.filter(document=document).delete()
+
+        HTMLFile.objects.create(
+            document=document,
+            preset=html_preset,
+            file=ContentFile(html_content.encode('utf-8'), name=f"{slugify(document.title)}.html")
         )
 
-        self.stdout.write(self.style.SUCCESS("✅ Editor ingress completed successfully."))
+        self.stdout.write(self.style.SUCCESS("✅ Document ingress completed with HTML conversion."))

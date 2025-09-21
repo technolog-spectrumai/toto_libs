@@ -1,30 +1,59 @@
 import os
-from .models import LatexDocument
-import tempfile
-from latex import build_pdf
+from pylatex import Document as PyDocument, Section, Subsection, Command, Package
+from pylatex.utils import NoEscape
+from django.conf import settings
+from django.utils.text import slugify
 
 
 class LatexCompiler:
-    def __init__(self, document: LatexDocument):
+    def __init__(self, document):
         self.document = document
-
-        if not isinstance(document, LatexDocument):
-            raise TypeError(f"Expected LatexDocument, got {type(document)}")
+        self.preset = document.preset
+        self.output_dir = os.path.join(settings.MEDIA_ROOT, 'compiled_pdfs')
+        os.makedirs(self.output_dir, exist_ok=True)
 
     def generate_pdf(self):
+        doc = PyDocument(documentclass=self.preset.document_class if self.preset else 'article')
 
-        ext = ".pdf"
-        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as temp_file:
-            output_path = temp_file.name
+        # Add packages
+        if self.preset and self.preset.packages:
+            for pkg in self.preset.packages:
+                doc.packages.append(Package(pkg))
 
-        clean_content = self.document.content.replace('\r\n', '\n').replace('\r', '\n')
-        pdf = build_pdf(clean_content)
-        pdf.save_to(output_path)
+        # Add preamble
+        if self.preset and self.preset.preamble:
+            doc.preamble.append(NoEscape(self.preset.preamble))
 
-        # Confirm the file exists and return its path
-        if os.path.exists(output_path):
-            return output_path
-        else:
-            raise FileNotFoundError(f"PDF generation failed at {output_path}")
+        # Title
+        doc.preamble.append(Command('title', self.document.title))
+        doc.preamble.append(Command('author', self.document.created_by.get_full_name() or self.document.created_by.username))
+        doc.preamble.append(Command('date', NoEscape(r'\today')))
+        doc.append(NoEscape(r'\maketitle'))
 
+        # Main content
+        if self.document.content:
+            doc.append(NoEscape(self.document.content))
 
+        # Sections and Subsections
+        for section in self.document.sections.all():
+            with doc.create(Section(section.title)):
+                if section.content:
+                    doc.append(NoEscape(section.content))
+                for subsection in section.subsections.all():
+                    with doc.create(Subsection(subsection.title)):
+                        if subsection.content:
+                            doc.append(NoEscape(subsection.content))
+
+        # Footer note
+        if self.preset and self.preset.footer_note:
+            doc.append(NoEscape(r'\vfill'))
+            doc.append(NoEscape(r'\begin{center}'))
+            doc.append(NoEscape(r'\small ' + self.preset.footer_note))
+            doc.append(NoEscape(r'\end{center}'))
+
+        # Compile
+        filename = f"{slugify(self.document.title)}.pdf"
+        filepath = os.path.join(self.output_dir, filename)
+        doc.generate_pdf(filepath, clean_tex=False, compiler='pdflatex')
+
+        return filepath if os.path.exists(filepath) else None
