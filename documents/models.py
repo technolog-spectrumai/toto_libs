@@ -152,8 +152,8 @@ class PDFFile(models.Model):
 class HTMLFile(models.Model):
     document = models.OneToOneField(Document, on_delete=models.CASCADE, related_name='html_file')
     preset = models.ForeignKey(HTMLPreset, on_delete=models.SET_NULL, null=True, blank=True)
-    file = models.FileField(upload_to='compiled_html/')
     created_at = models.DateTimeField(auto_now_add=True)
+    content = models.TextField(blank=True)
 
     def __str__(self):
         return f"HTML for {self.document.title} ({self.created_at.date()})"

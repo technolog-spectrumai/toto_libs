@@ -1,7 +1,6 @@
 from django.contrib.auth.models import User
 from lorem_text import lorem
 from oya.ingress import IngressCommand
-from django.core.files.base import ContentFile
 from django.utils.text import slugify
 
 from documents.models import (
@@ -79,7 +78,7 @@ class Command(IngressCommand):
             content=lorem.paragraph()
         )
 
-        # 🔁 Convert to HTML and store as HTMLFile
+        # 🔁 Convert to HTML and store as raw content
         html_content = LatexDocumentConverter(document).to_html()
 
         HTMLFile.objects.filter(document=document).delete()
@@ -87,7 +86,7 @@ class Command(IngressCommand):
         HTMLFile.objects.create(
             document=document,
             preset=html_preset,
-            file=ContentFile(html_content.encode('utf-8'), name=f"{slugify(document.title)}.html")
+            content=html_content
         )
 
         self.stdout.write(self.style.SUCCESS("✅ Document ingress completed with HTML conversion."))

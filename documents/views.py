@@ -40,18 +40,11 @@ class DocumentDetailView(PageDecoratedMixin, DetailView):
         context = super().get_context_data(**kwargs)
         html_file = getattr(self.object, 'html_file', None)
 
-        preview_html = ""
+        preview_html = html_file.content if html_file and html_file.content else ""
         preview_css = ""
 
-        if html_file and html_file.file:
-            try:
-                with html_file.file.open('r') as f:
-                    preview_html = f.read()
-            except Exception:
-                preview_html = "<p class='text-red-600'>Error loading HTML preview.</p>"
-
-            if html_file.preset and html_file.preset.style_mapping:
-                preview_css = " ".join(html_file.preset.style_mapping.values())
+        if html_file and html_file.preset and html_file.preset.style_mapping:
+            preview_css = " ".join(html_file.preset.style_mapping.values())
 
         context.update({
             'preview': preview_html,
@@ -60,3 +53,4 @@ class DocumentDetailView(PageDecoratedMixin, DetailView):
             'tags': self.object.tags.all(),
         })
         return context
+

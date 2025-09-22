@@ -14,6 +14,8 @@ from .models import (
 from .convert import LatexDocumentConverter
 from .batch import BatchAction
 from django.core.files.base import ContentFile
+from django_ace import AceWidget
+from django_tiptap.widgets import TipTapWidget
 # ────────────────────────────────────────────────
 # 🔖 Tag & Department Admin
 # ────────────────────────────────────────────────
@@ -64,15 +66,39 @@ class DocumentForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields['content'].widget = AceWidget(mode='latex', theme='chrome')
+        self.fields['content'].widget.attrs.update({'style': 'font-family: monospace;'})
+
+class DocumentSectionForm(forms.ModelForm):
+    class Meta:
+        model = DocumentSection
+        fields = ['title', 'order', 'content']
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['content'].widget = AceWidget(mode='latex', theme='chrome')
+        self.fields['content'].widget.attrs.update({'style': 'font-family: monospace;'})
+
+
+class DocumentSubSectionForm(forms.ModelForm):
+    class Meta:
+        model = DocumentSubSection
+        fields = ['title', 'order', 'content']
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['content'].widget = AceWidget(mode='latex', theme='chrome')
         self.fields['content'].widget.attrs.update({'style': 'font-family: monospace;'})
 
 class DocumentSubSectionInline(NestedStackedInline):
     model = DocumentSubSection
+    form = DocumentSubSectionForm
     extra = 1
     ordering = ['order']
 
 class DocumentSectionInline(NestedStackedInline):
     model = DocumentSection
+    form = DocumentSectionForm
     extra = 1
     ordering = ['order']
     inlines = [DocumentSubSectionInline]
@@ -87,7 +113,7 @@ class DocumentAdmin(VersionAdmin, NestedModelAdmin):
     filter_horizontal = ['tags']
     prepopulated_fields = {'slug': ('title',)}
     inlines = [DocumentSectionInline]
-    actions = ['compile_pdf']
+    actions = ['compile_pdf', 'convert_to_html']
 
     @admin.action(description="Compile selected documents to PDF")
     def compile_pdf(self, request, queryset):
@@ -121,21 +147,18 @@ class DocumentAdmin(VersionAdmin, NestedModelAdmin):
             # Remove existing HTMLFile if present
             HTMLFile.objects.filter(document=document).delete()
 
-            # Save HTML content as a file
-            file_name = f"{slugify(document.title)}.html"
-            html_file = ContentFile(html_content.encode('utf-8'), name=file_name)
-
-            # Create new HTMLFile entry
+            # Create new HTMLFile entry with raw HTML content only
             HTMLFile.objects.create(
                 document=document,
                 preset=None,  # or assign a default preset if needed
-                file=html_file
+                content=html_content
             )
 
             return document
 
         result = BatchAction(queryset).run(convert_one)
         BatchAction.display_messages(result, self.message_user, request, verb="convert")
+
 
 # ────────────────────────────────────────────────
 # 📎 Output Files Admin
@@ -149,10 +172,23 @@ class PDFFileAdmin(admin.ModelAdmin):
     list_filter = ['created_at']
     ordering = ['-created_at']
 
+
+class HTMLFileForm(forms.ModelForm):
+    class Meta:
+        model = HTMLFile
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['content'].widget = TipTapWidget()
+
+
 @admin.register(HTMLFile)
 class HTMLFileAdmin(admin.ModelAdmin):
+    form = HTMLFileForm
     list_display = ['document', 'created_at']
     readonly_fields = ['created_at']
     search_fields = ['document__title']
     list_filter = ['created_at']
     ordering = ['-created_at']
+
