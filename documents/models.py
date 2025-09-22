@@ -154,6 +154,7 @@ class HTMLFile(models.Model):
     preset = models.ForeignKey(HTMLPreset, on_delete=models.SET_NULL, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     content = models.TextField(blank=True)
+    summary = models.CharField(max_length=1024, blank=True)
 
     def __str__(self):
         return f"HTML for {self.document.title} ({self.created_at.date()})"

@@ -52,8 +52,8 @@ class LatexCompiler:
             doc.append(NoEscape(r'\end{center}'))
 
         # Compile
-        filename = f"{slugify(self.document.title)}.pdf"
+        file_base = slugify(self.document.title)
+        filename = f"{file_base}.pdf"
         filepath = os.path.join(self.output_dir, filename)
-        doc.generate_pdf(filepath, clean_tex=False, compiler='pdflatex')
-
+        doc.generate_pdf(os.path.join(self.output_dir, file_base), clean_tex=False, compiler='pdflatex')
         return filepath if os.path.exists(filepath) else None

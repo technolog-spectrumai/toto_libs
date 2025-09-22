@@ -86,7 +86,8 @@ class Command(IngressCommand):
         HTMLFile.objects.create(
             document=document,
             preset=html_preset,
-            content=html_content
+            content=html_content,
+            summary="HTML version of the LaTeX document"
         )
 
         self.stdout.write(self.style.SUCCESS("✅ Document ingress completed with HTML conversion."))
