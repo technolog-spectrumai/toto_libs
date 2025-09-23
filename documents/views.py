@@ -1,11 +1,7 @@
 from django.views.generic import DetailView, ListView
-from django.shortcuts import get_object_or_404
-from .models import Department, Document, HTMLFile
+from .models import Department, Document
 from .mixins import PageDecoratedMixin
-
-# ────────────────────────────────────────────────
-# 📄 Document List View
-# ────────────────────────────────────────────────
+from documents.models import HTMLPreset, LatexPreset
 
 class DocumentListView(PageDecoratedMixin, ListView):
     model = Document
@@ -28,7 +24,7 @@ class DocumentListView(PageDecoratedMixin, ListView):
         return context
 
 # ────────────────────────────────────────────────
-# 📄 Document Detail View (HTML Preview Only)
+# 📄 Document Detail View (Preset-aware rendering)
 # ────────────────────────────────────────────────
 
 class DocumentDetailView(PageDecoratedMixin, DetailView):
@@ -38,19 +34,20 @@ class DocumentDetailView(PageDecoratedMixin, DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        html_file = getattr(self.object, 'html_file', None)
+        document = self.object
 
-        preview_html = html_file.content if html_file and html_file.content else ""
-        preview_css = ""
-
-        if html_file and html_file.preset and html_file.preset.style_mapping:
-            preview_css = " ".join(html_file.preset.style_mapping.values())
+        if isinstance(document.preset, HTMLPreset):
+            preview_html = document.content
+            preview_css = " ".join(document.preset.style_mapping.values()) if document.preset.style_mapping else ""
+        else:
+            preview_html = ""  # or escape(document.content) if you want to show raw LaTeX safely
+            preview_css = ""
 
         context.update({
             'preview': preview_html,
             'preview_css': preview_css,
-            'department': self.object.department,
-            'tags': self.object.tags.all(),
+            'department': document.department,
+            'tags': document.tags.all(),
+            'is_html': isinstance(document.preset, HTMLPreset),
         })
         return context
-

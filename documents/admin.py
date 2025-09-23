@@ -9,19 +9,12 @@ from .models import (
     Tag, Department,
     LatexPreset, HTMLPreset,
     Document, DocumentSection, DocumentSubSection,
-    PDFFile, HTMLFile
+    PDFFile
 )
 from .convert import LatexToHTMLConverter, HTMLToLatexConverter
 from .batch import BatchAction
-from django.core.files.base import ContentFile
 from django_ace import AceWidget
 from django_tiptap.widgets import TipTapWidget
-from polymorphic.admin import (
-    PolymorphicParentModelAdmin,
-    PolymorphicChildModelAdmin,
-    PolymorphicChildModelFilter
-)
-from .models import BasePreset  # assuming you renamed or added this
 
 
 
@@ -256,24 +249,3 @@ class PDFFileAdmin(admin.ModelAdmin):
     search_fields = ['document__title']
     list_filter = ['created_at']
     ordering = ['-created_at']
-
-
-class HTMLFileForm(forms.ModelForm):
-    class Meta:
-        model = HTMLFile
-        fields = '__all__'
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fields['content'].widget = TipTapWidget()
-
-
-@admin.register(HTMLFile)
-class HTMLFileAdmin(admin.ModelAdmin):
-    form = HTMLFileForm
-    list_display = ['document', 'created_at']
-    readonly_fields = ['created_at']
-    search_fields = ['document__title']
-    list_filter = ['created_at']
-    ordering = ['-created_at']
-
