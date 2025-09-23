@@ -44,7 +44,7 @@ class Command(IngressCommand):
             name="Academic Article",
             document_class="article",
             packages=["amsmath", "graphicx", "hyperref"],
-            preamble=r"\usepackage{amsmath}\usepackage{graphicx}\usepackage{hyperref}",
+            preamble=r"",
             footer_note="This document is confidential and intended solely for internal use."
         )
 

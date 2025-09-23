@@ -101,6 +101,14 @@ class Document(models.Model):
     content = models.TextField(blank=True)
     preset = models.ForeignKey(BasePreset, on_delete=models.SET_NULL, null=True, blank=True)
 
+    @property
+    def preset_type(self):
+        if isinstance(self.preset, LatexPreset):
+            return "LaTeX"
+        elif isinstance(self.preset, HTMLPreset):
+            return "HTML"
+        return "Unknown"
+
     def __str__(self):
         return f"{self.title} (v{self.version})"
 

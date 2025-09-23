@@ -16,6 +16,15 @@ from .batch import BatchAction
 from django.core.files.base import ContentFile
 from django_ace import AceWidget
 from django_tiptap.widgets import TipTapWidget
+from polymorphic.admin import (
+    PolymorphicParentModelAdmin,
+    PolymorphicChildModelAdmin,
+    PolymorphicChildModelFilter
+)
+from .models import BasePreset  # assuming you renamed or added this
+
+
+
 # ────────────────────────────────────────────────
 # 🔖 Tag & Department Admin
 # ────────────────────────────────────────────────
@@ -59,6 +68,12 @@ class HTMLPresetAdmin(admin.ModelAdmin):
 # 🧩 Document Admin
 # ────────────────────────────────────────────────
 
+def resolve_editor_widget(preset_type):
+    if preset_type == "HTML":
+        return TipTapWidget()
+    return AceWidget(mode='latex', theme='chrome')
+
+
 class DocumentForm(forms.ModelForm):
     class Meta:
         model = Document
@@ -66,8 +81,11 @@ class DocumentForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['content'].widget = AceWidget(mode='latex', theme='chrome')
+        preset_type = self.instance.preset_type if self.instance.pk else "LaTeX"
+        widget = resolve_editor_widget(preset_type)
+        self.fields['content'].widget = widget
         self.fields['content'].widget.attrs.update({'style': 'font-family: monospace;'})
+
 
 class DocumentSectionForm(forms.ModelForm):
     class Meta:
@@ -75,8 +93,13 @@ class DocumentSectionForm(forms.ModelForm):
         fields = ['title', 'order', 'content']
 
     def __init__(self, *args, **kwargs):
+        document = kwargs.pop('document', None)
         super().__init__(*args, **kwargs)
-        self.fields['content'].widget = AceWidget(mode='latex', theme='chrome')
+        preset_type = "LaTeX"
+        if document and hasattr(document, 'preset_type'):
+            preset_type = document.preset_type
+        widget = resolve_editor_widget(preset_type)
+        self.fields['content'].widget = widget
         self.fields['content'].widget.attrs.update({'style': 'font-family: monospace;'})
 
 
@@ -86,27 +109,56 @@ class DocumentSubSectionForm(forms.ModelForm):
         fields = ['title', 'order', 'content']
 
     def __init__(self, *args, **kwargs):
+        document = kwargs.pop('document', None)
         super().__init__(*args, **kwargs)
-        self.fields['content'].widget = AceWidget(mode='latex', theme='chrome')
+        preset_type = "LaTeX"
+        if document and hasattr(document, 'preset_type'):
+            preset_type = document.preset_type
+        widget = resolve_editor_widget(preset_type)
+        self.fields['content'].widget = widget
         self.fields['content'].widget.attrs.update({'style': 'font-family: monospace;'})
+
+
 
 class DocumentSubSectionInline(NestedStackedInline):
     model = DocumentSubSection
     form = DocumentSubSectionForm
-    extra = 1
+    extra = 0
     ordering = ['order']
+
+    def get_formset(self, request, obj=None, **kwargs):
+        FormSet = super().get_formset(request, obj, **kwargs)
+
+        class CustomFormSet(FormSet):
+            def __init__(self, *args, **kwargs):
+                kwargs['form_kwargs'] = {'document': obj.document if obj else None}
+                super().__init__(*args, **kwargs)
+
+        return CustomFormSet
+
 
 class DocumentSectionInline(NestedStackedInline):
     model = DocumentSection
     form = DocumentSectionForm
-    extra = 1
+    extra = 0
     ordering = ['order']
     inlines = [DocumentSubSectionInline]
+
+    def get_formset(self, request, obj=None, **kwargs):
+        FormSet = super().get_formset(request, obj, **kwargs)
+
+        class CustomFormSet(FormSet):
+            def __init__(self, *args, **kwargs):
+                kwargs['form_kwargs'] = {'document': obj}
+                super().__init__(*args, **kwargs)
+
+        return CustomFormSet
+
 
 @admin.register(Document)
 class DocumentAdmin(VersionAdmin, NestedModelAdmin):
     form = DocumentForm
-    list_display = ['title', 'version', 'created_by', 'created_at']
+    list_display = ['title', 'version', 'created_by', 'created_at', 'preset_type']
     list_filter = ['department', 'tags', 'created_at']
     search_fields = ['title', 'slug']
     readonly_fields = ['created_at']
@@ -114,6 +166,10 @@ class DocumentAdmin(VersionAdmin, NestedModelAdmin):
     prepopulated_fields = {'slug': ('title',)}
     inlines = [DocumentSectionInline]
     actions = ['compile_pdf', 'convert_to_html']
+    #
+    # @admin.display(description="Preset Type")
+    # def preset_type(self, obj):
+    #     return obj.preset_type
 
     @admin.action(description="Compile selected documents to PDF")
     def compile_pdf(self, request, queryset):
