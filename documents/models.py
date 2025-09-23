@@ -3,6 +3,8 @@ from django.contrib.auth.models import User
 from django.utils.text import slugify
 from django_jsonform.models.fields import JSONField
 import reversion
+from polymorphic.models import PolymorphicModel
+
 
 # ────────────────────────────────────────────────
 # 🔖 Tag Model
@@ -26,12 +28,25 @@ class Department(models.Model):
     def __str__(self):
         return self.name
 
+
+
+class BasePreset(PolymorphicModel):
+    name = models.CharField(max_length=100)
+
+    class Meta:
+        verbose_name = "Preset"
+        verbose_name_plural = "Presets"
+
+    def __str__(self):
+        return f"{self.name} [{self.__class__.__name__}]"
+
+
+
 # ────────────────────────────────────────────────
 # 🧪 LaTeX Preset
 # ────────────────────────────────────────────────
 
-class LatexPreset(models.Model):
-    name = models.CharField(max_length=100)
+class LatexPreset(BasePreset):
     document_class = models.CharField(max_length=100, default='article')
     preamble = models.TextField(blank=True)
     packages = JSONField(schema={"type": "array", "items": {"type": "string"}}, default=list)
@@ -44,8 +59,7 @@ class LatexPreset(models.Model):
 # 🌐 HTML Preset
 # ────────────────────────────────────────────────
 
-class HTMLPreset(models.Model):
-    name = models.CharField(max_length=100)
+class HTMLPreset(BasePreset):
     style_mapping = JSONField(
         schema={
             'type': 'object',
@@ -85,7 +99,7 @@ class Document(models.Model):
     tags = models.ManyToManyField(Tag, blank=True)
     department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True)
     content = models.TextField(blank=True)
-    preset = models.ForeignKey(LatexPreset, on_delete=models.SET_NULL, null=True, blank=True)
+    preset = models.ForeignKey(BasePreset, on_delete=models.SET_NULL, null=True, blank=True)
 
     def __str__(self):
         return f"{self.title} (v{self.version})"
