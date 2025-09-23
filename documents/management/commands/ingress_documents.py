@@ -6,19 +6,18 @@ from django.utils.text import slugify
 from documents.models import (
     Tag, Department,
     LatexPreset, HTMLPreset,
-    Document, DocumentSection, DocumentSubSection,
-    HTMLFile
+    Document, DocumentSection, DocumentSubSection
 )
-from documents.convert import LatexDocumentConverter  # your converter class
+from documents.convert import LatexToHTMLConverter
 
 class Command(IngressCommand):
-    help = "Seed a LaTeX document with tags, department, presets, structured content, and HTML conversion"
+    help = "Seed a LaTeX document with tags, department, presets, structured content, and in-place HTML conversion"
 
     def process(self, _):
         self.create_dashboard_item(
             title="Seeded Document",
             icon="file-text",
-            description="LaTeX document with structured sections and HTML preview.",
+            description="LaTeX document with structured sections and HTML conversion.",
             link="/documents/"
         )
 
@@ -59,35 +58,33 @@ class Command(IngressCommand):
             created_by=users[0],
             department=department,
             preset=latex_preset,
-            content="\\section{Introduction} This is the opening paragraph."
+            content=r"\section{Introduction}" + "\n" + lorem.paragraph()
         )
         document.tags.set(tags[:3])
 
         # 🧩 Sections
-        section = DocumentSection.objects.create(
-            document=document,
-            order=1,
-            title="Abstract",
-            content=lorem.paragraph()
-        )
+        sections = [
+            ("Abstract", lorem.paragraph()),
+            ("Methodology", lorem.paragraph() + "\n\n" + lorem.paragraph()),
+            ("Results", lorem.paragraph() + "\n\n" + lorem.paragraph()),
+            ("Conclusion", lorem.paragraph())
+        ]
 
-        DocumentSubSection.objects.create(
-            section=section,
-            order=1,
-            title="Details",
-            content=lorem.paragraph()
-        )
+        for i, (title, content) in enumerate(sections, start=1):
+            section = DocumentSection.objects.create(
+                document=document,
+                order=i,
+                title=title,
+                content=content
+            )
 
-        # 🔁 Convert to HTML and store as raw content
-        html_content = LatexDocumentConverter(document).to_html()
+            # Add 2 subsections per section
+            for j in range(1, 3):
+                DocumentSubSection.objects.create(
+                    section=section,
+                    order=j,
+                    title=f"{title} Subsection {j}",
+                    content=lorem.paragraph() + "\n\n" + lorem.paragraph()
+                )
 
-        HTMLFile.objects.filter(document=document).delete()
-
-        HTMLFile.objects.create(
-            document=document,
-            preset=html_preset,
-            content=html_content,
-            summary="HTML version of the LaTeX document"
-        )
-
-        self.stdout.write(self.style.SUCCESS("✅ Document ingress completed with HTML conversion."))
+        self.stdout.write(self.style.SUCCESS("✅ Document ingress completed with HTML conversion and preset assignment."))

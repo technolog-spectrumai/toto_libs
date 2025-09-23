@@ -11,7 +11,7 @@ from .models import (
     Document, DocumentSection, DocumentSubSection,
     PDFFile, HTMLFile
 )
-from .convert import LatexDocumentConverter
+from .convert import LatexToHTMLConverter, HTMLToLatexConverter
 from .batch import BatchAction
 from django.core.files.base import ContentFile
 from django_ace import AceWidget
@@ -165,7 +165,7 @@ class DocumentAdmin(VersionAdmin, NestedModelAdmin):
     filter_horizontal = ['tags']
     prepopulated_fields = {'slug': ('title',)}
     inlines = [DocumentSectionInline]
-    actions = ['compile_pdf', 'convert_to_html']
+    actions = ['compile_pdf', 'convert_to_html', 'convert_to_latex']
     #
     # @admin.display(description="Preset Type")
     # def preset_type(self, obj):
@@ -194,21 +194,50 @@ class DocumentAdmin(VersionAdmin, NestedModelAdmin):
         result = BatchAction(queryset).run(compile_one)
         BatchAction.display_messages(result, self.message_user, request, verb="compile")
 
-    @admin.action(description="🔁 Convert LaTeX to HTML (generate HTMLFile)")
+    @admin.action(description="🔁 Convert LaTeX → HTML (in-place)")
     def convert_to_html(self, request, queryset):
-
         def convert_one(document):
-            html_content = LatexDocumentConverter(document).to_html()
+            if not isinstance(document.preset, LatexPreset):
+                return f"Skipped: {document.title} is not LaTeX"
 
-            # Remove existing HTMLFile if present
-            HTMLFile.objects.filter(document=document).delete()
+            # Convert main content
+            document.content = LatexToHTMLConverter(document.content).convert()
+            document.save()
 
-            # Create new HTMLFile entry with raw HTML content only
-            HTMLFile.objects.create(
-                document=document,
-                preset=None,  # or assign a default preset if needed
-                content=html_content
-            )
+            # Convert sections
+            for section in document.sections.all():
+                section.content = LatexToHTMLConverter(section.content).convert()
+                section.save()
+
+                # Convert subsections
+                for subsection in section.subsections.all():
+                    subsection.content = LatexToHTMLConverter(subsection.content).convert()
+                    subsection.save()
+
+            return document
+
+        result = BatchAction(queryset).run(convert_one)
+        BatchAction.display_messages(result, self.message_user, request, verb="convert")
+
+    @admin.action(description="🔁 Convert HTML → LaTeX (in-place)")
+    def convert_to_latex(self, request, queryset):
+        def convert_one(document):
+            if not isinstance(document.preset, HTMLPreset):
+                return f"Skipped: {document.title} is not HTML"
+
+            # Convert main content
+            document.content = HTMLToLatexConverter(document.content).convert()
+            document.save()
+
+            # Convert sections
+            for section in document.sections.all():
+                section.content = HTMLToLatexConverter(section.content).convert()
+                section.save()
+
+                # Convert subsections
+                for subsection in section.subsections.all():
+                    subsection.content = HTMLToLatexConverter(subsection.content).convert()
+                    subsection.save()
 
             return document
 

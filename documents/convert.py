@@ -1,60 +1,96 @@
-import subprocess
-from .models import Document, DocumentSection
+from bs4 import BeautifulSoup
+from plasTeX.TeX import TeX
 
+# ────────────────────────────────────────────────
+# 🔁 Symmetrical Conversion Maps
+# ────────────────────────────────────────────────
 
-# ─────────────────────────────────────────────────────────────
-# 🔁 Pandoc Conversion Wrapper
-# ─────────────────────────────────────────────────────────────
-class PandocConverter:
-    def __init__(self, from_format: str, to_format: str):
-        self.from_format = from_format
-        self.to_format = to_format
+HTML_TO_LATEX = {
+    "h1": r"\section{%s}",
+    "h2": r"\subsection{%s}",
+    "h3": r"\subsubsection{%s}",
+    "p": r"%s\\",
+    "strong": r"\textbf{%s}",
+    "em": r"\emph{%s}",
+    "ul": r"\begin{itemize}%s\end{itemize}",
+    "ol": r"\begin{enumerate}%s\end{enumerate}",
+    "li": r"\item %s"
+}
 
-    def convert(self, content: str) -> str:
-        try:
-            result = subprocess.run(
-                ['pandoc', '--from=' + self.from_format, '--to=' + self.to_format],
-                input=content.encode('utf-8'),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                check=True
-            )
-            return result.stdout.decode('utf-8')
-        except subprocess.CalledProcessError as e:
-            return self._error_output(e.stderr.decode('utf-8'))
+LATEX_TO_HTML = {
+    "section": "h1",
+    "subsection": "h2",
+    "subsubsection": "h3",
+    "textbf": "strong",
+    "emph": "em",
+    "par": "p",
+    "itemize": "ul",
+    "enumerate": "ol",
+    "item": "li"
+}
 
-    def _error_output(self, error: str) -> str:
-        if self.to_format == 'latex':
-            return f"% Pandoc conversion error:\n{error}"
-        elif self.to_format == 'html':
-            return f"<pre>Pandoc conversion error:\n{error}</pre>"
-        else:
-            return f"Conversion error:\n{error}"
+# ────────────────────────────────────────────────
+# 🔁 HTML → LaTeX Converter
+# ────────────────────────────────────────────────
 
-
-# ─────────────────────────────────────────────────────────────
-# 🧱 Base Converter
-# ─────────────────────────────────────────────────────────────
-class DocumentConverter:
-    def __init__(self, section):
-        self.section = section
-        self.pandoc = None  # to be defined in subclass
+class HTMLToLatexConverter:
+    def __init__(self, text, conversion_map=None):
+        self.text = text
+        self.conversion_map = conversion_map or HTML_TO_LATEX
 
     def convert(self):
-        raise NotImplementedError("Subclasses must implement convert()")
+        soup = BeautifulSoup(self.text, 'html.parser')
+        return self._convert_node(soup.body or soup)
 
+    def _convert_node(self, node):
+        latex_parts = []
 
-class LatexDocumentConverter:
-    def __init__(self, document: Document):
-        if not isinstance(document, Document):
-            raise TypeError(f"Expected LatexDocument, got {type(document)}")
-        self.document = document
+        for child in node.children:
+            if isinstance(child, str):
+                latex_parts.append(child.strip())
+                continue
 
-    def to_html(self) -> str:
-        converter = PandocConverter(from_format='latex', to_format='html')
-        return converter.convert(self.document.content)
+            tag = child.name
+            inner = self._convert_node(child)
 
+            if tag in ["ul", "ol"]:
+                items = ''.join([self._convert_node(li) for li in child.find_all("li", recursive=False)])
+                latex_parts.append(self.conversion_map[tag] % items)
+            elif tag in self.conversion_map:
+                latex_parts.append(self.conversion_map[tag] % inner)
+            else:
+                latex_parts.append(inner)
 
+        return ''.join(latex_parts)
 
+# ────────────────────────────────────────────────
+# 🔁 LaTeX → HTML Converter
+# ────────────────────────────────────────────────
 
+class LatexToHTMLConverter:
+    def __init__(self, text, conversion_map=None):
+        self.text = text
+        self.conversion_map = conversion_map or LATEX_TO_HTML
 
+    def convert(self):
+        tex = TeX()
+        tex.input(self.text)
+        dom = tex.parse()
+        return self._convert_node(dom)
+
+    def _convert_node(self, node):
+        html_parts = []
+
+        for child in node.childNodes:
+            tag_name = child.nodeName
+
+            if tag_name in self.conversion_map:
+                html_tag = self.conversion_map[tag_name]
+                inner_html = self._convert_node(child)
+                html_parts.append(f"<{html_tag}>{inner_html}</{html_tag}>")
+            elif child.nodeType == child.TEXT_NODE:
+                html_parts.append(child.data.strip())
+            else:
+                html_parts.append(self._convert_node(child))
+
+        return ''.join(html_parts)
