@@ -3,7 +3,6 @@
 
 {% block title %}Org Chart | {{ platform.site_name }}{% endblock %}
 {% block start_script %}
-
 <style>
 :root {
   --bg-color: #ffffff;
@@ -18,23 +17,18 @@ body {
   color: var(--text-color);
 }
 </style>
-
 {% endblock %}
+
 {% block content %}
 <section class="px-6 py-20 min-h-screen">
   <div class="max-w-6xl mx-auto p-8 rounded-xl shadow-lg space-y-10">
-
     <header class="space-y-4 text-center">
       <h1 class="text-3xl font-extrabold">Organization Chart</h1>
       <div class="max-w-sm mx-auto">
         <label for="company" class="block text-sm font-medium mb-1 text-text-main-light dark:text-text-main-dark">
           Choose Company
         </label>
-        <select name="company" id="company"
-          :class="darkMode
-            ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
-            : 'bg-primary-bg-light text-text-main-light border-accent-2'"
-          class="w-full px-3 py-2 rounded border transition-colors duration-300">
+        <select id="company" class="w-full px-3 py-2 rounded border transition-colors duration-300">
           {% for company in companies %}
             <option value="{{ company.slug }}" {% if company.slug == selected_company_slug %}selected{% endif %}>
               {{ company.name }}
@@ -43,180 +37,140 @@ body {
         </select>
       </div>
     </header>
-
     <div id="orgchart-container" class="w-full overflow-x-auto"></div>
-
   </div>
 </section>
 
-<script src="https://balkan.app/js/OrgChart.js"></script>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+
+
 <script>
-  document.addEventListener("DOMContentLoaded", () => {
-    const container = document.getElementById("orgchart-container");
-    const companySelect = document.getElementById("company");
+document.addEventListener("DOMContentLoaded", () => {
+  const container = document.getElementById("orgchart-container");
+  const companySelect = document.getElementById("company");
+  const colors = {{ theme.theme.colors|safe }};
 
-    let chart;
+  const getThemeSuffix = () => Alpine.evaluate(document.documentElement, 'darkMode') ? 'dark' : 'light';
 
-    const toggleButton = document.querySelector(".site-theme-toggle-button");
-    if (!toggleButton) return;
+const renderChart = (data) => {
+  container.innerHTML = "";
 
-    toggleButton.addEventListener("click", () => {
-        chart.config.template = getThemeTemplate();
-        chart.draw();
-    });
+  const theme = getThemeSuffix();
+  const bgColor = colors[`bubble-bg-${theme}`];
+  const textColor = colors[`text-main-${theme}`];
+  const accentColor = colors[`accent-${theme}`];
 
-    let colors = {{ theme.theme.colors|safe }};
+  const dx = 220;
+  const dy = 120;
 
-    function getThemeTemplate() {
-      const root = document.documentElement;
-      const darkMode = Alpine.evaluate(root, 'darkMode');
+  const root = d3.stratify()
+    .id(d => d.id)
+    .parentId(d => d.pid)(data);
 
-      // Determine theme suffix
-      const themeSuffix = darkMode ? 'dark' : 'light';
-        const canvasColor = colors[`primary-bg-${themeSuffix}`];
-
-        const svg = document.querySelector("#orgchart-container");
-        if (svg) {
-          svg.style.backgroundColor = canvasColor;
-          svg.style.transition = "background-color 0.3s ease";
-        }
-      // Pull colors from your Tailwind-defined map
-      const bgColor = colors[`bubble-bg-${themeSuffix}`];
-      const textColor = colors[`text-main-${themeSuffix}`];
-      const accentColor = colors[`accent-${themeSuffix}`];
-
-      // Clone and customize the template
-      OrgChart.templates.customTemplate = Object.assign({}, OrgChart.templates.ana);
-      OrgChart.templates.customTemplate.img =
-        `<clipPath id="{randId}">
-            <rect fill="${bgColor}" stroke="${textColor}" stroke-width="5" x="10" y="10" rx="10" ry="10" width="80" height="100"></rect>
-        </clipPath>
-        <image preserveAspectRatio="xMidYMid slice" clip-path="url(#{randId})" xlink:href="{val}" x="10" y="10" width="80" height="100"></image>
-        <rect fill="none" stroke="${accentColor}" stroke-width="2" x="10" y="10" rx="10" ry="10" width="80" height="100"></rect>`;
-        OrgChart.templates.customTemplate.node = `
-          <rect x="0" y="0" width="{w}" height="{h}" fill="${bgColor}" rx="10" ry="10"
-                stroke="${accentColor}" stroke-width="2"></rect>
-        `;
-        OrgChart.templates.customTemplate.field_0 =`<text class="field_0" x="120" y="30" fill="${textColor}" font-size="16">{val}</text>`;
-        OrgChart.templates.customTemplate.field_1 =`<text class="field_1" x="120" y="50" fill="${textColor}" font-size="12">{val}</text>`;
-      return "customTemplate";
+  root.each(node => {
+    if (node.children) {
+      node.children.sort((a, b) => a.data.name.localeCompare(b.data.name));
     }
-
-let editForm = function () {
-};
-
-editForm.prototype.init = function (obj) {
-    this.chart = obj;
-};
-
-editForm.prototype.show = function (nodeId) {
-    this.hide();
-    let node = this.chart.get(nodeId);
-    const darkMode = Alpine.evaluate(document.documentElement, 'darkMode');
-    const themeSuffix = darkMode ? 'dark' : 'light';
-    const bgColor = colors[`bubble-bg-${themeSuffix}`];
-    const textColor = colors[`text-main-${themeSuffix}`];
-    const accentColor = colors[`accent-${themeSuffix}`];
-
-    let editHtml =
-        `<table cellpadding="0" cellspacing="0" class="t" style="border: 2px solid ${accentColor}; border-radius: 8px;">
-            <tr>
-                <td colspan="2" class="t-img" style="padding: 12px; text-align: center;">
-                    <img height="32px" width="32px"  style="border-radius: 50%; border: 2px solid ${accentColor};" src="${node.img}" />
-                </td>
-            </tr>`;
-
-    const renderers = {
-        activity: (value, accentColor, textColor) =>
-            `<td class="t-val" style="padding: 8px; color: ${textColor}; font-weight: normal;">
-                <a href="/community/posts/${value}" style="color: ${accentColor}; text-decoration: underline;">Recent Posts</a>
-            </td>`,
-
-        profile: (value, accentColor, textColor) =>
-            `<td class="t-val" style="padding: 8px; color: ${textColor}; font-weight: normal;">
-                <a href="/community/profile/${value}" style="color: ${accentColor}; text-decoration: underline;">Profile</a>
-            </td>`
-    };
-
-    function renderRow(key, value, textColor, accentColor) {
-        const labelCell = `<td class="t-name" style="padding: 8px; color: ${textColor}; font-weight: bold;">${key}</td>`;
-        const valueCell = renderers[key]
-            ? renderers[key](value, accentColor, textColor)
-            : `<td class="t-val" style="padding: 8px; color: ${textColor}; font-weight: normal;">${value}</td>`;
-        return `<tr>${labelCell}${valueCell}</tr>`;
-    }
-
-    editHtml += `<tr><td class="t-name" style="height: 8px;"></td><td class="t-val"></td></tr>`;
-    const excludedKeys = ['id', 'pid', 'img'];
-
-    for (const key in node) {
-        if (!excludedKeys.includes(key)) {
-            editHtml += renderRow(key, node[key], textColor, accentColor);
-        }
-    }
-    editHtml += `<tr><td class="t-name" style="height: 8px;"></td><td class="t-val"></td></tr></table>`;
-
-    let div = document.createElement("div");
-    div.id = 'edit-form';
-    div.innerHTML = editHtml;
-    div.style.position = 'absolute';
-    div.style.top = '10px';
-    div.style.right = '-100px';
-    div.style.opacity = 0;
-    div.style.backgroundColor = bgColor;
-    div.style.boxShadow = `0 4px 6px -1px rgba(0, 0, 0, 0.1)`;
-    div.style.borderRadius = '8px';
-    div.style.transition = 'background-color 0.3s ease';
-
-    this.chart.element.appendChild(div);
-
-    OrgChart.animate(div, { opacity: 0, right: -100 }, { opacity: 1, right: 10 }, 300, OrgChart.anim.outSin);
-};
-
-editForm.prototype.hide = function (showldUpdateTheNode) {
-    let form = this.chart.element.querySelector('#edit-form');
-    if (form) {
-        form.parentNode.removeChild(form);
-    }
-};
-
-    chart = new OrgChart(container, {
-      template: getThemeTemplate(),
-      enableSearch: false,
-      nodeBinding: {
-        field_0: "name",
-        field_1: "title",
-        img: "img"
-      },
-      editUI: new editForm(),
-    });
-
-    const loadChart = async (companySlug) => {
-      if (!companySlug) return;
-
-      // Optional: show loading state
-      container.classList.add("opacity-50");
-
-      try {
-        const response = await fetch(`/community/org-chart/data/?company=${companySlug}`);
-        const { nodes } = await response.json();
-        //console.log("===>", nodes[0]);
-        chart.load(nodes);
-      } catch (error) {
-        console.error("Failed to load org chart:", error);
-      } finally {
-        container.classList.remove("opacity-50");
-      }
-    };
-
-    // Initial load
-    loadChart(companySelect.value);
-
-    // Reload on change
-    companySelect.addEventListener("change", (e) => {
-      loadChart(e.target.value);
-    });
   });
+
+  const tree = d3.tree().nodeSize([dx, dy]);
+  tree(root);
+
+  const nodes = root.descendants();
+  const links = root.links();
+
+  const minX = d3.min(nodes, d => d.x);
+  const maxX = d3.max(nodes, d => d.x);
+  const height = root.height * dy + 200;
+  const width = maxX - minX + dx * 2;
+
+  const svg = d3.select(container)
+    .append("svg")
+    .attr("width", width)
+    .attr("height", height)
+    .style("background-color", colors[`primary-bg-${theme}`])
+    .style("transition", "background-color 0.3s ease");
+
+  const g = svg.append("g")
+    .attr("transform", `translate(${-minX + dx}, 40)`);
+
+  g.selectAll(".link")
+    .data(links)
+    .join("path")
+    .attr("class", "link")
+    .attr("fill", "none")
+    .attr("stroke", accentColor)
+    .attr("stroke-width", 2)
+    .attr("d", d3.linkVertical()
+      .x(d => d.x)
+      .y(d => d.y));
+
+  const node = g.selectAll(".node")
+    .data(nodes)
+    .join("g")
+    .attr("class", "node")
+    .attr("transform", d => `translate(${d.x},${d.y})`);
+
+  node.append("rect")
+    .attr("x", -100)
+    .attr("y", -40)
+    .attr("width", 200)
+    .attr("height", 80)
+    .attr("rx", 10)
+    .attr("fill", bgColor)
+    .attr("stroke", accentColor)
+    .attr("stroke-width", 2);
+
+  node.append("image")
+    .attr("xlink:href", d => d.data.img)
+    .attr("x", -90)
+    .attr("y", -30)
+    .attr("width", 40)
+    .attr("height", 40)
+    .attr("style", `border-radius:50%;`);
+
+  node.append("text")
+    .attr("x", -40)
+    .attr("y", -10)
+    .attr("fill", textColor)
+    .attr("font-size", 14)
+    .attr("font-weight", "bold")
+    .text(d => d.data.name);
+
+  node.append("text")
+    .attr("x", -40)
+    .attr("y", 10)
+    .attr("fill", textColor)
+    .attr("font-size", 12)
+    .text(d => d.data.title);
+};
+
+
+
+  const loadChart = async (companySlug) => {
+    if (!companySlug) return;
+    container.classList.add("opacity-50");
+    try {
+      const response = await fetch(`/community/org-chart/data/?company=${companySlug}`);
+      const { nodes } = await response.json();
+      renderChart(nodes);
+    } catch (error) {
+      console.error("Failed to load org chart:", error);
+    } finally {
+      container.classList.remove("opacity-50");
+    }
+  };
+
+  loadChart(companySelect.value);
+  companySelect.addEventListener("change", (e) => loadChart(e.target.value));
+
+  const toggleButton = document.querySelector(".site-theme-toggle-button");
+  if (toggleButton) {
+    toggleButton.addEventListener("click", () => {
+      loadChart(companySelect.value); // Re-render with new theme
+    });
+  }
+});
 </script>
 
 {% endblock %}
