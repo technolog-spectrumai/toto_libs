@@ -73,7 +73,8 @@ INSTALLED_APPS = [
     "webfront",
     "documents",
     "kanban",
-    "mandragora"
+    "mandragora",
+    "kodama"
 ]
 
 DJANGO_TIPTAP_CONFIG = {
@@ -341,7 +342,8 @@ INGRESS_ALLOWED_APPS = [
     "documents",
     "kanban",
     "community",
-    "mandragora"
+    "mandragora",
+    "kodama"
 ]
 
 
