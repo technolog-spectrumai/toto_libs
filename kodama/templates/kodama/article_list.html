@@ -1,0 +1,97 @@
+{% extends "kodama/base.html" %}
+{% block title %}Articles — {{ site.name }}{% endblock %}
+
+{% block content %}
+
+<!-- Hero Section -->
+  {% if banner_image %}
+    <section class="relative h-[60vh] pt-20" style="background-image: url('{{ banner_image | safe }}');">
+  {% else %}
+    <section class="relative h-[60vh] bg-[var(--bg-top)] pt-20">
+  {% endif %}
+  <div class="absolute inset-0 flex items-center justify-center" style="background-color: var(--banner-overlay)">
+    <div class="text-center px-6">
+      <h1 class="text-5xl md:text-6xl font-bold mb-4">Latest from {{ site.name }}</h1>
+      <p class="text-xl md:text-2xl italic text-[var(--text-muted)]">{{site.head_slogan}} </p>
+    </div>
+  </div>
+</section>
+
+<!-- Main Grid -->
+<main class="grid grid-cols-1 md:grid-cols-12 gap-6 px-6 md:px-12 py-20 max-w-7xl mx-auto">
+
+  <!-- Left: Filters -->
+  <aside class="md:col-span-2 space-y-8 text-[var(--text-muted)]">
+    <!-- Categories -->
+    <div>
+      <h2 class="text-xl font-bold text-[var(--accent)]">Categories</h2>
+      <ul class="space-y-2 mt-2">
+        {% for cat in categories %}
+          <li>
+            <a href="?category={{ cat.slug }}" class="hover:text-[var(--accent)] {% if category == cat.slug %}font-semibold{% endif %}">
+              {{ cat.name }}
+            </a>
+          </li>
+        {% empty %}
+          <li>No categories available.</li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <!-- Tags (optional) -->
+    {% if tags %}
+    <div>
+      <h2 class="text-xl font-bold text-[var(--accent)]">Tags</h2>
+      <ul class="space-y-2 mt-2">
+        {% for tag in tags %}
+          <li>
+            <a href="?tag={{ tag.name }}" class="hover:text-[var(--accent)] {% if tag.name == tag %}font-semibold{% endif %}">
+              {{ tag.name }}
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </aside>
+
+  <!-- Center: Articles -->
+  <section class="md:col-span-7 space-y-10">
+    <h2 class="text-3xl font-bold text-[var(--accent)] mb-4">Latest Articles</h2>
+
+    {% if query or tag or category %}
+      <p class="text-sm text-[var(--text-muted)] italic">
+        Filtered by:
+        {% if query %}Search: "{{ query }}" {% endif %}
+        {% if tag %}Tag: {{ tag }} {% endif %}
+        {% if category %}Category: {{ category }} {% endif %}
+      </p>
+    {% endif %}
+
+    {% for article in articles %}
+      <article class="card">
+        <h3 class="text-2xl font-semibold mb-2">{{ article.title }}</h3>
+        <p class="text-[var(--text-muted)] mb-2">{{ article.summary|truncatewords:30 }}</p>
+        <p class="text-xs text-[var(--text-muted)] italic">By {{ article.author }} • {{ article.created_at|date:"F j, Y" }}</p>
+        <a href="{% url 'article-detail' site.slug article.slug %}" class="text-[var(--accent)] hover:underline text-sm">Read more →</a>
+      </article>
+    {% empty %}
+      <p>No articles found.</p>
+    {% endfor %}
+  </section>
+
+  <!-- Right: Suggestions -->
+  <aside class="md:col-span-3 space-y-6">
+    <h2 class="text-xl font-bold text-[var(--accent)]">You May Also Like</h2>
+
+    {% for suggestion in suggestions %}
+      <div class="card">
+        <h3 class="text-lg font-semibold mb-1">{{ suggestion.title }}</h3>
+        <p class="text-[var(--text-muted)] text-sm">{{ suggestion.summary|truncatewords:20 }}</p>
+      </div>
+    {% empty %}
+      <p>No suggestions available.</p>
+    {% endfor %}
+  </aside>
+</main>
+{% endblock %}

@@ -1,0 +1,107 @@
+<!-- Alpine Root -->
+<div x-data="{ mobileOpen: false }" class="relative">
+
+  <!-- Header -->
+  <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+    <!-- Logo / Site Title -->
+    <div class="text-xl font-bold tracking-wide text-[var(--accent)]">{{site.head_slogan}}</div>
+
+    <!-- Hamburger Icon (Mobile Only) -->
+    <button @click="mobileOpen = !mobileOpen" class="lg:hidden text-[var(--nav-text)] hover:text-[var(--accent)] text-2xl">
+      <i :class="mobileOpen ? 'fas fa-times' : 'fas fa-bars'"></i>
+    </button>
+
+    <!-- Desktop Navigation -->
+    <div class="hidden lg:flex items-center space-x-6">
+      <!-- Search Form -->
+      <form action="{% url 'article-list' site.slug %}" method="get" class="flex items-center gap-2 max-w-md mx-6">
+        <input type="text" name="q"
+               placeholder="Search..."
+               class="w-full px-3 py-1.5 rounded-md border border-[var(--border)] bg-[var(--card-bg)]
+               text-sm text-[var(--text-main)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]" />
+        <button type="submit" class="text-[var(--nav-text)] hover:text-[var(--accent)] text-xl">
+          <i class="fas fa-search"></i>
+        </button>
+      </form>
+
+      <!-- Menus -->
+      {% for menu in menus %}
+        {% if menu.category_link %}
+          <a href="{% url 'article-list' site.slug %}?category={{ menu.category_link.slug }}"
+             class="text-sm text-[var(--text-muted)] hover:text-[var(--accent)]">
+            {{ menu.title }}
+          </a>
+        {% elif menu.category_links.all %}
+          <div x-data="{ open: false }" class="relative">
+            <button @click="open = !open" class="text-sm text-[var(--text-muted)] hover:text-[var(--accent)]">
+              {{ menu.title }} <i class="fas fa-chevron-down text-xs ml-1"></i>
+            </button>
+            <ul x-show="open" @click.away="open = false"
+                class="absolute mt-2 bg-[var(--card-bg)] border border-[var(--border)] shadow-lg rounded-md py-2 w-48 z-50">
+              {% for link in menu.category_links.all %}
+                <li>
+                  <a href="{% url 'article-list' site.slug %}?category={{ link.category.slug }}"
+                     class="block px-4 py-2 text-sm text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--hover-bg)]">
+                    {{ link.category.name }}
+                  </a>
+                </li>
+              {% endfor %}
+            </ul>
+          </div>
+        {% endif %}
+      {% endfor %}
+
+      <!-- Dark Mode Toggle -->
+      <button @click="darkMode = !darkMode" class="text-[var(--nav-text)] hover:text-[var(--accent)] text-xl">
+        <i :class="darkMode ? 'fas fa-sun' : 'fas fa-moon'"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- Mobile Menu (inside Alpine scope now) -->
+  <div x-show="mobileOpen" @click.away="mobileOpen = false" class="lg:hidden px-6 pt-4 space-y-4">
+    <!-- Search Form -->
+    <form action="{% url 'article-list' site.slug %}" method="get" class="flex items-center gap-2">
+      <input type="text" name="q"
+             placeholder="Search..."
+             class="w-full px-3 py-1.5 rounded-md border border-[var(--border)] bg-[var(--card-bg)]
+             text-sm text-[var(--text-main)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]" />
+      <button type="submit" class="text-[var(--nav-text)] hover:text-[var(--accent)] text-xl">
+        <i class="fas fa-search"></i>
+      </button>
+    </form>
+
+    <!-- Menus -->
+    <div class="space-y-2">
+      {% for menu in menus %}
+        {% if menu.category_link %}
+          <a href="{% url 'article-list' site.slug %}?category={{ menu.category_link.slug }}"
+             class="block text-sm text-[var(--text-muted)] hover:text-[var(--accent)]">
+            {{ menu.title }}
+          </a>
+        {% elif menu.category_links.all %}
+          <div x-data="{ open: false }">
+            <button @click="open = !open" class="text-sm text-[var(--text-muted)] hover:text-[var(--accent)]">
+              {{ menu.title }} <i class="fas fa-chevron-down text-xs ml-1"></i>
+            </button>
+            <ul x-show="open" class="pl-4 space-y-1">
+              {% for link in menu.category_links.all %}
+                <li>
+                  <a href="{% url 'article-list' site.slug %}?category={{ link.category.slug }}"
+                     class="block text-sm text-[var(--text-muted)] hover:text-[var(--accent)]">
+                    {{ link.category.name }}
+                  </a>
+                </li>
+              {% endfor %}
+            </ul>
+          </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+
+    <!-- Dark Mode Toggle -->
+    <button @click="darkMode = !darkMode" class="text-[var(--nav-text)] hover:text-[var(--accent)] text-xl">
+      <i :class="darkMode ? 'fas fa-sun' : 'fas fa-moon'"></i>
+    </button>
+  </div>
+</div>

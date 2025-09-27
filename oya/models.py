@@ -278,4 +278,3 @@ class LogEntry(models.Model):
         return f"[{self.timestamp}] {self.stream.upper()}: {self.message[:50]}"
 
 
-

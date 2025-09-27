@@ -1,0 +1,37 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en" x-data="{ darkMode: false }" :class="{ 'dark': darkMode }">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}Kodama News{% endblock %}</title>
+
+  <!-- Font Awesome + Tailwind + Alpine -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" crossorigin="anonymous" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/alpinejs" defer></script>
+
+  <!-- Fonts + Theme -->
+    {% include 'kodama/partials/style.html' with theme=theme %}
+    {% block styles %}{% endblock %}
+</head>
+<body>
+
+<!-- Navigation -->
+<nav class="fixed top-0 left-0 right-0 z-40 bg-[var(--nav-bg)] backdrop-blur-md border-b border-[var(--border)] shadow-sm">
+  {% include 'kodama/partials/navigation.html' %}
+</nav>
+
+
+<!-- Page Content -->
+<div class="pt-24">
+  {% block content %}{% endblock %}
+</div>
+
+<!-- Footer -->
+<div>
+  {% include 'kodama/partials/footer.html' %}
+</div>
+
+</body>
+</html>
