@@ -1,9 +1,21 @@
-from django.core.management.base import BaseCommand
-from django.contrib.auth.models import User
+from django.utils import timezone
 from django.utils.text import slugify
-from django.utils.timezone import now
-from kodama.models import Site, Tag, Category, Article, Section, SubSection, Menu, CategoryLink, Font, Theme
+from django.contrib.auth.models import User
+from oya.ingress import IngressCommand
+from kodama.models import (
+    Site,
+    Tag,
+    Category,
+    Article,
+    Section,
+    SubSection,
+    Menu,
+    CategoryLink,
+    Font,
+    Theme,
+)
 import random
+from django.utils.timezone import now
 
 LOREM = (
     "Lorem ipsum dolor sit amet, consectetur adipiscing elit. "
@@ -11,19 +23,26 @@ LOREM = (
     "Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat."
 )
 
-class Command(BaseCommand):
-    help = "Seed Kodama with one site, tags, categories, articles, sections, subsections, and multiple menus using lorem ipsum"
 
-    def handle(self, *args, **kwargs):
+class Command(IngressCommand):
+    help = "Seed Kodama with a demo site, fonts, themes, tags, categories, articles, sections, subsections and menus using lorem ipsum"
+
+    def process(self, _):
         self.owner = self.get_or_create_owner()
         fonts = self.create_fonts()
         themes = self.create_themes(fonts)
-        self.site = self.get_or_create_site(themes['isotopic'])
+        self.site = self.get_or_create_site(themes.get("isotopic"))
         self.tags = self.create_tags()
         self.categories = self.create_categories()
         self.create_articles()
         self.create_menus()
-        self.stdout.write(self.style.SUCCESS("Kodama ingress complete."))
+
+        self.create_dashboard_item(
+            title="Kodama Demo Site",
+            icon="leaf",
+            description="A seeded Kodama site with demo content for development and testing.",
+            link=f"/sites/{self.site.pk}/"
+        )
 
     def get_or_create_owner(self):
         owner, _ = User.objects.get_or_create(

@@ -30,6 +30,7 @@ urlpatterns = [
     path("webfront/", include("webfront.urls")),
     path("documents/", include("documents.urls")),
     path("kanban/", include("kanban.urls", namespace="kanban")),
+    path("kodama/", include("kodama.urls")),
     # path('.well-known/acme-challenge/<path:path>', serve, {
     #     'document_root': settings.ACME_CHALLENGE_ROOT,
     # }),

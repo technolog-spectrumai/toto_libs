@@ -69,6 +69,10 @@ class FilteredArticleListView(KodamaSiteMixin, ListView):
         context['query'] = self.request.GET.get('q', '')
         context['tag'] = self.request.GET.get('tag', '')
         context['category'] = self.request.GET.get('category', '')
+        context['suggestions'] = (
+            Article.objects.filter(site=self.site)
+            .order_by('-created_at')[:3]
+        )
         return context
 
 # Article detail view with sections and related articles
