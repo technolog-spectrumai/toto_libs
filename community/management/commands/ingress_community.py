@@ -3,13 +3,12 @@ from django.core.management import call_command
 from django.contrib.auth.models import User
 from django.utils import timezone
 from community.models import Address, Company, Branch, CommunityMember, Post
-from oya.ingress import IngressCommand  # Your custom base class
+from oya.ingress import IngressCommand
 
 class Command(IngressCommand):
     help = "Populate the platform with fake community data: address, company, branches, members, and relationships"
 
     def process(self, _):
-        # Dashboard block
         self.create_dashboard_item(
             title="Community",
             icon="users",
@@ -33,15 +32,18 @@ class Command(IngressCommand):
             return
 
         self.stdout.write(self.style.NOTICE("🧑‍🤝‍🧑 Creating community members..."))
-        members = self.create_fake_members(count=5)
+        members = self.create_fake_members(count=6)
 
         self.stdout.write(self.style.NOTICE("👑 Assigning head of company..."))
-        company.head = random.choice(members)
+        company.head = members[0]  # Founder is the head
         company.save()
 
         self.stdout.write(self.style.NOTICE("🏬 Creating branches..."))
         branches = self.create_fake_branches(company, members)
+
+        self.stdout.write(self.style.NOTICE("📝 Creating posts..."))
         self.create_fake_posts(members, branches)
+
         self.stdout.write(self.style.SUCCESS("✅ Community ingress complete."))
 
     def get_address_arguments(self):
@@ -61,44 +63,53 @@ class Command(IngressCommand):
     def get_latest_company(self):
         return Company.objects.order_by("-id").first()
 
-    def create_fake_members(self, count=5):
+    def create_fake_members(self, count=6):
         members = []
+        users = []
+
         for i in range(count):
             username = f"user{i}"
             user, _ = User.objects.get_or_create(username=username, defaults={"email": f"{username}@example.com"})
-            member = CommunityMember.objects.create(
-                user=user,
-                display_name=f"Member {i}",
-                bio=f"This is bio for Member {i}",
-                joined_date=timezone.now()
+            users.append(user)
+
+        # Founder
+        founder = CommunityMember.objects.create(
+            user=users[0],
+            display_name="Founder",
+            bio="Top-level patron of the community",
+            joined_date=timezone.now()
+        )
+        members.append(founder)
+
+        # Managers
+        for i in range(1, 3):
+            manager = CommunityMember.objects.create(
+                user=users[i],
+                display_name=f"Manager {i}",
+                bio="Mid-level manager reporting to Founder",
+                joined_date=timezone.now(),
+                patron=founder
             )
-            if i > 0:
-                member.patron = members[0]  # First member is patron of others
-                member.save()
-            members.append(member)
+            members.append(manager)
+
+        # Staff
+        for i in range(3, count):
+            patron = random.choice(members[1:3])
+            staff = CommunityMember.objects.create(
+                user=users[i],
+                display_name=f"Staff {i}",
+                bio=f"Team member reporting to {patron.display_name}",
+                joined_date=timezone.now(),
+                patron=patron
+            )
+            members.append(staff)
+
         return members
-
-    def create_fake_posts(self, members, branches):
-        self.stdout.write(self.style.NOTICE("📝 Creating posts..."))
-        sample_contents = [
-            "Just had a great team meeting!",
-            "Excited to announce our new project",
-            "Happy to be part of this community",
-            "Looking forward to our upcoming event",
-            "Great progress on our initiatives"
-        ]
-
-        for member in members:
-            for _ in range(random.randint(1, 3)):  # 1-3 posts per member
-                Post.objects.create(
-                    author=member,
-                    content=random.choice(sample_contents),
-                    visibility=random.choice(['public', 'members', 'branch']),
-                    created_at=timezone.now() - timezone.timedelta(days=random.randint(0, 30))
-                )
 
     def create_fake_branches(self, company, members):
         branches = []
+        senior_members = members[:3]  # Founder + Managers
+
         for i in range(3):
             address = Address.objects.create(
                 country_name="US",
@@ -112,9 +123,31 @@ class Command(IngressCommand):
                 company=company,
                 name=f"Branch {i}",
                 address=address,
-                head=random.choice(members)
+                head=senior_members[i % len(senior_members)]
             )
-            for member in random.sample(members, k=3):
+
+            assigned = random.sample(members, k=3)
+            for member in assigned:
                 member.membership.add(branch)
+
             branches.append(branch)
+
         return branches
+
+    def create_fake_posts(self, members, branches):
+        sample_contents = [
+            "Just had a great team meeting!",
+            "Excited to announce our new project",
+            "Happy to be part of this community",
+            "Looking forward to our upcoming event",
+            "Great progress on our initiatives"
+        ]
+
+        for member in members:
+            for _ in range(random.randint(1, 3)):
+                Post.objects.create(
+                    author=member,
+                    content=random.choice(sample_contents),
+                    visibility=random.choice(['public', 'members', 'branch']),
+                    created_at=timezone.now() - timezone.timedelta(days=random.randint(0, 30))
+                )
