@@ -69,7 +69,6 @@ INSTALLED_APPS = [
     "captcha",
     "community",
     "memo",
-    "resume",
     "webfront",
     "documents",
     "kanban",
