@@ -20,15 +20,26 @@ body {
 {% endblock %}
 
 {% block content %}
-<section class="px-6 py-20 min-h-screen">
+<section
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="px-6 py-20 min-h-screen transition-colors duration-300">
+
   <div class="max-w-6xl mx-auto p-8 rounded-xl shadow-lg space-y-10">
     <header class="space-y-4 text-center">
       <h1 class="text-3xl font-extrabold">Organization Chart</h1>
       <div class="max-w-sm mx-auto">
-        <label for="company" class="block text-sm font-medium mb-1 text-text-main-light dark:text-text-main-dark">
+        <label for="company"
+               class="block text-sm font-medium mb-1"
+               :class="darkMode ? 'text-text-main-dark' : 'text-text-main-light'">
           Choose Company
         </label>
-        <select id="company" class="w-full px-3 py-2 rounded border transition-colors duration-300">
+        <select id="company"
+                class="w-full px-3 py-2 rounded border transition-colors duration-300"
+                :class="darkMode
+                  ? 'bg-primary-bg-dark text-text-main-dark border-gray-600'
+                  : 'bg-white text-text-main-light border-gray-300'">
           {% for company in companies %}
             <option value="{{ company.slug }}" {% if company.slug == selected_company_slug %}selected{% endif %}>
               {{ company.name }}
@@ -37,9 +48,15 @@ body {
         </select>
       </div>
     </header>
-    <div id="orgchart-container" class="w-full overflow-x-auto"></div>
+
+    <div id="orgchart-container"
+         class="w-full overflow-x-auto transition-colors duration-300"
+         :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
+    </div>
   </div>
 </section>
+{% endblock %}
+{% block end_script %}
 
 <script src="https://d3js.org/d3.v7.min.js"></script>
 
@@ -60,8 +77,9 @@ const renderChart = (data) => {
   const textColor = colors[`text-main-${theme}`];
   const accentColor = colors[`accent-${theme}`];
 
-  const dx = 220;
-  const dy = 120;
+  const isMobile = window.innerWidth < 768;
+  const dx = 100; // node height
+  const dy = 220; // node width
 
   const root = d3.stratify()
     .id(d => d.id)
@@ -73,7 +91,7 @@ const renderChart = (data) => {
     }
   });
 
-  const tree = d3.tree().nodeSize([dx, dy]);
+  const tree = d3.tree().nodeSize(isMobile ? [dx, dy] : [dy, dx]);
   tree(root);
 
   const nodes = root.descendants();
@@ -81,8 +99,11 @@ const renderChart = (data) => {
 
   const minX = d3.min(nodes, d => d.x);
   const maxX = d3.max(nodes, d => d.x);
-  const height = root.height * dy + 200;
-  const width = maxX - minX + dx * 2;
+  const minY = d3.min(nodes, d => d.y);
+  const maxY = d3.max(nodes, d => d.y);
+
+  const width = isMobile ? maxY - minY + dy * 2 : maxX - minX + dy * 2;
+  const height = isMobile ? maxX - minX + dx * 2 : maxY - minY + dx * 2;
 
   const svg = d3.select(container)
     .append("svg")
@@ -92,24 +113,36 @@ const renderChart = (data) => {
     .style("transition", "background-color 0.3s ease");
 
   const g = svg.append("g")
-    .attr("transform", `translate(${-minX + dx}, 40)`);
+    .attr("transform", isMobile
+      ? `translate(${dy}, ${-minX + dx})`
+      : `translate(${-minX + dy}, ${dx})`);
 
-  g.selectAll(".link")
-    .data(links)
-    .join("path")
-    .attr("class", "link")
-    .attr("fill", "none")
-    .attr("stroke", accentColor)
-    .attr("stroke-width", 2)
-    .attr("d", d3.linkVertical()
-      .x(d => d.x)
-      .y(d => d.y));
+    g.selectAll(".link")
+      .data(links)
+      .join("path")
+      .attr("fill", "none")
+      .attr("stroke", accentColor)
+      .attr("stroke-width", 2)
+      .attr("d", d => {
+        const sourceX = isMobile ? d.source.y : d.source.x;
+        const sourceY = isMobile ? d.source.x : d.source.y;
+        const targetX = isMobile ? d.target.y : d.target.x;
+        const targetY = isMobile ? d.target.x : d.target.y;
+
+        const curveOffset = 80; // Controls how much the curve bends
+
+        return `
+          M${sourceX},${sourceY}
+          C${sourceX},${sourceY + curveOffset}
+           ${targetX},${targetY - curveOffset}
+           ${targetX},${targetY}
+        `;
+      });
 
   const node = g.selectAll(".node")
     .data(nodes)
     .join("g")
-    .attr("class", "node")
-    .attr("transform", d => `translate(${d.x},${d.y})`);
+    .attr("transform", d => `translate(${isMobile ? d.y : d.x},${isMobile ? d.x : d.y})`);
 
   node.append("rect")
     .attr("x", -100)
@@ -144,6 +177,10 @@ const renderChart = (data) => {
     .attr("font-size", 12)
     .text(d => d.data.title);
 };
+
+window.addEventListener("resize", () => {
+  loadChart(companySelect.value);
+});
 
 
 
