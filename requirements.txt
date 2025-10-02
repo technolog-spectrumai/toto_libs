@@ -46,6 +46,7 @@ django-redis==6.0.0
 django-reversion==5.1.0
 django-simple-captcha==0.6.2
 django-timezone-field==7.1
+django-unfold==0.66.0
 django_neomodel==0.2.0
 django_tiptap==0.0.18
 djangocodemirror==2.1.0
@@ -62,6 +63,7 @@ GitPython==3.1.45
 greenlet==3.2.4
 gunicorn==23.0.0
 idna==3.10
+Jinja2==3.1.6
 joblib==1.5.1
 josepy==2.1.0
 jsonschema==4.25.1
@@ -71,6 +73,7 @@ kombu==5.5.4
 latex==0.7.0
 lorem-text==3.0
 Markdown==3.8
+MarkupSafe==3.0.2
 matplotlib==3.10.5
 mermaid_cli==0.1.2
 mongoengine==0.29.1
@@ -81,6 +84,7 @@ ordered-set==4.1.0
 packaging==25.0
 parsedatetime==2.6
 pillow==11.2.1
+plasTeX==3.1
 playwright==1.54.0
 prompt_toolkit==3.0.51
 psycopg==3.2.10
@@ -93,6 +97,8 @@ PyLaTeX==1.4.2
 pymongo==4.14.0
 pyOpenSSL==25.1.0
 pyparsing==3.2.3
+pypdf==6.1.1
+PyPDF2==3.0.1
 pyphen==0.17.2
 pyRFC3339==2.0.1
 python-crontab==3.2.0
@@ -122,6 +128,7 @@ tinycss2==1.4.0
 tinyhtml5==2.0.0
 typing_extensions==4.14.1
 tzdata==2025.2
+Unidecode==1.4.0
 urllib3==2.4.0
 vine==5.1.0
 wcwidth==0.2.13
