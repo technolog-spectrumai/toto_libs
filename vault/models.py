@@ -2,7 +2,6 @@ from django.db import models
 from django.contrib.auth.models import User
 from PyPDF2 import PdfReader, PdfWriter
 import os
-from django.core.files.base import ContentFile
 
 
 class KeyRing(models.Model):

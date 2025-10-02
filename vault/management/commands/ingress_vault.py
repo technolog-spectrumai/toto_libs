@@ -1,9 +1,8 @@
-from django.utils.text import slugify
 from django.contrib.auth.models import User
 from vault.models import VaultPdf, KeyRing
 from oya.ingress import IngressCommand
-import random
 import os
+
 
 class Command(IngressCommand):
     help = "Seed Vault app with demo data and create dashboard item"
