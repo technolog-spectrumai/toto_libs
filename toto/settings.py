@@ -73,7 +73,8 @@ INSTALLED_APPS = [
     "documents",
     "kanban",
     "mandragora",
-    "kodama"
+    "kodama",
+    "federal"
 ]
 
 DJANGO_TIPTAP_CONFIG = {
