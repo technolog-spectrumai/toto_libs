@@ -30,23 +30,8 @@ class Department(models.Model):
 
 
 
-class BasePreset(PolymorphicModel):
+class LatexPreset(models.Model):
     name = models.CharField(max_length=100)
-
-    class Meta:
-        verbose_name = "Preset"
-        verbose_name_plural = "Presets"
-
-    def __str__(self):
-        return f"{self.name} [{self.__class__.__name__}]"
-
-
-
-# ────────────────────────────────────────────────
-# 🧪 LaTeX Preset
-# ────────────────────────────────────────────────
-
-class LatexPreset(BasePreset):
     document_class = models.CharField(max_length=100, default='article')
     preamble = models.TextField(blank=True)
     packages = JSONField(schema={"type": "array", "items": {"type": "string"}}, default=list)
@@ -55,38 +40,6 @@ class LatexPreset(BasePreset):
     def __str__(self):
         return f"{self.name} [LaTeX]"
 
-# ────────────────────────────────────────────────
-# 🌐 HTML Preset
-# ────────────────────────────────────────────────
-
-class HTMLPreset(BasePreset):
-    style_mapping = JSONField(
-        schema={
-            'type': 'object',
-            'properties': {
-                'h1': {'type': 'string'},
-                'h2': {'type': 'string'},
-                'h3': {'type': 'string'},
-                'p': {'type': 'string'},
-                'div.summary': {'type': 'string'}
-            },
-            'additionalProperties': {'type': 'string'}
-        },
-        default={
-            "h1": "text-4xl font-bold mt-8 mb-4",
-            "h2": "text-3xl font-semibold mt-6 mb-3",
-            "h3": "text-2xl font-medium mt-4 mb-2",
-            "p": "mb-4 leading-relaxed",
-            "div.summary": "text-sm italic text-gray-600 dark:text-gray-400 mb-6"
-        }
-    )
-
-    def __str__(self):
-        return f"{self.name} [HTML]"
-
-# ────────────────────────────────────────────────
-# 📄 Document Model
-# ────────────────────────────────────────────────
 
 @reversion.register()
 class Document(models.Model):
@@ -98,16 +51,8 @@ class Document(models.Model):
 
     tags = models.ManyToManyField(Tag, blank=True)
     department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True)
-    content = models.TextField(blank=True)
-    preset = models.ForeignKey(BasePreset, on_delete=models.SET_NULL, null=True, blank=True)
+    preset = models.ForeignKey(LatexPreset, on_delete=models.SET_NULL, null=True, blank=True)
 
-    @property
-    def preset_type(self):
-        if isinstance(self.preset, LatexPreset):
-            return "LaTeX"
-        elif isinstance(self.preset, HTMLPreset):
-            return "HTML"
-        return "Unknown"
 
     def __str__(self):
         return f"{self.title} (v{self.version})"
@@ -139,6 +84,7 @@ class Document(models.Model):
 class DocumentItem(models.Model):
     order = models.PositiveIntegerField(default=0)
     title = models.CharField(max_length=255)
+    is_raw = models.BooleanField(default=False)
 
     class Meta:
         abstract = True

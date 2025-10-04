@@ -5,10 +5,16 @@ from django.utils.text import slugify
 
 from documents.models import (
     Tag, Department,
-    LatexPreset, HTMLPreset,
+    LatexPreset,
     Document, DocumentSection, DocumentSubSection
 )
 from documents.convert import LatexToHTMLConverter
+
+try:
+    from documents.models import HTMLPreset
+except ImportError:
+    HTMLPreset = None  # Optional fallback if HTMLPreset is not defined
+
 
 class Command(IngressCommand):
     help = "Seed a LaTeX document with tags, department, presets, structured content, and in-place HTML conversion"
@@ -47,26 +53,24 @@ class Command(IngressCommand):
             footer_note="This document is confidential and intended solely for internal use."
         )
 
-        # 🌐 HTML Preset
-        html_preset = HTMLPreset.objects.create(
-            name="Default Web Style"
-        )
+        # 🌐 HTML Preset (optional)
+        if HTMLPreset:
+            HTMLPreset.objects.get_or_create(name="Default Web Style")
 
         # 📄 Document
         document = Document.objects.create(
             title="Seeded LaTeX Document",
             created_by=users[0],
             department=department,
-            preset=latex_preset,
-            content=r"\section{Introduction}" + "\n" + lorem.paragraph()
+            preset=latex_preset
         )
         document.tags.set(tags[:3])
 
-        # 🧩 Sections
+        # 🧩 Sections and Subsections
         sections = [
             ("Abstract", lorem.paragraph()),
-            ("Methodology", lorem.paragraph() + "\n\n" + lorem.paragraph()),
-            ("Results", lorem.paragraph() + "\n\n" + lorem.paragraph()),
+            ("Methodology", f"{lorem.paragraph()}\n\n{lorem.paragraph()}"),
+            ("Results", f"{lorem.paragraph()}\n\n{lorem.paragraph()}"),
             ("Conclusion", lorem.paragraph())
         ]
 
@@ -77,14 +81,12 @@ class Command(IngressCommand):
                 title=title,
                 content=content
             )
-
-            # Add 2 subsections per section
             for j in range(1, 3):
                 DocumentSubSection.objects.create(
                     section=section,
                     order=j,
                     title=f"{title} Subsection {j}",
-                    content=lorem.paragraph() + "\n\n" + lorem.paragraph()
+                    content=f"{lorem.paragraph()}\n\n{lorem.paragraph()}"
                 )
 
         self.stdout.write(self.style.SUCCESS("✅ Document ingress completed with HTML conversion and preset assignment."))

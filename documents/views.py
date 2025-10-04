@@ -1,7 +1,7 @@
 from django.views.generic import DetailView, ListView
 from .models import Department, Document
 from .mixins import PageDecoratedMixin
-from documents.models import HTMLPreset, LatexPreset
+from documents.models import LatexPreset
 
 class DocumentListView(PageDecoratedMixin, ListView):
     model = Document
@@ -36,18 +36,14 @@ class DocumentDetailView(PageDecoratedMixin, DetailView):
         context = super().get_context_data(**kwargs)
         document = self.object
 
-        if isinstance(document.preset, HTMLPreset):
-            preview_html = document.content
-            preview_css = " ".join(document.preset.style_mapping.values()) if document.preset.style_mapping else ""
-        else:
-            preview_html = ""  # or escape(document.content) if you want to show raw LaTeX safely
-            preview_css = ""
+        preview_html = ""  # or escape(document.content) if you want to show raw LaTeX safely
+        preview_css = ""
 
         context.update({
             'preview': preview_html,
             'preview_css': preview_css,
             'department': document.department,
             'tags': document.tags.all(),
-            'is_html': isinstance(document.preset, HTMLPreset),
+            'is_html': False
         })
         return context

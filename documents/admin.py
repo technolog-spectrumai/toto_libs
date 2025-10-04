@@ -7,7 +7,7 @@ from reversion.admin import VersionAdmin
 from .pdf import LatexCompiler
 from .models import (
     Tag, Department,
-    LatexPreset, HTMLPreset,
+    LatexPreset,
     Document, DocumentSection, DocumentSubSection,
     PDFFile
 )
@@ -48,50 +48,26 @@ class LatexPresetAdmin(admin.ModelAdmin):
     search_fields = ['name', 'document_class']
 
 
-@admin.register(HTMLPreset)
-class HTMLPresetAdmin(admin.ModelAdmin):
-    list_display = ['name', 'has_style_mapping']
-    search_fields = ['name']
-
-    @admin.display(description="Has Style Mapping")
-    def has_style_mapping(self, obj):
-        return bool(obj.style_mapping)
-
 # ────────────────────────────────────────────────
 # 🧩 Document Admin
 # ────────────────────────────────────────────────
 
-def resolve_editor_widget(preset_type):
-    if preset_type == "HTML":
-        return TipTapWidget()
-    return AceWidget(mode='latex', theme='chrome')
-
-
-class DocumentForm(forms.ModelForm):
-    class Meta:
-        model = Document
-        fields = '__all__'
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        preset_type = self.instance.preset_type if self.instance.pk else "LaTeX"
-        widget = resolve_editor_widget(preset_type)
-        self.fields['content'].widget = widget
-        self.fields['content'].widget.attrs.update({'style': 'font-family: monospace;'})
 
 
 class DocumentSectionForm(forms.ModelForm):
     class Meta:
         model = DocumentSection
-        fields = ['title', 'order', 'content']
+        fields = ['title', 'order', 'is_raw', 'content']
 
     def __init__(self, *args, **kwargs):
         document = kwargs.pop('document', None)
         super().__init__(*args, **kwargs)
-        preset_type = "LaTeX"
-        if document and hasattr(document, 'preset_type'):
-            preset_type = document.preset_type
-        widget = resolve_editor_widget(preset_type)
+
+        if self.instance.is_raw:
+            widget = AceWidget(mode='latex', theme='chrome')
+        else:
+            widget = TipTapWidget()
+
         self.fields['content'].widget = widget
         self.fields['content'].widget.attrs.update({'style': 'font-family: monospace;'})
 
@@ -99,15 +75,17 @@ class DocumentSectionForm(forms.ModelForm):
 class DocumentSubSectionForm(forms.ModelForm):
     class Meta:
         model = DocumentSubSection
-        fields = ['title', 'order', 'content']
+        fields = ['title', 'order', 'is_raw', 'content']
 
     def __init__(self, *args, **kwargs):
         document = kwargs.pop('document', None)
         super().__init__(*args, **kwargs)
-        preset_type = "LaTeX"
-        if document and hasattr(document, 'preset_type'):
-            preset_type = document.preset_type
-        widget = resolve_editor_widget(preset_type)
+
+        if self.instance.is_raw:
+            widget = AceWidget(mode='latex', theme='chrome')
+        else:
+            widget = TipTapWidget()
+
         self.fields['content'].widget = widget
         self.fields['content'].widget.attrs.update({'style': 'font-family: monospace;'})
 
@@ -150,8 +128,7 @@ class DocumentSectionInline(NestedStackedInline):
 
 @admin.register(Document)
 class DocumentAdmin(VersionAdmin, NestedModelAdmin):
-    form = DocumentForm
-    list_display = ['title', 'version', 'created_by', 'created_at', 'preset_type']
+    list_display = ['title', 'version', 'created_by', 'created_at']
     list_filter = ['department', 'tags', 'created_at']
     search_fields = ['title', 'slug']
     readonly_fields = ['created_at']
@@ -159,10 +136,7 @@ class DocumentAdmin(VersionAdmin, NestedModelAdmin):
     prepopulated_fields = {'slug': ('title',)}
     inlines = [DocumentSectionInline]
     actions = ['compile_pdf', 'convert_to_html', 'convert_to_latex']
-    #
-    # @admin.display(description="Preset Type")
-    # def preset_type(self, obj):
-    #     return obj.preset_type
+
 
     @admin.action(description="Compile selected documents to PDF")
     def compile_pdf(self, request, queryset):
