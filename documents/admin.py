@@ -7,7 +7,7 @@ from reversion.admin import VersionAdmin
 from .pdf import LatexCompiler
 from .models import (
     Tag, Department,
-    LatexPreset,
+    LatexPreset, Image,
     Document, DocumentSection, DocumentSubSection
 )
 from .convert import LatexToHTMLConverter, HTMLToLatexConverter
@@ -74,7 +74,7 @@ class DocumentSectionForm(forms.ModelForm):
 class DocumentSubSectionForm(forms.ModelForm):
     class Meta:
         model = DocumentSubSection
-        fields = ['title', 'order', 'is_raw', 'content']
+        fields = ['title', 'order', 'is_raw', 'content', 'image']
 
     def __init__(self, *args, **kwargs):
         document = kwargs.pop('document', None)
@@ -87,6 +87,7 @@ class DocumentSubSectionForm(forms.ModelForm):
 
         self.fields['content'].widget = widget
         self.fields['content'].widget.attrs.update({'style': 'font-family: monospace;'})
+
 
 
 
@@ -186,3 +187,16 @@ class DocumentAdmin(VersionAdmin, NestedModelAdmin):
             obj.save()
 
         formset.save_m2m()
+
+    @admin.register(Image)
+    class ImageAdmin(admin.ModelAdmin):
+        list_display = ['id', 'caption', 'preview']
+        search_fields = ['caption']
+        readonly_fields = ['preview']
+        fields = ['file', 'caption', 'preview']
+
+        def preview(self, obj):
+            if obj.file:
+                return format_html('<img src="{}" style="max-width: 300px; max-height: 200px;" />', obj.file.url)
+            return "No image"
+        preview.short_description = "Image Preview"

@@ -76,9 +76,14 @@ class Document(models.Model):
 
         super().save(*args, **kwargs)
 
-# ────────────────────────────────────────────────
-# 📑 Document Sections & Subsections
-# ────────────────────────────────────────────────
+
+class Image(models.Model):
+    file = models.ImageField(upload_to='documents/images/')
+    caption = models.CharField(max_length=255, blank=True)
+
+    def __str__(self):
+        return self.caption or f"Image {self.pk}"
+
 
 class DocumentItem(models.Model):
     order = models.PositiveIntegerField(default=0)
@@ -114,6 +119,7 @@ class DocumentSection(DocumentItem):
 class DocumentSubSection(DocumentItem):
     section = models.ForeignKey(DocumentSection, on_delete=models.CASCADE, related_name='subsections')
     content = models.TextField(blank=True)
+    image = models.ForeignKey(Image, on_delete=models.SET_NULL, null=True, blank=True, related_name='subsections')
 
     class DocumentSubSection(DocumentItem):
         section = models.ForeignKey(DocumentSection, on_delete=models.CASCADE, related_name='subsections')
