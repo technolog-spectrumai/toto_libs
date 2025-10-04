@@ -1,8 +1,7 @@
-import os
+
 from pylatex import Document as PyDocument, Section, Subsection, Command, Package, Figure
 from pylatex.utils import NoEscape
 from django.conf import settings
-import re
 import shutil
 import tempfile
 import os
@@ -25,11 +24,6 @@ class LatexCompiler:
         if not image_path or not os.path.exists(image_path):
             return
 
-        # # Sanitize path for LaTeX: remove or escape curly braces
-        # safe_path = re.sub(r'[{}]', '', image_path)
-        # print("---->", safe_path)
-
-        # Create a temp copy with a LaTeX-safe filename
         safe_dir = tempfile.mkdtemp(dir=self.output_dir)
         ext = os.path.splitext(image_path)[1]
         safe_name = slugify(os.path.basename(image_path).replace(ext, "")) + ext
