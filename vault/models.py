@@ -6,7 +6,7 @@ import os
 from gervazy.models import KeyRing
 
 
-# 📁 Abstract base model for files
+# Abstract base model for files
 class GeneralFile(models.Model):
     owner = models.ForeignKey(User, on_delete=models.CASCADE)
     title = models.CharField(max_length=255)
@@ -34,7 +34,7 @@ class GeneralFile(models.Model):
         }
 
 
-# 📄 VaultPdf model for encrypted PDFs
+# VaultPdf model for encrypted PDFs
 class VaultPdf(GeneralFile):
     class Meta:
         verbose_name = "Vault PDF"
@@ -63,8 +63,37 @@ class VaultPdf(GeneralFile):
         self.is_encrypted = True
         self.save()
 
+    def decrypt_pdf(self, password: str):
+        if not self.is_encrypted:
+            raise ValueError("PDF is not encrypted.")
 
-# 📂 VaultFile model for general encrypted files
+        input_path = self.file.path
+        base, ext = os.path.splitext(input_path)
+        output_path = f"{base}_decrypted{ext}"
+
+        reader = PdfReader(input_path)
+
+        if not reader.is_encrypted:
+            raise ValueError("PDF file is not encrypted at the file level.")
+
+        try:
+            reader.decrypt(password)
+        except Exception as e:
+            raise ValueError(f"Failed to decrypt PDF: {str(e)}")
+
+        writer = PdfWriter()
+        for page in reader.pages:
+            writer.add_page(page)
+
+        with open(output_path, "wb") as f:
+            writer.write(f)
+
+        self.file.save(os.path.basename(output_path), open(output_path, "rb"))
+        os.remove(output_path)
+        self.is_encrypted = False
+        self.save()
+
+# VaultFile model for general encrypted files
 class VaultFile(GeneralFile):
     class Meta:
         verbose_name = "Vault File"

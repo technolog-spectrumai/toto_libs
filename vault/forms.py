@@ -14,3 +14,7 @@ class DecryptFileForm(forms.Form):
     _selected_action = forms.CharField(widget=forms.MultipleHiddenInput)
     password = forms.CharField(widget=forms.PasswordInput, label="Decryption Password")
 
+class DecryptPdfForm(forms.Form):
+    _selected_action = forms.CharField(widget=forms.MultipleHiddenInput)
+    password = forms.CharField(widget=forms.PasswordInput, label="Decryption Password")
+

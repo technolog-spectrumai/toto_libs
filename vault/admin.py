@@ -1,8 +1,8 @@
 from django.contrib import admin, messages
 from .models import VaultPdf, VaultFile
-from django.urls import path
+from django.urls import path, reverse
 from django.shortcuts import render, redirect
-from .forms import EncryptPdfForm, EncryptFileForm, DecryptFileForm
+from .forms import EncryptPdfForm, EncryptFileForm, DecryptFileForm, DecryptPdfForm
 from .models import VaultPdf
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 
@@ -14,12 +14,13 @@ class VaultPdfAdmin(admin.ModelAdmin):
     list_filter = ('is_encrypted', 'is_public', 'uploaded_at')
     search_fields = ('title', 'owner__username')
     readonly_fields = ('uploaded_at',)
-    actions = ['encrypt_selected_pdfs']
+    actions = ['encrypt_selected_pdfs', 'decrypt_selected_pdfs']
 
     def get_urls(self):
         urls = super().get_urls()
         custom_urls = [
             path('encrypt/', self.admin_site.admin_view(self.encrypt_view), name='vaultpdf_encrypt'),
+            path('decrypt/', self.admin_site.admin_view(self.decrypt_view), name='vaultpdf_decrypt'),
         ]
         return custom_urls + urls
 
@@ -57,6 +58,42 @@ class VaultPdfAdmin(admin.ModelAdmin):
             'form': form,
             'queryset': queryset,
             'title': 'Encrypt selected PDFs',
+        })
+
+    def decrypt_selected_pdfs(self, request, queryset):
+        selected = request.POST.getlist(ACTION_CHECKBOX_NAME)
+        url = reverse('admin:vaultpdf_decrypt') + f'?ids={",".join(selected)}'
+        return redirect(url)
+    decrypt_selected_pdfs.short_description = "Decrypt selected encrypted PDFs with password"
+
+    def decrypt_view(self, request):
+        ids = request.GET.get('ids', '').split(',')
+        queryset = VaultPdf.objects.filter(pk__in=ids)
+
+        if request.method == 'POST':
+            form = DecryptPdfForm(request.POST)
+            if form.is_valid():
+                password = form.cleaned_data['password']
+
+                for pdf in queryset:
+                    if not pdf.is_encrypted:
+                        self.message_user(request, f"Skipped {pdf.title}: not encrypted", messages.WARNING)
+                        continue
+                    try:
+                        pdf.decrypt_pdf(password=password)
+                        pdf.is_public = True
+                        pdf.save()
+                        self.message_user(request, f"Decrypted: {pdf.title}", messages.SUCCESS)
+                    except Exception as e:
+                        self.message_user(request, f"Failed to decrypt {pdf.title}: {e}", messages.ERROR)
+                return redirect('..')
+        else:
+            form = DecryptPdfForm(initial={'_selected_action': ids})
+
+        return render(request, 'admin/decrypt_pdf.html', {
+            'form': form,
+            'queryset': queryset,
+            'title': 'Decrypt selected PDFs',
         })
 
 
