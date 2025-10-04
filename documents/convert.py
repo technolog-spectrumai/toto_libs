@@ -47,7 +47,7 @@ class HTMLToLatexConverter:
 
         for child in node.children:
             if isinstance(child, str):
-                latex_parts.append(child.strip())
+                latex_parts.append(child)  # Preserve raw spacing
                 continue
 
             tag = child.name
@@ -62,6 +62,8 @@ class HTMLToLatexConverter:
                 latex_parts.append(inner)
 
         return ''.join(latex_parts)
+
+
 
 # ────────────────────────────────────────────────
 # 🔁 LaTeX → HTML Converter
@@ -82,15 +84,17 @@ class LatexToHTMLConverter:
         html_parts = []
 
         for child in node.childNodes:
+            if child.nodeType == child.TEXT_NODE:
+                html_parts.append(child.data)  # preserve raw spacing
+                continue
+
             tag_name = child.nodeName
+            inner_html = self._convert_node(child)
 
             if tag_name in self.conversion_map:
                 html_tag = self.conversion_map[tag_name]
-                inner_html = self._convert_node(child)
                 html_parts.append(f"<{html_tag}>{inner_html}</{html_tag}>")
-            elif child.nodeType == child.TEXT_NODE:
-                html_parts.append(child.data.strip())
             else:
-                html_parts.append(self._convert_node(child))
+                html_parts.append(inner_html)
 
         return ''.join(html_parts)

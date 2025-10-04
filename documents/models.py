@@ -3,8 +3,7 @@ from django.contrib.auth.models import User
 from django.utils.text import slugify
 from django_jsonform.models.fields import JSONField
 import reversion
-from polymorphic.models import PolymorphicModel
-
+from .convert import LatexToHTMLConverter, HTMLToLatexConverter
 
 # ────────────────────────────────────────────────
 # 🔖 Tag Model
@@ -101,9 +100,36 @@ class DocumentSection(DocumentItem):
     def has_subsections(self):
         return self.subsections.exists()
 
+    def save(self, *args, **kwargs):
+        if self.pk:
+            old = DocumentSection.objects.get(pk=self.pk)
+            if old.is_raw != self.is_raw:
+                self.content = (
+                    HTMLToLatexConverter(self.content).convert()
+                    if self.is_raw else
+                    LatexToHTMLConverter(self.content).convert()
+                )
+        super().save(*args, **kwargs)
+
 class DocumentSubSection(DocumentItem):
     section = models.ForeignKey(DocumentSection, on_delete=models.CASCADE, related_name='subsections')
     content = models.TextField(blank=True)
+
+    class DocumentSubSection(DocumentItem):
+        section = models.ForeignKey(DocumentSection, on_delete=models.CASCADE, related_name='subsections')
+        content = models.TextField(blank=True)
+
+        def save(self, *args, **kwargs):
+            if self.pk:
+                old = DocumentSubSection.objects.get(pk=self.pk)
+                if old.is_raw != self.is_raw:
+                    self.content = (
+                        HTMLToLatexConverter(self.content).convert()
+                        if self.is_raw else
+                        LatexToHTMLConverter(self.content).convert()
+                    )
+            super().save(*args, **kwargs)
+
 
 # ────────────────────────────────────────────────
 # 📎 Compiled Outputs

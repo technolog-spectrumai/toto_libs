@@ -211,6 +211,22 @@ class DocumentAdmin(VersionAdmin, NestedModelAdmin):
         result = BatchAction(queryset).run(convert_one)
         BatchAction.display_messages(result, self.message_user, request, verb="convert")
 
+    def save_formset(self, request, form, formset, change):
+        instances = formset.save(commit=False)
+
+        for obj in instances:
+            if hasattr(obj, 'is_raw') and hasattr(obj, 'content'):
+                if obj.pk:
+                    old = obj.__class__.objects.get(pk=obj.pk)
+                    if old.is_raw != obj.is_raw:
+                        if obj.is_raw:
+                            obj.content = HTMLToLatexConverter(obj.content).convert()
+                        else:
+                            obj.content = LatexToHTMLConverter(obj.content).convert()
+            obj.save()
+
+        formset.save_m2m()
+
 
 # ────────────────────────────────────────────────
 # 📎 Output Files Admin
