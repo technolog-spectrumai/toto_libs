@@ -215,4 +215,10 @@ class KeyRing(models.Model):
         return base64.urlsafe_b64encode(kdf.derive(password.encode()))
 
 
+    def save(self, *args, **kwargs):
+        if not self.salt:
+            self.salt = os.urandom(16)
+        super().save(*args, **kwargs)
+
+
 
