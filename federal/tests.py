@@ -5,6 +5,11 @@ from federal.token import TokenService, Payload, Token, sign_token
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import serialization
 from federal.models import LocalIdentityProvider
+from django.test import TestCase, Client
+from django.urls import reverse
+from federal.models import LocalIdentityProvider, FederatedIdentity, AuthRSAKeyPair
+from federal.token import TokenService
+
 
 
 class TokenServiceTests(TestCase):
@@ -126,3 +131,62 @@ class TokenServiceTests(TestCase):
         keys = service.fetch_jwks()
         self.assertIsInstance(keys, list)
         self.assertEqual(keys[0]["kid"], "mock-key-id")
+
+
+class TokenViewTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+
+        # Use your model's generate method to create a real RSA key pair
+        self.rsa_key = AuthRSAKeyPair.generate(
+            key_id="test-key-id",
+            issuer="https://local-idp.example.com"
+        )
+        self.rsa_key.save()
+
+        # Create LocalIdentityProvider with the generated RSA key
+        self.provider = LocalIdentityProvider.objects.create(
+            issuer_url=self.rsa_key.issuer,
+            audience="my-app",
+            rsa_key=self.rsa_key
+        )
+
+        # Create FederatedIdentity
+        self.identity = FederatedIdentity.objects.create(
+            subject="user-123",
+            issuer=self.provider.issuer_url,
+            email="user@example.com",
+            name="Test User"
+        )
+
+    def test_issue_token_view(self):
+        url = reverse("federal:issue-token")
+        response = self.client.post(
+            url,
+            data={
+                "provider_id": self.provider.id,
+                "federated_id": self.identity.id
+            },
+            content_type="application/json"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("token", response.json())
+
+    def test_verify_token_view(self):
+        # First issue a token
+        service = TokenService(self.provider)
+        token = service.issue_token(self.identity)
+
+        url = reverse("federal:verify-token")
+        response = self.client.post(
+            url,
+            data={
+                "provider_id": self.provider.id,
+                "token": token.value
+            },
+            content_type="application/json"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["active"])
+        self.assertEqual(response.json()["claims"]["sub"], self.identity.subject)
+

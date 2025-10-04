@@ -245,5 +245,28 @@ class RSAKeyPair(models.Model):
             backend=default_backend()
         )
 
+    @classmethod
+    def generate(cls, key_id: str, issuer: str) -> "RSAKeyPair":
+        private_key_obj = rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=2048
+        )
 
+        private_pem = private_key_obj.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
+        ).decode()
+
+        public_pem = private_key_obj.public_key().public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        ).decode()
+
+        return cls(
+            key_id=key_id,
+            issuer=issuer,
+            private_key_pem=private_pem,
+            public_key_pem=public_pem
+        )
 
