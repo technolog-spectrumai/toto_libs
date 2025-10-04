@@ -344,7 +344,8 @@ INGRESS_ALLOWED_APPS = [
     "kanban",
     "community",
     "mandragora",
-    "kodama"
+    "kodama",
+    "federal"
 ]
 
 

@@ -1,19 +1,28 @@
 from django.contrib.auth.models import User
 from oya.ingress import IngressCommand
 from django.utils.crypto import get_random_string
-from datetime import datetime, timedelta
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import serialization
 from federal.models import (
-    RSAKeyPair, TrustedIssuer,
-    FederatedIdentity, UserFederationLink
+    AuthRSAKeyPair,
+    LocalIdentityProvider,
+    FederatedIdentity,
+    UserFederationLink
 )
+from federal.token import TokenService
 
 
 class Command(IngressCommand):
-    help = "Seed identity models with RSA keys, trusted issuers, federated identities, and links"
+    help = "Seed identity models with RSA keys, local provider, federated identity, and token"
 
     def process(self, _):
+        self.create_dashboard_item(
+            title="Federation",
+            icon="sitemap",
+            description="Manage federated identities.",
+            link="/federal/"
+        )
+
         # 🔐 Generate RSA Key Pair
         private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         private_pem = private_key.private_bytes(
@@ -27,27 +36,30 @@ class Command(IngressCommand):
             format=serialization.PublicFormat.SubjectPublicKeyInfo
         ).decode()
 
-        rsa_key = RSAKeyPair.objects.create(
+        rsa_key = AuthRSAKeyPair.objects.create(
             key_id=get_random_string(12),
             public_key_pem=public_pem,
             private_key_pem=private_pem,
-            issuer="https://your-project.example.com"
+            issuer="https://your-app.example.com",
+            active=True
         )
 
-        # 🌐 Create Trusted Issuer
-        issuer = TrustedIssuer.objects.create(
-            name="Demo Issuer",
-            issuer_url="https://your-project.example.com",
-            jwks_url="https://your-project.example.com/.well-known/jwks.json",
-            audience="your-audience",
-            trusted=True,
-            rsa_key=rsa_key
+        # 🏠 Create Local Identity Provider
+        provider = LocalIdentityProvider.objects.create(
+            name="Local Federation",
+            issuer_url="https://your-app.example.com",
+            audience="your-app-client-id",
+            rsa_key=rsa_key,
+            contact_email="admin@your-app.example.com",
+            metadata_url="https://your-app.example.com/.well-known/openid-configuration",
+            active=True,
+            token_lifetime=600
         )
 
         # 👤 Create Federated Identity
         federated_identity = FederatedIdentity.objects.create(
             subject=get_random_string(16),
-            issuer=issuer.issuer_url,
+            issuer=provider.issuer_url,
             email="demo@example.com",
             name="Demo User"
         )
@@ -57,8 +69,7 @@ class Command(IngressCommand):
         UserFederationLink.objects.get_or_create(user=user, federated_user=federated_identity)
 
         # 🪪 Issue Token
-        payload = {"role": "demo"}
-        token = issuer.issue_token(federated_identity, payload)
+        token = TokenService(provider).issue_token(federated_identity)
 
-        self.stdout.write(self.style.SUCCESS("Seeded identity models and issued token"))
-        self.stdout.write(f"Token: {token}")
+        self.stdout.write(self.style.SUCCESS("✅ Seeded identity models and issued token"))
+        self.stdout.write(f"🔐 Token:\n{token.value}")
