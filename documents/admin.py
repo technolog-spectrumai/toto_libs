@@ -8,14 +8,13 @@ from .pdf import LatexCompiler
 from .models import (
     Tag, Department,
     LatexPreset,
-    Document, DocumentSection, DocumentSubSection,
-    PDFFile
+    Document, DocumentSection, DocumentSubSection
 )
 from .convert import LatexToHTMLConverter, HTMLToLatexConverter
 from .batch import BatchAction
 from django_ace import AceWidget
 from django_tiptap.widgets import TipTapWidget
-
+from vault.models import VaultFile
 
 
 # ────────────────────────────────────────────────
@@ -135,10 +134,9 @@ class DocumentAdmin(VersionAdmin, NestedModelAdmin):
     filter_horizontal = ['tags']
     prepopulated_fields = {'slug': ('title',)}
     inlines = [DocumentSectionInline]
-    actions = ['compile_pdf', 'convert_to_html', 'convert_to_latex']
+    actions = ['compile_pdf']
 
-
-    @admin.action(description="Compile selected documents to PDF")
+    @admin.action(description="Compile selected documents to PDF and send to Vault")
     def compile_pdf(self, request, queryset):
 
         def compile_one(document):
@@ -148,68 +146,20 @@ class DocumentAdmin(VersionAdmin, NestedModelAdmin):
             if not pdf_path:
                 raise FileNotFoundError("PDF file not found after generation.")
 
-            PDFFile.objects.filter(document=document).delete()
-
+            # Save directly to Vault
             with open(pdf_path, 'rb') as f:
-                PDFFile.objects.create(
-                    document=document,
-                    file=File(f, name=f"{slugify(document.title)}.pdf")
+                VaultFile.objects.create(
+                    owner=document.created_by,
+                    title=document.title,
+                    file=File(f, name=f"{slugify(document.title)}.pdf"),
+                    file_type='pdf',
+                    notes=f"Compiled from document ID {document.id}"
                 )
 
             return document
 
         result = BatchAction(queryset).run(compile_one)
-        BatchAction.display_messages(result, self.message_user, request, verb="compile")
-
-    @admin.action(description="🔁 Convert LaTeX → HTML (in-place)")
-    def convert_to_html(self, request, queryset):
-        def convert_one(document):
-            if not isinstance(document.preset, LatexPreset):
-                return f"Skipped: {document.title} is not LaTeX"
-
-            # Convert main content
-            document.content = LatexToHTMLConverter(document.content).convert()
-            document.save()
-
-            # Convert sections
-            for section in document.sections.all():
-                section.content = LatexToHTMLConverter(section.content).convert()
-                section.save()
-
-                # Convert subsections
-                for subsection in section.subsections.all():
-                    subsection.content = LatexToHTMLConverter(subsection.content).convert()
-                    subsection.save()
-
-            return document
-
-        result = BatchAction(queryset).run(convert_one)
-        BatchAction.display_messages(result, self.message_user, request, verb="convert")
-
-    @admin.action(description="🔁 Convert HTML → LaTeX (in-place)")
-    def convert_to_latex(self, request, queryset):
-        def convert_one(document):
-            if not isinstance(document.preset, HTMLPreset):
-                return f"Skipped: {document.title} is not HTML"
-
-            # Convert main content
-            document.content = HTMLToLatexConverter(document.content).convert()
-            document.save()
-
-            # Convert sections
-            for section in document.sections.all():
-                section.content = HTMLToLatexConverter(section.content).convert()
-                section.save()
-
-                # Convert subsections
-                for subsection in section.subsections.all():
-                    subsection.content = HTMLToLatexConverter(subsection.content).convert()
-                    subsection.save()
-
-            return document
-
-        result = BatchAction(queryset).run(convert_one)
-        BatchAction.display_messages(result, self.message_user, request, verb="convert")
+        BatchAction.display_messages(result, self.message_user, request, verb="compile and vault")
 
     def save_formset(self, request, form, formset, change):
         instances = formset.save(commit=False)
@@ -226,16 +176,3 @@ class DocumentAdmin(VersionAdmin, NestedModelAdmin):
             obj.save()
 
         formset.save_m2m()
-
-
-# ────────────────────────────────────────────────
-# 📎 Output Files Admin
-# ────────────────────────────────────────────────
-
-@admin.register(PDFFile)
-class PDFFileAdmin(admin.ModelAdmin):
-    list_display = ['document', 'created_at']
-    readonly_fields = ['created_at']
-    search_fields = ['document__title']
-    list_filter = ['created_at']
-    ordering = ['-created_at']

@@ -129,16 +129,3 @@ class DocumentSubSection(DocumentItem):
                         LatexToHTMLConverter(self.content).convert()
                     )
             super().save(*args, **kwargs)
-
-
-# ────────────────────────────────────────────────
-# 📎 Compiled Outputs
-# ────────────────────────────────────────────────
-
-class PDFFile(models.Model):
-    document = models.OneToOneField(Document, on_delete=models.CASCADE, related_name='pdf_file')
-    file = models.FileField(upload_to='compiled_pdfs/')
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return f"PDF for {self.document.title} ({self.created_at.date()})"

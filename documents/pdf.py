@@ -30,10 +30,6 @@ class LatexCompiler:
         doc.preamble.append(Command('date', NoEscape(r'\today')))
         doc.append(NoEscape(r'\maketitle'))
 
-        # Main content
-        if self.document.content:
-            doc.append(NoEscape(self.document.content))
-
         # Sections and Subsections
         for section in self.document.sections.all():
             with doc.create(Section(section.title)):
