@@ -1,6 +1,6 @@
 from django.contrib import admin, messages
 from django.utils.html import format_html
-from .models import TLSCertificate, ExternalCertificate
+from .models import TLSCertificate, ExternalCertificate, KeyRing
 
 
 @admin.register(TLSCertificate)
@@ -115,6 +115,14 @@ class ExternalCertificateAdmin(admin.ModelAdmin):
                 self.message_user(request, f"Failed to issue certificate for {cert.domain}", messages.ERROR)
 
     issue_certificate.short_description = "Issue certificate for selected domains"
+
+
+@admin.register(KeyRing)
+class KeyRingAdmin(admin.ModelAdmin):
+    list_display = ('label', 'owner', 'created_at')
+    search_fields = ('label', 'owner__username')
+    readonly_fields = ('salt', 'created_at')
+    list_filter = ('created_at',)
 
 
 
