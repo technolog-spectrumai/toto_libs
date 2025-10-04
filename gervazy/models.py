@@ -221,4 +221,29 @@ class KeyRing(models.Model):
         super().save(*args, **kwargs)
 
 
+# 🔐 RSA Key Pair Management
+class RSAKeyPair(models.Model):
+    key_id = models.CharField(max_length=100, unique=True)
+    public_key_pem = models.TextField()
+    private_key_pem = models.TextField()
+    issuer = models.URLField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"RSAKeyPair {self.key_id}"
+
+    def get_private_key(self):
+        return serialization.load_pem_private_key(
+            self.private_key_pem.encode(),
+            password=None,
+            backend=default_backend()
+        )
+
+    def get_public_key(self):
+        return serialization.load_pem_public_key(
+            self.public_key_pem.encode(),
+            backend=default_backend()
+        )
+
+
 

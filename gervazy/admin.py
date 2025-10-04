@@ -1,6 +1,6 @@
 from django.contrib import admin, messages
 from django.utils.html import format_html
-from .models import TLSCertificate, ExternalCertificate, KeyRing
+from .models import TLSCertificate, ExternalCertificate, KeyRing, AuthRSAKeyPair
 
 
 @admin.register(TLSCertificate)
@@ -125,5 +125,17 @@ class KeyRingAdmin(admin.ModelAdmin):
     list_filter = ('created_at',)
 
 
+@admin.register(AuthRSAKeyPair)
+class AuthRSAKeyPairAdmin(admin.ModelAdmin):
+    list_display = ('key_id', 'issuer', 'created_at')
+    search_fields = ('key_id', 'issuer')
+    readonly_fields = ('created_at',)
+    list_filter = ('issuer',)
+
+    def get_readonly_fields(self, request, obj=None):
+        # Prevent editing private key after creation
+        if obj:
+            return self.readonly_fields + ('private_key_pem',)
+        return self.readonly_fields
 
 
