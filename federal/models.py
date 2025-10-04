@@ -1,11 +1,11 @@
 from django.db import models
 from django.contrib.auth.models import User
 import jwt
-from gervazy.models import RsaKeyPair
+from gervazy.models import RSAKeyPair
 
 
 # 🔐 RSA Key Pair Management
-class AuthRSAKeyPair(RsaKeyPair):
+class AuthRSAKeyPair(RSAKeyPair):
     active = models.BooleanField(default=True)
 
     def to_jwk(self):

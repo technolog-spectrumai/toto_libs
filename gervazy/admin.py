@@ -1,6 +1,6 @@
 from django.contrib import admin, messages
 from django.utils.html import format_html
-from .models import TLSCertificate, ExternalCertificate, KeyRing, AuthRSAKeyPair
+from .models import TLSCertificate, ExternalCertificate, KeyRing, RSAKeyPair
 
 
 @admin.register(TLSCertificate)
@@ -125,8 +125,8 @@ class KeyRingAdmin(admin.ModelAdmin):
     list_filter = ('created_at',)
 
 
-@admin.register(AuthRSAKeyPair)
-class AuthRSAKeyPairAdmin(admin.ModelAdmin):
+@admin.register(RSAKeyPair)
+class RSAKeyPairAdmin(admin.ModelAdmin):
     list_display = ('key_id', 'issuer', 'created_at')
     search_fields = ('key_id', 'issuer')
     readonly_fields = ('created_at',)
