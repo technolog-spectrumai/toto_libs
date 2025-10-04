@@ -42,6 +42,7 @@ class HTMLToLatexConverter:
         soup = BeautifulSoup(self.text, 'html.parser')
         return self._convert_node(soup.body or soup)
 
+
     def _convert_node(self, node):
         latex_parts = []
 
@@ -54,15 +55,18 @@ class HTMLToLatexConverter:
             inner = self._convert_node(child)
 
             if tag in ["ul", "ol"]:
-                items = ''.join([self._convert_node(li) for li in child.find_all("li", recursive=False)])
-                latex_parts.append(self.conversion_map[tag] % items)
+                items = []
+                for li in child.find_all("li", recursive=False):
+                    item_content = self._convert_node(li).replace(r"\\", "").strip()
+                    items.append(f"  \\item {item_content}")
+                joined_items = '\n' + '\n'.join(items) + '\n'
+                latex_parts.append(f"\n{self.conversion_map[tag] % joined_items}\n")
             elif tag in self.conversion_map:
                 latex_parts.append(self.conversion_map[tag] % inner)
             else:
                 latex_parts.append(inner)
 
         return ''.join(latex_parts)
-
 
 
 # ────────────────────────────────────────────────

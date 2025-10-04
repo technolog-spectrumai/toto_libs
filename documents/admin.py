@@ -140,6 +140,16 @@ class DocumentAdmin(VersionAdmin, NestedModelAdmin):
     def compile_pdf(self, request, queryset):
 
         def compile_one(document):
+            # Force all sections and subsections to save as raw (LaTeX)
+            for section in document.sections.all():
+                section.is_raw = True
+                section.save()
+
+                for subsection in section.subsections.all():
+                    subsection.is_raw = True
+                    subsection.save()
+
+            # Compile PDF
             compiler = LatexCompiler(document)
             pdf_path = compiler.generate_pdf()
 
