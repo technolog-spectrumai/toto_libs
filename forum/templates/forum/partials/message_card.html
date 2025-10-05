@@ -12,7 +12,13 @@
   <p class="text-xs opacity-50 mt-2">
     #{{ message.id }} • {{ message.timestamp }}
     {% if message.user %}
-      • Posted by <span class="font-medium">{{ message.user.username }}</span>
+      • Posted by
+      <span
+        :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+        class="font-medium"
+      >
+        {{ message.user.username }}
+      </span>
     {% else %}
       • <span class="italic">Anonymous</span>
     {% endif %}
