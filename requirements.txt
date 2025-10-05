@@ -63,6 +63,7 @@ GitPython==3.1.45
 greenlet==3.2.4
 gunicorn==23.0.0
 idna==3.10
+iniconfig==2.1.0
 Jinja2==3.1.6
 joblib==1.5.1
 josepy==2.1.0
@@ -71,6 +72,7 @@ jsonschema-specifications==2025.4.1
 kiwisolver==1.4.9
 kombu==5.5.4
 latex==0.7.0
+lorem==0.1.1
 lorem-text==3.0
 Markdown==3.8
 MarkupSafe==3.0.2
@@ -86,12 +88,14 @@ parsedatetime==2.6
 pillow==11.2.1
 plasTeX==3.1
 playwright==1.54.0
+pluggy==1.6.0
 prompt_toolkit==3.0.51
 psycopg==3.2.10
 psycopg2-binary==2.9.10
 pycparser==2.22
 pydyf==0.11.0
 pyee==13.0.0
+Pygments==2.19.2
 PyJWT==2.10.1
 PyLaTeX==1.4.2
 pymongo==4.14.0
@@ -101,6 +105,7 @@ pypdf==6.1.1
 PyPDF2==3.0.1
 pyphen==0.17.2
 pyRFC3339==2.0.1
+pytest==8.4.2
 python-crontab==3.2.0
 python-dateutil==2.9.0.post0
 python-dotenv==1.1.1

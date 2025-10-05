@@ -23,28 +23,35 @@
 
     <p class="text-center text-sm opacity-70">Max bytes: {{ room.max_bytes }}</p>
 
-    <div class="space-y-4">
-      {% for message in messages %}
-        <div
-          :class="darkMode
-            ? 'bg-primary-bg-dark border border-accent-1'
-            : 'bg-primary-bg-light border border-accent-2'"
-          class="p-4 rounded-lg shadow-sm"
-        >
-          {% if message.parent %}
-            <p class="text-xs opacity-60 mb-1">Reply to #{{ message.parent.id }}</p>
-          {% endif %}
-          <p class="text-sm whitespace-pre-line break-words overflow-hidden">{{ message.content }}</p>
-          <p class="text-xs opacity-50 mt-2">#{{ message.id }} • {{ message.timestamp }}</p>
+    <!-- Messages and replies -->
+    <div class="space-y-6">
+      {% for message in root_messages %}
+        <div class="space-y-2">
+          {% include "forum/partials/message_card.html" with message=message %}
+
+          {% for reply in message.replies.all %}
+            <div class="ml-6">
+              {% include "forum/partials/message_card.html" with message=reply %}
+            </div>
+          {% endfor %}
         </div>
-      {% empty %}
-        <p class="text-center text-lg opacity-70">No messages yet.</p>
       {% endfor %}
     </div>
 
+    <!-- Message form -->
     <form method="post" class="pt-8 space-y-4">
       {% csrf_token %}
-      {{ form.as_p }}
+      <div>
+        {{ form.content }}
+      </div>
+      <label for="parent" class="block text-sm font-medium">Reply to (optional):</label>
+      <input
+        type="number"
+        name="parent"
+        id="parent"
+        class="w-full px-4 py-2 rounded border focus:outline-none focus:ring-2 transition duration-300"
+        x-bind:class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+      >
       <button
         type="submit"
         :class="darkMode ? 'bg-accent-dark text-white' : 'bg-accent-light text-white'"

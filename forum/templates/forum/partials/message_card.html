@@ -1,0 +1,20 @@
+<!-- forum/templates/forum/message_card.html -->
+<div
+  :class="darkMode
+    ? 'bg-primary-bg-dark border border-accent-1'
+    : 'bg-primary-bg-light border border-accent-2'"
+  class="p-4 rounded-lg shadow-sm"
+>
+  {% if message.parent %}
+    <p class="text-xs opacity-60 mb-1">Reply to #{{ message.parent.id }}</p>
+  {% endif %}
+  <p class="text-sm whitespace-pre-line break-words overflow-hidden">{{ message.content }}</p>
+  <p class="text-xs opacity-50 mt-2">
+    #{{ message.id }} • {{ message.timestamp }}
+    {% if message.user %}
+      • Posted by <span class="font-medium">{{ message.user.username }}</span>
+    {% else %}
+      • <span class="italic">Anonymous</span>
+    {% endif %}
+  </p>
+</div>

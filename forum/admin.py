@@ -14,7 +14,7 @@ class RoomAdmin(admin.ModelAdmin):
     inlines = [MessageInline]
 
 class MessageAdmin(admin.ModelAdmin):
-    list_display = ('short_content', 'room', 'parent', 'timestamp')
+    list_display = ('short_content', 'room', 'parent', 'timestamp', 'user')
     list_filter = ('room',)
     search_fields = ('content',)
 
