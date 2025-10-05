@@ -28,7 +28,7 @@ body {
 
   <div class="max-w-6xl mx-auto p-8 rounded-xl shadow-lg space-y-10">
     <header class="space-y-4 text-center">
-      <h1 class="text-3xl font-extrabold">Organization Chart</h1>
+      <h1 class="text-xl font-extrabold">Organization Chart</h1>
       <div class="max-w-sm mx-auto">
         <label for="company"
                class="block text-sm font-medium mb-1"
@@ -91,8 +91,12 @@ const renderChart = (data) => {
     }
   });
 
-  const tree = d3.tree().nodeSize(isMobile ? [dx, dy] : [dy, dx]);
-  tree(root);
+  const isHorizontal = window.innerWidth < window.innerHeight;
+  const layout = isMobile
+    ? d3.cluster().nodeSize(isHorizontal ? [dy, dx] : [dx, dy])
+    : d3.tree().nodeSize(isHorizontal ? [dx, dy] : [dy, dx]);
+
+  layout(root);
 
   const nodes = root.descendants();
   const links = root.links();
