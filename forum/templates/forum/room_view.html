@@ -1,0 +1,58 @@
+{% extends "oya/base.html" %}
+
+{% block title %}{{ room.name }}{% endblock %}
+
+{% block content %}
+<section
+  x-data="{}"
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="px-4 sm:px-6 lg:px-8 py-12 min-h-screen transition-colors duration-300"
+>
+  <div
+    :class="darkMode
+      ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
+      : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+    class="rounded-xl shadow-lg border p-6 space-y-8 transition-colors duration-300"
+  >
+    <h2
+      :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+      class="text-2xl font-bold text-center"
+    >
+      {{ room.name }}
+    </h2>
+
+    <p class="text-center text-sm opacity-70">Max bytes: {{ room.max_bytes }}</p>
+
+    <div class="space-y-4">
+      {% for message in messages %}
+        <div
+          :class="darkMode
+            ? 'bg-primary-bg-dark border border-accent-1'
+            : 'bg-primary-bg-light border border-accent-2'"
+          class="p-4 rounded-lg shadow-sm"
+        >
+          {% if message.parent %}
+            <p class="text-xs opacity-60 mb-1">Reply to #{{ message.parent.id }}</p>
+          {% endif %}
+          <p class="text-sm whitespace-pre-line break-words overflow-hidden">{{ message.content }}</p>
+          <p class="text-xs opacity-50 mt-2">#{{ message.id }} • {{ message.timestamp }}</p>
+        </div>
+      {% empty %}
+        <p class="text-center text-lg opacity-70">No messages yet.</p>
+      {% endfor %}
+    </div>
+
+    <form method="post" class="pt-8 space-y-4">
+      {% csrf_token %}
+      {{ form.as_p }}
+      <button
+        type="submit"
+        :class="darkMode ? 'bg-accent-dark text-white' : 'bg-accent-light text-white'"
+        class="px-4 py-2 rounded shadow hover:opacity-90 transition"
+      >
+        Post Message
+      </button>
+    </form>
+  </div>
+</section>
+{% endblock %}

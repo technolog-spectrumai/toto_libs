@@ -75,7 +75,8 @@ INSTALLED_APPS = [
     "mandragora",
     "kodama",
     "vault",
-    "federal"
+    "federal",
+    "forum"
 ]
 
 DJANGO_TIPTAP_CONFIG = {
@@ -345,7 +346,8 @@ INGRESS_ALLOWED_APPS = [
     "community",
     "mandragora",
     "kodama",
-    "federal"
+    "federal",
+    "forum"
 ]
 
 
