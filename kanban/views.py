@@ -180,5 +180,18 @@ class BoardListView(LoginRequiredMixin, ListView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context = PageProcessor().decorate(context, self.request)
+        page = PageProcessor()
+        context = page.decorate(context, self.request)
+
+        # if page.platform and page.platform.theme and page.platform.theme.color_mix:
+        #     color_mix_obj = page.platform.theme.color_mix
+        #     color_mix = {
+        #         "bg_color_light": color_mix_obj.primary_bg_light or "#F3F4F6",
+        #         "text_color_light": color_mix_obj.text_main_light or "#111827",
+        #         "bg_color_dark": color_mix_obj.primary_bg_dark or "#1a1a1a",
+        #         "text_color_dark": color_mix_obj.text_main_dark or "#ffffff",
+        #     }
+        #     context["color_mix"] = color_mix
+
         return context
+

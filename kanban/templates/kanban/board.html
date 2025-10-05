@@ -124,10 +124,6 @@ function getCookie(name) {
         <div
           x-data
           class="rounded-lg p-4 shadow transition-colors duration-300"
-          data-bg-light="{{ column.color_mix.bg_color_light|default:'#F3F4F6' }}"
-          data-text-light="{{ column.color_mix.text_color_light|default:'#111827' }}"
-          data-bg-dark="{{ column.color_mix.bg_color_dark|default:'#1a1a1a' }}"
-          data-text-dark="{{ column.color_mix.text_color_dark|default:'#ffffff' }}"
           :style="
             darkMode
               ? `background-color: ${$el.dataset.bgDark}; color: ${$el.dataset.textDark}`
@@ -141,12 +137,10 @@ function getCookie(name) {
               {% include "kanban/partials/task.html" with task=task %}
             {% endfor %}
           </div>
-            <a class="text-blue-600 hover:underline"
-             href="{% url 'kanban:add_task' column.id %}">
-              + Add Task
-            </a>
+          <a class="text-blue-600 hover:underline" href="{% url 'kanban:add_task' column.id %}">
+            + Add Task
+          </a>
         </div>
-
       {% endfor %}
     </div>
 
