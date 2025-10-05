@@ -2,7 +2,7 @@ import random
 from django.core.management import call_command
 from django.contrib.auth.models import User
 from django.utils import timezone
-from community.models import Address, Company, Branch, CommunityMember, Post
+from community.models import Address, Company, Branch, CommunityMember
 from oya.ingress import IngressCommand
 
 class Command(IngressCommand):
@@ -40,9 +40,6 @@ class Command(IngressCommand):
 
         self.stdout.write(self.style.NOTICE("🏬 Creating branches..."))
         branches = self.create_fake_branches(company, members)
-
-        self.stdout.write(self.style.NOTICE("📝 Creating posts..."))
-        self.create_fake_posts(members, branches)
 
         self.stdout.write(self.style.SUCCESS("✅ Community ingress complete."))
 
@@ -133,21 +130,3 @@ class Command(IngressCommand):
             branches.append(branch)
 
         return branches
-
-    def create_fake_posts(self, members, branches):
-        sample_contents = [
-            "Just had a great team meeting!",
-            "Excited to announce our new project",
-            "Happy to be part of this community",
-            "Looking forward to our upcoming event",
-            "Great progress on our initiatives"
-        ]
-
-        for member in members:
-            for _ in range(random.randint(1, 3)):
-                Post.objects.create(
-                    author=member,
-                    content=random.choice(sample_contents),
-                    visibility=random.choice(['public', 'members', 'branch']),
-                    created_at=timezone.now() - timezone.timedelta(days=random.randint(0, 30))
-                )
