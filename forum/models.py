@@ -16,15 +16,19 @@ class Room(models.Model):
         self._cleanup_if_needed(extra_bytes=new_size)
         return Message.objects.create(room=self, content=content, parent=parent, user=user)
 
+    @property
+    def bytes_used(self):
+        return sum(len(msg.content.encode('utf-8')) for msg in self.messages.all())
+
     def _cleanup_if_needed(self, extra_bytes=0):
-        messages = self.messages.order_by('timestamp')
+        messages = list(self.messages.order_by('timestamp'))
         total_size = sum(m.size_in_bytes() for m in messages)
 
         while total_size + extra_bytes > self.max_bytes and messages:
-            oldest = messages.first()
+            oldest = messages[0]  # ✅ Use list indexing
             total_size -= oldest.size_in_bytes()
             oldest.delete()
-            messages = messages[1:]
+            messages = messages[1:]  # ✅ Still a list, safe to slice
 
     def save(self, *args, **kwargs):
         if self.pk:

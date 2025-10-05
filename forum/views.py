@@ -27,7 +27,6 @@ def room_view(request, room_id):
         else:
             roots.append(msg)
 
-    # Attach replies to each root message using a safe temporary attribute
     for root in roots:
         setattr(root, '_replies', replies_by_parent.get(root.id, []))
 
@@ -45,8 +44,10 @@ def room_view(request, room_id):
     context = {
         'room': room,
         'root_messages': roots,
-        'form': form
+        'form': form,
+        'bytes_used': room.bytes_used
     }
     return render(request, 'forum/room_view.html', PageProcessor().decorate(context, request))
+
 
 

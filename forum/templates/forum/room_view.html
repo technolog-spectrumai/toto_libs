@@ -2,6 +2,11 @@
 
 {% block title %}{{ room.name }}{% endblock %}
 
+{% block start_script %}
+  <script type="module" src="{% static 'mls-client/index-CW01TaJj.js' %}"></script>
+  <link rel="stylesheet" href="{% static 'mls-client/index-BaiKPFAq.css' %}">
+{% endblock %}
+
 {% block content %}
 <section
   x-data="{}"
@@ -21,7 +26,10 @@
       {{ room.name }}
     </h2>
 
-    <p class="text-center text-sm opacity-70">Max bytes: {{ room.max_bytes }}</p>
+    <p class="text-center text-sm opacity-70">
+      Bytes used: {{ bytes_used }} / {{ room.max_bytes }}
+    </p>
+
 
     <!-- Messages and replies -->
     <div class="space-y-6">
