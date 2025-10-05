@@ -213,39 +213,3 @@ class ReferenceRequest(models.Model):
 
     def __str__(self):
         return f"Reference by {self.referrer.display_name} for {self.application.email}"
-
-
-class Post(models.Model):
-    author = models.ForeignKey(
-        CommunityMember,
-        on_delete=models.CASCADE,
-        related_name='posts',
-        help_text='Community member who created the post'
-    )
-    content = models.TextField(
-        help_text='Main text content of the post'
-    )
-    image = models.ImageField(
-        upload_to='posts/',
-        null=True,
-        blank=True,
-        help_text='Optional image attachment'
-    )
-    visibility_choices = [
-        ('public', 'Public'),
-        ('members', 'Members Only'),
-        ('branch', 'Branch Only')
-    ]
-    visibility = models.CharField(
-        max_length=20,
-        choices=visibility_choices,
-        default='members',
-        help_text='Who can see this post'
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ['-created_at']
-
-    def __str__(self):
-        return f"Post by {self.author.display_name} on {self.created_at.strftime('%Y-%m-%d')}"

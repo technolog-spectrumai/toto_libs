@@ -260,28 +260,3 @@ def get_role(person, company):
         if person in branch.members.all():
             return "Member"
     return "Contributor"
-
-
-class PostListView(ListView):
-    model = Post
-    template_name = 'community/post_list.html'
-    context_object_name = 'posts'
-    ordering = ['-created_at']
-    paginate_by = 10
-
-    def get_queryset(self):
-        queryset = Post.objects.filter(
-            visibility='public'
-        ).select_related('author')
-
-        if 'member_slug' in self.kwargs:
-            queryset = queryset.filter(author__slug=self.kwargs['member_slug'])
-
-        return queryset
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context['page_title'] = 'Posts'
-        context['current_member_slug'] = self.kwargs.get('member_slug')
-        processor = PageProcessor()
-        return processor.decorate(context, self.request)
