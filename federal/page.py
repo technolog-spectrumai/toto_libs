@@ -18,6 +18,10 @@ class PageProcessor:
             raise Http404("No active platform configuration found.")
         return platform
 
+    @property
+    def platform(self):
+        return self.config
+
     def decorate(self, context, request):
         platform = PlatformSerializer(self.config).data
         context.update({

@@ -7,13 +7,14 @@ from federal.models import (
     AuthRSAKeyPair,
     LocalIdentityProvider,
     FederatedIdentity,
-    UserFederationLink
+    UserFederationLink,
+    Federation
 )
 from federal.token import TokenService
 
 
 class Command(IngressCommand):
-    help = "Seed identity models with RSA keys, local provider, federated identity, and token"
+    help = "Seed identity models with RSA keys, federation, local provider, federated identity, and token"
 
     def process(self, _):
         self.create_dashboard_item(
@@ -21,6 +22,13 @@ class Command(IngressCommand):
             icon="sitemap",
             description="Manage federated identities.",
             link="/federal/"
+        )
+
+        # 🏛️ Create Federation
+        federation = Federation.objects.create(
+            name="Demo Federation",
+            description="Federation for demo purposes",
+            active=True
         )
 
         # 🔐 Generate RSA Key Pair
@@ -44,7 +52,7 @@ class Command(IngressCommand):
             active=True
         )
 
-        # 🏠 Create Local Identity Provider
+        # 🏠 Create Local Identity Provider linked to Federation
         provider = LocalIdentityProvider.objects.create(
             name="Local Federation",
             issuer_url="https://your-app.example.com",
@@ -53,15 +61,17 @@ class Command(IngressCommand):
             contact_email="admin@your-app.example.com",
             metadata_url="https://your-app.example.com/.well-known/openid-configuration",
             active=True,
-            token_lifetime=600
+            token_lifetime=600,
+            federation=federation
         )
 
-        # 👤 Create Federated Identity
+        # 👤 Create Federated Identity linked to Federation
         federated_identity = FederatedIdentity.objects.create(
             subject=get_random_string(16),
             issuer=provider.issuer_url,
             email="demo@example.com",
-            name="Demo User"
+            name="Demo User",
+            federation=federation
         )
 
         # 🔗 Link to Local User
@@ -71,5 +81,5 @@ class Command(IngressCommand):
         # 🪪 Issue Token
         token = TokenService(provider).issue_token(federated_identity)
 
-        self.stdout.write(self.style.SUCCESS("✅ Seeded identity models and issued token"))
+        self.stdout.write(self.style.SUCCESS("✅ Seeded federation, identity models, and issued token"))
         self.stdout.write(f"🔐 Token:\n{token.value}")

@@ -97,12 +97,23 @@ def logout_view(request):
     logout(request)
     return redirect(_get_next(request))
 
+
 def federal_welcome_view(request):
     token = request.session.get("access_token")
+    processor = PageProcessor()
+    platform = processor.platform  # or however you retrieve the current platform
+    logo_url = None
+
+    if hasattr(platform, "identity_provider") and platform.identity_provider.logo:
+        logo_url = platform.identity_provider.logo.url
+
     context = {
         "page_title": "Welcome",
         "token": token,
+        "platform": platform,
+        "logo_url": logo_url,
     }
-    processor = PageProcessor()
+
     return render(request, "federal/welcome.html", processor.decorate(context, request))
+
 

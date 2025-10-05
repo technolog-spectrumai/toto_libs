@@ -4,6 +4,22 @@ import jwt
 from gervazy.models import RSAKeyPair
 
 
+class Federation(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True)
+    logo = models.ImageField(
+        upload_to='federation_logos/',
+        null=True,
+        blank=True,
+        help_text="Optional logo for this federation"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return self.name
+
+
 # 🔐 RSA Key Pair Management
 class AuthRSAKeyPair(RSAKeyPair):
     active = models.BooleanField(default=True)
@@ -20,6 +36,7 @@ class AuthRSAKeyPair(RSAKeyPair):
             "e": jwt.utils.base64url_encode(numbers.e.to_bytes((numbers.e.bit_length() + 7) // 8, 'big')).decode()
         }
 
+
 # 👤 Federated Identity
 class FederatedIdentity(models.Model):
     subject = models.CharField(max_length=100)
@@ -27,6 +44,14 @@ class FederatedIdentity(models.Model):
     email = models.EmailField(null=True, blank=True)
     name = models.CharField(max_length=100, null=True, blank=True)
     last_seen = models.DateTimeField(auto_now=True)
+    federation = models.ForeignKey(
+        Federation,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='federated_identities',
+        help_text="Federation this identity belongs to"
+    )
 
     class Meta:
         unique_together = ('subject', 'issuer')
@@ -55,6 +80,14 @@ class LocalIdentityProvider(BaseIdentityProvider):
     active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     token_lifetime = models.PositiveIntegerField(default=300, help_text="Token lifetime in seconds")
+    federation = models.ForeignKey(
+        Federation,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='local_identity_providers',
+        help_text="Federation this provider belongs to"
+    )
 
     def get_jwk_set(self):
         return {
@@ -66,6 +99,14 @@ class ExternalIdentityProvider(BaseIdentityProvider):
     jwks_url = models.URLField()
     trusted = models.BooleanField(default=True)
     last_verified = models.DateTimeField(null=True, blank=True)
+    federation = models.ForeignKey(
+        Federation,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='external_identity_providers',
+        help_text="Federation this provider belongs to"
+    )
 
     def fetch_jwk_set(self):
         import requests
@@ -74,7 +115,7 @@ class ExternalIdentityProvider(BaseIdentityProvider):
         return response.json()
 
 
-# Link Between Local and Federated Identities
+# 🔗 Link Between Local and Federated Identities
 class UserFederationLink(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='federated_links')
     federated_user = models.ForeignKey(FederatedIdentity, on_delete=models.CASCADE, related_name='local_links')
