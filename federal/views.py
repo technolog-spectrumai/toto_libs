@@ -56,48 +56,6 @@ def verify_token_view(request):
         return JsonResponse({"error": str(e)}, status=400)
 
 
-def _get_next(request):
-    next_url = request.GET.get('next')
-    if next_url:
-        return next_url
-    return 'nest:dashboard'
-
-
-@csrf_protect
-def login_view(request):
-    processor = PageProcessor()
-    form = LoginForm(request.POST or None)
-    context = {"form": form, "page_title": "Login"}
-
-    if request.method == "POST" and form.is_valid():
-        user = authenticate(
-            request,
-            username=form.cleaned_data["username"],
-            password=form.cleaned_data["password"]
-        )
-        if user:
-            login(request, user)
-
-            # Token Issuance
-            link = user.federated_links.filter(active=True).first()
-            if link:
-                federated_identity = link.federated_user
-                provider = LocalIdentityProvider.objects.filter(active=True).first()
-                if provider:
-                    token = TokenService(provider).issue_token(federated_identity)
-                    request.session["access_token"] = token.value
-                    context["token"] = token.value
-            return redirect(_get_next(request))
-
-        context["error"] = "Invalid credentials."
-
-    return render(request, "federal/login.html", processor.decorate(context, request))
-
-def logout_view(request):
-    logout(request)
-    return redirect(_get_next(request))
-
-
 def federal_welcome_view(request):
     token = request.session.get("access_token")
     processor = PageProcessor()
