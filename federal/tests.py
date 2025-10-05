@@ -1,24 +1,27 @@
-from django.test import TestCase
+from django.test import TestCase, Client
 from unittest.mock import MagicMock
 from datetime import datetime, timedelta
-from federal.token import TokenService, Payload, Token, sign_token
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import serialization
-from federal.models import LocalIdentityProvider
-from django.test import TestCase, Client
 from django.urls import reverse
-from federal.models import LocalIdentityProvider, FederatedIdentity, AuthRSAKeyPair
-from federal.token import TokenService
 
+from federal.token import TokenService, Payload, Token, sign_token
+from federal.models import (
+    Federation,
+    AuthRSAKeyPair,
+    LocalIdentityProvider,
+    FederatedIdentity
+)
 
 
 class TokenServiceTests(TestCase):
     def setUp(self):
-        # Generate a real RSA key for signing
-        private_key_obj = rsa.generate_private_key(
-            public_exponent=65537,
-            key_size=2048
-        )
+        # Mock federation
+        self.federation = MagicMock()
+        self.federation.url = "https://local-idp.example.com"
+
+        # Generate real RSA key
+        private_key_obj = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         pem = private_key_obj.private_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PrivateFormat.PKCS8,
@@ -38,7 +41,7 @@ class TokenServiceTests(TestCase):
         }
 
         self.provider = MagicMock()
-        self.provider.issuer_url = "https://local-idp.example.com"
+        self.provider.issuer_url = self.federation.url
         self.provider.audience = "my-app"
         self.provider.token_lifetime = 600
         self.provider.rsa_key = self.rsa_key
@@ -46,7 +49,7 @@ class TokenServiceTests(TestCase):
 
         self.identity = MagicMock()
         self.identity.subject = "user-123"
-        self.identity.issuer = self.provider.issuer_url
+        self.identity.federation = self.federation
         self.identity.email = "user@example.com"
         self.identity.name = "Test User"
         self.identity.last_seen = datetime.utcnow()
@@ -137,26 +140,35 @@ class TokenViewTests(TestCase):
     def setUp(self):
         self.client = Client()
 
-        # Use your model's generate method to create a real RSA key pair
+        self.federation = Federation.objects.create(
+            name="Test Federation",
+            url="https://local-idp.example.com",
+            jwks_url="https://local-idp.example.com/.well-known/jwks.json",
+            active=True
+        )
+
         self.rsa_key = AuthRSAKeyPair.generate(
             key_id="test-key-id",
-            issuer="https://local-idp.example.com"
+            issuer=self.federation.url
         )
         self.rsa_key.save()
 
-        # Create LocalIdentityProvider with the generated RSA key
         self.provider = LocalIdentityProvider.objects.create(
-            issuer_url=self.rsa_key.issuer,
+            name="Test Provider",
+            issuer_url=self.federation.url,
             audience="my-app",
-            rsa_key=self.rsa_key
+            rsa_key=self.rsa_key,
+            federation=self.federation,
+            contact_email="admin@example.com",
+            token_lifetime=600,
+            active=True
         )
 
-        # Create FederatedIdentity
         self.identity = FederatedIdentity.objects.create(
             subject="user-123",
-            issuer=self.provider.issuer_url,
             email="user@example.com",
-            name="Test User"
+            name="Test User",
+            federation=self.federation
         )
 
     def test_issue_token_view(self):
@@ -173,7 +185,6 @@ class TokenViewTests(TestCase):
         self.assertIn("token", response.json())
 
     def test_verify_token_view(self):
-        # First issue a token
         service = TokenService(self.provider)
         token = service.issue_token(self.identity)
 
@@ -189,4 +200,3 @@ class TokenViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json()["active"])
         self.assertEqual(response.json()["claims"]["sub"], self.identity.subject)
-

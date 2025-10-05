@@ -25,8 +25,11 @@ class Command(IngressCommand):
         )
 
         # 🏛️ Create Federation
+        issuer_url = "https://your-app.example.com"
         federation = Federation.objects.create(
             name="Demo Federation",
+            url=issuer_url,
+            jwks_url=f"{issuer_url}/.well-known/jwks.json",
             description="Federation for demo purposes",
             active=True
         )
@@ -48,18 +51,18 @@ class Command(IngressCommand):
             key_id=get_random_string(12),
             public_key_pem=public_pem,
             private_key_pem=private_pem,
-            issuer="https://your-app.example.com",
+            issuer=issuer_url,
             active=True
         )
 
         # 🏠 Create Local Identity Provider linked to Federation
         provider = LocalIdentityProvider.objects.create(
             name="Local Federation",
-            issuer_url="https://your-app.example.com",
+            issuer_url=issuer_url,
             audience="your-app-client-id",
             rsa_key=rsa_key,
             contact_email="admin@your-app.example.com",
-            metadata_url="https://your-app.example.com/.well-known/openid-configuration",
+            metadata_url=f"{issuer_url}/.well-known/openid-configuration",
             active=True,
             token_lifetime=600,
             federation=federation
@@ -68,7 +71,6 @@ class Command(IngressCommand):
         # 👤 Create Federated Identity linked to Federation
         federated_identity = FederatedIdentity.objects.create(
             subject=get_random_string(16),
-            issuer=provider.issuer_url,
             email="demo@example.com",
             name="Demo User",
             federation=federation
