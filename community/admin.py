@@ -7,8 +7,7 @@ from .models import (
     Address,
     MembershipApplication,
     Branch,
-    ReferenceRequest,
-    Post
+    ReferenceRequest
 )
 
 # Inline for displaying branches under a company

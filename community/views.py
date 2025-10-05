@@ -12,8 +12,6 @@ from django.shortcuts import render, get_object_or_404
 from django.http import JsonResponse
 from django.views.generic import TemplateView
 from community.models import Company
-from django.views.generic import ListView
-from .models import Post
 
 
 template_dir = "community"
