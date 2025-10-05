@@ -78,7 +78,7 @@ def login_view(request):
         if user:
             login(request, user)
 
-            # 🔐 Token Issuance
+            # Token Issuance
             link = user.federated_links.filter(active=True).first()
             if link:
                 federated_identity = link.federated_user

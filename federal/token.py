@@ -63,6 +63,8 @@ def sign_token(payload: Payload, private_key: str, key_id: str, algorithm: str =
 
 
 class TokenService:
+
+
     def __init__(self, identity_provider):
         self.identity_provider = identity_provider
         self.issuer_url = identity_provider.issuer_url

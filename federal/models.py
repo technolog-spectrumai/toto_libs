@@ -47,17 +47,6 @@ class BaseIdentityProvider(models.Model):
         return f"{self.name} ({self.issuer_url})"
 
 
-class IdentityProvider(models.Model):
-    name = models.CharField(max_length=100)
-    issuer_url = models.URLField(unique=True)
-    audience = models.CharField(max_length=100)
-    trusted = models.BooleanField(default=True)
-    rsa_key = models.ForeignKey(AuthRSAKeyPair, on_delete=models.SET_NULL, null=True, blank=True)
-
-    def __str__(self):
-        return self.name
-
-
 # 🏠 Local Identity Provider (your own)
 class LocalIdentityProvider(BaseIdentityProvider):
     rsa_key = models.ForeignKey(AuthRSAKeyPair, on_delete=models.PROTECT)
@@ -85,7 +74,7 @@ class ExternalIdentityProvider(BaseIdentityProvider):
         return response.json()
 
 
-# 🔗 Link Between Local and Federated Identities
+# Link Between Local and Federated Identities
 class UserFederationLink(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='federated_links')
     federated_user = models.ForeignKey(FederatedIdentity, on_delete=models.CASCADE, related_name='local_links')
