@@ -1,86 +1,41 @@
-{# kanban/templates/kanban/board.html #}
 {% extends "oya/base.html" %}
 {% load static %}
 
 {% block title %}Kanban Board | {{ board.name }}{% endblock %}
 
 {% block start_script %}
-  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
-  <script>
-
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+<script>
 document.addEventListener("DOMContentLoaded", () => {
-  initSortableLists();
-});
-
-// Initialize Sortable.js on all lists
-function initSortableLists() {
   document.querySelectorAll(".sortable").forEach(list => {
     new Sortable(list, {
       group: { name: "tasks", pull: true, put: true },
       animation: 150,
       fallbackOnBody: true,
       swapThreshold: 0.65,
-      onEnd: handleTaskDrop
+      onEnd(evt) => {
+        const taskId = evt.item.dataset.taskId;
+        const columnId = evt.to.dataset.columnId;
+        const order = evt.item.dataset.order;
+        if (taskId && columnId) {
+          fetch(`/kanban/task/${taskId}/move/`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-CSRFToken": getCookie("csrftoken"),
+            },
+            body: JSON.stringify({ column_id: columnId, order: order })
+          });
+        }
+      }
     });
   });
-}
-
-// Handle drop event and trigger AJAX
-function handleTaskDrop(evt) {
-  const taskEl = evt.item;
-  const newColEl = evt.to;
-
-  const taskId = taskEl.dataset.taskId;
-  const newColumnId = newColEl.dataset.columnId;
-  const order = taskEl.dataset.order;
-  //alert(order);
-
-  if (taskId && newColumnId) {
-    sendTaskMoveRequest(taskId, newColumnId, order);
-  } else {
-    console.warn("Missing taskId or columnId");
-  }
-}
-
-// Send AJAX request to persist move
-function sendTaskMoveRequest(taskId, columnId, order) {
-  fetch(`/kanban/task/${taskId}/move/`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-CSRFToken": getCookie("csrftoken"),
-    },
-    body: JSON.stringify({ column_id: columnId, order: order })
-  })
-  .then(res => {
-    console.log(res);
-    if (!res.ok) throw new Error("Failed to update task position");
-    return res.json();
-  })
-  .then(data => {
-    console.log("✅ Task moved:", data);
-  })
-  .catch(err => {
-    console.error("❌ Error moving task:", err);
-  });
-}
-
-// CSRF token helper
+});
 function getCookie(name) {
-  let cookieValue = null;
-  if (document.cookie && document.cookie !== "") {
-    const cookies = document.cookie.split(";");
-    for (let i = 0; i < cookies.length; i++) {
-      const cookie = cookies[i].trim();
-      if (cookie.substring(0, name.length + 1) === name + "=") {
-        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-        break;
-      }
-    }
-  }
-  return cookieValue;
+  return document.cookie.split('; ').find(row => row.startsWith(name + '='))
+    ?.split('=')[1] || null;
 }
-  </script>
+</script>
 {% endblock %}
 
 {% block content %}
@@ -100,44 +55,32 @@ function getCookie(name) {
   :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
   class="px-6 py-12 min-h-screen transition-colors duration-300"
 >
-
   <div
     :class="darkMode
       ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
       : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
     class="rounded-lg shadow-md border p-6 space-y-6 transition-colors duration-300"
   >
-
-    <h2
-      :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-      class="text-2xl font-bold text-center"
-    >
+    <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-2xl font-bold text-center">
       {{ board.name }}
     </h2>
-
-    <p class="text-center text-sm text-gray-500">
-      Project: {{ board.project.name }}
-    </p>
+    <p class="text-center text-sm text-gray-500">Project: {{ board.project.name }}</p>
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
       {% for column in columns %}
         <div
-          x-data
+          :class="darkMode
+            ? 'bg-primary-bg-dark text-text-main-dark border border-accent-1'
+            : 'bg-primary-bg-light text-text-main-light border border-accent-2'"
           class="rounded-lg p-4 shadow transition-colors duration-300"
-          :style="
-            darkMode
-              ? `background-color: ${$el.dataset.bgDark}; color: ${$el.dataset.textDark}`
-              : `background-color: ${$el.dataset.bgLight}; color: ${$el.dataset.textLight}`
-          "
         >
           <h3 class="text-lg font-semibold mb-4">{{ column.name }}</h3>
-
           <div id="column-{{ column.id }}" class="sortable space-y-4 min-h-[200px]" data-column-id="{{ column.id }}">
             {% for task in column.task_set.all %}
               {% include "kanban/partials/task.html" with task=task %}
             {% endfor %}
           </div>
-          <a class="text-blue-600 hover:underline" href="{% url 'kanban:add_task' column.id %}">
+          <a class="text-accent-light dark:text-accent-dark hover:underline" href="{% url 'kanban:add_task' column.id %}">
             + Add Task
           </a>
         </div>
@@ -156,7 +99,5 @@ function getCookie(name) {
       </a>
     </div>
   </div>
-
 </section>
-
 {% endblock %}

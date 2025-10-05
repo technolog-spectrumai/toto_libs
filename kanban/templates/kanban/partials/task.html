@@ -3,7 +3,9 @@
   class="task relative overflow-hidden p-3 rounded border transition-shadow hover:shadow-md"
   data-task-id="{{ task.id }}"
   data-order="{{ task.position }}"
-  style="background-color: {{ bg }}; color: {{ text }};"
+  :class="darkMode
+    ? 'bg-bubble-bg-dark text-text-main-dark border-accent-1'
+    : 'bg-bubble-bg-light text-text-main-light border-accent-2'"
   draggable="true"
 >
   <!-- overlays -->
@@ -35,23 +37,23 @@
       {% if task.due_date %}
         <p><i class="fa-regular fa-calendar"></i> Due: {{ task.due_date }}</p>
       {% endif %}
-        <div class="flex items-center gap-4 text-sm mt-2">
-          <a href="{% url 'kanban:edit_task' task.id %}"
-             :class="darkMode
-               ? 'text-accent-dark hover:underline'
-               : 'text-accent-light hover:underline'"
-             class="flex items-center gap-1 font-medium transition-opacity hover:opacity-80">
-            <i class="fas fa-edit"></i> Edit Task
-          </a>
+      <div class="flex items-center gap-4 text-sm mt-2">
+        <a href="{% url 'kanban:edit_task' task.id %}"
+           :class="darkMode
+             ? 'text-accent-dark hover:underline'
+             : 'text-accent-light hover:underline'"
+           class="flex items-center gap-1 font-medium transition-opacity hover:opacity-80">
+          <i class="fas fa-edit"></i> Edit Task
+        </a>
 
-          <a href="{% url 'kanban:confirm_delete_task' board.id task.id %}"
-             :class="darkMode
-               ? 'text-accent-dark hover:underline'
-               : 'text-accent-light hover:underline'"
-             class="flex items-center gap-1 font-medium transition-opacity hover:opacity-80">
-            <i class="fas fa-trash-alt"></i> Delete Task
-          </a>
-        </div>
+        <a href="{% url 'kanban:confirm_delete_task' board.id task.id %}"
+           :class="darkMode
+             ? 'text-accent-dark hover:underline'
+             : 'text-accent-light hover:underline'"
+           class="flex items-center gap-1 font-medium transition-opacity hover:opacity-80">
+          <i class="fas fa-trash-alt"></i> Delete Task
+        </a>
+      </div>
     </div>
   </div>
 </div>
