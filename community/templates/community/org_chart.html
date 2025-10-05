@@ -77,7 +77,7 @@ const renderChart = (data) => {
   const textColor = colors[`text-main-${theme}`];
   const accentColor = colors[`accent-${theme}`];
 
-  const isMobile = window.innerWidth < 768;
+  const isMobile = window.innerWidth < 768 || window.innerHeight < 600;
   const dx = 100; // node height
   const dy = 220; // node width
 
@@ -112,10 +112,12 @@ const renderChart = (data) => {
     .style("background-color", colors[`primary-bg-${theme}`])
     .style("transition", "background-color 0.3s ease");
 
-  const g = svg.append("g")
-    .attr("transform", isMobile
-      ? `translate(${dy}, ${-minX + dx})`
-      : `translate(${-minX + dy}, ${dx})`);
+    const zoomScale = isMobile ? 0.66 : 1; // Adjust zoom level for mobile
+
+    const g = svg.append("g")
+      .attr("transform", isMobile
+        ? `translate(${dy}, ${-minX + dx}) scale(${zoomScale})`
+        : `translate(${-minX + dy}, ${dx}) scale(${zoomScale})`);
 
     g.selectAll(".link")
       .data(links)
