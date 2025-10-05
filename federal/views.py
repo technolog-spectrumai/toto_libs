@@ -101,11 +101,12 @@ def logout_view(request):
 def federal_welcome_view(request):
     token = request.session.get("access_token")
     processor = PageProcessor()
-    platform = processor.platform  # or however you retrieve the current platform
+    platform = getattr(processor, "platform", None)
     logo_url = None
-
-    if hasattr(platform, "identity_provider") and platform.identity_provider.logo:
-        logo_url = platform.identity_provider.logo.url
+    identity_provider = LocalIdentityProvider.objects.filter(active=True).first()
+    federation = getattr(identity_provider, "federation", None) if identity_provider else None
+    if federation and getattr(federation, "logo", None):
+        logo_url = federation.logo.url
 
     context = {
         "page_title": "Welcome",
@@ -115,5 +116,6 @@ def federal_welcome_view(request):
     }
 
     return render(request, "federal/welcome.html", processor.decorate(context, request))
+
 
 
