@@ -4,38 +4,7 @@
 {% block title %}Kanban Board | {{ board.name }}{% endblock %}
 
 {% block start_script %}
-<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
-<script>
-document.addEventListener("DOMContentLoaded", () => {
-  document.querySelectorAll(".sortable").forEach(list => {
-    new Sortable(list, {
-      group: { name: "tasks", pull: true, put: true },
-      animation: 150,
-      fallbackOnBody: true,
-      swapThreshold: 0.65,
-      onEnd(evt) => {
-        const taskId = evt.item.dataset.taskId;
-        const columnId = evt.to.dataset.columnId;
-        const order = evt.item.dataset.order;
-        if (taskId && columnId) {
-          fetch(`/kanban/task/${taskId}/move/`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-CSRFToken": getCookie("csrftoken"),
-            },
-            body: JSON.stringify({ column_id: columnId, order: order })
-          });
-        }
-      }
-    });
-  });
-});
-function getCookie(name) {
-  return document.cookie.split('; ').find(row => row.startsWith(name + '='))
-    ?.split('=')[1] || null;
-}
-</script>
+
 {% endblock %}
 
 {% block content %}
