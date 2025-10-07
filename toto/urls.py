@@ -25,7 +25,7 @@ urlpatterns = [
     ),
     path('', lambda request: redirect('nest/root')),
     path("gervazy/", include("gervazy.urls")),
-    path("memo/", include("memo.urls")),
+    path("memo/", include("memo.urls", namespace="memo")),
     path("webfront/", include("webfront.urls")),
     path("documents/", include("documents.urls")),
     path("kanban/", include("kanban.urls", namespace="kanban")),

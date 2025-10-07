@@ -27,22 +27,3 @@ class MemoCardListView(ListView):
         deck = MemoDeck.objects.get(pk=self.kwargs['deck_id'])
         context['deck'] = deck
         return PageProcessor().decorate(context, self.request)
-
-
-class MemoCardDetailView(DetailView):
-    model = MemoCard
-    template_name = 'memo/card_detail.html'
-    context_object_name = 'card'
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        card = self.get_object()
-        deck = card.deck
-
-        next_card = MemoCard.objects.filter(deck=deck, order__gt=card.order).order_by('order').first()
-        prev_card = MemoCard.objects.filter(deck=deck, order__lt=card.order).order_by('-order').first()
-
-        context['next_card'] = next_card
-        context['prev_card'] = prev_card
-
-        return PageProcessor().decorate(context, self.request)

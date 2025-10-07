@@ -1,56 +1,87 @@
 {% extends "oya/base.html" %}
 {% load static %}
 
-{% block title %}{{ deck.title }} | Cards | {{ platform.site_name }}{% endblock %}
+{% block title %} Presentations | {{ platform.site_name }} {% endblock %}
+{% block start_script %}
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js/dist/reveal.css">
+  <link rel="stylesheet" id="reveal-theme">
+  <script>
+    let lastDarkMode = localStorage.getItem('darkMode');
+
+    function updateRevealTheme() {
+      const themeLink = document.getElementById('reveal-theme');
+      const darkMode = localStorage.getItem('darkMode');
+      themeLink.href = darkMode === 'true'
+        ? "https://cdn.jsdelivr.net/npm/reveal.js/dist/theme/black.css"
+        : "https://cdn.jsdelivr.net/npm/reveal.js/dist/theme/white.css";
+    }
+
+    updateRevealTheme();
+
+    setInterval(() => {
+      const currentDarkMode = localStorage.getItem('darkMode');
+      if (currentDarkMode !== lastDarkMode) {
+        lastDarkMode = currentDarkMode;
+        updateRevealTheme();
+      }
+    }, 500);
+  </script>
+{% endblock %}
 
 {% block content %}
-<section
-  :class="darkMode
-    ? 'bg-primary-bg-dark text-text-main-dark'
-    : 'bg-primary-bg-light text-text-main-light'"
-  class="flex items-center justify-center px-6 py-16 min-h-screen transition-colors duration-300">
+<body id="reveal-container">
 
-  <div
-    :class="darkMode
-      ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
-      : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
-    class="w-full max-w-2xl p-6 rounded-lg shadow-md border space-y-6 transition-colors duration-300">
+<div class="reveal">
+  <div class="slides">
 
-    <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-2xl font-bold text-center">
-      Cards in "{{ deck.title }}"
-    </h2>
+    <!-- Title Slide -->
+    <section>
+      <h2>Cards in "{{ deck.title }}"</h2>
+      <p>Total cards: {{ cards|length }}</p>
+    </section>
 
     {% if cards %}
-      <ul class="space-y-4">
-        {% for card in cards %}
-          <li
-            :class="darkMode
-              ? 'bg-primary-bg-dark border border-accent-1 hover:bg-bubble-bg-dark'
-              : 'bg-primary-bg-light border border-accent-2 hover:bg-bubble-bg-light'"
-            class="p-4 rounded transition-colors duration-300">
-            <a href="{% url 'card-detail' card.pk %}" class="block font-semibold text-lg underline hover:opacity-80">
-              {{ card.title|truncatechars:80 }}
-            </a>
-            <p class="text-sm mt-1 text-gray-500 dark:text-gray-400">
-              {{ card.content|truncatechars:100 }}
-            </p>
-          </li>
-        {% endfor %}
-      </ul>
+      {% for card in cards %}
+        <!-- Card Title Slide -->
+        <section>
+          <h3>{{ card.title }}</h3>
+        </section>
+
+        <!-- Card Content Slide -->
+        <section>
+          <h4>Content</h4>
+          <p>{{ card.content }}</p>
+        </section>
+
+        {% if card.image_url %}
+        <!-- Card Image Slide -->
+        <section>
+          <h4>Diagram</h4>
+          <img src="{{ card.image_url }}" alt="Diagram for {{ card.title }}" style="max-width: 100%; height: auto;">
+        </section>
+        {% endif %}
+      {% endfor %}
     {% else %}
-      <p class="text-center text-sm text-gray-500 dark:text-gray-400">
-        No cards in this deck yet.
-      </p>
+      <section>
+        <p>No cards in this deck yet.</p>
+      </section>
     {% endif %}
 
-    <a href="{% url 'deck-list' %}"
-       :class="darkMode
-         ? 'bg-accent-dark text-primary-bg-dark'
-         : 'bg-accent-light text-primary-bg-light'"
-       class="inline-block px-4 py-2 mt-6 rounded font-semibold hover:opacity-90 transition text-sm text-center">
-      Back to Decks
-    </a>
+    <!-- Back to Decks Slide -->
+    <section>
+      <a href="{% url 'memo:deck-list' %}">← Back to Decks</a>
+    </section>
 
   </div>
-</section>
+</div>
+{% endblock %}
+{% block end_script %}
+<script src="https://cdn.jsdelivr.net/npm/reveal.js/dist/reveal.js"></script>
+<script>
+  Reveal.initialize({
+    transition: 'slide',
+    hash: true
+  });
+</script>
+
 {% endblock %}

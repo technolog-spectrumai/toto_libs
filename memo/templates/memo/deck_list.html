@@ -28,7 +28,7 @@
               ? 'bg-primary-bg-dark border border-accent-1 hover:bg-bubble-bg-dark'
               : 'bg-primary-bg-light border border-accent-2 hover:bg-bubble-bg-light'"
             class="p-4 rounded transition-colors duration-300">
-            <a href="{% url 'card-list' deck.id %}" class="block font-semibold text-lg underline hover:opacity-80">
+            <a href="{% url 'memo:card-list' deck.id %}" class="block font-semibold text-lg underline hover:opacity-80">
               {{ deck.title }}
             </a>
             <p class="text-sm mt-1 text-gray-500 dark:text-gray-400">
