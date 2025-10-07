@@ -1,43 +1,27 @@
 from django.contrib.auth.models import User
-from django.utils.text import slugify
 from oya.ingress import IngressCommand
 from portfolio.models import (
-    Investor, Portfolio, Asset, Currency,
-    Transaction, Event, Milestone
+    Chamber, Investor, Currency, Venture,
+    Transaction, Event
 )
 import random
-from datetime import timedelta, date
+from datetime import timedelta
 from django.utils.timezone import now
 
 
 class Command(IngressCommand):
-    help = "Seed sample data for Portfolio app: investors, portfolios, assets, currencies, transactions, events"
+    help = "Seed sample data for SpectrumAi.pl Chamber: investors, ventures, currencies, transactions, and events"
 
     def process(self, _):
-        # Dashboard block
+        # 📊 Dashboard block
         self.create_dashboard_item(
-            title="Portfolio Demo",
+            title="SpectrumAi.pl Demo",
             icon="fa-solid fa-briefcase",
-            description="Seeds sample investors, portfolios, assets, currencies, and transactions for demo/testing.",
+            description="Seeds sample investors, ventures, currencies, transactions, and events for demo/testing.",
             link="/portfolio/"
         )
 
-        # Ensure demo user and investor
-        user, _ = User.objects.get_or_create(
-            username='demo_investor',
-            defaults={'email': 'investor@example.com'}
-        )
-        investor, _ = Investor.objects.get_or_create(
-            user=user,
-            defaults={
-                'display_name': 'Demo Investor',
-                'wallet_address': '0xDEMO123456789',
-                'balance': 100000,
-                'kyc_verified': True
-            }
-        )
-
-        # Create currencies
+        # 💱 Create currencies
         currency_data = [
             ('BTC', 'Bitcoin', True),
             ('ETH', 'Ethereum', True),
@@ -51,66 +35,110 @@ class Command(IngressCommand):
                 defaults={
                     'name': name,
                     'is_crypto': is_crypto,
-                    'is_internal': symbol == 'VC',
                     'decimals': 8,
                     'active': True
                 }
             )
             currencies.append(currency)
 
-        # Create portfolios
-        portfolio_data = [
-            ('Alpha Growth', 'Aggressive crypto strategy'),
-            ('Stable Yield', 'Conservative yield farming'),
-            ('Tech Picks', 'Focused on blockchain infrastructure')
-        ]
-        for title, strategy in portfolio_data:
-            if Portfolio.objects.filter(name=title, investor=investor).exists():
-                self.stdout.write(self.style.WARNING(f"⚠️ Skipped existing portfolio: {title}"))
-                continue
-
-            portfolio = Portfolio.objects.create(
-                investor=investor,
-                name=title,
-                strategy=strategy
+        # 🏛️ Ensure active chamber
+        usd_currency = Currency.objects.get(symbol="USD")
+        active_chambers = Chamber.objects.filter(active=True)
+        if active_chambers.count() == 0:
+            chamber = Chamber.objects.create(
+                name="SpectrumAi.pl",
+                manifest={"strategy": "Multi-chain crypto growth"},
+                active=True,
+                default_currency=usd_currency
             )
-            self.stdout.write(self.style.SUCCESS(f"💼 Created portfolio: {title}"))
+            self.stdout.write(self.style.SUCCESS("🏛️ Created active chamber: SpectrumAi.pl"))
+        elif active_chambers.count() == 1:
+            chamber = active_chambers.first()
+        else:
+            raise Exception("❌ Multiple active chambers detected. Only one chamber can be active at a time.")
 
-            # Add assets
-            for currency in random.sample(currencies, k=3):
-                Asset.objects.create(
-                    portfolio=portfolio,
-                    name=currency.name,
-                    symbol=currency.symbol,
-                    quantity=random.uniform(1, 100)
+        # 👤 Ensure demo user and investor
+        user, _ = User.objects.get_or_create(
+            username='demo_investor',
+            defaults={'email': 'investor@example.com'}
+        )
+        investor, _ = Investor.objects.get_or_create(
+            user=user,
+            defaults={
+                'display_name': 'Demo Investor',
+                'wallet_address': '0xDEMO123456789',
+                'balance': 100000,
+                'kyc_verified': True,
+                'chamber': chamber
+            }
+        )
+        if investor.chamber != chamber:
+            investor.chamber = chamber
+            investor.save()
+
+        # 📦 Create ventures
+        venture_data = [
+            ("Alpha Growth", "https://example.com/alpha"),
+            ("Stable Yield", "https://example.com/stable"),
+            ("Tech Picks", "https://example.com/tech")
+        ]
+        ventures = []
+        for name, url in venture_data:
+            venture, created = Venture.objects.get_or_create(
+                name=name,
+                defaults={
+                    'url': url,
+                    'start': now()
+                }
+            )
+            ventures.append(venture)
+            if created:
+                self.stdout.write(self.style.SUCCESS(f"📦 Created venture: {name}"))
+
+        # 🔁 Add transactions (funding rounds)
+        for venture in ventures:
+            for i in range(2):
+                currency = random.choice(currencies)
+                amount = round(random.uniform(1000, 10000), 2)
+                Transaction.objects.create(
+                    name=f"{venture.name} Round {i+1}",
+                    amount=amount,
+                    currency=currency,
+                    venture=venture,
+                    timestamp=now() - timedelta(days=random.randint(1, 30))
                 )
 
-            # Add milestone
-            Milestone.objects.create(
-                portfolio=portfolio,
-                title=f"{title} Launch",
-                category="Launch",
-                achieved=False,
-                target_date=date.today() + timedelta(days=30)
-            )
-
-        # Add transactions
-        for _ in range(5):
-            Transaction.objects.create(
-                investor=investor,
-                currency=random.choice(currencies),
-                amount=random.uniform(500, 5000),
-                reason="Initial funding"
-            )
-
-        # Add events
+        # 📍 Add public strategy update events
         for i in range(3):
             Event.objects.create(
                 owner=investor,
                 title=f"Strategy Update {i+1}",
                 event_type="Strategy Update",
-                severity=random.choice(['INFO', 'WARNING']),
-                metadata={"status": "planned", "note": "Demo event"}
+                severity=random.choice(['LOW', 'NORMAL', 'HIGH']),
+                start=now() - timedelta(days=i),
+                public=True
             )
 
-        self.stdout.write(self.style.SUCCESS("✅ Portfolio ingress complete."))
+        # 🚧 Add Coming Soon public events
+        coming_soon_items = [
+            ("AI-Powered Portfolio Rebalancing", "Feature"),
+            ("Multi-chain Wallet Integration", "Roadmap"),
+            ("Investor Reputation Scoring", "ComingSoon"),
+            ("Mobile App Launch", "Feature"),
+            ("Tokenized Asset Marketplace", "Roadmap")
+        ]
+
+        for i, (title, event_type) in enumerate(coming_soon_items):
+            future_start = now() + timedelta(days=7 * (i + 1))
+            Event.objects.create(
+                owner=investor,
+                title=title,
+                event_type=event_type,
+                severity="NORMAL",
+                start=future_start,
+                public=True
+            )
+            self.stdout.write(
+                self.style.SUCCESS(f"🛠️ Added coming soon: {title} (launching {future_start.date()})"))
+
+        self.stdout.write(self.style.SUCCESS("✅ SpectrumAi.pl ingress complete."))

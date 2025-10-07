@@ -1,60 +1,57 @@
 from django.contrib import admin
 from .models import (
-    Investor, Associate, Portfolio, Asset,
-    Currency, CurrencyExchangeRate, Transaction,
-    Milestone, Event
+    Chamber, Investor, Associate, Currency,
+    Venture, Transaction, Event
 )
+
+@admin.register(Chamber)
+class ChamberAdmin(admin.ModelAdmin):
+    list_display = ('name', 'active', 'created_at')
+    list_filter = ('active',)
+    search_fields = ('name',)
+
 
 @admin.register(Investor)
 class InvestorAdmin(admin.ModelAdmin):
-    list_display = ('display_name', 'user', 'wallet_address', 'balance', 'kyc_verified', 'joined_at')
+    list_display = ('display_name', 'user', 'chamber', 'balance', 'kyc_verified', 'joined_at')
+    list_filter = ('kyc_verified', 'chamber')
     search_fields = ('display_name', 'wallet_address', 'user__username')
-    list_filter = ('kyc_verified',)
+
 
 @admin.register(Associate)
 class AssociateAdmin(admin.ModelAdmin):
-    list_display = ('display_name', 'role', 'wallet_address', 'active', 'joined_at')
-    search_fields = ('display_name', 'role')
+    list_display = ('display_name', 'role', 'active', 'joined_at')
     list_filter = ('active',)
+    search_fields = ('display_name', 'role')
 
-@admin.register(Portfolio)
-class PortfolioAdmin(admin.ModelAdmin):
-    list_display = ('name', 'investor', 'strategy', 'created_at')
-    search_fields = ('name', 'investor__display_name')
-    list_filter = ('strategy',)
-
-@admin.register(Asset)
-class AssetAdmin(admin.ModelAdmin):
-    list_display = ('symbol', 'name', 'quantity', 'portfolio')
-    search_fields = ('symbol', 'name')
-    list_filter = ('symbol',)
 
 @admin.register(Currency)
 class CurrencyAdmin(admin.ModelAdmin):
-    list_display = ('name', 'symbol', 'is_crypto', 'is_internal', 'decimals', 'active')
-    search_fields = ('name', 'symbol')
-    list_filter = ('is_crypto', 'is_internal', 'active')
+    list_display = ('symbol', 'name', 'is_crypto', 'decimals', 'active')
+    list_filter = ('is_crypto', 'active')
+    search_fields = ('symbol', 'name')
 
-@admin.register(CurrencyExchangeRate)
-class CurrencyExchangeRateAdmin(admin.ModelAdmin):
-    list_display = ('from_currency', 'to_currency', 'rate', 'updated_at')
-    list_filter = ('from_currency', 'to_currency')
-    search_fields = ('from_currency__symbol', 'to_currency__symbol')
+
+@admin.register(Venture)
+class VentureAdmin(admin.ModelAdmin):
+    list_display = ('name', 'url', 'start', 'end')
+    search_fields = ('name',)
+
 
 @admin.register(Transaction)
 class TransactionAdmin(admin.ModelAdmin):
-    list_display = ('investor', 'currency', 'amount', 'reason', 'timestamp')
-    search_fields = ('investor__display_name', 'reason')
+    list_display = ('name', 'amount', 'currency', 'venture', 'timestamp')
     list_filter = ('currency', 'timestamp')
+    search_fields = ('name', 'venture__name')
 
-@admin.register(Milestone)
-class MilestoneAdmin(admin.ModelAdmin):
-    list_display = ('title', 'portfolio', 'category', 'achieved', 'target_date', 'timestamp')
-    search_fields = ('title', 'category')
-    list_filter = ('achieved', 'category')
 
 @admin.register(Event)
 class EventAdmin(admin.ModelAdmin):
-    list_display = ('title', 'owner', 'event_type', 'severity', 'timestamp')
-    search_fields = ('title', 'event_type', 'owner__display_name')
-    list_filter = ('severity', 'event_type')
+    list_display = ('title', 'event_type', 'severity', 'start', 'end', 'owner')
+    list_filter = ('event_type', 'severity', 'start')
+    search_fields = ('title', 'owner__display_name', 'event_type')
+    fieldsets = (
+        (None, {
+            'fields': ('title', 'description', 'event_type', 'severity', 'start', 'end', 'owner', 'metadata')
+        }),
+    )

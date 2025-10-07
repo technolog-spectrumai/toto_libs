@@ -2,81 +2,94 @@ from django.shortcuts import render
 from django.db.models import Sum, Count
 from itertools import chain
 from operator import attrgetter
+from django.core.exceptions import ImproperlyConfigured
+from django.utils.timezone import now
 from .models import (
-    Investor, Portfolio, Asset, Currency, Transaction,
-    Event, Associate
+    Chamber, Venture, Transaction, Event, Associate
 )
 from .page import PageProcessor
 
-def fund_overview(request):
-    # 🧠 Fund Identity
-    total_investors = Investor.objects.count()
-    total_portfolios = Portfolio.objects.count()
-    total_value = Asset.objects.aggregate(total=Sum('quantity'))['total'] or 0
 
-    fund_manifest = {
-        "strategy": "Multi-chain crypto growth",
-    }
+def chamber_overview(request):
+    # 🏛️ Load Active Chamber
+    active_chambers = Chamber.objects.filter(active=True)
 
-    fund = {
-        "name": "Oya Crypto Fund",
-        "manifest": fund_manifest,
+    if active_chambers.count() == 0:
+        raise ImproperlyConfigured("No active chamber found. Please activate one in the admin panel.")
+    elif active_chambers.count() > 1:
+        raise ImproperlyConfigured("Multiple active chambers detected. Only one chamber can be active at a time.")
+
+    chamber = active_chambers.first()
+
+    # 🧠 Chamber Identity
+    total_investors = chamber.investors.count()
+    total_ventures = Venture.objects.count()
+
+    # 💸 Total Investment in Default Currency
+    if chamber.default_currency:
+        total_investment = Transaction.objects.filter(
+            currency=chamber.default_currency
+        ).aggregate(total=Sum('amount'))['total'] or 0
+    else:
+        total_investment = None
+
+    chamber_data = {
+        "name": chamber.name,
+        "manifest": chamber.manifest,
         "total_investors": total_investors,
-        "total_portfolios": total_portfolios,
-        "total_value": round(total_value, 2),
+        "total_ventures": int(total_ventures),
+        "total_investment": round(total_investment, 2) if total_investment is not None else None
     }
 
     # 📊 Performance Summary
     performance_metrics = [
         {
             "label": "Total Investment",
-            "value": Transaction.objects.aggregate(total=Sum('amount'))['total'] or 0
+            "currency": chamber.default_currency,
+            "value": total_investment
         },
         {
-            "label": "Total Asset Count",
-            "value": Asset.objects.count()
+            "label": "Total Venture Count",
+            "value": int(total_ventures)
         },
     ]
 
-    # 💼 Portfolios
-    portfolios = Portfolio.objects.annotate(
-        asset_count=Count('assets'),
-        total_value=Sum('assets__quantity')
+    # 📦 Ventures with funding stats
+    ventures = Venture.objects.annotate(
+        funding_rounds_count=Count('funding_rounds'),
+        total_funding=Sum('funding_rounds__amount')
     )
 
-    # 📅 Recent Activity
-    recent_events = Event.objects.order_by('-timestamp')[:5]
+    # 📅 Recent Public Events (past only)
+    recent_events = Event.objects.filter(
+        owner__chamber=chamber,
+        public=True,
+        start__lte=now()
+    ).order_by('-start')[:5]
 
-    # 🚧 Coming Soon (from events)
+    # 🚧 Coming Soon Public Events (future only)
     coming_soon = Event.objects.filter(
-        event_type__in=["Feature", "Roadmap", "ComingSoon"],
-        metadata__status__in=["planned", "upcoming"]
-    ).order_by('timestamp')[:5]
+        owner__chamber=chamber,
+        public=True,
+        start__gt=now()
+    ).order_by('start')[:5]
 
-    # 🧑‍🤝‍🧑 Team = Associates + Investors
+    # 🧑‍🤝‍🧑 Team = Associates + Chamber Investors
     associates = Associate.objects.filter(active=True)
-    investors = Investor.objects.all()
+    investors = chamber.investors.all()
     team = sorted(
         chain(associates, investors),
         key=attrgetter('joined_at'),
         reverse=True
     )
 
-    # 💸 Investment Breakdown
-    investment_list = (
-        Investor.objects
-        .annotate(total_investment=Sum('transactions__amount'))
-        .order_by('-total_investment')
-    )
-
     context = {
-        "fund": fund,
+        "chamber": chamber_data,
         "performance_metrics": performance_metrics,
-        "portfolios": portfolios,
+        "ventures": ventures,
         "recent_events": recent_events,
         "coming_soon": coming_soon,
-        "team": team,
-        "investment_list": investment_list,
+        "team": team
     }
 
     return render(request, "portfolio/main.html", PageProcessor().decorate(context, request))

@@ -1,11 +1,46 @@
 from django.db import models
 from django.contrib.auth.models import User
+from django.utils.timezone import now
 
 
+# 💱 Currency
+class Currency(models.Model):
+    symbol = models.CharField(max_length=20, unique=True)
+    name = models.CharField(max_length=100)
+    is_crypto = models.BooleanField(default=True)
+    decimals = models.PositiveIntegerField(default=8)
+    active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return f"{self.name} ({self.symbol})"
+
+# 🏛️ Chamber
+class Chamber(models.Model):
+    name = models.CharField(max_length=255)
+    manifest = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    active = models.BooleanField(default=True)
+    default_currency = models.ForeignKey(
+        'Currency',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='default_for_chambers'
+    )
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.name
+
+
+# 👥 GeneralPerson (abstract base)
 class GeneralPerson(models.Model):
     display_name = models.CharField(max_length=100)
     wallet_address = models.CharField(max_length=255, blank=True, null=True)
-    manifest = models.JSONField(default=dict, blank=True)  # Strategy or role manifest
+    manifest = models.JSONField(default=dict, blank=True)
     joined_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -14,109 +49,62 @@ class GeneralPerson(models.Model):
     def __str__(self):
         return self.display_name
 
-# 👤 Investor (extends GeneralPerson)
+
+# 👤 Investor
 class Investor(GeneralPerson):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
-    balance = models.DecimalField(max_digits=20, decimal_places=2, default=0)  # Internal currency or crypto
+    chamber = models.ForeignKey(Chamber, on_delete=models.CASCADE, related_name='investors')
+    balance = models.DecimalField(max_digits=20, decimal_places=2, default=0)
     kyc_verified = models.BooleanField(default=False)
 
-# 🧑‍🤝‍🧑 Associate (extends GeneralPerson, no User link)
+
+# 🧑‍🤝‍🧑 Associate
 class Associate(GeneralPerson):
-    role = models.CharField(max_length=100, blank=True)  # e.g., 'Advisor', 'Partner', 'Mentor'
+    role = models.CharField(max_length=100, blank=True)
     active = models.BooleanField(default=True)
 
-    def __str__(self):
-        return self.display_name
 
-# 💼 Portfolio
-class Portfolio(models.Model):
-    investor = models.ForeignKey(Investor, on_delete=models.CASCADE, related_name='portfolios')
+# 📦 Venture (formerly Asset)
+class Venture(models.Model):
     name = models.CharField(max_length=100)
-    strategy = models.CharField(max_length=100, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    url = models.URLField(blank=True, null=True)
+    start = models.DateTimeField(default=now)
+    end = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
-        return f"{self.name} ({self.investor.display_name})"
+        return f"{self.name}"
 
-# 📦 Asset
-class Asset(models.Model):
-    portfolio = models.ForeignKey(Portfolio, on_delete=models.CASCADE, related_name='assets')
-    name = models.CharField(max_length=100)
-    symbol = models.CharField(max_length=20)
-    quantity = models.DecimalField(max_digits=20, decimal_places=8)
 
-    def __str__(self):
-        return f"{self.symbol} - {self.quantity}"
-
-# 💱 Currency
-class Currency(models.Model):
-    symbol = models.CharField(max_length=20, unique=True)  # e.g., BTC, ETH, USD, EFFORT
-    name = models.CharField(max_length=100)
-    is_crypto = models.BooleanField(default=True)
-    is_internal = models.BooleanField(default=False)  # True for EFFORT or platform-native tokens
-    decimals = models.PositiveIntegerField(default=8)
-    active = models.BooleanField(default=True)
-
-    def __str__(self):
-        return f"{self.name} ({self.symbol})"
-
-# 🔄 Currency Exchange Rate
-class CurrencyExchangeRate(models.Model):
-    from_currency = models.ForeignKey(Currency, on_delete=models.CASCADE, related_name='exchange_from')
-    to_currency = models.ForeignKey(Currency, on_delete=models.CASCADE, related_name='exchange_to')
-    rate = models.DecimalField(max_digits=20, decimal_places=8)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        unique_together = ('from_currency', 'to_currency')
-
-    def __str__(self):
-        return f"1 {self.from_currency.symbol} = {self.rate} {self.to_currency.symbol}"
-
-# 🔁 Transaction
 class Transaction(models.Model):
-    investor = models.ForeignKey(Investor, on_delete=models.CASCADE, related_name='transactions')
-    currency = models.ForeignKey(Currency, on_delete=models.CASCADE)
+    name = models.CharField(max_length=255)
     amount = models.DecimalField(max_digits=20, decimal_places=2)
-    reason = models.CharField(max_length=255)
-    timestamp = models.DateTimeField(auto_now_add=True)
+    currency = models.ForeignKey('Currency', on_delete=models.CASCADE)
+    venture = models.ForeignKey('Venture', on_delete=models.CASCADE, related_name='funding_rounds')
+    timestamp = models.DateTimeField(default=now)
 
     def __str__(self):
-        return f"{self.amount} {self.currency.symbol} for {self.investor.display_name}"
+        return f"{self.name}: {self.amount} {self.currency.symbol} → {self.venture.name}"
 
 
-class GeneralEvent(models.Model):
+# 📍 Event
+class Event(models.Model):
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
-    timestamp = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        abstract = True
-
-    def __str__(self):
-        return self
-
-
-class Milestone(GeneralEvent):
-    portfolio = models.ForeignKey('Portfolio', on_delete=models.CASCADE, related_name='milestones')
-    category = models.CharField(max_length=100)  # e.g., 'Funding', 'Launch', 'Partnership'
-    achieved = models.BooleanField(default=False)
-    target_date = models.DateField(null=True, blank=True)
-
-    def __str__(self):
-        return f"Milestone: {self.title} for {self.portfolio.name}"
-
-
-class Event(GeneralEvent):
-    owner = models.ForeignKey('Investor', on_delete=models.CASCADE, related_name='events')
-    event_type = models.CharField(max_length=100)  # e.g., 'Transaction', 'Login', 'Strategy Update'
+    owner = models.ForeignKey(Investor, on_delete=models.CASCADE, related_name='events')
+    event_type = models.CharField(max_length=100)
     severity = models.CharField(
         max_length=50,
-        choices=[('INFO', 'Info'), ('WARNING', 'Warning'), ('CRITICAL', 'Critical')],
-        default='INFO'
+        choices=[
+            ('LOW', 'Low'),
+            ('NORMAL', 'Normal'),
+            ('HIGH', 'High'),
+            ('CRITICAL', 'Critical')
+        ],
+        default='NORMAL'
     )
-    metadata = models.JSONField(default=dict, blank=True)
+    start = models.DateTimeField(default=now)
+    end = models.DateTimeField(null=True, blank=True)
+    public = models.BooleanField(default=False)
 
     def __str__(self):
         return f"Event: {self.title} ({self.event_type}) by {self.owner.display_name}"
-

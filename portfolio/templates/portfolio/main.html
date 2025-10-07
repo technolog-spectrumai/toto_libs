@@ -1,7 +1,7 @@
 {% extends "oya/base.html" %}
 {% load static %}
 
-{% block title %}Fund Overview | {{ platform.site_name }}{% endblock %}
+{% block title %} {{ platform.site_name }}{% endblock %}
 
 {% block content %}
 <div
@@ -11,21 +11,16 @@
   class="min-h-screen px-4 py-10 transition-colors duration-300">
 
   <div class="max-w-6xl mx-auto space-y-12">
-    <h1 class="text-4xl font-extrabold tracking-tight">
-      Fund Overview
-    </h1>
-
     <!-- 🧠 Fund Identity -->
     <section>
-      <h2 class="text-2xl font-bold mb-4">Fund Identity</h2>
+      <h2 class="text-2xl font-bold mb-4">Identity</h2>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div class="p-4 rounded border"
              :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
-          <p><strong>Name:</strong> {{ fund.name }}</p>
-          <p><strong>Strategy:</strong> {{ fund.manifest.strategy }}</p>
-          <p><strong>Total Investors:</strong> {{ fund.total_investors }}</p>
-          <p><strong>Total Portfolios:</strong> {{ fund.total_portfolios }}</p>
-          <p><strong>AUM:</strong> ${{ fund.total_value|floatformat:2 }}</p>
+          <p><strong>Name:</strong> {{ chamber.name }}</p>
+          <p><strong>Strategy:</strong> {{ chamber.manifest.strategy }}</p>
+          <p><strong>Total Investors:</strong> {{ chamber.total_investors }}</p>
+          <p><strong>Total Ventures:</strong> {{ chamber.total_ventures }}</p>
         </div>
       </div>
     </section>
@@ -37,7 +32,13 @@
         {% for metric in performance_metrics %}
         <div class="p-4 rounded border"
              :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
-          <p><strong>{{ metric.label }}:</strong> {{ metric.value|floatformat:2 }}</p>
+          <p><strong>{{ metric.label }}:</strong>
+            {% if metric.currency %}
+              {{ metric.value|floatformat:2 }} {{ metric.currency.symbol }}
+            {% else %}
+              {{ metric.value }}
+            {% endif %}
+          </p>
         </div>
         {% endfor %}
       </div>
@@ -67,7 +68,7 @@
              :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
           <p><strong>{{ event.title }}</strong> ({{ event.event_type }})</p>
           <p>{{ event.description }}</p>
-          <p><i class="fa-regular fa-clock"></i> {{ event.timestamp|date:"F j, Y H:i" }}</p>
+          <p><i class="fa-regular fa-clock"></i> {{ event.start|date:"F j, Y H:i" }}</p>
         </div>
         {% endfor %}
       </div>
@@ -82,7 +83,7 @@
              :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
           <p><strong>{{ event.title }}</strong></p>
           <p>{{ event.description }}</p>
-          <p><i class="fa-regular fa-clock"></i> Expected: {{ event.timestamp|date:"F j, Y" }}</p>
+          <p><i class="fa-regular fa-clock"></i> Expected: {{ event.start|date:"F j, Y" }}</p>
         </div>
         {% empty %}
         <div class="p-4 rounded border text-sm text-center"
@@ -112,19 +113,6 @@
       </div>
     </section>
 
-    <!-- 💸 Investment Breakdown -->
-    <section>
-      <h2 class="text-2xl font-bold mb-4">Investor Contributions</h2>
-      <div class="space-y-4">
-        {% for investor in investment_list %}
-        <div class="p-4 rounded border"
-             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
-          <p><strong>{{ investor.display_name }}</strong></p>
-          <p>Total Investment: ${{ investor.total_investment|floatformat:2 }}</p>
-        </div>
-        {% endfor %}
-      </div>
-    </section>
   </div>
 </div>
 {% endblock %}
