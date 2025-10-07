@@ -145,7 +145,13 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     "whitenoise.middleware.WhiteNoiseMiddleware",
-    "django.middleware.locale.LocaleMiddleware"
+    "django.middleware.locale.LocaleMiddleware",
+    'federal.middleware.FederalAuthMiddleware'
+]
+
+AUTHENTICATION_BACKENDS = [
+    'federal.auth.FederalTokenBackend',
+    'django.contrib.auth.backends.ModelBackend'
 ]
 
 STORAGES = {

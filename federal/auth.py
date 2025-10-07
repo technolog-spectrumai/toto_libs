@@ -6,6 +6,8 @@ from federal.token import TokenService
 
 
 class FederalTokenBackend(BaseBackend):
+
+
     def authenticate(self, request, token=None):
         if not token:
             return None

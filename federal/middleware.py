@@ -1,10 +1,10 @@
-# federal/auth/middleware.py
 from django.utils.deprecation import MiddlewareMixin
 from django.utils.crypto import get_random_string
 from django.contrib.auth import login
-from federal.auth.backends import FederalTokenBackend
-from federal.models import FederatedIdentity, UserFederationLink, LocalIdentityProvider
+from federal.auth import FederalTokenBackend
+from federal.models import FederatedIdentity, UserFederationLink, LocalIdentityProvider, Federation
 from federal.token import TokenService
+
 
 class FederalAuthMiddleware(MiddlewareMixin):
     def process_request(self, request):
@@ -22,15 +22,18 @@ class FederalAuthMiddleware(MiddlewareMixin):
         if user and user.is_authenticated and "access_token" not in request.session:
             link = user.federated_links.filter(active=True).first()
             if not link:
-                federated_identity = FederatedIdentity.objects.create(
-                    subject=get_random_string(16),
-                    issuer="https://your-app.example.com",
-                    email=user.email,
-                    name=user.get_full_name() or user.username
-                )
-                link = UserFederationLink.objects.create(user=user, federated_user=federated_identity)
+                federation = Federation.objects.filter(url="https://your-app.example.com").first()
+                if federation:
+                    federated_identity = FederatedIdentity.objects.create(
+                        subject=get_random_string(16),
+                        federation=federation,
+                        email=user.email,
+                        name=user.get_full_name() or user.username
+                    )
+                    link = UserFederationLink.objects.create(user=user, federated_user=federated_identity)
 
             provider = LocalIdentityProvider.objects.filter(active=True).first()
             if provider:
                 token = TokenService(provider).issue_token(link.federated_user)
                 request.session["access_token"] = token.value
+
