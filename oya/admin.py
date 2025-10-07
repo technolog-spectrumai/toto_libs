@@ -27,7 +27,9 @@ class ColorMixAdmin(admin.ModelAdmin):
         ('Light Mode Colors', {
             'fields': (
                 'primary_bg_light', 'text_main_light',
-                'header_bg_light', 'appbar_bg_light', 'bubble_bg_light',
+                'header_bg_light', 'bubble_bg_light',
+                'appbar_bg_light', 'appbar_text_light',
+                'footer_bg_light', 'footer_text_light',
                 'accent_light', 'warn_light',
                 'preview_light'
             )
@@ -35,7 +37,9 @@ class ColorMixAdmin(admin.ModelAdmin):
         ('Dark Mode Colors', {
             'fields': (
                 'primary_bg_dark', 'text_main_dark',
-                'header_bg_dark', 'appbar_bg_dark', 'bubble_bg_dark',
+                'header_bg_dark', 'bubble_bg_dark',
+                'appbar_bg_dark', 'appbar_text_dark',
+                'footer_bg_dark', 'footer_text_dark',
                 'accent_dark', 'warn_dark',
                 'preview_dark'
             )
@@ -51,6 +55,8 @@ class ColorMixAdmin(admin.ModelAdmin):
             bubble=obj.bubble_bg_light,
             text=obj.text_main_light,
             accent_mode=obj.accent_light,
+            footer_bg=obj.footer_bg_light,
+            footer_text=obj.footer_text_light,
             label="Light"
         )
 
@@ -62,12 +68,14 @@ class ColorMixAdmin(admin.ModelAdmin):
             bubble=obj.bubble_bg_dark,
             text=obj.text_main_dark,
             accent_mode=obj.accent_dark,
+            footer_bg=obj.footer_bg_dark,
+            footer_text=obj.footer_text_dark,
             label="Dark"
         )
 
     preview_dark.short_description = "Dark Preview"
 
-    def _render_preview_set(self, bg, bubble, text, accent_mode, label):
+    def _render_preview_set(self, bg, bubble, text, accent_mode, footer_bg, footer_text, label):
         return format_html(
             '''
             <div style="display: flex; gap: 8px; flex-wrap: wrap;">
