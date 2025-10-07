@@ -76,7 +76,8 @@ INSTALLED_APPS = [
     "kodama",
     "vault",
     "federal",
-    "forum"
+    "forum",
+    "portfolio"
 ]
 
 DJANGO_TIPTAP_CONFIG = {

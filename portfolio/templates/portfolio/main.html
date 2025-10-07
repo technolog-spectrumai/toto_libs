@@ -1,0 +1,130 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}Fund Overview | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<div
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300">
+
+  <div class="max-w-6xl mx-auto space-y-12">
+    <h1 class="text-4xl font-extrabold tracking-tight">
+      Fund Overview
+    </h1>
+
+    <!-- 🧠 Fund Identity -->
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Fund Identity</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="p-4 rounded border"
+             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+          <p><strong>Name:</strong> {{ fund.name }}</p>
+          <p><strong>Strategy:</strong> {{ fund.manifest.strategy }}</p>
+          <p><strong>Total Investors:</strong> {{ fund.total_investors }}</p>
+          <p><strong>Total Portfolios:</strong> {{ fund.total_portfolios }}</p>
+          <p><strong>AUM:</strong> ${{ fund.total_value|floatformat:2 }}</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 📊 Performance Summary -->
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Performance Summary</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {% for metric in performance_metrics %}
+        <div class="p-4 rounded border"
+             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+          <p><strong>{{ metric.label }}:</strong> {{ metric.value|floatformat:2 }}</p>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <!-- 💼 Portfolio Full List -->
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Portfolios</h2>
+      <div class="space-y-4">
+        {% for portfolio in portfolios %}
+        <div class="p-4 rounded border"
+             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+          <p><strong>{{ portfolio.name }}</strong> ({{ portfolio.investor.display_name }})</p>
+          <p>Strategy: {{ portfolio.strategy }}</p>
+          <p>Assets: {{ portfolio.asset_count }} | Value: ${{ portfolio.total_value|floatformat:2 }}</p>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <!-- 📅 Recent Activity -->
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Recent Activity</h2>
+      <div class="space-y-4">
+        {% for event in recent_events %}
+        <div class="p-3 rounded border"
+             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+          <p><strong>{{ event.title }}</strong> ({{ event.event_type }})</p>
+          <p>{{ event.description }}</p>
+          <p><i class="fa-regular fa-clock"></i> {{ event.timestamp|date:"F j, Y H:i" }}</p>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <!-- 🚧 Coming Soon -->
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Coming Soon</h2>
+      <div class="space-y-4">
+        {% for event in coming_soon %}
+        <div class="p-4 rounded border italic text-sm"
+             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+          <p><strong>{{ event.title }}</strong></p>
+          <p>{{ event.description }}</p>
+          <p><i class="fa-regular fa-clock"></i> Expected: {{ event.timestamp|date:"F j, Y" }}</p>
+        </div>
+        {% empty %}
+        <div class="p-4 rounded border text-sm text-center"
+             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+          No upcoming features announced yet.
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <!-- 🧑‍🤝‍🧑 Team -->
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Team</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {% for person in team %}
+        <div class="p-4 rounded border"
+             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+          <p><strong>{{ person.display_name }}</strong></p>
+          {% if person.role %}
+            <p>Role: {{ person.role }}</p>
+          {% else %}
+            <p>Role: Investor</p>
+          {% endif %}
+          <p>Joined: {{ person.joined_at|date:"F j, Y" }}</p>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <!-- 💸 Investment Breakdown -->
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Investor Contributions</h2>
+      <div class="space-y-4">
+        {% for investor in investment_list %}
+        <div class="p-4 rounded border"
+             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+          <p><strong>{{ investor.display_name }}</strong></p>
+          <p>Total Investment: ${{ investor.total_investment|floatformat:2 }}</p>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}
