@@ -36,6 +36,8 @@ def chamber_overview(request):
     chamber_data = {
         "name": chamber.name,
         "manifest": chamber.manifest,
+        "strategy": chamber.strategy,
+        "created_at": chamber.created_at,
         "total_investors": total_investors,
         "total_ventures": int(total_ventures),
         "total_investment": round(total_investment, 2) if total_investment is not None else None

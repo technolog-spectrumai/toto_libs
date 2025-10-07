@@ -11,19 +11,21 @@
   class="min-h-screen px-4 py-10 transition-colors duration-300">
 
   <div class="max-w-6xl mx-auto space-y-12">
-    <!-- 🧠 Fund Identity -->
-    <section>
-      <h2 class="text-2xl font-bold mb-4">Identity</h2>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div class="p-4 rounded border"
-             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
-          <p><strong>Name:</strong> {{ chamber.name }}</p>
-          <p><strong>Strategy:</strong> {{ chamber.manifest.strategy }}</p>
-          <p><strong>Total Investors:</strong> {{ chamber.total_investors }}</p>
-          <p><strong>Total Ventures:</strong> {{ chamber.total_ventures }}</p>
+    <!--  Identity -->
+      <section>
+        <h2 class="text-2xl font-bold mb-4">Identity</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="p-4 rounded border"
+               :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+            <p><strong>Name:</strong> {{ chamber.name }}</p>
+            <p><strong>Manifest:</strong> {{ chamber.manifest }}</p>
+            <p><strong>Strategy:</strong> {{ chamber.strategy }}</p>
+            <p><strong>Total Investors:</strong> {{ chamber.total_investors }}</p>
+            <p><strong>Total Ventures:</strong> {{ chamber.total_ventures }}</p>
+            <p><strong>Created:</strong> {{ chamber.created_at|date:"F j, Y" }}</p>
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
 
     <!-- 📊 Performance Summary -->
     <section>
@@ -44,20 +46,39 @@
       </div>
     </section>
 
-    <!-- 💼 Portfolio Full List -->
-    <section>
-      <h2 class="text-2xl font-bold mb-4">Portfolios</h2>
-      <div class="space-y-4">
-        {% for portfolio in portfolios %}
-        <div class="p-4 rounded border"
-             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
-          <p><strong>{{ portfolio.name }}</strong> ({{ portfolio.investor.display_name }})</p>
-          <p>Strategy: {{ portfolio.strategy }}</p>
-          <p>Assets: {{ portfolio.asset_count }} | Value: ${{ portfolio.total_value|floatformat:2 }}</p>
-        </div>
-        {% endfor %}
-      </div>
-    </section>
+      <!-- 📦 Venture List -->
+<section>
+  <h2 class="text-2xl font-bold mb-4">Ventures</h2>
+  <div class="space-y-4">
+    {% for venture in ventures %}
+    <div class="p-4 rounded border"
+         :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+      <p><strong>{{ venture.name }}</strong></p>
+      {% if venture.url %}
+        <p>Website: <a href="{{ venture.url }}" class="underline text-blue-600 dark:text-blue-400" target="_blank">{{ venture.url }}</a></p>
+      {% endif %}
+      <p>Start: {{ venture.start|date:"F j, Y" }}</p>
+      {% if venture.end %}
+        <p>End: {{ venture.end|date:"F j, Y" }}</p>
+      {% endif %}
+      <p>Funding Rounds: {{ venture.funding_rounds_count }}</p>
+      <p>Total Funding:
+        {% if chamber.default_currency %}
+          {{ venture.total_funding|floatformat:2 }} {{ chamber.default_currency.symbol }}
+        {% else %}
+          {{ venture.total_funding|floatformat:2 }}
+        {% endif %}
+      </p>
+    </div>
+    {% empty %}
+    <div class="p-4 rounded border text-sm text-center"
+         :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+      No ventures available.
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
 
     <!-- 📅 Recent Activity -->
     <section>

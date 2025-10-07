@@ -17,7 +17,8 @@ class Currency(models.Model):
 # 🏛️ Chamber
 class Chamber(models.Model):
     name = models.CharField(max_length=255)
-    manifest = models.JSONField(default=dict, blank=True)
+    manifest = models.CharField(max_length=1024, default="")
+    strategy = models.CharField(max_length=1024, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     active = models.BooleanField(default=True)
     default_currency = models.ForeignKey(
