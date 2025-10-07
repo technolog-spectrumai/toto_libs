@@ -94,4 +94,23 @@ def chamber_overview(request):
         "team": team
     }
 
-    return render(request, "portfolio/main.html", PageProcessor().decorate(context, request))
+    decorated_context = PageProcessor().decorate(context, request)
+    theme_colors = decorated_context.get("theme", {}).get("colors", {})
+
+    chart_colors = {
+        # Light mode
+        "background_light": theme_colors.get("accent-light", "#36A2EB"),  # bubble fill
+        "border_light": theme_colors.get("text-main-light", "#000000"),  # bubble text
+        "text_light": theme_colors.get("text-main-light", "#000000"),  # readable text
+        "grid_light": "#444444",
+
+        # Dark mode
+        "background_dark": theme_colors.get("accent-dark", "#FFCE56"),  # bubble fill
+        "border_dark": theme_colors.get("text-main-dark", "#FFFFFF"),  # bubble text
+        "text_dark": theme_colors.get("text-main-dark", "#FFFFFF"),  # readable text
+        "grid_dark": "#aaaaaa"
+    }
+
+    decorated_context["chart_colors"] = chart_colors
+
+    return render(request, "portfolio/main.html", decorated_context)

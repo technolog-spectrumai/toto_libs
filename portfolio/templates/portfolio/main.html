@@ -2,6 +2,108 @@
 {% load static %}
 
 {% block title %} {{ platform.site_name }}{% endblock %}
+{% block start_script %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    let ventureChart;
+    let lastDarkMode = localStorage.getItem('darkMode');
+
+    function renderVentureChart() {
+      const isDarkMode = localStorage.getItem('darkMode') === 'true';
+
+      const chartColors = {
+        background: isDarkMode ? '{{ chart_colors.background_dark }}' : '{{ chart_colors.background_light }}',
+        border: isDarkMode ? '{{ chart_colors.border_dark }}' : '{{ chart_colors.border_light }}',
+        text: isDarkMode ? '{{ chart_colors.text_dark }}' : '{{ chart_colors.text_light }}',
+        grid: isDarkMode ? '{{ chart_colors.grid_dark }}' : '{{ chart_colors.grid_light }}'
+      };
+
+      const ctx = document.getElementById('ventureChart').getContext('2d');
+
+      if (ventureChart) {
+        ventureChart.destroy();
+      }
+
+      ventureChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: [{% for venture in ventures %}'{{ venture.name }}'{% if not forloop.last %}, {% endif %}{% endfor %}],
+          datasets: [{
+            label: 'Total Funding',
+            data: [{% for venture in ventures %}{{ venture.total_funding|floatformat:2 }}{% if not forloop.last %}, {% endif %}{% endfor %}],
+            backgroundColor: chartColors.background,
+            borderColor: chartColors.border,
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              labels: {
+                color: chartColors.text
+              }
+            },
+            tooltip: {
+              backgroundColor: chartColors.background,
+              titleColor: chartColors.text,
+              bodyColor: chartColors.text
+            }
+          },
+          scales: {
+            x: {
+              ticks: {
+                color: chartColors.text
+              },
+              grid: {
+                color: chartColors.grid
+              },
+              title: {
+                display: true,
+                text: 'Ventures',
+                color: chartColors.text
+              }
+            },
+            y: {
+              beginAtZero: true,
+              ticks: {
+                color: chartColors.text
+              },
+              grid: {
+                color: chartColors.grid
+              },
+              title: {
+                display: true,
+                text: 'Funding Amount{% if chamber.default_currency %} ({{ chamber.default_currency.symbol }}){% endif %}',
+                color: chartColors.text
+              }
+            }
+          }
+        }
+      });
+    }
+
+    renderVentureChart();
+
+
+    setInterval(() => {
+      const currentDarkMode = localStorage.getItem('darkMode');
+      if (currentDarkMode !== lastDarkMode) {
+        lastDarkMode = currentDarkMode;
+        renderVentureChart();
+      }
+    }, 500);
+
+
+
+  });
+</script>
+
+
+
+{% endblock %}
 
 {% block content %}
 <div
@@ -46,7 +148,8 @@
       </div>
     </section>
 
-      <!-- 📦 Venture List -->
+
+ <!-- 📦 Venture List -->
 <section>
   <h2 class="text-2xl font-bold mb-4">Ventures</h2>
   <div class="space-y-4">
@@ -79,6 +182,13 @@
   </div>
 </section>
 
+<section>
+  <h2 class="text-2xl font-bold mb-4">Venture Funding Chart</h2>
+  <div class="p-4 rounded border"
+       :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+    <canvas id="ventureChart" height="300"></canvas>
+  </div>
+</section>
 
     <!-- 📅 Recent Activity -->
     <section>
