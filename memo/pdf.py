@@ -1,3 +1,5 @@
+import os.path
+
 from django.conf import settings
 from pathlib import Path
 import subprocess
@@ -24,7 +26,11 @@ class MemoDeckCompiler:
         self.deck = deck
 
     def generate_pdf(self):
-        tex_path = Path(settings.MEDIA_ROOT) / f"{self.deck.title.replace(' ', '_')}.tex"
+        output_dir = Path(settings.MEDIA_ROOT) / f"{self.deck.title.replace(' ', '_')}_files"
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+
+        tex_path = output_dir / f"{self.deck.title.replace(' ', '_')}.tex"
         pdf_path = tex_path.with_suffix('.pdf')
 
         with open(tex_path, 'w', encoding='utf-8') as f:
@@ -70,10 +76,14 @@ class MemoDeckCompiler:
 
             # End document
             f.write("\\end{document}\n")
-
         # Compile manually
         try:
-            subprocess.run(['pdflatex', '-interaction=nonstopmode', str(tex_path)], check=True)
+            subprocess.run([
+                'pdflatex',
+                '-interaction=nonstopmode',
+                f'-output-directory={output_dir}',
+                str(tex_path)
+            ], check=True)
         except subprocess.CalledProcessError as e:
             print("LaTeX compilation failed:", e)
             return None
