@@ -3,6 +3,7 @@ from .models import Department, Document
 from .mixins import PageDecoratedMixin
 from documents.models import LatexPreset
 
+
 class DocumentListView(PageDecoratedMixin, ListView):
     model = Document
     template_name = 'documents/document_list.html'
