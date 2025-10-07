@@ -1,5 +1,4 @@
 import os.path
-
 from django.conf import settings
 from pathlib import Path
 import subprocess
@@ -24,26 +23,36 @@ def escape(text):
 class MemoDeckCompiler:
     def __init__(self, deck):
         self.deck = deck
+        self.preset = getattr(deck, 'latex_preset', None)
+        self.output_dir = Path(settings.MEDIA_ROOT) / f"{self.deck.title.replace(' ', '_')}_files"
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.tex_path = self.output_dir / f"{self.deck.title.replace(' ', '_')}.tex"
+        self.pdf_path = self.tex_path.with_suffix('.pdf')
 
-    def generate_pdf(self):
-        output_dir = Path(settings.MEDIA_ROOT) / f"{self.deck.title.replace(' ', '_')}_files"
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
-
-        tex_path = output_dir / f"{self.deck.title.replace(' ', '_')}.tex"
-        pdf_path = tex_path.with_suffix('.pdf')
-
-        with open(tex_path, 'w', encoding='utf-8') as f:
-            # Header and preamble
+    def build_tex(self):
+        with open(self.tex_path, 'w', encoding='utf-8') as f:
+            # Document class
             f.write("\\documentclass{beamer}\n")
-            f.write("\\usetheme{Rochester}\n")
-            f.write("\\usecolortheme{seahorse}\n")
-            f.write("\\usepackage[T1]{fontenc}\n")
-            f.write("\\usepackage[utf8]{inputenc}\n")
-            f.write("\\usepackage{graphicx}\n\n")
+
+            # Theme and color
+            if self.preset:
+                f.write(f"\\usetheme{{{self.preset.theme}}}\n")
+                f.write(f"\\usecolortheme{{{self.preset.color_theme}}}\n")
+            else:
+                f.write("\\usetheme{Rochester}\n")
+                f.write("\\usecolortheme{seahorse}\n")
+
+            # Packages
+            if self.preset and self.preset.packages:
+                for pkg in self.preset.packages:
+                    f.write(f"\\usepackage{{{pkg}}}\n")
+            else:
+                f.write("\\usepackage[T1]{fontenc}\n")
+                f.write("\\usepackage[utf8]{inputenc}\n")
+                f.write("\\usepackage{graphicx}\n")
 
             # Metadata
-            f.write(f"\\title{{{escape(self.deck.title)}}}\n")
+            f.write(f"\n\\title{{{escape(self.deck.title)}}}\n")
             f.write(f"\\author{{{escape(self.deck.author.username)}}}\n")
             f.write("\\date{\\today}\n\n")
 
@@ -51,15 +60,17 @@ class MemoDeckCompiler:
             f.write("\\begin{document}\n\n")
 
             # Title page
-            f.write("  \\begin{frame}\n")
-            f.write("    \\titlepage\n")
-            f.write("  \\end{frame}\n\n")
+            if not self.preset or self.preset.include_title_page:
+                f.write("  \\begin{frame}\n")
+                f.write("    \\titlepage\n")
+                f.write("  \\end{frame}\n\n")
 
             # TOC frame
-            f.write("  \\begin{frame}\n")
-            f.write("    \\frametitle{Contents}\n")
-            f.write("    \\tableofcontents\n")
-            f.write("  \\end{frame}\n\n")
+            if not self.preset or self.preset.include_table_of_contents:
+                f.write("  \\begin{frame}\n")
+                f.write("    \\frametitle{Contents}\n")
+                f.write("    \\tableofcontents\n")
+                f.write("  \\end{frame}\n\n")
 
             # Card frames
             for card in self.deck.cards.all():
@@ -76,16 +87,23 @@ class MemoDeckCompiler:
 
             # End document
             f.write("\\end{document}\n")
-        # Compile manually
+
+        return self.tex_path
+
+    def compile_pdf(self):
         try:
             subprocess.run([
                 'pdflatex',
                 '-interaction=nonstopmode',
-                f'-output-directory={output_dir}',
-                str(tex_path)
+                f'-output-directory={self.output_dir}',
+                str(self.tex_path)
             ], check=True)
         except subprocess.CalledProcessError as e:
             print("LaTeX compilation failed:", e)
             return None
 
-        return pdf_path if pdf_path.exists() else None
+        return self.pdf_path if self.pdf_path.exists() else None
+
+    def generate_pdf(self):
+        self.build_tex()
+        return self.compile_pdf()

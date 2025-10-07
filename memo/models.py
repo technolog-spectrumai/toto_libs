@@ -1,9 +1,27 @@
 from django.db import models
 from django.contrib.auth.models import User
+from django_jsonform.models.fields import JSONField
 
 
 class Tag(models.Model):
     name = models.CharField(max_length=50, unique=True)
+
+    def __str__(self):
+        return self.name
+
+
+class MemoLatexPreset(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    include_title_page = models.BooleanField(default=True)
+    include_table_of_contents = models.BooleanField(default=True)
+    theme = models.CharField(max_length=100, default="Rochester")
+    color_theme = models.CharField(max_length=100, default="seahorse")
+
+    # Replace TextField with structured JSONField
+    packages = JSONField(
+        default=list,
+        help_text="List of LaTeX package names, e.g. ['graphicx', 'amsmath']"
+    )
 
     def __str__(self):
         return self.name
@@ -15,6 +33,7 @@ class MemoDeck(models.Model):
     author = models.ForeignKey(User, on_delete=models.CASCADE, related_name='decks')
     created_at = models.DateTimeField(auto_now_add=True)
     tags = models.ManyToManyField(Tag, related_name='decks', blank=True)
+    latex_preset = models.ForeignKey('MemoLatexPreset', on_delete=models.SET_NULL, null=True, blank=True, related_name='decks')
 
     def __str__(self):
         return self.title
