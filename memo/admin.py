@@ -32,7 +32,7 @@ class MemoDeckAdmin(admin.ModelAdmin):
 
 @admin.register(MemoCard)
 class MemoCardAdmin(SortableAdminMixin, admin.ModelAdmin):
-    list_display = ('title', 'deck', 'deck_author', 'order', 'has_mermaid_code')
+    list_display = ('title', 'deck', 'deck_author', 'order')
     list_editable = ('order',)
     search_fields = ('title', 'content', 'deck__title', 'deck__author__username')
     list_filter = ('deck__title',)
@@ -41,9 +41,4 @@ class MemoCardAdmin(SortableAdminMixin, admin.ModelAdmin):
     def deck_author(self, obj):
         return obj.deck.author.username
     deck_author.short_description = "Deck Author"
-
-    def has_mermaid_code(self, obj):
-        return bool(obj.mermaid_code.strip())
-    has_mermaid_code.boolean = True
-    has_mermaid_code.short_description = "Mermaid Code?"
 

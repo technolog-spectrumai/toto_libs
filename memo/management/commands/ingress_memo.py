@@ -66,7 +66,6 @@ class Command(IngressCommand):
                     deck=deck,
                     title=card_title,
                     content=card_content,
-                    mermaid_code="",
                     order=i
                 )
             self.stdout.write(self.style.SUCCESS(f"🃏 Added {len(cards)} cards to deck: {deck_title}"))
