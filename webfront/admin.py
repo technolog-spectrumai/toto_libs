@@ -7,6 +7,7 @@ from django.template import TemplateDoesNotExist
 from .models import Language, StaticPage, DynamicPage, Image, PageGenerator
 from django import forms
 from django.core.files.base import ContentFile
+from django_ace import AceWidget
 
 
 @admin.register(Language)
@@ -35,7 +36,11 @@ class HtmlFileMixin:
 
 
 class StaticPageAdminForm(forms.ModelForm, HtmlFileMixin):
-    html_content = forms.CharField(widget=forms.Textarea, required=False, label="HTML Content")
+    html_content = forms.CharField(
+        widget=AceWidget(mode='html', theme='chrome'),
+        required=False,
+        label="HTML Content"
+    )
 
     class Meta:
         model = StaticPage
@@ -44,6 +49,7 @@ class StaticPageAdminForm(forms.ModelForm, HtmlFileMixin):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['html_content'].initial = self.read_file_content(self.instance.html_file)
+
 
     def save(self, commit=True):
         instance = super().save(commit=False)
@@ -62,7 +68,11 @@ class StaticPageAdmin(admin.ModelAdmin):
 
 
 class PageGeneratorAdminForm(forms.ModelForm, HtmlFileMixin):
-    template_content = forms.CharField(widget=forms.Textarea, required=False, label="Template HTML")
+    template_content = forms.CharField(
+        widget=AceWidget(mode='html', theme='chrome'),
+        required=False,
+        label="Template HTML"
+    )
 
     class Meta:
         model = PageGenerator
@@ -71,6 +81,7 @@ class PageGeneratorAdminForm(forms.ModelForm, HtmlFileMixin):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['template_content'].initial = self.read_file_content(self.instance.html_template_file)
+
 
     def save(self, commit=True):
         instance = super().save(commit=False)
