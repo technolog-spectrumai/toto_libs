@@ -77,7 +77,8 @@ INSTALLED_APPS = [
     "vault",
     "federal",
     "forum",
-    "portfolio"
+    "portfolio",
+    "gitops"
 ]
 
 DJANGO_TIPTAP_CONFIG = {
@@ -356,5 +357,8 @@ INGRESS_ALLOWED_APPS = [
     "federal",
     "forum"
 ]
+
+GIT_REPO_BASE_DIR = BASE_DIR / 'git_repos'
+
 
 
