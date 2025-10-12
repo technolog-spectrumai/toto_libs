@@ -5,6 +5,8 @@ from django.urls import reverse
 from django.utils.html import format_html
 from django.template import TemplateDoesNotExist
 from .models import Language, StaticPage, DynamicPage, Image, PageGenerator
+from django import forms
+from django.core.files.base import ContentFile
 
 
 @admin.register(Language)
@@ -13,15 +15,74 @@ class LanguageAdmin(admin.ModelAdmin):
     search_fields = ('name', 'slug')
 
 
+class HtmlFileMixin:
+    def read_file_content(self, file_field):
+        """Safely read and decode file content from a FileField."""
+        if file_field and hasattr(file_field, 'read'):
+            try:
+                return file_field.read().decode('utf-8')
+            except Exception:
+                return ''
+        return ''
+
+    def save_file_content(self, instance, file_field_name, slug, content):
+        """Save string content to a FileField on the instance."""
+        if content:
+            filename = f"{slug}.html"
+            file_field = getattr(instance, file_field_name, None)
+            if file_field:
+                file_field.save(filename, ContentFile(content), save=False)
+
+
+class StaticPageAdminForm(forms.ModelForm, HtmlFileMixin):
+    html_content = forms.CharField(widget=forms.Textarea, required=False, label="HTML Content")
+
+    class Meta:
+        model = StaticPage
+        fields = ('name', 'slug', 'language', 'html_file')
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['html_content'].initial = self.read_file_content(self.instance.html_file)
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        self.save_file_content(instance, 'html_file', instance.slug, self.cleaned_data.get('html_content', ''))
+        if commit:
+            instance.save()
+        return instance
+
+
 @admin.register(StaticPage)
 class StaticPageAdmin(admin.ModelAdmin):
+    form = StaticPageAdminForm
     list_display = ('name', 'slug', 'language')
     search_fields = ('name', 'slug')
     list_filter = ('language',)
 
 
+class PageGeneratorAdminForm(forms.ModelForm, HtmlFileMixin):
+    template_content = forms.CharField(widget=forms.Textarea, required=False, label="Template HTML")
+
+    class Meta:
+        model = PageGenerator
+        fields = ('name', 'slug', 'html_template_file', 'template_content', 'json_schema', 'check_schema')
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['template_content'].initial = self.read_file_content(self.instance.html_template_file)
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        self.save_file_content(instance, 'html_template_file', instance.slug, self.cleaned_data.get('template_content', ''))
+        if commit:
+            instance.save()
+        return instance
+
+
 @admin.register(PageGenerator)
 class PageGeneratorAdmin(admin.ModelAdmin):
+    form = PageGeneratorAdminForm
     formfield_overrides = {
         JSONField: {'widget': JSONEditorWidget}
     }

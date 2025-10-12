@@ -28,22 +28,34 @@ class BasePage(models.Model):
 
 
 class StaticPage(BasePage):
-    html = models.TextField()
+    html_file = models.FileField(upload_to='uploads/html/static/')
+
+    def get_html_content(self):
+        if self.html_file:
+            return self.html_file.read().decode('utf-8')
+        return ""
 
 
 class PageGenerator(models.Model):
     name = models.CharField(max_length=100, unique=True)
     slug = models.SlugField(unique=True, blank=True)
-    html_template = models.TextField()
-    json_schema = models.JSONField()
+    html_template_file = models.FileField(upload_to='uploads/html/templates/')
+    json_schema = models.JSONField(blank=True, null=True)
+    check_schema = models.BooleanField(default=True)
 
     def save(self, *args, **kwargs):
         if not self.slug:
             self.slug = slugify(self.name)
         super().save(*args, **kwargs)
 
+    def get_template_content(self):
+        if self.html_template_file:
+            return self.html_template_file.read().decode('utf-8')
+        return ""
+
     def __str__(self):
         return self.name
+
 
 
 class DynamicPage(BasePage):
@@ -51,11 +63,11 @@ class DynamicPage(BasePage):
     config_json = models.JSONField()
 
     def clean(self):
-        """Validate config_json against the generator's schema."""
-        try:
-            jsonschema.validate(instance=self.config_json, schema=self.generator.json_schema)
-        except jsonschema.ValidationError as e:
-            raise ValidationError({'config_json': _(str(e))})
+        if self.generator.check_schema and self.generator.json_schema:
+            try:
+                jsonschema.validate(instance=self.config_json, schema=self.generator.json_schema)
+            except jsonschema.ValidationError as e:
+                raise ValidationError({'config_json': _(str(e))})
 
     @staticmethod
     def _render_template_from_string(template_text, context=None):
@@ -64,7 +76,8 @@ class DynamicPage(BasePage):
         return template.render(Context(context))
 
     def render_to_string(self):
-        return self._render_template_from_string(self.generator.html_template, self.config_json)
+        template_text = self.generator.get_template_content()
+        return self._render_template_from_string(template_text, self.config_json)
 
 
 class Image(models.Model):

@@ -1,13 +1,16 @@
 from .models import StaticPage, DynamicPage, Language, Image
-from django.http import Http404
-from django.shortcuts import get_object_or_404, redirect, render
-from django.http import HttpResponse
+from django.http import Http404, HttpResponse
+from django.shortcuts import get_object_or_404, redirect
 from django.utils.safestring import mark_safe
 
 
 def static_page_view(request, slug, language):
     page = get_object_or_404(StaticPage, slug=slug, language=language)
-    return HttpResponse(mark_safe(page.html))
+    try:
+        html = page.html_file.read().decode('utf-8')
+    except Exception:
+        raise Http404("Unable to read static page content.")
+    return HttpResponse(mark_safe(html))
 
 
 def dynamic_page_view(request, slug, lang):
@@ -15,12 +18,12 @@ def dynamic_page_view(request, slug, lang):
     page = get_object_or_404(DynamicPage, slug=slug, language=language)
     try:
         html = page.render_to_string()
-        return HttpResponse(html)
-    except Http404 as e:
-        raise e
+        return HttpResponse(mark_safe(html))
+    except Http404:
+        raise
     except Exception as e:
         print(e)
-        raise Http404(f"Unexpected error during rendering")
+        raise Http404("Unexpected error during rendering.")
 
 
 def image_view(request, slug):

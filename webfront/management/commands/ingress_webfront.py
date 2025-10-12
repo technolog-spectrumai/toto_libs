@@ -2,8 +2,10 @@ import os
 import json
 from django.utils.text import slugify
 from django.core.exceptions import ValidationError
+from django.core.files.base import ContentFile
 from webfront.models import Language, DynamicPage, PageGenerator
 from oya.ingress import IngressCommand  # Your custom base class
+
 
 class Command(IngressCommand):
     help = "Populate the database with DynamicPages for Sport, Spectrum, and Basilisk"
@@ -60,26 +62,39 @@ class Command(IngressCommand):
             schema_path = os.path.join(schema_dir, f"{name_token}.json")
             config_path = os.path.join(config_dir, filename)
 
-            if not os.path.isfile(html_path) or not os.path.isfile(schema_path):
-                self.stderr.write(self.style.WARNING(f"⚠️ Missing template or schema for: {name_token}"))
+            if not os.path.isfile(html_path):
+                self.stderr.write(self.style.WARNING(f"⚠️ Missing HTML template for: {name_token}"))
                 continue
 
             try:
                 with open(html_path, 'r', encoding='utf-8') as f:
                     html_template = f.read()
-                with open(schema_path, 'r', encoding='utf-8') as f:
-                    json_schema = json.load(f)
                 with open(config_path, 'r', encoding='utf-8') as f:
                     config_json = json.load(f)
 
-                generator, _ = PageGenerator.objects.get_or_create(
+                # Load schema if available
+                json_schema = None
+                if os.path.isfile(schema_path):
+                    with open(schema_path, 'r', encoding='utf-8') as f:
+                        json_schema = json.load(f)
+
+                generator, created = PageGenerator.objects.get_or_create(
                     slug=slug,
                     defaults={
                         'name': name_token,
-                        'html_template': html_template,
-                        'json_schema': json_schema
+                        'check_schema': bool(json_schema),
+                        'json_schema': json_schema or {},
                     }
                 )
+
+                if created or not generator.html_template_file:
+                    generator.html_template_file.save(
+                        f"{slug}.html",
+                        ContentFile(html_template),
+                        save=True
+                    )
+                    if not created:
+                        generator.save()
 
                 dp = DynamicPage(
                     name=name_token,
