@@ -3,6 +3,7 @@ from git import Repo, GitCommandError, InvalidGitRepositoryError
 import os
 from django.conf import settings
 from django.core.files.base import ContentFile
+import shutil
 
 
 class GitRepository(models.Model):
@@ -61,6 +62,14 @@ class GitRepository(models.Model):
                 raise RuntimeError(f"❌ File not found: {artifact.file_path} in branch {artifact.branch}")
             except Exception as e:
                 raise RuntimeError(f"⚠️ Error reading file '{artifact.file_path}': {e}")
+
+    def post_delete(self):
+        local_path = os.path.join(settings.GIT_REPO_BASE_DIR, self.name.replace(' ', '_'))
+        if os.path.isdir(local_path):
+            try:
+                shutil.rmtree(local_path)
+            except Exception as e:
+                raise RuntimeError(f"Failed to delete local repo directory: {e}")
 
 
 class Artifact(models.Model):
