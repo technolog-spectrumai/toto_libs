@@ -8,6 +8,7 @@ from .models import Language, StaticPage, DynamicPage, Image, PageGenerator
 from django import forms
 from django.core.files.base import ContentFile
 from django_ace import AceWidget
+from .batch import BatchAction
 
 
 @admin.register(Language)
@@ -62,9 +63,16 @@ class StaticPageAdminForm(forms.ModelForm, HtmlFileMixin):
 @admin.register(StaticPage)
 class StaticPageAdmin(admin.ModelAdmin):
     form = StaticPageAdminForm
-    list_display = ('name', 'slug', 'language')
+    list_display = ('name', 'slug', 'language', 'full_url')
     search_fields = ('name', 'slug')
     list_filter = ('language',)
+
+    def full_url(self, obj):
+        try:
+            url = reverse('static_page', kwargs={'slug': obj.slug, 'lang': obj.language.slug})
+            return format_html('<a href="{}" target="_blank">{}</a>', url, url)
+        except Exception:
+            return "Invalid URL"
 
 
 class PageGeneratorAdminForm(forms.ModelForm, HtmlFileMixin):
@@ -106,16 +114,18 @@ class DynamicPageAdmin(admin.ModelAdmin):
     formfield_overrides = {
         JSONField: {'widget': JSONEditorWidget}
     }
+    actions = ['bake_to_static_action']
+
+    def bake_to_static_action(self, request, queryset):
+        def operation(page):
+            return page.bake_to_static()
+
+        result = BatchAction(queryset).run(operation)
+        BatchAction.display_messages(result, self.message_user, request, verb="bake")
+
+    bake_to_static_action.short_description = "Bake selected dynamic pages to static"
 
     readonly_fields = ('render_check', 'schema_check')
-
-    def full_url(self, obj):
-        try:
-            url = reverse('dynamic_page', kwargs={'slug': obj.slug, 'lang': obj.language.slug})
-            return format_html('<a href="{}" target="_blank">{}</a>', url, url)
-        except Exception:
-            return "Invalid URL"
-    full_url.short_description = "Page URL"
 
     def generator_name(self, obj):
         return obj.generator.name
@@ -142,7 +152,7 @@ class DynamicPageAdmin(admin.ModelAdmin):
             return format_html('<span style="color:red;">Schema error</span>')
     schema_check.short_description = "Schema Validation"
 
-    list_display = ('name', 'slug', 'language', 'generator_name', 'full_url')
+    list_display = ('name', 'slug', 'language', 'generator_name', 'render_check', 'schema_check')
     search_fields = ('name', 'slug', 'generator__name')
     list_filter = ('language', 'generator')
 

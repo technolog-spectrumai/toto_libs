@@ -5,7 +5,9 @@ from django.utils.text import slugify
 import jsonschema
 import uuid
 from django.template import Template, Context
-
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
+import os
 
 class Language(models.Model):
     name = models.CharField(max_length=100)
@@ -78,6 +80,20 @@ class DynamicPage(BasePage):
     def render_to_string(self):
         template_text = self.generator.get_template_content()
         return self._render_template_from_string(template_text, self.config_json)
+
+    def bake_to_static(self):
+        html_content = self.render_to_string()
+        filename = f"{self.slug}.html"
+        file_path = os.path.join('uploads/html/static/', filename)
+        saved_path = default_storage.save(file_path, ContentFile(html_content))
+
+        static_page = StaticPage.objects.create(
+            name=self.name,
+            slug=self.slug,
+            language=self.language,
+            html_file=saved_path
+        )
+        return static_page
 
 
 class Image(models.Model):
