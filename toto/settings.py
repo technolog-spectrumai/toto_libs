@@ -74,7 +74,8 @@ INSTALLED_APPS = [
     "portfolio",
     "gitops",
     "latextile",
-    "community"
+    "community",
+    "shareholders"
 ]
 
 DJANGO_TIPTAP_CONFIG = {
