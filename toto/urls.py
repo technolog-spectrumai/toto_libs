@@ -28,7 +28,6 @@ urlpatterns = [
     path("memo/", include("memo.urls", namespace="memo")),
     path("webfront/", include("webfront.urls")),
     path("kanban/", include("kanban.urls", namespace="kanban")),
-    path("kodama/", include("kodama.urls")),
     path("federal/", include("federal.urls", namespace="federal")),
     path("forum/", include("forum.urls", namespace="forum")),
     path("portfolio/", include("portfolio.urls", namespace="portfolio")),
