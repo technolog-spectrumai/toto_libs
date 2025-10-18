@@ -4,6 +4,8 @@ import os
 from django.conf import settings
 from django.core.files.base import ContentFile
 import shutil
+from vault.models import Bucket, VaultFile
+from django.utils.text import slugify
 
 
 class GitRepository(models.Model):
@@ -43,25 +45,52 @@ class GitRepository(models.Model):
             self.bind_artifacts(repo)
             repo.close()
 
+    def _send_artifact_to_bucket(self, repo, artifact):
+        # Checkout the correct branch
+        repo.git.checkout(artifact.branch)
+
+        # Construct full path to the file
+        full_path = os.path.join(repo.working_tree_dir, artifact.file_path)
+
+        # Read file content
+        with open(full_path, 'rb') as f:
+            content = f.read()
+            filename = artifact.file_path.split('/')[-1] or 'artifact.txt'
+
+            # Ensure bucket exists
+            if not artifact.bucket:
+                raise RuntimeError(f"Artifact '{artifact.file_path}' has no bucket assigned.")
+
+            ext = filename.lower()
+            if ext.endswith('.pdf'):
+                file_type = 'pdf'
+            elif ext.endswith(('.png', '.jpg', '.jpeg')):
+                file_type = 'image'
+            elif ext.endswith(('.txt', '.md', '.tex')):
+                file_type = 'text'
+            elif ext.endswith(('.html', '.htm', '.xml')):
+                file_type = 'html'
+            else:
+                file_type = 'text'
+
+            # Create VaultFile in the bucket
+            VaultFile.objects.create(
+                owner=artifact.bucket.owner,
+                title=f"{self.name}: {filename}",
+                file=ContentFile(content, name=filename),
+                file_type=file_type,
+                bucket=artifact.bucket,
+                notes=f"Pulled from {self.name} on branch {artifact.branch}"
+            )
+
     def bind_artifacts(self, repo):
         for artifact in self.artifacts.all():
             try:
-                # Checkout the correct branch
-                repo.git.checkout(artifact.branch)
-
-                # Construct full path to the file
-                full_path = os.path.join(repo.working_tree_dir, artifact.file_path)
-
-                # Read and save the file content to file_blob
-                with open(full_path, 'rb') as f:
-                    content = f.read()
-                    filename = artifact.file_path.replace('/', '_') or 'artifact.txt'
-                    artifact.file_blob.save(filename, ContentFile(content), save=True)
-
+                self._send_artifact_to_bucket(repo, artifact)
             except FileNotFoundError:
                 raise RuntimeError(f"❌ File not found: {artifact.file_path} in branch {artifact.branch}")
             except Exception as e:
-                raise RuntimeError(f"⚠️ Error reading file '{artifact.file_path}': {e}")
+                raise RuntimeError(f"⚠️ Error processing file '{artifact.file_path}': {e}")
 
     def post_delete(self):
         local_path = os.path.join(settings.GIT_REPO_BASE_DIR, self.name.replace(' ', '_'))
@@ -76,7 +105,8 @@ class Artifact(models.Model):
     repository = models.ForeignKey(GitRepository, on_delete=models.CASCADE, related_name='artifacts')
     branch = models.CharField(max_length=255, help_text="Branch where the file is located")
     file_path = models.CharField(max_length=1024, help_text="Path to the file in the repository")
-    file_blob = models.FileField(upload_to='artifacts/', blank=True, null=True, help_text="Stored file content after pull")
+    bucket = models.ForeignKey(Bucket, on_delete=models.SET_NULL, null=True, blank=True, related_name='artifacts',
+                               help_text="Bucket where the artifact is stored")
 
     def __str__(self):
         return f"{self.repository.name}:{self.branch}/{self.file_path}"

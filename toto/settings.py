@@ -356,7 +356,10 @@ INGRESS_ALLOWED_APPS = [
     "kodama",
     "federal",
     "forum",
-    "gervazy"
+    "gervazy",
+    "gitops",
+    "vault",
+    "portfolio"
 ]
 
 GIT_REPO_BASE_DIR = BASE_DIR / 'git_repos'

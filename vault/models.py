@@ -3,6 +3,7 @@ from django.contrib.auth.models import User
 from gervazy.models import KeyRing
 from vault.strategy.pdf import PdfStrategy
 from vault.strategy.image import ImageStrategy
+from vault.strategy.text import TextStrategy
 
 
 class Bucket(models.Model):
@@ -22,6 +23,8 @@ class VaultFile(models.Model):
     FILE_TYPES = [
         ('pdf', 'PDF'),
         ('image', 'Image'),
+        ('html', 'HTML'),
+        ('text', 'Text File'),
     ]
 
     owner = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -58,7 +61,7 @@ class VaultFile(models.Model):
         elif self.file_type == 'image':
             return ImageStrategy()
         else:
-            raise ValueError("Unsupported file type.")
+            return TextStrategy()
 
     def encrypt(self, password: str, owner_password=None):
         if self.is_encrypted:
