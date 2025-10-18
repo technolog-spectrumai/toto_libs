@@ -3,8 +3,8 @@ from django.db.models import Sum, Count
 from django.core.exceptions import ImproperlyConfigured
 from operator import attrgetter
 from .models import Chamber, Venture, Transaction
+from shareholders.models import Company
 from .page import PageProcessor
-
 
 def chamber_overview(request):
     # 🏛️ Load Active Chamber
@@ -55,11 +55,17 @@ def chamber_overview(request):
         total_funding=Sum('funding_rounds__amount')
     )
 
+    # 🏢 Companies with aggregated venture funding
+    companies = Company.objects.annotate(
+        venture_count=Count('ventures'),
+        total_funding=Sum('ventures__funding_rounds__amount')
+    ).filter(venture_count__gt=0)
 
     context = {
         "chamber": chamber_data,
         "performance_metrics": performance_metrics,
-        "ventures": ventures
+        "ventures": ventures,
+        "companies": companies
     }
 
     decorated_context = PageProcessor().decorate(context, request)

@@ -148,9 +148,24 @@
         <div class="p-4 rounded border"
              :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
           <p><strong>{{ venture.name }}</strong></p>
-          {% if venture.url %}
-            <p>Website: <a href="{{ venture.url }}" class="underline text-blue-600 dark:text-blue-400" target="_blank">{{ venture.url }}</a></p>
+
+          {% if venture.company %}
+            <p>Company:
+              <a href="{% url 'shareholders:company-detail' venture.company.pk %}"
+                 class="underline text-blue-600 dark:text-blue-400">
+                {{ venture.company.name }}
+              </a>
+            </p>
           {% endif %}
+
+          {% if venture.url %}
+            <p>Website:
+              <a href="{{ venture.url }}" class="underline text-blue-600 dark:text-blue-400" target="_blank">
+                {{ venture.url }}
+              </a>
+            </p>
+          {% endif %}
+
           <p>Start: {{ venture.start|date:"F j, Y" }}</p>
           {% if venture.end %}
             <p>End: {{ venture.end|date:"F j, Y" }}</p>
@@ -172,6 +187,7 @@
         {% endfor %}
       </div>
     </section>
+
 
     <!-- 📈 Venture Chart -->
     <section>

@@ -22,7 +22,7 @@ class CurrencyAdmin(admin.ModelAdmin):
 
 @admin.register(Venture)
 class VentureAdmin(admin.ModelAdmin):
-    list_display = ('name', 'url', 'start', 'end')
+    list_display = ('name', 'url', 'start', 'end', 'company')
     search_fields = ('name',)
 
 
