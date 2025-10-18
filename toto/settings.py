@@ -78,7 +78,8 @@ INSTALLED_APPS = [
     "federal",
     "forum",
     "portfolio",
-    "gitops"
+    "gitops",
+    "latextile"
 ]
 
 DJANGO_TIPTAP_CONFIG = {

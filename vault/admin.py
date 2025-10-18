@@ -16,22 +16,13 @@ class BucketAdmin(admin.ModelAdmin):
     ordering = ('owner', 'name')
 
 
-class VaultFileForm(forms.ModelForm):
-    class Meta:
-        model = VaultFile
-        fields = '__all__'
-        widgets = {
-            'content_hash': forms.Textarea(attrs={'rows': 6, 'cols': 80}),
-        }
-
 @admin.register(VaultFile)
 class VaultFileAdmin(admin.ModelAdmin):
-    form = VaultFileForm
     list_display = ('title', 'owner', 'file_type', 'is_encrypted', 'is_public',
                     'uploaded_at', 'bucket', 'key', 'public_url_display')
     list_filter = ('file_type', 'is_encrypted', 'is_public', 'uploaded_at')
     search_fields = ('title', 'owner__username')
-    readonly_fields = ('uploaded_at',)
+    readonly_fields = ('uploaded_at', 'content_hash')
     actions = ['encrypt_selected_files', 'decrypt_selected_files', 'generate_content_hashes']
 
     def get_urls(self):
