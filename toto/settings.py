@@ -73,7 +73,8 @@ INSTALLED_APPS = [
     "vault",
     "portfolio",
     "gitops",
-    "latextile"
+    "latextile",
+    "community"
 ]
 
 DJANGO_TIPTAP_CONFIG = {
@@ -346,7 +347,8 @@ INGRESS_ALLOWED_APPS = [
     "gervazy",
     "gitops",
     "vault",
-    "portfolio"
+    "portfolio",
+    "community"
 ]
 
 GIT_REPO_BASE_DIR = BASE_DIR / 'git_repos'

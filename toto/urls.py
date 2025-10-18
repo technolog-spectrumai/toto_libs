@@ -27,6 +27,7 @@ urlpatterns = [
     path("webfront/", include("webfront.urls")),
     path("portfolio/", include("portfolio.urls", namespace="portfolio")),
     path("vault/", include("vault.urls", namespace="vault")),
+    path("community/", include("community.urls", namespace="community")),
 ]
 
 

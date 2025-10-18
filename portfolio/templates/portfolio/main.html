@@ -192,7 +192,6 @@
         <div class="p-4 rounded border"
              :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
           <p><strong>{{ person.display_name }}</strong></p>
-          <p>Role: {{ person.role }}</p>
           <p>Joined: {{ person.joined_at|date:"F j, Y" }}</p>
           <p>Shares Owned: {{ person.stock_owned|floatformat:2 }}</p>
           <p>Ownership: {{ person.ownership_percent|floatformat:2 }}%</p>

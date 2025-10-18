@@ -58,9 +58,20 @@ def chamber_overview(request):
         total_funding=Sum('funding_rounds__amount')
     )
 
-    # 👥 Team (Investors only)
-    investors = chamber.investors.all()
-    team = sorted(investors, key=attrgetter('joined_at'), reverse=True)
+    team = []
+    total_stock = float(chamber.total_stock_emitted or 0)
+
+    for investor in chamber.investors.all():
+        stock_owned = float(getattr(investor, "stock_owned", 0))
+        ownership_percent = (stock_owned / total_stock * 100) if total_stock > 0 else 0.0
+
+        team.append({
+            "display_name": investor.display_name,
+
+            "joined_at": investor.joined_at,
+            "stock_owned": stock_owned,
+            "ownership_percent": round(ownership_percent, 2)
+        })
 
     # 🧩 Placeholder for optional context
     recent_events = []  # Replace with actual query if Event model is added

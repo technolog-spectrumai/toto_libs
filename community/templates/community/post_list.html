@@ -1,0 +1,85 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}Posts | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<div
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300">
+
+  <div class="max-w-3xl mx-auto">
+    <h1 class="text-4xl font-extrabold mb-6 tracking-tight"
+        :class="darkMode ? 'text-text-main-dark' : 'text-text-main-light'">
+      Community Posts
+    </h1>
+
+    {% if posts %}
+      <div class="space-y-6">
+        {% for post in posts %}
+          <article
+            :class="darkMode
+              ? 'bg-bubble-bg-dark text-text-main-dark'
+              : 'bg-bubble-bg-light text-text-main-light'"
+            class="p-6 rounded-xl shadow-md transition-colors duration-300">
+
+            <div class="flex items-center space-x-3 mb-4">
+              {% if post.author.profile.avatar %}
+                <img src="{{ post.author.profile.avatar.url }}" alt="Avatar"
+                     class="w-10 h-10 rounded-full object-cover">
+              {% else %}
+                <div
+                  :class="darkMode
+                    ? 'bg-gray-700 text-white'
+                    : 'bg-gray-300 text-gray-800'"
+                  class="w-10 h-10 rounded-full flex items-center justify-center text-xs">
+                  {{ post.author.profile.display_name|first|upper }}
+                </div>
+              {% endif %}
+              <div>
+                <h2 class="font-semibold">{{ post.author.profile.display_name }}</h2>
+                <p class="text-sm opacity-80">{{ post.created_at|date:"F j, Y" }}</p>
+              </div>
+            </div>
+
+            <h3 class="text-xl font-semibold mb-2">{{ post.title }}</h3>
+            <p class="mb-4 opacity-90">{{ post.content|truncatewords:50 }}</p>
+
+            <div class="flex items-center justify-between">
+              <div class="flex items-center space-x-4">
+                <span class="flex items-center">
+                  <i class="fas fa-thumbs-up mr-1"></i>
+                  {{ post.likes_count }}
+                </span>
+              </div>
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+
+    {% else %}
+      <div
+        :class="darkMode
+          ? 'bg-bubble-bg-dark text-text-main-dark'
+          : 'bg-bubble-bg-light text-text-main-light'"
+        class="p-6 rounded-xl shadow-md transition-colors duration-300 text-center">
+        <p class="text-lg">No posts yet.</p>
+      </div>
+    {% endif %}
+    <div class="mt-8 text-center">
+      <a href="{% url 'community:index' %}"
+         class="inline-block px-6 py-2 rounded-lg font-medium transition-colors duration-300
+                bg-accent-1 text-white hover:bg-accent-2 dark:bg-accent-dark dark:hover:bg-accent-1">
+        ← Back to Community Home
+      </a>
+      <a href="{% url 'community:profile' current_member_slug %}"
+         class="inline-block px-6 py-2 rounded-lg font-medium transition-colors duration-300
+                bg-accent-1 text-white hover:bg-accent-2 dark:bg-accent-dark dark:hover:bg-accent-1">
+        See Profile →
+      </a>
+    </div>
+  </div>
+</div>
+{% endblock %}

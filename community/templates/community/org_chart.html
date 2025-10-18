@@ -1,0 +1,256 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}Org Chart | {{ platform.site_name }}{% endblock %}
+{% block start_script %}
+<style>
+:root {
+  --bg-color: #ffffff;
+  --text-color: #333333;
+}
+[data-theme="dark"] {
+  --bg-color: #1a1a1a;
+  --text-color: #eaeaea;
+}
+body {
+  background-color: var(--bg-color);
+  color: var(--text-color);
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="px-4 sm:px-6 pt-10 sm:pt-20 pb-0 min-h-screen transition-colors duration-300">
+
+  <div class="max-w-6xl mx-auto p-4 sm:p-8 rounded-xl shadow-lg space-y-0">
+    <header class="space-y-3 sm:space-y-4 text-center">
+      <h1 class="text-lg sm:text-xl font-extrabold">Organization Chart</h1>
+      <div class="max-w-xs sm:max-w-sm mx-auto">
+        <label for="company"
+               class="block text-xs sm:text-sm font-medium mb-1"
+               :class="darkMode ? 'text-text-main-dark' : 'text-text-main-light'">
+          Choose Company
+        </label>
+        <select id="company"
+                class="w-full px-2 py-1 sm:px-3 sm:py-2 rounded border text-sm transition-colors duration-300"
+                :class="darkMode
+                  ? 'bg-primary-bg-dark text-text-main-dark border-gray-600'
+                  : 'bg-white text-text-main-light border-gray-300'">
+          {% for company in companies %}
+            <option value="{{ company.slug }}" {% if company.slug == selected_company_slug %}selected{% endif %}>
+              {{ company.name }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+    </header>
+
+<div id="orgchart-container"
+     class="w-full transition-colors duration-300"
+     :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
+</div>
+
+<script>
+function adjustOrgChartHeight() {
+  const container = document.getElementById("orgchart-container");
+  const header = document.querySelector("header");
+  const viewportHeight = window.innerHeight;
+  const headerHeight = header ? header.offsetHeight : 100;
+  const padding = 40; // extra spacing
+  const minHeight = 400;
+
+  const newHeight = Math.max(viewportHeight - headerHeight - padding, minHeight);
+  container.style.height = `${newHeight}px`;
+}
+
+// Initial adjustment
+document.addEventListener("DOMContentLoaded", adjustOrgChartHeight);
+
+// Re-adjust on resize or orientation change
+window.addEventListener("resize", adjustOrgChartHeight);
+window.addEventListener("orientationchange", adjustOrgChartHeight);
+</script>
+
+  </div>
+</section>
+
+
+{% endblock %}
+{% block end_script %}
+
+<script src="https://d3js.org/d3.v7.min.js"></script>
+
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const container = document.getElementById("orgchart-container");
+  const companySelect = document.getElementById("company");
+  const colors = {{ theme.theme.colors|safe }};
+
+  const getThemeSuffix = () => Alpine.evaluate(document.documentElement, 'darkMode') ? 'dark' : 'light';
+
+const renderChart = (data) => {
+  container.innerHTML = "";
+
+  const theme = getThemeSuffix();
+  const bgColor = colors[`bubble-bg-${theme}`];
+  const textColor = colors[`text-main-${theme}`];
+  const accentColor = colors[`accent-${theme}`];
+
+  const isMobile = window.innerWidth < 768 || window.innerHeight < 600;
+  const dx = 280; // node height
+  const dy = 220; // node width
+
+  const root = d3.stratify()
+    .id(d => d.id)
+    .parentId(d => d.pid)(data);
+
+  root.each(node => {
+    if (node.children) {
+      node.children.sort((a, b) => a.data.name.localeCompare(b.data.name));
+    }
+  });
+
+  const isHorizontal = window.innerWidth < window.innerHeight;
+
+  const layout = d3.cluster().nodeSize(isHorizontal ? [dy, dx] : [dx, dy]);
+
+  layout(root);
+
+  const nodes = root.descendants();
+  const links = root.links();
+
+  const minX = d3.min(nodes, d => d.x);
+  const maxX = d3.max(nodes, d => d.x);
+  const minY = d3.min(nodes, d => d.y);
+  const maxY = d3.max(nodes, d => d.y);
+
+    const width = isMobile
+      ? maxY - minY + dy * 2
+      : maxX - minX + dy * 2;
+
+    const height = isMobile
+      ? maxX - minX + dx * 2
+      : maxY - minY + dx * 2;
+
+    const svg = d3.select(container)
+      .append("svg")
+      .attr("viewBox", `0 0 ${width} ${height}`)
+      .attr("preserveAspectRatio", "xMidYMid meet")
+      .style("width", "100%")
+      .style("height", "100%")
+      .style("background-color", colors[`primary-bg-${theme}`])
+      .style("transition", "background-color 0.3s ease");
+
+
+    let zoomScale = 1.0
+
+    const g = svg.append("g")
+      .attr("transform", isMobile
+        ? `translate(${dy}, ${-minX + dx}) scale(${zoomScale})`
+        : `translate(${-minX + dy}, ${dx}) scale(${zoomScale})`);
+
+    g.selectAll(".link")
+      .data(links)
+      .join("path")
+      .attr("fill", "none")
+      .attr("stroke", accentColor)
+      .attr("stroke-width", 2)
+      .attr("d", d => {
+        const sourceX = isMobile ? d.source.y : d.source.x;
+        const sourceY = isMobile ? d.source.x : d.source.y;
+        const targetX = isMobile ? d.target.y : d.target.x;
+        const targetY = isMobile ? d.target.x : d.target.y;
+
+        const curveOffset = 80; // Controls how much the curve bends
+
+        return `
+          M${sourceX},${sourceY}
+          C${sourceX},${sourceY + curveOffset}
+           ${targetX},${targetY - curveOffset}
+           ${targetX},${targetY}
+        `;
+      });
+
+  const node = g.selectAll(".node")
+    .data(nodes)
+    .join("g")
+    .attr("transform", d => `translate(${isMobile ? d.y : d.x},${isMobile ? d.x : d.y})`);
+
+  node.append("rect")
+    .attr("x", -100)
+    .attr("y", -40)
+    .attr("width", 200)
+    .attr("height", 80)
+    .attr("rx", 10)
+    .attr("fill", bgColor)
+    .attr("stroke", accentColor)
+    .attr("stroke-width", 2);
+
+  node.append("image")
+    .attr("xlink:href", d => d.data.img)
+    .attr("x", -90)
+    .attr("y", -30)
+    .attr("width", 40)
+    .attr("height", 40)
+    .attr("style", `border-radius:50%;`);
+
+  node.append("text")
+    .attr("x", -40)
+    .attr("y", -10)
+    .attr("fill", textColor)
+    .attr("font-size", 14)
+    .attr("font-weight", "bold")
+    .text(d => d.data.name);
+
+  node.append("text")
+    .attr("x", -40)
+    .attr("y", 10)
+    .attr("fill", textColor)
+    .attr("font-size", 12)
+    .text(d => d.data.title);
+};
+
+window.addEventListener("resize", () => {
+  loadChart(companySelect.value);
+});
+
+// ✅ 🔥 Place ResizeObserver here
+  const resizeObserver = new ResizeObserver(() => {
+    loadChart(companySelect.value);
+  });
+  resizeObserver.observe(container);
+
+
+
+  const loadChart = async (companySlug) => {
+    if (!companySlug) return;
+    container.classList.add("opacity-50");
+    try {
+      const response = await fetch(`/community/org-chart/data/?company=${companySlug}`);
+      const { nodes } = await response.json();
+      renderChart(nodes);
+    } catch (error) {
+      console.error("Failed to load org chart:", error);
+    } finally {
+      container.classList.remove("opacity-50");
+    }
+  };
+
+  loadChart(companySelect.value);
+  companySelect.addEventListener("change", (e) => loadChart(e.target.value));
+
+  const toggleButton = document.querySelector(".site-theme-toggle-button");
+  if (toggleButton) {
+    toggleButton.addEventListener("click", () => {
+      loadChart(companySelect.value); // Re-render with new theme
+    });
+  }
+});
+</script>
+
+{% endblock %}
