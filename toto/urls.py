@@ -26,7 +26,6 @@ urlpatterns = [
     path("gervazy/", include("gervazy.urls")),
     path("memo/", include("memo.urls", namespace="memo")),
     path("webfront/", include("webfront.urls")),
-    path("kanban/", include("kanban.urls", namespace="kanban")),
     path("forum/", include("forum.urls", namespace="forum")),
     path("portfolio/", include("portfolio.urls", namespace="portfolio")),
     path("vault/", include("vault.urls", namespace="vault")),
