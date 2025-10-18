@@ -3,17 +3,12 @@ from lorem_text import lorem
 from oya.ingress import IngressCommand
 from django.utils.text import slugify
 
-from documents.models import (
+from editor.models import (
     Tag, Department,
     LatexPreset,
     Document, DocumentSection, DocumentSubSection
 )
-from documents.convert import LatexToHTMLConverter
-
-try:
-    from documents.models import HTMLPreset
-except ImportError:
-    HTMLPreset = None  # Optional fallback if HTMLPreset is not defined
+from editor.convert import LatexToHTMLConverter
 
 
 class Command(IngressCommand):
@@ -52,10 +47,6 @@ class Command(IngressCommand):
             preamble=r"",
             footer_note="This document is confidential and intended solely for internal use."
         )
-
-        # 🌐 HTML Preset (optional)
-        if HTMLPreset:
-            HTMLPreset.objects.get_or_create(name="Default Web Style")
 
         # 📄 Document
         document = Document.objects.create(
