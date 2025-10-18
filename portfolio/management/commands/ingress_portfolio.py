@@ -1,7 +1,7 @@
 from django.contrib.auth.models import User
 from oya.ingress import IngressCommand
 from portfolio.models import (
-    Chamber, Investor, Currency, Venture,
+    Chamber, Currency, Venture,
     Transaction
 )
 import random
@@ -10,14 +10,14 @@ from django.utils.timezone import now
 
 
 class Command(IngressCommand):
-    help = "Seed sample data for SpectrumAi.pl Chamber: investors, ventures, currencies, transactions, and events"
+    help = "Seed sample data for SpectrumAi.pl Chamber: ventures, currencies, transactions, and events"
 
     def process(self, _):
         # 📊 Dashboard block
         self.create_dashboard_item(
             title="SpectrumAi.pl Demo",
             icon="fa-solid fa-briefcase",
-            description="Seeds sample investors, ventures, currencies, transactions, and events for demo/testing.",
+            description="Seeds sampleventures, currencies, transactions, and events for demo/testing.",
             link="/portfolio/"
         )
 
@@ -47,33 +47,16 @@ class Command(IngressCommand):
         if active_chambers.count() == 0:
             chamber = Chamber.objects.create(
                 name="SpectrumAi.pl",
+                manifest="Multi-chain crypto growth",
                 strategy="Long-term decentralized innovation",
                 active=True,
-                default_currency=usd_currency,
-                total_stock_emitted=1000000  # 1 million shares issued
+                default_currency=usd_currency
             )
             self.stdout.write(self.style.SUCCESS("🏛️ Created active chamber: SpectrumAi.pl"))
         elif active_chambers.count() == 1:
             chamber = active_chambers.first()
         else:
             raise Exception("❌ Multiple active chambers detected. Only one chamber can be active at a time.")
-
-        # 👤 Ensure demo user and investor
-        user, _ = User.objects.get_or_create(
-            username='demo_investor',
-            defaults={'email': 'investor@example.com'}
-        )
-        investor, _ = Investor.objects.get_or_create(
-            user=user,
-            defaults={
-                'display_name': 'Demo Investor',
-                'chamber': chamber,
-                'stock_owned': 250000  # owns 25% of total shares
-            }
-        )
-        if investor.chamber != chamber:
-            investor.chamber = chamber
-            investor.save()
 
         # 📦 Create ventures
         venture_data = [

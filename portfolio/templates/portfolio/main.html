@@ -115,9 +115,7 @@
           <p><strong>Name:</strong> {{ chamber.name }}</p>
           <p><strong>Manifest:</strong> {{ chamber.manifest }}</p>
           <p><strong>Strategy:</strong> {{ chamber.strategy }}</p>
-          <p><strong>Total Investors:</strong> {{ chamber.total_investors }}</p>
           <p><strong>Total Ventures:</strong> {{ chamber.total_ventures }}</p>
-          <p><strong>Total Shares Issued:</strong> {{ chamber.total_stock_emitted|floatformat:2 }}</p>
           <p><strong>Created:</strong> {{ chamber.created_at|date:"F j, Y" }}</p>
         </div>
       </div>
@@ -181,22 +179,6 @@
       <div class="p-4 rounded border"
            :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
         <canvas id="ventureChart" height="300"></canvas>
-      </div>
-    </section>
-
-    <!-- 🧑‍🤝‍🧑 Team -->
-    <section>
-      <h2 class="text-2xl font-bold mb-4">Team</h2>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {% for person in team %}
-        <div class="p-4 rounded border"
-             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
-          <p><strong>{{ person.display_name }}</strong></p>
-          <p>Joined: {{ person.joined_at|date:"F j, Y" }}</p>
-          <p>Shares Owned: {{ person.stock_owned|floatformat:2 }}</p>
-          <p>Ownership: {{ person.ownership_percent|floatformat:2 }}%</p>
-        </div>
-        {% endfor %}
       </div>
     </section>
 

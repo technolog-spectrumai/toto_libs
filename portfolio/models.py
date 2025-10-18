@@ -27,7 +27,6 @@ class Chamber(models.Model):
         blank=True,
         related_name='default_for_chambers'
     )
-    total_stock_emitted = models.DecimalField(max_digits=20, decimal_places=2, default=0)
 
     def save(self, *args, **kwargs):
         self.full_clean()
@@ -35,17 +34,6 @@ class Chamber(models.Model):
 
     def __str__(self):
         return self.name
-
-# 👤 Investor
-class Investor(models.Model):
-    display_name = models.CharField(max_length=100)
-    joined_at = models.DateTimeField(auto_now_add=True)
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
-    chamber = models.ForeignKey(Chamber, on_delete=models.CASCADE, related_name='investors')
-    stock_owned = models.DecimalField(max_digits=20, decimal_places=2, default=0)
-
-    def __str__(self):
-        return self.display_name
 
 # 📦 Venture (formerly Asset)
 class Venture(models.Model):

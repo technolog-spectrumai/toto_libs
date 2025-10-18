@@ -18,7 +18,6 @@ def chamber_overview(request):
     chamber = active_chambers.first()
 
     # 🧠 Chamber Identity
-    total_investors = chamber.investors.count()
     total_ventures = Venture.objects.count()
 
     # 💸 Total Investment in Default Currency
@@ -33,10 +32,8 @@ def chamber_overview(request):
         "manifest": chamber.manifest,
         "strategy": chamber.strategy,
         "created_at": chamber.created_at,
-        "total_investors": total_investors,
         "total_ventures": total_ventures,
-        "total_investment": round(total_investment, 2) if total_investment is not None else None,
-        "total_stock_emitted": float(chamber.total_stock_emitted)
+        "total_investment": round(total_investment, 2) if total_investment is not None else None
     }
 
     # 📊 Performance Summary
@@ -58,32 +55,11 @@ def chamber_overview(request):
         total_funding=Sum('funding_rounds__amount')
     )
 
-    team = []
-    total_stock = float(chamber.total_stock_emitted or 0)
-
-    for investor in chamber.investors.all():
-        stock_owned = float(getattr(investor, "stock_owned", 0))
-        ownership_percent = (stock_owned / total_stock * 100) if total_stock > 0 else 0.0
-
-        team.append({
-            "display_name": investor.display_name,
-
-            "joined_at": investor.joined_at,
-            "stock_owned": stock_owned,
-            "ownership_percent": round(ownership_percent, 2)
-        })
-
-    # 🧩 Placeholder for optional context
-    recent_events = []  # Replace with actual query if Event model is added
-    coming_soon = []    # Replace with actual logic if needed
 
     context = {
         "chamber": chamber_data,
         "performance_metrics": performance_metrics,
-        "ventures": ventures,
-        "recent_events": recent_events,
-        "coming_soon": coming_soon,
-        "team": team
+        "ventures": ventures
     }
 
     decorated_context = PageProcessor().decorate(context, request)
