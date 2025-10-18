@@ -47,7 +47,6 @@ class Command(IngressCommand):
         if active_chambers.count() == 0:
             chamber = Chamber.objects.create(
                 name="SpectrumAi.pl",
-                manifest="Multi-chain crypto growth",
                 strategy="Long-term decentralized innovation",
                 active=True,
                 default_currency=usd_currency,

@@ -3,6 +3,8 @@ from .models import (
     Chamber, Investor, Currency,
     Venture, Transaction
 )
+from decimal import Decimal
+
 
 @admin.register(Chamber)
 class ChamberAdmin(admin.ModelAdmin):
@@ -13,9 +15,27 @@ class ChamberAdmin(admin.ModelAdmin):
 
 @admin.register(Investor)
 class InvestorAdmin(admin.ModelAdmin):
-    list_display = ('display_name', 'user', 'chamber', 'stock_owned', 'joined_at')
+    list_display = (
+        'display_name',
+        'user',
+        'chamber',
+        'stock_owned',
+        'ownership_percent_display',
+        'joined_at',
+    )
     list_filter = ('chamber',)
     search_fields = ('display_name', 'user__username')
+
+    def ownership_percent_display(self, obj):
+        total_stock = obj.chamber.total_stock_emitted or Decimal('0')
+        stock_owned = obj.stock_owned or Decimal('0')
+
+        if total_stock > 0:
+            percent = (stock_owned / total_stock) * Decimal('100')
+            return f"{percent:.2f}%"
+        return "0.00%"
+
+    ownership_percent_display.short_description = "Ownership %"
 
 
 @admin.register(Currency)

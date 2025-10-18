@@ -39,7 +39,6 @@ class Chamber(models.Model):
 # 👤 Investor
 class Investor(models.Model):
     display_name = models.CharField(max_length=100)
-    manifest = models.JSONField(default=dict, blank=True)
     joined_at = models.DateTimeField(auto_now_add=True)
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     chamber = models.ForeignKey(Chamber, on_delete=models.CASCADE, related_name='investors')
