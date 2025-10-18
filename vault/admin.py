@@ -2,12 +2,20 @@ from django.contrib import admin, messages
 from django.urls import path, reverse
 from django.shortcuts import render, redirect
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
-from .models import VaultFile
+from .models import VaultFile, Bucket
+
+
+@admin.register(Bucket)
+class BucketAdmin(admin.ModelAdmin):
+    list_display = ('name', 'owner')
+    search_fields = ('name', 'owner__username')
+    list_filter = ('owner',)
+    ordering = ('owner', 'name')
 
 
 @admin.register(VaultFile)
 class VaultFileAdmin(admin.ModelAdmin):
-    list_display = ('title', 'owner', 'file_type', 'is_encrypted', 'is_public', 'uploaded_at')
+    list_display = ('title', 'owner', 'file_type', 'is_encrypted', 'is_public', 'uploaded_at', 'bucket')
     list_filter = ('file_type', 'is_encrypted', 'is_public', 'uploaded_at')
     search_fields = ('title', 'owner__username')
     readonly_fields = ('uploaded_at',)

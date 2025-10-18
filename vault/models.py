@@ -5,6 +5,19 @@ from vault.strategy.pdf import PdfStrategy
 from vault.strategy.image import ImageStrategy
 
 
+class Bucket(models.Model):
+    name = models.CharField(max_length=100)
+    owner = models.ForeignKey(User, on_delete=models.CASCADE)
+
+    class Meta:
+        verbose_name = "Bucket"
+        verbose_name_plural = "Buckets"
+        unique_together = ('name', 'owner')
+
+    def __str__(self):
+        return self.name
+
+
 class VaultFile(models.Model):
     FILE_TYPES = [
         ('pdf', 'PDF'),
@@ -19,6 +32,7 @@ class VaultFile(models.Model):
     is_encrypted = models.BooleanField(default=False)
     is_public = models.BooleanField(default=False, help_text="If true, file is visible to others")
     notes = models.TextField(blank=True, null=True)
+    bucket = models.ForeignKey(Bucket, on_delete=models.SET_NULL, null=True, blank=True, related_name='files')
 
     class Meta:
         verbose_name = "Vault File"

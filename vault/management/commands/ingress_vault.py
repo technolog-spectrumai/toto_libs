@@ -1,5 +1,6 @@
 from django.contrib.auth.models import User
-from vault.models import VaultPdf, KeyRing
+from vault.models import VaultFile, Bucket
+from gervazy.models import KeyRing
 from oya.ingress import IngressCommand
 import os
 
@@ -8,29 +9,45 @@ class Command(IngressCommand):
     help = "Seed Vault app with demo data and create dashboard item"
 
     def process(self, _):
-        # Dashboard block
+        # Create dashboard block
         self.create_dashboard_item(
             title="Vault",
             icon="fa-lock",
-            description="Secure storage for encrypted files and PDFs",
+            description="Secure storage for encrypted files and images",
             link="/vault/"
         )
 
-        # Create demo user
-        user, _ = User.objects.get_or_create(username="vaultuser", defaults={"email": "vault@example.com"})
+        username = "admin"
+        try:
+            user = User.objects.get(username=username)
+            self.stdout.write(f"Found demo user: {user.username}")
+        except User.DoesNotExist:
+            self.stdout.write(self.style.ERROR("Demo user 'vaultuser' not found. Please create the user first."))
+            return
 
         # Create KeyRing
-        salt = os.urandom(16)
-        keyring = KeyRing.objects.create(owner=user, label="Demo Key", salt=salt)
+        keyring, _ = KeyRing.objects.get_or_create(
+            owner=user,
+            label="Demo Key",
+            defaults={"salt": os.urandom(16)}
+        )
 
-        # Create VaultPdf entries
+        # Create Bucket
+        bucket, _ = Bucket.objects.get_or_create(
+            name="Demo Bucket",
+            owner=user
+        )
+
+        # Create VaultFile entries (PDFs)
         for i in range(2):
-            VaultPdf.objects.create(
+            VaultFile.objects.create(
                 owner=user,
                 title=f"Secure PDF {i}",
                 file="vault/encrypted_pdfs/secure_pdf.pdf",
-                keyring=keyring,
-                is_encrypted=True
+                file_type="pdf",
+                is_encrypted=True,
+                bucket=bucket,
+                notes="Demo encrypted PDF file"
             )
 
         self.stdout.write(self.style.SUCCESS("Vault demo data seeded successfully."))

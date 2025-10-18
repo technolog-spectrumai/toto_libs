@@ -355,7 +355,8 @@ INGRESS_ALLOWED_APPS = [
     "mandragora",
     "kodama",
     "federal",
-    "forum"
+    "forum",
+    "gervazy"
 ]
 
 GIT_REPO_BASE_DIR = BASE_DIR / 'git_repos'

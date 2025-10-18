@@ -4,6 +4,8 @@ from django.utils.text import slugify
 from django_jsonform.models.fields import JSONField
 import reversion
 from .convert import LatexToHTMLConverter, HTMLToLatexConverter
+from vault.models import Bucket
+
 
 # ────────────────────────────────────────────────
 # 🔖 Tag Model
@@ -23,6 +25,8 @@ class Department(models.Model):
     name = models.CharField(max_length=255)
     seal = models.ImageField(upload_to='department_seals/', blank=True, null=True)
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='owned_departments')
+    bucket = models.ForeignKey(Bucket, on_delete=models.SET_NULL, null=True, blank=True,
+                               related_name='departments')
 
     def __str__(self):
         return self.name

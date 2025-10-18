@@ -29,12 +29,12 @@ class TagAdmin(admin.ModelAdmin):
 
 @admin.register(Department)
 class DepartmentAdmin(admin.ModelAdmin):
-    list_display = ['name', 'owner']
+    list_display = ['name', 'owner', 'bucket']
     search_fields = ['name']
     list_filter = ['owner']
     readonly_fields = ['owner']
     fieldsets = (
-        (None, {'fields': ['name', 'owner', 'seal']}),
+        (None, {'fields': ['name', 'owner', 'seal', 'bucket']}),
     )
 
 # ────────────────────────────────────────────────
@@ -157,13 +157,20 @@ class DocumentAdmin(VersionAdmin, NestedModelAdmin):
             if not pdf_path:
                 raise FileNotFoundError("PDF file not found after generation.")
 
-            # Save directly to Vault
+            # Require department bucket
+            if not document.department or not document.department.bucket:
+                raise ValueError(f"Document '{document.title}' has no department bucket assigned.")
+
+            bucket = document.department.bucket
+
+
             with open(pdf_path, 'rb') as f:
                 VaultFile.objects.create(
                     owner=document.created_by,
                     title=document.title,
                     file=File(f, name=f"{slugify(document.title)}.pdf"),
                     file_type='pdf',
+                    bucket=bucket,
                     notes=f"Compiled from document ID {document.id}"
                 )
 
