@@ -1,10 +1,12 @@
+import os
+
 from django.contrib import admin
 from django import forms
 from django.utils.text import slugify
 from django.core.files import File
 from nested_admin import NestedModelAdmin, NestedStackedInline
 from reversion.admin import VersionAdmin
-from .pdf import LatexCompiler
+from .compiler import LatexCompiler
 from .models import (
     Tag, Department,
     LatexPreset, Image,
@@ -15,6 +17,8 @@ from .batch import BatchAction
 from django_ace import AceWidget
 from django_tiptap.widgets import TipTapWidget
 from vault.models import VaultFile
+from django.utils.html import format_html
+from latextile.models import LatexProject, TexFile
 
 
 # ────────────────────────────────────────────────
@@ -135,12 +139,12 @@ class DocumentAdmin(VersionAdmin, NestedModelAdmin):
     filter_horizontal = ['tags']
     prepopulated_fields = {'slug': ('title',)}
     inlines = [DocumentSectionInline]
-    actions = ['compile_pdf']
+    actions = ['export_tex']
 
-    @admin.action(description="Compile selected documents to PDF and send to Vault")
-    def compile_pdf(self, request, queryset):
+    @admin.action(description="Export selected documents to .tex")
+    def export_tex(self, request, queryset):
 
-        def compile_one(document):
+        def export_one(document):
             # Force all sections and subsections to save as raw (LaTeX)
             for section in document.sections.all():
                 section.is_raw = True
@@ -150,12 +154,12 @@ class DocumentAdmin(VersionAdmin, NestedModelAdmin):
                     subsection.is_raw = True
                     subsection.save()
 
-            # Compile PDF
+            # Generate .tex file
             compiler = LatexCompiler(document)
-            pdf_path = compiler.generate_pdf()
+            tex_path = compiler.to_tex()
 
-            if not pdf_path:
-                raise FileNotFoundError("PDF file not found after generation.")
+            if not tex_path or not os.path.exists(tex_path):
+                raise FileNotFoundError("TeX file not found after generation.")
 
             # Require department bucket
             if not document.department or not document.department.bucket:
@@ -163,21 +167,25 @@ class DocumentAdmin(VersionAdmin, NestedModelAdmin):
 
             bucket = document.department.bucket
 
+            # Create or get LatexProject
+            project, _ = LatexProject.objects.get_or_create(
+                user=document.created_by,
+                name=f"{document.title} (auto-export)",
+                bucket=bucket
+            )
 
-            with open(pdf_path, 'rb') as f:
-                VaultFile.objects.create(
-                    owner=document.created_by,
-                    title=document.title,
-                    file=File(f, name=f"{slugify(document.title)}.pdf"),
-                    file_type='pdf',
-                    bucket=bucket,
-                    notes=f"Compiled from document ID {document.id}"
+            # Save TexFile
+            with open(tex_path, 'rb') as f:
+                TexFile.objects.create(
+                    project=project,
+                    filename=os.path.basename(tex_path),
+                    file=File(f, name=os.path.basename(tex_path))
                 )
 
             return document
 
-        result = BatchAction(queryset).run(compile_one)
-        BatchAction.display_messages(result, self.message_user, request, verb="compile and vault")
+        result = BatchAction(queryset).run(export_one)
+        BatchAction.display_messages(result, self.message_user, request, verb="export to LaTeX project")
 
     def save_formset(self, request, form, formset, change):
         instances = formset.save(commit=False)

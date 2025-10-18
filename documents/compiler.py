@@ -1,11 +1,11 @@
-
-from pylatex import Document as PyDocument, Section, Subsection, Command, Package, Figure
-from pylatex.utils import NoEscape
-from django.conf import settings
+import os
 import shutil
 import tempfile
-import os
+from django.conf import settings
 from django.utils.text import slugify
+from pylatex import NoEscape, Figure, Package, Command, Section, Subsection
+from pylatex import Document as PyDocument
+
 
 
 class LatexCompiler:
@@ -36,24 +36,7 @@ class LatexCompiler:
             if caption:
                 fig.add_caption(caption)
 
-    def compile(self, doc, file_base):
-        try:
-            doc.generate_pdf(
-                os.path.join(self.output_dir, file_base),
-                clean_tex=True,
-                compiler="pdflatex",
-                compiler_args=["-interaction=nonstopmode", "-shell-escape"]
-            )
-        except Exception as e:
-            log_path = os.path.join(self.output_dir, f"{file_base}.log")
-            if os.path.exists(log_path):
-                with open(log_path, 'r') as log_file:
-                    error_log = ""#log_file.read()
-                raise RuntimeError(f"LaTeX compilation failed:\n{error_log}")
-            else:
-                raise RuntimeError(f"LaTeX compilation failed: {e}")
-
-    def generate_pdf(self):
+    def _build(self):
         doc = PyDocument(documentclass=self.preset.document_class if self.preset else 'article')
 
         # Add packages
@@ -70,7 +53,6 @@ class LatexCompiler:
         doc.preamble.append(Command('author', self.document.created_by.get_full_name() or self.document.created_by.username))
         doc.preamble.append(Command('date', NoEscape(r'\today')))
         doc.append(NoEscape(r'\maketitle'))
-
 
         # Sections and Subsections
         for section in self.document.sections.all():
@@ -92,9 +74,37 @@ class LatexCompiler:
             doc.append(NoEscape(r'\small ' + self.preset.footer_note))
             doc.append(NoEscape(r'\end{center}'))
 
-        # Compile
+        return doc
+
+    # def compile(self):
+    #     doc = self._build()
+    #     file_base = slugify(self.document.title)
+    #     filename = f"{file_base}.pdf"
+    #     filepath = os.path.join(self.output_dir, filename)
+    #     self._compile_pdf(doc, file_base)
+    #     return filepath if os.path.exists(filepath) else None
+    #
+    # def _compile_pdf(self, doc, file_base):
+    #     try:
+    #         doc.generate_pdf(
+    #             os.path.join(self.output_dir, file_base),
+    #             clean_tex=True,
+    #             compiler="pdflatex",
+    #             compiler_args=["-interaction=nonstopmode", "-shell-escape"]
+    #         )
+    #     except Exception as e:
+    #         log_path = os.path.join(self.output_dir, f"{file_base}.log")
+    #         if os.path.exists(log_path):
+    #             with open(log_path, 'r') as log_file:
+    #                 error_log = ""  # log_file.read()
+    #             raise RuntimeError(f"LaTeX compilation failed:\n{error_log}")
+    #         else:
+    #             raise RuntimeError(f"LaTeX compilation failed: {e}")
+
+    def to_tex(self):
+        doc = self._build()
         file_base = slugify(self.document.title)
-        filename = f"{file_base}.pdf"
-        filepath = os.path.join(self.output_dir, filename)
-        self.compile(doc, file_base)
-        return filepath if os.path.exists(filepath) else None
+        tex_path = os.path.join(self.output_dir, f"{file_base}")
+        doc.generate_tex(tex_path)
+        tex_path+= ".tex"
+        return tex_path
