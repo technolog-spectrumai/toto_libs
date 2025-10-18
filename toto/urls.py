@@ -13,7 +13,6 @@ admin.site.site_title = 'Administracja'
 urlpatterns = [
     path('admin/', admin.site.urls),
     path("nest/", include("oya.urls", namespace='nest')),
-    path("community/", include("community.urls", namespace='community')),
     path('captcha/', include('captcha.urls')),
     #path(r'^_nested_admin/', include('nested_admin.urls')),
     path(
@@ -28,14 +27,9 @@ urlpatterns = [
     path("memo/", include("memo.urls", namespace="memo")),
     path("webfront/", include("webfront.urls")),
     path("kanban/", include("kanban.urls", namespace="kanban")),
-    path("federal/", include("federal.urls", namespace="federal")),
     path("forum/", include("forum.urls", namespace="forum")),
     path("portfolio/", include("portfolio.urls", namespace="portfolio")),
     path("vault/", include("vault.urls", namespace="vault")),
-    # path('.well-known/acme-challenge/<path:path>', serve, {
-    #     'document_root': settings.ACME_CHALLENGE_ROOT,
-    # }),
-    #path('accounts/', include('django.contrib.auth.urls'))
 ]
 
 

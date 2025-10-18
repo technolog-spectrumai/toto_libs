@@ -67,13 +67,11 @@ INSTALLED_APPS = [
     "gervazy",
     "oya",
     "captcha",
-    "community",
     "memo",
     "webfront",
     "editor",
     "kanban",
     "vault",
-    "federal",
     "forum",
     "portfolio",
     "gitops",
@@ -146,12 +144,10 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     "whitenoise.middleware.WhiteNoiseMiddleware",
-    "django.middleware.locale.LocaleMiddleware",
-    'federal.middleware.FederalAuthMiddleware'
+    "django.middleware.locale.LocaleMiddleware"
 ]
 
 AUTHENTICATION_BACKENDS = [
-    'federal.auth.FederalTokenBackend',
     'django.contrib.auth.backends.ModelBackend'
 ]
 
@@ -350,8 +346,6 @@ INGRESS_ALLOWED_APPS = [
     "memo",
     "editor",
     "kanban",
-    "community",
-    "federal",
     "forum",
     "gervazy",
     "gitops",
