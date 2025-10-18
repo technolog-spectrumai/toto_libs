@@ -3,12 +3,12 @@ import json
 from django.utils.text import slugify
 from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
-from webfront.models import Language, DynamicPage, PageGenerator
-from oya.ingress import IngressCommand  # Your custom base class
+from webfront.models import Language, PageGenerator, PageTemplate
+from oya.ingress import IngressCommand
 
 
 class Command(IngressCommand):
-    help = "Populate the database with DynamicPages for Sport, Spectrum, and Basilisk"
+    help = "Populate the database with PageGenerators for Sport, Spectrum, and Basilisk"
 
     def add_arguments(self, parser):
         base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', 'data'))
@@ -16,19 +16,19 @@ class Command(IngressCommand):
             '--htmldir',
             type=str,
             default=os.path.join(base_dir, 'html'),
-            help='Directory containing HTML templates for PageGenerators'
+            help='Directory containing HTML templates for PageTemplates'
         )
         parser.add_argument(
             '--schemadir',
             type=str,
             default=os.path.join(base_dir, 'schema'),
-            help='Directory containing JSON schemas for PageGenerators'
+            help='Directory containing JSON schemas for PageTemplates'
         )
         parser.add_argument(
             '--configdir',
             type=str,
             default=os.path.join(base_dir, 'config'),
-            help='Directory containing config JSON files for DynamicPages'
+            help='Directory containing config JSON files for PageGenerators'
         )
 
     def process(self, options):
@@ -44,7 +44,6 @@ class Command(IngressCommand):
         )
         self.stdout.write(self.style.SUCCESS(f"🌐 Using Language: {language.name}"))
 
-        # Validate directories
         if not all(map(os.path.isdir, [html_dir, schema_dir, config_dir])):
             self.stderr.write(self.style.ERROR("❌ One or more data directories do not exist."))
             return
@@ -72,13 +71,12 @@ class Command(IngressCommand):
                 with open(config_path, 'r', encoding='utf-8') as f:
                     config_json = json.load(f)
 
-                # Load schema if available
                 json_schema = None
                 if os.path.isfile(schema_path):
                     with open(schema_path, 'r', encoding='utf-8') as f:
                         json_schema = json.load(f)
 
-                generator, created = PageGenerator.objects.get_or_create(
+                template, created = PageTemplate.objects.get_or_create(
                     slug=slug,
                     defaults={
                         'name': name_token,
@@ -87,30 +85,30 @@ class Command(IngressCommand):
                     }
                 )
 
-                if created or not generator.html_template_file:
-                    generator.html_template_file.save(
+                if created or not template.html_template_file:
+                    template.html_template_file.save(
                         f"{slug}.html",
                         ContentFile(html_template),
                         save=True
                     )
                     if not created:
-                        generator.save()
+                        template.save()
 
-                dp = DynamicPage(
+                generator = PageGenerator(
                     name=name_token,
                     slug=slug,
                     language=language,
-                    generator=generator,
+                    template=template,
                     config_json=config_json
                 )
 
-                dp.full_clean()
-                dp.save()
-                self.stdout.write(self.style.SUCCESS(f"📄 Created DynamicPage: {dp.name}"))
+                generator.full_clean()
+                generator.save()
+                self.stdout.write(self.style.SUCCESS(f"📄 Created PageGenerator: {generator.name}"))
 
             except ValidationError as ve:
                 self.stderr.write(self.style.ERROR(f"❌ Validation failed for {name_token}: {ve}"))
             except Exception as e:
                 self.stderr.write(self.style.ERROR(f"❌ Error processing {name_token}: {e}"))
 
-        self.stdout.write(self.style.SUCCESS("✅ DynamicPage ingress complete."))
+        self.stdout.write(self.style.SUCCESS("✅ PageGenerator ingress complete."))

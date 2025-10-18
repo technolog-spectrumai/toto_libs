@@ -33,6 +33,7 @@ urlpatterns = [
     path("federal/", include("federal.urls", namespace="federal")),
     path("forum/", include("forum.urls", namespace="forum")),
     path("portfolio/", include("portfolio.urls", namespace="portfolio")),
+    path("vault/", include("vault.urls", namespace="vault")),
     # path('.well-known/acme-challenge/<path:path>', serve, {
     #     'document_root': settings.ACME_CHALLENGE_ROOT,
     # }),

@@ -3,6 +3,8 @@ from django.urls import path, reverse
 from django.shortcuts import render, redirect
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from .models import VaultFile, Bucket
+from .batch import BatchAction
+from django.utils.html import format_html
 
 
 @admin.register(Bucket)
@@ -15,7 +17,8 @@ class BucketAdmin(admin.ModelAdmin):
 
 @admin.register(VaultFile)
 class VaultFileAdmin(admin.ModelAdmin):
-    list_display = ('title', 'owner', 'file_type', 'is_encrypted', 'is_public', 'uploaded_at', 'bucket')
+    list_display = ('title', 'owner', 'file_type', 'is_encrypted', 'is_public',
+                    'uploaded_at', 'bucket', 'key', 'public_url_display')
     list_filter = ('file_type', 'is_encrypted', 'is_public', 'uploaded_at')
     search_fields = ('title', 'owner__username')
     readonly_fields = ('uploaded_at',)
@@ -28,6 +31,13 @@ class VaultFileAdmin(admin.ModelAdmin):
             path('decrypt/', self.admin_site.admin_view(self.decrypt_view), name='vaultfile_decrypt'),
         ]
         return custom_urls + urls
+
+    def public_url_display(self, obj):
+        url = obj.get_public_url()
+        if url:
+            return format_html('<a href="{}" target="_blank">Open</a>', url)
+        return "-"
+    public_url_display.short_description = "Public URL"
 
     def encrypt_selected_files(self, request, queryset):
         selected = request.POST.getlist(ACTION_CHECKBOX_NAME)
@@ -98,3 +108,21 @@ class VaultFileAdmin(admin.ModelAdmin):
         }
         template = strategy.get_decrypt_template() if strategy else 'admin/decrypt_file.html'
         return render(request, template, context)
+
+    @admin.action(description="Generate content hash for selected files")
+    def generate_content_hashes(self, request, queryset):
+        def hash_one(file):
+            if file.content_hash:
+                return f"Skipped {file.title}: already has hash"
+            hash_value = file.create_hash()
+            if hash_value:
+                file.content_hash = hash_value
+                file.save()
+                return f"Hashed {file.title}"
+            else:
+                raise ValueError(f"Failed to read file for {file.title}")
+
+        result = BatchAction(queryset).run(hash_one)
+        BatchAction.display_messages(result, self.message_user, request, verb="hash")
+
+    generate_content_hashes.short_description = "Generate content hash for selected files"

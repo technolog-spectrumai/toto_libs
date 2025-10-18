@@ -4,7 +4,7 @@ from django_json_widget.widgets import JSONEditorWidget
 from django.urls import reverse
 from django.utils.html import format_html
 from django.template import TemplateDoesNotExist
-from .models import Language, StaticPage, DynamicPage, Image, PageGenerator
+from .models import Language, WebPage, PageGenerator, PageTemplate
 from django import forms
 from django.core.files.base import ContentFile
 from django_ace import AceWidget
@@ -17,26 +17,22 @@ class LanguageAdmin(admin.ModelAdmin):
     search_fields = ('name', 'slug')
 
 
-class HtmlFileMixin:
-    def read_file_content(self, file_field):
-        """Safely read and decode file content from a FileField."""
-        if file_field and hasattr(file_field, 'read'):
+class VaultHtmlMixin:
+    def read_file_content(self, vault_file):
+        if vault_file and vault_file.file:
             try:
-                return file_field.read().decode('utf-8')
+                return vault_file.file.read().decode('utf-8')
             except Exception:
                 return ''
         return ''
 
-    def save_file_content(self, instance, file_field_name, slug, content):
-        """Save string content to a FileField on the instance."""
-        if content:
-            filename = f"{slug}.html"
-            file_field = getattr(instance, file_field_name, None)
-            if file_field:
-                file_field.save(filename, ContentFile(content), save=False)
+    def save_file_content(self, vault_file, slug, content):
+        if vault_file and content:
+            vault_file.file.save(f"{slug}.html", ContentFile(content))
+            vault_file.save()
 
 
-class StaticPageAdminForm(forms.ModelForm, HtmlFileMixin):
+class WebPageAdminForm(forms.ModelForm, VaultHtmlMixin):
     html_content = forms.CharField(
         widget=AceWidget(mode='html', theme='chrome'),
         required=False,
@@ -44,25 +40,37 @@ class StaticPageAdminForm(forms.ModelForm, HtmlFileMixin):
     )
 
     class Meta:
-        model = StaticPage
+        model = WebPage
         fields = ('name', 'slug', 'language', 'html_file')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['html_content'].initial = self.read_file_content(self.instance.html_file)
 
-
     def save(self, commit=True):
         instance = super().save(commit=False)
-        self.save_file_content(instance, 'html_file', instance.slug, self.cleaned_data.get('html_content', ''))
+        content = self.cleaned_data.get('html_content', '')
+        if instance.html_file:
+            self.save_file_content(instance.html_file, instance.slug, content)
+        elif content:
+            from vault.models import VaultFile
+            vault_file = VaultFile.objects.create(
+                owner=instance.language,
+                title=f"{instance.name}.html",
+                file_type='text',
+                notes=f"Uploaded via admin for WebPage {instance.slug}"
+            )
+            vault_file.file.save(f"{instance.slug}.html", ContentFile(content))
+            vault_file.save()
+            instance.html_file = vault_file
         if commit:
             instance.save()
         return instance
 
 
-@admin.register(StaticPage)
-class StaticPageAdmin(admin.ModelAdmin):
-    form = StaticPageAdminForm
+@admin.register(WebPage)
+class WebPageAdmin(admin.ModelAdmin):
+    form = WebPageAdminForm
     list_display = ('name', 'slug', 'language', 'full_url')
     search_fields = ('name', 'slug')
     list_filter = ('language',)
@@ -75,7 +83,7 @@ class StaticPageAdmin(admin.ModelAdmin):
             return "Invalid URL"
 
 
-class PageGeneratorAdminForm(forms.ModelForm, HtmlFileMixin):
+class PageTemplateAdminForm(forms.ModelForm, VaultHtmlMixin):
     template_content = forms.CharField(
         widget=AceWidget(mode='html', theme='chrome'),
         required=False,
@@ -83,25 +91,37 @@ class PageGeneratorAdminForm(forms.ModelForm, HtmlFileMixin):
     )
 
     class Meta:
-        model = PageGenerator
+        model = PageTemplate
         fields = ('name', 'slug', 'html_template_file', 'template_content', 'json_schema', 'check_schema')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['template_content'].initial = self.read_file_content(self.instance.html_template_file)
 
-
     def save(self, commit=True):
         instance = super().save(commit=False)
-        self.save_file_content(instance, 'html_template_file', instance.slug, self.cleaned_data.get('template_content', ''))
+        content = self.cleaned_data.get('template_content', '')
+        if instance.html_template_file:
+            self.save_file_content(instance.html_template_file, instance.slug, content)
+        elif content:
+            from vault.models import VaultFile
+            vault_file = VaultFile.objects.create(
+                owner=None,
+                title=f"{instance.name}_template.html",
+                file_type='text',
+                notes=f"Uploaded via admin for PageTemplate {instance.slug}"
+            )
+            vault_file.file.save(f"{instance.slug}_template.html", ContentFile(content))
+            vault_file.save()
+            instance.html_template_file = vault_file
         if commit:
             instance.save()
         return instance
 
 
-@admin.register(PageGenerator)
-class PageGeneratorAdmin(admin.ModelAdmin):
-    form = PageGeneratorAdminForm
+@admin.register(PageTemplate)
+class PageTemplateAdmin(admin.ModelAdmin):
+    form = PageTemplateAdminForm
     formfield_overrides = {
         JSONField: {'widget': JSONEditorWidget}
     }
@@ -109,8 +129,8 @@ class PageGeneratorAdmin(admin.ModelAdmin):
     search_fields = ('name', 'slug')
 
 
-@admin.register(DynamicPage)
-class DynamicPageAdmin(admin.ModelAdmin):
+@admin.register(PageGenerator)
+class PageGeneratorAdmin(admin.ModelAdmin):
     formfield_overrides = {
         JSONField: {'widget': JSONEditorWidget}
     }
@@ -123,13 +143,13 @@ class DynamicPageAdmin(admin.ModelAdmin):
         result = BatchAction(queryset).run(operation)
         BatchAction.display_messages(result, self.message_user, request, verb="bake")
 
-    bake_to_static_action.short_description = "Bake selected dynamic pages to static"
+    bake_to_static_action.short_description = "Bake selected page generators to static"
 
     readonly_fields = ('render_check', 'schema_check')
 
-    def generator_name(self, obj):
-        return obj.generator.name
-    generator_name.short_description = "Generator"
+    def template_name(self, obj):
+        return obj.template.name
+    template_name.short_description = "Template"
 
     def render_check(self, obj):
         try:
@@ -144,7 +164,7 @@ class DynamicPageAdmin(admin.ModelAdmin):
     def schema_check(self, obj):
         import jsonschema
         try:
-            jsonschema.validate(instance=obj.config_json, schema=obj.generator.json_schema)
+            jsonschema.validate(instance=obj.config_json, schema=obj.template.json_schema)
             return format_html('<span style="color:green;">Valid</span>')
         except jsonschema.ValidationError as e:
             return format_html('<span style="color:red;">{}</span>', e.message)
@@ -152,23 +172,6 @@ class DynamicPageAdmin(admin.ModelAdmin):
             return format_html('<span style="color:red;">Schema error</span>')
     schema_check.short_description = "Schema Validation"
 
-    list_display = ('name', 'slug', 'language', 'generator_name', 'render_check', 'schema_check')
-    search_fields = ('name', 'slug', 'generator__name')
-    list_filter = ('language', 'generator')
-
-
-
-@admin.register(Image)
-class ImageAdmin(admin.ModelAdmin):
-    list_display = ('name', 'slug', 'created_at', 'full_url')
-    search_fields = ('name', 'slug')
-    readonly_fields = ('created_at', )
-
-    def full_url(self, obj):
-        try:
-            url = reverse('image_url', kwargs={'slug': obj.slug})
-            return format_html('<a href="{}" target="_blank">{}</a>', url, url)
-        except Exception:
-            return "Invalid URL"
-
-    full_url.short_description = "Image URL"
+    list_display = ('name', 'slug', 'language', 'template_name', 'render_check', 'schema_check')
+    search_fields = ('name', 'slug', 'template__name')
+    list_filter = ('language', 'template')

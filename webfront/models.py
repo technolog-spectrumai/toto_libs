@@ -3,11 +3,10 @@ from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
 from django.utils.text import slugify
 import jsonschema
-import uuid
 from django.template import Template, Context
+from vault.models import VaultFile
 from django.core.files.base import ContentFile
-from django.core.files.storage import default_storage
-import os
+
 
 class Language(models.Model):
     name = models.CharField(max_length=100)
@@ -29,19 +28,19 @@ class BasePage(models.Model):
         return f"{self.name} ({self.language.slug})"
 
 
-class StaticPage(BasePage):
-    html_file = models.FileField(upload_to='uploads/html/static/')
+class WebPage(BasePage):
+    html_file = models.ForeignKey(VaultFile, on_delete=models.SET_NULL, null=True, blank=True)
 
     def get_html_content(self):
-        if self.html_file:
-            return self.html_file.read().decode('utf-8')
+        if self.html_file and self.html_file.file:
+            return self.html_file.file.read().decode('utf-8')
         return ""
 
 
-class PageGenerator(models.Model):
+class PageTemplate(models.Model):
     name = models.CharField(max_length=100, unique=True)
     slug = models.SlugField(unique=True, blank=True)
-    html_template_file = models.FileField(upload_to='uploads/html/templates/')
+    html_template_file = models.ForeignKey(VaultFile, on_delete=models.SET_NULL, null=True, blank=True)
     json_schema = models.JSONField(blank=True, null=True)
     check_schema = models.BooleanField(default=True)
 
@@ -51,23 +50,22 @@ class PageGenerator(models.Model):
         super().save(*args, **kwargs)
 
     def get_template_content(self):
-        if self.html_template_file:
-            return self.html_template_file.read().decode('utf-8')
+        if self.html_template_file and self.html_template_file.file:
+            return self.html_template_file.file.read().decode('utf-8')
         return ""
 
     def __str__(self):
         return self.name
 
 
-
-class DynamicPage(BasePage):
-    generator = models.ForeignKey(PageGenerator, on_delete=models.PROTECT)
+class PageGenerator(BasePage):
+    template = models.ForeignKey(PageTemplate, on_delete=models.PROTECT)
     config_json = models.JSONField()
 
     def clean(self):
-        if self.generator.check_schema and self.generator.json_schema:
+        if self.template.check_schema and self.template.json_schema:
             try:
-                jsonschema.validate(instance=self.config_json, schema=self.generator.json_schema)
+                jsonschema.validate(instance=self.config_json, schema=self.template.json_schema)
             except jsonschema.ValidationError as e:
                 raise ValidationError({'config_json': _(str(e))})
 
@@ -78,35 +76,24 @@ class DynamicPage(BasePage):
         return template.render(Context(context))
 
     def render_to_string(self):
-        template_text = self.generator.get_template_content()
+        template_text = self.template.get_template_content()
         return self._render_template_from_string(template_text, self.config_json)
 
     def bake_to_static(self):
         html_content = self.render_to_string()
-        filename = f"{self.slug}.html"
-        file_path = os.path.join('uploads/html/static/', filename)
-        saved_path = default_storage.save(file_path, ContentFile(html_content))
+        vault_file = VaultFile.objects.create(
+            owner=self.language,
+            title=f"{self.name}.html",
+            file_type='text',
+            notes=f"Baked from PageGenerator {self.slug}"
+        )
+        vault_file.file.save(f"{self.slug}.html", ContentFile(html_content))
+        vault_file.save()
 
-        static_page = StaticPage.objects.create(
+        web_page = WebPage.objects.create(
             name=self.name,
             slug=self.slug,
             language=self.language,
-            html_file=saved_path
+            html_file=vault_file
         )
-        return static_page
-
-
-class Image(models.Model):
-    name = models.CharField(max_length=100)
-    slug = models.SlugField(max_length=255, unique=True, blank=True)
-    image = models.ImageField(upload_to='uploads/images/')
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    def save(self, *args, **kwargs):
-        if not self.slug:
-            base = slugify(self.name)
-            self.slug = f"{base}-{uuid.uuid4().hex[:6]}"
-        super().save(*args, **kwargs)
-
-    def __str__(self):
-        return self.name
+        return web_page
