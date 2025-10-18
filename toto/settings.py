@@ -71,7 +71,6 @@ INSTALLED_APPS = [
     "webfront",
     "editor",
     "vault",
-    "forum",
     "portfolio",
     "gitops",
     "latextile"
@@ -344,7 +343,6 @@ INGRESS_ALLOWED_APPS = [
     'webfront',
     "memo",
     "editor",
-    "forum",
     "gervazy",
     "gitops",
     "vault",
