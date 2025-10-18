@@ -5,6 +5,7 @@ from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from .models import VaultFile, Bucket
 from .batch import BatchAction
 from django.utils.html import format_html
+from django import forms
 
 
 @admin.register(Bucket)
@@ -15,14 +16,23 @@ class BucketAdmin(admin.ModelAdmin):
     ordering = ('owner', 'name')
 
 
+class VaultFileForm(forms.ModelForm):
+    class Meta:
+        model = VaultFile
+        fields = '__all__'
+        widgets = {
+            'content_hash': forms.Textarea(attrs={'rows': 6, 'cols': 80}),
+        }
+
 @admin.register(VaultFile)
 class VaultFileAdmin(admin.ModelAdmin):
+    form = VaultFileForm
     list_display = ('title', 'owner', 'file_type', 'is_encrypted', 'is_public',
                     'uploaded_at', 'bucket', 'key', 'public_url_display')
     list_filter = ('file_type', 'is_encrypted', 'is_public', 'uploaded_at')
     search_fields = ('title', 'owner__username')
     readonly_fields = ('uploaded_at',)
-    actions = ['encrypt_selected_files', 'decrypt_selected_files']
+    actions = ['encrypt_selected_files', 'decrypt_selected_files', 'generate_content_hashes']
 
     def get_urls(self):
         urls = super().get_urls()
@@ -113,12 +123,13 @@ class VaultFileAdmin(admin.ModelAdmin):
     def generate_content_hashes(self, request, queryset):
         def hash_one(file):
             if file.content_hash:
-                return f"Skipped {file.title}: already has hash"
+                self.message_user(request, f"Skipped {file.title} - already hashed", messages.WARNING)
+                return file
             hash_value = file.create_hash()
             if hash_value:
                 file.content_hash = hash_value
                 file.save()
-                return f"Hashed {file.title}"
+                return file
             else:
                 raise ValueError(f"Failed to read file for {file.title}")
 
