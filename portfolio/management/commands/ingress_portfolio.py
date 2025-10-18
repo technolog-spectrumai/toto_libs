@@ -2,7 +2,7 @@ from django.contrib.auth.models import User
 from oya.ingress import IngressCommand
 from portfolio.models import (
     Chamber, Investor, Currency, Venture,
-    Transaction, Event
+    Transaction
 )
 import random
 from datetime import timedelta
@@ -50,7 +50,8 @@ class Command(IngressCommand):
                 manifest="Multi-chain crypto growth",
                 strategy="Long-term decentralized innovation",
                 active=True,
-                default_currency=usd_currency
+                default_currency=usd_currency,
+                total_stock_emitted=1000000  # 1 million shares issued
             )
             self.stdout.write(self.style.SUCCESS("🏛️ Created active chamber: SpectrumAi.pl"))
         elif active_chambers.count() == 1:
@@ -67,10 +68,8 @@ class Command(IngressCommand):
             user=user,
             defaults={
                 'display_name': 'Demo Investor',
-                'wallet_address': '0xDEMO123456789',
-                'balance': 100000,
-                'kyc_verified': True,
-                'chamber': chamber
+                'chamber': chamber,
+                'stock_owned': 250000  # owns 25% of total shares
             }
         )
         if investor.chamber != chamber:
@@ -108,38 +107,5 @@ class Command(IngressCommand):
                     venture=venture,
                     timestamp=now() - timedelta(days=random.randint(1, 30))
                 )
-
-        # 📍 Add public strategy update events
-        for i in range(3):
-            Event.objects.create(
-                owner=investor,
-                title=f"Strategy Update {i+1}",
-                event_type="Strategy Update",
-                severity=random.choice(['LOW', 'NORMAL', 'HIGH']),
-                start=now() - timedelta(days=i),
-                public=True
-            )
-
-        # 🚧 Add Coming Soon public events
-        coming_soon_items = [
-            ("AI-Powered Portfolio Rebalancing", "Feature"),
-            ("Multi-chain Wallet Integration", "Roadmap"),
-            ("Investor Reputation Scoring", "ComingSoon"),
-            ("Mobile App Launch", "Feature"),
-            ("Tokenized Asset Marketplace", "Roadmap")
-        ]
-
-        for i, (title, event_type) in enumerate(coming_soon_items):
-            future_start = now() + timedelta(days=7 * (i + 1))
-            Event.objects.create(
-                owner=investor,
-                title=title,
-                event_type=event_type,
-                severity="NORMAL",
-                start=future_start,
-                public=True
-            )
-            self.stdout.write(
-                self.style.SUCCESS(f"🛠️ Added coming soon: {title} (launching {future_start.date()})"))
 
         self.stdout.write(self.style.SUCCESS("✅ SpectrumAi.pl ingress complete."))

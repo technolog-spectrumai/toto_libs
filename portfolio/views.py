@@ -1,12 +1,8 @@
 from django.shortcuts import render
 from django.db.models import Sum, Count
-from itertools import chain
-from operator import attrgetter
 from django.core.exceptions import ImproperlyConfigured
-from django.utils.timezone import now
-from .models import (
-    Chamber, Venture, Transaction, Event, Associate
-)
+from operator import attrgetter
+from .models import Chamber, Venture, Transaction
 from .page import PageProcessor
 
 
@@ -26,12 +22,11 @@ def chamber_overview(request):
     total_ventures = Venture.objects.count()
 
     # 💸 Total Investment in Default Currency
+    total_investment = None
     if chamber.default_currency:
         total_investment = Transaction.objects.filter(
             currency=chamber.default_currency
         ).aggregate(total=Sum('amount'))['total'] or 0
-    else:
-        total_investment = None
 
     chamber_data = {
         "name": chamber.name,
@@ -39,8 +34,9 @@ def chamber_overview(request):
         "strategy": chamber.strategy,
         "created_at": chamber.created_at,
         "total_investors": total_investors,
-        "total_ventures": int(total_ventures),
-        "total_investment": round(total_investment, 2) if total_investment is not None else None
+        "total_ventures": total_ventures,
+        "total_investment": round(total_investment, 2) if total_investment is not None else None,
+        "total_stock_emitted": float(chamber.total_stock_emitted)
     }
 
     # 📊 Performance Summary
@@ -52,7 +48,7 @@ def chamber_overview(request):
         },
         {
             "label": "Total Venture Count",
-            "value": int(total_ventures)
+            "value": total_ventures
         },
     ]
 
@@ -62,28 +58,13 @@ def chamber_overview(request):
         total_funding=Sum('funding_rounds__amount')
     )
 
-    # 📅 Recent Public Events (past only)
-    recent_events = Event.objects.filter(
-        owner__chamber=chamber,
-        public=True,
-        start__lte=now()
-    ).order_by('-start')[:5]
-
-    # 🚧 Coming Soon Public Events (future only)
-    coming_soon = Event.objects.filter(
-        owner__chamber=chamber,
-        public=True,
-        start__gt=now()
-    ).order_by('start')[:5]
-
-    # 🧑‍🤝‍🧑 Team = Associates + Chamber Investors
-    associates = Associate.objects.filter(active=True)
+    # 👥 Team (Investors only)
     investors = chamber.investors.all()
-    team = sorted(
-        chain(associates, investors),
-        key=attrgetter('joined_at'),
-        reverse=True
-    )
+    team = sorted(investors, key=attrgetter('joined_at'), reverse=True)
+
+    # 🧩 Placeholder for optional context
+    recent_events = []  # Replace with actual query if Event model is added
+    coming_soon = []    # Replace with actual logic if needed
 
     context = {
         "chamber": chamber_data,
@@ -98,16 +79,13 @@ def chamber_overview(request):
     theme_colors = decorated_context.get("theme", {}).get("colors", {})
 
     chart_colors = {
-        # Light mode
-        "background_light": theme_colors.get("accent-light", "#36A2EB"),  # bubble fill
-        "border_light": theme_colors.get("text-main-light", "#000000"),  # bubble text
-        "text_light": theme_colors.get("text-main-light", "#000000"),  # readable text
+        "background_light": theme_colors.get("accent-light", "#36A2EB"),
+        "border_light": theme_colors.get("text-main-light", "#000000"),
+        "text_light": theme_colors.get("text-main-light", "#000000"),
         "grid_light": "#444444",
-
-        # Dark mode
-        "background_dark": theme_colors.get("accent-dark", "#FFCE56"),  # bubble fill
-        "border_dark": theme_colors.get("text-main-dark", "#FFFFFF"),  # bubble text
-        "text_dark": theme_colors.get("text-main-dark", "#FFFFFF"),  # readable text
+        "background_dark": theme_colors.get("accent-dark", "#FFCE56"),
+        "border_dark": theme_colors.get("text-main-dark", "#FFFFFF"),
+        "text_dark": theme_colors.get("text-main-dark", "#FFFFFF"),
         "grid_dark": "#aaaaaa"
     }
 
