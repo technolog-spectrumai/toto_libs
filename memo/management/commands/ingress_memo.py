@@ -11,7 +11,7 @@ class Command(IngressCommand):
     def process(self, _):
         self.create_dashboard_item(
             title="MemoDecks",
-            icon="book-open",
+            icon="fa-solid fa-eye",
             description="Creates sample decks with cards and tags for demo/testing.",
             link="/memo/"
         )

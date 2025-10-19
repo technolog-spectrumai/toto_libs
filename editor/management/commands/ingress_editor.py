@@ -15,12 +15,6 @@ class Command(IngressCommand):
     help = "Seed a LaTeX document with tags, department, presets, structured content, and in-place HTML conversion"
 
     def process(self, _):
-        self.create_dashboard_item(
-            title="Seeded Document",
-            icon="file-text",
-            description="LaTeX document with structured sections and HTML conversion.",
-            link="/documents/"
-        )
 
         self.stdout.write("🚀 Starting document ingress...")
 

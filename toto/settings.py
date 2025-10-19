@@ -349,7 +349,8 @@ INGRESS_ALLOWED_APPS = [
     "gitops",
     "vault",
     "portfolio",
-    "community"
+    "community",
+    "shareholders"
 ]
 
 GIT_REPO_BASE_DIR = BASE_DIR / 'git_repos'

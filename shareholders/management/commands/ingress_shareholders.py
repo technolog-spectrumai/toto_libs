@@ -1,5 +1,5 @@
 from datetime import timedelta
-
+from oya.ingress import IngressCommand
 from django.core.management.base import BaseCommand
 from django.contrib.auth.models import User
 from shareholders.models import Company, Shareholder, ShareTransaction
@@ -9,10 +9,17 @@ from faker import Faker
 
 fake = Faker()
 
-class Command(BaseCommand):
+class Command(IngressCommand):
     help = "Seed sample companies, shareholders, and share transactions for demo/testing."
 
-    def handle(self, *args, **kwargs):
+    def process(self, _):
+        self.create_dashboard_item(
+            title="SpectrumAi.pl Shareholders",
+            icon="fa-solid fa-chart-pie",
+            description="Shareholder Lists.",
+            link="/shareholders/companies/"
+        )
+
         self.stdout.write("🌱 Seeding companies and shareholders...")
 
         # Create sample companies

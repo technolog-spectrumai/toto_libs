@@ -11,7 +11,7 @@ class Command(IngressCommand):
     def process(self, _):
         self.create_dashboard_item(
             title="Community",
-            icon="users",
+            icon="fa-solid fa-users",
             description="Company, branches, and community members with relationships.",
             link="/community/org-chart/"
         )

@@ -1,4 +1,3 @@
-from django.contrib.auth.models import User
 from oya.ingress import IngressCommand
 from portfolio.models import Chamber, Currency, Venture, Transaction
 from shareholders.models import Company

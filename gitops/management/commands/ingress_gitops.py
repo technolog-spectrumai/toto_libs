@@ -8,13 +8,6 @@ class Command(IngressCommand):
     help = "Populate the database with a test Git repository and one artifact"
 
     def process(self, _):
-        self.create_dashboard_item(
-            title="Git Repositories",
-            icon="git-branch",
-            description="Creates a test Git repository with a single artifact.",
-            link="/repo/"
-        )
-
         try:
             user = User.objects.get(username="admin")
             self.stdout.write(f"Found demo user: {user.username}")

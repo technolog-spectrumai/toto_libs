@@ -12,7 +12,7 @@ class Command(IngressCommand):
         # Create dashboard block
         self.create_dashboard_item(
             title="Vault",
-            icon="fa-lock",
+            icon="fa-solid fa-vault",
             description="Secure storage for encrypted files and images",
             link="/vault/"
         )
