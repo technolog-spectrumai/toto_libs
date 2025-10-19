@@ -14,7 +14,8 @@ class Command(IngressCommand):
             title="Vault",
             icon="fa-solid fa-vault",
             description="Secure storage for encrypted files and images",
-            link="/vault/"
+            link="/vault/",
+            public=False
         )
 
         username = "admin"

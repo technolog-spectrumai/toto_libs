@@ -191,7 +191,8 @@ class DashboardBlock(models.Model):
     title = models.CharField(max_length=100)
     description = models.TextField()
     icon = models.CharField(max_length=50)
-    link = models.URLField(blank=True, null=True)
+    link = models.CharField(blank=True, null=True, max_length=64)
+    public = models.BooleanField(default=True)
 
     def __str__(self):
         return self.title

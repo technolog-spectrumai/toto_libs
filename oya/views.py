@@ -22,7 +22,11 @@ def home_view(request):
 
 def dashboard_view(request):
     processor = PageProcessor()
-    dashboard_blocks = DashboardBlock.objects.all()
+
+    if request.user.is_authenticated:
+        dashboard_blocks = DashboardBlock.objects.all()
+    else:
+        dashboard_blocks = DashboardBlock.objects.filter(public=True)
 
     context = {
         "page_title": "Dashboard",

@@ -44,7 +44,8 @@ class IngressCommand(BaseCommand):
             title=item_data['title'],
             description=item_data['description'],
             icon=item_data['icon'],
-            link=item_data.get('link')  # Optional
+            link=item_data.get('link'),
+            public=item_data.get('public', True)
         )
         self.stdout.write(f"Created DashboardBlock: {block.title}")
         return block

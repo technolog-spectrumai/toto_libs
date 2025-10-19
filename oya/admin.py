@@ -117,7 +117,7 @@ class PlatformAdmin(admin.ModelAdmin):
 
 @admin.register(DashboardBlock)
 class DashboardBlockAdmin(admin.ModelAdmin):
-    list_display = ('title', 'icon', 'description', 'link')
+    list_display = ('title', 'icon', 'description', 'link', 'public')
     search_fields = ('title', 'description', 'icon', 'link')
     ordering = ('title',)
 

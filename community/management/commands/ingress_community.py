@@ -13,7 +13,8 @@ class Command(IngressCommand):
             title="Community",
             icon="fa-solid fa-users",
             description="Company, branches, and community members with relationships.",
-            link="/community/org-chart/"
+            link="/community/org-chart/",
+            public=False,
         )
 
         self.stdout.write(self.style.NOTICE("📍 Creating company address..."))
