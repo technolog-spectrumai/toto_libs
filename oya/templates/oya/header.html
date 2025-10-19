@@ -45,6 +45,15 @@
       </a>
       {% endif %}
 
+      <a href="{% url 'nest:dashboard' %}"
+           class="flex items-center gap-2 px-3 py-1 rounded text-sm font-medium border shadow-sm transition hover:opacity-90"
+           :class="darkMode
+             ? 'bg-accent-dark text-primary-bg-dark border-accent-2'
+             : 'bg-accent-light text-primary-bg-light border-accent-1'">
+          <i class="fas fa-tachometer-alt text-base"></i>
+          <span>Dashboard</span>
+      </a>
+
       <!-- Theme Toggle -->
         <button @click="darkMode = !darkMode; localStorage.setItem('darkMode', darkMode)"
               class="site-theme-toggle-button flex items-center gap-2 px-3 py-1 rounded text-sm font-medium border shadow-sm transition hover:opacity-90"
@@ -101,6 +110,16 @@
         <span>Login</span>
       </a>
       {% endif %}
+
+        <a href="{% url 'nest:dashboard' %}"
+           class="flex items-center gap-2 px-3 py-2 rounded text-sm font-medium border shadow-sm transition hover:opacity-90"
+           :class="darkMode
+             ? 'bg-accent-dark text-primary-bg-dark border-accent-2'
+             : 'bg-accent-light text-primary-bg-light border-accent-1'">
+          <i class="fas fa-tachometer-alt text-base"></i>
+          <span>Dashboard</span>
+        </a>
+
 
       <!-- Theme Toggle (Mobile) -->
       <button @click="darkMode = !darkMode;"

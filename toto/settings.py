@@ -349,9 +349,10 @@ INGRESS_ALLOWED_APPS = [
     "gervazy",
     "gitops",
     "vault",
-    "portfolio",
     "community",
-    "shareholders"
+    "shareholders",
+    "portfolio",
+    "events"
 ]
 
 GIT_REPO_BASE_DIR = BASE_DIR / 'git_repos'
