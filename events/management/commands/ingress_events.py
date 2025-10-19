@@ -18,7 +18,7 @@ class Command(IngressCommand):
             title="Events",
             icon="fa-solid fa-calendar-days",
             description="Manage and explore venture-related events",
-            link="/events/"
+            link="/events/calendar/"
         )
 
         # 🎭 Create Event Categories
