@@ -12,7 +12,7 @@ class Command(IngressCommand):
         self.create_dashboard_item(
             title="MemoDecks",
             icon="fa-solid fa-eye",
-            description="Creates sample decks with cards and tags for demo/testing.",
+            description="Company presentations.",
             link="/memo/"
         )
 

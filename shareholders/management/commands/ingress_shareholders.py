@@ -14,7 +14,7 @@ class Command(IngressCommand):
 
     def process(self, _):
         self.create_dashboard_item(
-            title="SpectrumAi.pl Shareholders",
+            title="Shareholders",
             icon="fa-solid fa-chart-pie",
             description="Shareholder Lists.",
             link="/shareholders/companies/"

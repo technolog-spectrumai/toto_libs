@@ -14,9 +14,9 @@ class Command(IngressCommand):
     def process(self, _):
         # 📊 Dashboard block
         self.create_dashboard_item(
-            title="SpectrumAi.pl Demo",
+            title="Portfolio",
             icon="fa-solid fa-briefcase",
-            description="Seeds sample ventures, currencies, transactions, and events for demo/testing.",
+            description="Portfolio of ventures and investments",
             link="/portfolio/"
         )
 

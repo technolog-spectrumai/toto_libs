@@ -125,17 +125,13 @@ class DocumentSubSection(DocumentItem):
     content = models.TextField(blank=True)
     image = models.ForeignKey(Image, on_delete=models.SET_NULL, null=True, blank=True, related_name='subsections')
 
-    class DocumentSubSection(DocumentItem):
-        section = models.ForeignKey(DocumentSection, on_delete=models.CASCADE, related_name='subsections')
-        content = models.TextField(blank=True)
-
-        def save(self, *args, **kwargs):
-            if self.pk:
-                old = DocumentSubSection.objects.get(pk=self.pk)
-                if old.is_raw != self.is_raw:
-                    self.content = (
-                        HTMLToLatexConverter(self.content).convert()
-                        if self.is_raw else
-                        LatexToHTMLConverter(self.content).convert()
-                    )
-            super().save(*args, **kwargs)
+    def save(self, *args, **kwargs):
+        if self.pk:
+            old = DocumentSubSection.objects.get(pk=self.pk)
+            if old.is_raw != self.is_raw:
+                self.content = (
+                    HTMLToLatexConverter(self.content).convert()
+                    if self.is_raw else
+                    LatexToHTMLConverter(self.content).convert()
+                )
+        super().save(*args, **kwargs)
