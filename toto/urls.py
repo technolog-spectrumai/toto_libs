@@ -29,6 +29,7 @@ urlpatterns = [
     path("shareholders/", include("shareholders.urls", namespace="shareholders")),
     path("vault/", include("vault.urls", namespace="vault")),
     path("community/", include("community.urls", namespace="community")),
+    path("events/", include("events.urls", namespace="events")),
 ]
 
 

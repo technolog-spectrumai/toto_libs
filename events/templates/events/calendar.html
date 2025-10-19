@@ -1,0 +1,50 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}Event Calendar{% endblock %}
+
+{% block start_script %}
+<!-- FullCalendar Scripts -->
+<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.9/index.global.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.9/index.global.min.js"></script>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    const calendarEl = document.getElementById('eventCalendar');
+    const calendar = new FullCalendar.Calendar(calendarEl, {
+      initialView: 'dayGridMonth',
+      themeSystem: 'standard',
+      headerToolbar: {
+        left: 'prev,next today',
+        center: 'title',
+        right: 'dayGridMonth,timeGridWeek,listWeek'
+      },
+      events: {{ calendar_events|safe }},
+      eventColor: '{{ chart_colors.background_light }}',
+      eventTextColor: '{{ chart_colors.text_light }}',
+      height: 'auto'
+    });
+    calendar.render();
+  });
+</script>
+{% endblock %}
+
+{% block content %}
+<div
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300">
+
+  <div class="max-w-6xl mx-auto space-y-12">
+    <!-- 📅 Event Calendar -->
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Event Calendar</h2>
+      <div class="p-4 rounded border"
+           :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+        <div id="eventCalendar"></div>
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}
