@@ -43,14 +43,4 @@ class Event(models.Model):
     def __str__(self):
         return f"{self.title} ({self.venture.name})"
 
-# 📝 Event Registration
-class EventRegistration(models.Model):
-    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name='registrations')
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='event_registrations')
-    registered_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        unique_together = ('event', 'user')  # Prevent duplicate registrations
-
-    def __str__(self):
-        return f"{self.user.username} registered for {self.event.title}"
+    public = models.BooleanField(default=True, help_text="Check if this event is publicly visible.")

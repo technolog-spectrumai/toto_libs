@@ -1,7 +1,7 @@
 from oya.ingress import IngressCommand
 from django.contrib.auth.models import User
 from portfolio.models import Venture
-from events.models import EventCategory, Event, EventRegistration
+from events.models import EventCategory, Event
 from django.utils.timezone import now
 from faker import Faker
 import random
@@ -59,9 +59,5 @@ class Command(IngressCommand):
                     category=random.choice(categories)
                 )
                 self.stdout.write(self.style.SUCCESS(f"📅 Created event: {event.title}"))
-
-                # 📝 Register users
-                for user in random.sample(users, min(5, len(users))):
-                    EventRegistration.objects.get_or_create(event=event, user=user)
 
         self.stdout.write(self.style.SUCCESS("✅ Event seeding complete."))
