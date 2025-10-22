@@ -3,6 +3,9 @@ from django.core.files.base import ContentFile
 from latextile.models import LatexProject, TexFile
 from vault.models import VaultFile
 from django.conf import settings
+import logging
+
+logger = logging.getLogger(__name__)
 
 def escape(text):
     replacements = {
@@ -77,6 +80,7 @@ class DeckLatexExporter:
         return "\n".join(lines)
 
     def export_to_latex(self):
+        logger.info(f"Exporting deck '{self.deck.title}' to LaTeX project")
         project = LatexProject.objects.create(
             user=self.deck.author,
             name=self.deck.title
@@ -90,5 +94,5 @@ class DeckLatexExporter:
             filename=tex_filename
         )
         tex_file.file.save(tex_filename, ContentFile(tex_content), save=True)
-
+        logger.info(f"TexFile '{tex_filename}' saved for project '{project.name}' (ID: {tex_file.id})")
         return tex_file

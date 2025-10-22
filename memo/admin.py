@@ -1,6 +1,4 @@
 from django.contrib import admin
-from django.utils.text import slugify
-from django.core.files import File
 from adminsortable2.admin import SortableAdminMixin
 from .models import MemoDeck, MemoCard, Tag
 from .export import DeckLatexExporter
