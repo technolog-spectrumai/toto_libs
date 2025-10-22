@@ -3,7 +3,7 @@ from django.utils.text import slugify
 from django.core.files import File
 from adminsortable2.admin import SortableAdminMixin
 from .models import MemoDeck, MemoCard, Tag
-from .pdf import MemoDeckCompiler
+from .export import DeckLatexExporter
 from vault.models import VaultFile
 from .batch import BatchAction
 
@@ -39,35 +39,28 @@ class MemoDeckAdmin(admin.ModelAdmin):
     autocomplete_fields = ('author', 'tags')
     readonly_fields = ('created_at',)
     inlines = [MemoCardInline]
-    actions = ['compile_pdf_and_send_to_vault']
+    actions = ['export_to_latex']
 
     def tag_list(self, obj):
         return ", ".join(tag.name for tag in obj.tags.all())
     tag_list.short_description = "Tags"
 
-    @admin.action(description="Compile selected decks to PDF and send to Vault")
-    def compile_pdf_and_send_to_vault(self, request, queryset):
+    @admin.action(description="Export selected decks to LaTeX source files")
+    def export_to_latex(self, request, queryset):
 
-        def compile_one(deck):
-            compiler = MemoDeckCompiler(deck)
-            pdf_path = compiler.generate_pdf()
+        def export_one(deck):
+            exporter = DeckLatexExporter(deck)
+            tex_file = exporter.export_to_latex()
 
-            if not pdf_path:
-                raise FileNotFoundError("PDF file not found after generation.")
-
-            with open(pdf_path, 'rb') as f:
-                VaultFile.objects.create(
-                    owner=deck.author,
-                    title=deck.title,
-                    file=File(f, name=f"{slugify(deck.title)}.pdf"),
-                    file_type='pdf',
-                    notes=f"Compiled from MemoDeck ID {deck.id}"
-                )
+            if not tex_file or not tex_file.file:
+                raise FileNotFoundError("LaTeX file was not generated.")
 
             return deck
 
-        result = BatchAction(queryset).run(compile_one)
-        BatchAction.display_messages(result, self.message_user, request, verb="compile and vault")
+        result = BatchAction(queryset).run(export_one)
+        BatchAction.display_messages(result, self.message_user, request, verb="export to LaTeX")
+
+
 
 # ────────────────────────────────────────────────
 # 🗂️ MemoCard Admin
