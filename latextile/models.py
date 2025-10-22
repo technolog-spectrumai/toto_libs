@@ -1,6 +1,4 @@
 # projects/models.py
-import os
-import tempfile
 import subprocess
 from django.db import models
 from django.contrib.auth.models import User
@@ -9,6 +7,11 @@ from django.core.files.base import ContentFile
 import shutil
 from pathlib import Path
 from django.conf import settings
+from django.utils.translation import gettext_lazy as _
+from django.template import Template, Context
+import jsonschema
+from django.core.exceptions import ValidationError
+from django.core.files import File
 
 
 class LatexProject(models.Model):
@@ -116,4 +119,71 @@ class TexFile(models.Model):
 
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"LaTeX compilation failed: {e.stderr.decode()}")
+
+
+class LatexTemplate(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    tex_template_file = models.FileField(upload_to='latex_templates/', blank=True)
+    json_schema = models.JSONField(blank=True, null=True)
+    check_schema = models.BooleanField(default=True)
+
+    def get_template_content(self):
+        if self.tex_template_file:
+            try:
+                self.tex_template_file.seek(0)
+                return self.tex_template_file.read().decode('utf-8')
+            except Exception:
+                return ""
+        return ""
+
+    def __str__(self):
+        return self.name
+
+
+class LatexGenerator(models.Model):
+    project = models.ForeignKey(LatexProject, on_delete=models.CASCADE, related_name='latex_generators')
+    template = models.ForeignKey(LatexTemplate, on_delete=models.PROTECT)
+    json_data = models.JSONField()
+    filename = models.CharField(max_length=255)
+
+    def clean(self):
+        if not self.filename.lower().endswith('.tex'):
+            raise ValidationError({'filename': _("Filename must end with .tex")})
+        if self.template.check_schema and self.template.json_schema:
+            try:
+                jsonschema.validate(instance=self.json_data, schema=self.template.json_schema)
+            except jsonschema.ValidationError as e:
+                raise ValidationError({'json_data': _(str(e))})
+
+    @staticmethod
+    def _render_template_from_string(template_text, context=None):
+        context = context or {}
+        template = Template(template_text)
+        return template.render(Context(context))
+
+    def render_to_string(self):
+        template_text = self.template.get_template_content()
+        return self._render_template_from_string(template_text, self.json_data)
+
+    def bake_to_texfile(self):
+        tex_content = self.render_to_string()
+
+        # Define local path for saving .tex file
+        output_dir = self.project.get_dir_path()
+        output_dir.mkdir(parents=True, exist_ok=True)
+        tex_path = output_dir / self.filename
+
+        # Write LaTeX content to local file
+        with open(tex_path, 'w', encoding='utf-8') as f:
+            f.write(tex_content)
+
+        # Create TexFile instance using local file
+        with open(tex_path, 'rb') as f:
+            tex_file = TexFile.objects.create(
+                project=self.project,
+                filename=self.filename,
+                file=File(f, name=self.filename)
+            )
+
+        return tex_file
 
