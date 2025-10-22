@@ -58,3 +58,10 @@ class MemoCard(models.Model):
             return self.image.url
         return None
 
+    def save(self, *args, **kwargs):
+        if self.pk:
+            old = MemoCard.objects.get(pk=self.pk)
+            if old.image and old.image != self.image:
+                old.image.delete(save=False)
+        super().save(*args, **kwargs)
+
