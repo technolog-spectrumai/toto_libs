@@ -5,7 +5,9 @@ from django.conf import settings
 from django.core.files.base import ContentFile
 import shutil
 from vault.models import Bucket, VaultFile
-from django.utils.text import slugify
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class GitRepository(models.Model):
@@ -19,69 +21,84 @@ class GitRepository(models.Model):
         return self.name
 
     def pull(self):
+        logger.debug(f"Starting pull for repository '{self.name}' into '{local_path}'")
         local_path = os.path.join(settings.GIT_REPO_BASE_DIR, self.name.replace(' ', '_'))
         os.makedirs(local_path, exist_ok=True)
 
         try:
             repo = Repo(local_path)
+            logger.debug(f"Opened existing repo at '{local_path}'")
         except InvalidGitRepositoryError:
             # Not a valid repo — try cloning
             try:
                 repo = Repo.clone_from(self.url, local_path)
+                logger.debug(f"Cloned repository '{self.name}' from '{self.url}'")
             except GitCommandError as e:
+                logger.error(f"Failed to clone '{self.name}': {e}")
                 raise RuntimeError(f"Failed to clone '{self.name}': {e}")
 
         try:
             origin = repo.remotes.origin
             pull_result = origin.pull()
             if not pull_result:
+                logger.warning(f"No changes pulled for '{self.name}'")
                 raise RuntimeError("No changes pulled or pull failed silently.")
+            logger.debug(f"Pulled updates for '{self.name}': {[str(ref) for ref in pull_result]}")
             return f"Pulled successfully: {[str(ref) for ref in pull_result]}"
         except GitCommandError as e:
+            logger.error(f"Git error during pull for '{self.name}': {e}")
             raise RuntimeError(f"Git error for '{self.name}': {e}")
         except Exception as e:
+            logger.error(f"Unexpected error during pull for '{self.name}': {e}")
             raise RuntimeError(f"Unexpected error for '{self.name}': {e}")
         finally:
             self.bind_artifacts(repo)
             repo.close()
+            logger.info(f"Finished pull and artifact binding for '{self.name}'")
 
     def _send_artifact_to_bucket(self, repo, artifact):
-        # Checkout the correct branch
+        logger.info(f"Processing artifact '{artifact.file_path}' from branch '{artifact.branch}' in repo '{self.name}'")
         repo.git.checkout(artifact.branch)
 
-        # Construct full path to the file
         full_path = os.path.join(repo.working_tree_dir, artifact.file_path)
+        logger.info(f"Resolved file path: '{full_path}'")
 
-        # Read file content
-        with open(full_path, 'rb') as f:
-            content = f.read()
-            filename = artifact.file_path.split('/')[-1] or 'artifact.txt'
+        try:
+            with open(full_path, 'rb') as f:
+                content = f.read()
+                filename = artifact.file_path.split('/')[-1] or 'artifact.txt'
 
-            # Ensure bucket exists
-            if not artifact.bucket:
-                raise RuntimeError(f"Artifact '{artifact.file_path}' has no bucket assigned.")
+                if not artifact.bucket:
+                    logger.error(f"Artifact '{artifact.file_path}' has no bucket assigned.")
+                    raise RuntimeError(f"Artifact '{artifact.file_path}' has no bucket assigned.")
 
-            ext = filename.lower()
-            if ext.endswith('.pdf'):
-                file_type = 'pdf'
-            elif ext.endswith(('.png', '.jpg', '.jpeg')):
-                file_type = 'image'
-            elif ext.endswith(('.txt', '.md', '.tex')):
-                file_type = 'text'
-            elif ext.endswith(('.html', '.htm', '.xml')):
-                file_type = 'html'
-            else:
-                file_type = 'text'
+                ext = filename.lower()
+                if ext.endswith('.pdf'):
+                    file_type = 'pdf'
+                elif ext.endswith(('.png', '.jpg', '.jpeg')):
+                    file_type = 'image'
+                elif ext.endswith(('.txt', '.md', '.tex')):
+                    file_type = 'text'
+                elif ext.endswith(('.html', '.htm', '.xml')):
+                    file_type = 'html'
+                else:
+                    file_type = 'text'
 
-            # Create VaultFile in the bucket
-            VaultFile.objects.create(
-                owner=artifact.bucket.owner,
-                title=f"{self.name}: {filename}",
-                file=ContentFile(content, name=filename),
-                file_type=file_type,
-                bucket=artifact.bucket,
-                notes=f"Pulled from {self.name} on branch {artifact.branch}"
-            )
+                VaultFile.objects.create(
+                    owner=artifact.bucket.owner,
+                    title=f"{self.name}: {filename}",
+                    file=ContentFile(content, name=filename),
+                    file_type=file_type,
+                    bucket=artifact.bucket,
+                    notes=f"Pulled from {self.name} on branch {artifact.branch}"
+                )
+                logger.info(f"VaultFile created for '{filename}' in bucket '{artifact.bucket.name}'")
+        except FileNotFoundError:
+            logger.error(f"File not found: '{artifact.file_path}' in branch '{artifact.branch}'")
+            raise
+        except Exception as e:
+            logger.error(f"Error processing artifact '{artifact.file_path}': {e}")
+            raise
 
     def bind_artifacts(self, repo):
         for artifact in self.artifacts.all():
