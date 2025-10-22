@@ -12,10 +12,13 @@ from django.shortcuts import render, get_object_or_404
 from django.http import JsonResponse
 from django.views.generic import TemplateView
 from community.models import Company
-
+import logging
 
 template_dir = "community"
 
+
+
+logger = logging.getLogger(__name__)
 
 def _get_template(name):
     return os.path.join(template_dir, name)
@@ -41,13 +44,17 @@ def login_view(request):
         )
         if user:
             login(request, user)
+            logger.info(f"User '{form.cleaned_data["username"]}' logged in successfully.")
             return redirect(_get_next(request))
+        else:
+            logger.warning(f"Failed login attempt for username '{form.cleaned_data["username"]}'.")
         context["error"] = "Invalid credentials."
 
     return render(request, _get_template("login.html"), processor.decorate(context, request))
 
 def logout_view(request):
     logout(request)
+    logger.info(f"User '{request.user.username}' logged out.")
     return redirect(_get_next(request))
 
 def membership_application_view(request):
@@ -76,10 +83,14 @@ def membership_application_view(request):
             }
         )
 
+
         if created:
             # Only generate the code now if it's going to be emailed
             application.code = generate_code()
             application.save()
+            logger.info(f"New application created for '{email}' with code '{application.code}'.")
+        else:
+            logger.info(f"Existing application reused for '{email}'.")
 
             # TODO: trigger email with code here
 
@@ -94,6 +105,7 @@ def application_success_view(request, username):
         "page_title": "Application Submitted",
         "username": username
     }
+    logger.info(f"Application success page viewed for user '{username}'.")
     return render(request, _get_template("application_success.html"), processor.decorate(context, request))
 
 
@@ -112,15 +124,19 @@ def verify_application_view(request, username):
             app = MembershipApplication.objects.get(code=code, email=username)
             if app.is_expired():
                 context["error"] = "This code has expired."
+                logger.warning(f"Verification failed: code expired for '{username}'.")
             elif app.is_verified:
                 context["message"] = "This application is already verified."
+                logger.info(f"Verification skipped: already verified for '{username}'.")
             else:
                 app.verified_at = timezone.now()
                 app.status = "verified"
                 app.save()
+                logger.info(f"Verification successful for '{username}'.")
                 return redirect("reference_request", application_id=app.id)
         except MembershipApplication.DoesNotExist:
             context["error"] = "Invalid code or username. Please check and try again."
+            logger.warning(f"Verification failed: no application found for '{username}' with code '{code}'.")
 
     return render(request, _get_template("membership_verification.html"), processor.decorate(context, request))
 
@@ -130,12 +146,14 @@ def verification_success_view(request):
     context = {
         "page_title": "Verification Complete"
     }
+    logger.info(f"Verification success page viewed by user '{request.user.username}'.")
     return render(request, _get_template("verification_success.html"), processor.decorate(context, request))
 
 
 def reference_request_view(request, application_id):
     processor = PageProcessor()
-
+    logger.info(
+        f"Reference request page accessed for application ID '{application_id}' by user '{request.user.username}'.")
     try:
         application = MembershipApplication.objects.get(pk=application_id)
     except MembershipApplication.DoesNotExist:
@@ -157,7 +175,7 @@ def reference_request_view(request, application_id):
         reference_request.application = application
         reference_request.referrer = request.user.community_profile
         reference_request.save()
-
+        logger.info(f"Reference submitted by '{request.user.username}' for application ID '{application_id}'.")
         # TODO: trigger notification to admins or log referral event here
 
         return redirect("reference_next", application_id=application.id)
@@ -177,7 +195,8 @@ def reference_next(request, application_id):
         "application": application,
         "page_title": "Thank You for Your Endorsement",
     }
-
+    logger.info(
+        f"Reference thank-you page viewed for application ID '{application_id}' by user '{request.user.username}'.")
     return render(
         request,
         _get_template("reference_next.html"),
@@ -197,7 +216,7 @@ def profile_view(request, slug):
         "email": member.user.email,
         "is_own_profile": member.user == request.user,
     }
-
+    logger.info(f"Profile viewed: '{slug}' by user '{request.user.username}'.")
     return render(request, _get_template("profile.html"), processor.decorate(context, request))
 
 
@@ -220,6 +239,7 @@ def org_chart_data(request):
     try:
         company = Company.objects.get(slug=company_slug)
     except Company.DoesNotExist:
+        logger.warning(f"Org chart data request failed: company slug '{company_slug}' not found.")
         return JsonResponse({"nodes": []})
 
     # Get all relevant people: head, branch heads, members
@@ -245,7 +265,7 @@ def org_chart_data(request):
             "activity": person.slug,
             "profile": person.slug,
         })
-
+    logger.info(f"Org chart data requested for company slug '{company_slug}' by user '{request.user.username}'.")
     return JsonResponse({"nodes": nodes})
 
 
