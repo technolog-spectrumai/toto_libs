@@ -34,6 +34,18 @@ class LatexProject(models.Model):
                 continue
         return compiled
 
+    def get_key(self):
+        return self.name.replace(' ', '_')
+
+    def get_dir_path(self):
+        key = self.get_key()
+        output_dir = Path(settings.MEDIA_ROOT) / f"{key}_files"
+        return output_dir
+
+    def clean_directory(self):
+        output_dir = self.get_dir_path()
+        if output_dir.exists() and output_dir.is_dir():
+            shutil.rmtree(output_dir)
 
     def __str__(self):
         return self.name
@@ -65,8 +77,8 @@ class TexFile(models.Model):
         if not self.file:
             raise ValueError("No LaTeX source file to compile.")
 
-        key = self.project.name.replace(' ', '_')
-        output_dir = Path(settings.MEDIA_ROOT) / f"{key}_files"
+        key = self.project.get_key()
+        output_dir = self.project.get_dir_path()
         output_dir.mkdir(parents=True, exist_ok=True)
         tex_path = output_dir / f"{key}.tex"
         shutil.copy2(self.file.path, tex_path)
