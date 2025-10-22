@@ -7,8 +7,8 @@ from .log import BufferedFileLogSink
 class OyaConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'oya'
-    verbose_name = _("Nest")
-    url_name = "nest"
+    verbose_name = _("Root")
+    url_name = "root"
 
     def ready(self):
         BufferedFileLogSink.create("toto")
