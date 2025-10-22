@@ -40,14 +40,8 @@ class TexFile(models.Model):
     def __str__(self):
         return self.filename
 
-    def _compile(self):
-        if not self.file:
-            raise ValueError("No LaTeX source file to compile.")
-        key = self.project.name.replace(' ', '_')
-        output_dir = Path(settings.MEDIA_ROOT) / f"{key}_files"
-        output_dir.mkdir(parents=True, exist_ok=True)
-        tex_path = output_dir / f"{key}.tex"
-        shutil.copy2(self.file.path, tex_path)
+    @staticmethod
+    def run_pdflatex(output_dir, tex_path):
         subprocess.run(
             ['pdflatex', '-interaction=nonstopmode', '-output-directory', output_dir, tex_path],
             check=True,
@@ -55,8 +49,24 @@ class TexFile(models.Model):
             stderr=subprocess.PIPE
         )
 
-        output_pdf = os.path.join(output_dir, self.filename.replace('.tex', '.pdf'))
-        if os.path.exists(output_pdf):
+    def _compile(self):
+        if not self.file:
+            raise ValueError("No LaTeX source file to compile.")
+
+        key = self.project.name.replace(' ', '_')
+        output_dir = Path(settings.MEDIA_ROOT) / f"{key}_files"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        tex_path = output_dir / f"{key}.tex"
+        shutil.copy2(self.file.path, tex_path)
+
+        self.run_pdflatex(output_dir, tex_path)
+
+        aux_file = output_dir / f"{key}.aux"
+        if not aux_file.exists():
+            self.run_pdflatex(output_dir, tex_path)
+
+        output_pdf = output_dir / self.filename.replace('.tex', '.pdf')
+        if output_pdf.exists():
             with open(output_pdf, 'rb') as pdf_file:
                 return pdf_file.read()
 
