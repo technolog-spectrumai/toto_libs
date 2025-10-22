@@ -12,6 +12,10 @@ from django.template import Template, Context
 import jsonschema
 from django.core.exceptions import ValidationError
 from django.core.files import File
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 
 class LatexProject(models.Model):
@@ -27,14 +31,16 @@ class LatexProject(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     def compile_all(self):
+        logger.info(f"Compiling all LaTeX files for project '{self.name}' (ID: {self.id})")
         compiled = []
         for texfile in self.tex_files.all():
             try:
                 result = texfile.compile()
                 if result:
                     compiled.append(result)
-            except Exception:
-                continue
+                    logger.info(f"Compiled '{texfile.filename}' successfully.")
+            except Exception as e:
+                logger.warning(f"Failed to compile '{texfile.filename}': {e}")
         return compiled
 
     def get_key(self):
@@ -49,6 +55,7 @@ class LatexProject(models.Model):
         output_dir = self.get_dir_path()
         if output_dir.exists() and output_dir.is_dir():
             shutil.rmtree(output_dir)
+            logger.info(f"Cleaned output directory for project '{self.name}' at '{output_dir}'")
 
     def __str__(self):
         return self.name
@@ -78,6 +85,7 @@ class TexFile(models.Model):
 
     def _compile(self):
         if not self.file:
+            logger.error(f"TexFile '{self.filename}' has no source file to compile.")
             raise ValueError("No LaTeX source file to compile.")
 
         key = self.project.get_key()
@@ -85,18 +93,21 @@ class TexFile(models.Model):
         output_dir.mkdir(parents=True, exist_ok=True)
         tex_path = output_dir / f"{key}.tex"
         shutil.copy2(self.file.path, tex_path)
+        logger.debug(f"Copied source file to '{tex_path}' for compilation.")
 
         self.run_pdflatex(output_dir, tex_path)
 
         aux_file = output_dir / f"{key}.aux"
         if not aux_file.exists():
             self.run_pdflatex(output_dir, tex_path)
+            logger.info(f"Ran pdflatex again for missing aux file '{aux_file}'")
 
         output_pdf = output_dir / self.filename.replace('.tex', '.pdf')
         if output_pdf.exists():
+            logger.debug(f"PDF generated at '{output_pdf}'")
             with open(output_pdf, 'rb') as pdf_file:
                 return pdf_file.read()
-
+        logger.warning(f"PDF not found after compilation for '{self.filename}'")
         return None
 
     def compile(self):
@@ -114,10 +125,11 @@ class TexFile(models.Model):
             )
             vault_file.content_hash = vault_file.create_hash()
             vault_file.save()
-
+            logger.debug(f"VaultFile created for '{self.filename}' as '{vault_file.title}' (ID: {vault_file.id})")
             return vault_file
 
         except subprocess.CalledProcessError as e:
+            logger.error(f"LaTeX compilation failed for '{self.filename}': {e.stderr.decode()}")
             raise RuntimeError(f"LaTeX compilation failed: {e.stderr.decode()}")
 
 
@@ -176,6 +188,7 @@ class LatexGenerator(models.Model):
         # Write LaTeX content to local file
         with open(tex_path, 'w', encoding='utf-8') as f:
             f.write(tex_content)
+            logger.info(f"Baked LaTeX content to '{tex_path}'")
 
         # Create TexFile instance using local file
         with open(tex_path, 'rb') as f:
@@ -184,6 +197,6 @@ class LatexGenerator(models.Model):
                 filename=self.filename,
                 file=File(f, name=self.filename)
             )
-
+        logger.info(f"TexFile created: '{tex_file.filename}' for project '{self.project.name}'")
         return tex_file
 
