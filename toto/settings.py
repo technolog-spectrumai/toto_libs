@@ -76,7 +76,8 @@ INSTALLED_APPS = [
     "latextile",
     "community",
     "shareholders",
-    "events"
+    "events",
+    "audit"
 ]
 
 DJANGO_TIPTAP_CONFIG = {
@@ -356,6 +357,59 @@ INGRESS_ALLOWED_APPS = [
 ]
 
 GIT_REPO_BASE_DIR = BASE_DIR / 'git_repos'
+
+LOG_DIR = Path(BASE_DIR) / 'logs'
+LOG_DIR.mkdir(exist_ok=True)
+
+INSTALLED_LOGGERS = {}
+
+for app in INSTALLED_APPS:
+    app_label = app.split('.')[-1]
+    log_file = LOG_DIR / f"{app_label}.log"
+
+    INSTALLED_LOGGERS[app_label] = {
+        'handlers': [f'{app_label}_file'],
+        'level': 'INFO',
+        'propagate': False,
+    }
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'default': {
+            'format': '[%(name)s] %(asctime)s %(levelname)s %(message)s',
+        },
+    },
+    'handlers': {
+        **{
+            f'{app_label}_file': {
+                'class': 'logging.handlers.TimedRotatingFileHandler',
+                'filename': str(LOG_DIR / f"{app_label}.log"),
+                'when': 'midnight',
+                'backupCount': 7,
+                'formatter': 'default',
+            }
+            for app_label in INSTALLED_LOGGERS
+        }
+    },
+    'loggers': INSTALLED_LOGGERS,
+}
+
+AUDITED_APPS = [
+    "gervazy",
+    "oya",
+    "memo",
+    "webfront",
+    "editor",
+    "vault",
+    "portfolio",
+    "gitops",
+    "latextile",
+    "community",
+    "shareholders",
+    "events"
+]
 
 
 

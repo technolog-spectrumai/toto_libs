@@ -1,0 +1,37 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %} {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<div
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300">
+
+  <div class="max-w-6xl mx-auto space-y-12">
+    <!-- 📁 Log Identity -->
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Log Identity</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="p-4 rounded border"
+             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+          <p><strong>App Name:</strong> {{ audit_entry.appname }}</p>
+          <p><strong>Log Path:</strong> {{ audit_entry.filepath }}</p>
+          <p><strong>Created:</strong> {{ audit_entry.created_at|date:"F j, Y H:i" }}</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 📜 Log Content -->
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Log Content</h2>
+      <div class="p-4 rounded border overflow-auto text-sm whitespace-pre-wrap"
+           :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+        <pre>{{ log_content }}</pre>
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}

@@ -30,6 +30,7 @@ urlpatterns = [
     path("vault/", include("vault.urls", namespace="vault")),
     path("community/", include("community.urls", namespace="community")),
     path("events/", include("events.urls", namespace="events")),
+    path("audit/", include("audit.urls", namespace="audit")),
 ]
 
 
