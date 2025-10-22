@@ -45,21 +45,11 @@
         <!-- Card Title Slide -->
         <section>
           <h3>{{ card.title }}</h3>
-        </section>
-
-        <!-- Card Content Slide -->
-        <section>
-          <h4>Content</h4>
           <p>{{ card.content }}</p>
-        </section>
-
-        {% if card.image_url %}
-        <!-- Card Image Slide -->
-        <section>
-          <h4>Diagram</h4>
+          {% if card.image_url %}
           <img src="{{ card.image_url }}" alt="Diagram for {{ card.title }}" style="max-width: 100%; height: auto;">
+          {% endif %}
         </section>
-        {% endif %}
       {% endfor %}
     {% else %}
       <section>
