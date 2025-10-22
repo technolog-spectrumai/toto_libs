@@ -54,8 +54,6 @@ class TexFileForm(forms.ModelForm):
             instance.save()
         return instance
 
-
-
 @admin.register(TexFile)
 class TexFileAdmin(admin.ModelAdmin):
     form = TexFileForm
@@ -63,19 +61,19 @@ class TexFileAdmin(admin.ModelAdmin):
     search_fields = ['filename', 'project__name']
     list_filter = ['created_at', 'project']
 
-    @admin.action(description="Compile selected LaTeX files (async)")
-    def compile_selected_texfiles(self, request, queryset):
-        def compile_one(texfile):
-            if not texfile.file:
-                self.message_user(request, f"Skipped {texfile.filename} - no LaTeX file", messages.WARNING)
-                return False
-            texfile.compile()
-            return True
-
-        result = BatchAction(queryset).run(compile_one)
-        BatchAction.display_messages(result, self.message_user, request, verb="compiled")
-
-    actions = [compile_selected_texfiles]
+    # @admin.action(description="Compile selected LaTeX files (async)")
+    # def compile_selected_texfiles(self, request, queryset):
+    #     def compile_one(texfile):
+    #         if not texfile.file:
+    #             self.message_user(request, f"Skipped {texfile.filename} - no LaTeX file", messages.WARNING)
+    #             return False
+    #         texfile.compile()
+    #         return True
+    #
+    #     result = BatchAction(queryset).run(compile_one)
+    #     BatchAction.display_messages(result, self.message_user, request, verb="compiled")
+    #
+    # actions = [compile_selected_texfiles]
 
 
 @admin.register(LatexProject)
@@ -83,3 +81,13 @@ class LatexProjectAdmin(admin.ModelAdmin):
     list_display = ['name', 'user', 'bucket', 'created_at']
     search_fields = ['name', 'user__username']
     list_filter = ['bucket', 'created_at']
+
+    @admin.action(description="Compile all LaTeX files in selected projects")
+    def compile_selected_projects(self, request, queryset):
+        total = 0
+        for project in queryset:
+            compiled = project.compile_all()
+            total += len(compiled)
+        self.message_user(request, f"Compiled {total} LaTeX files.", messages.SUCCESS)
+
+    actions = [compile_selected_projects]

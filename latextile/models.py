@@ -23,6 +23,18 @@ class LatexProject(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
+    def compile_all(self):
+        compiled = []
+        for texfile in self.tex_files.all():
+            try:
+                result = texfile.compile()
+                if result:
+                    compiled.append(result)
+            except Exception:
+                continue
+        return compiled
+
+
     def __str__(self):
         return self.name
 
