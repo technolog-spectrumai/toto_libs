@@ -7,7 +7,8 @@ from django.contrib.auth.models import User
 from vault.models import Bucket, VaultFile
 from django.core.files.base import ContentFile
 import shutil
-
+from pathlib import Path
+from django.conf import settings
 
 
 class LatexProject(models.Model):
@@ -42,22 +43,22 @@ class TexFile(models.Model):
     def _compile(self):
         if not self.file:
             raise ValueError("No LaTeX source file to compile.")
+        key = self.project.name.replace(' ', '_')
+        output_dir = Path(settings.MEDIA_ROOT) / f"{key}_files"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        tex_path = output_dir / f"{key}.tex"
+        shutil.copy2(self.file.path, tex_path)
+        subprocess.run(
+            ['pdflatex', '-interaction=nonstopmode', '-output-directory', output_dir, tex_path],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
 
-        with tempfile.TemporaryDirectory() as temp_dir:
-            tex_path = os.path.join(temp_dir, self.filename)
-            shutil.copy2(self.file.path, tex_path)
-
-            subprocess.run(
-                ['pdflatex', '-interaction=nonstopmode', '-output-directory', temp_dir, tex_path],
-                check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
-            )
-
-            output_pdf = os.path.join(temp_dir, self.filename.replace('.tex', '.pdf'))
-            if os.path.exists(output_pdf):
-                with open(output_pdf, 'rb') as pdf_file:
-                    return pdf_file.read()
+        output_pdf = os.path.join(output_dir, self.filename.replace('.tex', '.pdf'))
+        if os.path.exists(output_pdf):
+            with open(output_pdf, 'rb') as pdf_file:
+                return pdf_file.read()
 
         return None
 
