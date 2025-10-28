@@ -51,6 +51,6 @@ class TaskAdmin(admin.ModelAdmin):
 
 @admin.register(Sprint)
 class SprintAdmin(admin.ModelAdmin):
-    list_display = ('name', 'project', 'start', 'end')
+    list_display = ('name', 'project', 'start_time', 'end_time')
     filter_horizontal = ('tasks',)
-    date_hierarchy = 'start'
+    date_hierarchy = 'start_time'

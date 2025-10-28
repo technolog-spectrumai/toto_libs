@@ -1,7 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import User, Group
-from colorfield.fields import ColorField
 from django.urls import reverse
+from events.models import TimePeriod
 
 
 class Project(models.Model):
@@ -35,14 +35,6 @@ class Task(models.Model):
     assignee = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     due_date = models.DateField(null=True, blank=True)
     position = models.PositiveIntegerField(default=0)
-
-
-class TimePeriod(models.Model):
-    start = models.DateTimeField()
-    end = models.DateTimeField()
-
-    class Meta:
-        abstract = True
 
 
 class Sprint(TimePeriod):

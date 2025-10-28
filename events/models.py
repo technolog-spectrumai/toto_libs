@@ -10,13 +10,20 @@ class EventCategory(models.Model):
     def __str__(self):
         return self.name
 
+
+
+class TimePeriod(models.Model):
+    start_time = models.DateTimeField()
+    end_time = models.DateTimeField()
+
+    class Meta:
+        abstract = True
+
 # 📅 Event Model
-class Event(models.Model):
+class Event(TimePeriod):
     title = models.CharField(max_length=200)
     description = models.TextField()
     location = models.CharField(max_length=200)
-    start_time = models.DateTimeField()
-    end_time = models.DateTimeField()
 
     venture = models.ForeignKey(
         Venture,

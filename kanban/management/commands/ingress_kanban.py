@@ -45,7 +45,7 @@ class Command(IngressCommand):
         sprint = Sprint.objects.create(
             name="Sprint 1",
             project=project,
-            start=now,
-            end=now + timedelta(days=14)
+            start_time=now,
+            end_time=now + timedelta(days=14)
         )
         sprint.tasks.set(Task.objects.filter(column__board=board))
