@@ -9,6 +9,7 @@ class PublicFileListView(ListView):
     model = VaultFile
     template_name = 'vault/public_file_list.html'
     context_object_name = 'files'
+    paginate_by = 2  # Show 10 files per page
 
     def get_queryset(self):
         queryset = VaultFile.objects.filter(is_public=True).select_related('owner', 'bucket')
@@ -23,6 +24,7 @@ class PublicFileListView(ListView):
         context['selected_bucket'] = self.request.GET.get('bucket', '')
         decorated_context = PageProcessor().decorate(context, self.request)
         return decorated_context
+
 
 
 

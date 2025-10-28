@@ -98,6 +98,28 @@
         {% endfor %}
       </tbody>
     </table>
+      <!-- Pagination Controls -->
+{% if is_paginated %}
+  <div class="mt-6 flex justify-center space-x-2 text-sm">
+    {% if page_obj.has_previous %}
+      <a href="?page=1{% if selected_bucket %}&bucket={{ selected_bucket }}{% endif %}"
+         class="px-3 py-1 border rounded hover:bg-gray-100 dark:hover:bg-gray-700">First</a>
+      <a href="?page={{ page_obj.previous_page_number }}{% if selected_bucket %}&bucket={{ selected_bucket }}{% endif %}"
+         class="px-3 py-1 border rounded hover:bg-gray-100 dark:hover:bg-gray-700">Previous</a>
+    {% endif %}
+
+    <span class="px-3 py-1 border rounded bg-gray-200 dark:bg-gray-800">
+      Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+    </span>
+
+    {% if page_obj.has_next %}
+      <a href="?page={{ page_obj.next_page_number }}{% if selected_bucket %}&bucket={{ selected_bucket }}{% endif %}"
+         class="px-3 py-1 border rounded hover:bg-gray-100 dark:hover:bg-gray-700">Next</a>
+      <a href="?page={{ page_obj.paginator.num_pages }}{% if selected_bucket %}&bucket={{ selected_bucket }}{% endif %}"
+         class="px-3 py-1 border rounded hover:bg-gray-100 dark:hover:bg-gray-700">Last</a>
+    {% endif %}
+  </div>
+{% endif %}
   </div>
     </section>
 
