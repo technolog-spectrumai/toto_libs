@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Project, Board, Column, Task, Sprint, Role
+from .models import Project, Board, Column, Task, Sprint
 from django_tiptap.widgets import TipTapWidget
 from django import forms
 
@@ -54,9 +54,3 @@ class SprintAdmin(admin.ModelAdmin):
     list_display = ('name', 'project', 'start', 'end')
     filter_horizontal = ('tasks',)
     date_hierarchy = 'start'
-
-
-@admin.register(Role)
-class RoleAdmin(admin.ModelAdmin):
-    list_display = ('name', 'project')
-    filter_horizontal = ('users',)

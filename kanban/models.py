@@ -49,9 +49,3 @@ class Sprint(TimePeriod):
     name = models.CharField(max_length=100)
     project = models.ForeignKey(Project, on_delete=models.CASCADE)
     tasks = models.ManyToManyField(Task)
-
-
-class Role(models.Model):
-    name = models.CharField(max_length=50)
-    users = models.ManyToManyField(User)
-    project = models.ForeignKey(Project, on_delete=models.CASCADE)
