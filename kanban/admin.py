@@ -52,14 +52,20 @@ class TaskAdmin(admin.ModelAdmin):
     @admin.action(description="Convert selected tasks to events")
     def convert_to_event(self, request, queryset):
         from events.models import Event
+        from django.utils.timezone import now
+        from datetime import timedelta
+
         def convert_one(task):
+            venture = getattr(task.sprint.project, 'venture', None)
+            if not venture:
+                raise ValueError(f"Task '{task.title}' has no venture via its project.")
             return Event.objects.create(
                 title=task.title,
                 description=task.description,
                 location=f"Column: {task.column.name}",
-                start_time=task.sprint.start_time if task.sprint else timezone.now(),
-                end_time=task.due_date if task.due_date else timezone.now() + timedelta(days=1),
-                venture=None,
+                start_time=task.sprint.start_time if task.sprint else now(),
+                end_time=task.due_date if task.due_date else now() + timedelta(days=1),
+                venture=venture,
                 organizer=task.assignee,
                 category=None,
                 public=False
@@ -79,17 +85,25 @@ class SprintAdmin(admin.ModelAdmin):
     @admin.action(description="Convert selected sprints to events")
     def convert_to_event(self, request, queryset):
         from events.models import Event
+        from django.utils.timezone import now
+        from datetime import timedelta
+
         def convert_one(sprint):
+            venture = getattr(sprint.project, 'venture', None)
+            if not venture:
+                raise ValueError(f"Sprint '{sprint.name}' has no venture via its project.")
             return Event.objects.create(
                 title=f"Sprint: {sprint.name}",
                 description=f"Linked to project: {sprint.project.name}",
                 location="Kanban Board",
-                start_time=sprint.start_time,
-                end_time=sprint.end_time,
-                venture=None,
+                start_time=sprint.start_time or now(),
+                end_time=sprint.end_time or now() + timedelta(days=7),
+                venture=venture,
                 organizer=sprint.project.owner,
                 category=None,
                 public=False
             )
+
         result = BatchAction(queryset).run(convert_one)
         BatchAction.display_messages(result, self.message_user, request, verb="convert to event")
+
