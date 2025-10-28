@@ -50,10 +50,13 @@
   </header>
 </section>
 
-    <!-- 📁 Public File List -->
-    <section>
+
+
+<section>
   <h2 class="text-2xl font-bold mb-4">Public Files</h2>
-  <div class="overflow-x-auto">
+
+  <!-- 🖥️ Table View for md and up -->
+  <div class="hidden md:block overflow-x-auto">
     <table class="min-w-full text-sm border rounded"
            :class="darkMode ? 'bg-bubble-bg-dark text-text-main-dark border-accent-1' : 'bg-white text-text-main-light border-accent-2'">
       <thead>
@@ -98,28 +101,82 @@
         {% endfor %}
       </tbody>
     </table>
+  </div>
+
+  <!-- 📱 Card View for mobile -->
+  <div class="md:hidden space-y-4">
+    {% for file in files %}
+    <div class="border rounded-lg p-4"
+         :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-white border-accent-2 text-text-main-light'">
+      <p class="font-semibold text-base">{{ file.title }}</p>
+      <p class="text-sm text-gray-500">Uploaded: {{ file.uploaded_at|date:"F j, Y" }}</p>
+      <div class="mt-2 space-y-1 text-sm">
+        <p><strong>Owner:</strong> {{ file.owner.username }}</p>
+        <p><strong>Type:</strong> {{ file.file_type|title }}</p>
+        <p><strong>Encrypted:</strong> {{ file.is_encrypted|yesno:"Yes,No" }}</p>
+        <p><strong>Notes:</strong> {{ file.notes|default:"—" }}</p>
+        <p><strong>Bucket:</strong>
+          {% if file.bucket and file.bucket.name %}
+            {{ file.bucket.name }}
+          {% else %}
+            <span class="text-gray-500">No bucket</span>
+          {% endif %}
+        </p>
+        <p>
+          {% if file.bucket and file.bucket.name %}
+            <a href="{% url 'vault:public_file' file.bucket.name file.key %}"
+               class="underline text-blue-600 dark:text-blue-400">
+              Download File
+            </a>
+          {% endif %}
+        </p>
+      </div>
+    </div>
+    {% empty %}
+    <div class="p-4 rounded border text-sm text-center"
+         :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+      No public files available.
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
       <!-- Pagination Controls -->
 {% if is_paginated %}
-  <div class="mt-6 flex justify-center space-x-2 text-sm">
+  <div class="mt-8 flex flex-wrap justify-center items-center gap-2 text-sm">
     {% if page_obj.has_previous %}
       <a href="?page=1{% if selected_bucket %}&bucket={{ selected_bucket }}{% endif %}"
-         class="px-3 py-1 border rounded hover:bg-gray-100 dark:hover:bg-gray-700">First</a>
+         class="px-3 py-1 rounded border transition-colors duration-200"
+         :class="darkMode ? 'border-gray-600 hover:bg-gray-700 text-text-main-dark' : 'border-gray-300 hover:bg-gray-100 text-text-main-light'">
+        First
+      </a>
       <a href="?page={{ page_obj.previous_page_number }}{% if selected_bucket %}&bucket={{ selected_bucket }}{% endif %}"
-         class="px-3 py-1 border rounded hover:bg-gray-100 dark:hover:bg-gray-700">Previous</a>
+         class="px-3 py-1 rounded border transition-colors duration-200"
+         :class="darkMode ? 'border-gray-600 hover:bg-gray-700 text-text-main-dark' : 'border-gray-300 hover:bg-gray-100 text-text-main-light'">
+        Previous
+      </a>
     {% endif %}
 
-    <span class="px-3 py-1 border rounded bg-gray-200 dark:bg-gray-800">
+    <span class="px-3 py-1 rounded border font-medium"
+          :class="darkMode ? 'bg-gray-800 border-gray-600 text-text-main-dark' : 'bg-gray-200 border-gray-300 text-text-main-light'">
       Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
     </span>
 
     {% if page_obj.has_next %}
       <a href="?page={{ page_obj.next_page_number }}{% if selected_bucket %}&bucket={{ selected_bucket }}{% endif %}"
-         class="px-3 py-1 border rounded hover:bg-gray-100 dark:hover:bg-gray-700">Next</a>
+         class="px-3 py-1 rounded border transition-colors duration-200"
+         :class="darkMode ? 'border-gray-600 hover:bg-gray-700 text-text-main-dark' : 'border-gray-300 hover:bg-gray-100 text-text-main-light'">
+        Next
+      </a>
       <a href="?page={{ page_obj.paginator.num_pages }}{% if selected_bucket %}&bucket={{ selected_bucket }}{% endif %}"
-         class="px-3 py-1 border rounded hover:bg-gray-100 dark:hover:bg-gray-700">Last</a>
+         class="px-3 py-1 rounded border transition-colors duration-200"
+         :class="darkMode ? 'border-gray-600 hover:bg-gray-700 text-text-main-dark' : 'border-gray-300 hover:bg-gray-100 text-text-main-light'">
+        Last
+      </a>
     {% endif %}
   </div>
 {% endif %}
+
   </div>
     </section>
 
