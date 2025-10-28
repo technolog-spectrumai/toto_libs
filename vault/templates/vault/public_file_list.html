@@ -1,0 +1,88 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}Public Files – {{ platform.site_name }}{% endblock %}
+{% block start_script %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+</script>
+{% endblock %}
+
+{% block content %}
+<div
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300">
+
+  <div class="max-w-6xl mx-auto space-y-12">
+
+    <!-- 🗂️ Bucket Selector -->
+    <section
+      :class="darkMode
+        ? 'bg-primary-bg-dark text-text-main-dark'
+        : 'bg-primary-bg-light text-text-main-light'"
+      class="p-4 sm:p-8 rounded-xl shadow-lg space-y-0">
+      <header class="space-y-3 sm:space-y-4 text-center">
+        <h1 class="text-lg sm:text-xl font-extrabold">Filter by Bucket</h1>
+        <div class="max-w-xs sm:max-w-sm mx-auto">
+          <form method="get">
+            <label for="bucket"
+                   class="block text-xs sm:text-sm font-medium mb-1"
+                   :class="darkMode ? 'text-text-main-dark' : 'text-text-main-light'">
+              Choose Bucket
+            </label>
+            <select name="bucket" id="bucket"
+                    onchange="this.form.submit()"
+                    class="w-full px-2 py-1 sm:px-3 sm:py-2 rounded border text-sm transition-colors duration-300"
+                    :class="darkMode
+                      ? 'bg-primary-bg-dark text-text-main-dark border-gray-600'
+                      : 'bg-white text-text-main-light border-gray-300'">
+              <option value="">All Buckets</option>
+              {% for bucket in buckets %}
+                <option value="{{ bucket.name }}" {% if bucket.name == selected_bucket %}selected{% endif %}>
+                  {{ bucket.name }}
+                </option>
+              {% endfor %}
+            </select>
+          </form>
+        </div>
+      </header>
+    </section>
+
+    <!-- 📁 Public File List -->
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Public Files</h2>
+      <div class="space-y-4">
+        {% for file in files %}
+        <div class="p-4 rounded border"
+             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+          <p><strong>{{ file.title }}</strong></p>
+          <p>Owner: {{ file.owner.username }}</p>
+          <p>Type: {{ file.file_type|title }}</p>
+          <p>Uploaded: {{ file.uploaded_at|date:"F j, Y" }}</p>
+          <p>Encrypted: {{ file.is_encrypted|yesno:"Yes,No" }}</p>
+          <p>Notes: {{ file.notes|default:"—" }}</p>
+          <p>
+            {% if file.bucket and file.bucket.name %}
+              <a href="{% url 'vault:public_file' file.bucket.name file.key %}"
+                 class="underline text-blue-600 dark:text-blue-400">
+                Download File
+              </a>
+            {% else %}
+              <span class="text-gray-500">No bucket assigned</span>
+            {% endif %}
+          </p>
+        </div>
+        {% empty %}
+        <div class="p-4 rounded border text-sm text-center"
+             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+          No public files available.
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+
+  </div>
+</div>
+{% endblock %}
