@@ -4,66 +4,67 @@
 {% block title %}Kanban Board | {{ board.name }}{% endblock %}
 
 {% block start_script %}
-
+<script>
+  document.addEventListener('alpine:init', () => {
+    Alpine.data('kanbanBoard', () => ({
+      openModal: false,
+      action: '',
+      formHtml: '',
+      async openEdit(url) {
+        const res = await fetch(url);
+        this.formHtml = await res.text();
+        this.action = url;
+        this.openModal = true;
+      }
+    }));
+  });
+</script>
 {% endblock %}
 
 {% block content %}
-<section
-  x-data="{
-    openModal: false,
-    action: '',
-    formHtml: '',
-    async openEdit(url) {
-      const res = await fetch(url);
-      this.formHtml = await res.text();
-      this.action = url;
-      this.openModal = true;
-    }
-  }"
+<div
+  x-data="kanbanBoard"
   @edit-task.window="openEdit($event.detail.url)"
   :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
-  class="px-6 py-12 min-h-screen transition-colors duration-300"
+  class="min-h-screen px-4 py-10 transition-colors duration-300"
 >
-  <div
-    :class="darkMode
-      ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
-      : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
-    class="rounded-lg shadow-md border p-6 space-y-6 transition-colors duration-300"
-  >
-    <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-2xl font-bold text-center">
-      {{ board.name }}
-    </h2>
-    <p class="text-center text-sm text-gray-500">Project: {{ board.project.name }}</p>
+  <div class="max-w-6xl mx-auto space-y-12">
+    <!-- 🗂️ Board Header -->
+    <section>
+      <div class="p-6 rounded border text-center"
+           :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+        <h2 class="text-2xl font-bold mb-1" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+          {{ board.name }}
+        </h2>
+        <p class="text-sm text-gray-500">Project: {{ board.project.name }}</p>
+      </div>
+    </section>
 
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
-      {% for column in columns %}
-        <div
-          :class="darkMode
-            ? 'bg-primary-bg-dark text-text-main-dark border border-accent-1'
-            : 'bg-primary-bg-light text-text-main-light border border-accent-2'"
-          class="rounded-lg p-4 shadow transition-colors duration-300"
-        >
-          <h3 class="text-lg font-semibold mb-4">{{ column.name }}</h3>
-          <div id="column-{{ column.id }}" class="sortable space-y-4 min-h-[200px]" data-column-id="{{ column.id }}">
+    <!-- 📌 Columns and Tasks -->
+    <section>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {% for column in columns %}
+        <div class="p-4 rounded border shadow space-y-4 min-h-[200px]"
+             :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'">
+          <h3 class="text-lg font-semibold">{{ column.name }}</h3>
+          <div id="column-{{ column.id }}" class="sortable space-y-4" data-column-id="{{ column.id }}">
             {% for task in column.task_set.all %}
               {% include "kanban/partials/task.html" with task=task %}
             {% endfor %}
           </div>
         </div>
-      {% endfor %}
-    </div>
+        {% endfor %}
+      </div>
+    </section>
 
-    <div class="text-center mt-8">
-      <a
-        href="{% url 'kanban:board_list' %}"
-        :class="darkMode
-          ? 'bg-accent-dark text-primary-bg-dark'
-          : 'bg-accent-light text-primary-bg-light'"
-        class="inline-block px-4 py-2 rounded font-semibold hover:opacity-90 transition text-sm"
-      >
+    <!-- 🔙 Navigation -->
+    <section class="text-center">
+      <a href="{% url 'kanban:board_list' %}"
+         class="inline-block px-4 py-2 rounded font-semibold text-sm hover:opacity-90 transition"
+         :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'">
         Back to Board List
       </a>
-    </div>
+    </section>
   </div>
-</section>
+</div>
 {% endblock %}

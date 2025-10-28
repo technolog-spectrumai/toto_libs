@@ -8,9 +8,6 @@
     : 'bg-bubble-bg-light text-text-main-light border-accent-2'"
   draggable="true"
 >
-  <!-- overlays -->
-  <div class="absolute inset-0 bg-white bg-opacity-20" x-show="darkMode"></div>
-  <div class="absolute inset-0 bg-black bg-opacity-20" x-show="!darkMode"></div>
 
   <!-- content -->
   <div class="relative z-10">
@@ -21,6 +18,11 @@
           <span class="text-sm ml-2">
             <i class="fa-solid fa-user"></i> {{ task.assignee.username }}
           </span>
+          {% if task.assignee %}
+          <span class="text-sm text-gray-600">
+            <i class="fa-solid fa-user"></i> {{ task.assignee.username }}
+          </span>
+          {% endif %}
         {% endif %}
       </div>
       <div class="flex items-center gap-2">
@@ -33,10 +35,24 @@
     </div>
 
     <div x-show="open" x-transition class="mt-2 text-sm space-y-1">
-      <p>{{ task.description|safe }}</p>
-      {% if task.due_date %}
-        <p><i class="fa-regular fa-calendar"></i> Due: {{ task.due_date }}</p>
+
+      {% if task.description %}
+        <p><strong>Description:</strong> {{ task.description|safe }}</p>
       {% endif %}
+
+      {% if task.assignee %}
+        <p><strong>Assignee:</strong> {{ task.assignee.get_full_name|default:task.assignee.username }}</p>
+      {% else %}
+        <p><strong>Assignee:</strong> Unassigned</p>
+      {% endif %}
+
+      {% if task.due_date %}
+        <p><strong>Due Date:</strong> {{ task.due_date|date:"F j, Y" }}</p>
+      {% endif %}
+
     </div>
+
   </div>
+
+
 </div>
