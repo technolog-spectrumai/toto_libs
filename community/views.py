@@ -44,10 +44,12 @@ def login_view(request):
         )
         if user:
             login(request, user)
-            logger.info(f"User '{form.cleaned_data["username"]}' logged in successfully.")
+            username = form.cleaned_data["username"]
+            logger.info(f"User '{username}' logged in successfully.")
             return redirect(_get_next(request))
         else:
-            logger.warning(f"Failed login attempt for username '{form.cleaned_data["username"]}'.")
+            username = form.cleaned_data["username"]
+            logger.warning(f"Failed login attempt for username '{username}'.")
         context["error"] = "Invalid credentials."
 
     return render(request, _get_template("login.html"), processor.decorate(context, request))

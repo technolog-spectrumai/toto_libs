@@ -62,12 +62,12 @@ class PageGenerator(BasePage):
     template = models.ForeignKey(PageTemplate, on_delete=models.PROTECT)
     config_json = models.JSONField()
 
-    def clean(self):
-        if self.template.check_schema and self.template.json_schema:
-            try:
-                jsonschema.validate(instance=self.config_json, schema=self.template.json_schema)
-            except jsonschema.ValidationError as e:
-                raise ValidationError({'config_json': _(str(e))})
+    # def clean(self):
+    #     if self.template.check_schema and self.template.json_schema:
+    #         try:
+    #             jsonschema.validate(instance=self.config_json, schema=self.template.json_schema)
+    #         except jsonschema.ValidationError as e:
+    #             raise ValidationError({'config_json': _(str(e))})
 
     @staticmethod
     def _render_template_from_string(template_text, context=None):

@@ -11,6 +11,7 @@ from django_json_widget.widgets import JSONEditorWidget
 from .models import LatexGenerator
 from .batch import BatchAction
 import jsonschema
+from .tasks import compile_project_task
 
 
 class LatexTemplateForm(forms.ModelForm):
@@ -152,20 +153,6 @@ class TexFileAdmin(admin.ModelAdmin):
     search_fields = ['filename', 'project__name']
     list_filter = ['created_at', 'project']
 
-    # @admin.action(description="Compile selected LaTeX files (async)")
-    # def compile_selected_texfiles(self, request, queryset):
-    #     def compile_one(texfile):
-    #         if not texfile.file:
-    #             self.message_user(request, f"Skipped {texfile.filename} - no LaTeX file", messages.WARNING)
-    #             return False
-    #         texfile.compile()
-    #         return True
-    #
-    #     result = BatchAction(queryset).run(compile_one)
-    #     BatchAction.display_messages(result, self.message_user, request, verb="compiled")
-    #
-    # actions = [compile_selected_texfiles]
-
 
 @admin.register(LatexProject)
 class LatexProjectAdmin(admin.ModelAdmin):
@@ -173,12 +160,11 @@ class LatexProjectAdmin(admin.ModelAdmin):
     search_fields = ['name', 'user__username']
     list_filter = ['bucket', 'created_at']
 
-    @admin.action(description="Compile all LaTeX files in selected projects")
+    @admin.action(description="Compile all LaTeX files in selected projects (async)")
     def compile_selected_projects(self, request, queryset):
-        total = 0
         for project in queryset:
-            compiled = project.compile_all()
-            total += len(compiled)
-        self.message_user(request, f"Compiled {total} LaTeX files.", messages.SUCCESS)
+            compile_project_task.delay(project.id)
+            self.message_user(request, f"Queued compilation for project {project.name}", messages.INFO)
 
     actions = [compile_selected_projects]
+

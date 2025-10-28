@@ -1,15 +1,20 @@
-# projects/tasks.py
 from celery import shared_task
-from .models import TexFile
+from .models import TexFile, LatexProject
+
+# @shared_task
+# def compile_texfile_task(texfile_id):
+#     try:
+#         texfile = TexFile.objects.get(id=texfile_id)
+#         texfile.compile()
+#         return f"Compiled {texfile.filename}"
+#     except Exception as e:
+#         return f"Failed to compile TexFile {texfile_id}: {str(e)}"
 
 @shared_task
-def compile_texfile_task(texfile_id):
+def compile_project_task(project_id):
     try:
-        texfile = TexFile.objects.get(id=texfile_id)
-        pdf_data = texfile.compile()
-        # Optional: save or process the PDF data here
-        return f"Compilation successful for {texfile.filename} (size: {len(pdf_data)} bytes)"
-    except TexFile.DoesNotExist:
-        return f"TexFile with ID {texfile_id} does not exist."
+        project = LatexProject.objects.get(id=project_id)
+        compiled_files = project.compile_all()
+        return f"Compiled {len(compiled_files)} files in project {project.name}"
     except Exception as e:
-        return f"Compilation failed: {str(e)}"
+        return f"Failed to compile project {project_id}: {str(e)}"
