@@ -113,15 +113,9 @@
       <div class="mt-2 space-y-1 text-sm">
         <p><strong>Owner:</strong> {{ file.owner.username }}</p>
         <p><strong>Type:</strong> {{ file.file_type|title }}</p>
+        <p><strong>Uploaded:</strong> {{ file.uploaded_at|date:"F j, Y" }}
         <p><strong>Encrypted:</strong> {{ file.is_encrypted|yesno:"Yes,No" }}</p>
         <p><strong>Notes:</strong> {{ file.notes|default:"—" }}</p>
-        <p><strong>Bucket:</strong>
-          {% if file.bucket and file.bucket.name %}
-            {{ file.bucket.name }}
-          {% else %}
-            <span class="text-gray-500">No bucket</span>
-          {% endif %}
-        </p>
         <p>
           {% if file.bucket and file.bucket.name %}
             <a href="{% url 'vault:public_file' file.bucket.name file.key %}"
