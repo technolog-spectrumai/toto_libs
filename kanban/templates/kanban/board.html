@@ -49,9 +49,6 @@
               {% include "kanban/partials/task.html" with task=task %}
             {% endfor %}
           </div>
-          <a class="text-accent-light dark:text-accent-dark hover:underline" href="{% url 'kanban:add_task' column.id %}">
-            + Add Task
-          </a>
         </div>
       {% endfor %}
     </div>
