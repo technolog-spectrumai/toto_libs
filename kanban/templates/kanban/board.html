@@ -1,7 +1,7 @@
 {% extends "oya/base.html" %}
 {% load static %}
 
-{% block title %}Kanban Board | {{ board.name }}{% endblock %}
+{% block title %}Kanban Project | {{ project.name }}{% endblock %}
 
 {% block start_script %}
 <script>
@@ -29,14 +29,37 @@
   class="min-h-screen px-4 py-10 transition-colors duration-300"
 >
   <div class="max-w-6xl mx-auto space-y-12">
-    <!-- 🗂️ Board Header -->
+    <!-- 🗂️ Project Header -->
     <section>
       <div class="p-6 rounded border text-center"
            :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
         <h2 class="text-2xl font-bold mb-1" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
-          {{ board.name }}
+          {{ project.name }}
         </h2>
-        <p class="text-sm text-gray-500">Project: {{ board.project.name }}</p>
+        <p class="text-sm text-gray-500">Owner: {{ project.owner.get_full_name|default:project.owner.username }}</p>
+
+        <!-- Sprint Filter -->
+            <form method="get" class="mt-4 inline-block">
+              <label for="sprint"
+                     class="text-sm font-medium mr-2"
+                     :class="darkMode ? 'text-text-main-dark' : 'text-text-main-light'">
+                Filter by Sprint:
+              </label>
+
+              <select name="sprint" id="sprint"
+                      class="text-sm border rounded px-2 py-1 transition-colors duration-300"
+                      :class="darkMode
+                        ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
+                        : 'bg-primary-bg-light text-text-main-light border-accent-2'"
+                      onchange="this.form.submit()">
+                <option value="">All Sprints</option>
+                {% for sprint in sprints %}
+                  <option value="{{ sprint.id }}" {% if selected_sprint and sprint.id == selected_sprint.id %}selected{% endif %}>
+                    {{ sprint.name }} ({{ sprint.start_time|date:"M j" }} - {{ sprint.end_time|date:"M j" }})
+                  </option>
+                {% endfor %}
+              </select>
+            </form>
       </div>
     </section>
 
@@ -48,8 +71,10 @@
              :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'">
           <h3 class="text-lg font-semibold">{{ column.name }}</h3>
           <div id="column-{{ column.id }}" class="sortable space-y-4" data-column-id="{{ column.id }}">
-            {% for task in column.task_set.all %}
-              {% include "kanban/partials/task.html" with task=task %}
+            {% for task in column.tasks.all %}
+              {% if not selected_sprint or task.sprint_id == selected_sprint.id %}
+                {% include "kanban/partials/task.html" with task=task %}
+              {% endif %}
             {% endfor %}
           </div>
         </div>
@@ -59,10 +84,10 @@
 
     <!-- 🔙 Navigation -->
     <section class="text-center">
-      <a href="{% url 'kanban:board_list' %}"
+      <a href="{% url 'kanban:project_list' %}"
          class="inline-block px-4 py-2 rounded font-semibold text-sm hover:opacity-90 transition"
          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'">
-        Back to Board List
+        Back to Project List
       </a>
     </section>
   </div>

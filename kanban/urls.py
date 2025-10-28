@@ -1,11 +1,12 @@
 from django.urls import path
 from .views import (
-    BoardDetailView, BoardListView
+    ProjectListView,
+    ProjectDetailView,
 )
 
 app_name = 'kanban'
 
 urlpatterns = [
-    path('', BoardListView.as_view(), name='board_list'),
-    path('board/<int:pk>/', BoardDetailView.as_view(), name='board')
+    path('', ProjectListView.as_view(), name='project_list'),
+    path('project/<int:pk>/', ProjectDetailView.as_view(), name='project_detail'),
 ]

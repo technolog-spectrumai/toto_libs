@@ -354,7 +354,8 @@ INGRESS_ALLOWED_APPS = [
     "community",
     "shareholders",
     "portfolio",
-    "events"
+    "events",
+    "kanban"
 ]
 
 GIT_REPO_BASE_DIR = BASE_DIR / 'git_repos'

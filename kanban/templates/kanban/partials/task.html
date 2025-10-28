@@ -6,9 +6,7 @@
   :class="darkMode
     ? 'bg-bubble-bg-dark text-text-main-dark border-accent-1'
     : 'bg-bubble-bg-light text-text-main-light border-accent-2'"
-  draggable="true"
 >
-
   <!-- content -->
   <div class="relative z-10">
     <div class="flex justify-between items-center">
@@ -18,11 +16,6 @@
           <span class="text-sm ml-2">
             <i class="fa-solid fa-user"></i> {{ task.assignee.username }}
           </span>
-          {% if task.assignee %}
-          <span class="text-sm text-gray-600">
-            <i class="fa-solid fa-user"></i> {{ task.assignee.username }}
-          </span>
-          {% endif %}
         {% endif %}
       </div>
       <div class="flex items-center gap-2">
@@ -35,7 +28,6 @@
     </div>
 
     <div x-show="open" x-transition class="mt-2 text-sm space-y-1">
-
       {% if task.description %}
         <p><strong>Description:</strong> {{ task.description|safe }}</p>
       {% endif %}
@@ -50,9 +42,9 @@
         <p><strong>Due Date:</strong> {{ task.due_date|date:"F j, Y" }}</p>
       {% endif %}
 
+      {% if task.sprint %}
+        <p><strong>Sprint:</strong> {{ task.sprint.name }} ({{ task.sprint.start_time|date:"M j" }} – {{ task.sprint.end_time|date:"M j" }})</p>
+      {% endif %}
     </div>
-
   </div>
-
-
 </div>

@@ -1,7 +1,7 @@
 from datetime import timedelta
 from django.utils import timezone
 from django.contrib.auth.models import User
-from kanban.models import Project, Board, Column, Task, Sprint
+from kanban.models import Project, Column, Task, Sprint
 from oya.models import Platform, Theme
 from oya.ingress import IngressCommand
 
@@ -18,7 +18,7 @@ class Command(IngressCommand):
         )
 
         # Use existing user or create demo
-        user, _ = User.objects.get_or_create(username="demo_user", defaults={"email": "demo@example.com"})
+        user, _ = User.objects.get_or_create(username="admin", defaults={"email": "demo@example.com"})
 
         # Create demo project
         project = Project.objects.create(
@@ -27,18 +27,15 @@ class Command(IngressCommand):
             owner=user
         )
 
-        # Create board
-        board = Board.objects.create(project=project, name="Demo Board")
-
-        # Create columns
-        todo = Column.objects.create(board=board, name="To Do", position=1)
-        doing = Column.objects.create(board=board, name="In Progress", position=2)
-        done = Column.objects.create(board=board, name="Done", position=3)
+        # Create columns directly under project
+        todo = Column.objects.create(project=project, name="To Do", position=1)
+        doing = Column.objects.create(project=project, name="In Progress", position=2)
+        done = Column.objects.create(project=project, name="Done", position=3)
 
         # Create tasks
-        Task.objects.create(column=todo, title="Set up project repo", position=1)
-        Task.objects.create(column=doing, title="Build UI components", position=1)
-        Task.objects.create(column=done, title="Create wireframes", position=1)
+        task1 = Task.objects.create(column=todo, title="Set up project repo", position=1)
+        task2 = Task.objects.create(column=doing, title="Build UI components", position=1)
+        task3 = Task.objects.create(column=done, title="Create wireframes", position=1)
 
         # Create sprint
         now = timezone.now()
@@ -48,4 +45,8 @@ class Command(IngressCommand):
             start_time=now,
             end_time=now + timedelta(days=14)
         )
-        sprint.tasks.set(Task.objects.filter(column__board=board))
+
+        # Assign tasks to sprint
+        for task in [task1, task2, task3]:
+            task.sprint = sprint
+            task.save()
