@@ -77,7 +77,8 @@ INSTALLED_APPS = [
     "community",
     "shareholders",
     "events",
-    "audit"
+    "audit",
+    "kanban"
 ]
 
 DJANGO_TIPTAP_CONFIG = {

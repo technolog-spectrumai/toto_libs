@@ -1,0 +1,72 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}Kanban Board | {{ board.name }}{% endblock %}
+
+{% block start_script %}
+
+{% endblock %}
+
+{% block content %}
+<section
+  x-data="{
+    openModal: false,
+    action: '',
+    formHtml: '',
+    async openEdit(url) {
+      const res = await fetch(url);
+      this.formHtml = await res.text();
+      this.action = url;
+      this.openModal = true;
+    }
+  }"
+  @edit-task.window="openEdit($event.detail.url)"
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="px-6 py-12 min-h-screen transition-colors duration-300"
+>
+  <div
+    :class="darkMode
+      ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
+      : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+    class="rounded-lg shadow-md border p-6 space-y-6 transition-colors duration-300"
+  >
+    <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-2xl font-bold text-center">
+      {{ board.name }}
+    </h2>
+    <p class="text-center text-sm text-gray-500">Project: {{ board.project.name }}</p>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
+      {% for column in columns %}
+        <div
+          :class="darkMode
+            ? 'bg-primary-bg-dark text-text-main-dark border border-accent-1'
+            : 'bg-primary-bg-light text-text-main-light border border-accent-2'"
+          class="rounded-lg p-4 shadow transition-colors duration-300"
+        >
+          <h3 class="text-lg font-semibold mb-4">{{ column.name }}</h3>
+          <div id="column-{{ column.id }}" class="sortable space-y-4 min-h-[200px]" data-column-id="{{ column.id }}">
+            {% for task in column.task_set.all %}
+              {% include "kanban/partials/task.html" with task=task %}
+            {% endfor %}
+          </div>
+          <a class="text-accent-light dark:text-accent-dark hover:underline" href="{% url 'kanban:add_task' column.id %}">
+            + Add Task
+          </a>
+        </div>
+      {% endfor %}
+    </div>
+
+    <div class="text-center mt-8">
+      <a
+        href="{% url 'kanban:board_list' %}"
+        :class="darkMode
+          ? 'bg-accent-dark text-primary-bg-dark'
+          : 'bg-accent-light text-primary-bg-light'"
+        class="inline-block px-4 py-2 rounded font-semibold hover:opacity-90 transition text-sm"
+      >
+        Back to Board List
+      </a>
+    </div>
+  </div>
+</section>
+{% endblock %}
