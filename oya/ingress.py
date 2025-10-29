@@ -6,6 +6,10 @@ from oya.models import DashboardBlock
 class IngressCommand(BaseCommand):
     help = "Base command that optionally accepts a JSON string"
 
+    def __init__(self):
+        super().__init__()
+        self.full = False
+
     def add_arguments(self, parser):
         parser.add_argument(
             '--json',
@@ -13,8 +17,14 @@ class IngressCommand(BaseCommand):
             required=False,
             help="Optional JSON string to be processed by the command"
         )
+        parser.add_argument(
+            '--full',
+            action='store_true',
+            help="If set, run full data fill; otherwise, only process indispensable data"
+        )
 
     def handle(self, *args, **options):
+        self.full = options.get('full', False)
         json_input = options.get('json', '{}')
 
         if not json_input:
