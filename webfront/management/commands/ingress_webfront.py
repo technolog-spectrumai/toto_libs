@@ -32,6 +32,8 @@ class Command(IngressCommand):
         )
 
     def process(self, options):
+        if not self.full:
+            return
         base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', 'data'))
         html_dir = options.get('htmldir', os.path.join(base_dir, "html"))
         schema_dir = options.get('schemadir', os.path.join(base_dir, "schema"))

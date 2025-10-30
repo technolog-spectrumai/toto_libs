@@ -15,6 +15,8 @@ class Command(IngressCommand):
             description="Company presentations.",
             link="/memo/"
         )
+        if not self.full:
+            return
 
         user = self.get_or_create_demo_user()
         tags = self.get_or_create_tags()

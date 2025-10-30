@@ -5,7 +5,6 @@ from django.core.management import call_command
 from django.apps import apps
 import os
 from io import StringIO
-from colorfield.fields import ColorField
 import sys
 import json
 from django.conf import settings
@@ -247,8 +246,9 @@ class AppIngress(models.Model):
         try:
             out = StringIO()
             json_args = json.dumps(self.args)
-
-            call_command(f"ingress_{self.app_name}", json=json_args, stdout=out, stderr=out)
+            full_ingress_mode = getattr(settings, 'FULL_INGRESS', False)
+            call_command(f"ingress_{self.app_name}", json=json_args,
+                         stdout=out, stderr=out, full=full_ingress_mode)
 
             output = out.getvalue()
             sys.stdout.write(output)

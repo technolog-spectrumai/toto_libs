@@ -16,6 +16,8 @@ class Command(IngressCommand):
             description="A kanban board with tasks, columns, and sprint setup.",
             link="/kanban/"
         )
+        if not self.full:
+            return
 
         # Use existing user or create demo
         user, _ = User.objects.get_or_create(username="admin", defaults={"email": "demo@example.com"})

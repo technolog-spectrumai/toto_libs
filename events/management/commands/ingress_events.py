@@ -20,6 +20,8 @@ class Command(IngressCommand):
             description="Manage and explore venture-related events",
             link="/events/calendar/"
         )
+        if not self.full:
+            return
 
         # 🎭 Create Event Categories
         categories = []

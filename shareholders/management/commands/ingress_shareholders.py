@@ -19,6 +19,8 @@ class Command(IngressCommand):
             description="Shareholder Lists.",
             link="/shareholders/companies/"
         )
+        if not self.full:
+            return
 
         self.stdout.write("🌱 Seeding companies and shareholders...")
 

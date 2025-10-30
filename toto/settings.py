@@ -345,11 +345,8 @@ FIELD_ENCRYPTION_KEY = 'GYVe39sJIvujld8u5NlnFStQXEkZnLDAXxtD6p2UfWs='
 
 INGRESS_ALLOWED_APPS = [
     'oya',
-    'webfront',
     "memo",
-    "editor",
     "gervazy",
-    "gitops",
     "vault",
     "community",
     "shareholders",
@@ -357,6 +354,8 @@ INGRESS_ALLOWED_APPS = [
     "events",
     "kanban"
 ]
+
+FULL_INGRESS = DEBUG
 
 GIT_REPO_BASE_DIR = BASE_DIR / 'git_repos'
 

@@ -19,6 +19,8 @@ class Command(IngressCommand):
             description="Portfolio of ventures and investments",
             link="/portfolio/"
         )
+        if not self.full:
+            return
 
         # 💱 Create currencies
         currency_data = [

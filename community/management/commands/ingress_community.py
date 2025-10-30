@@ -16,6 +16,8 @@ class Command(IngressCommand):
             link="/community/org-chart/",
             public=False,
         )
+        if not self.full:
+            return
 
         self.stdout.write(self.style.NOTICE("📍 Creating company address..."))
         address_args = self.get_address_arguments()

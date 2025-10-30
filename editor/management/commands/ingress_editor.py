@@ -15,6 +15,8 @@ class Command(IngressCommand):
     help = "Seed a LaTeX document with tags, department, presets, structured content, and in-place HTML conversion"
 
     def process(self, _):
+        if not self.full:
+            return
 
         self.stdout.write("🚀 Starting document ingress...")
 

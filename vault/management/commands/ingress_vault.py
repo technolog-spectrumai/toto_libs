@@ -17,6 +17,8 @@ class Command(IngressCommand):
             link="/vault/",
             public=False
         )
+        if not self.full:
+            return
 
         username = "admin"
         try:
