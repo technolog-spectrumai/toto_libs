@@ -13,6 +13,7 @@ import jsonschema
 from django.core.exceptions import ValidationError
 from django.core.files import File
 import logging
+from django.utils.timezone import now
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,95 @@ class LatexProject(models.Model):
         return self.name
 
 
+class LatexCompilationProcess(models.Model):
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('running', 'Running'),
+        ('success', 'Success'),
+        ('failed', 'Failed'),
+    ]
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    log = models.TextField(blank=True)
+    started_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    tex_file = models.FileField(upload_to='latex_compilation/tex/', blank=True, null=True)
+    aux_file = models.FileField(upload_to='latex_compilation/aux/', blank=True, null=True)
+    pdf_file = models.FileField(upload_to='latex_compilation/pdf/', blank=True, null=True)
+    output_dir = models.CharField(max_length=512, blank=True, null=True)
+
+    def __str__(self):
+        return f"Compilation for {self.tex_file.name if self.tex_file else 'unspecified'} [{self.status}]"
+
+    @staticmethod
+    def run_pdflatex(output_dir, tex_path):
+        subprocess.run(
+            ['pdflatex', '-interaction=nonstopmode', '-output-directory', output_dir, tex_path],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+
+    def run_compile(self):
+        log = []
+        self.status = 'running'
+        self.started_at = now()
+        self.save()
+
+        try:
+            # Prepare output directory
+            output_dir = Path(self.output_dir)
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            # Prepare .tex file
+            tex_path = output_dir / 'main.tex'
+            with open(tex_path, 'wb') as f:
+                f.write(self.tex_file.read())
+            log.append(f"Copied source file to '{tex_path}'")
+
+            # Run pdflatex (first pass)
+            self.run_pdflatex(str(output_dir), str(tex_path))
+            log.append("First pdflatex run completed.")
+
+            # Check for .aux file
+            aux_path = output_dir / 'main.aux'
+            if not aux_path.exists():
+                self.run_pdflatex(str(output_dir), str(tex_path))
+                log.append("Second pdflatex run completed (aux file was missing).")
+
+            # Check for PDF output
+            pdf_path = output_dir / 'main.pdf'
+            if pdf_path.exists():
+                log.append(f"PDF successfully generated at '{pdf_path}'")
+
+                # Save aux file
+                if aux_path.exists():
+                    with open(aux_path, 'rb') as f:
+                        self.aux_file.save(aux_path.name, File(f), save=False)
+
+                # Save pdf file
+                with open(pdf_path, 'rb') as f:
+                    self.pdf_file.save(pdf_path.name, File(f), save=False)
+                    pdf_content = f.read()
+
+                self.status = 'success'
+            else:
+                log.append("PDF not found after compilation.")
+                self.status = 'failed'
+                pdf_content = None
+
+        except subprocess.CalledProcessError as e:
+            error_msg = e.stderr.decode()
+            log.append(f"LaTeX compilation failed: {error_msg}")
+            self.status = 'failed'
+            pdf_content = None
+
+        self.log = "\n".join(log)
+        self.finished_at = now()
+        self.save()
+
+        return pdf_content
+
+
 class TexFile(models.Model):
     project = models.ForeignKey(
         LatexProject,
@@ -74,63 +164,58 @@ class TexFile(models.Model):
     def __str__(self):
         return self.filename
 
-    @staticmethod
-    def run_pdflatex(output_dir, tex_path):
-        subprocess.run(
-            ['pdflatex', '-interaction=nonstopmode', '-output-directory', output_dir, tex_path],
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
+    def _creation_compilation(self, tex_path: Path, aux_path: Path, pdf_path: Path,
+                              output_dir: Path) -> LatexCompilationProcess:
+        process = LatexCompilationProcess.objects.create(
+            output_dir=str(output_dir),
+            status='pending'
         )
 
-    def _compile(self):
-        if not self.file:
-            logger.error(f"TexFile '{self.filename}' has no source file to compile.")
-            raise ValueError("No LaTeX source file to compile.")
+        # Save .tex file
+        if tex_path.exists():
+            with open(tex_path, 'rb') as f:
+                process.tex_file.save(tex_path.name, File(f), save=False)
 
+        # Save .aux file
+        if aux_path.exists():
+            with open(aux_path, 'rb') as f:
+                process.aux_file.save(aux_path.name, File(f), save=False)
+
+        # Save .pdf file
+        if pdf_path.exists():
+            with open(pdf_path, 'rb') as f:
+                process.pdf_file.save(pdf_path.name, File(f), save=False)
+
+        process.save()
+        return process
+
+    def compile(self):
         key = self.project.get_key()
         output_dir = self.project.get_dir_path()
         output_dir.mkdir(parents=True, exist_ok=True)
+
         tex_path = output_dir / f"{key}.tex"
         shutil.copy2(self.file.path, tex_path)
-        logger.debug(f"Copied source file to '{tex_path}' for compilation.")
 
-        self.run_pdflatex(output_dir, tex_path)
+        aux_path = output_dir / f"{key}.aux"
+        pdf_path = output_dir / self.filename.replace('.tex', '.pdf')
 
-        aux_file = output_dir / f"{key}.aux"
-        if not aux_file.exists():
-            self.run_pdflatex(output_dir, tex_path)
-            logger.info(f"Ran pdflatex again for missing aux file '{aux_file}'")
+        process = self._creation_compilation(tex_path, aux_path, pdf_path, output_dir)
+        pdf_content = process.run_compile()
+        if not pdf_content:
+            raise RuntimeError("PDF file was not generated.")
 
-        output_pdf = output_dir / self.filename.replace('.tex', '.pdf')
-        if output_pdf.exists():
-            logger.debug(f"PDF generated at '{output_pdf}'")
-            with open(output_pdf, 'rb') as pdf_file:
-                return pdf_file.read()
-        logger.warning(f"PDF not found after compilation for '{self.filename}'")
-        return None
-
-    def compile(self):
-        try:
-            pdf_content = self._compile()
-            if not pdf_content:
-                raise RuntimeError("PDF file was not generated.")
-
-            vault_file = VaultFile.objects.create(
-                owner=self.project.user,
-                title=f"{self.filename} (compiled)",
-                file_type='pdf',
-                bucket=self.project.bucket,
-                file=ContentFile(pdf_content, name=f"{self.filename}.pdf")
-            )
-            vault_file.content_hash = vault_file.create_hash()
-            vault_file.save()
-            logger.debug(f"VaultFile created for '{self.filename}' as '{vault_file.title}' (ID: {vault_file.id})")
-            return vault_file
-
-        except subprocess.CalledProcessError as e:
-            logger.error(f"LaTeX compilation failed for '{self.filename}': {e.stderr.decode()}")
-            raise RuntimeError(f"LaTeX compilation failed: {e.stderr.decode()}")
+        vault_file = VaultFile.objects.create(
+            owner=self.project.user,
+            title=f"{self.filename} (compiled)",
+            file_type='pdf',
+            bucket=self.project.bucket,
+            file=ContentFile(pdf_content, name=f"{self.filename}.pdf")
+        )
+        vault_file.content_hash = vault_file.create_hash()
+        vault_file.save()
+        logger.debug(f"VaultFile created for '{self.filename}' as '{vault_file.title}' (ID: {vault_file.id})")
+        return vault_file
 
 
 class LatexTemplate(models.Model):

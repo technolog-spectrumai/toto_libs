@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from .models import LatexProject, TexFile
 from django import forms
 from django_ace import AceWidget
@@ -8,7 +10,7 @@ from django.contrib import admin, messages
 from django.db.models import JSONField
 from django.utils.html import format_html
 from django_json_widget.widgets import JSONEditorWidget
-from .models import LatexGenerator
+from .models import LatexGenerator, LatexCompilationProcess
 from .batch import BatchAction
 import jsonschema
 from .tasks import compile_project_task
@@ -163,8 +165,77 @@ class LatexProjectAdmin(admin.ModelAdmin):
     @admin.action(description="Compile all LaTeX files in selected projects (async)")
     def compile_selected_projects(self, request, queryset):
         for project in queryset:
-            compile_project_task.delay(project.id)
+            #compile_project_task.delay(project.id)
+            project = LatexProject.objects.get(id=project.id)
+            compiled_files = project.compile_all()
             self.message_user(request, f"Queued compilation for project {project.name}", messages.INFO)
 
     actions = [compile_selected_projects]
+
+
+from django.contrib import admin
+from django.utils.html import format_html
+from .models import LatexCompilationProcess
+
+@admin.register(LatexCompilationProcess)
+class LatexCompilationProcessAdmin(admin.ModelAdmin):
+    list_display = (
+        'tex_file_name',
+        'status',
+        'started_at',
+        'finished_at',
+        'colored_status',
+    )
+    search_fields = ('tex_file__name', 'pdf_file__name')
+    list_filter = ('status', 'started_at', 'finished_at')
+    readonly_fields = (
+        'log',
+        'output_dir',
+        'started_at',
+        'finished_at',
+        'tex_file_link',
+        'aux_file_link',
+        'pdf_file_link',
+    )
+    exclude = ('tex_file', 'aux_file', 'pdf_file')
+
+    def tex_file_name(self, obj):
+        if obj.tex_file:
+            return Path(obj.tex_file.name).name
+        return "—"
+    tex_file_name.short_description = "TeX Filename"
+
+    def colored_status(self, obj):
+        color_map = {
+            'pending': 'gray',
+            'running': 'orange',
+            'success': 'green',
+            'failed': 'red',
+        }
+        color = color_map.get(obj.status, 'black')
+        return format_html(
+            '<span style="color: {}; font-weight: bold;">{}</span>',
+            color,
+            obj.get_status_display()
+        )
+    colored_status.short_description = "Status"
+
+    def tex_file_link(self, obj):
+        if obj.tex_file:
+            return format_html('<a href="{}" target="_blank">📄 {}</a>', obj.tex_file.url, obj.tex_file.name)
+        return "—"
+    tex_file_link.short_description = "TeX File"
+
+    def aux_file_link(self, obj):
+        if obj.aux_file:
+            return format_html('<a href="{}" target="_blank">📎 {}</a>', obj.aux_file.url, obj.aux_file.name)
+        return "—"
+    aux_file_link.short_description = "Aux File"
+
+    def pdf_file_link(self, obj):
+        if obj.pdf_file:
+            return format_html('<a href="{}" target="_blank">📘 {}</a>', obj.pdf_file.url, obj.pdf_file.name)
+        return "—"
+    pdf_file_link.short_description = "PDF File"
+
 
