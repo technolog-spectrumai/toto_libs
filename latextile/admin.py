@@ -1,5 +1,4 @@
 from pathlib import Path
-
 from .models import LatexProject, TexFile
 from django import forms
 from django_ace import AceWidget
@@ -14,6 +13,7 @@ from .models import LatexGenerator, LatexCompilationProcess
 from .batch import BatchAction
 import jsonschema
 from .tasks import compile_project_task
+
 
 
 class LatexTemplateForm(forms.ModelForm):
@@ -162,17 +162,21 @@ class LatexProjectAdmin(admin.ModelAdmin):
     search_fields = ['name', 'user__username']
     list_filter = ['bucket', 'created_at']
 
-    @admin.action(description="Compile all LaTeX files in selected projects (async)")
     def compile_selected_projects(self, request, queryset):
-        for project in queryset:
+        def compile_one(project):
             #compile_project_task.delay(project.id)
             project = LatexProject.objects.get(id=project.id)
             compiled_files = project.compile_all()
-            self.message_user(request, f"Queued compilation for project {project.name}", messages.INFO)
+
+        result = BatchAction(queryset).run(compile_one)
+        BatchAction.display_messages(result, self.message_user, request, verb="Queued compilation")
+
+    compile_selected_projects.short_description = "Compile all LaTeX files in selected projects"
 
     actions = [compile_selected_projects]
 
 
+#
 from django.contrib import admin
 from django.utils.html import format_html
 from .models import LatexCompilationProcess
