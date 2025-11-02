@@ -19,16 +19,18 @@ class Command(IngressCommand):
             description="Portfolio of ventures and investments",
             link="/portfolio/"
         )
-        if not self.full:
-            return
-
-        # 💱 Create currencies
         currency_data = [
-            ('BTC', 'Bitcoin', True),
-            ('ETH', 'Ethereum', True),
             ('USD', 'US Dollar', False),
-            ('VC', 'Virtual Credit', False)
+            ('PLN', 'Polish Zloty', False)
         ]
+        if self.full:
+            currency_data.extend([
+                ('BTC', 'Bitcoin', True),
+                ('ETH', 'Ethereum', True),
+                ('EUR', 'Euro', False),
+                ('GBP', 'British Pound', False)
+            ])
+
         currencies = []
         for symbol, name, is_crypto in currency_data:
             currency, _ = Currency.objects.get_or_create(
@@ -42,6 +44,23 @@ class Command(IngressCommand):
             )
             currencies.append(currency)
 
+        # 🏛️ Ensure active chamber
+        default_currency = Currency.objects.get(symbol="PLN")
+        active_chambers = Chamber.objects.filter(active=True)
+        if active_chambers.count() == 0:
+            chamber = Chamber.objects.create(
+                name="SpectrumAi.pl",
+                active=True,
+                default_currency=default_currency
+            )
+            self.stdout.write(self.style.SUCCESS("🏛️ Created active chamber: SpectrumAi.pl"))
+        elif active_chambers.count() == 1:
+            chamber = active_chambers.first()
+        else:
+            raise Exception("❌ Multiple active chambers detected. Only one chamber can be active at a time.")
+
+        if not self.full:
+            return
         # 🏢 Create companies if fewer than 3 exist
         companies = list(Company.objects.all())
         while len(companies) < 3:
@@ -55,21 +74,6 @@ class Command(IngressCommand):
             )
             companies.append(company)
             self.stdout.write(self.style.SUCCESS(f"🏢 Created company: {company.name}"))
-
-        # 🏛️ Ensure active chamber
-        usd_currency = Currency.objects.get(symbol="USD")
-        active_chambers = Chamber.objects.filter(active=True)
-        if active_chambers.count() == 0:
-            chamber = Chamber.objects.create(
-                name="SpectrumAi.pl",
-                active=True,
-                default_currency=usd_currency
-            )
-            self.stdout.write(self.style.SUCCESS("🏛️ Created active chamber: SpectrumAi.pl"))
-        elif active_chambers.count() == 1:
-            chamber = active_chambers.first()
-        else:
-            raise Exception("❌ Multiple active chambers detected. Only one chamber can be active at a time.")
 
         # 📦 Create ventures linked to 3 random companies
         selected_companies = random.sample(companies, 3)
