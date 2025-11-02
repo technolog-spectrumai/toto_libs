@@ -51,12 +51,12 @@ def fund_overview(request):
         },
     ]
 
-    for currency in currency_totals:
-        performance_metrics.append({
-            "label": f"Total in {currency.symbol}",
-            "currency": currency,
-            "value": round(currency.total_investment or 0, 2)
-        })
+    # for currency in currency_totals:
+    #     performance_metrics.append({
+    #         "label": f"Total in {currency.symbol}",
+    #         "currency": currency,
+    #         "value": round(currency.total_investment or 0, 2)
+    #     })
 
     ventures = Venture.objects.annotate(
         funding_rounds_count=Count('funding_rounds'),
