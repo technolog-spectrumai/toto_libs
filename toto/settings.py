@@ -183,24 +183,24 @@ WSGI_APPLICATION = 'toto.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-if DJANGO_ENV == "PROD":
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.postgresql',
-            'NAME': os.getenv('DB_NAME'),
-            'USER': os.getenv('DB_USER'),
-            'PASSWORD': os.getenv('DB_PASSWORD'),
-            'HOST': os.getenv('DB_HOST'),
-            'PORT': os.getenv('DB_PORT'),
-        }
+# if DJANGO_ENV == "PROD":
+#     DATABASES = {
+#         'default': {
+#             'ENGINE': 'django.db.backends.postgresql',
+#             'NAME': os.getenv('DB_NAME'),
+#             'USER': os.getenv('DB_USER'),
+#             'PASSWORD': os.getenv('DB_PASSWORD'),
+#             'HOST': os.getenv('DB_HOST'),
+#             'PORT': os.getenv('DB_PORT'),
+#         }
+#     }
+# else:
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
     }
-else:
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
-        }
-    }
+}
 
 
 # Password validation
@@ -304,37 +304,11 @@ CACHES = {
     }
 }
 
-LOG_PATH = os.path.join(BASE_DIR, 'log.txt')  # assuming BASE_DIR points to your project root
 
-LOGGING = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "formatters": {
-        "simple": {
-            "format": "[{levelname}] {asctime} {name} - {message}",
-            "style": "{",
-        },
-    },
-    "handlers": {
-        "file": {
-            "class": "logging.FileHandler",
-            "filename": LOG_PATH,
-            "formatter": "simple",
-        },
-    },
-    "root": {
-        "handlers": ["file"],
-        "level": "INFO",
-    },
-}
 
 LOGIN_URL = '/community/login/'
 
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost") if DJANGO_ENV != "PROD" else "redis_toto"
-CELERY_BROKER_URL = f'redis://{REDIS_HOST}:6379/0'
-CELERY_RESULT_BACKEND = f'redis://{REDIS_HOST}:6379/0'
-CELERY_TIMEZONE = 'UTC'
-CELERY_ENABLE_UTC = True
 
 FIELD_ENCRYPTION_KEY = 'GYVe39sJIvujld8u5NlnFStQXEkZnLDAXxtD6p2UfWs='
 
@@ -369,6 +343,8 @@ for app in INSTALLED_APPS:
         'propagate': False,
     }
 
+LOG_PATH = os.path.join(BASE_DIR, 'log.txt')  # assuming BASE_DIR points to your project root
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -399,7 +375,6 @@ AUDITED_APPS = [
     "editor",
     "vault",
     "portfolio",
-    "gitops",
     "latextile",
     "community",
     "shareholders",
