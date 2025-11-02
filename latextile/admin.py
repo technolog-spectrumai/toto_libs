@@ -164,10 +164,8 @@ class LatexProjectAdmin(admin.ModelAdmin):
 
     def compile_selected_projects(self, request, queryset):
         def compile_one(project):
-            task = compile_project_task.delay(project.id)
-            print("--->", task)
-            #project = LatexProject.objects.get(id=project.id)
-            #compiled_files = project.compile_all()
+            project = LatexProject.objects.get(id=project.id)
+            compiled_files = project.compile_all()
 
         result = BatchAction(queryset).run(compile_one)
         BatchAction.display_messages(result, self.message_user, request, verb="Queued compilation")
