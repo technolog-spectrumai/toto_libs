@@ -13,7 +13,9 @@ from .models import LatexGenerator, LatexCompilationProcess
 from .batch import BatchAction
 import jsonschema
 from .tasks import compile_project_task
-
+from django.contrib import admin
+from django.utils.html import format_html
+from .models import LatexCompilationProcess
 
 
 class LatexTemplateForm(forms.ModelForm):
@@ -164,7 +166,7 @@ class LatexProjectAdmin(admin.ModelAdmin):
 
     def compile_selected_projects(self, request, queryset):
         def compile_one(project):
-            #compile_project_task.delay(project.id)
+            # compile_project_task.delay(project.id)
             project = LatexProject.objects.get(id=project.id)
             compiled_files = project.compile_all()
 
@@ -175,11 +177,6 @@ class LatexProjectAdmin(admin.ModelAdmin):
 
     actions = [compile_selected_projects]
 
-
-#
-from django.contrib import admin
-from django.utils.html import format_html
-from .models import LatexCompilationProcess
 
 @admin.register(LatexCompilationProcess)
 class LatexCompilationProcessAdmin(admin.ModelAdmin):
