@@ -24,7 +24,6 @@ urlpatterns = [
     ),
     path('', lambda request: redirect('nest/root')),
     path("memo/", include("memo.urls", namespace="memo")),
-    path("webfront/", include("webfront.urls")),
     path("portfolio/", include("portfolio.urls", namespace="portfolio")),
     path("shareholders/", include("shareholders.urls", namespace="shareholders")),
     path("vault/", include("vault.urls", namespace="vault")),
