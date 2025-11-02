@@ -5,17 +5,15 @@ from django_ace import AceWidget
 from django.core.files.base import ContentFile
 from vault.models import VaultFile
 from .models import LatexTemplate
-from django.contrib import admin, messages
 from django.db.models import JSONField
-from django.utils.html import format_html
 from django_json_widget.widgets import JSONEditorWidget
-from .models import LatexGenerator, LatexCompilationProcess
+from .models import LatexGenerator
 from .batch import BatchAction
 import jsonschema
-from .tasks import compile_project_task
 from django.contrib import admin
 from django.utils.html import format_html
 from .models import LatexCompilationProcess
+from .tasks import compile_project_task
 
 
 class LatexTemplateForm(forms.ModelForm):
@@ -166,9 +164,9 @@ class LatexProjectAdmin(admin.ModelAdmin):
 
     def compile_selected_projects(self, request, queryset):
         def compile_one(project):
-            # compile_project_task.delay(project.id)
-            project = LatexProject.objects.get(id=project.id)
-            compiled_files = project.compile_all()
+            compile_project_task.delay(project.id)
+            #project = LatexProject.objects.get(id=project.id)
+            #compiled_files = project.compile_all()
 
         result = BatchAction(queryset).run(compile_one)
         BatchAction.display_messages(result, self.message_user, request, verb="Queued compilation")
