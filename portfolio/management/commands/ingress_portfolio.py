@@ -1,15 +1,15 @@
 from oya.ingress import IngressCommand
-from portfolio.models import Chamber, Currency, Venture, Transaction
-from shareholders.models import Company
-import random
-from datetime import timedelta
+from portfolio.models import Chamber, Currency, Venture, Transaction, Company, Shareholder
+from django.contrib.auth.models import User
 from django.utils.timezone import now
+from datetime import timedelta
+import random
 from faker import Faker
 
 fake = Faker()
 
 class Command(IngressCommand):
-    help = "Seed sample data for SpectrumAi.pl Chamber: ventures, currencies, transactions, and events"
+    help = "Seed sample data for SpectrumAi.pl Chamber: ventures, currencies, transactions, companies, shareholders"
 
     def process(self, _):
         # 📊 Dashboard block
@@ -42,14 +42,26 @@ class Command(IngressCommand):
             )
             currencies.append(currency)
 
+        # 🏢 Create companies if fewer than 3 exist
+        companies = list(Company.objects.all())
+        while len(companies) < 3:
+            company = Company.objects.create(
+                name=fake.unique.company(),
+                registration_number=fake.unique.bothify(text='??#####'),
+                country=fake.country(),
+                industry=fake.job(),
+                date_founded=fake.date_between(start_date='-10y', end_date='-1y'),
+                is_active=True
+            )
+            companies.append(company)
+            self.stdout.write(self.style.SUCCESS(f"🏢 Created company: {company.name}"))
+
         # 🏛️ Ensure active chamber
         usd_currency = Currency.objects.get(symbol="USD")
         active_chambers = Chamber.objects.filter(active=True)
         if active_chambers.count() == 0:
             chamber = Chamber.objects.create(
                 name="SpectrumAi.pl",
-                manifest="Multi-chain crypto growth",
-                strategy="Long-term decentralized innovation",
                 active=True,
                 default_currency=usd_currency
             )
@@ -59,14 +71,8 @@ class Command(IngressCommand):
         else:
             raise Exception("❌ Multiple active chambers detected. Only one chamber can be active at a time.")
 
-        # 🏢 Select 3 random companies
-        all_companies = list(Company.objects.all())
-        if len(all_companies) < 3:
-            raise Exception("❌ Not enough companies to seed ventures. Please create at least 3 companies first.")
-
-        selected_companies = random.sample(all_companies, 3)
-
-        # 📦 Create ventures linked to selected companies
+        # 📦 Create ventures linked to 3 random companies
+        selected_companies = random.sample(companies, 3)
         ventures = []
         for company in selected_companies:
             venture_name = f"{company.name} Venture"
@@ -83,7 +89,7 @@ class Command(IngressCommand):
             if created:
                 self.stdout.write(self.style.SUCCESS(f"📦 Created venture: {venture_name} (Company: {company.name})"))
 
-        # 🔁 Add transactions (funding rounds)
+        # 💸 Add transactions (funding rounds)
         for venture in ventures:
             for i in range(2):
                 currency = random.choice(currencies)
@@ -94,6 +100,21 @@ class Command(IngressCommand):
                     currency=currency,
                     venture=venture,
                     timestamp=now() - timedelta(days=random.randint(1, 30))
+                )
+
+        # 👤 Add shareholders and share transactions
+        users = list(User.objects.all())
+        for company in companies:
+            for _ in range(random.randint(3, 6)):
+                user = random.choice(users) if users and random.random() < 0.7 else None
+                shareholder = Shareholder.objects.create(
+                    company=company,
+                    full_name=fake.name(),
+                    email=fake.unique.email(),
+                    shares_owned=random.randint(100, 1000),
+                    date_joined=fake.date_between(start_date='-2y', end_date='today'),
+                    is_active=True,
+                    user=user
                 )
 
         self.stdout.write(self.style.SUCCESS("✅ SpectrumAi.pl ingress complete."))

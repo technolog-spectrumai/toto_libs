@@ -1,17 +1,18 @@
 from django.contrib import admin
 from .models import (
-    Chamber, Currency,
-    Venture, Transaction
+    Currency,
+    Company,
+    Shareholder,
+    Venture,
+    Transaction,
+    Chamber
 )
-from decimal import Decimal
-
 
 @admin.register(Chamber)
 class ChamberAdmin(admin.ModelAdmin):
-    list_display = ('name', 'active', 'created_at')
-    list_filter = ('active',)
+    list_display = ('name', 'default_currency', 'active')
+    list_filter = ('active', 'default_currency')
     search_fields = ('name',)
-
 
 @admin.register(Currency)
 class CurrencyAdmin(admin.ModelAdmin):
@@ -20,10 +21,24 @@ class CurrencyAdmin(admin.ModelAdmin):
     search_fields = ('symbol', 'name')
 
 
+@admin.register(Company)
+class CompanyAdmin(admin.ModelAdmin):
+    list_display = ('name', 'registration_number', 'country', 'industry', 'date_founded', 'is_active')
+    list_filter = ('country', 'industry', 'is_active')
+    search_fields = ('name', 'registration_number')
+
+
+@admin.register(Shareholder)
+class ShareholderAdmin(admin.ModelAdmin):
+    list_display = ('full_name', 'email', 'shares_owned', 'company', 'date_joined', 'is_active')
+    list_filter = ('is_active', 'company')
+    search_fields = ('full_name', 'email', 'company__name')
+
+
 @admin.register(Venture)
 class VentureAdmin(admin.ModelAdmin):
     list_display = ('name', 'url', 'start', 'end', 'company')
-    search_fields = ('name',)
+    search_fields = ('name', 'company__name')
 
 
 @admin.register(Transaction)

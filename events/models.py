@@ -1,6 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
-from portfolio.models import Venture  # Adjust if your app name is different
+from portfolio.models import Venture
 
 # 📁 Event Category
 class EventCategory(models.Model):

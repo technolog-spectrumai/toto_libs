@@ -70,7 +70,6 @@ INSTALLED_APPS = [
     "portfolio",
     "latextile",
     "community",
-    "shareholders",
     "events",
     "audit",
     "kanban"
@@ -318,7 +317,6 @@ INGRESS_ALLOWED_APPS = [
     "gervazy",
     "vault",
     "community",
-    "shareholders",
     "portfolio",
     "events",
     "kanban"
@@ -377,7 +375,6 @@ AUDITED_APPS = [
     "portfolio",
     "latextile",
     "community",
-    "shareholders",
     "events"
 ]
 

@@ -1,13 +1,29 @@
-from django.shortcuts import render
-from django.db.models import Sum, Count
-from django.core.exceptions import ImproperlyConfigured
-from operator import attrgetter
-from .models import Chamber, Venture, Transaction
-from shareholders.models import Company
+from django.shortcuts import render, get_object_or_404
+from django.views.generic import ListView, DetailView
+from django.db.models import Count, Sum
+from .models import Venture, Transaction, Currency, Chamber, Company, Shareholder
 from .page import PageProcessor
+from django.core.exceptions import ImproperlyConfigured
 
-def chamber_overview(request):
-    # 🏛️ Load Active Chamber
+
+# 🏢 Company Detail View
+class CompanyDetailView(DetailView):
+    model = Company
+    template_name = 'portfolio/company_detail.html'
+    context_object_name = 'company'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        shareholders = Shareholder.objects.filter(company=self.object)
+        context['shareholders'] = shareholders
+        context['total_shares'] = sum(s.shares_owned for s in shareholders)
+        context['share_labels'] = [s.full_name for s in shareholders]
+        context['share_data'] = [s.shares_owned for s in shareholders]
+        return PageProcessor().decorate(context, self.request)
+
+# 💸 Fund Overview View
+def fund_overview(request):
+
     active_chambers = Chamber.objects.filter(active=True)
 
     if active_chambers.count() == 0:
@@ -17,55 +33,46 @@ def chamber_overview(request):
 
     chamber = active_chambers.first()
 
-    # 🧠 Chamber Identity
     total_ventures = Venture.objects.count()
+    total_transactions = Transaction.objects.count()
 
-    # 💸 Total Investment in Default Currency
-    total_investment = None
-    if chamber.default_currency:
-        total_investment = Transaction.objects.filter(
-            currency=chamber.default_currency
-        ).aggregate(total=Sum('amount'))['total'] or 0
+    currency_totals = Currency.objects.filter(active=True).annotate(
+        total_investment=Sum('transaction__amount')
+    )
 
-    chamber_data = {
-        "name": chamber.name,
-        "manifest": chamber.manifest,
-        "strategy": chamber.strategy,
-        "created_at": chamber.created_at,
-        "total_ventures": total_ventures,
-        "total_investment": round(total_investment, 2) if total_investment is not None else None
-    }
-
-    # 📊 Performance Summary
     performance_metrics = [
         {
-            "label": "Total Investment",
-            "currency": chamber.default_currency,
-            "value": total_investment
+            "label": "Total Ventures",
+            "value": total_ventures
         },
         {
-            "label": "Total Venture Count",
-            "value": total_ventures
+            "label": "Total Transactions",
+            "value": total_transactions
         },
     ]
 
-    # 📦 Ventures with funding stats
+    for currency in currency_totals:
+        performance_metrics.append({
+            "label": f"Total in {currency.symbol}",
+            "currency": currency,
+            "value": round(currency.total_investment or 0, 2)
+        })
+
     ventures = Venture.objects.annotate(
         funding_rounds_count=Count('funding_rounds'),
         total_funding=Sum('funding_rounds__amount')
     )
 
-    # 🏢 Companies with aggregated venture funding
     companies = Company.objects.annotate(
         venture_count=Count('ventures'),
         total_funding=Sum('ventures__funding_rounds__amount')
     ).filter(venture_count__gt=0)
 
     context = {
-        "chamber": chamber_data,
         "performance_metrics": performance_metrics,
         "ventures": ventures,
-        "companies": companies
+        "companies": companies,
+        "chamber": chamber
     }
 
     decorated_context = PageProcessor().decorate(context, request)
@@ -84,4 +91,4 @@ def chamber_overview(request):
 
     decorated_context["chart_colors"] = chart_colors
 
-    return render(request, "portfolio/main.html", decorated_context)
+    return render(request, "portfolio/fund_overview.html", decorated_context)

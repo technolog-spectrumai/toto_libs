@@ -1,7 +1,21 @@
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils.timezone import now
-from shareholders.models import Company
+
+# 🏛️ Chamber
+class Chamber(models.Model):
+    name = models.CharField(max_length=255)
+    default_currency = models.ForeignKey(
+        'Currency',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='chambers'
+    )
+    active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return self.name
 
 
 # 💱 Currency
@@ -15,29 +29,32 @@ class Currency(models.Model):
     def __str__(self):
         return f"{self.name} ({self.symbol})"
 
-# 🏛️ Chamber
-class Chamber(models.Model):
-    name = models.CharField(max_length=255)
-    manifest = models.CharField(max_length=1024, default="")
-    strategy = models.CharField(max_length=1024, default="")
-    created_at = models.DateTimeField(auto_now_add=True)
-    active = models.BooleanField(default=True)
-    default_currency = models.ForeignKey(
-        Currency,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='default_for_chambers'
-    )
-
-    def save(self, *args, **kwargs):
-        self.full_clean()
-        super().save(*args, **kwargs)
+# 🏢 Company
+class Company(models.Model):
+    name = models.CharField(max_length=255, unique=True)
+    registration_number = models.CharField(max_length=100, unique=True)
+    country = models.CharField(max_length=100)
+    industry = models.CharField(max_length=100)
+    date_founded = models.DateField()
+    is_active = models.BooleanField(default=True)
 
     def __str__(self):
         return self.name
 
-# 📦 Venture (formerly Asset)
+# 👤 Shareholder
+class Shareholder(models.Model):
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='shareholders')
+    full_name = models.CharField(max_length=255)
+    email = models.EmailField(unique=True)
+    shares_owned = models.PositiveIntegerField()
+    date_joined = models.DateField(auto_now_add=True)
+    is_active = models.BooleanField(default=True)
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='shareholder_profile')
+
+    def __str__(self):
+        return f"{self.full_name} ({self.shares_owned} shares in {self.company.name})"
+
+# 📦 Venture
 class Venture(models.Model):
     name = models.CharField(max_length=100)
     url = models.URLField(blank=True, null=True)

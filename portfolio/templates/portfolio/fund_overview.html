@@ -113,10 +113,6 @@
         <div class="p-4 rounded border"
              :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
           <p><strong>Name:</strong> {{ chamber.name }}</p>
-          <p><strong>Manifest:</strong> {{ chamber.manifest }}</p>
-          <p><strong>Strategy:</strong> {{ chamber.strategy }}</p>
-          <p><strong>Total Ventures:</strong> {{ chamber.total_ventures }}</p>
-          <p><strong>Created:</strong> {{ chamber.created_at|date:"F j, Y" }}</p>
         </div>
       </div>
     </section>
@@ -151,11 +147,23 @@
 
           {% if venture.company %}
             <p>Company:
-              <a href="{% url 'shareholders:company-detail' venture.company.pk %}"
+              <a href="{% url 'portfolio:company-detail' venture.company.pk %}"
                  class="underline text-blue-600 dark:text-blue-400">
                 {{ venture.company.name }}
               </a>
             </p>
+            <ul class="ml-4 text-sm">
+              <li><strong>Industry:</strong> {{ venture.company.industry }}</li>
+              <li><strong>Country:</strong> {{ venture.company.country }}</li>
+              <li><strong>Venture Count:</strong> {{ venture.company.venture_count }}</li>
+              <li><strong>Total Funding:</strong>
+                {% if chamber.default_currency %}
+                  {{ venture.company.total_funding|floatformat:2 }} {{ chamber.default_currency.symbol }}
+                {% else %}
+                  {{ venture.company.total_funding|floatformat:2 }}
+                {% endif %}
+              </li>
+            </ul>
           {% endif %}
 
           {% if venture.url %}
@@ -187,7 +195,6 @@
         {% endfor %}
       </div>
     </section>
-
 
     <!-- 📈 Venture Chart -->
     <section>
