@@ -71,7 +71,8 @@ INSTALLED_APPS = [
     "community",
     "events",
     "audit",
-    "kanban"
+    "kanban",
+    "yamabiko"
 ]
 
 

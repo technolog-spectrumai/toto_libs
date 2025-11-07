@@ -28,6 +28,7 @@ class VaultFile(models.Model):
         ('image', 'Image'),
         ('html', 'HTML'),
         ('text', 'Text File'),
+        ('json', 'JSON'),
     ]
 
     owner = models.ForeignKey(User, on_delete=models.CASCADE)

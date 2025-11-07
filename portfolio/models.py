@@ -1,9 +1,11 @@
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils.timezone import now
+from yamabiko.models import SerializableModel
+
 
 # 🏛️ Chamber
-class Chamber(models.Model):
+class Chamber(SerializableModel):
     name = models.CharField(max_length=255)
     default_currency = models.ForeignKey(
         'Currency',
@@ -19,7 +21,7 @@ class Chamber(models.Model):
 
 
 # 💱 Currency
-class Currency(models.Model):
+class Currency(SerializableModel):
     symbol = models.CharField(max_length=20, unique=True)
     name = models.CharField(max_length=100)
     is_crypto = models.BooleanField(default=True)
@@ -30,7 +32,7 @@ class Currency(models.Model):
         return f"{self.name} ({self.symbol})"
 
 # 🏢 Company
-class Company(models.Model):
+class Company(SerializableModel):
     name = models.CharField(max_length=255, unique=True)
     registration_number = models.CharField(max_length=100, unique=True)
     country = models.CharField(max_length=100)
@@ -42,7 +44,7 @@ class Company(models.Model):
         return self.name
 
 # 👤 Shareholder
-class Shareholder(models.Model):
+class Shareholder(SerializableModel):
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='shareholders')
     full_name = models.CharField(max_length=255)
     email = models.EmailField(unique=True)
@@ -55,7 +57,7 @@ class Shareholder(models.Model):
         return f"{self.full_name} ({self.shares_owned} shares in {self.company.name})"
 
 # 📦 Venture
-class Venture(models.Model):
+class Venture(SerializableModel):
     name = models.CharField(max_length=100)
     url = models.URLField(blank=True, null=True)
     start = models.DateTimeField(default=now)
@@ -72,7 +74,7 @@ class Venture(models.Model):
         return self.name
 
 # 💸 Transaction
-class Transaction(models.Model):
+class Transaction(SerializableModel):
     name = models.CharField(max_length=255)
     amount = models.DecimalField(max_digits=20, decimal_places=2)
     currency = models.ForeignKey(Currency, on_delete=models.CASCADE)
