@@ -36,20 +36,24 @@ class ModelSerializer:
 
     def load_from_bucket(self, vault_file):
         """
-        Load JSONL data from a VaultFile and save it to the database.
-        Raises ValueError if file_type is not 'jsonl'.
+        Load JSON data from a VaultFile and save it to the database.
+        Raises ValueError if file_type is not 'json' or if model mismatch occurs.
         """
         if vault_file.file_type != 'json':
-            raise ValueError(f"Unsupported file type '{vault_file.file_type}'. Expected 'jsonl'.")
+            raise ValueError(f"Unsupported file type '{vault_file.file_type}'. Expected 'json'.")
 
         with tempfile.TemporaryDirectory() as tmpdir:
             json_path = os.path.join(tmpdir, os.path.basename(vault_file.file.name))
 
-            # Write file content to temp file
             with open(json_path, "wb") as f:
                 f.write(vault_file.file.read())
 
-            # Deserialize and save objects
             with open(json_path, "r") as f:
-                for obj in self.model_class.deserialize_data(f.read()):
+                deserialized = self.model_class.deserialize_data(f.read())
+                for obj in deserialized:
+                    if not isinstance(obj.object, self.model_class):
+                        raise ValueError(
+                            f"Model mismatch: expected {self.model_class.__name__}, "
+                            f"got {obj.object.__class__.__name__}"
+                        )
                     obj.save()
