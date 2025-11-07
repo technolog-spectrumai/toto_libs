@@ -2,33 +2,21 @@ import os
 
 from django.contrib import admin
 from django import forms
-from django.utils.text import slugify
 from django.core.files import File
 from nested_admin import NestedModelAdmin, NestedStackedInline
 from reversion.admin import VersionAdmin
 from .compiler import LatexCompiler
 from .models import (
-    Tag, Department,
+    Department,
     LatexPreset, Image,
     Document, DocumentSection, DocumentSubSection
 )
-from .convert import LatexToHTMLConverter, HTMLToLatexConverter
 from .batch import BatchAction
 from django_ace import AceWidget
-from django_tiptap.widgets import TipTapWidget
 from vault.models import VaultFile
 from django.utils.html import format_html
 from latextile.models import LatexProject, TexFile
 
-
-# ────────────────────────────────────────────────
-# 🔖 Tag & Department Admin
-# ────────────────────────────────────────────────
-
-@admin.register(Tag)
-class TagAdmin(admin.ModelAdmin):
-    search_fields = ['name']
-    list_display = ['name']
 
 
 @admin.register(Department)
@@ -60,16 +48,14 @@ class LatexPresetAdmin(admin.ModelAdmin):
 class DocumentSectionForm(forms.ModelForm):
     class Meta:
         model = DocumentSection
-        fields = ['title', 'order', 'is_raw', 'content']
+        fields = ['title', 'order', 'content']
 
     def __init__(self, *args, **kwargs):
         document = kwargs.pop('document', None)
         super().__init__(*args, **kwargs)
 
-        if self.instance.is_raw:
-            widget = AceWidget(mode='latex', theme='chrome')
-        else:
-            widget = TipTapWidget()
+        widget = AceWidget(mode='latex', theme='chrome')
+
 
         self.fields['content'].widget = widget
         self.fields['content'].widget.attrs.update({'style': 'font-family: monospace;'})
@@ -78,16 +64,13 @@ class DocumentSectionForm(forms.ModelForm):
 class DocumentSubSectionForm(forms.ModelForm):
     class Meta:
         model = DocumentSubSection
-        fields = ['title', 'order', 'is_raw', 'content', 'image']
+        fields = ['title', 'order','content', 'image']
 
     def __init__(self, *args, **kwargs):
         document = kwargs.pop('document', None)
         super().__init__(*args, **kwargs)
 
-        if self.instance.is_raw:
-            widget = AceWidget(mode='latex', theme='chrome')
-        else:
-            widget = TipTapWidget()
+        widget = AceWidget(mode='latex', theme='chrome')
 
         self.fields['content'].widget = widget
         self.fields['content'].widget.attrs.update({'style': 'font-family: monospace;'})
@@ -133,10 +116,9 @@ class DocumentSectionInline(NestedStackedInline):
 @admin.register(Document)
 class DocumentAdmin(VersionAdmin, NestedModelAdmin):
     list_display = ['title', 'version', 'created_by', 'created_at']
-    list_filter = ['department', 'tags', 'created_at']
+    list_filter = ['department', 'created_at']
     search_fields = ['title', 'slug']
     readonly_fields = ['created_at']
-    filter_horizontal = ['tags']
     prepopulated_fields = {'slug': ('title',)}
     inlines = [DocumentSectionInline]
     actions = ['export_tex']
@@ -147,11 +129,9 @@ class DocumentAdmin(VersionAdmin, NestedModelAdmin):
         def export_one(document):
             # Force all sections and subsections to save as raw (LaTeX)
             for section in document.sections.all():
-                section.is_raw = True
                 section.save()
 
                 for subsection in section.subsections.all():
-                    subsection.is_raw = True
                     subsection.save()
 
             # Generate .tex file
@@ -186,22 +166,6 @@ class DocumentAdmin(VersionAdmin, NestedModelAdmin):
 
         result = BatchAction(queryset).run(export_one)
         BatchAction.display_messages(result, self.message_user, request, verb="export to LaTeX project")
-
-    def save_formset(self, request, form, formset, change):
-        instances = formset.save(commit=False)
-
-        for obj in instances:
-            if hasattr(obj, 'is_raw') and hasattr(obj, 'content'):
-                if obj.pk:
-                    old = obj.__class__.objects.get(pk=obj.pk)
-                    if old.is_raw != obj.is_raw:
-                        if obj.is_raw:
-                            obj.content = HTMLToLatexConverter(obj.content).convert()
-                        else:
-                            obj.content = LatexToHTMLConverter(obj.content).convert()
-            obj.save()
-
-        formset.save_m2m()
 
     @admin.register(Image)
     class ImageAdmin(admin.ModelAdmin):

@@ -8,16 +8,6 @@ from vault.models import Bucket
 
 
 # ────────────────────────────────────────────────
-# 🔖 Tag Model
-# ────────────────────────────────────────────────
-
-class Tag(models.Model):
-    name = models.CharField(max_length=50, unique=True)
-
-    def __str__(self):
-        return self.name
-
-# ────────────────────────────────────────────────
 # 🏢 Department Model
 # ────────────────────────────────────────────────
 
@@ -51,8 +41,6 @@ class Document(models.Model):
     version = models.CharField(max_length=10, default="1.0")
     created_by = models.ForeignKey(User, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
-
-    tags = models.ManyToManyField(Tag, blank=True)
     department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True)
     preset = models.ForeignKey(LatexPreset, on_delete=models.SET_NULL, null=True, blank=True)
 
@@ -92,7 +80,6 @@ class Image(models.Model):
 class DocumentItem(models.Model):
     order = models.PositiveIntegerField(default=0)
     title = models.CharField(max_length=255)
-    is_raw = models.BooleanField(default=False)
 
     class Meta:
         abstract = True
@@ -109,29 +96,7 @@ class DocumentSection(DocumentItem):
     def has_subsections(self):
         return self.subsections.exists()
 
-    def save(self, *args, **kwargs):
-        if self.pk:
-            old = DocumentSection.objects.get(pk=self.pk)
-            if old.is_raw != self.is_raw:
-                self.content = (
-                    HTMLToLatexConverter(self.content).convert()
-                    if self.is_raw else
-                    LatexToHTMLConverter(self.content).convert()
-                )
-        super().save(*args, **kwargs)
-
 class DocumentSubSection(DocumentItem):
     section = models.ForeignKey(DocumentSection, on_delete=models.CASCADE, related_name='subsections')
     content = models.TextField(blank=True)
     image = models.ForeignKey(Image, on_delete=models.SET_NULL, null=True, blank=True, related_name='subsections')
-
-    def save(self, *args, **kwargs):
-        if self.pk:
-            old = DocumentSubSection.objects.get(pk=self.pk)
-            if old.is_raw != self.is_raw:
-                self.content = (
-                    HTMLToLatexConverter(self.content).convert()
-                    if self.is_raw else
-                    LatexToHTMLConverter(self.content).convert()
-                )
-        super().save(*args, **kwargs)

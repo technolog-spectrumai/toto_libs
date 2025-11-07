@@ -12,7 +12,7 @@ from editor.convert import LatexToHTMLConverter
 
 
 class Command(IngressCommand):
-    help = "Seed a LaTeX document with tags, department, presets, structured content, and in-place HTML conversion"
+    help = "Seed a LaTeX document with department, presets, structured content, and in-place HTML conversion"
 
     def process(self, _):
         if not self.full:
@@ -24,10 +24,6 @@ class Command(IngressCommand):
         if not users:
             self.stdout.write(self.style.ERROR("❌ No users found. Create at least one user before running ingress."))
             return
-
-        # 📌 Tags
-        tag_names = ["Confidential", "Draft", "Final", "Research", "Internal"]
-        tags = [Tag.objects.get_or_create(name=name)[0] for name in tag_names]
 
         # 🏢 Department
         department = Department.objects.create(
@@ -51,7 +47,6 @@ class Command(IngressCommand):
             department=department,
             preset=latex_preset
         )
-        document.tags.set(tags[:3])
 
         # 🧩 Sections and Subsections
         sections = [
