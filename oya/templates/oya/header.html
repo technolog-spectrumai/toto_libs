@@ -16,8 +16,8 @@
       <a href="{{ link.url }}"
          class="flex items-center gap-2 px-3 py-1 rounded text-sm font-medium border shadow-sm transition hover:opacity-90"
          :class="darkMode
-           ? 'bg-accent-dark text-primary-bg-dark border-accent-2'
-           : 'bg-accent-light text-primary-bg-light border-accent-1'">
+           ? 'bg-accent-dark text-primary-bg-dark'
+           : 'bg-accent-light text-primary-bg-light'">
         <i class="{{ link.icon }} text-base"></i>
         <span>{{ link.name }}</span>
       </a>
@@ -26,42 +26,30 @@
       {% if user.is_authenticated %}
       <!-- Logout Button -->
       <a href="{% url 'community:logout' %}"
-         class="flex items-center gap-2 px-3 py-1 rounded text-sm font-medium border shadow-sm transition hover:opacity-90"
-         :class="darkMode
-           ? 'bg-accent-dark text-primary-bg-dark border-accent-2'
-           : 'bg-accent-light text-primary-bg-light border-accent-1'">
+         class="flex items-center gap-2 px-3 py-1 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
         <i class="fas fa-sign-out-alt text-base"></i>
         <span>Logout</span>
       </a>
       {% else %}
       <!-- Login Button -->
       <a href="{% url 'community:login' %}"
-         class="flex items-center gap-2 px-3 py-1 rounded text-sm font-medium border shadow-sm transition hover:opacity-90"
-         :class="darkMode
-           ? 'bg-accent-dark text-primary-bg-dark border-accent-2'
-           : 'bg-accent-light text-primary-bg-light border-accent-1'">
+         class="flex items-center gap-2 px-3 py-1 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
         <i class="fas fa-sign-in-alt text-base"></i>
         <span>Login</span>
       </a>
       {% endif %}
 
       <a href="{% url 'nest:dashboard' %}"
-           class="flex items-center gap-2 px-3 py-1 rounded text-sm font-medium border shadow-sm transition hover:opacity-90"
-           :class="darkMode
-             ? 'bg-accent-dark text-primary-bg-dark border-accent-2'
-             : 'bg-accent-light text-primary-bg-light border-accent-1'">
+           class="flex items-center gap-2 px-3 py-1 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
           <i class="fas fa-tachometer-alt text-base"></i>
           <span>Dashboard</span>
       </a>
 
       <!-- Theme Toggle -->
         <button @click="darkMode = !darkMode; localStorage.setItem('darkMode', darkMode)"
-              class="site-theme-toggle-button flex items-center gap-2 px-3 py-1 rounded text-sm font-medium border shadow-sm transition hover:opacity-90"
-              :class="darkMode
-                ? 'bg-accent-dark text-primary-bg-dark border-accent-2'
-                : 'bg-accent-light text-primary-bg-light border-accent-1'">
+              class="site-theme-toggle-button flex items-center gap-2 px-3 py-1 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
         <i :class="darkMode ? 'fas fa-moon' : 'fas fa-sun'" class="text-base"></i>
-<!--        <span x-text="darkMode ? 'Light Mode' : 'Dark Mode'"></span>-->
+        <span x-text="!darkMode ? 'Light Mode' : 'Dark Mode'"></span>
       </button>
     </div>
 
@@ -80,10 +68,7 @@
     <div class="flex flex-col gap-3">
       {% for link in header.nav_links %}
       <a href="{{ link.url }}"
-         class="flex items-center gap-2 px-3 py-2 rounded text-sm font-medium border shadow-sm transition hover:opacity-90"
-         :class="darkMode
-           ? 'bg-accent-dark text-primary-bg-dark border-accent-2'
-           : 'bg-accent-light text-primary-bg-light border-accent-1'">
+         class="flex items-center gap-2 px-3 py-2 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
         <i class="{{ link.icon }} text-base"></i>
         <span>{{ link.name }}</span>
       </a>
@@ -92,30 +77,21 @@
       {% if user.is_authenticated %}
       <!-- Logout Button (Mobile) -->
       <a href="{% url 'community:logout' %}"
-         class="flex items-center gap-2 px-3 py-2 rounded text-sm font-medium border shadow-sm transition hover:opacity-90"
-         :class="darkMode
-           ? 'bg-accent-dark text-primary-bg-dark border-accent-2'
-           : 'bg-accent-light text-primary-bg-light border-accent-1'">
+         class="flex items-center gap-2 px-3 py-2 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
         <i class="fas fa-sign-out-alt text-base"></i>
         <span>Logout</span>
       </a>
       {% else %}
       <!-- Login Button (Mobile) -->
       <a href="{% url 'community:login' %}"
-         class="flex items-center gap-2 px-3 py-2 rounded text-sm font-medium border shadow-sm transition hover:opacity-90"
-         :class="darkMode
-           ? 'bg-accent-dark text-primary-bg-dark border-accent-2'
-           : 'bg-accent-light text-primary-bg-light border-accent-1'">
+         class="flex items-center gap-2 px-3 py-2 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
         <i class="fas fa-sign-in-alt text-base"></i>
         <span>Login</span>
       </a>
       {% endif %}
 
         <a href="{% url 'nest:dashboard' %}"
-           class="flex items-center gap-2 px-3 py-2 rounded text-sm font-medium border shadow-sm transition hover:opacity-90"
-           :class="darkMode
-             ? 'bg-accent-dark text-primary-bg-dark border-accent-2'
-             : 'bg-accent-light text-primary-bg-light border-accent-1'">
+           class="flex items-center gap-2 px-3 py-2 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
           <i class="fas fa-tachometer-alt text-base"></i>
           <span>Dashboard</span>
         </a>
@@ -123,12 +99,9 @@
 
       <!-- Theme Toggle (Mobile) -->
       <button @click="darkMode = !darkMode;"
-              class="site-theme-toggle-button flex items-center gap-2 px-3 py-2 rounded text-sm font-medium border shadow-sm transition hover:opacity-90"
-              :class="darkMode
-                ? 'bg-accent-dark text-primary-bg-dark border-accent-2'
-                : 'bg-accent-light text-primary-bg-light border-accent-1'">
+              class="site-theme-toggle-button flex items-center gap-2 px-3 py-2 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
         <i :class="darkMode ? 'fas fa-moon' : 'fas fa-sun'" class="text-base"></i>
-<!--        <span x-text="darkMode ? 'Light Mode' : 'Dark Mode'"></span>-->
+        <span x-text="!darkMode ? 'Light Mode' : 'Dark Mode'"></span>
       </button>
     </div>
   </div>
