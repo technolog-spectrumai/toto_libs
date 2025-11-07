@@ -1,5 +1,5 @@
 from django import forms
-from community.models import MembershipApplication, ReferenceRequest, CommunityMember
+from community.models import MembershipApplication, ReferenceRequest, CommunityMember, Community
 
 
 class LoginForm(forms.Form):
@@ -23,14 +23,14 @@ class LoginForm(forms.Form):
 class MembershipApplicationForm(forms.ModelForm):
     class Meta:
         model = MembershipApplication
-        fields = ['email', 'branch']
+        fields = ['email', 'community']
         widgets = {
             'email': forms.EmailInput(attrs={
                 'class': 'w-full px-4 py-2 rounded border focus:outline-none focus:ring-2 transition duration-300',
                 'x-bind:class': "darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'",
                 'placeholder': 'Email address'
             }),
-            'branch': forms.Select(attrs={
+            'community': forms.Select(attrs={
                 'class': 'w-full px-4 py-2 rounded border focus:outline-none focus:ring-2 transition duration-300',
                 'x-bind:class': "darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
             })
@@ -47,6 +47,7 @@ class CodeVerificationForm(forms.Form):
         })
     )
 
+
 class ReferenceRequestForm(forms.ModelForm):
     referrer = forms.ModelChoiceField(
         queryset=CommunityMember.objects.none(),
@@ -62,7 +63,7 @@ class ReferenceRequestForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         if application:
             self.fields['referrer'].queryset = CommunityMember.objects.filter(
-                membership__in=[application.branch]
+                communities=application.community
             )
 
     class Meta:
@@ -76,6 +77,3 @@ class ReferenceRequestForm(forms.ModelForm):
                 'rows': 4
             })
         }
-
-
-

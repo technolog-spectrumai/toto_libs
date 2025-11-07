@@ -6,15 +6,8 @@ from .models import (
     CommunityMember,
     Address,
     MembershipApplication,
-    Branch,
     ReferenceRequest
 )
-
-# Inline for displaying branches under a company
-class BranchInline(admin.TabularInline):
-    model = Branch
-    extra = 0
-    readonly_fields = ('created_at', 'updated_at')
 
 
 @admin.register(Address)
@@ -26,7 +19,7 @@ class AddressAdmin(admin.ModelAdmin):
 
 
 @admin.register(Community)
-class CompanyAdmin(admin.ModelAdmin):
+class CommunityAdmin(admin.ModelAdmin):
     list_display = (
         'name',
         'slug',
@@ -38,24 +31,10 @@ class CompanyAdmin(admin.ModelAdmin):
     search_fields = ('name', 'slug', 'head__display_name')
     ordering = ('name',)
     prepopulated_fields = {'slug': ('name',)}
-    inlines = [BranchInline]
 
     def head_display(self, obj):
         return obj.head.display_name if obj.head else "-"
-    head_display.short_description = "Head of Company"
-
-
-@admin.register(Branch)
-class BranchAdmin(admin.ModelAdmin):
-    list_display = ('name', 'company', 'address', 'head_display', 'created_at', 'updated_at')
-    search_fields = ('name', 'company__name', 'address__locality_name', 'address__street', 'head__display_name')
-    list_filter = ('company', 'created_at')
-    ordering = ('-created_at',)
-    readonly_fields = ('created_at', 'updated_at')
-
-    def head_display(self, obj):
-        return obj.head.display_name if obj.head else "-"
-    head_display.short_description = "Head of Branch"
+    head_display.short_description = "Head of Community"
 
 
 @admin.register(CommunityMember)
@@ -64,7 +43,7 @@ class CommunityMemberAdmin(admin.ModelAdmin):
     search_fields = ('display_name', 'user__username', 'user__email', 'patron__display_name')
     list_filter = ('joined_date',)
     ordering = ('-joined_date',)
-    filter_horizontal = ('membership',)
+    filter_horizontal = ('communities',)
 
     def avatar_preview(self, obj):
         if obj.avatar:
@@ -77,7 +56,6 @@ class CommunityMemberAdmin(admin.ModelAdmin):
     patron_display.short_description = "Patron"
 
 
-# Custom action for verifying applications
 @admin.action(description='Mark selected applications as verified')
 def mark_as_verified(modeladmin, request, queryset):
     queryset.update(status='verified', verified_at=timezone.now())
@@ -85,9 +63,9 @@ def mark_as_verified(modeladmin, request, queryset):
 
 @admin.register(MembershipApplication)
 class MembershipApplicationAdmin(admin.ModelAdmin):
-    list_display = ('email', 'code', 'branch', 'status', 'is_verified_display', 'expires_at')
-    list_filter = ('branch', 'status', 'expires_at')
-    search_fields = ('email', 'code', 'branch__name')
+    list_display = ('email', 'code', 'community', 'status', 'is_verified_display', 'expires_at')
+    list_filter = ('community', 'status', 'expires_at')
+    search_fields = ('email', 'code', 'community__name')
     ordering = ('-created_at',)
     readonly_fields = ('created_at', 'verified_at')
     actions = [mark_as_verified]
@@ -107,15 +85,8 @@ class ReferenceRequestAdmin(admin.ModelAdmin):
         'responded_at',
         'is_accepted_display'
     )
-    list_filter = (
-        'status',
-        'created_at',
-        'responded_at'
-    )
-    search_fields = (
-        'application__email',
-        'referrer__display_name'
-    )
+    list_filter = ('status', 'created_at', 'responded_at')
+    search_fields = ('application__email', 'referrer__display_name')
     ordering = ('-created_at',)
     readonly_fields = ('created_at', 'responded_at')
 

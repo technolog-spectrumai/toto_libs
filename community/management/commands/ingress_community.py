@@ -2,17 +2,18 @@ import random
 from django.core.management import call_command
 from django.contrib.auth.models import User
 from django.utils import timezone
-from community.models import Address, Community, Branch, CommunityMember
+from community.models import Address, Community, CommunityMember
 from oya.ingress import IngressCommand
 
+
 class Command(IngressCommand):
-    help = "Populate the platform with fake community data: address, community, branches, members, and relationships"
+    help = "Populate the platform with fake community data: address, community, members, and relationships"
 
     def process(self, _):
         self.create_dashboard_item(
             title="Community",
             icon="fa-solid fa-users",
-            description="Community, branches, and community members with relationships.",
+            description="Communities and community members with relationships.",
             link="/community/org-chart/",
             public=False,
         )
@@ -35,14 +36,11 @@ class Command(IngressCommand):
             return
 
         self.stdout.write(self.style.NOTICE("🧑‍🤝‍🧑 Creating community members..."))
-        members = self.create_fake_members(count=6)
+        members = self.create_fake_members(community, count=6)
 
         self.stdout.write(self.style.NOTICE("👑 Assigning head of community..."))
         community.head = members[0]  # Founder is the head
         community.save()
-
-        self.stdout.write(self.style.NOTICE("🏬 Creating branches..."))
-        branches = self.create_fake_branches(community, members)
 
         self.stdout.write(self.style.SUCCESS("✅ Community ingress complete."))
 
@@ -63,7 +61,7 @@ class Command(IngressCommand):
     def get_latest_community(self):
         return Community.objects.order_by("-id").first()
 
-    def create_fake_members(self, count=6):
+    def create_fake_members(self, community, count=6):
         members = []
         users = []
 
@@ -79,6 +77,7 @@ class Command(IngressCommand):
             bio="Top-level patron of the community",
             joined_date=timezone.now()
         )
+        founder.communities.add(community)
         members.append(founder)
 
         # Managers
@@ -90,6 +89,7 @@ class Command(IngressCommand):
                 joined_date=timezone.now(),
                 patron=founder
             )
+            manager.communities.add(community)
             members.append(manager)
 
         # Staff
@@ -102,34 +102,7 @@ class Command(IngressCommand):
                 joined_date=timezone.now(),
                 patron=patron
             )
+            staff.communities.add(community)
             members.append(staff)
 
         return members
-
-    def create_fake_branches(self, community, members):
-        branches = []
-        senior_members = members[:3]  # Founder + Managers
-
-        for i in range(3):
-            address = Address.objects.create(
-                country_name="US",
-                state_or_province_name="California",
-                locality_name=f"Branch City {i}",
-                street=f"{100+i} Branch Ave",
-                building=f"B{i}",
-                apartment=None
-            )
-            branch = Branch.objects.create(
-                community=community,
-                name=f"Branch {i}",
-                address=address,
-                head=senior_members[i % len(senior_members)]
-            )
-
-            assigned = random.sample(members, k=3)
-            for member in assigned:
-                member.membership.add(branch)
-
-            branches.append(branch)
-
-        return branches
