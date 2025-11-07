@@ -8,12 +8,11 @@ from reversion.admin import VersionAdmin
 from .compiler import LatexCompiler
 from .models import (
     Department,
-    LatexPreset, Image,
+    LatexPreset, Figure,
     Document, DocumentSection, DocumentSubSection
 )
 from .batch import BatchAction
 from django_ace import AceWidget
-from vault.models import VaultFile
 from django.utils.html import format_html
 from latextile.models import LatexProject, TexFile
 
@@ -29,20 +28,11 @@ class DepartmentAdmin(admin.ModelAdmin):
         (None, {'fields': ['name', 'owner', 'seal', 'bucket']}),
     )
 
-# ────────────────────────────────────────────────
-# 🎨 Presets Admin
-# ────────────────────────────────────────────────
 
 @admin.register(LatexPreset)
 class LatexPresetAdmin(admin.ModelAdmin):
     list_display = ['name', 'document_class']
     search_fields = ['name', 'document_class']
-
-
-# ────────────────────────────────────────────────
-# 🧩 Document Admin
-# ────────────────────────────────────────────────
-
 
 
 class DocumentSectionForm(forms.ModelForm):
@@ -74,8 +64,6 @@ class DocumentSubSectionForm(forms.ModelForm):
 
         self.fields['content'].widget = widget
         self.fields['content'].widget.attrs.update({'style': 'font-family: monospace;'})
-
-
 
 
 class DocumentSubSectionInline(NestedStackedInline):
@@ -167,8 +155,8 @@ class DocumentAdmin(VersionAdmin, NestedModelAdmin):
         result = BatchAction(queryset).run(export_one)
         BatchAction.display_messages(result, self.message_user, request, verb="export to LaTeX project")
 
-    @admin.register(Image)
-    class ImageAdmin(admin.ModelAdmin):
+    @admin.register(Figure)
+    class FigureAdmin(admin.ModelAdmin):
         list_display = ['id', 'caption', 'preview']
         search_fields = ['caption']
         readonly_fields = ['preview']

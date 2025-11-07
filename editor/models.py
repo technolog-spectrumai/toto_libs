@@ -69,7 +69,7 @@ class Document(models.Model):
         super().save(*args, **kwargs)
 
 
-class Image(models.Model):
+class Figure(models.Model):
     file = models.ImageField(upload_to='documents/images/')
     caption = models.CharField(max_length=255, blank=True)
 
@@ -99,4 +99,4 @@ class DocumentSection(DocumentItem):
 class DocumentSubSection(DocumentItem):
     section = models.ForeignKey(DocumentSection, on_delete=models.CASCADE, related_name='subsections')
     content = models.TextField(blank=True)
-    image = models.ForeignKey(Image, on_delete=models.SET_NULL, null=True, blank=True, related_name='subsections')
+    image = models.ForeignKey(Figure, on_delete=models.SET_NULL, null=True, blank=True, related_name='subsections')
