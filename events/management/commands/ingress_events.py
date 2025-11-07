@@ -44,10 +44,10 @@ class Command(IngressCommand):
         users = list(User.objects.all())
         if not users:
             raise Exception("❌ No users found. Please create some users first.")
-
+        n_events = 12
         # 📅 Create Events
         for venture in random.sample(ventures, min(3, len(ventures))):
-            for i in range(2):
+            for i in range(n_events):
                 start = now() + timedelta(days=random.randint(1, 30))
                 end = start + timedelta(hours=random.randint(1, 5))
                 event = Event.objects.create(
