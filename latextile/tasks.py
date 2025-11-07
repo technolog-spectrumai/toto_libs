@@ -1,5 +1,5 @@
 from celery import shared_task
-from .models import TexFile, LatexProject
+from .models import LatexProject
 
 @shared_task
 def compile_project_task(project_id):
