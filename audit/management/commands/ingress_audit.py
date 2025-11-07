@@ -2,12 +2,13 @@ from django.core.management.base import BaseCommand
 from django.conf import settings
 from pathlib import Path
 from audit.models import AuditLog
+from oya.ingress import IngressCommand
 
 
-class Command(BaseCommand):
-    help = 'Sync AuditLog entries with dynamically configured log files'
+class Command(IngressCommand):
+    help = "Seed sample data for Events: categories, events, and registrations"
 
-    def handle(self, *args, **kwargs):
+    def process(self, _):
         log_dir = Path(settings.BASE_DIR) / 'logs'
         log_dir.mkdir(exist_ok=True)
 
