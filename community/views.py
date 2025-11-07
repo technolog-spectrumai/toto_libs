@@ -11,7 +11,7 @@ from django.contrib.auth.models import User
 from django.shortcuts import render, get_object_or_404
 from django.http import JsonResponse
 from django.views.generic import TemplateView
-from community.models import Company
+from community.models import Community
 import logging
 
 template_dir = "community"
@@ -227,7 +227,7 @@ class OrgChartView(TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["companies"] = Company.objects.all()
+        context["companies"] = Community.objects.all()
         context["selected_company_id"] = self.request.GET.get("company")
         processor = PageProcessor()
         return processor.decorate(context, self.request)
@@ -239,8 +239,8 @@ def org_chart_data(request):
         return JsonResponse({"nodes": []})
 
     try:
-        company = Company.objects.get(slug=company_slug)
-    except Company.DoesNotExist:
+        company = Community.objects.get(slug=company_slug)
+    except Community.DoesNotExist:
         logger.warning(f"Org chart data request failed: company slug '{company_slug}' not found.")
         return JsonResponse({"nodes": []})
 

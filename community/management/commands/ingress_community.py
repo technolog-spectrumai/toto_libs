@@ -2,24 +2,24 @@ import random
 from django.core.management import call_command
 from django.contrib.auth.models import User
 from django.utils import timezone
-from community.models import Address, Company, Branch, CommunityMember
+from community.models import Address, Community, Branch, CommunityMember
 from oya.ingress import IngressCommand
 
 class Command(IngressCommand):
-    help = "Populate the platform with fake community data: address, company, branches, members, and relationships"
+    help = "Populate the platform with fake community data: address, community, branches, members, and relationships"
 
     def process(self, _):
         self.create_dashboard_item(
             title="Community",
             icon="fa-solid fa-users",
-            description="Company, branches, and community members with relationships.",
+            description="Community, branches, and community members with relationships.",
             link="/community/org-chart/",
             public=False,
         )
         if not self.full:
             return
 
-        self.stdout.write(self.style.NOTICE("📍 Creating company address..."))
+        self.stdout.write(self.style.NOTICE("📍 Creating community address..."))
         address_args = self.get_address_arguments()
         call_command("create_address", **address_args)
         address_id = self.get_latest_address_id()
@@ -27,22 +27,22 @@ class Command(IngressCommand):
             self.stderr.write(self.style.ERROR("❌ Address creation failed."))
             return
 
-        self.stdout.write(self.style.NOTICE("🏢 Creating company..."))
-        call_command("create_company", "Our Thing Inc.", str(address_id), "--established_year=2024")
-        company = self.get_latest_company()
-        if not company:
-            self.stderr.write(self.style.ERROR("❌ Company creation failed."))
+        self.stdout.write(self.style.NOTICE("🏢 Creating community..."))
+        call_command("create_community", "Our Thing Inc.", str(address_id), "--established_year=2024")
+        community = self.get_latest_community()
+        if not community:
+            self.stderr.write(self.style.ERROR("❌ Community creation failed."))
             return
 
         self.stdout.write(self.style.NOTICE("🧑‍🤝‍🧑 Creating community members..."))
         members = self.create_fake_members(count=6)
 
-        self.stdout.write(self.style.NOTICE("👑 Assigning head of company..."))
-        company.head = members[0]  # Founder is the head
-        company.save()
+        self.stdout.write(self.style.NOTICE("👑 Assigning head of community..."))
+        community.head = members[0]  # Founder is the head
+        community.save()
 
         self.stdout.write(self.style.NOTICE("🏬 Creating branches..."))
-        branches = self.create_fake_branches(company, members)
+        branches = self.create_fake_branches(community, members)
 
         self.stdout.write(self.style.SUCCESS("✅ Community ingress complete."))
 
@@ -60,8 +60,8 @@ class Command(IngressCommand):
         latest = Address.objects.order_by("-id").first()
         return latest.id if latest else None
 
-    def get_latest_company(self):
-        return Company.objects.order_by("-id").first()
+    def get_latest_community(self):
+        return Community.objects.order_by("-id").first()
 
     def create_fake_members(self, count=6):
         members = []
@@ -106,7 +106,7 @@ class Command(IngressCommand):
 
         return members
 
-    def create_fake_branches(self, company, members):
+    def create_fake_branches(self, community, members):
         branches = []
         senior_members = members[:3]  # Founder + Managers
 
@@ -120,7 +120,7 @@ class Command(IngressCommand):
                 apartment=None
             )
             branch = Branch.objects.create(
-                company=company,
+                community=community,
                 name=f"Branch {i}",
                 address=address,
                 head=senior_members[i % len(senior_members)]

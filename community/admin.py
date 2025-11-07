@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.utils.html import format_html
 from django.utils import timezone
 from .models import (
-    Company,
+    Community,
     CommunityMember,
     Address,
     MembershipApplication,
@@ -25,7 +25,7 @@ class AddressAdmin(admin.ModelAdmin):
     ordering = ('locality_name', 'street')
 
 
-@admin.register(Company)
+@admin.register(Community)
 class CompanyAdmin(admin.ModelAdmin):
     list_display = (
         'name',

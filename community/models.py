@@ -21,7 +21,7 @@ class Address(models.Model):
         return full
 
 
-class Company(models.Model):
+class Community(models.Model):
     name = models.CharField(max_length=255, help_text="Legal or brand name of the company")
     slug = models.SlugField(unique=True, blank=True, help_text="URL-friendly identifier for the company")
     address = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True, blank=True)
@@ -45,7 +45,7 @@ class Company(models.Model):
             base_slug = slugify(self.name)
             slug = base_slug
             counter = 1
-            while Company.objects.filter(slug=slug).exists():
+            while Community.objects.filter(slug=slug).exists():
                 slug = f"{base_slug}-{counter}"
                 counter += 1
             self.slug = slug
@@ -54,7 +54,7 @@ class Company(models.Model):
 
 class Branch(models.Model):
     company = models.ForeignKey(
-        Company,
+        Community,
         on_delete=models.CASCADE,
         related_name="branches",
         help_text="Main company this branch belongs to"
