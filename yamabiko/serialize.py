@@ -10,21 +10,32 @@ class ModelSerializer:
 
     def dump_queryset_to_bucket(self, queryset, owner, bucket, filename):
         """
-        Serialize the queryset to JSON and store it in the vault as a VaultFile with file_type='jsonl'.
+        Serialize the queryset to JSON and store it in the vault as a VaultFile with file_type='json'.
+        If a file with the same name exists, bump the name (e.g., filename_1.json, filename_2.json).
         """
+        base_name, ext = os.path.splitext(filename)
+        title = f"{filename} (dump)"
+        existing_titles = VaultFile.objects.filter(owner=owner, bucket=bucket, title__startswith=base_name).values_list(
+            "title", flat=True)
+
+        # Bump filename if needed
+        bump = 1
+        while title in existing_titles:
+            filename = f"{base_name}_{bump}{ext}"
+            title = f"{filename} (dump)"
+            bump += 1
+
         data = self.model_class.serialize_queryset(queryset)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             json_path = os.path.join(tmpdir, filename)
 
-            # Write serialized JSON to temp file
             with open(json_path, "w") as f:
                 f.write(data)
 
-            # Create VaultFile with enforced file_type='jsonl'
             vault_file = VaultFile.objects.create(
                 owner=owner,
-                title=f"{filename} (dump)",
+                title=title,
                 file_type='json',
                 bucket=bucket,
                 file=File(open(json_path, "rb"), name=filename)
