@@ -1,4 +1,5 @@
 # projects/models.py
+import os.path
 import subprocess
 from django.db import models
 from django.contrib.auth.models import User
@@ -95,6 +96,7 @@ class LatexCompilationProcess(models.Model):
         self.status = 'running'
         self.started_at = now()
         self.save()
+        pdf_path = None
 
         try:
             # Prepare output directory
@@ -130,25 +132,22 @@ class LatexCompilationProcess(models.Model):
                 # Save pdf file
                 with open(pdf_path, 'rb') as f:
                     self.pdf_file.save(pdf_path.name, File(f), save=False)
-                    pdf_content = f.read()
 
                 self.status = 'success'
             else:
                 log.append("PDF not found after compilation.")
                 self.status = 'failed'
-                pdf_content = None
 
         except subprocess.CalledProcessError as e:
             error_msg = e.stderr.decode()
             log.append(f"LaTeX compilation failed: {error_msg}")
             self.status = 'failed'
-            pdf_content = None
 
         self.log = "\n".join(log)
         self.finished_at = now()
         self.save()
 
-        return pdf_content
+        return pdf_path
 
 
 class TexFile(models.Model):
@@ -164,7 +163,7 @@ class TexFile(models.Model):
     def __str__(self):
         return self.filename
 
-    def _creation_compilation(self, tex_path: Path, aux_path: Path, pdf_path: Path,
+    def _create_compilation(self, tex_path: Path, aux_path: Path, pdf_path: Path,
                               output_dir: Path) -> LatexCompilationProcess:
         process = LatexCompilationProcess.objects.create(
             output_dir=str(output_dir),
@@ -195,14 +194,24 @@ class TexFile(models.Model):
         output_dir.mkdir(parents=True, exist_ok=True)
 
         tex_path = output_dir / f"{key}.tex"
-        shutil.copy2(self.file.path, tex_path)
+        source_path = Path(str(self.file.path))
+
+        if not source_path.exists():
+            raise RuntimeError(f"LaTeX source {source_path} does not exist.")
+
+        try:
+            shutil.copy2(source_path, tex_path)
+        except Exception as e:
+            logger.error(f"Failed to copy file: {e}")
+            print(f"Failed to copy file: {e}")
+            raise
 
         aux_path = output_dir / f"{key}.aux"
         pdf_path = output_dir / self.filename.replace('.tex', '.pdf')
 
-        process = self._creation_compilation(tex_path, aux_path, pdf_path, output_dir)
-        pdf_content = process.run_compile()
-        if not pdf_content:
+        process = self._create_compilation(tex_path, aux_path, pdf_path, output_dir)
+        pdf_path = process.run_compile()
+        if not pdf_path:
             raise RuntimeError("PDF file was not generated.")
 
         vault_file = VaultFile.objects.create(
@@ -210,7 +219,7 @@ class TexFile(models.Model):
             title=f"{self.filename} (compiled)",
             file_type='pdf',
             bucket=self.project.bucket,
-            file=ContentFile(pdf_content, name=f"{self.filename}.pdf")
+            file=File(open(pdf_path, 'rb'), name=f"{self.filename}.pdf")
         )
         vault_file.content_hash = vault_file.create_hash()
         vault_file.save()
