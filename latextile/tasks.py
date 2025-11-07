@@ -3,7 +3,6 @@ from .models import TexFile, LatexProject
 
 @shared_task
 def compile_project_task(project_id):
-    print(f"!!!!!!!!!!!!!!!! TASK CALLED !!!!!!!!!!!!!!!!!!! {project_id}")
     try:
         project = LatexProject.objects.get(id=project_id)
         compiled_files = project.compile_all()
