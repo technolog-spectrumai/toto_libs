@@ -33,6 +33,29 @@ class Currency(models.Model):
         return f"{self.name} ({self.symbol})"
 
 
+class ExchangeRate(models.Model):
+    base_currency = models.ForeignKey(
+        Currency,
+        on_delete=models.CASCADE,
+        related_name="base_rates"
+    )
+    quote_currency = models.ForeignKey(
+        Currency,
+        on_delete=models.CASCADE,
+        related_name="quote_rates"
+    )
+    rate = models.DecimalField(max_digits=20, decimal_places=8)
+    timestamp = models.DateTimeField(default=now)
+
+    class Meta:
+        unique_together = ("base_currency", "quote_currency", "timestamp")
+        ordering = ["-timestamp"]
+
+    def __str__(self):
+        return f"1 {self.base_currency.symbol} = {self.rate} {self.quote_currency.symbol} @ {self.timestamp:%Y-%m-%d %H:%M}"
+
+
+
 # 🏦 Account
 class Account(models.Model):
     name = models.CharField(max_length=255, unique=True)

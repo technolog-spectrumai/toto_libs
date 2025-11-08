@@ -1,5 +1,5 @@
 from oya.ingress import IngressCommand
-from finance.models import Currency, Subject, Account, Transaction, Obligation
+from finance.models import Currency, Subject, Account, Transaction, Obligation, ExchangeRate
 from community.models import SocialEntity
 from django.contrib.auth.models import User
 from django.utils.timezone import now
@@ -38,6 +38,26 @@ class Command(IngressCommand):
             currency, _ = Currency.objects.get_or_create(symbol=symbol, defaults={"name": name, "is_crypto": is_crypto})
             currencies.append(currency)
 
+        exchange_pairs = [
+            ("USD", "PLN", 4.25),
+            ("EUR", "USD", 1.08),
+            ("BTC", "USD", 35000),
+            ("ETH", "USD", 1900),
+            ("PLN", "EUR", 0.23),
+        ]
+        for base_symbol, quote_symbol, rate in exchange_pairs:
+            base = next((c for c in currencies if c.symbol == base_symbol), None)
+            quote = next((c for c in currencies if c.symbol == quote_symbol), None)
+            if base and quote:
+                ExchangeRate.objects.create(
+                    base_currency=base,
+                    quote_currency=quote,
+                    rate=rate,
+                    timestamp=now()
+                )
+
+        if not self.full:
+            return
         # 🧍 Subjects linked to existing SocialEntities
         subjects = []
         for _ in range(5):

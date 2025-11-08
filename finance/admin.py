@@ -1,12 +1,21 @@
 from django.contrib import admin
-from .models import Currency, Subject, Account, Transaction, Obligation
-from community.models import SocialEntity  # adjust import path if needed
+from .models import Currency, Subject, Account, Transaction, Obligation, ExchangeRate
+from community.models import SocialEntity
+
 
 @admin.register(Currency)
 class CurrencyAdmin(admin.ModelAdmin):
     list_display = ("name", "symbol", "is_crypto", "decimals", "active")
     search_fields = ("name", "symbol")
     list_filter = ("is_crypto", "active")
+
+
+@admin.register(ExchangeRate)
+class ExchangeRateAdmin(admin.ModelAdmin):
+    list_display = ("base_currency", "quote_currency", "rate", "timestamp")
+    list_filter = ("base_currency", "quote_currency")
+    search_fields = ("base_currency__symbol", "quote_currency__symbol")
+    ordering = ("-timestamp",)
 
 
 @admin.register(Subject)
