@@ -1,0 +1,152 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}{{ account.name }}{% endblock %}
+
+{% block start_script %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    const ctx = document.getElementById('activityBarChart').getContext('2d');
+
+    const chartColors = {
+      background: localStorage.getItem('darkMode') === 'true' ? '{{ chart_colors.background_dark }}' : '{{ chart_colors.background_light }}',
+      border: localStorage.getItem('darkMode') === 'true' ? '{{ chart_colors.border_dark }}' : '{{ chart_colors.border_light }}',
+      text: localStorage.getItem('darkMode') === 'true' ? '{{ chart_colors.text_dark }}' : '{{ chart_colors.text_light }}',
+      grid: localStorage.getItem('darkMode') === 'true' ? '{{ chart_colors.grid_dark }}' : '{{ chart_colors.grid_light }}'
+    };
+
+    new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: ['Incoming Tx', 'Outgoing Tx', 'Incoming Obligation', 'Outgoing Obligation'],
+        datasets: [{
+          label: 'Count',
+          data: [
+            {{ transactions_incoming|length }},
+            {{ transactions_outgoing|length }},
+            {{ obligations_incoming|length }},
+            {{ obligations_outgoing|length }}
+          ],
+          backgroundColor: chartColors.background,
+          borderColor: chartColors.border,
+          borderWidth: 1
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { labels: { color: chartColors.text } },
+          tooltip: {
+            backgroundColor: chartColors.background,
+            titleColor: chartColors.text,
+            bodyColor: chartColors.text
+          }
+        },
+        scales: {
+          x: {
+            ticks: { color: chartColors.text },
+            grid: { color: chartColors.grid },
+            title: { display: true, text: 'Activity Type', color: chartColors.text }
+          },
+          y: {
+            beginAtZero: true,
+            ticks: { color: chartColors.text },
+            grid: { color: chartColors.grid },
+            title: { display: true, text: 'Count', color: chartColors.text }
+          }
+        }
+      }
+    });
+  });
+</script>
+{% endblock %}
+
+{% block content %}
+<div
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300">
+
+  <div class="max-w-6xl mx-auto space-y-12">
+    <!-- 🏦 Account Identity -->
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Account Details</h2>
+      <div class="p-4 rounded border"
+           :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+        <p><strong>Name:</strong> {{ account.name }}</p>
+        <p><strong>Owner:</strong> {{ account.owner.name }}</p>
+        <p><strong>Currency:</strong> {{ account.currency.symbol }}</p>
+        <p><strong>Balance:</strong> {{ account.balance|floatformat:2 }}</p>
+        <p><strong>Manager:</strong> {{ account.manager.username }}</p>
+        <p><strong>Status:</strong> {{ account.active|yesno:"Active,Inactive" }}</p>
+        <p><strong>Created:</strong> {{ account.created_at|date:"F j, Y" }}</p>
+      </div>
+    </section>
+
+    <!-- 💸 Transactions -->
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Transactions</h2>
+      <div class="space-y-4">
+        {% for tx in transactions_outgoing %}
+        <div class="p-4 rounded border"
+             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+          <p><strong>Outgoing:</strong> {{ tx.amount|floatformat:2 }} → {{ tx.destination.name }}</p>
+          <p>Date: {{ tx.timestamp|date:"F j, Y H:i" }}</p>
+        </div>
+        {% endfor %}
+        {% for tx in transactions_incoming %}
+        <div class="p-4 rounded border"
+             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+          <p><strong>Incoming:</strong> {{ tx.amount|floatformat:2 }} ← {{ tx.source.name }}</p>
+          <p>Date: {{ tx.timestamp|date:"F j, Y H:i" }}</p>
+        </div>
+        {% endfor %}
+        {% if not transactions_incoming and not transactions_outgoing %}
+        <div class="p-4 rounded border text-sm text-center"
+             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+          No transactions recorded.
+        </div>
+        {% endif %}
+      </div>
+    </section>
+
+    <!-- 📑 Obligations -->
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Obligations</h2>
+      <div class="space-y-4">
+        {% for ob in obligations_outgoing %}
+        <div class="p-4 rounded border"
+             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+          <p><strong>Outgoing:</strong> {{ ob.amount|floatformat:2 }} → {{ ob.destination.name }}</p>
+          <p>Due: {{ ob.due_date|date:"F j, Y" }} | Status: {{ ob.fulfilled|yesno:"Fulfilled,Pending" }}</p>
+        </div>
+        {% endfor %}
+        {% for ob in obligations_incoming %}
+        <div class="p-4 rounded border"
+             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+          <p><strong>Incoming:</strong> {{ ob.amount|floatformat:2 }} ← {{ ob.source.name }}</p>
+          <p>Due: {{ ob.due_date|date:"F j, Y" }} | Status: {{ ob.fulfilled|yesno:"Fulfilled,Pending" }}</p>
+        </div>
+        {% endfor %}
+        {% if not obligations_incoming and not obligations_outgoing %}
+        <div class="p-4 rounded border text-sm text-center"
+             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+          No obligations recorded.
+        </div>
+        {% endif %}
+      </div>
+    </section>
+
+    <!-- 📊 Activity Chart -->
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Activity Chart</h2>
+      <div class="p-4 rounded border"
+           :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+        <canvas id="activityBarChart" height="300"></canvas>
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}

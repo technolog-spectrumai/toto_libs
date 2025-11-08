@@ -30,6 +30,7 @@ urlpatterns = [
     path("events/", include("events.urls", namespace="events")),
     path("audit/", include("audit.urls", namespace="audit")),
     path("kanban/", include("kanban.urls", namespace="kanban")),
+    path("finance/", include("finance.urls", namespace="finance"))
 ]
 
 
