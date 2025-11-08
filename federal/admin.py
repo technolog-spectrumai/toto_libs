@@ -12,6 +12,7 @@ class FederationAdmin(admin.ModelAdmin):
 
 @admin.register(FederatedIdentity)
 class FederatedIdentityAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "federation", "created_at")
+    list_display = ("id", "name", "federation", "rsa_keypair", "created_at")
     list_filter = ("federation", "created_at")
     search_fields = ("name", "id")
+    readonly_fields = ("created_at",)

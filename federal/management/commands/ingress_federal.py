@@ -6,6 +6,7 @@ from django.core.management.base import CommandError
 from django.urls import reverse
 
 from federal.models import Federation, FederatedIdentity
+from gervazy.models import RSAKeyPair   # 🔐 import RSAKeyPair
 from oya.models import Platform
 from oya.ingress import IngressCommand
 
@@ -78,22 +79,35 @@ class Command(IngressCommand):
             users.append(user)
 
         # Head identity
-        head_identity = FederatedIdentity.objects.create(
-            id=uuid.uuid4(),
-            name="Head Identity",
-            created_at=timezone.now(),
-            federation=federation
+        head_identity = self._create_identity_with_rsa(
+            federation=federation,
+            name="Head Identity"
         )
         identities.append(head_identity)
 
         # Other identities
         for i in range(1, count):
-            identity = FederatedIdentity.objects.create(
-                id=uuid.uuid4(),
-                name=f"Identity {i}",
-                created_at=timezone.now(),
-                federation=federation
+            identity = self._create_identity_with_rsa(
+                federation=federation,
+                name=f"Identity {i}"
             )
             identities.append(identity)
 
         return identities
+
+    def _create_identity_with_rsa(self, federation: Federation, name: str) -> FederatedIdentity:
+        identity = FederatedIdentity.objects.create(
+            id=uuid.uuid4(),
+            name=name,
+            created_at=timezone.now(),
+            federation=federation
+        )
+
+        # 🔐 Generate and attach RSA keypair
+        key_id = f"{identity.id}-key"
+        rsa_pair = RSAKeyPair.generate(key_id=key_id, issuer=identity.issuer)
+        rsa_pair.save()
+        identity.rsa_keypair = rsa_pair
+        identity.save()
+
+        return identity

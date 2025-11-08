@@ -2,6 +2,7 @@ from django.db import models
 import uuid
 from django.urls import reverse
 from oya.models import Platform
+from gervazy.models import RSAKeyPair   # 🔑 import your RSA model
 
 
 class Federation(models.Model):
@@ -32,7 +33,6 @@ class Federation(models.Model):
 
     @property
     def url(self):
-        # Assuming you have a federation detail view named 'federation_detail'
         return reverse("federal:federation_detail_json", kwargs={"slug": self.slug})
 
 
@@ -50,6 +50,14 @@ class FederatedIdentity(models.Model):
         related_name="federated_identities",
         help_text="Federation this identity belongs to"
     )
+    rsa_keypair = models.OneToOneField(   # 🔐 link to RSAKeyPair
+        RSAKeyPair,
+        on_delete=models.CASCADE,
+        related_name="identity",
+        null=True,
+        blank=True,
+        help_text="RSA keypair associated with this identity"
+    )
 
     class Meta:
         constraints = [
@@ -65,5 +73,3 @@ class FederatedIdentity(models.Model):
 
     def __str__(self):
         return f"{self.name or self.id} from {self.issuer}"
-
-
