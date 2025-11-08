@@ -1,6 +1,9 @@
+import datetime
+
 from django.db import models
 import uuid
 from django.urls import reverse
+from django.utils import timezone
 from oya.models import Platform
 from gervazy.models import RSAKeyPair   # 🔑 import your RSA model
 
@@ -73,3 +76,47 @@ class FederatedIdentity(models.Model):
 
     def __str__(self):
         return f"{self.name or self.id} from {self.issuer}"
+
+
+class Challenge(models.Model):
+    identity = models.ForeignKey(
+        FederatedIdentity,
+        on_delete=models.CASCADE,
+        related_name="challenges"
+    )
+    nonce = models.CharField(max_length=255, unique=True)
+    issued_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    verified = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"Challenge for {self.identity.did} issued at {self.issued_at}"
+
+    def is_expired(self) -> bool:
+        return timezone.now() >= self.expires_at
+
+    def verify(self, signature: bytes) -> bool:
+        """
+        Verify the challenge by checking the signature against the nonce
+        using the identity's RSA public key.
+        """
+        if self.is_expired():
+            return False
+
+        rsa_pair = getattr(self.identity, "rsa_keypair", None)
+        if not rsa_pair:
+            return False
+
+        # Delegate verification to RSAKeyPair.verify
+        valid = rsa_pair.verify(self.nonce.encode(), signature)
+        if valid:
+            self.verified = True
+            self.save(update_fields=["verified"])
+        return valid
+
+    def save(self, *args, **kwargs):
+        if not self.nonce:
+            self.nonce = uuid.uuid4().hex
+        if not self.expires_at:
+            self.expires_at = timezone.now() + datetime.timedelta(seconds=300)
+        super().save(*args, **kwargs)

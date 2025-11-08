@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Federation, FederatedIdentity
+from .models import Federation, FederatedIdentity, Challenge
 
 
 @admin.register(Federation)
@@ -16,3 +16,18 @@ class FederatedIdentityAdmin(admin.ModelAdmin):
     list_filter = ("federation", "created_at")
     search_fields = ("name", "id")
     readonly_fields = ("created_at",)
+
+
+@admin.register(Challenge)
+class ChallengeAdmin(admin.ModelAdmin):
+    list_display = (
+        "identity",
+        "nonce",
+        "issued_at",
+        "expires_at",
+        "verified",
+    )
+    list_filter = ("verified", "issued_at", "expires_at")
+    search_fields = ("nonce", "identity__did")
+    readonly_fields = ("issued_at",)
+
