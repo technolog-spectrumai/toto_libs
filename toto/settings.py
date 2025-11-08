@@ -73,7 +73,8 @@ INSTALLED_APPS = [
     "audit",
     "kanban",
     "yamabiko",
-    "finance"
+    "finance",
+    "federal"
 ]
 
 
@@ -274,7 +275,8 @@ INGRESS_ALLOWED_APPS = [
     "portfolio",
     "events",
     "kanban",
-    "finance"
+    "finance",
+    "federal"
 ]
 
 FULL_INGRESS = DEBUG
