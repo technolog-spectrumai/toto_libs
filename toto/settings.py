@@ -72,7 +72,8 @@ INSTALLED_APPS = [
     "events",
     "audit",
     "kanban",
-    "yamabiko"
+    "yamabiko",
+    "finance"
 ]
 
 
@@ -272,7 +273,8 @@ INGRESS_ALLOWED_APPS = [
     "community",
     "portfolio",
     "events",
-    "kanban"
+    "kanban",
+    "finance"
 ]
 
 FULL_INGRESS = DEBUG
@@ -328,7 +330,8 @@ AUDITED_APPS = [
     "portfolio",
     "latextile",
     "community",
-    "events"
+    "events",
+    "finance"
 ]
 
 
