@@ -1,5 +1,7 @@
 from oya.ingress import IngressCommand
-from portfolio.models import Chamber, Currency, Venture, Transaction, Company, Shareholder
+from portfolio.models import Chamber, Venture, Company, Shareholder, FundingRound
+from finance.models import Subject, Currency
+from community.models import SocialEntity
 from django.contrib.auth.models import User
 from django.utils.timezone import now
 from datetime import timedelta
@@ -9,7 +11,7 @@ from faker import Faker
 fake = Faker()
 
 class Command(IngressCommand):
-    help = "Seed sample data for SpectrumAi.pl Chamber: ventures, currencies, transactions, companies, shareholders"
+    help = "Seed sample data for SpectrumAi.pl Chamber: ventures, companies, shareholders, and funding rounds"
 
     def process(self, _):
         # 📊 Dashboard block
@@ -19,94 +21,79 @@ class Command(IngressCommand):
             description="Portfolio of ventures and investments",
             link="/portfolio/"
         )
-        currency_data = [
-            ('USD', 'US Dollar', False),
-            ('PLN', 'Polish Zloty', False)
-        ]
-        if self.full:
-            currency_data.extend([
-                ('BTC', 'Bitcoin', True),
-                ('ETH', 'Ethereum', True),
-                ('EUR', 'Euro', False),
-                ('GBP', 'British Pound', False)
-            ])
-
-        currencies = []
-        for symbol, name, is_crypto in currency_data:
-            currency, _ = Currency.objects.get_or_create(
-                symbol=symbol,
-                defaults={
-                    'name': name,
-                    'is_crypto': is_crypto,
-                    'decimals': 8,
-                    'active': True
-                }
-            )
-            currencies.append(currency)
 
         # 🏛️ Ensure active chamber
-        default_currency = Currency.objects.get(symbol="PLN")
-        active_chambers = Chamber.objects.filter(active=True)
-        if active_chambers.count() == 0:
+        chamber = Chamber.objects.filter(active=True).first()
+        if not chamber:
+            default_currency = Currency.objects.filter(active=True).first()
+            if not default_currency:
+                raise Exception("❌ No active currencies found. Please create one manually before initializing the chamber.")
             chamber = Chamber.objects.create(
                 name="SpectrumAi.pl",
                 active=True,
                 default_currency=default_currency
             )
-            self.stdout.write(self.style.SUCCESS("🏛️ Created active chamber: SpectrumAi.pl"))
-        elif active_chambers.count() == 1:
-            chamber = active_chambers.first()
-        else:
-            raise Exception("❌ Multiple active chambers detected. Only one chamber can be active at a time.")
+            self.stdout.write(self.style.SUCCESS(f"🏛️ Created active chamber: {chamber.name}"))
 
         if not self.full:
             return
-        # 🏢 Create companies if fewer than 3 exist
+
+        # 🏢 Create companies
         companies = list(Company.objects.all())
         while len(companies) < 3:
+            social_entity = SocialEntity.objects.create(name=fake.unique.company())
             company = Company.objects.create(
-                name=fake.unique.company(),
+                name=social_entity.name,
                 registration_number=fake.unique.bothify(text='??#####'),
                 country=fake.country(),
                 industry=fake.job(),
                 date_founded=fake.date_between(start_date='-10y', end_date='-1y'),
-                is_active=True
+                is_active=True,
+                social_entity=social_entity
+            )
+            Subject.objects.get_or_create(
+                social_entity=social_entity,
+                defaults={
+                    'name': company.name,
+                    'legal_type': 'corporation',
+                    'identifier': company.registration_number,
+                    'active': True
+                }
             )
             companies.append(company)
             self.stdout.write(self.style.SUCCESS(f"🏢 Created company: {company.name}"))
 
-        # 📦 Create ventures linked to 3 random companies
+        # 📦 Create ventures
         selected_companies = random.sample(companies, 3)
         ventures = []
         for company in selected_companies:
             venture_name = f"{company.name} Venture"
             venture_url = f"https://example.com/{company.name.lower().replace(' ', '-')}"
-            venture, created = Venture.objects.get_or_create(
+            venture = Venture.objects.create(
                 name=venture_name,
-                defaults={
-                    'url': venture_url,
-                    'start': now(),
-                    'company': company
-                }
+                url=venture_url,
+                start=now(),
+                company=company
             )
             ventures.append(venture)
-            if created:
-                self.stdout.write(self.style.SUCCESS(f"📦 Created venture: {venture_name} (Company: {company.name})"))
+            self.stdout.write(self.style.SUCCESS(f"📦 Created venture: {venture.name}"))
 
-        # 💸 Add transactions (funding rounds)
+        # 💸 Create funding rounds
         for venture in ventures:
-            for i in range(2):
-                currency = random.choice(currencies)
-                amount = round(random.uniform(1000, 10000), 2)
-                Transaction.objects.create(
-                    name=f"{venture.name} Round {i+1}",
-                    amount=amount,
-                    currency=currency,
+            for i in range(random.randint(1, 3)):
+                amount = round(random.uniform(5000, 50000), 2)
+                timestamp = now() - timedelta(days=random.randint(1, 180))
+                round_name = f"{venture.name} Round {i+1}"
+                FundingRound.objects.create(
                     venture=venture,
-                    timestamp=now() - timedelta(days=random.randint(1, 30))
+                    name=round_name,
+                    amount=amount,
+                    currency=chamber.default_currency,
+                    timestamp=timestamp
                 )
+                self.stdout.write(self.style.SUCCESS(f"💸 Created funding round: {round_name} ({amount} {chamber.default_currency.symbol})"))
 
-        # 👤 Add shareholders and share transactions
+        # 👤 Create shareholders
         users = list(User.objects.all())
         for company in companies:
             for _ in range(random.randint(3, 6)):
@@ -121,4 +108,4 @@ class Command(IngressCommand):
                     user=user
                 )
 
-        self.stdout.write(self.style.SUCCESS("✅ SpectrumAi.pl ingress complete."))
+        self.stdout.write(self.style.SUCCESS("✅ SpectrumAi.pl ingress complete with funding rounds."))

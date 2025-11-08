@@ -1,9 +1,10 @@
-from django.shortcuts import render, get_object_or_404
-from django.views.generic import ListView, DetailView
-from django.db.models import Count, Sum
-from .models import Venture, Transaction, Currency, Chamber, Company, Shareholder
+from django.shortcuts import render
+from django.views.generic import DetailView
+from .models import Venture, Transaction, Currency, Chamber, Company, Shareholder, FundingRound
 from .page import PageProcessor
+from django.db.models import Count, Sum, F
 from django.core.exceptions import ImproperlyConfigured
+from collections import defaultdict
 
 
 # 🏢 Company Detail View
@@ -14,71 +15,71 @@ class CompanyDetailView(DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        shareholders = Shareholder.objects.filter(company=self.object)
+        company = self.object
+
+        # 👥 Shareholders
+        shareholders = Shareholder.objects.filter(company=company)
         context['shareholders'] = shareholders
         context['total_shares'] = sum(s.shares_owned for s in shareholders)
         context['share_labels'] = [s.full_name for s in shareholders]
         context['share_data'] = [s.shares_owned for s in shareholders]
+
+        # 💸 All funding rounds for this company’s ventures
+        funding_rounds = (
+            FundingRound.objects
+            .select_related("venture", "currency")
+            .filter(venture__company=company)
+            .order_by("-timestamp")
+        )
+        context["funding_rounds"] = funding_rounds
+
+        # 🏛️ Chamber info
+        chamber = Chamber.objects.filter(active=True).first()
+        context["chamber"] = chamber
+
         return PageProcessor().decorate(context, self.request)
 
-# 💸 Fund Overview View
+
 def fund_overview(request):
-
+    # 🏛️ Ensure single active chamber
     active_chambers = Chamber.objects.filter(active=True)
-
     if active_chambers.count() == 0:
         raise ImproperlyConfigured("No active chamber found. Please activate one in the admin panel.")
     elif active_chambers.count() > 1:
         raise ImproperlyConfigured("Multiple active chambers detected. Only one chamber can be active at a time.")
-
     chamber = active_chambers.first()
 
-    total_ventures = Venture.objects.count()
-    total_transactions = Transaction.objects.count()
+    # 📦 Ventures with funding round count
+    ventures = list(Venture.objects.annotate(
+        funding_rounds_count=Count('funding_rounds')
+    ))
 
-    currency_totals = Currency.objects.filter(active=True).annotate(
-        total_investment=Sum('transaction__amount')
+    # 💸 Funding totals grouped by venture and currency
+    raw_funding = (
+        FundingRound.objects
+        .values("venture__id", "currency__symbol")
+        .annotate(total=Sum("amount"))
+        .order_by("venture__id", "currency__symbol")
     )
 
-    performance_metrics = [
-        {
-            "label": "Total Ventures",
-            "value": total_ventures
-        },
-        {
-            "label": "Total Transactions",
-            "value": total_transactions
-        },
-    ]
+    # 🧮 Attach funding to each venture
+    funding_map = defaultdict(dict)
+    for row in raw_funding:
+        funding_map[row["venture__id"]][row["currency__symbol"]] = row["total"]
 
-    # for currency in currency_totals:
-    #     performance_metrics.append({
-    #         "label": f"Total in {currency.symbol}",
-    #         "currency": currency,
-    #         "value": round(currency.total_investment or 0, 2)
-    #     })
+    for venture in ventures:
+        venture.funding_by_currency = funding_map.get(venture.id, {})
 
-    ventures = Venture.objects.annotate(
-        funding_rounds_count=Count('funding_rounds'),
-        total_funding=Sum('funding_rounds__amount')
-    )
-
-    companies = Company.objects.annotate(
-        venture_count=Count('ventures'),
-        total_funding=Sum('ventures__funding_rounds__amount')
-    ).filter(venture_count__gt=0)
-
+    # 📦 Final context
     context = {
-        "performance_metrics": performance_metrics,
         "ventures": ventures,
-        "companies": companies,
         "chamber": chamber
     }
 
+    # 🎨 Theme and chart colors
     decorated_context = PageProcessor().decorate(context, request)
     theme_colors = decorated_context.get("theme", {}).get("colors", {})
-
-    chart_colors = {
+    decorated_context["chart_colors"] = {
         "background_light": theme_colors.get("accent-light", "#36A2EB"),
         "border_light": theme_colors.get("text-main-light", "#000000"),
         "text_light": theme_colors.get("text-main-light", "#000000"),
@@ -89,6 +90,6 @@ def fund_overview(request):
         "grid_dark": "#aaaaaa"
     }
 
-    decorated_context["chart_colors"] = chart_colors
-
     return render(request, "portfolio/fund_overview.html", decorated_context)
+
+

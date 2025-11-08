@@ -6,5 +6,5 @@ app_name = "portfolio"
 
 urlpatterns = [
     path('', fund_overview, name='fund_overview'),
-    path('company/<int:pk>/', CompanyDetailView.as_view(), name='company-detail'),
+    path('company/<uuid:pk>/', CompanyDetailView.as_view(), name='company-detail'),
 ]

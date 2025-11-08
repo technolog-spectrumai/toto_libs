@@ -1,14 +1,13 @@
 from django.contrib import admin
 from .models import (
-    Currency,
     Company,
     Shareholder,
     Venture,
-    Transaction,
-    Chamber
+    Chamber,
+    FundingRound
 )
-
 from yamabiko.admin import BaseSerializableAdmin
+
 
 @admin.register(Chamber)
 class ChamberAdmin(BaseSerializableAdmin):
@@ -16,18 +15,26 @@ class ChamberAdmin(BaseSerializableAdmin):
     list_filter = ('active', 'default_currency')
     search_fields = ('name',)
 
-@admin.register(Currency)
-class CurrencyAdmin(BaseSerializableAdmin):
-    list_display = ('symbol', 'name', 'is_crypto', 'decimals', 'active')
-    list_filter = ('is_crypto', 'active')
-    search_fields = ('symbol', 'name')
-
 
 @admin.register(Company)
 class CompanyAdmin(BaseSerializableAdmin):
-    list_display = ('name', 'registration_number', 'country', 'industry', 'date_founded', 'is_active')
+    list_display = (
+        'name', 'registration_number', 'country', 'industry',
+        'date_founded', 'is_active', 'has_social_entity', 'has_subject'
+    )
     list_filter = ('country', 'industry', 'is_active')
     search_fields = ('name', 'registration_number')
+
+    def has_social_entity(self, obj):
+        return bool(obj.social_entity)
+    has_social_entity.boolean = True
+    has_social_entity.short_description = "SocialEntity Linked"
+
+    def has_subject(self, obj):
+        return hasattr(obj.social_entity, "subject") if obj.social_entity else False
+    has_subject.boolean = True
+    has_subject.short_description = "Finance Subject"
+
 
 
 @admin.register(Shareholder)
@@ -43,8 +50,8 @@ class VentureAdmin(BaseSerializableAdmin):
     search_fields = ('name', 'company__name')
 
 
-@admin.register(Transaction)
-class TransactionAdmin(BaseSerializableAdmin):
-    list_display = ('name', 'amount', 'currency', 'venture', 'timestamp')
-    list_filter = ('currency', 'timestamp')
-    search_fields = ('name', 'venture__name')
+@admin.register(FundingRound)
+class FundingRoundAdmin(BaseSerializableAdmin):
+    list_display = ('name', 'venture', 'amount', 'currency', 'timestamp', 'transaction')
+    list_filter = ('currency', 'venture__company')
+    search_fields = ('name', 'venture__name', 'venture__company__name')

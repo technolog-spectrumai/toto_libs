@@ -117,24 +117,6 @@
       </div>
     </section>
 
-    <!-- 📊 Performance Summary -->
-    <section>
-      <h2 class="text-2xl font-bold mb-4">Summary</h2>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {% for metric in performance_metrics %}
-        <div class="p-4 rounded border"
-             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
-          <p><strong>{{ metric.label }}:</strong>
-            {% if metric.currency %}
-              {{ metric.value|floatformat:2 }} {{ metric.currency.symbol }}
-            {% else %}
-              {{ metric.value }}
-            {% endif %}
-          </p>
-        </div>
-        {% endfor %}
-      </div>
-    </section>
 
     <!-- 📦 Venture List -->
     <section>
@@ -155,14 +137,16 @@
             <ul class="ml-4 text-sm">
               <li><strong>Industry:</strong> {{ venture.company.industry }}</li>
               <li><strong>Country:</strong> {{ venture.company.country }}</li>
-              <li><strong>Venture Count:</strong> {{ venture.company.venture_count }}</li>
-              <li><strong>Total Funding:</strong>
-                {% if chamber.default_currency %}
-                  {{ venture.company.total_funding|floatformat:2 }} {{ chamber.default_currency.symbol }}
-                {% else %}
-                  {{ venture.company.total_funding|floatformat:2 }}
-                {% endif %}
-              </li>
+                <li><strong>Funding Rounds:</strong> {{ venture.funding_rounds_count }} </li>
+                <li><strong>Total Funding:</strong>
+                  <ul class="ml-4">
+                    {% for currency, amount in venture.funding_by_currency.items %}
+                      <li>{{ currency }}: {{ amount|floatformat:2 }}</li>
+                    {% empty %}
+                      <li>No funding recorded.</li>
+                    {% endfor %}
+                  </ul>
+                </li>
             </ul>
           {% endif %}
 
@@ -178,14 +162,6 @@
           {% if venture.end %}
             <p>End: {{ venture.end|date:"F j, Y" }}</p>
           {% endif %}
-          <p>Funding Rounds: {{ venture.funding_rounds_count }}</p>
-          <p>Total Funding:
-            {% if chamber.default_currency %}
-              {{ venture.total_funding|floatformat:2 }} {{ chamber.default_currency.symbol }}
-            {% else %}
-              {{ venture.total_funding|floatformat:2 }}
-            {% endif %}
-          </p>
         </div>
         {% empty %}
         <div class="p-4 rounded border text-sm text-center"
