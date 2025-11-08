@@ -19,14 +19,12 @@
     new Chart(ctx, {
       type: 'bar',
       data: {
-        labels: ['Incoming Tx', 'Outgoing Tx', 'Incoming Obligation', 'Outgoing Obligation'],
+        labels: ['Incoming', 'Outgoing'],
         datasets: [{
           label: 'Count',
           data: [
             {{ transactions_incoming|length }},
-            {{ transactions_outgoing|length }},
-            {{ obligations_incoming|length }},
-            {{ obligations_outgoing|length }}
+            {{ transactions_outgoing|length }}
           ],
           backgroundColor: chartColors.background,
           borderColor: chartColors.border,
@@ -84,7 +82,20 @@
         <p><strong>Created:</strong> {{ account.created_at|date:"F j, Y" }}</p>
       </div>
     </section>
-
+      <section>
+          <form method="get" class="mb-6 text-sm text-center">
+              <label for="period" class="font-medium mr-2">Show history for:</label>
+              <select name="period" id="period" onchange="this.form.submit()"
+                      class="px-2 py-1 rounded border"
+                      :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark border-gray-600' : 'bg-white text-text-main-light border-gray-300'">
+                {% for days in available_periods %}
+                  <option value="{{ days }}" {% if days == selected_period %}selected{% endif %}>
+                    Last {{ days }} days
+                  </option>
+                {% endfor %}
+              </select>
+            </form>
+      </section>
     <!-- 💸 Transactions -->
     <section>
       <h2 class="text-2xl font-bold mb-4">Transactions</h2>
@@ -111,6 +122,16 @@
         {% endif %}
       </div>
     </section>
+
+    <!-- 📊 Activity Chart -->
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Balance</h2>
+      <div class="p-4 rounded border"
+           :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+        <canvas id="activityBarChart" height="300"></canvas>
+      </div>
+    </section>
+
 
     <!-- 📑 Obligations -->
     <section>
@@ -139,14 +160,6 @@
       </div>
     </section>
 
-    <!-- 📊 Activity Chart -->
-    <section>
-      <h2 class="text-2xl font-bold mb-4">Activity Chart</h2>
-      <div class="p-4 rounded border"
-           :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
-        <canvas id="activityBarChart" height="300"></canvas>
-      </div>
-    </section>
   </div>
 </div>
 {% endblock %}
