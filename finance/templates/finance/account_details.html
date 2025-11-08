@@ -101,18 +101,19 @@
       <h2 class="text-2xl font-bold mb-4">Transactions</h2>
       <div class="space-y-4">
         {% for tx in transactions_outgoing %}
-        <div class="p-4 rounded border"
-             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
-          <p><strong>Outgoing:</strong> {{ tx.amount|floatformat:2 }} → {{ tx.destination.name }}</p>
-          <p>Date: {{ tx.timestamp|date:"F j, Y H:i" }}</p>
-        </div>
+          <div class="p-4 rounded border"
+               :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+            <p><strong>Outgoing:</strong> {{ tx.amount|floatformat:2 }} {{ tx.currency.symbol }} → {{ tx.destination.name }}</p>
+            <p>Date: {{ tx.timestamp|date:"F j, Y H:i" }}</p>
+          </div>
         {% endfor %}
+
         {% for tx in transactions_incoming %}
-        <div class="p-4 rounded border"
-             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
-          <p><strong>Incoming:</strong> {{ tx.amount|floatformat:2 }} ← {{ tx.source.name }}</p>
-          <p>Date: {{ tx.timestamp|date:"F j, Y H:i" }}</p>
-        </div>
+          <div class="p-4 rounded border"
+               :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+            <p><strong>Incoming:</strong> {{ tx.amount|floatformat:2 }} {{ tx.currency.symbol }} ← {{ tx.source.name }}</p>
+            <p>Date: {{ tx.timestamp|date:"F j, Y H:i" }}</p>
+          </div>
         {% endfor %}
         {% if not transactions_incoming and not transactions_outgoing %}
         <div class="p-4 rounded border text-sm text-center"
