@@ -1,13 +1,36 @@
 from django.contrib import admin
 from django.utils.html import format_html
-from django.utils import timezone
 from .models import (
     Community,
     CommunityMember,
     Address,
     MembershipApplication,
-    ReferenceRequest
+    ReferenceRequest,
+    SocialEntity
 )
+
+
+@admin.register(SocialEntity)
+class SocialEntityAdmin(admin.ModelAdmin):
+    list_display = ('id', 'name', 'linked_type', 'linked_name', 'created_at')
+    search_fields = ('id', 'name')
+    ordering = ('-created_at',)
+
+    def linked_type(self, obj):
+        if hasattr(obj, 'community'):
+            return "Community"
+        elif hasattr(obj, 'member'):
+            return "Community Member"
+        return "Unlinked"
+    linked_type.short_description = "Entity Type"
+
+    def linked_name(self, obj):
+        if hasattr(obj, 'community'):
+            return obj.community.name
+        elif hasattr(obj, 'member'):
+            return obj.member.display_name
+        return "-"
+    linked_name.short_description = "Entity Name"
 
 
 @admin.register(Address)
@@ -27,6 +50,7 @@ class CommunityAdmin(admin.ModelAdmin):
         'established_year',
         'head_display',
         'created_at',
+        'social_entity_id',
     )
     search_fields = ('name', 'slug', 'head__display_name')
     ordering = ('name',)
@@ -36,10 +60,14 @@ class CommunityAdmin(admin.ModelAdmin):
         return obj.head.display_name if obj.head else "-"
     head_display.short_description = "Head of Community"
 
+    def social_entity_id(self, obj):
+        return obj.social_entity.id if hasattr(obj, 'social_entity') else "-"
+    social_entity_id.short_description = "Social Entity"
+
 
 @admin.register(CommunityMember)
 class CommunityMemberAdmin(admin.ModelAdmin):
-    list_display = ('display_name', 'user', 'patron_display', 'joined_date', 'avatar_preview', 'slug')
+    list_display = ('display_name', 'user', 'patron_display', 'joined_date', 'avatar_preview', 'slug', 'social_entity_id')
     search_fields = ('display_name', 'user__username', 'user__email', 'patron__display_name')
     list_filter = ('joined_date',)
     ordering = ('-joined_date',)
@@ -55,10 +83,10 @@ class CommunityMemberAdmin(admin.ModelAdmin):
         return obj.patron.display_name if obj.patron else "-"
     patron_display.short_description = "Patron"
 
+    def social_entity_id(self, obj):
+        return obj.social_entity.id if hasattr(obj, 'social_entity') else "-"
+    social_entity_id.short_description = "Social Entity"
 
-@admin.action(description='Mark selected applications as verified')
-def mark_as_verified(modeladmin, request, queryset):
-    queryset.update(status='verified', verified_at=timezone.now())
 
 
 @admin.register(MembershipApplication)
@@ -68,7 +96,6 @@ class MembershipApplicationAdmin(admin.ModelAdmin):
     search_fields = ('email', 'code', 'community__name')
     ordering = ('-created_at',)
     readonly_fields = ('created_at', 'verified_at')
-    actions = [mark_as_verified]
 
     @admin.display(boolean=True, description='Verified')
     def is_verified_display(self, obj):

@@ -3,6 +3,9 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 from django.utils.text import slugify
 import random
+import uuid
+from django.utils.timezone import now
+from django.core.exceptions import ValidationError
 
 
 class Address(models.Model):
@@ -20,6 +23,25 @@ class Address(models.Model):
         return f"{base}, {self.locality_name}, {self.state_or_province_name}, {self.country_name}"
 
 
+class SocialEntity(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=255, blank=True, null=True)
+    created_at = models.DateTimeField(default=now)
+
+    def clean(self):
+        linked_models = []
+        if hasattr(self, 'community'):
+            linked_models.append('Community')
+        if hasattr(self, 'member'):
+            linked_models.append('CommunityMember')
+        if len(linked_models) > 1:
+            raise ValidationError(f"SocialEntity cannot be linked to multiple entities: {', '.join(linked_models)}")
+
+    def __str__(self):
+        return self.name or str(self.id)
+
+
+
 class Community(models.Model):
     name = models.CharField(max_length=255, help_text="Name of the community or organization")
     slug = models.SlugField(unique=True, blank=True, help_text="URL-friendly identifier")
@@ -34,6 +56,11 @@ class Community(models.Model):
     )
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
+    social_entity = models.OneToOneField(
+        'SocialEntity',
+        on_delete=models.CASCADE,
+        related_name='community'
+    )
 
     def __str__(self):
         return self.name
@@ -65,6 +92,11 @@ class CommunityMember(models.Model):
     avatar = models.ImageField(upload_to='avatars/', null=True, blank=True)
     joined_date = models.DateTimeField(default=timezone.now)
     slug = models.SlugField(unique=True, blank=True)
+    social_entity = models.OneToOneField(
+        'SocialEntity',
+        on_delete=models.CASCADE,
+        related_name='member'
+    )
 
     def __str__(self):
         return self.display_name
