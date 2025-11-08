@@ -1,6 +1,7 @@
 from django.contrib import admin
-from .models import Currency, Subject, Account, Transaction, Obligation, ExchangeRate
+from .models import Currency, Subject, Account, Transaction, ExchangeRate
 from community.models import SocialEntity
+from .batch import BatchAction
 
 
 @admin.register(Currency)
@@ -48,11 +49,14 @@ class TransactionAdmin(admin.ModelAdmin):
     search_fields = ("name",)
     list_filter = ("currency", "timestamp")
     readonly_fields = ("timestamp",)
+    actions = ["execute_transactions"]
 
+    @admin.action(description="Execute selected transactions")
+    def execute_transactions(self, request, queryset):
+        def execute_one(tx):
+            tx.execute()
+            return tx
 
-@admin.register(Obligation)
-class ObligationAdmin(admin.ModelAdmin):
-    list_display = ("name", "amount", "currency", "source", "destination", "due_date", "fulfilled", "timestamp")
-    search_fields = ("name",)
-    list_filter = ("currency", "fulfilled", "due_date")
-    readonly_fields = ("timestamp",)
+        result = BatchAction(queryset).run(execute_one)
+        BatchAction.display_messages(result, self.message_user, request, verb="execute")
+

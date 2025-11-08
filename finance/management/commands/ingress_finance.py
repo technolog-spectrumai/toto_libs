@@ -1,5 +1,5 @@
 from oya.ingress import IngressCommand
-from finance.models import Currency, Subject, Account, Transaction, Obligation, ExchangeRate
+from finance.models import Currency, Subject, Account, Transaction, ExchangeRate
 from community.models import SocialEntity
 from django.contrib.auth.models import User
 from django.utils.timezone import now
@@ -103,21 +103,6 @@ class Command(IngressCommand):
                 source=src,
                 destination=dst,
                 timestamp=now() - timedelta(days=random.randint(0, 30))
-            )
-
-        # 📑 Obligations
-        for i in range(10):
-            src, dst = random.sample(accounts, 2)
-            currency = src.currency
-            Obligation.objects.create(
-                name=f"Obligation {i+1}",
-                amount=round(random.uniform(100, 1000), 2),
-                currency=currency,
-                source=src,
-                destination=dst,
-                timestamp=now(),
-                due_date=now().date() + timedelta(days=random.randint(5, 30)),
-                fulfilled=random.choice([True, False])
             )
 
         self.stdout.write(self.style.SUCCESS("✅ Finance data seeded successfully."))

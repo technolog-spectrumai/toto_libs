@@ -1,5 +1,4 @@
 import os
-
 from django.contrib import admin
 from django import forms
 from django.core.files import File

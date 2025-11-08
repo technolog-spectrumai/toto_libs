@@ -70,8 +70,7 @@ class Account(models.Model):
         return f"{self.name} ({self.currency.symbol})"
 
 
-# 🔁 Abstract Base: Operation
-class Operation(models.Model):
+class Transaction(models.Model):
     name = models.CharField(max_length=255)
     amount = models.DecimalField(max_digits=20, decimal_places=2)
     currency = models.ForeignKey(Currency, on_delete=models.CASCADE)
@@ -79,8 +78,8 @@ class Operation(models.Model):
     destination = models.ForeignKey(Account, on_delete=models.CASCADE, related_name="%(class)s_incoming")
     timestamp = models.DateTimeField(default=now)
 
-    class Meta:
-        abstract = True
+    def __str__(self):
+        return f"{self.name}: {self.amount} {self.currency.symbol} from {self.source.name} to {self.destination.name}"
 
     def execute(self):
         # Validate source currency match
@@ -113,30 +112,4 @@ class Operation(models.Model):
         self.source.save()
         self.destination.save()
 
-
-# 💸 Transaction
-class Transaction(Operation):
-    def __str__(self):
-        return f"{self.name}: {self.amount} {self.currency.symbol} from {self.source.name} to {self.destination.name}"
-
-    def execute(self):
-        super().execute()
-
-
-# 📑 Obligation
-class Obligation(Operation):
-    due_date = models.DateField()
-    fulfilled = models.BooleanField(default=False)
-
-    def __str__(self):
-        status = "Fulfilled" if self.fulfilled else "Pending"
-        return f"{self.name}: {self.amount} {self.currency.symbol} from {self.source.name} to {self.destination.name} due {self.due_date} ({status})"
-
-    def execute(self):
-        if self.fulfilled:
-            raise ValueError("Obligation already fulfilled.")
-
-        super().execute()
-        self.fulfilled = True
-        self.save()
 

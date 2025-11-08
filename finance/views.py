@@ -1,5 +1,4 @@
 from datetime import timedelta
-
 from django.utils.timezone import now
 from django.views.generic import ListView, DetailView
 from .models import Account, Currency
@@ -60,8 +59,6 @@ class AccountDetailView(DetailView):
         # Filter by period
         context["transactions_outgoing"] = account.transaction_outgoing.filter(timestamp__gte=since)
         context["transactions_incoming"] = account.transaction_incoming.filter(timestamp__gte=since)
-        context["obligations_outgoing"] = account.obligation_outgoing.filter(timestamp__gte=since)
-        context["obligations_incoming"] = account.obligation_incoming.filter(timestamp__gte=since)
 
         context["selected_period"] = period_days
         context["available_periods"] = [7, 30, 90, 180, 365]

@@ -133,34 +133,6 @@
       </div>
     </section>
 
-
-    <!-- 📑 Obligations -->
-    <section>
-      <h2 class="text-2xl font-bold mb-4">Obligations</h2>
-      <div class="space-y-4">
-        {% for ob in obligations_outgoing %}
-        <div class="p-4 rounded border"
-             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
-          <p><strong>Outgoing:</strong> {{ ob.amount|floatformat:2 }} → {{ ob.destination.name }}</p>
-          <p>Due: {{ ob.due_date|date:"F j, Y" }} | Status: {{ ob.fulfilled|yesno:"Fulfilled,Pending" }}</p>
-        </div>
-        {% endfor %}
-        {% for ob in obligations_incoming %}
-        <div class="p-4 rounded border"
-             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
-          <p><strong>Incoming:</strong> {{ ob.amount|floatformat:2 }} ← {{ ob.source.name }}</p>
-          <p>Due: {{ ob.due_date|date:"F j, Y" }} | Status: {{ ob.fulfilled|yesno:"Fulfilled,Pending" }}</p>
-        </div>
-        {% endfor %}
-        {% if not obligations_incoming and not obligations_outgoing %}
-        <div class="p-4 rounded border text-sm text-center"
-             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
-          No obligations recorded.
-        </div>
-        {% endif %}
-      </div>
-    </section>
-
   </div>
 </div>
 {% endblock %}
