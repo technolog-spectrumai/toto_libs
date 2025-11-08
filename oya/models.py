@@ -8,6 +8,8 @@ from io import StringIO
 import sys
 import json
 from django.conf import settings
+from django.db import models
+from colorfield.fields import ColorField  # Ensure you have django-colorfield installed
 
 
 class Font(models.Model):
@@ -48,9 +50,6 @@ _THEME_EXTRA = {
     "additionalProperties": False
 }
 
-
-from django.db import models
-from colorfield.fields import ColorField  # Ensure you have django-colorfield installed
 
 class ColorMix(models.Model):
     name = models.CharField(

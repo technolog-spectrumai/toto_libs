@@ -1,6 +1,7 @@
 from django.http import JsonResponse
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, render
 from .models import Federation
+from .page import PageProcessor
 
 
 def federation_detail_json(request, pk):
@@ -27,3 +28,18 @@ def federation_list_json(request):
         for f in federations
     ]
     return JsonResponse(data, safe=False)
+
+
+def current_federation_view(request):
+    """
+    Render the current active federation that has an active platform.
+    """
+    federation = get_object_or_404(
+        Federation,
+        active=True,
+        platform__active=True
+    )
+    context = {"federation": federation}
+    context = PageProcessor().decorate(context, request)
+    return render(request, "federal/current_federation.html", context)
+

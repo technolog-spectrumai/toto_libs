@@ -3,9 +3,11 @@ import uuid
 from django.contrib.auth.models import User
 from django.utils import timezone
 from django.core.management.base import CommandError
-from federal.models import Federation, FederatedIdentity
-from oya.ingress import IngressCommand
 from django.urls import reverse
+
+from federal.models import Federation, FederatedIdentity
+from oya.models import Platform
+from oya.ingress import IngressCommand
 
 
 class Command(IngressCommand):
@@ -17,16 +19,17 @@ class Command(IngressCommand):
             title="Federations",
             icon="fa-solid fa-landmark",
             description="Federations and federated identities.",
-            link=reverse("federal:federation_list_json"),  # ✅ use reverse here
+            link=reverse("federal:current_federation"),
             public=False
         )
         if not self.full:
             return
 
         self.stdout.write(self.style.NOTICE("🏛️ Creating federations..."))
-        federation = self.create_federation("Global Federation")
-        if not federation:
-            self.stderr.write(self.style.ERROR("❌ Federation creation failed."))
+        try:
+            federation = self.create_federation("Global Federation")
+        except CommandError as e:
+            self.stderr.write(self.style.ERROR(f"❌ {e}"))
             return
 
         self.stdout.write(self.style.NOTICE("🧑‍🤝‍🧑 Creating federated identities..."))
@@ -38,15 +41,28 @@ class Command(IngressCommand):
 
         self.stdout.write(self.style.SUCCESS("✅ Federal ingress complete."))
 
-    def create_federation(self, name: str) -> Federation | None:
+    def create_federation(self, name: str) -> Federation:
+        # 🔎 Find an active platform
+        platform = Platform.objects.filter(active=True).first()
+        if not platform:
+            raise CommandError("No active Platform found. Cannot create Federation.")
+
+        # Create or get federation
         federation, created = Federation.objects.get_or_create(
             name=name,
             defaults={
                 "slug": name.lower().replace(" ", "-"),
                 "description": f"{name} description",
                 "active": True,
+                "platform": platform,  # ✅ attach active platform
             }
         )
+
+        # If federation existed but had no platform, attach it
+        if not federation.platform_id:
+            federation.platform = platform
+            federation.save()
+
         return federation
 
     def create_fake_identities(self, federation: Federation, count=5):

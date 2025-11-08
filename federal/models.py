@@ -1,8 +1,7 @@
 from django.db import models
 import uuid
-from django.utils.timezone import now
-from django.core.exceptions import ValidationError
 from django.urls import reverse
+from oya.models import Platform
 
 
 class Federation(models.Model):
@@ -21,6 +20,12 @@ class Federation(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     active = models.BooleanField(default=True)
+    platform = models.OneToOneField(
+        Platform,
+        on_delete=models.CASCADE,
+        related_name="federation",
+        help_text="Platform associated with this federation"
+    )
 
     def __str__(self):
         return self.name
@@ -28,7 +33,7 @@ class Federation(models.Model):
     @property
     def url(self):
         # Assuming you have a federation detail view named 'federation_detail'
-        return reverse("federal:federation_detail", kwargs={"slug": self.slug})
+        return reverse("federal:federation_detail_json", kwargs={"slug": self.slug})
 
 
 class FederatedIdentity(models.Model):
