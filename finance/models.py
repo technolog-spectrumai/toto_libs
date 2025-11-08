@@ -82,19 +82,32 @@ class Operation(models.Model):
     class Meta:
         abstract = True
 
-
     def execute(self):
-        # Validate currency match
-        if self.source.currency != self.currency or self.destination.currency != self.currency:
-            raise ValueError("Currency mismatch between operation and accounts.")
+        # Validate source currency match
+        if self.source.currency != self.currency:
+            raise ValueError("Source account currency does not match operation currency.")
 
         # Validate sufficient funds
         if self.source.balance < self.amount:
             raise ValueError(f"Insufficient funds in source account '{self.source.name}'.")
 
+        # Convert amount if destination uses a different currency
+        if self.destination.currency == self.currency:
+            converted_amount = self.amount
+        else:
+            try:
+                rate = ExchangeRate.objects.filter(
+                    base_currency=self.currency,
+                    quote_currency=self.destination.currency
+                ).latest("timestamp")
+            except ExchangeRate.DoesNotExist:
+                raise ValueError(f"No exchange rate from {self.currency.symbol} to {self.destination.currency.symbol}.")
+
+            converted_amount = self.amount * rate.rate
+
         # Perform transfer
         self.source.balance -= self.amount
-        self.destination.balance += self.amount
+        self.destination.balance += converted_amount
 
         # Save changes
         self.source.save()
