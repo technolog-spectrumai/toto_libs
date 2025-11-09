@@ -5,6 +5,10 @@ import uuid
 import datetime
 from django.db import models
 from django.utils import timezone
+import qrcode
+import base64
+from io import BytesIO
+from django.utils.html import mark_safe
 
 
 class Federation(models.Model):
@@ -156,4 +160,46 @@ class FederalAuthGateway(models.Model):
         Return the actual secret key material for signing.
         """
         return self.secret.key
+
+
+class RefreshToken(models.Model):
+    """
+    Persisted refresh tokens for session management.
+    """
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False
+    )
+    identity = models.ForeignKey(
+        FederatedIdentity,
+        on_delete=models.CASCADE,
+        related_name="refresh_tokens",
+        help_text="Identity this refresh token belongs to"
+    )
+    token = models.CharField(
+        max_length=512,
+        unique=True,
+        help_text="The actual refresh token string (JWT or opaque)"
+    )
+    issued_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    revoked = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"RefreshToken for {self.identity} (revoked={self.revoked})"
+
+    def is_expired(self) -> bool:
+        """
+        Check if the token has expired.
+        """
+        return timezone.now() >= self.expires_at
+
+    def revoke(self):
+        """
+        Mark this token as revoked.
+        """
+        self.revoked = True
+        self.save(update_fields=["revoked"])
+
 
