@@ -6,4 +6,6 @@ app_name = 'gate'
 urlpatterns = [
     path("login/", views.login_view, name="login"),
     path("logout/", views.logout_view, name="logout"),
+    path("challenge/", views.challenge_login_view, name="challenge_login"),
+    path("challenge/verify/", views.challenge_verify_view, name="challenge_verify")
 ]

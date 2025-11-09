@@ -11,9 +11,10 @@ from django.http import JsonResponse
 from django.contrib.auth.models import User
 from community.models import MembershipApplication, generate_code, CommunityMember, Community
 from community.forms import LoginForm, MembershipApplicationForm, CodeVerificationForm, ReferenceRequestForm
+
+from .forms import ChallengeLoginForm
 from .page import PageProcessor
 import logging
-import os
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -28,9 +29,6 @@ def get_platform_secret():
     if not platform or not platform.secret:
         raise RuntimeError("No active Platform or SecretKey configured")
     return platform.secret.key
-
-def _get_template(name):
-    return os.path.join(template_dir, name)
 
 
 def _get_next(request):
@@ -131,5 +129,43 @@ def logout_view(request):
     logger.info(f"User '{request.user.username}' logged out.")
     logout(request)
     return redirect(_get_next(request))
+
+
+def challenge_login_view(request):
+    form = ChallengeLoginForm(request.POST or None)
+    context = {"form": form}
+    processor = PageProcessor()
+    if request.method == "POST" and form.is_valid():
+        identity_id = form.cleaned_data["identity_id"]
+        identity = get_object_or_404(FederatedIdentity, pk=identity_id)
+        challenge = ChallengeGuard.initiate_login(identity)
+        context.update({"identity": identity, "challenge": challenge})
+    context = processor.decorate(context, request)
+    return render(request, "gate/challenge.html", context)
+
+
+@csrf_exempt
+def challenge_verify_view(request):
+    form = ChallengeLoginForm(request.POST or None)
+    processor = PageProcessor()
+    if request.method == "POST" and form.is_valid():
+        identity_id = form.cleaned_data["identity_id"]
+        signature_b64 = form.cleaned_data["signature"]
+        identity = get_object_or_404(FederatedIdentity, pk=identity_id)
+
+        if ChallengeGuard.verify_login(identity, signature_b64):
+            logger.info(f"Challenge login successful for identity {identity.id}")
+            return redirect(_get_next(request))
+        else:
+            context = {
+                "form": form,
+                "identity": identity,
+                "error": "Verification failed. Please try again."
+            }
+            context = processor.decorate(context, request)
+            return render(request, "gate/challenge.html", context)
+    context = {"form": form, "error": "Invalid input."}
+    context = processor.decorate(context, request)
+    return render(request, "gate/challenge.html", context)
 
 
