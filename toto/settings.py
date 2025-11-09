@@ -74,7 +74,8 @@ INSTALLED_APPS = [
     "kanban",
     "yamabiko",
     "finance",
-    "federal"
+    "federal",
+    "gate"
 ]
 
 
@@ -276,7 +277,8 @@ INGRESS_ALLOWED_APPS = [
     "events",
     "kanban",
     "finance",
-    "federal"
+    "federal",
+    "auth"
 ]
 
 FULL_INGRESS = DEBUG

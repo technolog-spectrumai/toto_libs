@@ -83,12 +83,6 @@ class Command(BaseCommand):
         site_name = "TOTO Community Platform"
         self.stdout.write(self.style.NOTICE("Creating platform..."))
 
-        create_platform_args = [
-            site_name,
-            domain,
-            "--active=True"
-        ]
-
         self.stdout.write(self.style.NOTICE("Creating fonts and theme..."))
         THEMES_DIR = os.path.join(os.path.dirname(__file__), '../../../../data/themes')
         self.create_theme_from_file(os.path.join(THEMES_DIR, "spectre.json"))
@@ -97,12 +91,17 @@ class Command(BaseCommand):
         if theme is None:
             self.stderr.write(self.style.ERROR("Theme not found. Initialization aborted."))
             return
-        create_platform_args.append(f"--theme={theme.id}")
+        create_platform_args = [
+            site_name,
+            domain,
+            "--active=True",
+            f"--theme_id={theme.id}",  # pass theme id
+            "--index_url=/",  # optional index url
+            "--secret_size=64",  # let create_platform handle SecretKey
+            "--passphrase=qwerty"
+        ]
 
         self.stdout.write(self.style.NOTICE("Creating platform..."))
-        call_command("create_platform", *create_platform_args)
-        self.stdout.write(self.style.SUCCESS("Platform created."))
-
         call_command("create_platform", *create_platform_args)
         self.stdout.write(self.style.SUCCESS("Platform created."))
 

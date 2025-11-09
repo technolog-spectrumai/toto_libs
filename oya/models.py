@@ -10,7 +10,7 @@ import json
 from django.conf import settings
 from django.db import models
 from colorfield.fields import ColorField  # Ensure you have django-colorfield installed
-
+from gervazy.models import SecretKey
 
 class Font(models.Model):
     FONT_FAMILY_CHOICES = [
@@ -180,7 +180,12 @@ class Platform(models.Model):
         related_name="platform_themes",
         help_text="Theme applied to this platform"
     )
-
+    secret = models.OneToOneField(
+        SecretKey,
+        on_delete=models.CASCADE,
+        related_name="platform",
+        help_text="SecretKey used for signing tokens"
+    )
     def __str__(self):
         return f"{self.site_name} Platform"
 
