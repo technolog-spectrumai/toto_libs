@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Federation, FederatedIdentity, Challenge
+from .models import Federation, FederatedIdentity, Challenge, RefreshToken
 from django.utils.html import format_html
 
 
@@ -16,7 +16,7 @@ class FederatedIdentityAdmin(admin.ModelAdmin):
     list_display = ("id", "name", "federation", "rsa_keypair", "created_at")
     list_filter = ("federation", "created_at")
     search_fields = ("name", "id")
-    readonly_fields = ("created_at",)
+    readonly_fields = ("created_at", "qr_code")
 
 
 @admin.register(Challenge)

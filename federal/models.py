@@ -81,6 +81,24 @@ class FederatedIdentity(models.Model):
         return f"{self.name or self.id} from {self.issuer}"
 
 
+    def qr_code(self):
+        """
+        Generate a QR code for this identity.
+        By default, encode the issuer URL + UUID.
+        """
+        data = f"{self.issuer}/{self.id}"   # you can customize this
+        qr = qrcode.QRCode(box_size=6, border=2)
+        qr.add_data(data)
+        qr.make(fit=True)
+
+        img = qr.make_image(fill_color="black", back_color="white")
+        buffer = BytesIO()
+        img.save(buffer, format="PNG")
+        img_str = base64.b64encode(buffer.getvalue()).decode()
+
+        return mark_safe(f'<img src="data:image/png;base64,{img_str}" />')
+
+
 class Challenge(models.Model):
     id = models.UUIDField(
         primary_key=True,
