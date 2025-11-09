@@ -25,7 +25,7 @@ class Challenge(models.Model):
     verified = models.BooleanField(default=False)
 
     def __str__(self):
-        return f"Challenge for {self.identity.did} issued at {self.issued_at}"
+        return f"Challenge for {self.identity.id} issued at {self.issued_at}"
 
     def is_expired(self) -> bool:
         return timezone.now() >= self.expires_at

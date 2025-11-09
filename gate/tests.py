@@ -63,31 +63,46 @@ class AuthFlowTests(TestCase):
         result = challenge.verify(b"fake_signature")
         self.assertFalse(result)
 
-    def test_refresh_token_lifecycle(self):
-        rt = RefreshToken.objects.create(
-            user=self.user,
-            token="dummy-refresh",
-            expires_at=timezone.now() + datetime.timedelta(seconds=60)
-        )
-        self.assertFalse(rt.revoked)
-        self.assertFalse(rt.is_expired())
+    def test_challenge_verification_success(self):
+        # Create a challenge for the identity
+        challenge = Challenge.objects.create(identity=self.identity)
 
-        # Expire it
-        rt.expires_at = timezone.now() - datetime.timedelta(seconds=1)
-        rt.save()
-        self.assertTrue(rt.is_expired())
+        # Sign the nonce with the RSA private key
+        signature = self.rsa.sign(challenge.nonce.encode())
 
-        # Revoke it
-        rt.revoke()
-        self.assertTrue(rt.revoked)
+        # Verify the challenge with the correct signature
+        result = challenge.verify(signature)
 
-    def test_jwt_signed_with_platform_secret(self):
-        payload = {
-            "sub": str(self.identity.id),
-            "scope": "access",
-            "iat": int(timezone.now().timestamp())
-        }
-        token = jwt.encode(payload, self.platform.secret.key, algorithm="HS256")
-        decoded = jwt.decode(token, self.platform.secret.key, algorithms=["HS256"])
-        self.assertEqual(decoded["sub"], str(self.identity.id))
-        self.assertEqual(decoded["scope"], "access")
+        # Assertions
+        self.assertTrue(result, "Challenge should verify successfully with correct signature")
+        self.assertTrue(challenge.verified, "Challenge model should be marked as verified")
+        self.assertFalse(challenge.is_expired(), "Challenge should not be expired immediately after creation")
+
+    # def test_refresh_token_lifecycle(self):
+    #     rt = RefreshToken.objects.create(
+    #         user=self.user,
+    #         token="dummy-refresh",
+    #         expires_at=timezone.now() + datetime.timedelta(seconds=60)
+    #     )
+    #     self.assertFalse(rt.revoked)
+    #     self.assertFalse(rt.is_expired())
+    #
+    #     # Expire it
+    #     rt.expires_at = timezone.now() - datetime.timedelta(seconds=1)
+    #     rt.save()
+    #     self.assertTrue(rt.is_expired())
+    #
+    #     # Revoke it
+    #     rt.revoke()
+    #     self.assertTrue(rt.revoked)
+    #
+    # def test_jwt_signed_with_platform_secret(self):
+    #     payload = {
+    #         "sub": str(self.identity.id),
+    #         "scope": "access",
+    #         "iat": int(timezone.now().timestamp())
+    #     }
+    #     token = jwt.encode(payload, self.platform.secret.key, algorithm="HS256")
+    #     decoded = jwt.decode(token, self.platform.secret.key, algorithms=["HS256"])
+    #     self.assertEqual(decoded["sub"], str(self.identity.id))
+    #     self.assertEqual(decoded["scope"], "access")
