@@ -1,5 +1,6 @@
 from django.contrib import admin
 from .models import Federation, FederatedIdentity, Challenge
+from django.utils.html import format_html
 
 
 @admin.register(Federation)
@@ -22,12 +23,29 @@ class FederatedIdentityAdmin(admin.ModelAdmin):
 class ChallengeAdmin(admin.ModelAdmin):
     list_display = (
         "identity",
-        "nonce",
+        "masked_nonce",
         "issued_at",
         "expires_at",
-        "verified",
+        "status_display",
     )
     list_filter = ("verified", "issued_at", "expires_at")
-    search_fields = ("nonce", "identity__did")
-    readonly_fields = ("issued_at",)
+    search_fields = ("nonce", "identity__id", "identity__name")
+    readonly_fields = ("issued_at", "expires_at", "verified", "masked_nonce")
 
+    def masked_nonce(self, obj):
+        """
+        Show a masked version of the nonce so it isn't exposed in plain text.
+        """
+        return "*" * len(obj.nonce) if obj.nonce else ""
+    masked_nonce.short_description = "Nonce (masked)"
+
+    def status_display(self, obj):
+        """
+        Color-coded status for quick visual feedback.
+        """
+        if obj.verified:
+            return format_html('<span style="color:green;">Verified ✅</span>')
+        elif obj.expires_at and obj.expires_at < obj.issued_at:
+            return format_html('<span style="color:red;">Expired ❌</span>')
+        return format_html('<span style="color:orange;">Pending ⏳</span>')
+    status_display.short_description = "Status"

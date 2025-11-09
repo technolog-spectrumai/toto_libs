@@ -78,6 +78,11 @@ class FederatedIdentity(models.Model):
 
 
 class Challenge(models.Model):
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False
+    )
     identity = models.ForeignKey(
         FederatedIdentity,
         on_delete=models.CASCADE,
