@@ -1,11 +1,10 @@
-import datetime
-
-from django.db import models
-import uuid
 from django.urls import reverse
-from django.utils import timezone
 from oya.models import Platform
-from gervazy.models import RSAKeyPair   # 🔑 import your RSA model
+from gervazy.models import RSAKeyPair, SecretKey
+import uuid
+import datetime
+from django.db import models
+from django.utils import timezone
 
 
 class Federation(models.Model):
@@ -120,3 +119,36 @@ class Challenge(models.Model):
         if not self.expires_at:
             self.expires_at = timezone.now() + datetime.timedelta(seconds=300)
         super().save(*args, **kwargs)
+
+
+class FederalAuthGateway(models.Model):
+    """
+    Minimal gateway: links a Federation to its signing SecretKey.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    federation = models.OneToOneField(
+        "Federation",
+        on_delete=models.CASCADE,
+        related_name="auth_gateway",
+        help_text="Federation this gateway belongs to"
+    )
+    secret = models.OneToOneField(
+        SecretKey,
+        on_delete=models.CASCADE,
+        related_name="gateway",
+        help_text="SecretKey used for signing tokens"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return f"AuthGateway for {self.federation.name}"
+
+    @property
+    def key_material(self) -> str:
+        """
+        Return the actual secret key material for signing.
+        """
+        return self.secret.key
+
