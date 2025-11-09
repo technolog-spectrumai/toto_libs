@@ -51,7 +51,7 @@ class EventDetailView(LoginRequiredMixin, DetailView):
     model = Event
     template_name = 'events/event_detail.html'
     context_object_name = 'event'
-    login_url = reverse_lazy('community:login')
+    login_url = reverse_lazy('gate:login')
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)

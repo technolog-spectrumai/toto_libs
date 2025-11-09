@@ -1,16 +1,23 @@
 import jwt
-from django.shortcuts import get_object_or_404
-from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from federal.models import FederatedIdentity
-from gate.models import AuthGateway
-from toto.gate.token import TokenGuard
+from gate.token import TokenGuard
 from gate.challenge import ChallengeGuard
 from django.contrib.auth import get_user_model
 from oya.models import Platform
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib.auth import authenticate, login, logout
+from django.http import JsonResponse
+from django.contrib.auth.models import User
+from community.models import MembershipApplication, generate_code, CommunityMember, Community
+from community.forms import LoginForm, MembershipApplicationForm, CodeVerificationForm, ReferenceRequestForm
+from .page import PageProcessor
+import logging
+import os
 
-
+logger = logging.getLogger(__name__)
 User = get_user_model()
+
 
 def get_platform_secret():
     """
@@ -21,6 +28,13 @@ def get_platform_secret():
     if not platform or not platform.secret:
         raise RuntimeError("No active Platform or SecretKey configured")
     return platform.secret.key
+
+def _get_template(name):
+    return os.path.join(template_dir, name)
+
+
+def _get_next(request):
+    return request.GET.get('next') or 'root:dashboard'
 
 
 @csrf_exempt
@@ -89,5 +103,33 @@ def refresh_token_view(request):
         return JsonResponse({"error": "Refresh failed"}, status=403)
 
     return JsonResponse({"access_token": new_access})
+
+
+def login_view(request):
+    processor = PageProcessor()
+    form = LoginForm(request.POST or None)
+    context = {"form": form, "page_title": "Login"}
+
+    if request.method == "POST" and form.is_valid():
+        user = authenticate(
+            request,
+            username=form.cleaned_data["username"],
+            password=form.cleaned_data["password"]
+        )
+        if user:
+            login(request, user)
+            logger.info(f"User '{user.username}' logged in successfully.")
+            return redirect(_get_next(request))
+        else:
+            logger.warning(f"Failed login attempt for username '{form.cleaned_data['username']}'.")
+            context["error"] = "Invalid credentials."
+
+    return render(request,"gate/login.html", processor.decorate(context, request))
+
+
+def logout_view(request):
+    logger.info(f"User '{request.user.username}' logged out.")
+    logout(request)
+    return redirect(_get_next(request))
 
 

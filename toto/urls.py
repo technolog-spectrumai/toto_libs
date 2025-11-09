@@ -31,7 +31,8 @@ urlpatterns = [
     path("audit/", include("audit.urls", namespace="audit")),
     path("kanban/", include("kanban.urls", namespace="kanban")),
     path("finance/", include("finance.urls", namespace="finance")),
-    path("federal/", include("federal.urls", namespace="federal"))
+    path("federal/", include("federal.urls", namespace="federal")),
+    path("gate/", include("gate.urls", namespace="gate"))
 ]
 
 

@@ -1,6 +1,6 @@
 import base64
 from federal.models import FederatedIdentity
-from gate.models import AuthGateway, Challenge
+from gate.models import Challenge
 
 
 class ChallengeGuard:

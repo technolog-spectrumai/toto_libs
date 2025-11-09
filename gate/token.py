@@ -2,7 +2,7 @@ import datetime
 import jwt
 from django.utils import timezone
 from django.contrib.auth import get_user_model
-from federal.models import RefreshToken
+from gate.models import RefreshToken
 
 User = get_user_model()
 

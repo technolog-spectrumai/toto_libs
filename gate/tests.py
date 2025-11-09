@@ -1,7 +1,5 @@
-import base64
 import jwt
 import datetime
-import uuid
 from django.test import TestCase
 from django.utils import timezone
 from django.contrib.auth.models import User

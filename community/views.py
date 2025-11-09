@@ -23,34 +23,6 @@ def _get_next(request):
     return request.GET.get('next') or 'nest:dashboard'
 
 
-def login_view(request):
-    processor = PageProcessor()
-    form = LoginForm(request.POST or None)
-    context = {"form": form, "page_title": "Login"}
-
-    if request.method == "POST" and form.is_valid():
-        user = authenticate(
-            request,
-            username=form.cleaned_data["username"],
-            password=form.cleaned_data["password"]
-        )
-        if user:
-            login(request, user)
-            logger.info(f"User '{user.username}' logged in successfully.")
-            return redirect(_get_next(request))
-        else:
-            logger.warning(f"Failed login attempt for username '{form.cleaned_data['username']}'.")
-            context["error"] = "Invalid credentials."
-
-    return render(request, _get_template("login.html"), processor.decorate(context, request))
-
-
-def logout_view(request):
-    logger.info(f"User '{request.user.username}' logged out.")
-    logout(request)
-    return redirect(_get_next(request))
-
-
 def membership_application_view(request):
     processor = PageProcessor()
     form = MembershipApplicationForm(request.POST or None)

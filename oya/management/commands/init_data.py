@@ -5,6 +5,8 @@ import os
 import django
 import json
 
+from django.urls import reverse
+
 
 class Command(BaseCommand):
     help = "Initialize platform"
@@ -96,7 +98,7 @@ class Command(BaseCommand):
             domain,
             "--active=True",
             f"--theme_id={theme.id}",  # pass theme id
-            "--index_url=/",  # optional index url
+            "--index_url=" + reverse("root:home"),  # optional index url
             "--secret_size=64",  # let create_platform handle SecretKey
             "--passphrase=qwerty"
         ]

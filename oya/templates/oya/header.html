@@ -25,21 +25,21 @@
 
       {% if user.is_authenticated %}
       <!-- Logout Button -->
-      <a href="{% url 'community:logout' %}"
+      <a href="{% url 'gate:logout' %}"
          class="flex items-center gap-2 px-3 py-1 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
         <i class="fas fa-sign-out-alt text-base"></i>
         <span>Logout</span>
       </a>
       {% else %}
       <!-- Login Button -->
-      <a href="{% url 'community:login' %}"
+      <a href="{% url 'gate:login' %}"
          class="flex items-center gap-2 px-3 py-1 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
         <i class="fas fa-sign-in-alt text-base"></i>
         <span>Login</span>
       </a>
       {% endif %}
 
-      <a href="{% url 'nest:dashboard' %}"
+      <a href="{% url 'root:dashboard' %}"
            class="flex items-center gap-2 px-3 py-1 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
           <i class="fas fa-tachometer-alt text-base"></i>
           <span>Dashboard</span>
@@ -76,14 +76,14 @@
 
       {% if user.is_authenticated %}
       <!-- Logout Button (Mobile) -->
-      <a href="{% url 'community:logout' %}"
+      <a href="{% url 'gate:logout' %}"
          class="flex items-center gap-2 px-3 py-2 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
         <i class="fas fa-sign-out-alt text-base"></i>
         <span>Logout</span>
       </a>
       {% else %}
       <!-- Login Button (Mobile) -->
-      <a href="{% url 'community:login' %}"
+      <a href="{% url 'gate:login' %}"
          class="flex items-center gap-2 px-3 py-2 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
         <i class="fas fa-sign-in-alt text-base"></i>
         <span>Login</span>
