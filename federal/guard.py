@@ -94,16 +94,15 @@ class FederalGuard:
         identity = FederatedIdentity.objects.get(id=payload["sub"])
         return self.issue_access_token(identity)
 
-    def get_identity_from_refresh_token(self, refresh_token: str) -> FederatedIdentity | None:
+    @staticmethod
+    def get_identity_from_refresh_token(refresh_token: str) -> FederatedIdentity | None:
         """
         Decode refresh token without verifying signature to extract identity_id.
-        Returns the FederatedIdentity or None if invalid.
+        Returns the FederatedIdentity or raises if invalid.
         """
-        try:
-            payload = jwt.decode(refresh_token, options={"verify_signature": False})
-            identity_id = payload.get("sub")
-            if not identity_id:
-                return None
-            return get_object_or_404(FederatedIdentity, pk=identity_id)
-        except Exception:
+        payload = jwt.decode(refresh_token, options={"verify_signature": False})
+        identity_id = payload.get("sub")
+        if not identity_id:
             return None
+        # Let DoesNotExist propagate instead of hiding it
+        return FederatedIdentity.objects.get(pk=identity_id)

@@ -1,9 +1,8 @@
+import jwt
 from django.shortcuts import get_object_or_404, render
-
 from .guard import FederalGuard
 from .models import Federation
 from .page import PageProcessor
-import base64
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from federal.models import FederatedIdentity, Challenge, FederalAuthGateway
@@ -99,16 +98,21 @@ def refresh_token_view(request):
     if not refresh_token:
         return JsonResponse({"error": "Missing refresh_token"}, status=400)
 
-    # use guard helper
-    gateway = None
-    identity = None
-
-    guard = None
-    identity = FederalGuard.get_identity_from_refresh_token(FederalGuard, refresh_token)
-    if not identity:
+    try:
+        # use guard helper (may raise jwt errors or DoesNotExist)
+        identity = FederalGuard.get_identity_from_refresh_token(refresh_token)
+    except (jwt.DecodeError, jwt.ExpiredSignatureError):
         return JsonResponse({"error": "Invalid token"}, status=400)
+    except FederatedIdentity.DoesNotExist:
+        return JsonResponse({"error": "Identity not found"}, status=404)
 
+    # get gateway for this identity's federation
     gateway = get_object_or_404(FederalAuthGateway, federation=identity.federation)
+
+    # enforce active flag
+    if not gateway.active:
+        return JsonResponse({"error": "Gateway inactive"}, status=403)
+
     guard = FederalGuard(gateway)
 
     new_access = guard.refresh_access_token(refresh_token)
