@@ -1,4 +1,3 @@
-from django.db import models
 import os
 from django.contrib.auth.models import User
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -7,6 +6,10 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.asymmetric import padding
+import uuid
+import secrets
+from django.db import models
+from django.utils import timezone
 
 
 class KeyRing(models.Model):
@@ -145,3 +148,59 @@ class RSAKeyPair(models.Model):
             self.private_key_pem = new_pair.private_key_pem
             self.public_key_pem = new_pair.public_key_pem
         super().save(*args, **kwargs)
+
+
+class SecretKey(models.Model):
+    """
+    Secure storage for cryptographic secrets used in federation authentication.
+    """
+
+    SIZE_CHOICES = [
+        (64, "64 bytes (~86 chars)"),
+        (128, "128 bytes (~172 chars)"),
+        (256, "256 bytes (~344 chars)"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    key = models.CharField(
+        max_length=512,
+        help_text="Secret key material (e.g., JWT signing secret)"
+    )
+    size = models.PositiveIntegerField(
+        choices=SIZE_CHOICES,
+        default=64,
+        help_text="Entropy size used when generating the secret"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    active = models.BooleanField(default=True)
+    passphrase = models.CharField(
+        max_length=128,
+        help_text="Passphrase required to reveal or rotate this secret in admin"
+    )
+
+    def __str__(self):
+        return f"SecretKey {self.id} (size={self.size})"
+
+    def rotate(self):
+        """
+        Rotate the secret key using the stored size.
+        """
+        self.key = secrets.token_urlsafe(self.size)
+        self.created_at = timezone.now()
+        self.save(update_fields=["key", "created_at"])
+
+    def is_expired(self) -> bool:
+        """
+        Check if the secret has expired.
+        """
+        return self.expires_at and timezone.now() >= self.expires_at
+
+    def save(self, *args, **kwargs):
+        """
+        Ensure a key is generated when creating a new SecretKey.
+        """
+        if not self.key:  # if empty, generate automatically
+            self.key = secrets.token_urlsafe(self.size)
+        super().save(*args, **kwargs)
+
