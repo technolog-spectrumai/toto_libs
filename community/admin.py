@@ -8,6 +8,7 @@ from .models import (
     ReferenceRequest,
     SocialEntity
 )
+from yamabiko.admin import BaseSerializableAdmin
 
 
 @admin.register(SocialEntity)
@@ -34,7 +35,7 @@ class SocialEntityAdmin(admin.ModelAdmin):
 
 
 @admin.register(Address)
-class AddressAdmin(admin.ModelAdmin):
+class AddressAdmin(BaseSerializableAdmin):
     list_display = ('street', 'building', 'apartment', 'locality_name', 'state_or_province_name', 'country_name')
     search_fields = ('street', 'locality_name', 'state_or_province_name', 'country_name')
     list_filter = ('country_name', 'state_or_province_name')
@@ -42,7 +43,7 @@ class AddressAdmin(admin.ModelAdmin):
 
 
 @admin.register(Community)
-class CommunityAdmin(admin.ModelAdmin):
+class CommunityAdmin(BaseSerializableAdmin):
     list_display = (
         'name',
         'slug',
@@ -66,7 +67,7 @@ class CommunityAdmin(admin.ModelAdmin):
 
 
 @admin.register(CommunityMember)
-class CommunityMemberAdmin(admin.ModelAdmin):
+class CommunityMemberAdmin(BaseSerializableAdmin):
     list_display = ('display_name', 'user', 'patron_display', 'joined_date', 'avatar_preview', 'slug', 'social_entity_id')
     search_fields = ('display_name', 'user__username', 'user__email', 'patron__display_name')
     list_filter = ('joined_date',)
