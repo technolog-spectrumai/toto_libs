@@ -20,10 +20,10 @@ class PlatformMiddleware:
         try:
             platform = Platform.objects.first()
 
-            # # 1. Maintenance mode check
-            # if platform and not platform.active:
-            #     if request.path != reverse("nest:maintenance"):
-            #         return redirect(reverse("nest:maintenance"))
+            # 1. Maintenance mode check
+            if platform and not platform.active:
+                if request.path != reverse("nest:maintenance"):
+                    return redirect(reverse("nest:maintenance"))
 
             # 2. Rate limiting check
             if platform:

@@ -29,7 +29,7 @@ def get_platform_secret():
 
 
 def _get_next(request):
-    return 'root:dashboard' #request.GET.get('next') or
+    return 'nest:dashboard' #request.GET.get('next') or
 
 
 # @csrf_exempt
