@@ -22,8 +22,10 @@ class PlatformMiddleware:
 
             # 1. Maintenance mode check
             if platform and not platform.active:
-                if request.path != reverse("nest:maintenance"):
-                    return redirect(reverse("nest:maintenance"))
+                # Skip redirect for admin URLs
+                if not request.path.startswith("/admin/"):
+                    if request.path != reverse("nest:maintenance"):
+                        return redirect(reverse("nest:maintenance"))
 
             # 2. Rate limiting check
             if platform:
