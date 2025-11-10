@@ -16,7 +16,7 @@ logging.basicConfig(level=logging.DEBUG)
 
 from pathlib import Path
 import os
-
+from neomodel import config
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -338,5 +338,9 @@ AUDITED_APPS = [
     "finance"
 ]
 
+NEO4J_URI = os.getenv("NEO4J_URI", "bolt://neo4j:7687")
+NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
+NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "supersecretneo4j")
 
-
+# Build full connection string
+config.DATABASE_URL = f"{NEO4J_URI.replace('bolt://', 'bolt://')}{NEO4J_USER}:{NEO4J_PASSWORD}@{NEO4J_URI.split('://')[1]}"
