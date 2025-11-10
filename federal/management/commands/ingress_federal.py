@@ -1,12 +1,16 @@
+import os
 import random
 import uuid
-from django.contrib.auth.models import User
-from django.utils import timezone
+
+from django.conf import settings
+from django.core.files import File
 from django.core.management.base import CommandError
+from django.contrib.auth.models import User
 from django.urls import reverse
+from django.utils import timezone
 
 from federal.models import Federation, FederatedIdentity
-from gervazy.models import RSAKeyPair   # 🔐 import RSAKeyPair
+from gervazy.models import RSAKeyPair
 from oya.models import Platform
 from oya.ingress import IngressCommand
 
@@ -37,7 +41,7 @@ class Command(IngressCommand):
         identities = self.create_fake_identities(federation, count=5)
 
         self.stdout.write(self.style.NOTICE("👑 Assigning head identity..."))
-        federation.head_identity = identities[0]  # optional field if you want a "head"
+        federation.head_identity = identities[0]
         federation.save()
 
         self.stdout.write(self.style.SUCCESS("✅ Federal ingress complete."))
@@ -48,21 +52,29 @@ class Command(IngressCommand):
         if not platform:
             raise CommandError("No active Platform found. Cannot create Federation.")
 
-        # Create or get federation
         federation, created = Federation.objects.get_or_create(
             name=name,
             defaults={
                 "slug": name.lower().replace(" ", "-"),
                 "description": f"{name} description",
                 "active": True,
-                "platform": platform,  # ✅ attach active platform
+                "platform": platform,
             }
         )
 
-        # If federation existed but had no platform, attach it
         if not federation.platform_id:
             federation.platform = platform
             federation.save()
+
+        # 📷 Upload logo from data/img/logo.png
+        logo_path = os.path.join(settings.BASE_DIR, "..", "data", "img", "logo.png")
+        logo_path = os.path.abspath(logo_path)
+        if not os.path.exists(logo_path):
+            raise CommandError(f"Logo file not found at {logo_path}")
+
+        if not federation.logo:
+            with open(logo_path, "rb") as f:
+                federation.logo.save("logo.png", File(f), save=True)
 
         return federation
 

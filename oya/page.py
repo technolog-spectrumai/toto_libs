@@ -20,11 +20,15 @@ class PageProcessor:
 
     def decorate(self, context, request):
         platform = PlatformSerializer(self.config).data
+        federation_logo = None
+        if hasattr(self.config, "federation") and self.config.federation.logo:
+            federation_logo = self.config.federation.logo.url
         context.update({
             "platform": platform,
             "user": request.user,
             "font": platform["theme"].get("font", {}),
             "theme": platform["theme"],
-            "is_authenticated": request.user.is_authenticated
+            "is_authenticated": request.user.is_authenticated,
+            "federation_logo": federation_logo
         })
         return context
