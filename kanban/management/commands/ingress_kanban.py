@@ -11,7 +11,7 @@ class Command(IngressCommand):
 
     def process(self, _):
         self.create_dashboard_item(
-            title="Kanban",
+            title="Tasks",
             icon="fa-solid fa-tasks",
             description="A kanban board with tasks, columns, and sprint setup.",
             link="/kanban/"

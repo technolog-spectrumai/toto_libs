@@ -17,9 +17,9 @@ class Command(IngressCommand):
     def process(self, _):
         # 📊 Dashboard block
         self.create_dashboard_item(
-            title="Federations",
+            title="Federation",
             icon="fa-solid fa-landmark",
-            description="Federations and federated identities.",
+            description="Federation and federated identities.",
             link=reverse("federal:current_federation"),
             public=False
         )

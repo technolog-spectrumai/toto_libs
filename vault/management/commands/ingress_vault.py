@@ -42,11 +42,11 @@ class Command(IngressCommand):
         )
 
         # Create VaultFile entries (PDFs)
-        for i in range(2):
+        for i in range(3):
             VaultFile.objects.create(
                 owner=user,
                 title=f"Secure PDF {i}",
-                file="vault/encrypted_pdfs/secure_pdf.pdf",
+                file=f"vault/encrypted_pdfs/secure_pdf_{str(i)}.pdf",
                 file_type="pdf",
                 is_encrypted=True,
                 bucket=bucket,

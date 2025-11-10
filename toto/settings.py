@@ -273,12 +273,11 @@ INGRESS_ALLOWED_APPS = [
     "gervazy",
     "vault",
     "community",
+    "federal",
+    "finance",
     "portfolio",
     "events",
-    "kanban",
-    "finance",
-    "federal",
-    "auth"
+    "kanban"
 ]
 
 FULL_INGRESS = DEBUG
