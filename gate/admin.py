@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.utils.html import format_html
 from gate.models import Challenge, RefreshToken
+from .batch import BatchAction
 
 
 @admin.register(Challenge)
@@ -15,6 +16,7 @@ class ChallengeAdmin(admin.ModelAdmin):
     list_filter = ("verified", "issued_at", "expires_at")
     search_fields = ("nonce", "identity__id", "identity__name")
     readonly_fields = ("issued_at", "expires_at", "verified", "masked_nonce")
+    actions = ["solve_challenges"]
 
     def masked_nonce(self, obj):
         """
@@ -34,6 +36,31 @@ class ChallengeAdmin(admin.ModelAdmin):
         return format_html('<span style="color:orange;">Pending ⏳</span>')
     status_display.short_description = "Status"
 
+    @admin.action(description="Solve selected challenges")
+    def solve_challenges(self, request, queryset):
+        def solve_one(challenge):
+            if not challenge.is_expired() and not challenge.verified:
+                rsa_pair = getattr(challenge.identity, "rsa_keypair", None)
+                if rsa_pair:
+                    # Sign the nonce with the identity’s RSA private key
+                    signature = rsa_pair.sign(challenge.nonce.encode())
+                    # Verify the challenge
+                    result = challenge.verify(signature)
+                    # Attach the signature to the object for display
+                    challenge._solution_signature = signature
+                    return (challenge, result)
+            return (challenge, False)
+
+        results = BatchAction(queryset).run(solve_one)
+
+        # Display messages with signature included
+        for challenge, result in results.success:
+            if hasattr(challenge, "_solution_signature"):
+                sig = challenge._solution_signature.hex()
+                msg = f"Challenge {challenge.id} solved ✅ (signature = {sig})"
+            else:
+                msg = f"Challenge {challenge.id} could not be solved ❌"
+            self.message_user(request, msg)
 
 @admin.register(RefreshToken)
 class RefreshTokenAdmin(admin.ModelAdmin):

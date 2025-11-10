@@ -37,7 +37,8 @@ class Challenge(models.Model):
         """
         if self.is_expired():
             return False
-
+        if self.verified:
+            return True
         rsa_pair = getattr(self.identity, "rsa_keypair", None)
         if not rsa_pair:
             return False

@@ -1,3 +1,5 @@
+import base64
+
 from django import forms
 from community.models import MembershipApplication, ReferenceRequest, CommunityMember, Community
 from federal.models import FederatedIdentity
@@ -45,3 +47,27 @@ class ChallengeSignatureForm(forms.Form):
             'rows': 4
         })
     )
+
+    def clean_signature(self):
+        sig_str = self.cleaned_data["signature"].strip()
+
+        # Try hex first
+        try:
+            return bytes.fromhex(sig_str)
+        except Exception as e:
+            pass
+
+        # Try Base64 (with padding fix)
+        try:
+            missing_padding = len(sig_str) % 4
+            if missing_padding:
+                sig_str += "=" * (4 - missing_padding)
+            return base64.b64decode(sig_str, validate=False)
+        except Exception:
+            raise forms.ValidationError("Signature must be valid hex or Base64.")
+
+    def clean_identity_id(self):
+        identity_id = self.cleaned_data["identity_id"]
+        if not FederatedIdentity.objects.filter(id=identity_id).exists():
+            raise forms.ValidationError("Invalid Identity ID.")
+        return identity_id

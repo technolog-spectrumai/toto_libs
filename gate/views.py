@@ -1,5 +1,3 @@
-import jwt
-from django.views.decorators.csrf import csrf_exempt
 from federal.models import FederatedIdentity
 from gate.token import TokenGuard
 from gate.challenge import ChallengeGuard
@@ -7,13 +5,12 @@ from django.contrib.auth import get_user_model
 from oya.models import Platform
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import authenticate, login, logout
-from django.http import JsonResponse
-from django.contrib.auth.models import User
 from community.models import MembershipApplication, generate_code, CommunityMember, Community
 from community.forms import LoginForm, MembershipApplicationForm, CodeVerificationForm, ReferenceRequestForm
 from .forms import ChallengeIdentityForm, ChallengeSignatureForm
 from .page import PageProcessor
 import logging
+from django.http import HttpRequest, HttpResponse
 
 
 logger = logging.getLogger(__name__)
@@ -32,7 +29,7 @@ def get_platform_secret():
 
 
 def _get_next(request):
-    return request.GET.get('next') or 'root:dashboard'
+    return 'root:dashboard' #request.GET.get('next') or
 
 
 # @csrf_exempt
@@ -131,47 +128,74 @@ def logout_view(request):
     return redirect(_get_next(request))
 
 
-def challenge_login_view(request):
+def challenge_identity_view(request: HttpRequest) -> HttpResponse:
     """
-    Step 1: Submit identity_id → show challenge nonce
-    Step 2: Submit signature → verify
+    Step 1: Submit identity_id → initiate challenge and redirect to signature step
     """
     processor = PageProcessor()
-    if request.method == "POST":
-        # If signature is included → Step 2
-        if "signature" in request.POST:
-            form = ChallengeSignatureForm(request.POST)
-            if form.is_valid():
-                identity_id = form.cleaned_data["identity_id"]
-                signature = form.cleaned_data["signature"]
-                identity = get_object_or_404(FederatedIdentity, pk=identity_id)
 
-                if ChallengeGuard.verify_login(identity, signature):
-                    logger.info(f"Challenge login successful for identity {identity.id}")
-                    return redirect(_get_next(request))
-                else:
-                    context = {
-                        "sig_form": form,
-                        "error": "Verification failed."
-                    }
-                    return render(request, "gate/challenge.html", processor.decorate(context, request))
-        else:
-            # Step 1: only identity submitted
-            form = ChallengeIdentityForm(request.POST)
-            if form.is_valid():
-                identity_id = form.cleaned_data["identity_id"]
-                identity = get_object_or_404(FederatedIdentity, pk=identity_id)
-                challenge = ChallengeGuard.initiate_login(identity)
-                sig_form = ChallengeSignatureForm(initial={"identity_id": identity_id})
-                context = {
-                    "identity": identity,
-                    "challenge": challenge,
-                    "sig_form": sig_form
-                }
-                return render(request, "gate/challenge.html", processor.decorate(context, request))
+    if request.method == "POST":
+        form = ChallengeIdentityForm(request.POST)
+        if form.is_valid():
+            identity_id = form.cleaned_data["identity_id"]
+            identity = get_object_or_404(FederatedIdentity, pk=identity_id)
+
+            # Initiate challenge and store it (e.g. in session)
+            challenge = ChallengeGuard.initiate_login(identity)
+            request.session["identity_id"] = str(identity.id)
+            request.session["challenge_nonce"] = str(challenge.nonce)
+
+            return redirect("gate:challenge_signature")
+
     else:
         form = ChallengeIdentityForm()
+
     context = {"id_form": form}
-    return render(request, "gate/challenge.html", processor.decorate(context, request))
+    return render(request, "gate/challenge_identity.html", processor.decorate(context, request))
+
+
+def challenge_signature_view(request: HttpRequest) -> HttpResponse:
+    """
+    Step 2: Show challenge + verify signature
+    """
+    processor = PageProcessor()
+    identity_id = request.session.get("identity_id")
+    nonce = request.session.get("challenge_nonce")
+
+    if not identity_id or not nonce:
+        # No challenge in session → go back to step 1
+        return redirect("gate:challenge_identity")
+
+    identity = get_object_or_404(FederatedIdentity, pk=identity_id)
+
+    if request.method == "POST":
+        form = ChallengeSignatureForm(request.POST)
+        if form.is_valid():
+            signature = form.cleaned_data["signature"]
+
+            if ChallengeGuard.verify_login(identity, signature):
+                logger.info(f"Challenge login successful for identity {identity.id}")
+                # Clear session
+                request.session.pop("challenge_nonce", None)
+                request.session.pop("identity_id", None)
+                return redirect(_get_next(request))
+            else:
+                context = {
+                    "identity": identity,
+                    "challenge": {"nonce": nonce},
+                    "sig_form": form,
+                    "error": "Verification failed.",
+                }
+                return render(request, "gate/challenge_signature.html", processor.decorate(context, request))
+    else:
+        sig_form = ChallengeSignatureForm(initial={"identity_id": identity_id})
+
+    context = {
+        "identity": identity,
+        "challenge": {"nonce": nonce},
+        "sig_form": sig_form,
+    }
+    return render(request, "gate/challenge_signature.html", processor.decorate(context, request))
+
 
 

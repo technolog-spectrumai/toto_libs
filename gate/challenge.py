@@ -20,5 +20,11 @@ class ChallengeGuard:
             challenge = identity.challenges.latest("issued_at")
         except Challenge.DoesNotExist:
             return False
-        signature = base64.b64decode(signature_b64)
+
+        try:
+            # Add "===" to ensure enough padding
+            signature = base64.urlsafe_b64decode(signature_b64.strip())
+        except Exception:
+            return False
+
         return challenge.verify(signature)
