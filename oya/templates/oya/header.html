@@ -17,17 +17,6 @@
 
     <!-- Desktop Nav -->
     <div class="hidden sm:flex items-center gap-3">
-      {% for link in header.nav_links %}
-      <a href="{{ link.url }}"
-         class="flex items-center gap-2 px-3 py-1 rounded text-sm font-medium border shadow-sm transition hover:opacity-90"
-         :class="darkMode
-           ? 'bg-accent-dark text-primary-bg-dark'
-           : 'bg-accent-light text-primary-bg-light'">
-        <i class="{{ link.icon }} text-base"></i>
-        <span>{{ link.name }}</span>
-      </a>
-      {% endfor %}
-
       {% if user.is_authenticated %}
       <!-- Logout Button -->
       <a href="{% url 'gate:logout' %}"
@@ -71,13 +60,6 @@
   <!-- Mobile Dropdown -->
   <div x-show="navOpen" x-transition class="sm:hidden mt-3 px-4">
     <div class="flex flex-col gap-3">
-      {% for link in header.nav_links %}
-      <a href="{{ link.url }}"
-         class="flex items-center gap-2 px-3 py-2 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
-        <i class="{{ link.icon }} text-base"></i>
-        <span>{{ link.name }}</span>
-      </a>
-      {% endfor %}
 
       {% if user.is_authenticated %}
       <!-- Logout Button (Mobile) -->

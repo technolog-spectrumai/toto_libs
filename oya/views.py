@@ -59,7 +59,7 @@ def root_view(request):
 
 
 def maintenance_view(request):
-    processor = PageProcessor()
+    processor = PageProcessor(maintenance_mode=True)
     context = {"page_title": "Under Maintenance"}
     return render(request, _get_template("maintenance.html"), processor.decorate(context, request))
 
