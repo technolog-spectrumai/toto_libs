@@ -14,15 +14,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path("nest/", include("oya.urls", namespace='nest')),
     path('captcha/', include('captcha.urls')),
-    #path(r'^_nested_admin/', include('nested_admin.urls')),
-    path(
-        '',
-        RedirectView.as_view(
-            url=reverse_lazy('nest:root'),
-            permanent=not settings.DEBUG
-        )
-    ),
-    path('', lambda request: redirect('nest/root')),
+    path('', lambda request: redirect('nest:home')),
     path("memo/", include("memo.urls", namespace="memo")),
     path("portfolio/", include("portfolio.urls", namespace="portfolio")),
     path("vault/", include("vault.urls", namespace="vault")),
