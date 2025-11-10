@@ -44,20 +44,6 @@ def not_implemented(request):
     return render(request, _get_template("placeholder.html"), processor.decorate(context, request))
 
 
-def root_view(request):
-    try:
-        processor = PageProcessor()
-        index_url = processor.config.index_url
-        if not index_url:
-            url_app_name = OyaConfig.url_name
-            return redirect(reverse(f"{url_app_name}:home"))
-        return redirect(f"{index_url}")
-    except Http404:
-        raise
-    except Exception:
-        raise Http404("Failed to determine platform index URL.")
-
-
 def maintenance_view(request):
     processor = PageProcessor(maintenance_mode=True)
     context = {"page_title": "Under Maintenance"}
