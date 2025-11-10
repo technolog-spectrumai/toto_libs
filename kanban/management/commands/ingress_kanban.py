@@ -1,70 +1,54 @@
-from django.contrib.auth.models import User
+from datetime import timedelta
 from django.utils import timezone
+from django.contrib.auth.models import User
+from kanban.models import Project, Column, Task, Sprint
+from oya.models import Platform, Theme
 from oya.ingress import IngressCommand
-
-from ravioli.graph import Node, Edge
 
 
 class Command(IngressCommand):
-    help = "Creates a demo Ravioli graph setup with sample nodes and edges"
+    help = "Creates a demo kanban setup with a current sprint using existing ColorMix themes"
 
     def process(self, _):
-        # Add a dashboard item for Ravioli
         self.create_dashboard_item(
-            title="Ravioli Graph",
-            icon="fa-solid fa-project-diagram",
-            description="A demo graph with nodes and edges.",
-            link="/ravioli/"
+            title="Tasks",
+            icon="fa-solid fa-tasks",
+            description="A kanban board with tasks, columns, and sprint setup.",
+            link="/kanban/"
         )
-
         if not self.full:
             return
 
-        # Ensure demo user exists
-        user, _ = User.objects.get_or_create(
-            username="admin",
-            defaults={"email": "demo@example.com"}
+        # Use existing user or create demo
+        user, _ = User.objects.get_or_create(username="admin", defaults={"email": "demo@example.com"})
+
+        # Create demo project
+        project = Project.objects.create(
+            name="Demo Project",
+            description="A sample project for Kanban demo",
+            owner=user
         )
 
-        # Create demo nodes
-        alice = Node(
-            name="Alice",
-            data={"role": "user"},
-            metadata={"created_by": user.username, "created_at": str(timezone.now())},
-            category="Person"
-        ).save()
+        # Create columns directly under project
+        todo = Column.objects.create(project=project, name="To Do", position=1)
+        doing = Column.objects.create(project=project, name="In Progress", position=2)
+        done = Column.objects.create(project=project, name="Done", position=3)
 
-        bob = Node(
-            name="Bob",
-            data={"role": "admin"},
-            metadata={"created_by": user.username, "created_at": str(timezone.now())},
-            category="Person"
-        ).save()
+        # Create tasks
+        task1 = Task.objects.create(column=todo, title="Set up project repo", position=1)
+        task2 = Task.objects.create(column=doing, title="Build UI components", position=1)
+        task3 = Task.objects.create(column=done, title="Create wireframes", position=1)
 
-        project = Node(
-            name="Demo Project",
-            data={"description": "A sample project for Ravioli demo"},
-            metadata={"created_by": user.username, "created_at": str(timezone.now())},
-            category="Project"
-        ).save()
+        # Create sprint
+        now = timezone.now()
+        sprint = Sprint.objects.create(
+            name="Sprint 1",
+            project=project,
+            start_time=now,
+            end_time=now + timedelta(days=14)
+        )
 
-        # Create demo edges
-        friendship = Edge(
-            name="FRIEND",
-            metadata={"strength": 0.9, "since": str(timezone.now().date())}
-        ).save()
-
-        ownership = Edge(
-            name="OWNS",
-            metadata={"since": str(timezone.now().date())}
-        ).save()
-
-        # Connect Alice -> FRIEND -> Bob
-        alice.edges.connect(friendship)
-        friendship.target.connect(bob)
-
-        # Connect Bob -> OWNS -> Project
-        bob.edges.connect(ownership)
-        ownership.target.connect(project)
-
-        self.stdout.write(self.style.SUCCESS("Demo Ravioli graph created successfully."))
+        # Assign tasks to sprint
+        for task in [task1, task2, task3]:
+            task.sprint = sprint
+            task.save()
