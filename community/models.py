@@ -6,9 +6,10 @@ import random
 import uuid
 from django.utils.timezone import now
 from django.core.exceptions import ValidationError
+from yamabiko.models import SerializableModel
 
 
-class Address(models.Model):
+class Address(SerializableModel):
     country_name = models.CharField(max_length=2, verbose_name="Country")
     state_or_province_name = models.CharField(max_length=128, verbose_name="State/Province")
     locality_name = models.CharField(max_length=128, verbose_name="Locality")
@@ -60,7 +61,7 @@ class SocialEntity(models.Model):
 
 
 
-class Community(models.Model):
+class Community(SerializableModel):
     name = models.CharField(max_length=255, help_text="Name of the community or organization")
     slug = models.SlugField(unique=True, blank=True, help_text="URL-friendly identifier")
     address = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True, blank=True)
@@ -95,7 +96,7 @@ class Community(models.Model):
         super().save(*args, **kwargs)
 
 
-class CommunityMember(models.Model):
+class CommunityMember(SerializableModel):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='community_profile')
     communities = models.ManyToManyField(Community, related_name='members')
     patron = models.ForeignKey(

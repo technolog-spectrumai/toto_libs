@@ -283,7 +283,7 @@ INGRESS_ALLOWED_APPS = [
     "ravioli"
 ]
 
-FULL_INGRESS = DEBUG
+FULL_INGRESS = True#DEBUG
 
 GIT_REPO_BASE_DIR = BASE_DIR / 'git_repos'
 
