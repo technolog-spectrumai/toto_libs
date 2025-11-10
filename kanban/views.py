@@ -3,7 +3,7 @@ from django.db.models import Q
 from django.contrib.auth.models import AnonymousUser
 from django.contrib.auth.mixins import LoginRequiredMixin
 from kanban.models import Project, Column, Task, Sprint
-from kanban.page import PageProcessor
+from oya.page import PageProcessor
 
 
 class ProjectDetailView(LoginRequiredMixin, DetailView):

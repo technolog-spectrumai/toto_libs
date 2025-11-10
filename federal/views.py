@@ -1,5 +1,5 @@
 from django.shortcuts import get_object_or_404, render
-from .page import PageProcessor
+from oya.page import PageProcessor
 from django.http import JsonResponse
 from federal.models import FederatedIdentity, Federation
 

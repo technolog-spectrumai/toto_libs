@@ -2,7 +2,7 @@ from django.views.generic import ListView, DetailView
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
 from .models import VaultFile, Bucket
-from vault.page import PageProcessor
+from oya.page import PageProcessor
 
 
 class PublicFileListView(ListView):

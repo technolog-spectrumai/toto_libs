@@ -2,7 +2,7 @@ from datetime import timedelta
 from django.utils.timezone import now
 from django.views.generic import ListView, DetailView
 from .models import Account, Currency
-from community.page import PageProcessor
+from oya.page import PageProcessor
 
 
 def get_chart_colors(theme):

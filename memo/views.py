@@ -1,6 +1,6 @@
 from django.views.generic import ListView, DetailView
 from .models import MemoCard, MemoDeck
-from .page import PageProcessor
+from oya.page import PageProcessor
 
 
 class MemoDeckListView(ListView):

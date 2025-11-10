@@ -1,7 +1,7 @@
 from django.shortcuts import render
 from django.views.generic import DetailView
 from .models import Venture, Transaction, Currency, Chamber, Company, Shareholder, FundingRound
-from .page import PageProcessor
+from oya.page import PageProcessor
 from django.db.models import Count, Sum, F
 from django.core.exceptions import ImproperlyConfigured
 from collections import defaultdict

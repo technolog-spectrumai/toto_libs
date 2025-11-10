@@ -1,13 +1,12 @@
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib.auth import authenticate, login, logout
 from django.http import JsonResponse
 from django.views.generic import TemplateView
 from django.utils import timezone
 from django.contrib.auth.models import User
 from community.models import MembershipApplication, generate_code, CommunityMember, Community
 from community.forms import LoginForm, MembershipApplicationForm, CodeVerificationForm, ReferenceRequestForm
-from .page import PageProcessor
+from oya.page import PageProcessor
 import os
 import logging
 

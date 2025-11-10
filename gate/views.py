@@ -8,7 +8,7 @@ from django.contrib.auth import authenticate, login, logout
 from community.models import MembershipApplication, generate_code, CommunityMember, Community
 from community.forms import LoginForm, MembershipApplicationForm, CodeVerificationForm, ReferenceRequestForm
 from .forms import ChallengeIdentityForm, ChallengeSignatureForm
-from .page import PageProcessor
+from oya.page import PageProcessor
 import logging
 from django.http import HttpRequest, HttpResponse
 

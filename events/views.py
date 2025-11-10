@@ -5,7 +5,7 @@ from django.urls import reverse
 from django.contrib.auth.mixins import LoginRequiredMixin
 import json
 from .models import Event
-from .page import PageProcessor
+from oya.page import PageProcessor
 from django.urls import reverse_lazy
 
 
