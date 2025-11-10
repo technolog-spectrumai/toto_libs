@@ -1,28 +1,91 @@
+import time
 from django.test import TestCase
 from django.urls import reverse
-from oya.models import PlatformConfig, Address, TLSCertificate
+from .models import Platform, Font, Theme, ColorMix
 from django.contrib.auth.models import User
 from datetime import datetime
+from gervazy.models import SecretKey
+from django.core.cache import cache
+
 
 class ViewSmokeTests(TestCase):
     def setUp(self):
+        # Create supporting objects for Theme
+        cache.clear()
+        font = Font.objects.create(
+            name="Test Font",
+            cdn_link="https://fonts.googleapis.com/css?family=Roboto",
+            style_family="sans-serif"
+        )
 
-        # Create platform config
-        self.config = PlatformConfig.objects.create(
+        color_mix = ColorMix.objects.create(
+            name="Default Mix"
+        )
+
+        theme = Theme.objects.create(
+            name="Default Theme",
+            color_mix=color_mix,
+            font=font,
+            header={"light": "bg-white", "dark": "bg-black"},
+            footer={"light": "bg-gray-100", "dark": "bg-gray-900"}
+        )
+
+        # Create secret key (required by Platform)
+        secret = SecretKey.objects.create(key="dummy-secret")
+
+        # Create platform with theme
+        self.config = Platform.objects.create(
             domain="example.com",
             site_name="Blue Journal",
             publication_year=datetime.now().year,
-            active=True
+            active=True,
+            rate_limit_window=1,       # short window for testing
+            rate_limit_max_requests=3, # small limit for testing
+            secret=secret,
+            theme=theme                # 👈 attach theme
         )
 
         # Create user for authenticated views
         self.user = User.objects.create_user(username="testuser", password="testpass")
 
     def test_home_view_loads(self):
-        response = self.client.get(reverse('home'))
+        response = self.client.get(reverse('nest:home'))
         self.assertEqual(response.status_code, 200)
 
     def test_dashboard_view_loads_for_authenticated_user(self):
         self.client.login(username="testuser", password="testpass")
-        response = self.client.get(reverse('dashboard'))
+        response = self.client.get(reverse('nest:dashboard'))
+        self.assertEqual(response.status_code, 200)
+
+    # def test_inactive_platform_redirects_to_maintenance(self):
+    #     """Inactive platform should redirect all requests to maintenance page."""
+    #     self.config.active = False
+    #     self.config.save()
+    #     response = self.client.get(reverse('nest:home'))
+    #     self.assertRedirects(response, reverse('nest:maintenance'))
+    #
+    def test_rate_limit_blocks_after_max_requests(self):
+        """Exceeding max requests within window should return 429."""
+        for i in range(self.config.rate_limit_max_requests):
+            response = self.client.get(reverse('nest:home'))
+            self.assertEqual(response.status_code, 200)
+
+        # Next request should be blocked
+        response = self.client.get(reverse('nest:home'))
+        self.assertEqual(response.status_code, 429)
+
+    def test_rate_limit_resets_after_window(self):
+        """Requests should be allowed again after window expires."""
+        for i in range(self.config.rate_limit_max_requests):
+            self.client.get(reverse('nest:home'))
+
+        # Blocked
+        response = self.client.get(reverse('nest:home'))
+        self.assertEqual(response.status_code, 429)
+
+        # Wait for window to expire
+        time.sleep(self.config.rate_limit_window)
+
+        # Should be allowed again
+        response = self.client.get(reverse('nest:home'))
         self.assertEqual(response.status_code, 200)

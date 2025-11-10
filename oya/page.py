@@ -23,11 +23,14 @@ class PageProcessor:
         federation_logo = None
         if hasattr(self.config, "federation") and self.config.federation.logo:
             federation_logo = self.config.federation.logo.url
+        theme_data = {}
+        if platform.get("theme"):
+            theme_data = platform["theme"]
         context.update({
             "platform": platform,
             "user": request.user,
-            "font": platform["theme"].get("font", {}),
-            "theme": platform["theme"],
+            "font": theme_data.get("font", {}),
+            "theme": theme_data,
             "is_authenticated": request.user.is_authenticated,
             "federation_logo": federation_logo
         })

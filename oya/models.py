@@ -186,6 +186,15 @@ class Platform(models.Model):
         related_name="platform",
         help_text="SecretKey used for signing tokens"
     )
+    rate_limit_window = models.IntegerField(
+        default=60,
+        help_text="Rate limit window in seconds"
+    )
+    rate_limit_max_requests = models.IntegerField(
+        default=20,
+        help_text="Max requests allowed per window"
+    )
+
     def __str__(self):
         return f"{self.site_name} Platform"
 

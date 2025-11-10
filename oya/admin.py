@@ -105,7 +105,15 @@ class ThemeAdmin(admin.ModelAdmin):
 
 @admin.register(Platform)
 class PlatformAdmin(admin.ModelAdmin):
-    list_display = ('site_name', 'domain', 'publication_year', 'active', 'get_theme_name')
+    list_display = (
+        'site_name',
+        'domain',
+        'publication_year',
+        'active',
+        'get_theme_name',
+        'rate_limit_window',
+        'rate_limit_max_requests',
+    )
     search_fields = ('site_name', 'domain', 'theme__name')
     list_filter = ('active', 'publication_year', 'theme')
     ordering = ['publication_year']

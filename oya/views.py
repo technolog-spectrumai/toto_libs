@@ -58,6 +58,11 @@ def root_view(request):
         raise Http404("Failed to determine platform index URL.")
 
 
+# def maintenance_view(request):
+#     processor = PageProcessor()
+#     context = {"page_title": "Under Maintenance"}
+#     return render(request, _get_template("maintenance.html"), processor.decorate(context, request))
+
 
 
 

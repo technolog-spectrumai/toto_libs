@@ -80,6 +80,7 @@ INSTALLED_APPS = [
 
 
 MIDDLEWARE = [
+    "oya.middleware.PlatformMiddleware",
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
