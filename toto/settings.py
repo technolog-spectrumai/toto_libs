@@ -75,7 +75,8 @@ INSTALLED_APPS = [
     "yamabiko",
     "finance",
     "federal",
-    "gate"
+    "gate",
+    "ravioli"
 ]
 
 
@@ -278,7 +279,8 @@ INGRESS_ALLOWED_APPS = [
     "finance",
     "portfolio",
     "events",
-    "kanban"
+    "kanban",
+    "ravioli"
 ]
 
 FULL_INGRESS = DEBUG
@@ -338,9 +340,9 @@ AUDITED_APPS = [
     "finance"
 ]
 
-NEO4J_URI = os.getenv("NEO4J_URI", "bolt://neo4j:7687")
+NEO4J_HOST = os.getenv("NEO4J_HOST", "neo4j")   # container name or localhost
+NEO4J_PORT = os.getenv("NEO4J_PORT", "7687")
 NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
 NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "supersecretneo4j")
 
-# Build full connection string
-config.DATABASE_URL = f"{NEO4J_URI.replace('bolt://', 'bolt://')}{NEO4J_USER}:{NEO4J_PASSWORD}@{NEO4J_URI.split('://')[1]}"
+config.DATABASE_URL = f"bolt://{NEO4J_USER}:{NEO4J_PASSWORD}@{NEO4J_HOST}:{NEO4J_PORT}"

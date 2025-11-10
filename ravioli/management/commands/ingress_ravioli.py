@@ -17,8 +17,8 @@ class Command(IngressCommand):
             link="/ravioli/"
         )
 
-        if not self.full:
-            return
+        # if not self.full:
+        #     return
 
         # Ensure demo user exists
         user, _ = User.objects.get_or_create(
