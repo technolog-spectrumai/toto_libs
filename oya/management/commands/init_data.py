@@ -82,7 +82,7 @@ class Command(BaseCommand):
         self.create_fonts()
         self.stdout.write(self.style.SUCCESS("Fonts created."))
 
-        site_name = "TOTO Community Platform"
+        site_name = "Spectrum Platform"
         self.stdout.write(self.style.NOTICE("Creating platform..."))
 
         self.stdout.write(self.style.NOTICE("Creating fonts and theme..."))
