@@ -24,7 +24,8 @@ urlpatterns = [
     path("kanban/", include("kanban.urls", namespace="kanban")),
     path("finance/", include("finance.urls", namespace="finance")),
     path("federal/", include("federal.urls", namespace="federal")),
-    path("gate/", include("gate.urls", namespace="gate"))
+    path("gate/", include("gate.urls", namespace="gate")),
+    path("notes/", include("ravioli.urls", namespace="notes"))
 ]
 
 

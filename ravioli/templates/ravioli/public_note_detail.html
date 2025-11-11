@@ -1,0 +1,94 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}Note Details – {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<div
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300">
+
+  <div class="max-w-4xl mx-auto space-y-8">
+
+    <!-- 📝 Note Header -->
+    <section
+      class="p-6 rounded-lg border transition-colors duration-300"
+      :class="darkMode
+        ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
+        : 'bg-primary-bg-light text-text-main-light border-accent-2'">
+      <h1 class="text-2xl font-bold mb-2">{{ note.title }}</h1>
+      <p class="text-sm"
+         :class="darkMode ? 'text-text-main-dark' : 'text-gray-500'">
+        Category: {{ note.category|default:"—" }} · Created: {{ note.created_at|date:"F j, Y, H:i" }}
+      </p>
+    </section>
+
+    <!-- 📄 Note Content -->
+    <section
+      class="p-6 rounded-lg border space-y-4 transition-colors duration-300"
+      :class="darkMode
+        ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
+        : 'bg-primary-bg-light text-text-main-light border-accent-2'">
+      <h2 class="text-lg font-semibold">Content</h2>
+      <div class="prose max-w-none">
+        {{ note.content|linebreaks }}
+      </div>
+    </section>
+
+    <!-- 🏷️ Tags -->
+    <section
+      class="p-6 rounded-lg border space-y-2 transition-colors duration-300"
+      :class="darkMode
+        ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
+        : 'bg-primary-bg-light text-text-main-light border-accent-2'">
+      <h2 class="text-lg font-semibold">Tags</h2>
+      {% if note.tags.exists %}
+        <div class="flex flex-wrap gap-2">
+          {% for tag in note.tags.all %}
+            <span class="px-3 py-1 text-xs rounded transition-colors duration-300"
+                  :class="darkMode
+                    ? 'bg-primary-bg-dark text-text-main-dark border border-accent-1'
+                    : 'bg-primary-bg-light text-text-main-light border border-accent-2'">
+              {{ tag.name }}
+            </span>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-sm"
+           :class="darkMode ? 'text-text-main-dark' : 'text-gray-500'">
+          No tags assigned.
+        </p>
+      {% endif %}
+    </section>
+
+    <!-- 📊 Metadata -->
+    {% if note.metadata %}
+    <section
+      class="p-6 rounded-lg border space-y-2 transition-colors duration-300"
+      :class="darkMode
+        ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
+        : 'bg-primary-bg-light text-text-main-light border-accent-2'">
+      <h2 class="text-lg font-semibold">Metadata</h2>
+      <pre class="text-xs p-3 rounded transition-colors duration-300"
+           :class="darkMode
+             ? 'bg-primary-bg-dark text-text-main-dark border border-accent-1'
+             : 'bg-primary-bg-light text-text-main-light border border-accent-2'">
+        {{ note.metadata }}
+      </pre>
+    </section>
+    {% endif %}
+
+    <!-- 🔗 Back Link -->
+    <div class="text-center">
+      <a href="{% url 'notes:public_notes_list' %}"
+         class="underline transition-colors duration-300"
+         :class="darkMode ? 'text-blue-400' : 'text-blue-600'">
+        ← Back to all notes
+      </a>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

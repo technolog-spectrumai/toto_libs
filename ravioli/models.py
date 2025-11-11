@@ -46,7 +46,7 @@ class Note(SerializableModel):
         blank=True,
         related_name="notes_for_tag"
     )
-    is_public = models.BooleanField(default=False, help_text="Mark note as public")
+    is_public = models.BooleanField(default=True, help_text="Mark note as public")
 
     def __str__(self):
         return self.title

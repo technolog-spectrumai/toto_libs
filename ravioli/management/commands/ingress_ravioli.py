@@ -6,6 +6,7 @@ from ravioli.models import Note, Tag
 from community.models import CommunityMember, Address, Community
 from portfolio.models import Company
 from events.models import Event
+from rest_framework.reverse import reverse_lazy
 
 fake = Faker()
 
@@ -19,7 +20,7 @@ class Command(IngressCommand):
             title="Intel Notes",
             icon="fa-solid fa-note-sticky",
             description="A demo graph of intel notes, tags, subjects, and events.",
-            link="/ravioli/notes/"
+            link=reverse_lazy("notes:public_notes_list")
         )
 
         if not self.full:
