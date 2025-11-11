@@ -1,7 +1,7 @@
-from django.conf import settings
-from neomodel import db
+from neomodel import config, db
 from neo4j import GraphDatabase
 import math
+from django.conf import settings
 
 
 class Neo4jHelper:
@@ -11,16 +11,24 @@ class Neo4jHelper:
     """
 
     def __init__(self):
-        # Build driver from DATABASE_URL in settings
-        self.driver = GraphDatabase.driver(settings.DATABASE_URL)
+        # Construct URI from host/port only
+        uri = f"bolt://{settings.NEO4J_HOST}:{settings.NEO4J_PORT}"
+        user = settings.NEO4J_USER
+        password = settings.NEO4J_PASSWORD
 
-    def is_connected(self) -> bool:
+        # Driver requires auth tuple
+        self.driver = GraphDatabase.driver(uri, auth=(user, password))
+
+        # Optionally also configure neomodel (so neomodel ORM works)
+        config.DATABASE_URL = f"bolt://{user}:{password}@{settings.NEO4J_HOST}:{settings.NEO4J_PORT}"
+
+    @staticmethod
+    def is_connected() -> bool:
         """
         Returns True if Neo4j is reachable.
         If settings.NEO4J_CHECK_ALIVE is False (or missing), assume it's alive without checking.
         """
         check_alive = getattr(settings, "NEO4J_CHECK_ALIVE", False)
-
         if not check_alive:
             return True
 
@@ -33,24 +41,15 @@ class Neo4jHelper:
     def flush_db_batch(self, batch_size: int = 1000, max_nodes: int | None = None) -> int:
         """
         Deletes nodes and relationships in batches of `batch_size`.
-        Calculates total nodes first, then number of batches.
-        Stops after deleting `max_nodes` if provided.
-        Returns the total number of nodes deleted.
         """
         with self.driver.session() as session:
-            # Step 1: count total nodes
             result = session.run("MATCH (n) RETURN count(n) AS total")
             total_nodes = result.single()["total"]
 
-            # Step 2: cap by max_nodes if provided
             target_nodes = min(total_nodes, max_nodes) if max_nodes else total_nodes
-
-            # Step 3: calculate number of batches
             num_batches = math.ceil(target_nodes / batch_size)
 
             total_deleted = 0
-
-            # Step 4: run bounded loop
             for _ in range(num_batches):
                 res = session.run(f"""
                     MATCH (n)
@@ -60,24 +59,20 @@ class Neo4jHelper:
                 """)
                 deleted = res.single()["deleted"]
                 total_deleted += deleted
-
-                if deleted == 0:  # nothing left
+                if deleted == 0:
                     break
 
             return total_deleted
 
     def close(self) -> None:
-        """Close the Neo4j driver connection."""
         self.driver.close()
 
     def __enter__(self):
-        # Return the helper instance when entering the context
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        # Ensure driver is closed when exiting the context
         self.close()
 
 
 def is_neo4j_connected():
-    return Neo4jHelper().is_connected()
+    return Neo4jHelper.is_connected()
