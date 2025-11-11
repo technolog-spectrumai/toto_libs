@@ -71,6 +71,7 @@ class Community(SocialEntity):
         related_name='headed_communities'
     )
     updated_at = models.DateTimeField(auto_now=True)
+    email = models.EmailField(unique=True, blank=True, null=True)
 
     def __str__(self):
         return self.name

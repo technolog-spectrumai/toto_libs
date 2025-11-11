@@ -33,8 +33,8 @@ class CompanyAdmin(BaseSerializableAdmin):
 @admin.register(Shareholder)
 class ShareholderAdmin(BaseSerializableAdmin):
     list_display = (
-        'full_name',
-        'email',
+        'get_full_name',
+        'get_email',
         'shares_owned',
         'company',
         'date_joined',
@@ -42,11 +42,26 @@ class ShareholderAdmin(BaseSerializableAdmin):
         'identity_type',
     )
     list_filter = ('is_active', 'company')
-    search_fields = ('full_name', 'email', 'company__name')
+    search_fields = (
+        'company__name',
+        'social_entity__id',
+        'social_entity__member__display_name',   # CommunityMember
+        'social_entity__company__name',          # Company
+        'social_entity__community__name',        # Community
+    )
 
     def identity_type(self, obj):
         return obj.get_identity_type()
     identity_type.short_description = "Identity Type"
+
+    def get_full_name(self, obj):
+        return obj.get_full_name()
+    get_full_name.short_description = "Full Name"
+
+    def get_email(self, obj):
+        return obj.get_email()
+    get_email.short_description = "Email"
+
 
 
 @admin.register(FundingRound)

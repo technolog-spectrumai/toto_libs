@@ -6,6 +6,8 @@ from faker import Faker
 from oya.ingress import IngressCommand
 from portfolio.models import Chamber, Company, Shareholder, FundingRound
 from finance.models import Currency
+from community.models import CommunityMember, SocialEntity
+from django.contrib.auth.models import User
 
 fake = Faker()
 
@@ -77,16 +79,27 @@ class Command(IngressCommand):
         """
         for company in companies:
             for _ in range(random.randint(3, 6)):
+                # Create a fake user + community member as the social identity
+                user = User.objects.create_user(
+                    username=fake.unique.user_name(),
+                    email=fake.unique.email(),
+                    password="password123"
+                )
+                member = CommunityMember.objects.create(
+                    user=user,
+                    display_name=fake.name(),
+                    slug=fake.unique.slug()
+                )
+
                 shareholder = Shareholder.objects.create(
                     company=company,
-                    full_name=fake.name(),
-                    email=fake.unique.email(),
                     shares_owned=random.randint(100, 1000),
                     date_joined=fake.date_between(start_date='-2y', end_date='today'),
                     is_active=True,
+                    social_entity=member  # compulsory link
                 )
                 self.stdout.write(self.style.SUCCESS(
-                    f"👤 Created shareholder: {shareholder.full_name} in {company.name}"
+                    f"👤 Created shareholder: {shareholder.get_full_name()} in {company.name}"
                 ))
 
     # -----------------------------

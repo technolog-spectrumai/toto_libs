@@ -6,7 +6,7 @@ from finance.models import Transaction, Currency
 from django.utils.timezone import now
 from django.db import models
 from yamabiko.models import SerializableModel
-from community.models import SocialEntity, CommunityMember
+from community.models import SocialEntity, CommunityMember, Community
 from django.utils.timezone import now
 
 # 🏛️ Chamber
@@ -35,64 +35,72 @@ class Company(SocialEntity):
     is_active = models.BooleanField(default=True)
 
 
-# 👤 Shareholder
 class Shareholder(SerializableModel):
     company = models.ForeignKey(
         Company,
         on_delete=models.CASCADE,
         related_name='shareholders'
     )
-    full_name = models.CharField(max_length=255)
-    email = models.EmailField(unique=True)
     shares_owned = models.PositiveIntegerField()
     date_joined = models.DateField(auto_now_add=True)
     is_active = models.BooleanField(default=True)
 
-    # Link to SocialEntity
+    # Compulsory link to SocialEntity
     social_entity = models.OneToOneField(
         SocialEntity,
         on_delete=models.CASCADE,
-        related_name="shareholder",
-        null=True,
-        blank=True
+        related_name="shareholder"
     )
 
     def __str__(self):
-        return f"{self.full_name} ({self.shares_owned} shares in {self.company.name})"
+        return f"{self.get_full_name()} ({self.shares_owned} shares in {self.company.name})"
 
     # -----------------------------
     # Identity helpers
     # -----------------------------
     def get_identity_type(self):
-        """
-        Infer identity type from linked SocialEntity.
-        """
-        if self.social_entity:
-            return self.social_entity.get_identity_type()
-        return "Shareholder"
+        return self.social_entity.get_identity_type()
 
     def get_user(self):
-        """
-        Return linked User if this Shareholder is tied to a CommunityMember.
-        """
         if self.social_entity and hasattr(self.social_entity, "member"):
             return self.social_entity.member.user
         return None
 
     def get_company(self):
-        """
-        Return linked Company if this Shareholder is tied to a Company.
-        """
         if self.social_entity and hasattr(self.social_entity, "company"):
             return self.social_entity.company
         return None
 
     def get_member(self):
-        """
-        Return linked CommunityMember if this Shareholder is tied to a CommunityMember.
-        """
         if self.social_entity and hasattr(self.social_entity, "member"):
             return self.social_entity.member
+        return None
+
+    # -----------------------------
+    # New convenience methods
+    # -----------------------------
+    def get_full_name(self):
+        """
+        Resolve a human-readable name from the linked SocialEntity.
+        """
+        if isinstance(self.social_entity, CommunityMember):
+            return self.social_entity.display_name
+        elif isinstance(self.social_entity, Company):
+            return self.social_entity.name
+        elif isinstance(self.social_entity, Community):
+            return self.social_entity.name
+        return f"Entity {self.social_entity.id}"
+
+    def get_email(self):
+        """
+        Resolve an email address from the linked SocialEntity.
+        """
+        if self.social_entity.is_member():
+            return self.social_entity.member.user.email
+        elif self.social_entity.is_company():
+            return self.social_entity.company.email
+        elif self.social_entity.is_community():
+            return self.social_entity.community.email
         return None
 
 

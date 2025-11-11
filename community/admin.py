@@ -27,7 +27,7 @@ class CommunityAdmin(BaseSerializableAdmin):
         'established_year',
         'head_display',
         'created_at',
-        'id',   # inherited SocialEntity PK
+        'id', 'email'
     )
     search_fields = ('name', 'slug', 'head__display_name')
     ordering = ('name',)

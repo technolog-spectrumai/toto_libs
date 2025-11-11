@@ -18,17 +18,27 @@ class CompanyDetailView(DetailView):
         company = self.object
 
         # 👥 Shareholders
-        shareholders = Shareholder.objects.filter(company=company)
-        context['shareholders'] = shareholders
-        context['total_shares'] = sum(s.shares_owned for s in shareholders)
-        context['share_labels'] = [s.full_name for s in shareholders]
-        context['share_data'] = [s.shares_owned for s in shareholders]
+        shareholders = (
+            Shareholder.objects
+            .filter(company=company)
+            .select_related(
+                "social_entity__communitymember__user",  # CommunityMember → User
+                "social_entity__company",  # Company
+                "social_entity__community"  # Community
+            )
+        )
+        context["shareholders"] = shareholders
+        context["total_shares"] = sum(s.shares_owned for s in shareholders)
+
+        # Use helper method for labels
+        context["share_labels"] = [s.get_full_name() for s in shareholders]
+        context["share_data"] = [s.shares_owned for s in shareholders]
 
         # 💸 Funding rounds directly tied to this company
         funding_rounds = (
             FundingRound.objects
             .select_related("venture", "currency")
-            .filter(venture=company)   # ✅ FIX: venture is a Company now
+            .filter(venture=company)
             .order_by("-timestamp")
         )
         context["funding_rounds"] = funding_rounds
@@ -38,7 +48,6 @@ class CompanyDetailView(DetailView):
         context["chamber"] = chamber
 
         return PageProcessor().decorate(context, self.request)
-
 
 def fund_overview(request):
     # 🏛️ Ensure single active chamber
