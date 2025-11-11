@@ -4,3 +4,6 @@ from django.apps import AppConfig
 class FederalConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'federal'
+
+    def ready(self):
+        import federal.signals

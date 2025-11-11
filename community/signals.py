@@ -2,7 +2,7 @@ from django.db.models.signals import post_save, post_delete, m2m_changed
 from django.dispatch import receiver
 from community.models import Community, CommunityMember
 from community.graph import Community as GraphCommunity, CommunityMember as GraphMember
-from oya.check_neo4j import is_neo4j_connected
+from oya.neo4j import is_neo4j_connected
 
 # -----------------------------
 # Community sync
