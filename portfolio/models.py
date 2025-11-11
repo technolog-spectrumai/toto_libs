@@ -1,13 +1,11 @@
-from django.db import models
-from django.contrib.auth.models import User
 from yamabiko.models import SerializableModel
 from community.models import SocialEntity
 from finance.models import Transaction, Currency
-from django.utils.timezone import now
 from django.db import models
 from yamabiko.models import SerializableModel
 from community.models import SocialEntity, CommunityMember, Community
 from django.utils.timezone import now
+
 
 # 🏛️ Chamber
 class Chamber(SerializableModel):
