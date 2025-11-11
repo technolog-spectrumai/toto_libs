@@ -73,7 +73,6 @@ INSTALLED_APPS = [
     "events",
     "audit",
     "kanban",
-    "yamabiko",
     "finance",
     "federal",
     "gate",

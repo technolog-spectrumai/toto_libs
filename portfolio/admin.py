@@ -5,7 +5,7 @@ from .models import (
     Chamber,
     FundingRound
 )
-from yamabiko.admin import BaseSerializableAdmin
+from toto.admin import BaseSerializableAdmin
 
 
 @admin.register(Chamber)

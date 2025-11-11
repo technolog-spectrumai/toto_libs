@@ -7,7 +7,7 @@ from .models import (
     MembershipApplication,
     ReferenceRequest
 )
-from yamabiko.admin import BaseSerializableAdmin
+from toto.admin import BaseSerializableAdmin
 
 
 @admin.register(Address)

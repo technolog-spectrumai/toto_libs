@@ -3,7 +3,7 @@ from django.urls import path, reverse
 from django.shortcuts import render, redirect
 from django import forms
 from vault.models import VaultFile, Bucket
-from yamabiko.serialize import ModelSerializer
+from toto.serialize import ModelSerializer
 from .batch import BatchAction
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 
