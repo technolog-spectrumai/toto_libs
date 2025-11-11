@@ -18,11 +18,6 @@ class MembershipRel(StructuredRel):
     created_at = DateTimeProperty(default_now=True)
 
 
-class LocationRel(StructuredRel):
-    metadata = JSONProperty()
-    created_at = DateTimeProperty(default_now=True)
-
-
 class PatronRel(StructuredRel):
     metadata = JSONProperty()
     created_at = DateTimeProperty(default_now=True)
@@ -32,20 +27,9 @@ class PatronRel(StructuredRel):
 # Node Models
 # -----------------------------
 
-class Address(StructuredNode):
-    uid = StringProperty(unique_index=True, required=True)  # reuse SQL UUID
-    country_name = StringProperty(required=True)
-    state_or_province_name = StringProperty()
-    locality_name = StringProperty()
-    street = StringProperty()
-    building = StringProperty()
-    apartment = StringProperty()
-    metadata = JSONProperty()
-    created_at = DateTimeProperty(default_now=True)
-
-
 class Community(StructuredNode):
-    uid = StringProperty(unique_index=True, required=True)  # reuse SQL UUID
+    uid = StringProperty(unique_index=True, required=True)       # reuse SQL Community PK
+    social_id = StringProperty(unique_index=True, required=True) # SocialEntity.id
     name = StringProperty(required=True, index=True)
     slug = StringProperty(unique_index=True)
     established_year = StringProperty()
@@ -54,11 +38,11 @@ class Community(StructuredNode):
 
     # Relationships
     members = RelationshipFrom('CommunityMember', 'MEMBER_OF', model=MembershipRel)
-    address = RelationshipTo('Address', 'LOCATED_AT', model=LocationRel)
 
 
 class CommunityMember(StructuredNode):
-    uid = StringProperty(unique_index=True, required=True)  # reuse SQL UUID
+    uid = StringProperty(unique_index=True, required=True)       # reuse SQL CommunityMember PK
+    social_id = StringProperty(unique_index=True, required=True) # SocialEntity.id
     display_name = StringProperty(required=True, index=True)
     bio = StringProperty()
     avatar = StringProperty()

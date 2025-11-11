@@ -2,7 +2,7 @@ from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from .models import Account, Transaction   # Django ORM models
 from .graph import Account as GraphAccount, Transaction as GraphTransaction
-from community.graph import CommunityMember  # Neo4j CommunityMember node
+from community.graph import CommunityMember as GraphMember  # Neo4j CommunityMember node
 
 # -----------------------------
 # Account Sync
@@ -27,23 +27,22 @@ def sync_account_to_graph(sender, instance, created, **kwargs):
     g_acc.metadata = {}
     g_acc.save()
 
-    # Owner relationship
-    if instance.owner and hasattr(instance.owner, "social_entity"):
+    # Owner relationship (via social_id)
+    if instance.owner and instance.owner.social_entity:
         try:
-            g_owner = CommunityMember.nodes.get(uid=str(instance.owner.social_entity.id))
-            # clear old links before reconnecting
+            g_owner = GraphMember.nodes.get(social_id=str(instance.owner.social_entity.id))
             g_acc.owner.disconnect_all()
             g_acc.owner.connect(g_owner)
-        except CommunityMember.DoesNotExist:
+        except GraphMember.DoesNotExist:
             pass
 
-    # Manager relationship
-    if instance.manager:
+    # Manager relationship (via user → CommunityMember)
+    if instance.manager and hasattr(instance.manager, "community_profile"):
         try:
-            g_manager = CommunityMember.nodes.get(uid=str(instance.manager.id))
+            g_manager = GraphMember.nodes.get(uid=str(instance.manager.community_profile.id))
             g_acc.manager.disconnect_all()
             g_acc.manager.connect(g_manager)
-        except CommunityMember.DoesNotExist:
+        except GraphMember.DoesNotExist:
             pass
 
 

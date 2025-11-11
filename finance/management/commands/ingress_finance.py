@@ -1,6 +1,6 @@
 from oya.ingress import IngressCommand
-from finance.models import Currency, Subject, Account, Transaction, ExchangeRate
-from community.models import SocialEntity
+from finance.models import Currency, Account, Transaction, ExchangeRate, Subject
+from community.models import CommunityMember, SocialEntity
 from django.contrib.auth.models import User
 from django.utils.timezone import now
 from datetime import timedelta
@@ -10,18 +10,9 @@ from faker import Faker
 fake = Faker()
 
 class Command(IngressCommand):
-    help = "Seed sample data for finance: currencies, subjects, accounts, transactions, obligations"
+    help = "Seed sample data for finance: currencies, accounts held by community members, transactions"
 
-    def process(self, _):
-        # 📊 Dashboard block
-        self.create_dashboard_item(
-            title="Finance",
-            icon="fa-solid fa-coins",
-            description="Accounts, transactions, obligations, and financial subjects",
-            link="/finance/"
-        )
-
-        # 💱 Currencies
+    def create_currencies(self):
         currency_data = [
             ('USD', 'US Dollar', False),
             ('PLN', 'Polish Zloty', False)
@@ -35,9 +26,13 @@ class Command(IngressCommand):
 
         currencies = []
         for symbol, name, is_crypto in currency_data:
-            currency, _ = Currency.objects.get_or_create(symbol=symbol, defaults={"name": name, "is_crypto": is_crypto})
+            currency, _ = Currency.objects.get_or_create(
+                symbol=symbol,
+                defaults={"name": name, "is_crypto": is_crypto}
+            )
             currencies.append(currency)
 
+        # Exchange rates
         exchange_pairs = [
             ("USD", "PLN", 4.25),
             ("EUR", "USD", 1.08),
@@ -56,43 +51,41 @@ class Command(IngressCommand):
                     timestamp=now()
                 )
 
-        if not self.full:
-            return
-        # 🧍 Subjects linked to existing SocialEntities
-        subjects = []
-        for _ in range(5):
-            entity_name = fake.name()
-            social_entity, _ = SocialEntity.objects.get_or_create(name=entity_name)
-            subject, created = Subject.objects.get_or_create(
-                social_entity=social_entity,
-                defaults={
-                    "name": entity_name,
-                    "legal_type": random.choice(['individual', 'corporation']),
-                    "identifier": fake.uuid4()[:8],
-                    "contact_info": fake.email()
-                }
-            )
-            subjects.append(subject)
+        return currencies
 
-        # 👤 Users
-        users = []
-        for i in range(3):
-            user, _ = User.objects.get_or_create(username=f"user{i}", defaults={"email": f"user{i}@example.com"})
-            users.append(user)
-
-        # 🏦 Accounts
+    def create_accounts(self, members, currencies):
         accounts = []
+        users = list(User.objects.all())
+        if not users:
+            for i in range(3):
+                user, _ = User.objects.get_or_create(
+                    username=f"user{i}",
+                    defaults={"email": f"user{i}@example.com"}
+                )
+                users.append(user)
+
         for i in range(10):
+            holder = random.choice(members)
+            subject = getattr(holder.social_entity, "subject", None)
+            if not subject:
+                subject = Subject.objects.create(
+                    social_entity=holder.social_entity,
+                    name=holder.display_name,
+                    legal_type="individual",
+                    identifier=fake.uuid4()[:8],
+                    contact_info=fake.email()
+                )
             account = Account.objects.create(
                 name=fake.company(),
-                owner=random.choice(subjects),
+                owner=subject,
                 manager=random.choice(users),
                 currency=random.choice(currencies),
                 balance=round(random.uniform(1000, 10000), 2)
             )
             accounts.append(account)
+        return accounts
 
-        # 💸 Transactions
+    def create_transactions(self, accounts):
         for i in range(15):
             src, dst = random.sample(accounts, 2)
             currency = src.currency
@@ -105,4 +98,28 @@ class Command(IngressCommand):
                 timestamp=now() - timedelta(days=random.randint(0, 30))
             )
 
-        self.stdout.write(self.style.SUCCESS("✅ Finance data seeded successfully."))
+    def process(self, _):
+        # 📊 Dashboard block
+        self.create_dashboard_item(
+            title="Finance",
+            icon="fa-solid fa-coins",
+            description="Accounts and transactions linked to community members",
+            link="/finance/"
+        )
+
+        # Step 1: currencies
+        currencies = self.create_currencies()
+
+        if not self.full:
+            return
+
+        members = list(CommunityMember.objects.all())
+        if len(members) == 0:
+            raise ValueError("No Members found to assign as account holders.")
+        # Step 3: accounts
+        accounts = self.create_accounts(members, currencies)
+
+        # Step 4: transactions
+        self.create_transactions(accounts)
+
+        self.stdout.write(self.style.SUCCESS("✅ Finance data seeded successfully with CommunityMember account holders."))

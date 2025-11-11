@@ -1,7 +1,7 @@
 from django.db.models.signals import post_save, post_delete, m2m_changed
 from django.dispatch import receiver
-from community.models import Community, CommunityMember, Address
-from community.graph import Community as GraphCommunity, CommunityMember as GraphMember, Address as GraphAddress
+from community.models import Community, CommunityMember
+from community.graph import Community as GraphCommunity, CommunityMember as GraphMember
 
 
 # -----------------------------
@@ -9,9 +9,11 @@ from community.graph import Community as GraphCommunity, CommunityMember as Grap
 # -----------------------------
 @receiver(post_save, sender=Community)
 def sync_community_to_graph(sender, instance, created, **kwargs):
+    social_id = str(instance.social_entity.id) if instance.social_entity else None
     if created:
         GraphCommunity(
             uid=str(instance.id),
+            social_id=social_id,
             name=instance.name,
             slug=instance.slug,
             established_year=str(instance.established_year) if instance.established_year else None
@@ -19,6 +21,7 @@ def sync_community_to_graph(sender, instance, created, **kwargs):
     else:
         try:
             g = GraphCommunity.nodes.get(uid=str(instance.id))
+            g.social_id = social_id
             g.name = instance.name
             g.slug = instance.slug
             g.established_year = str(instance.established_year) if instance.established_year else None
@@ -41,9 +44,11 @@ def delete_community_from_graph(sender, instance, **kwargs):
 # -----------------------------
 @receiver(post_save, sender=CommunityMember)
 def sync_member_to_graph(sender, instance, created, **kwargs):
+    social_id = str(instance.social_entity.id) if instance.social_entity else None
     if created:
         GraphMember(
             uid=str(instance.id),
+            social_id=social_id,
             display_name=instance.display_name,
             slug=instance.slug,
             bio=instance.bio
@@ -51,6 +56,7 @@ def sync_member_to_graph(sender, instance, created, **kwargs):
     else:
         try:
             g = GraphMember.nodes.get(uid=str(instance.id))
+            g.social_id = social_id
             g.display_name = instance.display_name
             g.slug = instance.slug
             g.bio = instance.bio
@@ -65,44 +71,6 @@ def delete_member_from_graph(sender, instance, **kwargs):
         g = GraphMember.nodes.get(uid=str(instance.id))
         g.delete()
     except GraphMember.DoesNotExist:
-        pass
-
-
-# -----------------------------
-# Address sync
-# -----------------------------
-@receiver(post_save, sender=Address)
-def sync_address_to_graph(sender, instance, created, **kwargs):
-    if created:
-        GraphAddress(
-            uid=str(instance.id),
-            country_name=instance.country_name,
-            state_or_province_name=instance.state_or_province_name,
-            locality_name=instance.locality_name,
-            street=instance.street,
-            building=instance.building,
-            apartment=instance.apartment
-        ).save()
-    else:
-        try:
-            g = GraphAddress.nodes.get(uid=str(instance.id))
-            g.country_name = instance.country_name
-            g.state_or_province_name = instance.state_or_province_name
-            g.locality_name = instance.locality_name
-            g.street = instance.street
-            g.building = instance.building
-            g.apartment = instance.apartment
-            g.save()
-        except GraphAddress.DoesNotExist:
-            pass
-
-
-@receiver(post_delete, sender=Address)
-def delete_address_from_graph(sender, instance, **kwargs):
-    try:
-        g = GraphAddress.nodes.get(uid=str(instance.id))
-        g.delete()
-    except GraphAddress.DoesNotExist:
         pass
 
 
