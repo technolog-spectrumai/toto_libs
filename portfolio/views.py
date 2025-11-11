@@ -24,11 +24,11 @@ class CompanyDetailView(DetailView):
         context['share_labels'] = [s.full_name for s in shareholders]
         context['share_data'] = [s.shares_owned for s in shareholders]
 
-        # 💸 All funding rounds for this company’s ventures
+        # 💸 Funding rounds directly tied to this company
         funding_rounds = (
             FundingRound.objects
             .select_related("venture", "currency")
-            .filter(venture__company=company)
+            .filter(venture=company)   # ✅ FIX: venture is a Company now
             .order_by("-timestamp")
         )
         context["funding_rounds"] = funding_rounds
@@ -40,6 +40,7 @@ class CompanyDetailView(DetailView):
         return PageProcessor().decorate(context, self.request)
 
 
+
 def fund_overview(request):
     # 🏛️ Ensure single active chamber
     active_chambers = Chamber.objects.filter(active=True)
@@ -49,30 +50,30 @@ def fund_overview(request):
         raise ImproperlyConfigured("Multiple active chambers detected. Only one chamber can be active at a time.")
     chamber = active_chambers.first()
 
-    # 📦 Ventures with funding round count
-    ventures = list(Venture.objects.annotate(
+    # 🏢 Companies with funding round count
+    companies = list(Company.objects.annotate(
         funding_rounds_count=Count('funding_rounds')
     ))
 
-    # 💸 Funding totals grouped by venture and currency
+    # 💸 Funding totals grouped by company and currency
     raw_funding = (
         FundingRound.objects
-        .values("venture__id", "currency__symbol")
+        .values("venture__id", "currency__symbol")   # ✅ venture is Company
         .annotate(total=Sum("amount"))
         .order_by("venture__id", "currency__symbol")
     )
 
-    # 🧮 Attach funding to each venture
+    # 🧮 Attach funding to each company
     funding_map = defaultdict(dict)
     for row in raw_funding:
         funding_map[row["venture__id"]][row["currency__symbol"]] = row["total"]
 
-    for venture in ventures:
-        venture.funding_by_currency = funding_map.get(venture.id, {})
+    for company in companies:
+        company.funding_by_currency = funding_map.get(company.id, {})
 
     # 📦 Final context
     context = {
-        "ventures": ventures,
+        "companies": companies,   # ✅ renamed from ventures
         "chamber": chamber
     }
 
@@ -91,5 +92,6 @@ def fund_overview(request):
     }
 
     return render(request, "portfolio/fund_overview.html", decorated_context)
+
 
 

@@ -61,30 +61,12 @@ class Command(IngressCommand):
             self.stdout.write(self.style.SUCCESS(f"🏢 Created company: {company.name}"))
         return companies
 
-    def create_ventures(self, companies):
-        """
-        Create ventures for selected companies.
-        """
-        selected_companies = random.sample(companies, min(3, len(companies)))
-        ventures = []
-        for company in selected_companies:
-            venture_name = f"{company.name} Venture"
-            venture_url = f"https://example.com/{company.name.lower().replace(' ', '-')}"
-            venture = Venture.objects.create(
-                name=venture_name,
-                url=venture_url,
-                start=now(),
-                company=company
-            )
-            ventures.append(venture)
-            self.stdout.write(self.style.SUCCESS(f"📦 Created venture: {venture.name}"))
-        return ventures
 
-    def create_funding_rounds(self, ventures, currency):
+    def create_funding_rounds(self, companies, currency):
         """
         Create funding rounds for each venture.
         """
-        for venture in ventures:
+        for venture in companies:
             for i in range(random.randint(1, 3)):
                 amount = round(random.uniform(5000, 50000), 2)
                 timestamp = now() - timedelta(days=random.randint(1, 180))
@@ -141,11 +123,8 @@ class Command(IngressCommand):
         # Step 2: Companies
         companies = self.create_companies(count=3)
 
-        # Step 3: Ventures
-        ventures = self.create_ventures(companies)
-
         # Step 4: Funding Rounds
-        self.create_funding_rounds(ventures, chamber.default_currency)
+        self.create_funding_rounds(companies, chamber.default_currency)
 
         # Step 5: Shareholders
         self.create_shareholders(companies)

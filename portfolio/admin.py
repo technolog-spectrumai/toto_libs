@@ -2,7 +2,6 @@ from django.contrib import admin
 from .models import (
     Company,
     Shareholder,
-    Venture,
     Chamber,
     FundingRound
 )
@@ -58,14 +57,8 @@ class ShareholderAdmin(BaseSerializableAdmin):
     identity_type.short_description = "Identity Type"
 
 
-@admin.register(Venture)
-class VentureAdmin(BaseSerializableAdmin):
-    list_display = ('name', 'url', 'start', 'end', 'company')
-    search_fields = ('name', 'company__name')
-
-
 @admin.register(FundingRound)
 class FundingRoundAdmin(BaseSerializableAdmin):
     list_display = ('name', 'venture', 'amount', 'currency', 'timestamp', 'transaction')
-    list_filter = ('currency', 'venture__company')
-    search_fields = ('name', 'venture__name', 'venture__company__name')
+    list_filter = ('currency', 'venture')  # ✅ venture is Company now
+    search_fields = ('name', 'venture__name')  # ✅ no nested company

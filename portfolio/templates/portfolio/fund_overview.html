@@ -6,10 +6,10 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
   document.addEventListener('DOMContentLoaded', function () {
-    let ventureChart;
+    let companyChart;
     let lastDarkMode = localStorage.getItem('darkMode');
 
-    function renderVentureChart() {
+    function renderCompanyChart() {
       const isDarkMode = localStorage.getItem('darkMode') === 'true';
 
       const chartColors = {
@@ -19,19 +19,19 @@
         grid: isDarkMode ? '{{ chart_colors.grid_dark }}' : '{{ chart_colors.grid_light }}'
       };
 
-      const ctx = document.getElementById('ventureChart').getContext('2d');
+      const ctx = document.getElementById('companyChart').getContext('2d');
 
-      if (ventureChart) {
-        ventureChart.destroy();
+      if (companyChart) {
+        companyChart.destroy();
       }
 
-      ventureChart = new Chart(ctx, {
+      companyChart = new Chart(ctx, {
         type: 'bar',
         data: {
-          labels: [{% for venture in ventures %}'{{ venture.name }}'{% if not forloop.last %}, {% endif %}{% endfor %}],
+          labels: [{% for company in companies %}'{{ company.name }}'{% if not forloop.last %}, {% endif %}{% endfor %}],
           datasets: [{
             label: 'Total Funding',
-            data: [{% for venture in ventures %}{{ venture.total_funding|floatformat:2 }}{% if not forloop.last %}, {% endif %}{% endfor %}],
+            data: [{% for company in companies %}{{ company.total_funding|floatformat:2 }}{% if not forloop.last %}, {% endif %}{% endfor %}],
             backgroundColor: chartColors.background,
             borderColor: chartColors.border,
             borderWidth: 1
@@ -62,7 +62,7 @@
               },
               title: {
                 display: true,
-                text: 'Ventures',
+                text: 'Companies',
                 color: chartColors.text
               }
             },
@@ -85,13 +85,13 @@
       });
     }
 
-    renderVentureChart();
+    renderCompanyChart();
 
     setInterval(() => {
       const currentDarkMode = localStorage.getItem('darkMode');
       if (currentDarkMode !== lastDarkMode) {
         lastDarkMode = currentDarkMode;
-        renderVentureChart();
+        renderCompanyChart();
       }
     }, 500);
   });
@@ -117,67 +117,51 @@
       </div>
     </section>
 
-
-    <!-- 📦 Venture List -->
+    <!-- 🏢 Company List -->
     <section>
-      <h2 class="text-2xl font-bold mb-4">Ventures</h2>
+      <h2 class="text-2xl font-bold mb-4">Companies</h2>
       <div class="space-y-4">
-        {% for venture in ventures %}
+        {% for company in companies %}
         <div class="p-4 rounded border"
              :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
-          <p><strong>{{ venture.name }}</strong></p>
-
-          {% if venture.company %}
-            <p>Company:
-              <a href="{% url 'portfolio:company-detail' venture.company.pk %}"
+          <p>
+            <strong>
+              <a href="{% url 'portfolio:company-detail' company.pk %}"
                  class="underline text-blue-600 dark:text-blue-400">
-                {{ venture.company.name }}
+                {{ company.name }}
               </a>
-            </p>
-            <ul class="ml-4 text-sm">
-              <li><strong>Industry:</strong> {{ venture.company.industry }}</li>
-              <li><strong>Country:</strong> {{ venture.company.country }}</li>
-                <li><strong>Funding Rounds:</strong> {{ venture.funding_rounds_count }} </li>
-                <li><strong>Total Funding:</strong>
-                  <ul class="ml-4">
-                    {% for currency, amount in venture.funding_by_currency.items %}
-                      <li>{{ currency }}: {{ amount|floatformat:2 }}</li>
-                    {% empty %}
-                      <li>No funding recorded.</li>
-                    {% endfor %}
-                  </ul>
-                </li>
-            </ul>
-          {% endif %}
-
-          {% if venture.url %}
-            <p>Website:
-              <a href="{{ venture.url }}" class="underline text-blue-600 dark:text-blue-400" target="_blank">
-                {{ venture.url }}
-              </a>
-            </p>
-          {% endif %}
-
-          <p>Start: {{ venture.start|date:"F j, Y" }}</p>
-          {% if venture.end %}
-            <p>End: {{ venture.end|date:"F j, Y" }}</p>
-          {% endif %}
+            </strong>
+          </p>
+          <ul class="ml-4 text-sm">
+            <li><strong>Industry:</strong> {{ company.industry }}</li>
+            <li><strong>Country:</strong> {{ company.country }}</li>
+            <li><strong>Funding Rounds:</strong> {{ company.funding_rounds_count }}</li>
+            <li><strong>Total Funding:</strong>
+              <ul class="ml-4">
+                {% for currency, amount in company.funding_by_currency.items %}
+                  <li>{{ currency }}: {{ amount|floatformat:2 }}</li>
+                {% empty %}
+                  <li>No funding recorded.</li>
+                {% endfor %}
+              </ul>
+            </li>
+          </ul>
         </div>
         {% empty %}
         <div class="p-4 rounded border text-sm text-center"
              :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
-          No ventures available.
+          No companies available.
         </div>
         {% endfor %}
       </div>
     </section>
 
-    <!-- 📈 Venture Chart -->
+    <!-- 📈 Company Chart -->
     <section>
-      <h2 class="text-2xl font-bold mb-4">Venture Funding Chart</h2>
+      <h2 class="text-2xl font-bold mb-4">Company Funding Chart</h2>
       <div class="p-4 rounded border"
            :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
-        <canvas id="ventureChart" height="300"></canvas>
+        <canvas id="companyChart" height="300"></canvas>
       </div>
     </section>
 

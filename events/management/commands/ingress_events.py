@@ -1,6 +1,6 @@
 from oya.ingress import IngressCommand
 from django.contrib.auth.models import User
-from portfolio.models import Venture
+from portfolio.models import Company
 from events.models import EventCategory, Event
 from django.utils.timezone import now
 from faker import Faker
@@ -36,7 +36,7 @@ class Command(IngressCommand):
             categories.append(cat)
 
         # 📦 Get ventures
-        ventures = list(Venture.objects.all())
+        ventures = list(Company.objects.all())
         if not ventures:
             raise Exception("❌ No ventures found. Please seed ventures first.")
 

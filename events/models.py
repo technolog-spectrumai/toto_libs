@@ -1,6 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
-from portfolio.models import Venture
+from portfolio.models import Company
 
 # 📁 Event Category
 class EventCategory(models.Model):
@@ -21,7 +21,7 @@ class Event(models.Model):
     location = models.CharField(max_length=200)
 
     venture = models.ForeignKey(
-        Venture,
+        Company,
         on_delete=models.CASCADE,
         related_name='events'
     )

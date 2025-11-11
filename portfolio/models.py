@@ -123,7 +123,7 @@ class Venture(SerializableModel):
 
 class FundingRound(SerializableModel):
     venture = models.ForeignKey(
-        Venture,
+        Company,
         on_delete=models.CASCADE,
         related_name="funding_rounds"
     )
