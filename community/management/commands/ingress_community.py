@@ -72,21 +72,30 @@ class Command(IngressCommand):
         )
         return community
 
+    import random
+    from django.utils import timezone
+    from django.contrib.auth.models import User
+    from community.models import CommunityMember
+
     def create_fake_members(self, community, count=6):
         members = []
-        users = []
 
-        for i in range(count):
-            username = f"user{i}"
-            user, _ = User.objects.get_or_create(
-                username=username,
-                defaults={"email": f"{username}@example.com"}
-            )
-            users.append(user)
+        # 🎲 fetch all existing users
+        users = list(User.objects.all())
+
+        if not users:
+            self.stderr.write(self.style.ERROR("❌ No users found in the database. Please create some first."))
+            return members
+
+        # cap at 12 members max
+        max_members = min(count, 12, len(users))
+
+        # randomly select up to max_members users
+        selected_users = random.sample(users, max_members)
 
         # Founder
         founder = CommunityMember.objects.create(
-            user=users[0],
+            user=selected_users[0],
             display_name="Founder",
             bio="Top-level patron of the community",
             joined_date=timezone.now(),
@@ -94,10 +103,10 @@ class Command(IngressCommand):
         founder.communities.add(community)
         members.append(founder)
 
-        # Managers
-        for i in range(1, 3):
+        # Managers (next two if available)
+        for i, user in enumerate(selected_users[1:3], start=1):
             manager = CommunityMember.objects.create(
-                user=users[i],
+                user=user,
                 display_name=f"Manager {i}",
                 bio="Mid-level manager reporting to Founder",
                 joined_date=timezone.now(),
@@ -106,12 +115,12 @@ class Command(IngressCommand):
             manager.communities.add(community)
             members.append(manager)
 
-        # Staff
-        for i in range(3, count):
-            patron = random.choice(members[1:3])
+        # Staff (remaining users)
+        for idx, user in enumerate(selected_users[3:], start=3):
+            patron = random.choice(members[1:3]) if len(members) > 2 else founder
             staff = CommunityMember.objects.create(
-                user=users[i],
-                display_name=f"Staff {i}",
+                user=user,
+                display_name=f"Staff {idx}",
                 bio=f"Team member reporting to {patron.display_name}",
                 joined_date=timezone.now(),
                 patron=patron,
@@ -120,3 +129,4 @@ class Command(IngressCommand):
             members.append(staff)
 
         return members
+

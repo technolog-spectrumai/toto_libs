@@ -1,7 +1,8 @@
 from community.models import Community as SQLCommunity, CommunityMember as SQLCommunityMember
 from community.graph.models import Community as GraphCommunity, CommunityMember as GraphMember
-from federal.graph.models import Federation as GraphFederation
+from federal.graph.models import Federation as GraphFederation, FederatedIdentity as GraphIdentity
 from toto.neo4j import ConversionStrategy
+from federal.models import FederatedIdentity as SQLIdentity
 
 
 class CommunityConversionStrategy(ConversionStrategy):
@@ -13,7 +14,6 @@ class CommunityConversionStrategy(ConversionStrategy):
             established_year=str(sql_obj.established_year) if sql_obj.established_year else None,
         ).save()
 
-        # connect to federation if exists
         if sql_obj.federation_id:
             fed_node = GraphFederation.nodes.get_or_none(uid=str(sql_obj.federation_id))
             if fed_node:
@@ -46,6 +46,7 @@ class CommunityMemberConversionStrategy(ConversionStrategy):
             social_id=str(sql_obj.id),
             display_name=sql_obj.display_name,
             bio=sql_obj.bio,
+            user_id=str(sql_obj.user_id) if sql_obj.user_id else None,
         ).save()
 
         # connect to communities
@@ -60,13 +61,30 @@ class CommunityMemberConversionStrategy(ConversionStrategy):
             if patron_node:
                 node.patron.connect(patron_node)
 
+        # connect to federated identity via user_id
+        if sql_obj.user_id:
+            fed_identity = SQLIdentity.objects.filter(user_id=sql_obj.user_id).first()
+            if fed_identity:
+                identity_node = GraphIdentity.nodes.get_or_none(uid=str(fed_identity.pk))
+                if identity_node:
+                    node.identity.connect(identity_node)
         return node
 
     def update(self, sql_obj, node):
         node.social_id = str(sql_obj.id)
         node.display_name = sql_obj.display_name
         node.bio = sql_obj.bio
+        node.user_id = str(sql_obj.user_id) if sql_obj.user_id else None
         node.save()
+
+        # ensure federated identity link stays updated
+        if sql_obj.user_id:
+            fed_identity = SQLIdentity.objects.filter(user_id=sql_obj.user_id).first()
+            if fed_identity:
+                identity_node = GraphIdentity.nodes.get_or_none(uid=str(fed_identity.pk))
+                if identity_node and not node.identity.is_connected(identity_node):
+                    node.identity.connect(identity_node)
+
         return node
 
     def delete(self, sql_obj):
@@ -79,3 +97,6 @@ class CommunityMemberConversionStrategy(ConversionStrategy):
 
     def get_all_nodes(self):
         return GraphMember.nodes.all()
+
+
+

@@ -1,14 +1,12 @@
 import os
 import random
 import uuid
-
 from django.conf import settings
 from django.core.files import File
 from django.core.management.base import CommandError
 from django.contrib.auth.models import User
 from django.urls import reverse
 from django.utils import timezone
-
 from federal.models import Federation, FederatedIdentity
 from gervazy.models import RSAKeyPair
 from oya.models import Platform
@@ -93,7 +91,8 @@ class Command(IngressCommand):
         # Head identity
         head_identity = self._create_identity_with_rsa(
             federation=federation,
-            name="Head Identity"
+            name="Head Identity",
+            user=random.choice(users)
         )
         identities.append(head_identity)
 
@@ -101,18 +100,20 @@ class Command(IngressCommand):
         for i in range(1, count):
             identity = self._create_identity_with_rsa(
                 federation=federation,
-                name=f"Identity {i}"
+                name=f"Identity {i}",
+                user=random.choice(users)
             )
             identities.append(identity)
 
         return identities
 
-    def _create_identity_with_rsa(self, federation: Federation, name: str) -> FederatedIdentity:
+    def _create_identity_with_rsa(self, federation: Federation, name: str, user: User) -> FederatedIdentity:
         identity = FederatedIdentity.objects.create(
             id=uuid.uuid4(),
             name=name,
             created_at=timezone.now(),
-            federation=federation
+            federation=federation,
+            user=user
         )
 
         # 🔐 Generate and attach RSA keypair

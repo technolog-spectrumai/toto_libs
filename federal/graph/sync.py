@@ -8,7 +8,6 @@ class FederationConversionStrategy(ConversionStrategy):
         return GraphFederation(
             uid=str(sql_obj.pk),
             name=sql_obj.name,
-            slug=sql_obj.slug,
             description=sql_obj.description,
             active=sql_obj.active,
             metadata={"platform": sql_obj.platform_id},
@@ -16,7 +15,6 @@ class FederationConversionStrategy(ConversionStrategy):
 
     def update(self, sql_obj, node):
         node.name = sql_obj.name
-        node.slug = sql_obj.slug
         node.description = sql_obj.description
         node.active = sql_obj.active
         node.metadata = {"platform": sql_obj.platform_id}
@@ -41,9 +39,10 @@ class IdentityConversionStrategy(ConversionStrategy):
             uid=str(sql_obj.pk),
             name=sql_obj.name,
             issuer=sql_obj.issuer,
-            metadata={"rsa_keypair": sql_obj.rsa_keypair_id},
+            user_id=str(sql_obj.user_id) if sql_obj.user_id else None,
+            metadata={},   # no keypair anymore
         ).save()
-        # connect to federation
+
         federation_node = GraphFederation.nodes.get_or_none(uid=str(sql_obj.federation.pk))
         if federation_node:
             node.federation.connect(federation_node)
@@ -53,7 +52,8 @@ class IdentityConversionStrategy(ConversionStrategy):
     def update(self, sql_obj, node):
         node.name = sql_obj.name
         node.issuer = sql_obj.issuer
-        node.metadata = {"rsa_keypair": sql_obj.rsa_keypair_id}
+        node.user_id = str(sql_obj.user_id) if sql_obj.user_id else None
+        node.metadata = {}
         node.save()
         return node
 

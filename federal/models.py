@@ -7,6 +7,7 @@ import qrcode
 import base64
 from io import BytesIO
 from django.utils.html import mark_safe
+from django.contrib.auth.models import User
 
 
 class Federation(models.Model):
@@ -61,6 +62,14 @@ class FederatedIdentity(models.Model):
         null=True,
         blank=True,
         help_text="RSA keypair associated with this identity"
+    )
+    user = models.ForeignKey(  # 👤 optional link to Django User
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="federated_identities",
+        help_text="Optional link to a Django User account"
     )
 
     class Meta:

@@ -37,7 +37,6 @@ class BelongsToRel(StructuredRel):
 class Federation(StructuredNode):
     uid = StringProperty(unique_index=True, required=True)   # SQL Federation PK
     name = StringProperty(required=True, index=True)
-    slug = StringProperty(unique_index=True, required=True)
     description = StringProperty()
     created_at = DateTimeProperty(default_now=True)
     active = BooleanProperty(default=True)
@@ -53,6 +52,8 @@ class FederatedIdentity(StructuredNode):
     created_at = DateTimeProperty(default_now=True)
     issuer = StringProperty()  # federation URL
     metadata = JSONProperty()
+    user_id = StringProperty(index=True, required=False)     # optional SQL User PK
 
     # Relationships
     federation = RelationshipTo('Federation', 'BELONGS_TO', model=BelongsToRel)
+
