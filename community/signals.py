@@ -2,13 +2,15 @@ from django.db.models.signals import post_save, post_delete, m2m_changed
 from django.dispatch import receiver
 from community.models import Community, CommunityMember
 from community.graph import Community as GraphCommunity, CommunityMember as GraphMember
-
+from oya.check_neo4j import is_neo4j_connected
 
 # -----------------------------
 # Community sync
 # -----------------------------
 @receiver(post_save, sender=Community)
 def sync_community_to_graph(sender, instance, created, **kwargs):
+    if not is_neo4j_connected():
+        return
     social_id = str(instance.social_entity.id) if instance.social_entity else None
     if created:
         GraphCommunity(
@@ -32,6 +34,8 @@ def sync_community_to_graph(sender, instance, created, **kwargs):
 
 @receiver(post_delete, sender=Community)
 def delete_community_from_graph(sender, instance, **kwargs):
+    if not is_neo4j_connected():
+        return
     try:
         g = GraphCommunity.nodes.get(uid=str(instance.id))
         g.delete()
@@ -44,6 +48,8 @@ def delete_community_from_graph(sender, instance, **kwargs):
 # -----------------------------
 @receiver(post_save, sender=CommunityMember)
 def sync_member_to_graph(sender, instance, created, **kwargs):
+    if not is_neo4j_connected():
+        return
     social_id = str(instance.social_entity.id) if instance.social_entity else None
     if created:
         GraphMember(
@@ -67,6 +73,8 @@ def sync_member_to_graph(sender, instance, created, **kwargs):
 
 @receiver(post_delete, sender=CommunityMember)
 def delete_member_from_graph(sender, instance, **kwargs):
+    if not is_neo4j_connected():
+        return
     try:
         g = GraphMember.nodes.get(uid=str(instance.id))
         g.delete()
@@ -79,6 +87,8 @@ def delete_member_from_graph(sender, instance, **kwargs):
 # -----------------------------
 @receiver(m2m_changed, sender=CommunityMember.communities.through)
 def sync_membership_relation(sender, instance, action, reverse, model, pk_set, **kwargs):
+    if not is_neo4j_connected():
+        return
     """
     Sync MEMBER_OF relationships when CommunityMember.communities changes.
     """

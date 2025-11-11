@@ -3,13 +3,15 @@ from django.dispatch import receiver
 from .models import Account, Transaction   # Django ORM models
 from .graph import Account as GraphAccount, Transaction as GraphTransaction
 from community.graph import CommunityMember as GraphMember  # Neo4j CommunityMember node
-
+from oya.check_neo4j import is_neo4j_connected
 # -----------------------------
 # Account Sync
 # -----------------------------
 
 @receiver(post_save, sender=Account)
 def sync_account_to_graph(sender, instance, created, **kwargs):
+    if not is_neo4j_connected():
+        return
     """
     Sync SQL Account to Neo4j Account node, including owner and manager relationships.
     """
@@ -48,6 +50,8 @@ def sync_account_to_graph(sender, instance, created, **kwargs):
 
 @receiver(post_delete, sender=Account)
 def delete_account_from_graph(sender, instance, **kwargs):
+    if not is_neo4j_connected():
+        return
     """
     Remove Account node from Neo4j when deleted in SQL.
     """
@@ -64,6 +68,8 @@ def delete_account_from_graph(sender, instance, **kwargs):
 
 @receiver(post_save, sender=Transaction)
 def sync_transaction_to_graph(sender, instance, created, **kwargs):
+    if not is_neo4j_connected():
+        return
     """
     Sync SQL Transaction to Neo4j Transaction node and connect to source/destination Accounts.
     """
@@ -100,6 +106,8 @@ def sync_transaction_to_graph(sender, instance, created, **kwargs):
 
 @receiver(post_delete, sender=Transaction)
 def delete_transaction_from_graph(sender, instance, **kwargs):
+    if not is_neo4j_connected():
+        return
     """
     Remove Transaction node from Neo4j when deleted in SQL.
     """
