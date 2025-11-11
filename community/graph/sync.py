@@ -8,8 +8,7 @@ from federal.models import FederatedIdentity as SQLIdentity
 class CommunityConversionStrategy(ConversionStrategy):
     def create(self, sql_obj):
         node = GraphCommunity(
-            uid=str(sql_obj.pk),
-            social_id=str(sql_obj.id),
+            uid=str(sql_obj.id),
             name=sql_obj.name,
             established_year=str(sql_obj.established_year) if sql_obj.established_year else None,
         ).save()
@@ -21,7 +20,6 @@ class CommunityConversionStrategy(ConversionStrategy):
         return node
 
     def update(self, sql_obj, node):
-        node.social_id = str(sql_obj.id)
         node.name = sql_obj.name
         node.established_year = str(sql_obj.established_year) if sql_obj.established_year else None
         node.save()
@@ -33,7 +31,7 @@ class CommunityConversionStrategy(ConversionStrategy):
             node.delete()
 
     def get_node(self, sql_obj):
-        return GraphCommunity.nodes.get_or_none(uid=str(sql_obj.pk))
+        return GraphCommunity.nodes.get_or_none(uid=str(sql_obj.id))
 
     def get_all_nodes(self):
         return GraphCommunity.nodes.all()
@@ -42,8 +40,7 @@ class CommunityConversionStrategy(ConversionStrategy):
 class CommunityMemberConversionStrategy(ConversionStrategy):
     def create(self, sql_obj):
         node = GraphMember(
-            uid=str(sql_obj.pk),
-            social_id=str(sql_obj.id),
+            uid=str(sql_obj.id),
             display_name=sql_obj.display_name,
             bio=sql_obj.bio,
             user_id=str(sql_obj.user_id) if sql_obj.user_id else None,
@@ -71,7 +68,6 @@ class CommunityMemberConversionStrategy(ConversionStrategy):
         return node
 
     def update(self, sql_obj, node):
-        node.social_id = str(sql_obj.id)
         node.display_name = sql_obj.display_name
         node.bio = sql_obj.bio
         node.user_id = str(sql_obj.user_id) if sql_obj.user_id else None

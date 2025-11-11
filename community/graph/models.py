@@ -29,7 +29,6 @@ class AffiliationRel(StructuredRel):
 
 class Community(StructuredNode):
     uid = StringProperty(unique_index=True, required=True)
-    social_id = StringProperty(unique_index=True, required=True)
     name = StringProperty(required=True, index=True)
     established_year = StringProperty()
     metadata = JSONProperty()
@@ -41,7 +40,6 @@ class Community(StructuredNode):
 
 class CommunityMember(StructuredNode):
     uid = StringProperty(unique_index=True, required=True)
-    social_id = StringProperty(unique_index=True, required=True)
     display_name = StringProperty(required=True, index=True)
     bio = StringProperty()
     metadata = JSONProperty()

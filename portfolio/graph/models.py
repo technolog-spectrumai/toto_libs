@@ -12,19 +12,12 @@ from neomodel import (
     RelationshipFrom,
 )
 from finance.graph.models import Transaction
+from community.graph.models import CommunityMember, Community
 
 
 # -----------------------------
 # Relationship Models (Edges)
 # -----------------------------
-
-class ShareholderRel(StructuredRel):
-    shares_owned = IntegerProperty(required=True)
-    date_joined = DateProperty()
-    is_active = BooleanProperty(default=True)
-    metadata = JSONProperty()
-    created_at = DateTimeProperty(default_now=True)
-
 
 class FundingRel(StructuredRel):
     amount = FloatProperty()
@@ -54,18 +47,23 @@ class Company(StructuredNode):
     metadata = JSONProperty()
 
     # Relationships
-    shareholders = RelationshipFrom('Shareholder', 'OWNS_SHARES', model=ShareholderRel)
     funding_rounds = RelationshipTo('FundingRound', 'RAISED_FUNDS', model=FundingRel)
 
 
-class Shareholder(StructuredNode):
+class SharePackage(StructuredNode):
     uid = StringProperty(unique_index=True, required=True)
     social_id = StringProperty(unique_index=True, required=True)
     is_active = BooleanProperty(default=True)
+
+    # 👇 the package itself knows how many shares
+    shares_owned = IntegerProperty(required=True)
+
     metadata = JSONProperty()
 
     # Relationships
-    company = RelationshipTo('Company', 'OWNS_SHARES', model=ShareholderRel)
+    company = RelationshipTo(Company, 'FRACTIONAL_OWNERSHIP_OF')             # link to company
+    member = RelationshipTo(CommunityMember, 'OWNED_BY')
+    community = RelationshipTo(Community, 'OWNED_BY')
 
 
 class FundingRound(StructuredNode):
@@ -77,5 +75,5 @@ class FundingRound(StructuredNode):
     metadata = JSONProperty()
 
     # Relationships
-    venture = RelationshipFrom('Company', 'RAISED_FUNDS', model=FundingRel)
+    venture = RelationshipFrom(Company, 'RAISED_FUNDS', model=FundingRel)
     transaction = RelationshipTo(Transaction, 'LINKED_TRANSACTION', model=TransactionRel)

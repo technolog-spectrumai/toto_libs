@@ -27,35 +27,8 @@ class Address(SerializableModel):
 class SocialEntity(SerializableModel, PolymorphicModel):
     created_at = models.DateTimeField(default=now)
 
-    def clean(self):
-        linked_models = []
-        if hasattr(self, 'community'):
-            linked_models.append('Community')
-        if hasattr(self, 'member'):
-            linked_models.append('CommunityMember')
-        if len(linked_models) > 1:
-            raise ValidationError(f"SocialEntity cannot be linked to multiple entities: {', '.join(linked_models)}")
-
     def __str__(self):
-        return self.name or str(self.id)
-
-    def is_community(self):
-        return hasattr(self, "community")
-
-    def is_member(self):
-        return hasattr(self, "member")
-
-    def is_company(self):
-        return hasattr(self, "company")
-
-    def get_identity_type(self):
-        if self.is_community():
-            return "Community"
-        elif self.is_member():
-            return "CommunityMember"
-        elif self.is_company():
-            return "Company"
-        return "Unknown"
+        return f"Social Entity id={str(self.id)}"
 
 class Community(SocialEntity):
     name = models.CharField(max_length=255, help_text="Name of the community or organization")

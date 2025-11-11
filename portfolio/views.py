@@ -1,6 +1,6 @@
 from django.shortcuts import render
 from django.views.generic import DetailView
-from .models import Transaction, Currency, Chamber, Company, Shareholder, FundingRound
+from .models import Transaction, Currency, Chamber, Company, SharePackage, FundingRound
 from oya.page import PageProcessor
 from django.db.models import Count, Sum, F
 from django.core.exceptions import ImproperlyConfigured
@@ -17,9 +17,8 @@ class CompanyDetailView(DetailView):
         context = super().get_context_data(**kwargs)
         company = self.object
 
-        # 👥 Shareholders
-        shareholders = (
-            Shareholder.objects
+        share_packages = (
+            SharePackage.objects
             .filter(company=company)
             .select_related(
                 "social_entity__communitymember__user",  # CommunityMember → User
@@ -27,12 +26,12 @@ class CompanyDetailView(DetailView):
                 "social_entity__community"  # Community
             )
         )
-        context["shareholders"] = shareholders
-        context["total_shares"] = sum(s.shares_owned for s in shareholders)
+        context["shareholders"] = share_packages
+        context["total_shares"] = sum(s.shares_owned for s in share_packages)
 
         # Use helper method for labels
-        context["share_labels"] = [s.get_full_name() for s in shareholders]
-        context["share_data"] = [s.shares_owned for s in shareholders]
+        context["share_labels"] = [s.get_full_name() for s in share_packages]
+        context["share_data"] = [s.shares_owned for s in share_packages]
 
         # 💸 Funding rounds directly tied to this company
         funding_rounds = (

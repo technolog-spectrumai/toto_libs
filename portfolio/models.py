@@ -33,21 +33,21 @@ class Company(SocialEntity):
     is_active = models.BooleanField(default=True)
 
 
-class Shareholder(SerializableModel):
+class SharePackage(SerializableModel):
     company = models.ForeignKey(
         Company,
         on_delete=models.CASCADE,
-        related_name='shareholders'
+        related_name='share_packages'
     )
     shares_owned = models.PositiveIntegerField()
     date_joined = models.DateField(auto_now_add=True)
     is_active = models.BooleanField(default=True)
 
     # Compulsory link to SocialEntity
-    social_entity = models.OneToOneField(
+    social_entity = models.ForeignKey(
         SocialEntity,
         on_delete=models.CASCADE,
-        related_name="shareholder"
+        related_name="share_package_ownership"
     )
 
     def __str__(self):
@@ -88,18 +88,6 @@ class Shareholder(SerializableModel):
         elif isinstance(self.social_entity, Community):
             return self.social_entity.name
         return f"Entity {self.social_entity.id}"
-
-    def get_email(self):
-        """
-        Resolve an email address from the linked SocialEntity.
-        """
-        if self.social_entity.is_member():
-            return self.social_entity.member.user.email
-        elif self.social_entity.is_company():
-            return self.social_entity.company.email
-        elif self.social_entity.is_community():
-            return self.social_entity.community.email
-        return None
 
 
 class FundingRound(SerializableModel):

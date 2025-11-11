@@ -4,7 +4,7 @@ from datetime import timedelta
 from faker import Faker
 
 from oya.ingress import IngressCommand
-from portfolio.models import Chamber, Company, Shareholder, FundingRound
+from portfolio.models import Chamber, Company, SharePackage, FundingRound
 from finance.models import Currency
 from community.models import CommunityMember, SocialEntity
 from django.contrib.auth.models import User
@@ -13,7 +13,7 @@ fake = Faker()
 
 
 class Command(IngressCommand):
-    help = "Seed sample data for SpectrumAi.pl Chamber: ventures, companies, shareholders, and funding rounds"
+    help = "Seed sample data for SpectrumAi.pl Chamber: ventures, companies, share packages, and funding rounds"
 
     # -----------------------------
     # Helpers
@@ -73,25 +73,22 @@ class Command(IngressCommand):
                     f"💸 Created funding round: {round_name} ({amount} {currency.symbol})"
                 ))
 
-    def create_shareholders(self, companies):
+    def create_share_packages(self, companies):
         """
-        Create shareholders for each company.
+        Create shares for each company.
         """
+        # Get all existing community members
+        existing_members = list(CommunityMember.objects.all())
+
         for company in companies:
             for _ in range(random.randint(3, 6)):
-                # Create a fake user + community member as the social identity
-                user = User.objects.create_user(
-                    username=fake.unique.user_name(),
-                    email=fake.unique.email(),
-                    password="password123"
-                )
-                member = CommunityMember.objects.create(
-                    user=user,
-                    display_name=fake.name(),
-                    slug=fake.unique.slug()
-                )
+                if existing_members:
+                    # Pick a random existing member
+                    member = random.choice(existing_members)
+                else:
+                    raise Exception("❌ No CommunityMembers found. Please create some before adding share packages.")
 
-                shareholder = Shareholder.objects.create(
+                share_package = SharePackage.objects.create(
                     company=company,
                     shares_owned=random.randint(100, 1000),
                     date_joined=fake.date_between(start_date='-2y', end_date='today'),
@@ -99,7 +96,7 @@ class Command(IngressCommand):
                     social_entity=member  # compulsory link
                 )
                 self.stdout.write(self.style.SUCCESS(
-                    f"👤 Created shareholder: {shareholder.get_full_name()} in {company.name}"
+                    f"👤 Linked shares: {share_package.get_full_name()} in {company.name}"
                 ))
 
     # -----------------------------
@@ -127,6 +124,6 @@ class Command(IngressCommand):
         self.create_funding_rounds(companies, chamber.default_currency)
 
         # Step 4: Shareholders
-        self.create_shareholders(companies)
+        self.create_share_packages(companies)
 
-        self.stdout.write(self.style.SUCCESS("✅ SpectrumAi.pl ingress complete with funding rounds and shareholders."))
+        self.stdout.write(self.style.SUCCESS("✅ SpectrumAi.pl ingress complete with funding rounds and shares."))

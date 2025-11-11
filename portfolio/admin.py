@@ -1,7 +1,7 @@
 from django.contrib import admin
 from .models import (
     Company,
-    Shareholder,
+    SharePackage,
     Chamber,
     FundingRound
 )
@@ -30,11 +30,10 @@ class CompanyAdmin(BaseSerializableAdmin):
     identity_type.short_description = "Identity Type"
 
 
-@admin.register(Shareholder)
-class ShareholderAdmin(BaseSerializableAdmin):
+@admin.register(SharePackage)
+class SharePackageAdmin(BaseSerializableAdmin):
     list_display = (
         'get_full_name',
-        'get_email',
         'shares_owned',
         'company',
         'date_joined',
@@ -57,10 +56,6 @@ class ShareholderAdmin(BaseSerializableAdmin):
     def get_full_name(self, obj):
         return obj.get_full_name()
     get_full_name.short_description = "Full Name"
-
-    def get_email(self, obj):
-        return obj.get_email()
-    get_email.short_description = "Email"
 
 
 
