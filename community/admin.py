@@ -23,7 +23,7 @@ class CommunityAdmin(BaseSerializableAdmin):
     list_display = (
         'name',
         'slug',
-        'address',
+        'location',
         'established_year',
         'head_display',
         'created_at',

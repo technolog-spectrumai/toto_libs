@@ -1,6 +1,8 @@
 from django.db import models
 from django.contrib.auth.models import User
 from portfolio.models import Company
+from ravioli.models import Subject
+
 
 # 📁 Event Category
 class EventCategory(models.Model):
@@ -11,9 +13,8 @@ class EventCategory(models.Model):
         return self.name
 
 
-
 # 📅 Event Model
-class Event(models.Model):
+class Event(Subject):
     start_time = models.DateTimeField()
     end_time = models.DateTimeField()
     title = models.CharField(max_length=200)

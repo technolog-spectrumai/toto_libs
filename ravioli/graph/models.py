@@ -7,6 +7,10 @@ from neomodel import (
     RelationshipTo,
     RelationshipFrom,
 )
+from events.graph.models import Event
+from community.graph.models import Community, CommunityMember
+from finance.graph.models import Account, Transaction
+from portfolio.graph.models import Company
 
 
 class Tag(StructuredNode):
@@ -32,5 +36,10 @@ class Note(StructuredNode):
     category = StringProperty()
 
     # Relationships
-    related = RelationshipTo('Note', 'RELATED_TO')   # note ↔ note
-    tags = RelationshipTo('Tag', 'TAGGED_WITH')      # note ↔ tag
+    tags = RelationshipTo('Tag', 'TAGGED_WITH')        # note ↔ tag
+    subject_event = RelationshipTo(Event, 'HAS_SUBJECT')
+    subject_community = RelationshipTo(Community, 'HAS_SUBJECT')
+    subject_member = RelationshipTo(CommunityMember, 'HAS_SUBJECT')
+    subject_account = RelationshipTo(Account, 'HAS_SUBJECT')
+    subject_transaction = RelationshipTo(Transaction, 'HAS_SUBJECT')
+    subject_company = RelationshipTo(Company, 'HAS_SUBJECT')

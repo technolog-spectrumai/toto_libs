@@ -65,7 +65,7 @@ class Command(IngressCommand):
         community, created = Community.objects.get_or_create(
             name=name,
             defaults={
-                "address": address,
+                "location": address,
                 "established_year": established_year,
                 "federation": federation
             }

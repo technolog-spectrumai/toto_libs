@@ -1,6 +1,10 @@
 from ravioli.models import Note as SQLNote, Tag as SQLTag
 from ravioli.graph.models import Note as GraphNote, Tag as GraphTag
 from toto.neo4j import ConversionStrategy
+from events.graph.models import Event as GraphEvent
+from community.graph.models import Community as GraphCommunity, CommunityMember as GraphCommunityMember
+from finance.graph.models import Account as GraphAccount, Transaction as GraphTransaction
+from portfolio.graph.models import Company as GraphCompany
 
 
 class NoteConversionStrategy(ConversionStrategy):
@@ -21,11 +25,9 @@ class NoteConversionStrategy(ConversionStrategy):
                 tag_node = GraphTag(uid=str(tag.pk), name=tag.name).save()
             node.tags.connect(tag_node)
 
-        # connect related notes
-        for related in sql_obj.related.all():
-            related_node = GraphNote.nodes.get_or_none(uid=str(related.pk))
-            if related_node and not node.related.is_connected(related_node):
-                node.related.connect(related_node)
+        # connect subject directly
+        if sql_obj.subject:
+            self._connect_subject(node, sql_obj.subject)
 
         return node
 
@@ -45,13 +47,31 @@ class NoteConversionStrategy(ConversionStrategy):
             if not node.tags.is_connected(tag_node):
                 node.tags.connect(tag_node)
 
-        # ensure related notes
-        for related in sql_obj.related.all():
-            related_node = GraphNote.nodes.get_or_none(uid=str(related.pk))
-            if related_node and not node.related.is_connected(related_node):
-                node.related.connect(related_node)
+        # ensure subject
+        if sql_obj.subject:
+            self._connect_subject(node, sql_obj.subject)
 
         return node
+
+    def _connect_subject(self, node, subj):
+        """Connect the note to the correct subject relationship."""
+        mapping = {
+            "Event": (GraphEvent, "subject_event"),
+            "Community": (GraphCommunity, "subject_community"),
+            "CommunityMember": (GraphCommunityMember, "subject_member"),
+            "Account": (GraphAccount, "subject_account"),
+            "Transaction": (GraphTransaction, "subject_transaction"),
+            "Company": (GraphCompany, "subject_company"),
+        }
+        cls_name = subj.__class__.__name__
+        graph_cls, rel_attr = mapping.get(cls_name, (None, None))
+        if graph_cls:
+            subj_node = graph_cls.nodes.get_or_none(uid=str(subj.pk))
+            if not subj_node:
+                subj_node = graph_cls(uid=str(subj.pk)).save()
+            rel = getattr(node, rel_attr)
+            if not rel.is_connected(subj_node):
+                rel.connect(subj_node)
 
     def delete(self, sql_obj: SQLNote):
         node = self.get_node(sql_obj)
@@ -59,7 +79,7 @@ class NoteConversionStrategy(ConversionStrategy):
             node.delete()
 
     def get_node(self, sql_obj: SQLNote):
-        return GraphNote.nodes.get_or_none(uid=str(sql_obj.pk))
+        return GraphNote.nodes.get_or_none(uid=str(sql_obj.id))
 
     def get_all_nodes(self):
         return GraphNote.nodes.all()
