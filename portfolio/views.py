@@ -40,7 +40,6 @@ class CompanyDetailView(DetailView):
         return PageProcessor().decorate(context, self.request)
 
 
-
 def fund_overview(request):
     # 🏛️ Ensure single active chamber
     active_chambers = Chamber.objects.filter(active=True)
@@ -58,7 +57,7 @@ def fund_overview(request):
     # 💸 Funding totals grouped by company and currency
     raw_funding = (
         FundingRound.objects
-        .values("venture__id", "currency__symbol")   # ✅ venture is Company
+        .values("venture__id", "currency__symbol")
         .annotate(total=Sum("amount"))
         .order_by("venture__id", "currency__symbol")
     )
@@ -70,10 +69,12 @@ def fund_overview(request):
 
     for company in companies:
         company.funding_by_currency = funding_map.get(company.id, {})
+        # ✅ Compute total funding across all currencies
+        company.total_funding = sum(company.funding_by_currency.values())
 
     # 📦 Final context
     context = {
-        "companies": companies,   # ✅ renamed from ventures
+        "companies": companies,
         "chamber": chamber
     }
 
