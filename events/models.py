@@ -1,7 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import User
 from portfolio.models import Company
-from ravioli.models import Subject
+from toto models import SerializableModel
 
 
 # 📁 Event Category
@@ -14,7 +14,7 @@ class EventCategory(models.Model):
 
 
 # 📅 Event Model
-class Event(Subject):
+class Event(SerializableModel):
     start_time = models.DateTimeField()
     end_time = models.DateTimeField()
     title = models.CharField(max_length=200)

@@ -3,7 +3,6 @@ from django.utils.timezone import now
 from django.contrib.auth.models import User
 from community.models import SocialEntity  # adjust import path as needed
 from toto.models import SerializableModel
-from ravioli.models import Subject
 
 
 # 💱 Currency
@@ -41,7 +40,7 @@ class ExchangeRate(models.Model):
 
 
 # 🏦 Account
-class Account(Subject):
+class Account(SerializableModel):
     name = models.CharField(max_length=255, unique=True)
     owner = models.ForeignKey(SocialEntity, on_delete=models.CASCADE, related_name="accounts")
     manager = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True, related_name="managed_accounts")
@@ -54,7 +53,7 @@ class Account(Subject):
         return f"{self.name} ({self.currency.symbol})"
 
 
-class Transaction(Subject):
+class Transaction(SerializableModel):
     name = models.CharField(max_length=255)
     amount = models.DecimalField(max_digits=20, decimal_places=2)
     currency = models.ForeignKey(Currency, on_delete=models.CASCADE)

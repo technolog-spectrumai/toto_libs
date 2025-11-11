@@ -5,7 +5,7 @@ from faker import Faker
 from oya.ingress import IngressCommand
 from ravioli.models import Note, Tag
 from community.models import CommunityMember, Address
-from events.models import Event
+from toto.portfolio.graph.models import Company
 
 fake = Faker()
 
@@ -34,10 +34,9 @@ class Command(IngressCommand):
             if created:
                 self.stdout.write(self.style.SUCCESS(f"🏷️ Created tag: {name}"))
 
-        # Step 2: Collect subjects (CommunityMember, Address, Event)
         subjects = []
         subjects.extend(list(CommunityMember.objects.all()[:5]))
-        subjects.extend(list(Event.objects.all()[:5]))
+        subjects.extend(list(Company.objects.all()[:5]))
 
         if not subjects:
             self.stdout.write(self.style.WARNING("⚠️ No subjects found (CommunityMember/Address/Event). Notes will have no subject."))

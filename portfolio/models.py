@@ -4,7 +4,6 @@ from django.db import models
 from toto.models import SerializableModel
 from community.models import SocialEntity, CommunityMember, Community
 from django.utils.timezone import now
-from ravioli.models import Subject
 
 # 🏛️ Chamber
 class Chamber(SerializableModel):
@@ -32,7 +31,7 @@ class Company(SocialEntity):
     is_active = models.BooleanField(default=True)
 
 
-class SharePackage(Subject):
+class SharePackage(SerializableModel):
     company = models.ForeignKey(
         Company,
         on_delete=models.CASCADE,

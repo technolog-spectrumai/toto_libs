@@ -1,18 +1,7 @@
 from django.db import models
 from django.utils.timezone import now
 from toto.models import SerializableModel
-from polymorphic.models import PolymorphicModel
-
-
-
-class Subject(PolymorphicModel, SerializableModel):
-
-    class Meta:
-        verbose_name = "Subject"
-        verbose_name_plural = "Subjects"
-
-    def __str__(self):
-        return self.title or f"Subject {self.pk}"
+from toto.community.models import SocialEntity
 
 
 class Tag(models.Model):
@@ -36,7 +25,7 @@ class Note(SerializableModel):
     created_at = models.DateTimeField(default=now)
     category = models.CharField(max_length=100, blank=True, null=True)  # e.g., "Intel", "Observation", "Report"
     subject = models.ForeignKey(
-        Subject,
+        SocialEntity,
         blank=True,
         null=True,
         on_delete=models.SET_NULL,
