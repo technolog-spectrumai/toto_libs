@@ -1,11 +1,8 @@
-from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.core.management import call_command
 import os
-import django
 import json
-
-from django.urls import reverse
+#from oya.neo4j import Neo4jHelper
 
 
 class Command(BaseCommand):
@@ -71,7 +68,9 @@ class Command(BaseCommand):
         )
 
     def run(self, admin_password):
-
+        # with Neo4jHelper() as neo4j:
+        #     neo4j.flush_db_batch()
+        #     self.stdout.write(self.style.SUCCESS("Neo4j cleaned."))
         domain = "spectrumai.pl"
 
         self.stdout.write(self.style.NOTICE("Creating superuser..."))
@@ -105,6 +104,7 @@ class Command(BaseCommand):
         self.stdout.write(self.style.NOTICE("Creating platform..."))
         call_command("create_platform", *create_platform_args)
         self.stdout.write(self.style.SUCCESS("Platform created."))
+        #self.stdout.write(self.style.NOTICE("Cleaning Neo4j..."))
 
     def get_theme(self, name):
         """Fetches the latest Theme ID to be used in platform creation"""

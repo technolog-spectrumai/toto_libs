@@ -2,12 +2,11 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
 from django.utils.text import slugify
-import random
-import uuid
 from django.utils.timezone import now
 from django.core.exceptions import ValidationError
 from yamabiko.models import SerializableModel
 from polymorphic.models import PolymorphicModel
+from federal.models import Federation
 
 
 class Address(SerializableModel):
@@ -69,6 +68,13 @@ class Community(SocialEntity):
         null=True,
         blank=True,
         related_name='headed_communities'
+    )
+    federation = models.ForeignKey(
+        Federation,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='communities'
     )
     updated_at = models.DateTimeField(auto_now=True)
     email = models.EmailField(unique=True, blank=True, null=True)

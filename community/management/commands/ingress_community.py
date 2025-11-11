@@ -3,6 +3,8 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 from community.models import Address, Community, CommunityMember
 from oya.ingress import IngressCommand
+from federal.models import Federation
+from django.core.exceptions import ObjectDoesNotExist
 
 
 class Command(IngressCommand):
@@ -51,12 +53,21 @@ class Command(IngressCommand):
             apartment="5A"
         )
 
+    @staticmethod
+    def get_active_federation() -> Federation:
+        try:
+            return Federation.objects.get(active=True)
+        except ObjectDoesNotExist:
+            raise RuntimeError("❌ No active federation found. Please create one before proceeding.")
+
     def create_community(self, name: str, address: Address, established_year: int = None) -> Community | None:
+        federation = self.get_active_federation()
         community, created = Community.objects.get_or_create(
             name=name,
             defaults={
                 "address": address,
                 "established_year": established_year,
+                "federation": federation
             }
         )
         return community
