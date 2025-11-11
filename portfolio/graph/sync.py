@@ -45,9 +45,14 @@ class CompanyConversionStrategy(ConversionStrategy):
 
 
 class SharePackageConversionStrategy(ConversionStrategy):
+
+    def get_name(self, sql_obj: SQLSharePackage):
+        return " Share Package" + f" ({sql_obj.company.name}) - {sql_obj.get_full_name()}"
+
     def create(self, sql_obj: SQLSharePackage):
         node = GraphSharePackage(
             uid=str(sql_obj.pk),
+            name=self.get_name(sql_obj),
             social_id=str(sql_obj.social_entity.id),
             is_active=sql_obj.is_active,
             shares_owned=sql_obj.shares_owned,
@@ -80,6 +85,7 @@ class SharePackageConversionStrategy(ConversionStrategy):
     def update(self, sql_obj: SQLSharePackage, node):
         node.social_id = str(sql_obj.social_entity.id)
         node.is_active = sql_obj.is_active
+        node.name = self.get_name(sql_obj)
         node.shares_owned = sql_obj.shares_owned
         node.metadata = {
             "date_joined": str(sql_obj.date_joined),

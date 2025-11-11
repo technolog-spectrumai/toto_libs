@@ -51,6 +51,7 @@ class Company(StructuredNode):
 
 
 class SharePackage(StructuredNode):
+    name = StringProperty(required=True)
     uid = StringProperty(unique_index=True, required=True)
     social_id = StringProperty(unique_index=True, required=True)
     is_active = BooleanProperty(default=True)

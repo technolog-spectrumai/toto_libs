@@ -9,7 +9,7 @@ class EventCategoryAdmin(admin.ModelAdmin):
 
 @admin.register(Event)
 class EventAdmin(admin.ModelAdmin):
-    list_display = ('title', 'venture', 'organizer', 'category', 'start_time', 'end_time', 'public')
-    list_filter = ('venture', 'category', 'start_time')
+    list_display = ('title', 'company', 'organizer', 'category', 'start_time', 'end_time', 'public')
+    list_filter = ('company', 'category', 'start_time')
     search_fields = ('title', 'description', 'location')
-    autocomplete_fields = ('venture', 'organizer', 'category')
+    autocomplete_fields = ('company', 'organizer', 'category')

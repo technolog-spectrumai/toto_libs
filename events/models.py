@@ -20,7 +20,7 @@ class Event(models.Model):
     description = models.TextField()
     location = models.CharField(max_length=200)
 
-    venture = models.ForeignKey(
+    company = models.ForeignKey(
         Company,
         on_delete=models.CASCADE,
         related_name='events'
@@ -43,6 +43,6 @@ class Event(models.Model):
     )
 
     def __str__(self):
-        return f"{self.title} ({self.venture.name})"
+        return f"{self.title} ({self.company.name})"
 
     public = models.BooleanField(default=True, help_text="Check if this event is publicly visible.")

@@ -36,9 +36,9 @@ class Command(IngressCommand):
             categories.append(cat)
 
         # 📦 Get ventures
-        ventures = list(Company.objects.all())
-        if not ventures:
-            raise Exception("❌ No ventures found. Please seed ventures first.")
+        companies = list(Company.objects.all())
+        if not companies:
+            raise Exception("❌ No Companies found. Please seed companies first.")
 
         # 👥 Get users
         users = list(User.objects.all())
@@ -46,17 +46,17 @@ class Command(IngressCommand):
             raise Exception("❌ No users found. Please create some users first.")
         n_events = 12
         # 📅 Create Events
-        for venture in random.sample(ventures, min(3, len(ventures))):
+        for company in random.sample(companies, min(3, len(companies))):
             for i in range(n_events):
                 start = now() + timedelta(days=random.randint(1, 30))
                 end = start + timedelta(hours=random.randint(1, 5))
                 event = Event.objects.create(
-                    title=f"{venture.name} {random.choice(['Summit', 'Bootcamp', 'Forum'])}",
+                    title=f"{company.name} {random.choice(['Summit', 'Bootcamp', 'Forum'])}",
                     description=fake.paragraph(nb_sentences=3),
                     location=fake.city(),
                     start_time=start,
                     end_time=end,
-                    venture=venture,
+                    company=company,
                     organizer=random.choice(users),
                     category=random.choice(categories)
                 )
