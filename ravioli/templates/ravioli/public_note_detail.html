@@ -21,7 +21,9 @@
       <h1 class="text-2xl font-bold mb-2">{{ note.title }}</h1>
       <p class="text-sm"
          :class="darkMode ? 'text-text-main-dark' : 'text-gray-500'">
-        Category: {{ note.category|default:"—" }} · Created: {{ note.created_at|date:"F j, Y, H:i" }}
+        Category: {{ note.category|default:"—" }} ·
+        Created: {{ note.created_at|date:"F j, Y, H:i" }} ·
+        Author: {% if note.author %}{{ note.author.username }}{% else %}—{% endif %}
       </p>
     </section>
 

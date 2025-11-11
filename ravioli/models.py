@@ -3,6 +3,7 @@ from django.utils.timezone import now
 from toto.models import SerializableModel
 from community.models import SocialEntity
 from events.models import Event
+from django.contrib.auth.models import User
 
 
 class Tag(models.Model):
@@ -47,6 +48,13 @@ class Note(SerializableModel):
         related_name="notes_for_tag"
     )
     is_public = models.BooleanField(default=True, help_text="Mark note as public")
+    author = models.ForeignKey(
+        User,
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="notes"
+    )
 
     def __str__(self):
         return self.title

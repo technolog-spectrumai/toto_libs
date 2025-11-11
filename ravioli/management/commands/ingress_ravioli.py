@@ -3,10 +3,11 @@ from django.utils.timezone import now
 from faker import Faker
 from oya.ingress import IngressCommand
 from ravioli.models import Note, Tag
-from community.models import CommunityMember, Address, Community
+from community.models import CommunityMember, Community
 from portfolio.models import Company
 from events.models import Event
 from rest_framework.reverse import reverse_lazy
+from django.contrib.auth.models import User   # ✅ import User
 
 fake = Faker()
 
@@ -25,6 +26,14 @@ class Command(IngressCommand):
 
         if not self.full:
             return
+
+        # Step 0: Ensure we have at least one user
+        try:
+            author = User.objects.first()
+            if not author:
+                raise Exception("❌ No users found. Please create at least one User before running ingress.")
+        except User.DoesNotExist:
+            raise Exception("❌ No users found. Please create at least one User before running ingress.")
 
         # Step 1: Create Tags
         tags = []
@@ -61,10 +70,11 @@ class Command(IngressCommand):
                 category=random.choice(["Intel", "Observation", "Report"]),
                 subject=subject_choice,
                 event=event_choice,
+                author=author,   # ✅ assign author
             )
             notes.append(note)
             self.stdout.write(self.style.SUCCESS(
-                f"📝 Created note: {note.title} (subject={subject_choice}, event={event_choice})"
+                f"📝 Created note: {note.title} (author={author.username}, subject={subject_choice}, event={event_choice})"
             ))
 
         # Step 4: Assign Tags randomly

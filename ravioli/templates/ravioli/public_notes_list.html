@@ -53,6 +53,7 @@
           <thead>
             <tr class="text-left border-b">
               <th class="px-4 py-2">Title</th>
+              <th class="px-4 py-2">Author</th>
               <th class="px-4 py-2">Category</th>
               <th class="px-4 py-2">Created</th>
               <th class="px-4 py-2">Tags</th>
@@ -63,6 +64,9 @@
             {% for note in page_obj %}
             <tr class="border-b">
               <td class="px-4 py-2 font-medium">{{ note.title }}</td>
+              <td class="px-4 py-2">
+                {% if note.author %}{{ note.author.username }}{% else %}—{% endif %}
+              </td>
               <td class="px-4 py-2">{{ note.category|default:"—" }}</td>
               <td class="px-4 py-2">{{ note.created_at|date:"F j, Y" }}</td>
               <td class="px-4 py-2">
@@ -86,7 +90,7 @@
             </tr>
             {% empty %}
             <tr>
-              <td colspan="5" class="px-4 py-4 text-center text-sm text-gray-500">
+              <td colspan="6" class="px-4 py-4 text-center text-sm text-gray-500">
                 No public notes available.
               </td>
             </tr>
@@ -102,6 +106,7 @@
           <p class="font-semibold text-base">{{ note.title }}</p>
           <p class="text-sm text-gray-500">Created: {{ note.created_at|date:"F j, Y" }}</p>
           <div class="mt-2 space-y-1 text-sm">
+            <p><strong>Author:</strong> {% if note.author %}{{ note.author.username }}{% else %}—{% endif %}</p>
             <p><strong>Category:</strong> {{ note.category|default:"—" }}</p>
             <p><strong>Tags:</strong>
               {% for tag in note.tags.all %}
