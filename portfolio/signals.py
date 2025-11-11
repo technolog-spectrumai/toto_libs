@@ -3,7 +3,7 @@ from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from .models import Company as SQLCompany, Shareholder as SQLShareholder, FundingRound as SQLFundingRound
 from .graph import Company as GraphCompany, Shareholder as GraphShareholder, FundingRound as GraphFundingRound
-
+from oya.neo4j import is_neo4j_connected
 
 # -----------------------------
 # Company Sync
@@ -13,6 +13,8 @@ def sync_company_to_graph(sender, instance, created, **kwargs):
     """
     Sync SQL Company -> Neo4j Company node
     """
+    if not is_neo4j_connected():
+        return
     node = GraphCompany.nodes.get_or_none(uid=str(instance.pk))
     if not node:
         node = GraphCompany(
@@ -39,6 +41,8 @@ def sync_company_to_graph(sender, instance, created, **kwargs):
 
 @receiver(post_delete, sender=SQLCompany)
 def delete_company_from_graph(sender, instance, **kwargs):
+    if not is_neo4j_connected():
+        return
     node = GraphCompany.nodes.get_or_none(uid=str(instance.pk))
     if node:
         node.delete()
@@ -52,6 +56,8 @@ def sync_shareholder_to_graph(sender, instance, created, **kwargs):
     """
     Sync SQL Shareholder -> Neo4j Shareholder node + relationship to Company
     """
+    if not is_neo4j_connected():
+        return
     node = GraphShareholder.nodes.get_or_none(uid=str(instance.pk))
     if not node:
         node = GraphShareholder(
@@ -82,6 +88,8 @@ def sync_shareholder_to_graph(sender, instance, created, **kwargs):
 
 @receiver(post_delete, sender=SQLShareholder)
 def delete_shareholder_from_graph(sender, instance, **kwargs):
+    if not is_neo4j_connected():
+        return
     node = GraphShareholder.nodes.get_or_none(uid=str(instance.pk))
     if node:
         node.delete()
@@ -95,6 +103,8 @@ def sync_fundinground_to_graph(sender, instance, created, **kwargs):
     """
     Sync SQL FundingRound -> Neo4j FundingRound node + relationship to Company
     """
+    if not is_neo4j_connected():
+        return
     node = GraphFundingRound.nodes.get_or_none(uid=str(instance.pk))
     if not node:
         node = GraphFundingRound(
@@ -126,6 +136,8 @@ def sync_fundinground_to_graph(sender, instance, created, **kwargs):
 
 @receiver(post_delete, sender=SQLFundingRound)
 def delete_fundinground_from_graph(sender, instance, **kwargs):
+    if not is_neo4j_connected():
+        return
     node = GraphFundingRound.nodes.get_or_none(uid=str(instance.pk))
     if node:
         node.delete()
