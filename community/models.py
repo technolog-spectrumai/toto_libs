@@ -3,7 +3,6 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 from django.utils.text import slugify
 from django.utils.timezone import now
-from django.core.exceptions import ValidationError
 from yamabiko.models import SerializableModel
 from polymorphic.models import PolymorphicModel
 from federal.models import Federation

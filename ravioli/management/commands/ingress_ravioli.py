@@ -1,15 +1,18 @@
-from django.contrib.auth.models import User
-from django.utils import timezone
-from oya.ingress import IngressCommand
+import random
+from django.utils.timezone import now
+from faker import Faker
 
-from ravioli.graph import Note, Tag, NoteRel
+from oya.ingress import IngressCommand
+from ravioli.models import Note, Tag
+
+fake = Faker()
 
 
 class Command(IngressCommand):
-    help = "Creates a demo Intel Notes graph with sample notes and tags"
+    help = "Creates demo Intel Notes with sample notes and tags"
 
     def process(self, _):
-        # Add a dashboard item for Intel Notes
+        # 📊 Dashboard block
         self.create_dashboard_item(
             title="Intel Notes",
             icon="fa-solid fa-note-sticky",
@@ -17,60 +20,45 @@ class Command(IngressCommand):
             link="/ravioli/notes/"
         )
 
-        # if not self.full:
-        #     return
-        #
-        # # Ensure demo user exists
-        # user, _ = User.objects.get_or_create(
-        #     username="admin",
-        #     defaults={"email": "demo@example.com"}
-        # )
-        #
-        # # Create demo notes
-        # note1 = Note(
-        #     title="Intel Report A",
-        #     content="Observation about suspicious activity",
-        #     category="Intel",
-        #     metadata={"created_by": user.username, "created_at": str(timezone.now())}
-        # ).save()
-        #
-        # note2 = Note(
-        #     title="Intel Report B",
-        #     content="Follow-up analysis of activity",
-        #     category="Observation",
-        #     metadata={"created_by": user.username, "created_at": str(timezone.now())}
-        # ).save()
-        #
-        # note3 = Note(
-        #     title="Intel Report C",
-        #     content="Summary of findings",
-        #     category="Report",
-        #     metadata={"created_by": user.username, "created_at": str(timezone.now())}
-        # ).save()
-        #
-        # # Create tags
-        # tag_security = Tag(name="Security").save()
-        # tag_network = Tag(name="Network").save()
-        #
-        # # Connect notes with relationships
-        # note1.references.connect(note2, {
-        #     "relation_type": "REFERENCES",
-        #     "metadata": {"confidence": 0.9}
-        # })
-        #
-        # note2.related.connect(note3, {
-        #     "relation_type": "RELATED_TO",
-        #     "metadata": {"confidence": 0.8}
-        # })
-        #
-        # note1.tagged.connect(tag_security, {
-        #     "relation_type": "TAGGED_WITH",
-        #     "metadata": {"source": "analyst"}
-        # })
-        #
-        # note2.tagged.connect(tag_network, {
-        #     "relation_type": "TAGGED_WITH",
-        #     "metadata": {"source": "system"}
-        # })
-        #
-        # self.stdout.write(self.style.SUCCESS("Demo Intel Notes graph created successfully."))
+        if not self.full:
+            return
+
+        # Step 1: Create Tags
+        tags = []
+        tag_names = ["Security", "Finance", "Operations", "Intel", "Observation"]
+        for name in tag_names:
+            tag, created = Tag.objects.get_or_create(name=name)
+            tags.append(tag)
+            if created:
+                self.stdout.write(self.style.SUCCESS(f"🏷️ Created tag: {name}"))
+
+        # Step 2: Create Notes
+        notes = []
+        for i in range(5):
+            note = Note.objects.create(
+                title=fake.sentence(nb_words=6),
+                content=fake.paragraph(nb_sentences=3),
+                metadata={"source": "demo", "confidence": random.choice(["high", "medium", "low"])},
+                created_at=now(),
+                category=random.choice(["Intel", "Observation", "Report"]),
+            )
+            notes.append(note)
+            self.stdout.write(self.style.SUCCESS(f"📝 Created note: {note.title}"))
+
+        # Step 3: Assign Tags randomly
+        for note in notes:
+            chosen_tags = random.sample(tags, k=random.randint(1, 3))
+            note.tags.add(*chosen_tags)
+            self.stdout.write(self.style.SUCCESS(
+                f"🔗 Tagged note '{note.title}' with {[t.name for t in chosen_tags]}"
+            ))
+
+        # Step 4: Relate Notes randomly
+        for note in notes:
+            related_notes = random.sample([n for n in notes if n != note], k=random.randint(1, 2))
+            note.related.add(*related_notes)
+            self.stdout.write(self.style.SUCCESS(
+                f"🔗 Related note '{note.title}' to {[n.title for n in related_notes]}"
+            ))
+
+        self.stdout.write(self.style.SUCCESS("✅ Demo Intel Notes ingress complete."))
