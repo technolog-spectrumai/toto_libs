@@ -35,7 +35,7 @@ class Neo4jHelper:
         try:
             db.cypher_query("RETURN 1")
             return True
-        except Exception:
+        except Exception as e:
             return False
 
     def flush_db_batch(self, batch_size: int = 1000, max_nodes: int | None = None) -> int:
