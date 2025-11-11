@@ -1,8 +1,7 @@
-from yamabiko.models import SerializableModel
 from community.models import SocialEntity
 from finance.models import Transaction, Currency
 from django.db import models
-from yamabiko.models import SerializableModel
+from toto.models import SerializableModel
 from community.models import SocialEntity, CommunityMember, Community
 from django.utils.timezone import now
 

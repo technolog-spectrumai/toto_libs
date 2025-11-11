@@ -1,6 +1,6 @@
 from django.db import models
 from django.utils.timezone import now
-from yamabiko.models import SerializableModel
+from toto.models import SerializableModel
 
 
 class Tag(models.Model):
