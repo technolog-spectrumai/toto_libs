@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand
 from federal.models import Federation as SQLFederation, FederatedIdentity as SQLIdentity
-from federal.sync import FederationConversionStrategy, IdentityConversionStrategy
+from federal.graph.sync import FederationConversionStrategy, IdentityConversionStrategy
 from toto.neo4j import is_connected as is_neo4j_connected
 
 
