@@ -6,7 +6,7 @@ class Command(BaseCommand):
     help = "Run debug init: reset platform, then ingress + sync for each hardcoded app"
 
     # Hardcoded list of apps to process
-    APPS = ["federal", "community", "finance"]
+    APPS = ["federal", "community", "finance", "portfolio"]
 
     def handle(self, *args, **options):
         self.stdout.write(self.style.NOTICE("Starting debug init sequence..."))
