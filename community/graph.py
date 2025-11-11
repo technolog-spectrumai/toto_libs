@@ -7,7 +7,7 @@ from neomodel import (
     RelationshipTo,
     RelationshipFrom
 )
-from federal.graph import Federation
+from federal.graph.models import Federation
 
 # -----------------------------
 # Relationship Models (Edges)
