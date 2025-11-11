@@ -2,6 +2,7 @@ from django.db import models
 from django.utils.timezone import now
 from toto.models import SerializableModel
 from community.models import SocialEntity
+from events.models import Event
 
 
 class Tag(models.Model):
@@ -30,6 +31,13 @@ class Note(SerializableModel):
         null=True,
         on_delete=models.SET_NULL,
         related_name="related_intel_notes"
+    )
+    event = models.ForeignKey(
+        Event,
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="notes_for_event"
     )
 
     # Tags are simple many-to-many

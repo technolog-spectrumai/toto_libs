@@ -24,9 +24,13 @@ class NoteConversionStrategy(ConversionStrategy):
                 tag_node = GraphTag(uid=str(tag.pk), name=tag.name).save()
             node.tags.connect(tag_node)
 
-        # connect subject directly
+        # connect subject
         if sql_obj.subject:
             self._connect_subject(node, sql_obj.subject)
+
+        # connect event
+        if sql_obj.event:
+            self._connect_event(node, sql_obj.event)
 
         return node
 
@@ -50,25 +54,49 @@ class NoteConversionStrategy(ConversionStrategy):
         if sql_obj.subject:
             self._connect_subject(node, sql_obj.subject)
 
+        # ensure event
+        if sql_obj.event:
+            self._connect_event(node, sql_obj.event)
+
         return node
 
     def _connect_subject(self, node, subj):
         """Connect the note to the correct subject relationship."""
         mapping = {
-            #"Event": (GraphEvent, "subject_event"),
             "Community": (GraphCommunity, "subject_community"),
             "CommunityMember": (GraphCommunityMember, "subject_member"),
             "Company": (GraphCompany, "subject_company"),
         }
-        cls_name = subj.__class__.__name__
-        graph_cls, rel_attr = mapping.get(cls_name, (None, None))
-        if graph_cls:
-            subj_node = graph_cls.nodes.get_or_none(uid=str(subj.pk))
-            if not subj_node:
-                subj_node = graph_cls(uid=str(subj.pk)).save()
-            rel = getattr(node, rel_attr)
-            if not rel.is_connected(subj_node):
-                rel.connect(subj_node)
+        subject_real = subj.get_real_instance()
+        cls_name = subject_real.__class__.__name__
+        if cls_name not in mapping:
+            # Unknown subject type, skip
+            return
+        graph_cls, rel_attr = mapping[cls_name]
+
+        # get or create the graph node
+        subj_node = graph_cls.nodes.get_or_none(uid=str(subj.id))
+        if not subj_node:
+            return
+
+        # refresh note to avoid stale relationship managers
+        node.refresh()
+        # ensure only one HAS_SUBJECT edge exists from this note
+        # (safe even if none exist)
+        node.cypher("MATCH (n)-[r:HAS_SUBJECT]->() WHERE id(n) = $self DELETE r")
+        # connect via the correct relationship manager
+        rel = getattr(node, rel_attr, None)
+        if rel is None:
+            return
+        rel.connect(subj_node)
+
+    def _connect_event(self, node, event):
+        """Connect the note to its Event."""
+        subj_node = GraphEvent.nodes.get_or_none(uid=str(event.pk))
+        if not subj_node:
+            subj_node = GraphEvent(uid=str(event.pk)).save()
+        if not node.event.is_connected(subj_node):
+            node.event.connect(subj_node)
 
     def delete(self, sql_obj: SQLNote):
         node = self.get_node(sql_obj)
@@ -76,7 +104,7 @@ class NoteConversionStrategy(ConversionStrategy):
             node.delete()
 
     def get_node(self, sql_obj: SQLNote):
-        return GraphNote.nodes.get_or_none(uid=str(sql_obj.id))
+        return GraphNote.nodes.get_or_none(uid=str(sql_obj.pk))
 
     def get_all_nodes(self):
         return GraphNote.nodes.all()

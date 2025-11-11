@@ -37,9 +37,7 @@ class Note(StructuredNode):
 
     # Relationships
     tags = RelationshipTo('Tag', 'TAGGED_WITH')
-    #event = RelationshipTo(Event, 'HAS_SUBJECT')
+    event = RelationshipTo(Event, 'DESCRIBES_EVENT')
     subject_community = RelationshipTo(Community, 'HAS_SUBJECT')
     subject_member = RelationshipTo(CommunityMember, 'HAS_SUBJECT')
-    # subject_account = RelationshipTo(Account, 'HAS_SUBJECT')
-    # subject_transaction = RelationshipTo(Transaction, 'HAS_SUBJECT')
     subject_company = RelationshipTo(Company, 'HAS_SUBJECT')

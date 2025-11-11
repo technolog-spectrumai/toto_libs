@@ -3,21 +3,22 @@ from django.utils.timezone import now
 from faker import Faker
 from oya.ingress import IngressCommand
 from ravioli.models import Note, Tag
-from community.models import CommunityMember, Address
+from community.models import CommunityMember, Address, Community
 from portfolio.models import Company
+from events.models import Event
 
 fake = Faker()
 
 
 class Command(IngressCommand):
-    help = "Creates demo Intel Notes with sample notes, tags, and subjects"
+    help = "Creates demo Intel Notes with sample notes, tags, subjects, and events"
 
     def process(self, _):
         # 📊 Dashboard block
         self.create_dashboard_item(
             title="Intel Notes",
             icon="fa-solid fa-note-sticky",
-            description="A demo graph of intel notes, tags, and subjects.",
+            description="A demo graph of intel notes, tags, subjects, and events.",
             link="/ravioli/notes/"
         )
 
@@ -33,27 +34,37 @@ class Command(IngressCommand):
             if created:
                 self.stdout.write(self.style.SUCCESS(f"🏷️ Created tag: {name}"))
 
+        # Step 2: Collect subjects and events
         subjects = []
         subjects.extend(list(CommunityMember.objects.all()[:5]))
+        subjects.extend(list(Community.objects.all()[:5]))
         subjects.extend(list(Company.objects.all()[:5]))
 
-        if not subjects:
-            self.stdout.write(self.style.WARNING("⚠️ No subjects found (CommunityMember/Address/Event). Notes will have no subject."))
+        events = list(Event.objects.all()[:5])
+
+        if not subjects and not events:
+            self.stdout.write(self.style.WARNING(
+                "⚠️ No subjects or events found. Notes will have no subject/event."
+            ))
 
         # Step 3: Create Notes
         notes = []
         for i in range(5):
             subject_choice = random.choice(subjects) if subjects else None
+            event_choice = random.choice(events) if events else None
             note = Note.objects.create(
                 title=fake.sentence(nb_words=6),
                 content=fake.paragraph(nb_sentences=3),
                 metadata={"source": "demo", "confidence": random.choice(["high", "medium", "low"])},
                 created_at=now(),
                 category=random.choice(["Intel", "Observation", "Report"]),
-                subject=subject_choice if subject_choice else None,
+                subject=subject_choice,
+                event=event_choice,
             )
             notes.append(note)
-            self.stdout.write(self.style.SUCCESS(f"📝 Created note: {note.title}"))
+            self.stdout.write(self.style.SUCCESS(
+                f"📝 Created note: {note.title} (subject={subject_choice}, event={event_choice})"
+            ))
 
         # Step 4: Assign Tags randomly
         for note in notes:
