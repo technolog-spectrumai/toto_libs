@@ -2,7 +2,7 @@ from django.db.models.signals import post_save, post_delete, m2m_changed
 from django.dispatch import receiver
 from community.models import Community, CommunityMember
 from community.graph import Community as GraphCommunity, CommunityMember as GraphMember
-from oya.neo4j import is_neo4j_connected
+from toto.neo4j import is_connected as is_neo4j_connected
 from federal.graph import Federation as GraphFederation
 from federal.models import Federation
 

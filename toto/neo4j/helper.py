@@ -22,22 +22,6 @@ class Neo4jHelper:
         # Optionally also configure neomodel (so neomodel ORM works)
         config.DATABASE_URL = f"bolt://{user}:{password}@{settings.NEO4J_HOST}:{settings.NEO4J_PORT}"
 
-    @staticmethod
-    def is_connected() -> bool:
-        """
-        Returns True if Neo4j is reachable.
-        If settings.NEO4J_CHECK_ALIVE is False (or missing), assume it's alive without checking.
-        """
-        check_alive = getattr(settings, "NEO4J_CHECK_ALIVE", False)
-        if not check_alive:
-            return True
-
-        try:
-            db.cypher_query("RETURN 1")
-            return True
-        except Exception as e:
-            return False
-
     def flush_db_batch(self, batch_size: int = 1000, max_nodes: int | None = None) -> int:
         """
         Deletes nodes and relationships in batches of `batch_size`.
@@ -72,7 +56,3 @@ class Neo4jHelper:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
-
-
-def is_neo4j_connected():
-    return Neo4jHelper.is_connected()

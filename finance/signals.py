@@ -3,8 +3,7 @@ from django.dispatch import receiver
 from .models import Account, Transaction   # Django ORM models
 from .graph import Account as GraphAccount, Transaction as GraphTransaction
 from community.graph import CommunityMember as GraphMember  # Neo4j CommunityMember node
-from oya.neo4j import is_neo4j_connected
-
+from toto.neo4j import is_connected as is_neo4j_connected
 # -----------------------------
 # Account Sync
 # -----------------------------

@@ -3,8 +3,7 @@ from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from .models import Company as SQLCompany, Shareholder as SQLShareholder, FundingRound as SQLFundingRound
 from .graph import Company as GraphCompany, Shareholder as GraphShareholder, FundingRound as GraphFundingRound
-from oya.neo4j import is_neo4j_connected
-
+from toto.neo4j import is_connected as is_neo4j_connected
 # -----------------------------
 # Company Sync
 # -----------------------------
