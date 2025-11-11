@@ -3,6 +3,8 @@ from django.dispatch import receiver
 from community.models import Community, CommunityMember
 from community.graph import Community as GraphCommunity, CommunityMember as GraphMember
 from oya.neo4j import is_neo4j_connected
+from federal.graph import Federation as GraphFederation
+from federal.models import Federation
 
 # -----------------------------
 # Community sync
@@ -13,7 +15,7 @@ def sync_community_to_graph(sender, instance, created, **kwargs):
         return
     social_id = str(instance.id)  # Community is itself a SocialEntity
     if created:
-        GraphCommunity(
+        g = GraphCommunity(
             uid=str(instance.id),
             social_id=social_id,
             name=instance.name,
@@ -29,6 +31,12 @@ def sync_community_to_graph(sender, instance, created, **kwargs):
             g.established_year = str(instance.established_year) if instance.established_year else None
             g.save()
         except GraphCommunity.DoesNotExist:
+            pass
+    if instance.federation:
+        try:
+            g_fed = GraphFederation.nodes.get(uid=str(instance.federation.id))
+            g.federation.connect(g_fed, {"role": "affiliate"})
+        except GraphFederation.DoesNotExist:
             pass
 
 
@@ -80,34 +88,3 @@ def delete_member_from_graph(sender, instance, **kwargs):
         g.delete()
     except GraphMember.DoesNotExist:
         pass
-
-
-# -----------------------------
-# Relationship sync (CommunityMember ↔ Community)
-# -----------------------------
-@receiver(m2m_changed, sender=CommunityMember.communities.through)
-def sync_membership_relation(sender, instance, action, reverse, model, pk_set, **kwargs):
-    if not is_neo4j_connected():
-        return
-    """
-    Sync MEMBER_OF relationships when CommunityMember.communities changes.
-    """
-    if action == "post_add":
-        for pk in pk_set:
-            try:
-                community = Community.objects.get(pk=pk)
-                g_member = GraphMember.nodes.get(uid=str(instance.id))
-                g_community = GraphCommunity.nodes.get(uid=str(community.id))
-                g_member.communities.connect(g_community, {"role": "member"})
-            except (Community.DoesNotExist, GraphMember.DoesNotExist, GraphCommunity.DoesNotExist):
-                pass
-
-    elif action == "post_remove":
-        for pk in pk_set:
-            try:
-                community = Community.objects.get(pk=pk)
-                g_member = GraphMember.nodes.get(uid=str(instance.id))
-                g_community = GraphCommunity.nodes.get(uid=str(community.id))
-                g_member.communities.disconnect(g_community)
-            except (Community.DoesNotExist, GraphMember.DoesNotExist, GraphCommunity.DoesNotExist):
-                pass

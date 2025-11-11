@@ -7,6 +7,7 @@ from neomodel import (
     RelationshipTo,
     RelationshipFrom
 )
+from federal.graph import Federation
 
 # -----------------------------
 # Relationship Models (Edges)
@@ -23,9 +24,16 @@ class PatronRel(StructuredRel):
     created_at = DateTimeProperty(default_now=True)
 
 
+class AffiliationRel(StructuredRel):
+    role = StringProperty()              # e.g., "affiliate", "founder", "partner"
+    metadata = JSONProperty()
+    created_at = DateTimeProperty(default_now=True)
+
+
 # -----------------------------
 # Node Models
 # -----------------------------
+
 
 class Community(StructuredNode):
     uid = StringProperty(unique_index=True, required=True)       # reuse SQL Community PK
@@ -38,6 +46,7 @@ class Community(StructuredNode):
 
     # Relationships
     members = RelationshipFrom('CommunityMember', 'MEMBER_OF', model=MembershipRel)
+    federation = RelationshipTo(Federation, 'AFFILIATED_WITH', model=AffiliationRel)
 
 
 class CommunityMember(StructuredNode):
