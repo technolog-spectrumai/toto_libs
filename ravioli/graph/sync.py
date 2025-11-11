@@ -62,6 +62,7 @@ class NoteConversionStrategy(ConversionStrategy):
 
     def _connect_subject(self, node, subj):
         """Connect the note to the correct subject relationship."""
+
         mapping = {
             "Community": (GraphCommunity, "subject_community"),
             "CommunityMember": (GraphCommunityMember, "subject_member"),
