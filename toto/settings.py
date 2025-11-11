@@ -17,6 +17,7 @@ logging.basicConfig(level=logging.DEBUG)
 from pathlib import Path
 import os
 from neomodel import config
+from django.urls import reverse_lazy
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -255,7 +256,7 @@ CACHES = {
 
 
 
-LOGIN_URL = '/gate/login/'
+LOGIN_URL = reverse_lazy('gate:login')
 
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost") if DJANGO_ENV != "PROD" else "redis_toto"
 
