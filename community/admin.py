@@ -5,33 +5,9 @@ from .models import (
     CommunityMember,
     Address,
     MembershipApplication,
-    ReferenceRequest,
-    SocialEntity
+    ReferenceRequest
 )
 from yamabiko.admin import BaseSerializableAdmin
-
-
-@admin.register(SocialEntity)
-class SocialEntityAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name', 'linked_type', 'linked_name', 'created_at')
-    search_fields = ('id', 'name')
-    ordering = ('-created_at',)
-
-    def linked_type(self, obj):
-        if hasattr(obj, 'community'):
-            return "Community"
-        elif hasattr(obj, 'member'):
-            return "Community Member"
-        return "Unlinked"
-    linked_type.short_description = "Entity Type"
-
-    def linked_name(self, obj):
-        if hasattr(obj, 'community'):
-            return obj.community.name
-        elif hasattr(obj, 'member'):
-            return obj.member.display_name
-        return "-"
-    linked_name.short_description = "Entity Name"
 
 
 @admin.register(Address)
@@ -51,7 +27,7 @@ class CommunityAdmin(BaseSerializableAdmin):
         'established_year',
         'head_display',
         'created_at',
-        'social_entity_id',
+        'id',   # inherited SocialEntity PK
     )
     search_fields = ('name', 'slug', 'head__display_name')
     ordering = ('name',)
@@ -61,14 +37,10 @@ class CommunityAdmin(BaseSerializableAdmin):
         return obj.head.display_name if obj.head else "-"
     head_display.short_description = "Head of Community"
 
-    def social_entity_id(self, obj):
-        return obj.social_entity.id if hasattr(obj, 'social_entity') else "-"
-    social_entity_id.short_description = "Social Entity"
-
 
 @admin.register(CommunityMember)
 class CommunityMemberAdmin(BaseSerializableAdmin):
-    list_display = ('display_name', 'user', 'patron_display', 'joined_date', 'avatar_preview', 'slug', 'social_entity_id')
+    list_display = ('display_name', 'user', 'patron_display', 'joined_date', 'avatar_preview', 'slug', 'id')
     search_fields = ('display_name', 'user__username', 'user__email', 'patron__display_name')
     list_filter = ('joined_date',)
     ordering = ('-joined_date',)
@@ -83,11 +55,6 @@ class CommunityMemberAdmin(BaseSerializableAdmin):
     def patron_display(self, obj):
         return obj.patron.display_name if obj.patron else "-"
     patron_display.short_description = "Patron"
-
-    def social_entity_id(self, obj):
-        return obj.social_entity.id if hasattr(obj, 'social_entity') else "-"
-    social_entity_id.short_description = "Social Entity"
-
 
 
 @admin.register(MembershipApplication)

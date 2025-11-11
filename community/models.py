@@ -7,6 +7,7 @@ import uuid
 from django.utils.timezone import now
 from django.core.exceptions import ValidationError
 from yamabiko.models import SerializableModel
+from polymorphic.models import PolymorphicModel
 
 
 class Address(SerializableModel):
@@ -24,9 +25,7 @@ class Address(SerializableModel):
         return f"{base}, {self.locality_name}, {self.state_or_province_name}, {self.country_name}"
 
 
-class SocialEntity(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    name = models.CharField(max_length=255, blank=True, null=True)
+class SocialEntity(SerializableModel, PolymorphicModel):
     created_at = models.DateTimeField(default=now)
 
     def clean(self):
@@ -59,9 +58,7 @@ class SocialEntity(models.Model):
             return "Company"
         return "Unknown"
 
-
-
-class Community(SerializableModel):
+class Community(SocialEntity):
     name = models.CharField(max_length=255, help_text="Name of the community or organization")
     slug = models.SlugField(unique=True, blank=True, help_text="URL-friendly identifier")
     address = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True, blank=True)
@@ -73,13 +70,7 @@ class Community(SerializableModel):
         blank=True,
         related_name='headed_communities'
     )
-    created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
-    social_entity = models.OneToOneField(
-        'SocialEntity',
-        on_delete=models.CASCADE,
-        related_name='community'
-    )
 
     def __str__(self):
         return self.name
@@ -96,7 +87,7 @@ class Community(SerializableModel):
         super().save(*args, **kwargs)
 
 
-class CommunityMember(SerializableModel):
+class CommunityMember(SocialEntity):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='community_profile')
     communities = models.ManyToManyField(Community, related_name='members')
     patron = models.ForeignKey(
@@ -111,11 +102,6 @@ class CommunityMember(SerializableModel):
     avatar = models.ImageField(upload_to='avatars/', null=True, blank=True)
     joined_date = models.DateTimeField(default=timezone.now)
     slug = models.SlugField(unique=True, blank=True)
-    social_entity = models.OneToOneField(
-        'SocialEntity',
-        on_delete=models.CASCADE,
-        related_name='member'
-    )
 
     def __str__(self):
         return self.display_name
