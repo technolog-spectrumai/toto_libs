@@ -43,6 +43,7 @@ class Command(BaseCommand):
 
         if options.get('reset'):
             self.clear_db()
+            call_command("clean_graphs")
 
         self.stdout.write(self.style.NOTICE("Running migrations..."))
         call_command("makemigrations")
@@ -72,6 +73,7 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING("Flushing database..."))
             call_command('flush', '--noinput')
             self.stdout.write(self.style.SUCCESS("Database flushed successfully."))
+
 
     def auto_create_migrations(self):
         # Set up Django environment
