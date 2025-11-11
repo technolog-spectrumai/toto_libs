@@ -26,20 +26,13 @@ class Chamber(SerializableModel):
 
 
 # 🏢 Company
-class Company(SerializableModel):
+class Company(SocialEntity):
     name = models.CharField(max_length=255, unique=True)
     registration_number = models.CharField(max_length=100, unique=True)
     country = models.CharField(max_length=100)
     industry = models.CharField(max_length=100)
     date_founded = models.DateField()
     is_active = models.BooleanField(default=True)
-    social_entity = models.OneToOneField(
-        SocialEntity,
-        on_delete=models.CASCADE,
-        related_name="company",
-        null=True,
-        blank=True
-    )
 
 
 # 👤 Shareholder

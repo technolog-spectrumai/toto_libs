@@ -1,6 +1,6 @@
 from oya.ingress import IngressCommand
 from finance.models import Currency, Account, Transaction, ExchangeRate, Subject
-from community.models import CommunityMember, SocialEntity
+from community.models import CommunityMember
 from django.contrib.auth.models import User
 from django.utils.timezone import now
 from datetime import timedelta
@@ -8,6 +8,7 @@ import random
 from faker import Faker
 
 fake = Faker()
+
 
 class Command(IngressCommand):
     help = "Seed sample data for finance: currencies, accounts held by community members, transactions"
@@ -66,15 +67,18 @@ class Command(IngressCommand):
 
         for i in range(10):
             holder = random.choice(members)
-            subject = getattr(holder.social_entity, "subject", None)
+
+            # ✅ CommunityMember is itself a SocialEntity now
+            subject = getattr(holder, "subject", None)
             if not subject:
                 subject = Subject.objects.create(
-                    social_entity=holder.social_entity,
+                    social_entity=holder,   # use the member directly
                     name=holder.display_name,
                     legal_type="individual",
                     identifier=fake.uuid4()[:8],
                     contact_info=fake.email()
                 )
+
             account = Account.objects.create(
                 name=fake.company(),
                 owner=subject,
@@ -117,10 +121,11 @@ class Command(IngressCommand):
         members = list(CommunityMember.objects.all())
         if len(members) == 0:
             raise ValueError("No Members found to assign as account holders.")
-        # Step 3: accounts
+
+        # Step 2: accounts
         accounts = self.create_accounts(members, currencies)
 
-        # Step 4: transactions
+        # Step 3: transactions
         self.create_transactions(accounts)
 
         self.stdout.write(self.style.SUCCESS("✅ Finance data seeded successfully with CommunityMember account holders."))

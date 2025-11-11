@@ -1,13 +1,15 @@
+import random
+from django.contrib.auth.models import User
+from django.utils.timezone import now
+from datetime import timedelta
+from faker import Faker
+
 from oya.ingress import IngressCommand
 from portfolio.models import Chamber, Company, Shareholder, FundingRound
 from finance.models import Subject, Currency
-from community.models import SocialEntity
-from django.utils.timezone import now
-from datetime import timedelta
-import random
-from faker import Faker
 
 fake = Faker()
+
 
 class Command(IngressCommand):
     help = "Seed sample data for SpectrumAi.pl Chamber: ventures, companies, shareholders, and funding rounds"
@@ -38,18 +40,16 @@ class Command(IngressCommand):
         """
         companies = list(Company.objects.all())
         while len(companies) < count:
-            social_entity = SocialEntity.objects.create(name=fake.unique.company())
             company = Company.objects.create(
-                name=social_entity.name,
+                name=fake.unique.company(),
                 registration_number=fake.unique.bothify(text='??#####'),
                 country=fake.country(),
                 industry=fake.job(),
                 date_founded=fake.date_between(start_date='-10y', end_date='-1y'),
                 is_active=True,
-                social_entity=social_entity
             )
             Subject.objects.get_or_create(
-                social_entity=social_entity,
+                social_entity=company,   # ✅ company is itself a SocialEntity
                 defaults={
                     'name': company.name,
                     'legal_type': 'corporation',
@@ -60,7 +60,6 @@ class Command(IngressCommand):
             companies.append(company)
             self.stdout.write(self.style.SUCCESS(f"🏢 Created company: {company.name}"))
         return companies
-
 
     def create_funding_rounds(self, companies, currency):
         """
@@ -88,15 +87,13 @@ class Command(IngressCommand):
         """
         for company in companies:
             for _ in range(random.randint(3, 6)):
-                social_entity = SocialEntity.objects.create(name=fake.name())
                 shareholder = Shareholder.objects.create(
                     company=company,
-                    full_name=social_entity.name,
+                    full_name=fake.name(),
                     email=fake.unique.email(),
                     shares_owned=random.randint(100, 1000),
                     date_joined=fake.date_between(start_date='-2y', end_date='today'),
                     is_active=True,
-                    social_entity=social_entity
                 )
                 self.stdout.write(self.style.SUCCESS(
                     f"👤 Created shareholder: {shareholder.full_name} in {company.name}"
@@ -123,10 +120,10 @@ class Command(IngressCommand):
         # Step 2: Companies
         companies = self.create_companies(count=3)
 
-        # Step 4: Funding Rounds
+        # Step 3: Funding Rounds
         self.create_funding_rounds(companies, chamber.default_currency)
 
-        # Step 5: Shareholders
+        # Step 4: Shareholders
         self.create_shareholders(companies)
 
         self.stdout.write(self.style.SUCCESS("✅ SpectrumAi.pl ingress complete with funding rounds and shareholders."))
