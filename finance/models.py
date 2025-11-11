@@ -2,6 +2,7 @@ from django.db import models
 from django.utils.timezone import now
 from django.contrib.auth.models import User
 from community.models import SocialEntity  # adjust import path as needed
+from yamabiko.models import SerializableModel
 
 
 class Subject(models.Model):
@@ -57,7 +58,7 @@ class ExchangeRate(models.Model):
 
 
 # 🏦 Account
-class Account(models.Model):
+class Account(SerializableModel):
     name = models.CharField(max_length=255, unique=True)
     owner = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name="accounts")
     manager = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True, related_name="managed_accounts")
@@ -70,7 +71,7 @@ class Account(models.Model):
         return f"{self.name} ({self.currency.symbol})"
 
 
-class Transaction(models.Model):
+class Transaction(SerializableModel):
     name = models.CharField(max_length=255)
     amount = models.DecimalField(max_digits=20, decimal_places=2)
     currency = models.ForeignKey(Currency, on_delete=models.CASCADE)

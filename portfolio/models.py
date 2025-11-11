@@ -1,6 +1,5 @@
 from django.db import models
 from django.contrib.auth.models import User
-from django.utils.timezone import now
 from yamabiko.models import SerializableModel
 from community.models import SocialEntity
 from finance.models import Transaction, Currency
