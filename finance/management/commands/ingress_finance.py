@@ -104,7 +104,8 @@ class Command(IngressCommand):
             title="Finance",
             icon="fa-solid fa-coins",
             description="Accounts and transactions linked to community members",
-            link="/finance/"
+            link="/finance/",
+            public=False
         )
 
         # Step 1: currencies

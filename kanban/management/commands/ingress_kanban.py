@@ -14,7 +14,8 @@ class Command(IngressCommand):
             title="Tasks",
             icon="fa-solid fa-tasks",
             description="A kanban board with tasks, columns, and sprint setup.",
-            link="/kanban/"
+            link="/kanban/",
+            public=False,
         )
         if not self.full:
             return
