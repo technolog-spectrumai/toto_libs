@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Currency, Subject, Account, Transaction, ExchangeRate
+from .models import Currency, Account, Transaction, ExchangeRate
 from community.models import SocialEntity
 from .batch import BatchAction
 
@@ -19,34 +19,27 @@ class ExchangeRateAdmin(admin.ModelAdmin):
     ordering = ("-timestamp",)
 
 
-@admin.register(Subject)
-class SubjectAdmin(admin.ModelAdmin):
-    list_display = ("name", "legal_type", "identifier", "linked_entity", "active", "created_at")
-    search_fields = ("name", "identifier", "social_entity__name")
-    list_filter = ("legal_type", "active")
-    readonly_fields = ("created_at",)
-
-    def linked_entity(self, obj):
-        if hasattr(obj.social_entity, "community"):
-            return f"Community: {obj.social_entity.community.name}"
-        elif hasattr(obj.social_entity, "member"):
-            return f"Member: {obj.social_entity.member.display_name}"
-        return "-"
-    linked_entity.short_description = "Linked SocialEntity"
-
-
 @admin.register(Account)
 class AccountAdmin(admin.ModelAdmin):
-    list_display = ("name", "owner", "manager", "currency", "balance", "active", "created_at")
+    list_display = ("name", "owner_display", "manager", "currency", "balance", "active", "created_at")
     search_fields = ("name", "owner__name")
     list_filter = ("currency", "active")
     readonly_fields = ("created_at",)
+
+    def owner_display(self, obj):
+        """
+        Show the polymorphic identity of the owner (CommunityMember, Company, etc.)
+        """
+        if obj.owner:
+            return f"{obj.owner.get_identity_type()}: {obj.owner}"
+        return "-"
+    owner_display.short_description = "Owner"
 
 
 @admin.register(Transaction)
 class TransactionAdmin(admin.ModelAdmin):
     list_display = ("name", "amount", "currency", "source", "destination", "timestamp")
-    search_fields = ("name",)
+    search_fields = ("name", "source__name", "destination__name")
     list_filter = ("currency", "timestamp")
     readonly_fields = ("timestamp",)
     actions = ["execute_transactions"]
@@ -59,4 +52,3 @@ class TransactionAdmin(admin.ModelAdmin):
 
         result = BatchAction(queryset).run(execute_one)
         BatchAction.display_messages(result, self.message_user, request, verb="execute")
-

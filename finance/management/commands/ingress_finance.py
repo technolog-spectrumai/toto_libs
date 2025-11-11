@@ -1,5 +1,5 @@
 from oya.ingress import IngressCommand
-from finance.models import Currency, Account, Transaction, ExchangeRate, Subject
+from finance.models import Currency, Account, Transaction, ExchangeRate
 from community.models import CommunityMember
 from django.contrib.auth.models import User
 from django.utils.timezone import now
@@ -66,22 +66,10 @@ class Command(IngressCommand):
                 users.append(user)
 
         for i in range(10):
-            holder = random.choice(members)
-
-            # ✅ CommunityMember is itself a SocialEntity now
-            subject = getattr(holder, "subject", None)
-            if not subject:
-                subject = Subject.objects.create(
-                    social_entity=holder,   # use the member directly
-                    name=holder.display_name,
-                    legal_type="individual",
-                    identifier=fake.uuid4()[:8],
-                    contact_info=fake.email()
-                )
-
+            holder = random.choice(members)  # CommunityMember is itself a SocialEntity
             account = Account.objects.create(
                 name=fake.company(),
-                owner=subject,
+                owner=holder,  # ✅ directly assign the member
                 manager=random.choice(users),
                 currency=random.choice(currencies),
                 balance=round(random.uniform(1000, 10000), 2)

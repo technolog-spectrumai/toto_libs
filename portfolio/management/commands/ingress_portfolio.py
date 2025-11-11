@@ -1,12 +1,11 @@
 import random
-from django.contrib.auth.models import User
 from django.utils.timezone import now
 from datetime import timedelta
 from faker import Faker
 
 from oya.ingress import IngressCommand
 from portfolio.models import Chamber, Company, Shareholder, FundingRound
-from finance.models import Subject, Currency
+from finance.models import Currency
 
 fake = Faker()
 
@@ -47,15 +46,6 @@ class Command(IngressCommand):
                 industry=fake.job(),
                 date_founded=fake.date_between(start_date='-10y', end_date='-1y'),
                 is_active=True,
-            )
-            Subject.objects.get_or_create(
-                social_entity=company,   # ✅ company is itself a SocialEntity
-                defaults={
-                    'name': company.name,
-                    'legal_type': 'corporation',
-                    'identifier': company.registration_number,
-                    'active': True
-                }
             )
             companies.append(company)
             self.stdout.write(self.style.SUCCESS(f"🏢 Created company: {company.name}"))

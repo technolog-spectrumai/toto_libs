@@ -5,22 +5,6 @@ from community.models import SocialEntity  # adjust import path as needed
 from yamabiko.models import SerializableModel
 
 
-class Subject(models.Model):
-    social_entity = models.OneToOneField(
-        SocialEntity,
-        on_delete=models.CASCADE,
-        related_name="subject"
-    )
-    name = models.CharField(max_length=255)
-    legal_type = models.CharField(max_length=100, blank=True, null=True)  # e.g., 'individual', 'corporation'
-    identifier = models.CharField(max_length=100, blank=True, null=True)  # e.g., tax ID, registration number
-    contact_info = models.TextField(blank=True, null=True)
-    active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(default=now)
-
-    def __str__(self):
-        return self.name
-
 
 # 💱 Currency
 class Currency(models.Model):
@@ -60,7 +44,7 @@ class ExchangeRate(models.Model):
 # 🏦 Account
 class Account(SerializableModel):
     name = models.CharField(max_length=255, unique=True)
-    owner = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name="accounts")
+    owner = models.ForeignKey(SocialEntity, on_delete=models.CASCADE, related_name="accounts")
     manager = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True, related_name="managed_accounts")
     currency = models.ForeignKey(Currency, on_delete=models.CASCADE)
     balance = models.DecimalField(max_digits=20, decimal_places=2, default=0.00)
