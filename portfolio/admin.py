@@ -36,12 +36,26 @@ class CompanyAdmin(BaseSerializableAdmin):
     has_subject.short_description = "Finance Subject"
 
 
-
 @admin.register(Shareholder)
 class ShareholderAdmin(BaseSerializableAdmin):
-    list_display = ('full_name', 'email', 'shares_owned', 'company', 'date_joined', 'is_active')
+    list_display = (
+        'full_name',
+        'email',
+        'shares_owned',
+        'company',
+        'date_joined',
+        'is_active',
+        'identity_type',   # new column
+    )
     list_filter = ('is_active', 'company')
-    search_fields = ('full_name', 'email', 'company__name')
+    search_fields = ('full_name', 'email', 'company__name', 'social_entity__name')
+
+    def identity_type(self, obj):
+        """
+        Show the inferred identity type from SocialEntity.
+        """
+        return obj.get_identity_type()
+    identity_type.short_description = "Identity Type"
 
 
 @admin.register(Venture)
