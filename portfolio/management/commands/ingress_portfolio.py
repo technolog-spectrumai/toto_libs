@@ -1,5 +1,5 @@
 from oya.ingress import IngressCommand
-from portfolio.models import Chamber, Venture, Company, Shareholder, FundingRound
+from portfolio.models import Chamber, Company, Shareholder, FundingRound
 from finance.models import Subject, Currency
 from community.models import SocialEntity
 from django.utils.timezone import now
