@@ -3,7 +3,6 @@ from ravioli.graph.models import Note as GraphNote, Tag as GraphTag
 from toto.neo4j import ConversionStrategy
 from events.graph.models import Event as GraphEvent
 from community.graph.models import Community as GraphCommunity, CommunityMember as GraphCommunityMember
-from finance.graph.models import Account as GraphAccount, Transaction as GraphTransaction
 from portfolio.graph.models import Company as GraphCompany
 
 
@@ -56,11 +55,9 @@ class NoteConversionStrategy(ConversionStrategy):
     def _connect_subject(self, node, subj):
         """Connect the note to the correct subject relationship."""
         mapping = {
-            "Event": (GraphEvent, "subject_event"),
+            #"Event": (GraphEvent, "subject_event"),
             "Community": (GraphCommunity, "subject_community"),
             "CommunityMember": (GraphCommunityMember, "subject_member"),
-            "Account": (GraphAccount, "subject_account"),
-            "Transaction": (GraphTransaction, "subject_transaction"),
             "Company": (GraphCompany, "subject_company"),
         }
         cls_name = subj.__class__.__name__

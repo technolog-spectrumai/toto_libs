@@ -1,7 +1,7 @@
 from django.db import models
 from django.utils.timezone import now
 from toto.models import SerializableModel
-from toto.community.models import SocialEntity
+from community.models import SocialEntity
 
 
 class Tag(models.Model):

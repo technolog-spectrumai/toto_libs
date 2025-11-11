@@ -1,11 +1,10 @@
 import random
 from django.utils.timezone import now
 from faker import Faker
-
 from oya.ingress import IngressCommand
 from ravioli.models import Note, Tag
 from community.models import CommunityMember, Address
-from toto.portfolio.graph.models import Company
+from portfolio.models import Company
 
 fake = Faker()
 

@@ -1,7 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import User
 from portfolio.models import Company
-from toto models import SerializableModel
+from toto.models import SerializableModel
 
 
 # 📁 Event Category

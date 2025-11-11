@@ -3,6 +3,7 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 from django.utils.text import slugify
 from django.utils.timezone import now
+from polymorphic.models import PolymorphicModel
 from toto.models import SerializableModel
 from federal.models import Federation
 from toto.models import SerializableModel
@@ -23,7 +24,7 @@ class Address(SerializableModel):
         return f"{base}, {self.locality_name}, {self.state_or_province_name}, {self.country_name}"
 
 
-class SocialEntity(SerializableModel):
+class SocialEntity(SerializableModel, PolymorphicModel):
     created_at = models.DateTimeField(default=now)
 
     def __str__(self):
