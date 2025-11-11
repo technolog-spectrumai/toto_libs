@@ -11,7 +11,7 @@ from oya.check_neo4j import is_neo4j_connected
 def sync_community_to_graph(sender, instance, created, **kwargs):
     if not is_neo4j_connected():
         return
-    social_id = str(instance.social_entity.id) if instance.social_entity else None
+    social_id = str(instance.id)  # Community is itself a SocialEntity
     if created:
         GraphCommunity(
             uid=str(instance.id),
@@ -50,7 +50,7 @@ def delete_community_from_graph(sender, instance, **kwargs):
 def sync_member_to_graph(sender, instance, created, **kwargs):
     if not is_neo4j_connected():
         return
-    social_id = str(instance.social_entity.id) if instance.social_entity else None
+    social_id = str(instance.id)  # CommunityMember is itself a SocialEntity
     if created:
         GraphMember(
             uid=str(instance.id),

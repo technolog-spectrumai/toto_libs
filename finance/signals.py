@@ -4,6 +4,7 @@ from .models import Account, Transaction   # Django ORM models
 from .graph import Account as GraphAccount, Transaction as GraphTransaction
 from community.graph import CommunityMember as GraphMember  # Neo4j CommunityMember node
 from oya.check_neo4j import is_neo4j_connected
+
 # -----------------------------
 # Account Sync
 # -----------------------------
@@ -12,9 +13,7 @@ from oya.check_neo4j import is_neo4j_connected
 def sync_account_to_graph(sender, instance, created, **kwargs):
     if not is_neo4j_connected():
         return
-    """
-    Sync SQL Account to Neo4j Account node, including owner and manager relationships.
-    """
+
     try:
         g_acc = GraphAccount.nodes.get(uid=str(instance.id))
     except GraphAccount.DoesNotExist:
@@ -29,16 +28,16 @@ def sync_account_to_graph(sender, instance, created, **kwargs):
     g_acc.metadata = {}
     g_acc.save()
 
-    # Owner relationship (via social_id)
-    if instance.owner and instance.owner.social_entity:
+    # Owner relationship (SocialEntity → CommunityMember/Company)
+    if instance.owner:
         try:
-            g_owner = GraphMember.nodes.get(social_id=str(instance.owner.social_entity.id))
+            g_owner = GraphMember.nodes.get(social_id=str(instance.owner.id))
             g_acc.owner.disconnect_all()
             g_acc.owner.connect(g_owner)
         except GraphMember.DoesNotExist:
             pass
 
-    # Manager relationship (via user → CommunityMember)
+    # Manager relationship (User → CommunityMember)
     if instance.manager and hasattr(instance.manager, "community_profile"):
         try:
             g_manager = GraphMember.nodes.get(uid=str(instance.manager.community_profile.id))
@@ -52,9 +51,6 @@ def sync_account_to_graph(sender, instance, created, **kwargs):
 def delete_account_from_graph(sender, instance, **kwargs):
     if not is_neo4j_connected():
         return
-    """
-    Remove Account node from Neo4j when deleted in SQL.
-    """
     try:
         g_acc = GraphAccount.nodes.get(uid=str(instance.id))
         g_acc.delete()
@@ -70,9 +66,7 @@ def delete_account_from_graph(sender, instance, **kwargs):
 def sync_transaction_to_graph(sender, instance, created, **kwargs):
     if not is_neo4j_connected():
         return
-    """
-    Sync SQL Transaction to Neo4j Transaction node and connect to source/destination Accounts.
-    """
+
     try:
         g_txn = GraphTransaction.nodes.get(uid=str(instance.id))
     except GraphTransaction.DoesNotExist:
@@ -108,9 +102,6 @@ def sync_transaction_to_graph(sender, instance, created, **kwargs):
 def delete_transaction_from_graph(sender, instance, **kwargs):
     if not is_neo4j_connected():
         return
-    """
-    Remove Transaction node from Neo4j when deleted in SQL.
-    """
     try:
         g_txn = GraphTransaction.nodes.get(uid=str(instance.id))
         g_txn.delete()

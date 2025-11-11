@@ -40,7 +40,6 @@ class ExchangeRate(models.Model):
         return f"1 {self.base_currency.symbol} = {self.rate} {self.quote_currency.symbol} @ {self.timestamp:%Y-%m-%d %H:%M}"
 
 
-
 # 🏦 Account
 class Account(SerializableModel):
     name = models.CharField(max_length=255, unique=True)
