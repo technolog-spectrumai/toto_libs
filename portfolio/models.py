@@ -103,24 +103,6 @@ class Shareholder(SerializableModel):
         return None
 
 
-# 📦 Venture
-class Venture(SerializableModel):
-    name = models.CharField(max_length=100)
-    url = models.URLField(blank=True, null=True)
-    start = models.DateTimeField(default=now)
-    end = models.DateTimeField(null=True, blank=True)
-    company = models.ForeignKey(
-        Company,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='ventures'
-    )
-
-    def __str__(self):
-        return self.name
-
-
 class FundingRound(SerializableModel):
     venture = models.ForeignKey(
         Company,
