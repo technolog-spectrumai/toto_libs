@@ -24,56 +24,108 @@
 {% block content %}
 <div
   x-data="kanbanBoard"
-  @edit-task.window="openEdit($event.detail.url)"
   :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
-  class="min-h-screen px-4 py-10 transition-colors duration-300"
+  class="min-h-screen px-6 py-10 transition-colors duration-300"
 >
-  <div class="max-w-6xl mx-auto space-y-12">
+  <div class="max-w-7xl mx-auto space-y-12">
+
     <!-- 🗂️ Project Header -->
     <section>
-      <div class="p-6 rounded border text-center"
+      <div class="p-6 rounded-lg shadow-md border text-center sticky top-0 z-10"
            :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
-        <h2 class="text-2xl font-bold mb-1" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+        <h2 class="text-3xl font-bold mb-2"
+            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
           {{ project.name }}
         </h2>
-        <p class="text-sm text-gray-500">Owner: {{ project.owner.get_full_name|default:project.owner.username }}</p>
+        <p class="text-sm opacity-70">Owner: {{ project.owner.get_full_name|default:project.owner.username }}</p>
 
         <!-- Sprint Filter -->
-            <form method="get" class="mt-4 inline-block">
-              <label for="sprint"
-                     class="text-sm font-medium mr-2"
-                     :class="darkMode ? 'text-text-main-dark' : 'text-text-main-light'">
-                Filter by Sprint:
-              </label>
-
-              <select name="sprint" id="sprint"
-                      class="text-sm border rounded px-2 py-1 transition-colors duration-300"
-                      :class="darkMode
-                        ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
-                        : 'bg-primary-bg-light text-text-main-light border-accent-2'"
-                      onchange="this.form.submit()">
-                <option value="">All Sprints</option>
-                {% for sprint in sprints %}
-                  <option value="{{ sprint.id }}" {% if selected_sprint and sprint.id == selected_sprint.id %}selected{% endif %}>
-                    {{ sprint.name }} ({{ sprint.start_time|date:"M j" }} - {{ sprint.end_time|date:"M j" }})
-                  </option>
-                {% endfor %}
-              </select>
-            </form>
+        <form method="get" class="mt-4 inline-block">
+          <label for="sprint" class="text-sm font-medium mr-2">Filter by Sprint:</label>
+          <select name="sprint" id="sprint"
+                  class="text-sm border rounded px-3 py-2 focus:ring-2 focus:ring-accent-light"
+                  :class="darkMode
+                    ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
+                    : 'bg-primary-bg-light text-text-main-light border-accent-2'"
+                  onchange="this.form.submit()">
+            <option value="">All Sprints</option>
+            {% for sprint in sprints %}
+              <option value="{{ sprint.id }}" {% if selected_sprint and sprint.id == selected_sprint.id %}selected{% endif %}>
+                {{ sprint.name }} ({{ sprint.start_time|date:"M j" }} - {{ sprint.end_time|date:"M j" }})
+              </option>
+            {% endfor %}
+          </select>
+        </form>
       </div>
     </section>
 
-    <!-- 📌 Columns and Tasks -->
+    <!-- 📌 Columns -->
     <section>
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
         {% for column in columns %}
-        <div class="p-4 rounded border shadow space-y-4 min-h-[200px]"
+        <div class="rounded-lg overflow-hidden border shadow-lg flex flex-col"
              :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'">
-          <h3 class="text-lg font-semibold">{{ column.name }}</h3>
-          <div id="column-{{ column.id }}" class="sortable space-y-4" data-column-id="{{ column.id }}">
+
+          <!-- Column Header -->
+          <h3 class="text-lg font-semibold px-4 py-2"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'">
+            {{ column.name }}
+          </h3>
+
+          <!-- Tasks -->
+          <div class="space-y-4 p-4">
             {% for task in column.tasks.all %}
               {% if not selected_sprint or task.sprint_id == selected_sprint.id %}
-                {% include "kanban/partials/task.html" with task=task %}
+              <!-- Task Card -->
+              <div
+                x-data="{ open: false }"
+                class="task relative overflow-hidden p-3 rounded-lg border shadow-sm transition hover:shadow-md hover:scale-[1.01]"
+                data-task-id="{{ task.id }}"
+                data-order="{{ task.position }}"
+                :class="darkMode
+                  ? 'bg-bubble-bg-dark text-text-main-dark border-accent-1'
+                  : 'bg-bubble-bg-light text-text-main-light border-accent-2'"
+              >
+                <div class="relative z-10">
+                  <div class="flex justify-between items-center">
+                    <div>
+                      <span class="font-bold task-title">{{ task.title }}</span>
+                      {% if task.assignee %}
+                        <span class="text-sm ml-2 opacity-80">
+                          <i class="fa-solid fa-user"></i> {{ task.assignee.username }}
+                        </span>
+                      {% endif %}
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <i
+                        class="fa-solid transition-transform duration-300 cursor-pointer"
+                        :class="open ? 'fa-chevron-up' : 'fa-chevron-down'"
+                        @click="open = !open"
+                      ></i>
+                    </div>
+                  </div>
+
+                  <div x-show="open" x-transition class="mt-2 text-sm space-y-1">
+                    {% if task.description %}
+                      <p><strong>Description:</strong> {{ task.description|safe }}</p>
+                    {% endif %}
+
+                    {% if task.assignee %}
+                      <p><strong>Assignee:</strong> {{ task.assignee.get_full_name|default:task.assignee.username }}</p>
+                    {% else %}
+                      <p><strong>Assignee:</strong> Unassigned</p>
+                    {% endif %}
+
+                    {% if task.due_date %}
+                      <p><strong>Due Date:</strong> {{ task.due_date|date:"F j, Y" }}</p>
+                    {% endif %}
+
+                    {% if task.sprint %}
+                      <p><strong>Sprint:</strong> {{ task.sprint.name }} ({{ task.sprint.start_time|date:"M j" }} – {{ task.sprint.end_time|date:"M j" }})</p>
+                    {% endif %}
+                  </div>
+                </div>
+              </div>
               {% endif %}
             {% endfor %}
           </div>
@@ -85,7 +137,7 @@
     <!-- 🔙 Navigation -->
     <section class="text-center">
       <a href="{% url 'kanban:project_list' %}"
-         class="inline-block px-4 py-2 rounded font-semibold text-sm hover:opacity-90 transition"
+         class="inline-block px-5 py-2 rounded-lg font-semibold text-sm hover:opacity-90 transition"
          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'">
         Back to Project List
       </a>

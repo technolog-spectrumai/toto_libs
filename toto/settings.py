@@ -255,7 +255,7 @@ CACHES = {
 
 
 
-LOGIN_URL = '/community/login/'
+LOGIN_URL = '/gate/login/'
 
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost") if DJANGO_ENV != "PROD" else "redis_toto"
 
