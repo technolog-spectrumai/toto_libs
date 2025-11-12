@@ -1,8 +1,5 @@
 from django.contrib import admin
 from django import forms
-from django.utils import timezone
-from datetime import timedelta
-from django_tiptap.widgets import TipTapWidget
 from .models import Project, Column, Task, Sprint
 from .batch import BatchAction
 
@@ -33,7 +30,7 @@ class ColumnAdmin(admin.ModelAdmin):
 
 # 📝 Task Admin with TipTap and Event Conversion
 class TaskAdminForm(forms.ModelForm):
-    description = forms.CharField(widget=TipTapWidget())
+    description = forms.CharField()
 
     class Meta:
         model = Task

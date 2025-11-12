@@ -76,56 +76,66 @@
           <div class="space-y-4 p-4">
             {% for task in column.tasks.all %}
               {% if not selected_sprint or task.sprint_id == selected_sprint.id %}
-              <!-- Task Card -->
-              <div
-                x-data="{ open: false }"
-                class="task relative overflow-hidden p-3 rounded-lg border shadow-sm transition hover:shadow-md hover:scale-[1.01]"
-                data-task-id="{{ task.id }}"
-                data-order="{{ task.position }}"
-                :class="darkMode
-                  ? 'bg-bubble-bg-dark text-text-main-dark border-accent-1'
-                  : 'bg-bubble-bg-light text-text-main-light border-accent-2'"
-              >
-                <div class="relative z-10">
-                  <div class="flex justify-between items-center">
-                    <div>
-                      <span class="font-bold task-title">{{ task.title }}</span>
-                      {% if task.assignee %}
-                        <span class="text-sm ml-2 opacity-80">
-                          <i class="fa-solid fa-user"></i> {{ task.assignee.username }}
-                        </span>
-                      {% endif %}
-                    </div>
-                    <div class="flex items-center gap-2">
-                      <i
-                        class="fa-solid transition-transform duration-300 cursor-pointer"
-                        :class="open ? 'fa-chevron-up' : 'fa-chevron-down'"
-                        @click="open = !open"
-                      ></i>
-                    </div>
-                  </div>
-
-                  <div x-show="open" x-transition class="mt-2 text-sm space-y-1">
-                    {% if task.description %}
-                      <p><strong>Description:</strong> {{ task.description|safe }}</p>
-                    {% endif %}
-
+            <!-- Task Card -->
+            <div
+              x-data="{ open: false }"
+              class="task relative overflow-hidden p-3 rounded-lg border shadow-sm transition hover:shadow-md hover:scale-[1.01]"
+              data-task-id="{{ task.id }}"
+              data-order="{{ task.position }}"
+              :class="darkMode
+                ? 'bg-bubble-bg-dark text-text-main-dark border-accent-1'
+                : 'bg-bubble-bg-light text-text-main-light border-accent-2'"
+            >
+              <div class="relative z-10">
+                <div class="flex justify-between items-center">
+                  <div>
+                    <span class="font-bold task-title">{{ task.title }}</span>
                     {% if task.assignee %}
-                      <p><strong>Assignee:</strong> {{ task.assignee.get_full_name|default:task.assignee.username }}</p>
-                    {% else %}
-                      <p><strong>Assignee:</strong> Unassigned</p>
+                      <span class="text-sm ml-2 opacity-80">
+                        <i class="fa-solid fa-user"></i> {{ task.assignee.username }}
+                      </span>
                     {% endif %}
-
                     {% if task.due_date %}
-                      <p><strong>Due Date:</strong> {{ task.due_date|date:"F j, Y" }}</p>
+                      <span class="text-sm ml-2 opacity-80">
+                        <i class="fa-solid fa-calendar"></i> {{ task.due_date|date:"M j" }}
+                      </span>
                     {% endif %}
-
-                    {% if task.sprint %}
-                      <p><strong>Sprint:</strong> {{ task.sprint.name }} ({{ task.sprint.start_time|date:"M j" }} – {{ task.sprint.end_time|date:"M j" }})</p>
-                    {% endif %}
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <i
+                      class="fa-solid transition-transform duration-300 cursor-pointer"
+                      :class="open ? 'fa-chevron-up' : 'fa-chevron-down'"
+                      @click="open = !open"
+                    ></i>
                   </div>
                 </div>
+
+                <!-- Expanded details -->
+                <div x-show="open" x-transition class="mt-2 text-sm space-y-1">
+                  {% if task.description %}
+                    <p><strong>Description:</strong> {{ task.description|safe }}</p>
+                  {% endif %}
+
+                  <p><strong>Column:</strong> {{ task.column.name }}</p>
+
+                  {% if task.assignee %}
+                    <p><strong>Assignee:</strong> {{ task.assignee.get_full_name|default:task.assignee.username }}</p>
+                  {% else %}
+                    <p><strong>Assignee:</strong> Unassigned</p>
+                  {% endif %}
+
+                  {% if task.due_date %}
+                    <p><strong>Due Date:</strong> {{ task.due_date|date:"F j, Y" }}</p>
+                  {% endif %}
+
+                  {% if task.sprint %}
+                    <p><strong>Sprint:</strong> {{ task.sprint.name }} ({{ task.sprint.start_time|date:"M j" }} – {{ task.sprint.end_time|date:"M j" }})</p>
+                  {% endif %}
+
+                  <p><strong>Position:</strong> {{ task.position }}</p>
+                </div>
               </div>
+            </div>
               {% endif %}
             {% endfor %}
           </div>
