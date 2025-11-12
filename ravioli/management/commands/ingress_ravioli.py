@@ -21,7 +21,8 @@ class Command(IngressCommand):
             title="Intel Notes",
             icon="fa-solid fa-note-sticky",
             description="A demo graph of intel notes, tags, subjects, and events.",
-            link=reverse_lazy("notes:public_notes_list")
+            link=reverse_lazy("notes:public_notes_list"),
+            public=False,
         )
 
         if not self.full:
