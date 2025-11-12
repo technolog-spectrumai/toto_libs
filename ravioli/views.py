@@ -2,8 +2,10 @@ from django.core.paginator import Paginator
 from django.shortcuts import render, get_object_or_404
 from .models import Note
 from oya.page import PageProcessor
+from django.contrib.auth.decorators import login_required
 
 
+@login_required
 def public_notes_list(request):
     """
     Public notes list with optional category filter and pagination.
@@ -39,6 +41,7 @@ def public_notes_list(request):
     )
 
 
+@login_required
 def public_note_detail(request, pk):
     note = get_object_or_404(Note, pk=pk, is_public=True)
     context = {"note": note}
