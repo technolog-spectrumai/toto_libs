@@ -3,6 +3,9 @@ from django.shortcuts import render, get_object_or_404
 from .models import Note
 from oya.page import PageProcessor
 from django.contrib.auth.decorators import login_required
+from community.models import Community, CommunityMember
+from portfolio.models import Company
+from  ravioli.models import Note
 
 
 @login_required
@@ -41,8 +44,89 @@ def public_notes_list(request):
     )
 
 
+def build_subject_data(subject):
+    """
+    Inspect the subject (SocialEntity subclass) and return a dict
+    with type, name, and a unified display_name.
+    """
+    if subject is None:
+        return None
+
+    if isinstance(subject, Company):
+        return {
+            "type": "company",
+            "name": subject.name,
+            "display_name": subject.name,  # nice name
+        }
+    elif isinstance(subject, Community):
+        return {
+            "type": "community",
+            "name": subject.name,
+            "display_name": subject.name,  # nice name
+        }
+    elif isinstance(subject, CommunityMember):
+        return {
+            "type": "community_member",
+            "name": subject.display_name,  # raw display_name
+            "display_name": subject.display_name,  # nice name
+        }
+    else:
+        # fallback for generic SocialEntity
+        raw_name = getattr(subject, "name", None) or str(subject)
+        return {
+            "type": "social_entity",
+            "name": raw_name,
+            "display_name": raw_name,  # nice name
+        }
+
+
+
 @login_required
 def public_note_detail(request, pk):
-    note = get_object_or_404(Note, pk=pk, is_public=True)
-    context = {"note": note}
-    return render(request, "ravioli/public_note_detail.html", PageProcessor().decorate(context, request))
+    note = get_object_or_404(
+        Note.objects.select_related("author", "subject", "event").prefetch_related("tags"),
+        pk=pk,
+        is_public=True,
+    )
+
+    subject_data = build_subject_data(note.subject) if note.subject else None
+    event_data = None
+    if note.event:
+        event_data = {
+            "title": note.event.title,
+            "description": note.event.description,
+            "start_time": note.event.start_time,
+            "end_time": note.event.end_time,
+            "location": note.event.location,
+            "organizer": note.event.organizer.username if note.event.organizer else None,
+            "company": {
+                "name": note.event.company.name,
+                "industry": note.event.company.industry,
+                "country": note.event.company.country,
+                "date_founded": note.event.company.date_founded,
+                "is_active": note.event.company.is_active,
+            } if note.event.company else None,
+            "category": str(note.event.category) if note.event.category else None,
+        }
+
+    context = {
+        "note": note,
+        "note_data": {
+            "id": note.id,
+            "title": note.title,
+            "content": note.content,
+            "author": note.author.username if note.author else None,
+            "tags": [tag.name for tag in note.tags.all()],
+            "category": note.category,
+            "created_at": note.created_at,
+            "metadata": note.metadata or {},
+        },
+        "subject_data": subject_data,
+        "event_data": event_data,
+    }
+    return render(
+        request,
+        "ravioli/public_note_detail.html",
+        PageProcessor().decorate(context, request)
+    )
+
