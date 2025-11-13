@@ -156,7 +156,12 @@ def graph_chunk(request):
 
     for n, r, m in results:
         if n.id not in seen:
-            G.add_node(n.id, label=list(n.labels)[0])
+            node_data = dict(n._properties)  # all properties
+            node_data.update({
+                "id": n.id,
+                "type": list(n.labels)[0]
+            })
+            G.add_node(n.id, **node_data)
             seen.add(n.id)
         if m.id not in seen:
             G.add_node(m.id, label=list(m.labels)[0])
@@ -168,17 +173,19 @@ def graph_chunk(request):
     # Compute force-directed layout (spring layout)
     pos = nx.spring_layout(G, k=0.25, iterations=50)
 
+    # pos = nx.circular_layout(G)
     # Build nodes list with positions
     nodes = []
     for node_id, attrs in G.nodes(data=True):
         x, y = pos[node_id]
-        nodes.append({
+        node_entry = {
             "id": node_id,
-            "label": attrs.get("label", ""),
             "x": float(x),
             "y": float(y),
-            "size": 10  # make nodes bigger
-        })
+            "size": 10,
+            "attrs": attrs
+        }
+        nodes.append(node_entry)
 
     return JsonResponse({"nodes": nodes, "edges": edges})
 
