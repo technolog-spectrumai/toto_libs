@@ -6,6 +6,8 @@ from django.contrib.auth.decorators import login_required
 from community.models import Community, CommunityMember
 from portfolio.models import Company
 from  ravioli.models import Note
+from django.http import JsonResponse
+from neomodel import db
 
 
 @login_required
@@ -130,3 +132,61 @@ def public_note_detail(request, pk):
         PageProcessor().decorate(context, request)
     )
 
+
+import networkx as nx
+from django.http import JsonResponse
+from neomodel import db
+
+def graph_chunk(request):
+    # Get offset & limit from query params
+    offset = int(request.GET.get("offset", 0))
+    limit = int(request.GET.get("limit", 50))
+
+    query = f"""
+        MATCH (n)-[r]->(m)
+        RETURN n, r, m
+        SKIP {offset} LIMIT {limit}
+    """
+    results, meta = db.cypher_query(query)
+
+    # Build a temporary NetworkX graph
+    G = nx.Graph()
+    seen = set()
+    edges = []
+
+    for n, r, m in results:
+        if n.id not in seen:
+            G.add_node(n.id, label=list(n.labels)[0])
+            seen.add(n.id)
+        if m.id not in seen:
+            G.add_node(m.id, label=list(m.labels)[0])
+            seen.add(m.id)
+
+        G.add_edge(n.id, m.id, id=str(r.id), label=r.type)
+        edges.append({"id": str(r.id), "source": n.id, "target": m.id, "label": r.type})
+
+    # Compute force-directed layout (spring layout)
+    pos = nx.spring_layout(G, k=0.25, iterations=50)
+
+    # Build nodes list with positions
+    nodes = []
+    for node_id, attrs in G.nodes(data=True):
+        x, y = pos[node_id]
+        nodes.append({
+            "id": node_id,
+            "label": attrs.get("label", ""),
+            "x": float(x),
+            "y": float(y),
+            "size": 10  # make nodes bigger
+        })
+
+    return JsonResponse({"nodes": nodes, "edges": edges})
+
+
+def graph_view(request):
+    """
+    Render the main graph explorer page.
+    The actual graph data is loaded progressively via AJAX from graph_chunk().
+    """
+    context = {"title": "Ravioli Graph Explorer"}
+    return render(request, "ravioli/graph.html", PageProcessor().decorate(context, request))

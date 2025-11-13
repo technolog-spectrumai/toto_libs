@@ -1,0 +1,108 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}Graph Explorer – {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<div
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300">
+
+  <div class="max-w-6xl mx-auto space-y-8">
+
+    <!-- 🌐 Graph Header -->
+    <section class="p-6 rounded-lg border transition-colors duration-300"
+      :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
+                       : 'bg-primary-bg-light text-text-main-light border-accent-2'">
+      <h1 class="text-2xl font-bold mb-2">{{title}}</h1>
+      <p class="text-sm"
+         :class="darkMode ? 'text-text-main-dark' : 'text-gray-500'">
+        Interactive visualization of your graph database.
+      </p>
+    </section>
+
+    <!-- 📊 Graph Visualization -->
+    <section class="p-6 rounded-lg border transition-colors duration-300"
+      :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
+                       : 'bg-primary-bg-light text-text-main-light border-accent-2'">
+      <h2 class="text-lg font-semibold mb-4">Graph View</h2>
+      <div id="graph-container"
+           class="w-full h-[600px] rounded border transition-colors duration-300"
+           :class="darkMode ? 'bg-primary-bg-dark border-accent-1'
+                            : 'bg-primary-bg-light border-accent-2'">
+      </div>
+      <div class="mt-4 text-center">
+        <button id="load-more"
+                class="px-4 py-2 rounded border transition-colors duration-300"
+                :class="darkMode
+                  ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
+                  : 'bg-primary-bg-light text-text-main-light border-accent-2'">
+          Load More
+        </button>
+      </div>
+    </section>
+
+    <!-- 🔗 Back Link -->
+    <div class="text-center">
+      <a href="{% url 'notes:public_notes_list' %}"
+         class="underline transition-colors duration-300"
+         :class="darkMode ? 'text-blue-400' : 'text-blue-600'">
+        ← Back to all notes
+      </a>
+    </div>
+
+  </div>
+</div>
+
+
+<script src="https://unpkg.com/graphology@0.25.0/dist/graphology.umd.min.js"></script>
+<script src="https://unpkg.com/sigma@2.4.0/build/sigma.min.js"></script>
+<script src="https://unpkg.com/graphology-layout/umd/graphology-layout.min.js"></script>
+
+<script>
+  // Create a Graphology graph
+  const g = new graphology.Graph();
+
+  // Initialize Sigma with Graphology instance
+  const container = document.getElementById("graph-container");
+  const renderer = new Sigma(g, container);
+
+  let offset = 0;
+  const limit = 50;
+
+  async function loadChunk() {
+    const response = await fetch(`/notes/graph-chunk/?offset=${offset}&limit=${limit}`);
+    const data = await response.json();
+    //const data = JSON.parse(text);
+    // Add nodes
+    data.nodes.forEach(n => {
+      if (!g.hasNode(n.id)) {
+        g.addNode(n.id, {
+          label: n.label,
+          x: n.x,
+          y: n.y,
+          size: n.size,
+          color: n.color || "#1f77b4"
+        });
+      }
+    });
+
+    // Add edges
+    data.edges.forEach(e => {
+      if (!g.hasEdge(e.id)) {
+        g.addEdge(e.source, e.target, {
+          label: e.label,
+          color: e.color || "#999"
+        });
+      }
+    });
+    offset += limit;
+  }
+
+  document.getElementById("load-more").addEventListener("click", loadChunk);
+  loadChunk(); // initial load
+</script>
+
+{% endblock %}
