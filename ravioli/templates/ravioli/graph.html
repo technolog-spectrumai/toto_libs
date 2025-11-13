@@ -57,10 +57,9 @@
 </div>
 
 <style>
+  /* Base tooltip styles */
   #tooltip {
     position: absolute;
-    background: rgba(0,0,0,0.85);
-    color: #fff;
     padding: 6px 10px;
     border-radius: 4px;
     font-size: 12px;
@@ -69,10 +68,26 @@
     z-index: 1000;
     max-width: 600px;
     white-space: pre-wrap;
+    transition: background 0.3s, color 0.3s;
+  }
+
+  /* Dark mode tooltip */
+  #tooltip.dark {
+    background: rgba(20, 20, 20, 0.95); /* almost black, but not pure */
+    color: #f0f0f0;
+    border: 1px solid #444;
+  }
+
+  /* Light mode tooltip */
+  #tooltip.light {
+    background: rgba(240, 240, 240, 0.95); /* light gray */
+    color: #222;
+    border: 1px solid #ccc;
   }
 </style>
 
-<div id="tooltip"></div>
+<div id="tooltip" :class="darkMode ? 'dark' : 'light'"></div>
+
 
 <script src="https://unpkg.com/graphology@0.25.0/dist/graphology.umd.min.js"></script>
 <script src="https://unpkg.com/sigma@2.4.0/build/sigma.min.js"></script>
