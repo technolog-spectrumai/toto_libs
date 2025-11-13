@@ -146,7 +146,7 @@
     renderer.on("enterNode", ({ node }) => {
       if (pinnedNode) return; // don't override if pinned
       const attrs = g.getNodeAttributes(node);
-      const yamlString = jsyaml.dump(attrs, { indent: 2, lineWidth: -1 });
+      const yamlString = jsyaml.dump(attrs.attrs, { indent: 2, lineWidth: -1 });
       tooltip.textContent = yamlString;
       tooltip.style.display = "block";
     });
