@@ -195,5 +195,5 @@ def graph_view(request):
     Render the main graph explorer page.
     The actual graph data is loaded progressively via AJAX from graph_chunk().
     """
-    context = {"title": "Ravioli Graph Explorer"}
+    context = {"title": "Knowledge Graph Explorer"}
     return render(request, "ravioli/graph.html", PageProcessor().decorate(context, request))

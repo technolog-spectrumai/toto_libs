@@ -139,29 +139,54 @@
 
     const tooltip = document.getElementById("tooltip");
 
-  // Show tooltip with JSON on hover
-  renderer.on("enterNode", ({ node }) => {
-    const nodeProps = g.getNodeAttributes(node);
-    var attrs = nodeProps.attrs;
-    const yamlString = jsyaml.dump(attrs, {
-      indent: 4,     // spaces per indent
-      lineWidth: -1  // disable line wrapping
+    let pinnedNode = null;
+    let pinnedPosition = null;
+
+    // Show tooltip on hover (only if not pinned)
+    renderer.on("enterNode", ({ node }) => {
+      if (pinnedNode) return; // don't override if pinned
+      const attrs = g.getNodeAttributes(node);
+      const yamlString = jsyaml.dump(attrs, { indent: 2, lineWidth: -1 });
+      tooltip.textContent = yamlString;
+      tooltip.style.display = "block";
     });
 
-    tooltip.textContent = yamlString;
-    tooltip.style.display = "block";
-  });
+    // Hide tooltip when leaving node (only if not pinned)
+    renderer.on("leaveNode", () => {
+      if (!pinnedNode) {
+        tooltip.style.display = "none";
+      }
+    });
 
-  // Hide tooltip when leaving node
-  renderer.on("leaveNode", () => {
-    tooltip.style.display = "none";
-  });
+    // Pin tooltip on click
+    renderer.on("clickNode", ({ node }) => {
+      pinnedNode = node;
+      const attrs = g.getNodeAttributes(node);
+      const yamlString = jsyaml.dump(attrs, { indent: 2, lineWidth: -1 });
+      tooltip.textContent = yamlString;
+      tooltip.style.display = "block";
 
-  // Move tooltip with mouse
-  renderer.getMouseCaptor().on("mousemove", (e) => {
-    tooltip.style.left = e.x + 15 + "px";
-    tooltip.style.top = e.y + 15 + "px";
-  });
+      // Lock tooltip at current mouse position
+      const mouse = renderer.getMouseCaptor().mouse;
+      pinnedPosition = { x: mouse.x, y: mouse.y };
+      tooltip.style.left = pinnedPosition.x + 15 + "px";
+      tooltip.style.top = pinnedPosition.y + 15 + "px";
+    });
+
+    // Unpin when clicking on background
+    renderer.on("clickStage", () => {
+      pinnedNode = null;
+      pinnedPosition = null;
+      tooltip.style.display = "none";
+    });
+
+    // Move tooltip with mouse only if not pinned
+    renderer.getMouseCaptor().on("mousemove", (e) => {
+      if (!pinnedNode) {
+        tooltip.style.left = e.x + 15 + "px";
+        tooltip.style.top = e.y + 15 + "px";
+      }
+    });
 </script>
 
 {% endblock %}
