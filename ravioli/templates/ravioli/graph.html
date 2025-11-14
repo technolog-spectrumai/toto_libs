@@ -29,18 +29,14 @@
                        : 'bg-primary-bg-light text-text-main-light border-accent-2'">
       <h2 class="text-lg font-semibold mb-4">Graph View</h2>
       <div id="graph-container"
-           class="w-full h-[600px] rounded border transition-colors duration-300"
+           class="w-full h-[600px] rounded border relative transition-colors duration-300"
            :class="darkMode ? 'bg-primary-bg-dark border-accent-1'
                             : 'bg-primary-bg-light border-accent-2'">
-      </div>
-      <div class="mt-4 text-center">
-        <button id="load-more"
-                class="px-4 py-2 rounded border transition-colors duration-300"
-                :class="darkMode
-                  ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
-                  : 'bg-primary-bg-light text-text-main-light border-accent-2'">
-          Load More
-        </button>
+        <!-- Spinner -->
+        <div id="spinner" class="absolute inset-0 flex items-center justify-center">
+          <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2"
+               :class="darkMode ? 'border-white' : 'border-gray-700'"></div>
+        </div>
       </div>
     </section>
 
@@ -57,7 +53,7 @@
 </div>
 
 <style>
-  /* Base tooltip styles */
+  /* Tooltip styles unchanged */
   #tooltip {
     position: absolute;
     padding: 6px 10px;
@@ -70,17 +66,13 @@
     white-space: pre-wrap;
     transition: background 0.3s, color 0.3s;
   }
-
-  /* Dark mode tooltip */
   #tooltip.dark {
-    background: rgba(20, 20, 20, 0.95); /* almost black, but not pure */
+    background: rgba(20, 20, 20, 0.95);
     color: #f0f0f0;
     border: 1px solid #444;
   }
-
-  /* Light mode tooltip */
   #tooltip.light {
-    background: rgba(240, 240, 240, 0.95); /* light gray */
+    background: rgba(240, 240, 240, 0.95);
     color: #222;
     border: 1px solid #ccc;
   }
@@ -88,27 +80,21 @@
 
 <div id="tooltip" :class="darkMode ? 'dark' : 'light'"></div>
 
-
 <script src="https://unpkg.com/graphology@0.25.0/dist/graphology.umd.min.js"></script>
 <script src="https://unpkg.com/sigma@2.4.0/build/sigma.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
 
 <script>
-  // Create a Graphology graph
   const g = new graphology.Graph();
-
-  // Initialize Sigma with Graphology instance
   const container = document.getElementById("graph-container");
   const renderer = new Sigma(g, container);
+  const spinner = document.getElementById("spinner");
 
-  let offset = 0;
-  const limit = 250;
-
-  async function loadChunk() {
-    const response = await fetch(`/notes/graph-chunk/?offset=${offset}&limit=${limit}`);
+  async function loadGraph() {
+    spinner.style.display = "flex"; // show spinner
+    const response = await fetch(`/notes/graph-chunk/?offset=0&limit=100000`); // big limit
     const data = await response.json();
-    //const data = JSON.parse(text);
-    // Add nodes
+
     data.nodes.forEach(n => {
       if (!g.hasNode(n.id)) {
         g.addNode(n.id, {
@@ -122,7 +108,6 @@
       }
     });
 
-    // Add edges
     data.edges.forEach(e => {
       if (!g.hasEdge(e.id)) {
         g.addEdge(e.source, e.target, {
@@ -131,62 +116,53 @@
         });
       }
     });
-    offset += limit;
+
+    spinner.style.display = "none"; // hide spinner
   }
 
-  document.getElementById("load-more").addEventListener("click", loadChunk);
-  loadChunk(); // initial load
+  loadGraph();
 
-    const tooltip = document.getElementById("tooltip");
+  // Tooltip logic unchanged
+  const tooltip = document.getElementById("tooltip");
+  let pinnedNode = null;
+  let pinnedPosition = null;
 
-    let pinnedNode = null;
-    let pinnedPosition = null;
+  renderer.on("enterNode", ({ node }) => {
+    if (pinnedNode) return;
+    const attrs = g.getNodeAttributes(node);
+    const yamlString = jsyaml.dump(attrs.attrs, { indent: 2, lineWidth: -1 });
+    tooltip.textContent = yamlString;
+    tooltip.style.display = "block";
+  });
 
-    // Show tooltip on hover (only if not pinned)
-    renderer.on("enterNode", ({ node }) => {
-      if (pinnedNode) return; // don't override if pinned
-      const attrs = g.getNodeAttributes(node);
-      const yamlString = jsyaml.dump(attrs.attrs, { indent: 2, lineWidth: -1 });
-      tooltip.textContent = yamlString;
-      tooltip.style.display = "block";
-    });
+  renderer.on("leaveNode", () => {
+    if (!pinnedNode) tooltip.style.display = "none";
+  });
 
-    // Hide tooltip when leaving node (only if not pinned)
-    renderer.on("leaveNode", () => {
-      if (!pinnedNode) {
-        tooltip.style.display = "none";
-      }
-    });
+  renderer.on("clickNode", ({ node }) => {
+    pinnedNode = node;
+    const attrs = g.getNodeAttributes(node);
+    const yamlString = jsyaml.dump(attrs, { indent: 2, lineWidth: -1 });
+    tooltip.textContent = yamlString;
+    tooltip.style.display = "block";
+    const mouse = renderer.getMouseCaptor().mouse;
+    pinnedPosition = { x: mouse.x, y: mouse.y };
+    tooltip.style.left = pinnedPosition.x + 15 + "px";
+    tooltip.style.top = pinnedPosition.y + 15 + "px";
+  });
 
-    // Pin tooltip on click
-    renderer.on("clickNode", ({ node }) => {
-      pinnedNode = node;
-      const attrs = g.getNodeAttributes(node);
-      const yamlString = jsyaml.dump(attrs, { indent: 2, lineWidth: -1 });
-      tooltip.textContent = yamlString;
-      tooltip.style.display = "block";
+  renderer.on("clickStage", () => {
+    pinnedNode = null;
+    pinnedPosition = null;
+    tooltip.style.display = "none";
+  });
 
-      // Lock tooltip at current mouse position
-      const mouse = renderer.getMouseCaptor().mouse;
-      pinnedPosition = { x: mouse.x, y: mouse.y };
-      tooltip.style.left = pinnedPosition.x + 15 + "px";
-      tooltip.style.top = pinnedPosition.y + 15 + "px";
-    });
-
-    // Unpin when clicking on background
-    renderer.on("clickStage", () => {
-      pinnedNode = null;
-      pinnedPosition = null;
-      tooltip.style.display = "none";
-    });
-
-    // Move tooltip with mouse only if not pinned
-    renderer.getMouseCaptor().on("mousemove", (e) => {
-      if (!pinnedNode) {
-        tooltip.style.left = e.x + 15 + "px";
-        tooltip.style.top = e.y + 15 + "px";
-      }
-    });
+  renderer.getMouseCaptor().on("mousemove", (e) => {
+    if (!pinnedNode) {
+      tooltip.style.left = e.x + 15 + "px";
+      tooltip.style.top = e.y + 15 + "px";
+    }
+  });
 </script>
 
 {% endblock %}
