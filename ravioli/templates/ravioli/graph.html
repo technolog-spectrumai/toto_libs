@@ -50,6 +50,56 @@
     </div>
 
   </div>
+<!-- 🎨 Node Color Modal -->
+<div x-data="{ open: false, colors: {} }">
+
+  <!-- Button to open modal -->
+  <div class="text-center mt-4">
+    <button @click="open = true"
+            class="px-4 py-2 rounded border transition-colors duration-300"
+            :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
+                             : 'bg-primary-bg-light text-text-main-light border-accent-2'">
+      🎨 Customize Colors
+    </button>
+  </div>
+
+  <!-- Modal -->
+  <div x-show="open"
+       class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-white text-black'"
+         class="p-6 rounded-lg shadow-lg w-96 space-y-4">
+
+      <h2 class="text-lg font-semibold">Choose Node Colors</h2>
+
+      <div class="space-y-3">
+        <template x-for="[type, color] in Object.entries($store.graphColors.colors)" :key="type">
+          <div class="flex items-center justify-between">
+            <label x-text="type"></label>
+            <input type="color" x-model="$store.graphColors.colors[type]">
+          </div>
+        </template>
+      </div>
+
+      <!-- Buttons -->
+      <div class="flex justify-end space-x-2">
+        <button @click="open = false"
+                class="px-3 py-1 rounded border"
+                :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+          Cancel
+        </button>
+        <button @click="
+            applyColorsToGraph($store.graphColors.colors);
+            open = false;
+          "
+          class="px-3 py-1 rounded border"
+          :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+          Save
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 </div>
 
 <style>
@@ -83,8 +133,18 @@
 <script src="https://unpkg.com/graphology@0.25.0/dist/graphology.umd.min.js"></script>
 <script src="https://unpkg.com/sigma@2.4.0/build/sigma.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
-<script src="https://colorjs.io/dist/color.js"></script>
-
+<script>
+  document.addEventListener('alpine:init', () => {
+    Alpine.store('graphColors', {
+      colors: {
+        Event: '#1f77b4',
+        Company: '#ff7f0e',
+        Account: '#2ca02c',
+        Location: '#d62728'
+      }
+    });
+  });
+</script>
 <script>
   const g = new graphology.Graph();
   const container = document.getElementById("graph-container");
@@ -103,8 +163,21 @@
       }
       return array;
     }
+
+    let typeColors = {};
+    let initialized = 0;
+
+    function applyColorsToGraph(colors) {
+      Object.entries(colors).forEach(([type, color]) => {
+        typeColors[type] = color;
+      });
+      loadGraph();
+    }
+
+
   palette = shuffle([...palette]);
   async function loadGraph() {
+    g.clear();
     spinner.style.display = "flex"; // show spinner
     const response = await fetch(`/notes/graph-chunk/?offset=0&limit=100000`); // big limit
     const data = await response.json();
@@ -117,19 +190,22 @@
       });
 
       // Assign colors from palette
-      const typeColors = {};
-      let i = 0;
-      uniqueTypes.forEach(type => {
-        typeColors[type] = palette[i % palette.length];
-        i++;
-      });
-
+      if (!initialized){
+          let i = 0;
+          uniqueTypes.forEach(type => {
+            typeColors[type] = palette[i % palette.length];
+            i++;
+          });
+          initialized = 1;
+          if (window.Alpine && Alpine.store('graphColors')) {
+            Alpine.store('graphColors').colors = { ...typeColors };
+          }
+      }
 
     data.nodes.forEach(n => {
       if (!g.hasNode(n.id)) {
         const nodeType = n.attrs?.type || n.label;
         const color = typeColors[nodeType] || typeColors.default;
-        console.log(`Node ${n.id} of type ${nodeType} assigned color ${color} | ${n.color}`);
         g.addNode(n.id, {
           label: n.label,
           x: n.x,
