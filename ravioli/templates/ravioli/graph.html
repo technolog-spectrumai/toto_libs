@@ -83,26 +83,59 @@
 <script src="https://unpkg.com/graphology@0.25.0/dist/graphology.umd.min.js"></script>
 <script src="https://unpkg.com/sigma@2.4.0/build/sigma.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+<script src="https://colorjs.io/dist/color.js"></script>
 
 <script>
   const g = new graphology.Graph();
   const container = document.getElementById("graph-container");
   const renderer = new Sigma(g, container);
   const spinner = document.getElementById("spinner");
-
+    let palette = [
+      "#440154", "#481567", "#482677", "#453781",
+      "#404788", "#39568C", "#33638D", "#2D708E",
+      "#287D8E", "#238A8D", "#1F968B", "#20A387",
+      "#29AF7F", "#3CBB75", "#55C667"
+    ];
+    function shuffle(array) {
+      for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+      }
+      return array;
+    }
+  palette = shuffle([...palette]);
   async function loadGraph() {
     spinner.style.display = "flex"; // show spinner
     const response = await fetch(`/notes/graph-chunk/?offset=0&limit=100000`); // big limit
     const data = await response.json();
 
+     // Collect unique node types
+      const uniqueTypes = new Set();
+      data.nodes.forEach(n => {
+        const nodeType = n.attrs?.type || n.label;
+        uniqueTypes.add(nodeType);
+      });
+
+      // Assign colors from palette
+      const typeColors = {};
+      let i = 0;
+      uniqueTypes.forEach(type => {
+        typeColors[type] = palette[i % palette.length];
+        i++;
+      });
+
+
     data.nodes.forEach(n => {
       if (!g.hasNode(n.id)) {
+        const nodeType = n.attrs?.type || n.label;
+        const color = typeColors[nodeType] || typeColors.default;
+        console.log(`Node ${n.id} of type ${nodeType} assigned color ${color} | ${n.color}`);
         g.addNode(n.id, {
           label: n.label,
           x: n.x,
           y: n.y,
           size: n.size,
-          color: n.color || "#1f77b4",
+          color: color || "#1f77b4",
           attrs: n.attrs || {}
         });
       }
