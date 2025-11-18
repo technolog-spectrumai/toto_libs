@@ -150,28 +150,19 @@
   ];
 </script>
 <script>
-  const g = new graphology.Graph();
-  const container = document.getElementById("graph-container");
-  const renderer = new Sigma(g, container);
-  const spinner = document.getElementById("spinner");
+const darkPalette = [
+  "#ff00ff", "#00ffff", "#ff0090", "#00ff9f", "#ffea00",
+  "#ff5500", "#9d00ff", "#00ffea", "#ff2222", "#33ff00",
+  "#ff66cc", "#00aaff", "#ff8800", "#cc00ff", "#00ff66"
+];
+const lightPalette = [
+  "#d100d1", "#008b8b", "#ff3399", "#009966", "#ffcc00",
+  "#ff6600", "#6600cc", "#00cccc", "#cc0000", "#339933",
+  "#ff99cc", "#0066cc", "#ff9933", "#9933ff", "#33cc33"
+];
 
-  async function loadGraph() {
-
+function getTypeColors()  {
     const darkMode = localStorage.getItem("darkMode") === "true";
-
-    // 2. Define cyberpunk palettes
-    const darkPalette = [
-      "#ff00ff", "#00ffff", "#ff0090", "#00ff9f", "#ffea00",
-      "#ff5500", "#9d00ff", "#00ffea", "#ff2222", "#33ff00",
-      "#ff66cc", "#00aaff", "#ff8800", "#cc00ff", "#00ff66"
-    ];
-    const lightPalette = [
-      "#d100d1", "#008b8b", "#ff3399", "#009966", "#ffcc00",
-      "#ff6600", "#6600cc", "#00cccc", "#cc0000", "#339933",
-      "#ff99cc", "#0066cc", "#ff9933", "#9933ff", "#33cc33"
-    ];
-
-    // 3. Pick palette based on darkMode
     const palette = darkMode ? darkPalette : lightPalette;
 
     let typeColors = {};
@@ -179,6 +170,18 @@
       typeColors[type] = palette[i % palette.length];
     });
     typeColors.default = darkMode ? "#ffffff" : "#000000";
+    return typeColors;
+}
+</script>
+<script>
+  const g = new graphology.Graph();
+  const container = document.getElementById("graph-container");
+  const renderer = new Sigma(g, container);
+  const spinner = document.getElementById("spinner");
+
+  async function loadGraph() {
+
+    typeColors = getTypeColors();
 
     g.clear();
     spinner.style.display = "flex"; // show spinner
