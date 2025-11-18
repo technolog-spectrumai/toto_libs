@@ -76,7 +76,8 @@ INSTALLED_APPS = [
     "finance",
     "federal",
     "gate",
-    "ravioli"
+    "ravioli",
+    "notes"
 ]
 
 
@@ -280,6 +281,7 @@ INGRESS_ALLOWED_APPS = [
     "portfolio",
     "events",
     "kanban",
+    "notes",
     "ravioli"
 ]
 
@@ -337,14 +339,16 @@ AUDITED_APPS = [
     "latextile",
     "community",
     "events",
-    "finance"
+    "finance",
+    "notes",
+    "ravioli"
 ]
 
 
 if DEBUG:
-    NEOMODEL_NEO4J_BOLT_URL = "bolt://neo4j:strongpassword123@neo4j:7687"
+    NEOMODEL_NEO4J_BOLT_URL = "bolt://neo4j:strongpassword123@localhost:7687"
     NEOMODEL_SIGNALS = True  # optional, if you want Django signals integration
-    config.DATABASE_URL = "bolt://neo4j:strongpassword123@neo4j:7687"
+    config.DATABASE_URL = NEOMODEL_NEO4J_BOLT_URL
 else:
     NEO4J_HOST = os.getenv("NEO4J_HOST", "neo4j")   # container name or localhost
     NEO4J_PORT = os.getenv("NEO4J_PORT", "7687")

@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand
-from ravioli.models import Note as SQLNote, Tag as SQLTag
-from ravioli.graph.sync import NoteConversionStrategy, TagConversionStrategy
+from notes.models import Note as SQLNote, Tag as SQLTag
+from notes.graph.sync import NoteConversionStrategy, TagConversionStrategy
 from toto.neo4j import is_connected as is_neo4j_connected
 
 

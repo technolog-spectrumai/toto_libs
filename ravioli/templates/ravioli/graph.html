@@ -107,10 +107,10 @@
 
     <!-- 🔗 Back Link -->
     <div class="text-center">
-      <a href="{% url 'notes:public_notes_list' %}"
+      <a href="{% url 'nest:dashboard' %}"
          class="underline transition-colors duration-300"
          :class="darkMode ? 'text-blue-400' : 'text-blue-600'">
-        ← Back to all notes
+        ← Back to Dashboard
       </a>
     </div>
 
@@ -294,7 +294,7 @@ function getTypeColors()  {
     const nodeTypes = nodeTypeSelect
       ? Array.from(nodeTypeSelect.selectedOptions).map(opt => opt.value)
       : [];
-    const url = new URL("{% url 'notes:graph_chunk' %}", window.location.origin);
+    const url = new URL("{% url 'ravioli:graph_chunk' %}", window.location.origin);
       url.searchParams.set("offset", 0);
       url.searchParams.set("limit", 5000);
       url.searchParams.set("hops", 1);

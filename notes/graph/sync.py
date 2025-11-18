@@ -1,5 +1,5 @@
-from ravioli.models import Note as SQLNote, Tag as SQLTag
-from ravioli.graph.models import Note as GraphNote, Tag as GraphTag
+from notes.models import Note as SQLNote, Tag as SQLTag
+from notes.graph.models import Note as GraphNote, Tag as GraphTag
 from toto.neo4j import ConversionStrategy
 from events.graph.models import Event as GraphEvent
 from community.graph.models import Community as GraphCommunity, CommunityMember as GraphCommunityMember

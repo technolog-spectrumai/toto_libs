@@ -25,7 +25,8 @@ urlpatterns = [
     path("finance/", include("finance.urls", namespace="finance")),
     path("federal/", include("federal.urls", namespace="federal")),
     path("gate/", include("gate.urls", namespace="gate")),
-    path("notes/", include("ravioli.urls", namespace="notes"))
+    path("notes/", include("notes.urls", namespace="notes")),
+    path("ravioli/", include("ravioli.urls", namespace="ravioli")),
 ]
 
 
