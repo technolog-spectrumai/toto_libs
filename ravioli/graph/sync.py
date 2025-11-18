@@ -95,7 +95,7 @@ class NoteConversionStrategy(ConversionStrategy):
         """Connect the note to its Event."""
         subj_node = GraphEvent.nodes.get_or_none(uid=str(event.pk))
         if not subj_node:
-            subj_node = GraphEvent(uid=str(event.pk)).save()
+            return
         if not node.event.is_connected(subj_node):
             node.event.connect(subj_node)
 
