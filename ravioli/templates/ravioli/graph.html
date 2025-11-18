@@ -19,50 +19,56 @@
       <h1 class="text-2xl font-bold mb-2">{{title}}</h1>
     </section>
 
-    <section
-      :class="darkMode
-        ? 'bg-primary-bg-dark text-text-main-dark border border-accent-1'
-        : 'bg-primary-bg-light text-text-main-light border border-accent-2'"
-      class="p-4 sm:p-6 rounded-lg">
-      <header class="space-y-3 sm:space-y-0 sm:flex sm:items-center sm:justify-center sm:gap-4 text-center sm:text-left">
-        <h1 class="text-lg sm:text-xl font-extrabold">Filter by Node Type</h1>
-        <form id="nodeTypeForm" class="flex items-center gap-2">
-          <label for="node_type"
-                 class="block text-xs sm:text-sm font-medium"
-                 :class="darkMode ? 'text-text-main-dark' : 'text-text-main-light'">
-            Choose
-          </label>
+<section
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark border border-accent-1'
+    : 'bg-primary-bg-light text-text-main-light border border-accent-2'"
+  class="p-4 sm:p-6 rounded-lg">
 
-          <select name="node_type" id="node_type" multiple
-                  class="px-2 py-1 sm:px-3 sm:py-2 rounded border text-sm transition-colors duration-300"
-                  :class="darkMode
-                    ? 'bg-primary-bg-dark text-text-main-dark border-gray-600'
-                    : 'bg-white text-text-main-light border-gray-300'">
-            <option value="">All Types</option>
-            {% for nt in node_types %}
-              <option value="{{ nt }}"
-                {% if nt == selected_node_type %}
-                  selected
-                {% elif not selected_node_type and forloop.first %}
-                  selected
-                {% endif %}>
-                {{ nt }}
-              </option>
-            {% endfor %}
-          </select>
+  <header class="space-y-4 text-center sm:text-left">
+    <h1 class="text-lg sm:text-xl font-extrabold">Filter by Node Type</h1>
 
-          <!-- 🔄 Refresh Button -->
-          <button type="button"
-                  onclick="loadGraph()"
-                  class="px-3 py-1 rounded border transition-colors duration-300"
-                  :class="darkMode
-                    ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
-                    : 'bg-primary-bg-light text-text-main-light border-accent-2'">
-            🔄 Refresh
-          </button>
-        </form>
-      </header>
-    </section>
+    <!-- Node type select -->
+    <div class="flex items-center gap-2 justify-center sm:justify-start">
+      <label for="node_type"
+             class="text-xs sm:text-sm font-medium whitespace-nowrap"
+             :class="darkMode ? 'text-text-main-dark' : 'text-text-main-light'">
+        Choose
+      </label>
+
+      <select name="node_type" id="node_type" multiple
+              class="px-2 py-1 sm:px-3 sm:py-2 rounded border text-sm transition-colors duration-300"
+              :class="darkMode
+                ? 'bg-primary-bg-dark text-text-main-dark border-gray-600'
+                : 'bg-white text-text-main-light border-gray-300'">
+        <option value="">All Types</option>
+        {% for nt in node_types %}
+          <option value="{{ nt }}"
+            {% if nt == selected_node_type %}
+              selected
+            {% elif not selected_node_type and forloop.first %}
+              selected
+            {% endif %}>
+            {{ nt }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- Refresh button on its own line -->
+    <div class="flex justify-center sm:justify-start">
+      <button type="button"
+              onclick="loadGraph()"
+              class="px-3 py-1 rounded border transition-colors duration-300"
+              :class="darkMode
+                ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
+                : 'bg-primary-bg-light text-text-main-light border-accent-2'">
+        🔄 Refresh
+      </button>
+    </div>
+  </header>
+</section>
+
 
     <!-- 📊 Graph Visualization -->
     <section class="p-6 rounded-lg border transition-colors duration-300"
@@ -258,17 +264,27 @@ function getTypeColors()  {
     if (!pinnedNode) tooltip.style.display = "none";
   });
 
-  renderer.on("clickNode", ({ node }) => {
-    pinnedNode = node;
-    const attrs = g.getNodeAttributes(node);
-    const yamlString = jsyaml.dump(attrs, { indent: 2, lineWidth: -1 });
-    tooltip.textContent = yamlString;
-    tooltip.style.display = "block";
-    const mouse = renderer.getMouseCaptor().mouse;
-    pinnedPosition = { x: mouse.x, y: mouse.y };
-    tooltip.style.left = pinnedPosition.x + 15 + "px";
-    tooltip.style.top = pinnedPosition.y + 15 + "px";
-  });
+renderer.on("clickNode", ({ node }) => {
+  pinnedNode = node;
+  const attrs = g.getNodeAttributes(node);
+  const yamlString = jsyaml.dump(attrs, { indent: 2, lineWidth: -1 });
+  tooltip.textContent = yamlString;
+  tooltip.style.display = "block";
+
+  // Get node position in graph space
+  const { x, y } = g.getNodeAttributes(node);
+
+  // Convert to viewport (pixel) coordinates
+  const coords = renderer.graphToViewport(x, y);
+
+  // Center tooltip horizontally and place it above the node
+  const tooltipWidth = tooltip.offsetWidth;
+  const tooltipHeight = tooltip.offsetHeight;
+
+  tooltip.style.left = coords.x - tooltipWidth / 2 + "px";
+  tooltip.style.top = coords.y - tooltipHeight - 10 + "px"; // 10px padding above
+});
+
 
   renderer.on("clickStage", () => {
     pinnedNode = null;
