@@ -142,8 +142,13 @@ def graph_chunk(request):
     offset = int(request.GET.get("offset", 0))
     limit = int(request.GET.get("limit", 50))
 
+    # New args: hops and node_type
+    hops = int(request.GET.get("hops", 1))  # default: 1 hop
+    node_type = request.GET.get("node_type", "Note")  # default: Note
+
+    # Cypher query: start from given node type, expand up to n hops
     query = f"""
-        MATCH (n)-[r]->(m)
+        MATCH (n:{node_type})-[r*1..{hops}]-(m)
         RETURN n, r, m
         SKIP {offset} LIMIT {limit}
     """
@@ -164,16 +169,26 @@ def graph_chunk(request):
             G.add_node(n.id, **node_data)
             seen.add(n.id)
         if m.id not in seen:
-            G.add_node(m.id, label=list(m.labels)[0])
+            node_data = dict(m._properties)
+            node_data.update({
+                "id": m.id,
+                "type": list(m.labels)[0]
+            })
+            G.add_node(m.id, **node_data)
             seen.add(m.id)
 
-        G.add_edge(n.id, m.id, id=str(r.id), label=r.type)
-        edges.append({"id": str(r.id), "source": n.id, "target": m.id, "label": r.type})
+        # r is a list of relationships when using variable-length paths
+        if isinstance(r, list):
+            for rel in r:
+                G.add_edge(n.id, m.id, id=str(rel.id), label=rel.type)
+                edges.append({"id": str(rel.id), "source": n.id, "target": m.id, "label": rel.type})
+        else:
+            G.add_edge(n.id, m.id, id=str(r.id), label=r.type)
+            edges.append({"id": str(r.id), "source": n.id, "target": m.id, "label": r.type})
 
     # Compute force-directed layout (spring layout)
-    pos = nx.spring_layout(G, k=0.25, iterations=50)
+    pos = nx.spring_layout(G, k=0.5, iterations=100)
 
-    # pos = nx.circular_layout(G)
     # Build nodes list with positions
     nodes = []
     for node_id, attrs in G.nodes(data=True):
@@ -188,6 +203,7 @@ def graph_chunk(request):
         nodes.append(node_entry)
 
     return JsonResponse({"nodes": nodes, "edges": edges})
+
 
 
 def graph_view(request):

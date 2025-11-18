@@ -179,7 +179,8 @@
   async function loadGraph() {
     g.clear();
     spinner.style.display = "flex"; // show spinner
-    const response = await fetch(`/notes/graph-chunk/?offset=0&limit=100000`); // big limit
+    const nodeType = "Transaction";
+    const response = await fetch(`/notes/graph-chunk/?offset=0&limit=500&node_type=${nodeType}`);
     const data = await response.json();
 
      // Collect unique node types
