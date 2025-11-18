@@ -66,14 +66,15 @@
 
     <!-- Refresh button on its own line -->
     <div class="flex justify-center sm:justify-start">
-      <button type="button"
-              onclick="loadGraph()"
-              class="px-3 py-1 rounded border transition-colors duration-300"
-              :class="darkMode
-                ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
-                : 'bg-primary-bg-light text-text-main-light border-accent-2'">
-        🔄 Refresh
-      </button>
+        <button type="button"
+                onclick="loadGraph()"
+                class="px-3 py-1 rounded border transition-colors duration-300 flex items-center gap-2"
+                :class="darkMode
+                  ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
+                  : 'bg-primary-bg-light text-text-main-light border-accent-2'">
+          <i class="fa-solid fa-rotate-right"></i>
+          <span>Refresh</span>
+        </button>
     </div>
   </header>
 </section>
