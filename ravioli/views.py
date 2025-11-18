@@ -6,6 +6,7 @@ from django.contrib.auth.decorators import login_required
 from community.models import Community, CommunityMember
 from portfolio.models import Company
 from  ravioli.models import Note
+import networkx as nx
 from django.http import JsonResponse
 from neomodel import db
 
@@ -133,17 +134,14 @@ def public_note_detail(request, pk):
     )
 
 
-import networkx as nx
-from django.http import JsonResponse
-from neomodel import db
-
+@login_required
 def graph_chunk(request):
     # Get offset & limit from query params
     offset = int(request.GET.get("offset", 0))
     limit = int(request.GET.get("limit", 50))
 
     # New args: hops and node_type
-    hops = int(request.GET.get("hops", 1))  # default: 1 hop
+    hops = 1
     node_type = request.GET.get("node_type", "Note")  # default: Note
 
     # Cypher query: start from given node type, expand up to n hops

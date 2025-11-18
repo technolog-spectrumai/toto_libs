@@ -179,8 +179,8 @@
   async function loadGraph() {
     g.clear();
     spinner.style.display = "flex"; // show spinner
-    const nodeType = "Transaction";
-    const response = await fetch(`/notes/graph-chunk/?offset=0&limit=500&node_type=${nodeType}`);
+    const nodeType = "Note";
+    const response = await fetch(`/notes/graph-chunk/?offset=0&limit=5000&node_type=${nodeType}`);
     const data = await response.json();
 
      // Collect unique node types
