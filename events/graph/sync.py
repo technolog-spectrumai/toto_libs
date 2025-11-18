@@ -11,7 +11,7 @@ class EventConversionStrategy(ConversionStrategy):
     def create(self, sql_obj: SQLEvent):
         node = GraphEvent(
             uid=str(sql_obj.pk),
-            title=sql_obj.title,
+            title=sql_obj.title or "",
             description=sql_obj.description,
             location=sql_obj.location,
             start_time=sql_obj.start_time,
