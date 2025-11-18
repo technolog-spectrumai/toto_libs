@@ -203,7 +203,7 @@ def graph_chunk(request):
     return JsonResponse({"nodes": nodes, "edges": edges})
 
 
-
+@login_required
 def graph_view(request):
     """
     Render the main graph explorer page.
