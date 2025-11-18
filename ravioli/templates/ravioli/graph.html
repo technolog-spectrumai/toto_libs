@@ -17,10 +17,6 @@
       :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
                        : 'bg-primary-bg-light text-text-main-light border-accent-2'">
       <h1 class="text-2xl font-bold mb-2">{{title}}</h1>
-      <p class="text-sm"
-         :class="darkMode ? 'text-text-main-dark' : 'text-gray-500'">
-        Interactive visualization of your graph database.
-      </p>
     </section>
 
     <section
@@ -37,7 +33,7 @@
             Choose
           </label>
 
-          <select name="node_type" id="node_type"
+          <select name="node_type" id="node_type" multiple
                   class="px-2 py-1 sm:px-3 sm:py-2 rounded border text-sm transition-colors duration-300"
                   :class="darkMode
                     ? 'bg-primary-bg-dark text-text-main-dark border-gray-600'
@@ -97,7 +93,20 @@
   </div>
 
 </div>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
+<script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
 
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  const element = document.getElementById("node_type");
+  new Choices(element, {
+    removeItemButton: true,
+    placeholderValue: "Select node types...",
+    searchEnabled: true,
+    shouldSort: false
+  });
+});
+</script>
 <style>
   /* Tooltip styles unchanged */
   #tooltip {
@@ -186,8 +195,21 @@ function getTypeColors()  {
     g.clear();
     spinner.style.display = "flex"; // show spinner
     const nodeTypeSelect = document.getElementById("node_type");
-    const nodeType = nodeTypeSelect ? nodeTypeSelect.value : "";
-    const response = await fetch(`/notes/graph-chunk/?offset=0&limit=5000&node_type=${nodeType}`);
+
+    // Collect all selected values into an array
+    const nodeTypes = nodeTypeSelect
+      ? Array.from(nodeTypeSelect.selectedOptions).map(opt => opt.value)
+      : [];
+    const url = new URL("{% url 'notes:graph_chunk' %}", window.location.origin);
+      url.searchParams.set("offset", 0);
+      url.searchParams.set("limit", 5000);
+      url.searchParams.set("hops", 1);
+
+      // If multiple node types selected, join them with commas
+      if (nodeTypes.length > 0) {
+        url.searchParams.set("node_type", nodeTypes.join(","));
+      }
+    const response = await fetch(url, { headers: { "Accept": "application/json" } });
     const data = await response.json();
 
     data.nodes.forEach(n => {

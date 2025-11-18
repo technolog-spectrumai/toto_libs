@@ -133,23 +133,44 @@ def public_note_detail(request, pk):
         PageProcessor().decorate(context, request)
     )
 
+def get_query(node_types, hops=1, offset=0, limit=50):
+    """
+    Build a Cypher query string for the given node types.
+    Supports single or multiple labels.
+    """
+    # Normalize node types list
+    node_types = [nt.strip() for nt in node_types if nt.strip()]
+
+    if len(node_types) == 1:
+        # Single label → MATCH (n:Label)
+        label_clause = f":{node_types[0]}"
+        query = f"""
+            MATCH (n{label_clause})-[r*1..{hops}]-(m)
+            RETURN n, r, m
+            SKIP {offset} LIMIT {limit}
+        """
+    else:
+        # Multiple labels → use WHERE with labels(n)
+        label_list = ",".join([f"'{nt}'" for nt in node_types])
+        query = f"""
+            MATCH (n)-[r*1..{hops}]-(m)
+            WHERE any(label IN labels(n) WHERE label IN [{label_list}])
+            RETURN n, r, m
+            SKIP {offset} LIMIT {limit}
+        """
+    return query
+
 
 @login_required
 def graph_chunk(request):
-    # Get offset & limit from query params
     offset = int(request.GET.get("offset", 0))
     limit = int(request.GET.get("limit", 50))
-
-    # New args: hops and node_type
     hops = 1
-    node_type = request.GET.get("node_type", "Note")  # default: Note
 
-    # Cypher query: start from given node type, expand up to n hops
-    query = f"""
-        MATCH (n:{node_type})-[r*1..{hops}]-(m)
-        RETURN n, r, m
-        SKIP {offset} LIMIT {limit}
-    """
+    node_type_param = request.GET.get("node_type", "Note")
+    node_types = node_type_param.split(",")
+
+    query = get_query(node_types, hops=hops, offset=offset, limit=limit)
     results, meta = db.cypher_query(query)
 
     # Build a temporary NetworkX graph
