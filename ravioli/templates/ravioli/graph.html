@@ -96,6 +96,14 @@
       </div>
     </section>
 
+    <section class="p-6 rounded-lg border transition-colors duration-300"
+      :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
+                       : 'bg-primary-bg-light text-text-main-light border-accent-2'">
+      <h2 class="text-lg font-semibold mb-4">Selected Node Details</h2>
+      <pre id="node-details"
+           class="text-xs sm:text-sm whitespace-pre-wrap overflow-auto max-h-64"></pre>
+    </section>
+
     <!-- 🔗 Back Link -->
     <div class="text-center">
       <a href="{% url 'notes:public_notes_list' %}"
@@ -307,7 +315,8 @@ function getTypeColors()  {
           y: n.y,
           size: n.size,
           color: color || "#1f77b4",
-          attrs: n.attrs || {}
+          attrs: n.attrs || {},
+          glow: false
         });
       }
     });
@@ -324,59 +333,49 @@ function getTypeColors()  {
     spinner.style.display = "none"; // hide spinner
   }
 
+    renderer.setSetting("nodeReducer", (node, data) => {
+      const res = { ...data };
+      if (data.glow) {
+        res.size = data.size * 1.5;        // make it bigger
+        // keep original fill color
+        res.color = data.color;
+        // add a contrasting border to simulate glow
+        res.borderColor = "#FFD700";       // gold border
+        res.borderSize = 3;                // thicker border
+      }
+      return res;
+    });
+
+
   loadGraph();
 
-  // Tooltip logic unchanged
-  const tooltip = document.getElementById("tooltip");
-  let pinnedNode = null;
-  let pinnedPosition = null;
-
-  renderer.on("enterNode", ({ node }) => {
-    if (pinnedNode) return;
-    const attrs = g.getNodeAttributes(node);
-    const yamlString = jsyaml.dump(attrs.attrs, { indent: 2, lineWidth: -1 });
-    tooltip.textContent = yamlString;
-    tooltip.style.display = "block";
-  });
-
-  renderer.on("leaveNode", () => {
-    if (!pinnedNode) tooltip.style.display = "none";
-  });
+let selectedNode = null;
 
 renderer.on("clickNode", ({ node }) => {
-  pinnedNode = node;
+  // Clear previous selection glow
+  if (selectedNode) {
+    g.setNodeAttribute(selectedNode, "glow", false);
+  }
+
+  selectedNode = node;
+
+  // Mark this node as glowing
+  g.setNodeAttribute(node, "glow", true);
+
+  // Update details block
   const attrs = g.getNodeAttributes(node);
-  const yamlString = jsyaml.dump(attrs, { indent: 2, lineWidth: -1 });
-  tooltip.textContent = yamlString;
-  tooltip.style.display = "block";
-
-  // Get node position in graph space
-  const { x, y } = g.getNodeAttributes(node);
-
-  // Convert to viewport (pixel) coordinates
-  const coords = renderer.graphToViewport(x, y);
-
-  // Center tooltip horizontally and place it above the node
-  const tooltipWidth = tooltip.offsetWidth;
-  const tooltipHeight = tooltip.offsetHeight;
-
-  tooltip.style.left = coords.x - tooltipWidth / 2 + "px";
-  tooltip.style.top = coords.y - tooltipHeight - 10 + "px"; // 10px padding above
+  const yamlString = jsyaml.dump(attrs.attrs || attrs, { indent: 2, lineWidth: -1 });
+  document.getElementById("node-details").textContent = yamlString;
 });
 
+renderer.on("clickStage", () => {
+  if (selectedNode) {
+    g.setNodeAttribute(selectedNode, "glow", false);
+    selectedNode = null;
+  }
+  document.getElementById("node-details").textContent = "";
+});
 
-  renderer.on("clickStage", () => {
-    pinnedNode = null;
-    pinnedPosition = null;
-    tooltip.style.display = "none";
-  });
-
-  renderer.getMouseCaptor().on("mousemove", (e) => {
-    if (!pinnedNode) {
-      tooltip.style.left = e.x + 15 + "px";
-      tooltip.style.top = e.y + 15 + "px";
-    }
-  });
 </script>
 
 {% endblock %}
