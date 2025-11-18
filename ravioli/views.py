@@ -185,7 +185,7 @@ def graph_chunk(request):
             edges.append({"id": str(r.id), "source": n.id, "target": m.id, "label": r.type})
 
     # Compute force-directed layout (spring layout)
-    pos = nx.spring_layout(G, k=0.5, iterations=100)
+    pos = nx.spring_layout(G, k=0.25, iterations=50)
 
     # Build nodes list with positions
     nodes = []
@@ -205,9 +205,13 @@ def graph_chunk(request):
 
 @login_required
 def graph_view(request):
-    """
-    Render the main graph explorer page.
-    The actual graph data is loaded progressively via AJAX from graph_chunk().
-    """
-    context = {"title": "Knowledge Graph Explorer"}
+    # Get all node types (labels) from Neo4j
+    results, _ = db.cypher_query("CALL db.labels()")
+    node_types = [record[0] for record in results]
+
+    context = {
+        "title": "Knowledge Graph Explorer",
+        "node_types": node_types,
+        "selected_node_type": request.GET.get("node_type", ""),
+    }
     return render(request, "ravioli/graph.html", PageProcessor().decorate(context, request))

@@ -23,6 +23,51 @@
       </p>
     </section>
 
+    <section
+      :class="darkMode
+        ? 'bg-primary-bg-dark text-text-main-dark border border-accent-1'
+        : 'bg-primary-bg-light text-text-main-light border border-accent-2'"
+      class="p-4 sm:p-6 rounded-lg">
+      <header class="space-y-3 sm:space-y-0 sm:flex sm:items-center sm:justify-center sm:gap-4 text-center sm:text-left">
+        <h1 class="text-lg sm:text-xl font-extrabold">Filter by Node Type</h1>
+        <form id="nodeTypeForm" class="flex items-center gap-2">
+          <label for="node_type"
+                 class="block text-xs sm:text-sm font-medium"
+                 :class="darkMode ? 'text-text-main-dark' : 'text-text-main-light'">
+            Choose
+          </label>
+
+          <select name="node_type" id="node_type"
+                  class="px-2 py-1 sm:px-3 sm:py-2 rounded border text-sm transition-colors duration-300"
+                  :class="darkMode
+                    ? 'bg-primary-bg-dark text-text-main-dark border-gray-600'
+                    : 'bg-white text-text-main-light border-gray-300'">
+            <option value="">All Types</option>
+            {% for nt in node_types %}
+              <option value="{{ nt }}"
+                {% if nt == selected_node_type %}
+                  selected
+                {% elif not selected_node_type and forloop.first %}
+                  selected
+                {% endif %}>
+                {{ nt }}
+              </option>
+            {% endfor %}
+          </select>
+
+          <!-- 🔄 Refresh Button -->
+          <button type="button"
+                  onclick="loadGraph()"
+                  class="px-3 py-1 rounded border transition-colors duration-300"
+                  :class="darkMode
+                    ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
+                    : 'bg-primary-bg-light text-text-main-light border-accent-2'">
+            🔄 Refresh
+          </button>
+        </form>
+      </header>
+    </section>
+
     <!-- 📊 Graph Visualization -->
     <section class="p-6 rounded-lg border transition-colors duration-300"
       :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
@@ -50,55 +95,6 @@
     </div>
 
   </div>
-<!-- 🎨 Node Color Modal -->
-<div x-data="{ open: false, colors: {} }">
-
-  <!-- Button to open modal -->
-  <div class="text-center mt-4">
-    <button @click="open = true"
-            class="px-4 py-2 rounded border transition-colors duration-300"
-            :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
-                             : 'bg-primary-bg-light text-text-main-light border-accent-2'">
-      🎨 Customize Colors
-    </button>
-  </div>
-
-  <!-- Modal -->
-  <div x-show="open"
-       class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-    <div :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-white text-black'"
-         class="p-6 rounded-lg shadow-lg w-96 space-y-4">
-
-      <h2 class="text-lg font-semibold">Choose Node Colors</h2>
-
-      <div class="space-y-3">
-        <template x-for="[type, color] in Object.entries($store.graphColors.colors)" :key="type">
-          <div class="flex items-center justify-between">
-            <label x-text="type"></label>
-            <input type="color" x-model="$store.graphColors.colors[type]">
-          </div>
-        </template>
-      </div>
-
-      <!-- Buttons -->
-      <div class="flex justify-end space-x-2">
-        <button @click="open = false"
-                class="px-3 py-1 rounded border"
-                :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
-          Cancel
-        </button>
-        <button @click="
-            applyColorsToGraph($store.graphColors.colors);
-            open = false;
-          "
-          class="px-3 py-1 rounded border"
-          :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
-          Save
-        </button>
-      </div>
-    </div>
-  </div>
-</div>
 
 </div>
 
@@ -146,62 +142,55 @@
   });
 </script>
 <script>
+  // Pass node_types from Django into JS as an array
+  const nodeTypes = [
+    {% for nt in node_types %}
+      "{{ nt }}"{% if not forloop.last %},{% endif %}
+    {% endfor %}
+  ];
+</script>
+<script>
   const g = new graphology.Graph();
   const container = document.getElementById("graph-container");
   const renderer = new Sigma(g, container);
   const spinner = document.getElementById("spinner");
-    let palette = [
-      "#440154", "#481567", "#482677", "#453781",
-      "#404788", "#39568C", "#33638D", "#2D708E",
-      "#287D8E", "#238A8D", "#1F968B", "#20A387",
-      "#29AF7F", "#3CBB75", "#55C667"
-    ];
-    function shuffle(array) {
-      for (let i = array.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [array[i], array[j]] = [array[j], array[i]];
-      }
-      return array;
-    }
 
-    let typeColors = {};
-    let initialized = 0;
-
-    function applyColorsToGraph(colors) {
-      Object.entries(colors).forEach(([type, color]) => {
-        typeColors[type] = color;
-      });
-      loadGraph();
-    }
-
-
-  palette = shuffle([...palette]);
   async function loadGraph() {
+
+    const darkMode = localStorage.getItem("darkMode") === "true";
+
+    // 2. Define cyberpunk palettes
+    const darkPalette = [
+      "#ff00ff", "#00ffff", "#ff0090", "#00ff9f", "#ffea00",
+      "#ff5500", "#9d00ff", "#00ffea", "#ff2222", "#33ff00",
+      "#ff66cc", "#00aaff", "#ff8800", "#cc00ff", "#00ff66"
+    ];
+    const lightPalette = [
+      "#d100d1", "#008b8b", "#ff3399", "#009966", "#ffcc00",
+      "#ff6600", "#6600cc", "#00cccc", "#cc0000", "#339933",
+      "#ff99cc", "#0066cc", "#ff9933", "#9933ff", "#33cc33"
+    ];
+
+    // 3. Pick palette based on darkMode
+    const palette = darkMode ? darkPalette : lightPalette;
+
+    const nodeTypes = [
+      {% for nt in node_types %}
+        "{{ nt }}"{% if not forloop.last %},{% endif %}
+      {% endfor %}
+    ];
+    let typeColors = {};
+    nodeTypes.forEach((type, i) => {
+      typeColors[type] = palette[i % palette.length];
+    });
+    typeColors.default = darkMode ? "#ffffff" : "#000000";
+
     g.clear();
     spinner.style.display = "flex"; // show spinner
-    const nodeType = "Note";
+    const nodeTypeSelect = document.getElementById("node_type");
+    const nodeType = nodeTypeSelect ? nodeTypeSelect.value : "";
     const response = await fetch(`/notes/graph-chunk/?offset=0&limit=5000&node_type=${nodeType}`);
     const data = await response.json();
-
-     // Collect unique node types
-      const uniqueTypes = new Set();
-      data.nodes.forEach(n => {
-        const nodeType = n.attrs?.type || n.label;
-        uniqueTypes.add(nodeType);
-      });
-
-      // Assign colors from palette
-      if (!initialized){
-          let i = 0;
-          uniqueTypes.forEach(type => {
-            typeColors[type] = palette[i % palette.length];
-            i++;
-          });
-          initialized = 1;
-          if (window.Alpine && Alpine.store('graphColors')) {
-            Alpine.store('graphColors').colors = { ...typeColors };
-          }
-      }
 
     data.nodes.forEach(n => {
       if (!g.hasNode(n.id)) {
