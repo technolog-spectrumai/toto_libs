@@ -174,11 +174,6 @@
     // 3. Pick palette based on darkMode
     const palette = darkMode ? darkPalette : lightPalette;
 
-    const nodeTypes = [
-      {% for nt in node_types %}
-        "{{ nt }}"{% if not forloop.last %},{% endif %}
-      {% endfor %}
-    ];
     let typeColors = {};
     nodeTypes.forEach((type, i) => {
       typeColors[type] = palette[i % palette.length];
