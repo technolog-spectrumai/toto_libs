@@ -36,23 +36,32 @@
         Choose
       </label>
 
-      <select name="node_type" id="node_type" multiple
-              class="px-2 py-1 sm:px-3 sm:py-2 rounded border text-sm transition-colors duration-300"
+    <select name="node_type" id="node_type" multiple
+            class="px-2 py-1 sm:px-3 sm:py-2 rounded border text-sm transition-colors duration-300"
+            :class="darkMode
+              ? 'bg-primary-bg-dark text-text-main-dark border-gray-600'
+              : 'bg-white text-text-main-light border-gray-300'">
+      <option value=""
               :class="darkMode
-                ? 'bg-primary-bg-dark text-text-main-dark border-gray-600'
-                : 'bg-white text-text-main-light border-gray-300'">
-        <option value="">All Types</option>
-        {% for nt in node_types %}
-          <option value="{{ nt }}"
-            {% if nt == selected_node_type %}
-              selected
-            {% elif not selected_node_type and forloop.first %}
-              selected
-            {% endif %}>
-            {{ nt }}
-          </option>
-        {% endfor %}
-      </select>
+                ? 'bg-primary-bg-dark text-text-main-dark'
+                : 'bg-white text-text-main-light'">
+        All Types
+      </option>
+      {% for nt in node_types %}
+        <option value="{{ nt }}"
+                :class="darkMode
+                  ? 'bg-primary-bg-dark text-text-main-dark'
+                  : 'bg-white text-text-main-light'"
+                {% if nt == selected_node_type %}
+                  selected
+                {% elif not selected_node_type and forloop.first %}
+                  selected
+                {% endif %}>
+          {{ nt }}
+        </option>
+      {% endfor %}
+    </select>
+
     </div>
 
     <!-- Refresh button on its own line -->
@@ -99,20 +108,102 @@
   </div>
 
 </div>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
-<script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
+<link href="https://cdn.jsdelivr.net/npm/tom-select/dist/css/tom-select.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/tom-select/dist/js/tom-select.complete.min.js"></script>
+
+<style>
+:root {
+  {% for name, value in theme.theme.colors.items %}
+    --{{ name }}: {{ value }};
+  {% endfor %}
+}
+
+/* Tom Select dark/light overrides */
+
+/* Light theme */
+.light .ts-control {
+  background-color: var(--primary-bg-light);
+  color: var(--text-main-light);
+  border: 1px solid var(--accent-2);
+}
+.light .ts-dropdown {
+  background-color: var(--primary-bg-light);
+  color: var(--text-main-light);
+  border: 1px solid var(--accent-2);
+}
+/* Selected items (tags) */
+.light .ts-control .item {
+  background-color: var(--bubble-bg-light);
+  color: var(--text-main-light);
+  border-radius: 4px;
+  padding: 2px 6px;
+  margin: 2px;
+}
+/* Dropdown options */
+.light .ts-dropdown .option {
+  background-color: var(--primary-bg-light);
+  color: var(--text-main-light);
+}
+.light .ts-dropdown .option:hover,
+.light .ts-dropdown .option.ts-selected {
+  background-color: #e5e7eb; /* balanced gray hover */
+  color: var(--text-main-light);
+}
+
+/* Dark theme */
+.dark .ts-control {
+  background-color: var(--primary-bg-dark);
+  color: var(--text-main-dark);
+  border: 1px solid var(--accent-1);
+}
+.dark .ts-dropdown {
+  background-color: var(--primary-bg-dark);
+  color: var(--text-main-dark);
+  border: 1px solid var(--accent-1);
+}
+/* Selected items (tags) */
+.dark .ts-control .item {
+  background-color: var(--bubble-bg-dark); /* proper dark chip background */
+  color: #ffffff;                          /* white text for clarity */
+  border-radius: 4px;
+  padding: 2px 6px;
+  margin: 2px;
+}
+/* Dropdown options */
+.dark .ts-dropdown .option {
+  background-color: var(--primary-bg-dark);
+  color: var(--text-main-dark);
+}
+.dark .ts-dropdown .option:hover,
+.dark .ts-dropdown .option.ts-selected {
+  background-color: #4b5563; /* balanced gray hover */
+  color: #ffffff;
+}
+</style>
+
 
 <script>
-document.addEventListener("DOMContentLoaded", function() {
-  const element = document.getElementById("node_type");
-  new Choices(element, {
-    removeItemButton: true,
-    placeholderValue: "Select node types...",
-    searchEnabled: true,
-    shouldSort: false
+document.addEventListener("DOMContentLoaded", () => {
+  // Check localStorage for darkMode flag
+  const isDark = localStorage.getItem("darkMode") === "true";
+
+  // Apply class to <html> or <body>
+  if (isDark) {
+    document.documentElement.classList.add("dark");
+    document.documentElement.classList.remove("light");
+  } else {
+    document.documentElement.classList.add("light");
+    document.documentElement.classList.remove("dark");
+  }
+
+  // Initialize Tom Select
+  new TomSelect("#node_type", {
+    plugins: ['remove_button'],
+    placeholder: "Select node types..."
   });
 });
 </script>
+
 <style>
   /* Tooltip styles unchanged */
   #tooltip {
@@ -144,18 +235,6 @@ document.addEventListener("DOMContentLoaded", function() {
 <script src="https://unpkg.com/graphology@0.25.0/dist/graphology.umd.min.js"></script>
 <script src="https://unpkg.com/sigma@2.4.0/build/sigma.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
-<script>
-  document.addEventListener('alpine:init', () => {
-    Alpine.store('graphColors', {
-      colors: {
-        Event: '#1f77b4',
-        Company: '#ff7f0e',
-        Account: '#2ca02c',
-        Location: '#d62728'
-      }
-    });
-  });
-</script>
 <script>
   // Pass node_types from Django into JS as an array
   const nodeTypes = [
