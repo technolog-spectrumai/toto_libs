@@ -11,16 +11,9 @@ class Neo4jHelper:
     """
 
     def __init__(self):
-        # Construct URI from host/port only
-        uri = f"bolt://{settings.NEO4J_HOST}:{settings.NEO4J_PORT}"
-        user = settings.NEO4J_USER
-        password = settings.NEO4J_PASSWORD
 
         # Driver requires auth tuple
-        self.driver = GraphDatabase.driver(uri, auth=(user, password))
-
-        # Optionally also configure neomodel (so neomodel ORM works)
-        config.DATABASE_URL = f"bolt://{user}:{password}@{settings.NEO4J_HOST}:{settings.NEO4J_PORT}"
+        self.driver = GraphDatabase.driver(settings.NEOMODEL_NEO4J_BOLT_URL)
 
     def flush_db_batch(self, batch_size: int = 1000, max_nodes: int | None = None) -> int:
         """

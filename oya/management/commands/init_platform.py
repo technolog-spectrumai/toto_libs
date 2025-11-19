@@ -43,7 +43,7 @@ class Command(BaseCommand):
 
         if options.get('reset'):
             self.clear_db()
-            call_command("clean_graphs")
+            #call_command("clean_graphs")
 
         self.stdout.write(self.style.NOTICE("Running migrations..."))
         call_command("makemigrations")
