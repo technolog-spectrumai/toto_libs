@@ -7,6 +7,6 @@ app_name = "ravioli"
 
 urlpatterns = [
     # Graph Explorer (requires login)
-    path("graph/", login_required(views.graph_explorer), name="graph_explorer"),
+    path("graph/", login_required(views.graph_explorer), name="graph"),
 ]
 
