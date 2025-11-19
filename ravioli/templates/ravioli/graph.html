@@ -19,364 +19,52 @@
       <h1 class="text-2xl font-bold mb-2">{{title}}</h1>
     </section>
 
-<section
-  :class="darkMode
-    ? 'bg-primary-bg-dark text-text-main-dark border border-accent-1'
-    : 'bg-primary-bg-light text-text-main-light border border-accent-2'"
-  class="p-4 sm:p-6 rounded-lg">
-
-  <header class="space-y-4 text-center sm:text-left">
-    <h1 class="text-lg sm:text-xl font-extrabold">Filter by Node Type</h1>
-
-    <!-- Node type select -->
-    <div class="flex items-center gap-2 justify-center sm:justify-start">
-      <label for="node_type"
-             class="text-xs sm:text-sm font-medium whitespace-nowrap"
-             :class="darkMode ? 'text-text-main-dark' : 'text-text-main-light'">
-        Choose
-      </label>
-
-    <select name="node_type" id="node_type" multiple
-            class="px-2 py-1 sm:px-3 sm:py-2 rounded border text-sm transition-colors duration-300"
-            :class="darkMode
-              ? 'bg-primary-bg-dark text-text-main-dark border-gray-600'
-              : 'bg-white text-text-main-light border-gray-300'">
-      <option value=""
-              :class="darkMode
-                ? 'bg-primary-bg-dark text-text-main-dark'
-                : 'bg-white text-text-main-light'">
-        All Types
-      </option>
-      {% for nt in node_types %}
-        <option value="{{ nt }}"
-                :class="darkMode
-                  ? 'bg-primary-bg-dark text-text-main-dark'
-                  : 'bg-white text-text-main-light'"
-                {% if nt == selected_node_type %}
-                  selected
-                {% elif not selected_node_type and forloop.first %}
-                  selected
-                {% endif %}>
-          {{ nt }}
-        </option>
-      {% endfor %}
-    </select>
-
-    </div>
-
-    <!-- Refresh button on its own line -->
-    <div class="flex justify-center sm:justify-start">
-        <button type="button"
-                onclick="loadGraph()"
-                class="px-3 py-1 rounded border transition-colors duration-300 flex items-center gap-2"
-                :class="darkMode
-                  ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
-                  : 'bg-primary-bg-light text-text-main-light border-accent-2'">
-          <i class="fa-solid fa-rotate-right"></i>
-          <span>Refresh</span>
-        </button>
-    </div>
-  </header>
-</section>
-
-
-    <!-- 📊 Graph Visualization -->
-    <section class="p-6 rounded-lg border transition-colors duration-300"
-      :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
-                       : 'bg-primary-bg-light text-text-main-light border-accent-2'">
-      <h2 class="text-lg font-semibold mb-4">Graph View</h2>
-      <div id="graph-container"
-           class="w-full h-[600px] rounded border relative transition-colors duration-300"
-           :class="darkMode ? 'bg-primary-bg-dark border-accent-1'
-                            : 'bg-primary-bg-light border-accent-2'">
-        <!-- Spinner -->
-        <div id="spinner" class="absolute inset-0 flex items-center justify-center">
-          <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2"
-               :class="darkMode ? 'border-white' : 'border-gray-700'"></div>
-        </div>
-      </div>
+    <!-- Sigma Graph Container -->
+    <section class="p-6 rounded-lg border">
+      <h2 class="text-lg font-bold mb-4">Graph Visualization</h2>
+      <div id="sigma-container" style="width:100%; height:600px; border:1px solid #ccc;"></div>
     </section>
-
-    <section class="p-6 rounded-lg border transition-colors duration-300"
-      :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
-                       : 'bg-primary-bg-light text-text-main-light border-accent-2'">
-      <h2 class="text-lg font-semibold mb-4">Selected Node Details</h2>
-      <pre id="node-details"
-           class="text-xs sm:text-sm whitespace-pre-wrap overflow-auto max-h-64"></pre>
-    </section>
-
-    <!-- 🔗 Back Link -->
-    <div class="text-center">
-      <a href="{% url 'nest:dashboard' %}"
-         class="underline transition-colors duration-300"
-         :class="darkMode ? 'text-blue-400' : 'text-blue-600'">
-        ← Back to Dashboard
-      </a>
-    </div>
 
   </div>
-
 </div>
-<link href="https://cdn.jsdelivr.net/npm/tom-select/dist/css/tom-select.css" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/tom-select/dist/js/tom-select.complete.min.js"></script>
 
-<style>
-:root {
-  {% for name, value in theme.theme.colors.items %}
-    --{{ name }}: {{ value }};
-  {% endfor %}
-}
-
-/* Tom Select dark/light overrides */
-
-/* Light theme */
-.light .ts-control {
-  background-color: var(--primary-bg-light);
-  color: var(--text-main-light);
-  border: 1px solid var(--accent-2);
-}
-.light .ts-dropdown {
-  background-color: var(--primary-bg-light);
-  color: var(--text-main-light);
-  border: 1px solid var(--accent-2);
-}
-/* Selected items (tags) */
-.light .ts-control .item {
-  background-color: var(--bubble-bg-light);
-  color: var(--text-main-light);
-  border-radius: 4px;
-  padding: 2px 6px;
-  margin: 2px;
-}
-/* Dropdown options */
-.light .ts-dropdown .option {
-  background-color: var(--primary-bg-light);
-  color: var(--text-main-light);
-}
-.light .ts-dropdown .option:hover,
-.light .ts-dropdown .option.ts-selected {
-  background-color: #e5e7eb; /* balanced gray hover */
-  color: var(--text-main-light);
-}
-
-/* Dark theme */
-.dark .ts-control {
-  background-color: var(--primary-bg-dark);
-  color: var(--text-main-dark);
-  border: 1px solid var(--accent-1);
-}
-.dark .ts-dropdown {
-  background-color: var(--primary-bg-dark);
-  color: var(--text-main-dark);
-  border: 1px solid var(--accent-1);
-}
-/* Selected items (tags) */
-.dark .ts-control .item {
-  background-color: var(--bubble-bg-dark); /* proper dark chip background */
-  color: #ffffff;                          /* white text for clarity */
-  border-radius: 4px;
-  padding: 2px 6px;
-  margin: 2px;
-}
-/* Dropdown options */
-.dark .ts-dropdown .option {
-  background-color: var(--primary-bg-dark);
-  color: var(--text-main-dark);
-}
-.dark .ts-dropdown .option:hover,
-.dark .ts-dropdown .option.ts-selected {
-  background-color: #4b5563; /* balanced gray hover */
-  color: #ffffff;
-}
-</style>
-
-
-<script>
-document.addEventListener("DOMContentLoaded", () => {
-  // Check localStorage for darkMode flag
-  const isDark = localStorage.getItem("darkMode") === "true";
-
-  // Apply class to <html> or <body>
-  if (isDark) {
-    document.documentElement.classList.add("dark");
-    document.documentElement.classList.remove("light");
-  } else {
-    document.documentElement.classList.add("light");
-    document.documentElement.classList.remove("dark");
-  }
-
-  // Initialize Tom Select
-  new TomSelect("#node_type", {
-    plugins: ['remove_button'],
-    placeholder: "Select node types..."
-  });
-});
-</script>
-
-<style>
-  /* Tooltip styles unchanged */
-  #tooltip {
-    position: absolute;
-    padding: 6px 10px;
-    border-radius: 4px;
-    font-size: 12px;
-    pointer-events: none;
-    display: none;
-    z-index: 1000;
-    max-width: 600px;
-    white-space: pre-wrap;
-    transition: background 0.3s, color 0.3s;
-  }
-  #tooltip.dark {
-    background: rgba(20, 20, 20, 0.95);
-    color: #f0f0f0;
-    border: 1px solid #444;
-  }
-  #tooltip.light {
-    background: rgba(240, 240, 240, 0.95);
-    color: #222;
-    border: 1px solid #ccc;
-  }
-</style>
-
-<div id="tooltip" :class="darkMode ? 'dark' : 'light'"></div>
-
+<!-- Sigma.js -->
 <script src="https://unpkg.com/graphology@0.25.0/dist/graphology.umd.min.js"></script>
 <script src="https://unpkg.com/sigma@2.4.0/build/sigma.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+
 <script>
-  // Pass node_types from Django into JS as an array
-  const nodeTypes = [
-    {% for nt in node_types %}
-      "{{ nt }}"{% if not forloop.last %},{% endif %}
-    {% endfor %}
-  ];
+  document.addEventListener("DOMContentLoaded", function() {
+    // Elements passed from Django context (nodes + edges from Cypher query)
+    const elements = {{ cypher_results_json|safe }};
+
+    // Build a Graphology graph from elements
+    const graph = new graphology.Graph();
+
+    elements.forEach(el => {
+      if (el.data.source && el.data.target) {
+        // edge
+        if (!graph.hasNode(el.data.source)) {
+          graph.addNode(el.data.source, { label: el.data.source, x: Math.random(), y: Math.random(), size: 5, color: '#0074D9' });
+        }
+        if (!graph.hasNode(el.data.target)) {
+          graph.addNode(el.data.target, { label: el.data.target, x: Math.random(), y: Math.random(), size: 5, color: '#FF4136' });
+        }
+        graph.addEdge(el.data.source, el.data.target, { label: el.data.type, size: 1, color: '#aaa' });
+      } else {
+        // node
+        if (!graph.hasNode(el.data.id)) {
+          graph.addNode(el.data.id, { label: el.data.label, x: Math.random(), y: Math.random(), size: 8, color: '#2ECC40' });
+        }
+      }
+    });
+
+    // Initialize Sigma renderer
+    const container = document.getElementById("sigma-container");
+    const renderer = new Sigma(graph, container);
+
+    // Fit view to graph
+    renderer.getCamera().animatedZoom({ duration: 600, factor: 0.8 });
+  });
 </script>
-<script>
-const darkPalette = [
-  "#ff00ff", "#00ffff", "#ff0090", "#00ff9f", "#ffea00",
-  "#ff5500", "#9d00ff", "#00ffea", "#ff2222", "#33ff00",
-  "#ff66cc", "#00aaff", "#ff8800", "#cc00ff", "#00ff66"
-];
-const lightPalette = [
-  "#d100d1", "#008b8b", "#ff3399", "#009966", "#ffcc00",
-  "#ff6600", "#6600cc", "#00cccc", "#cc0000", "#339933",
-  "#ff99cc", "#0066cc", "#ff9933", "#9933ff", "#33cc33"
-];
-
-function getTypeColors()  {
-    const darkMode = localStorage.getItem("darkMode") === "true";
-    const palette = darkMode ? darkPalette : lightPalette;
-
-    let typeColors = {};
-    nodeTypes.forEach((type, i) => {
-      typeColors[type] = palette[i % palette.length];
-    });
-    typeColors.default = darkMode ? "#ffffff" : "#000000";
-    return typeColors;
-}
-</script>
-<script>
-  const g = new graphology.Graph();
-  const container = document.getElementById("graph-container");
-  const renderer = new Sigma(g, container);
-  const spinner = document.getElementById("spinner");
-
-  async function loadGraph() {
-
-    typeColors = getTypeColors();
-
-    g.clear();
-    spinner.style.display = "flex"; // show spinner
-    const nodeTypeSelect = document.getElementById("node_type");
-
-    // Collect all selected values into an array
-    const nodeTypes = nodeTypeSelect
-      ? Array.from(nodeTypeSelect.selectedOptions).map(opt => opt.value)
-      : [];
-    const url = new URL("{% url 'ravioli:graph_chunk' %}", window.location.origin);
-      url.searchParams.set("offset", 0);
-      url.searchParams.set("limit", 5000);
-      url.searchParams.set("hops", 1);
-
-      // If multiple node types selected, join them with commas
-      if (nodeTypes.length > 0) {
-        url.searchParams.set("node_type", nodeTypes.join(","));
-      }
-    const response = await fetch(url, { headers: { "Accept": "application/json" } });
-    const data = await response.json();
-
-    data.nodes.forEach(n => {
-      if (!g.hasNode(n.id)) {
-        const nodeType = n.attrs?.type || n.label;
-        const color = typeColors[nodeType] || typeColors.default;
-        g.addNode(n.id, {
-          label: n.label,
-          x: n.x,
-          y: n.y,
-          size: n.size,
-          color: color || "#1f77b4",
-          attrs: n.attrs || {},
-          glow: false
-        });
-      }
-    });
-
-    data.edges.forEach(e => {
-      if (!g.hasEdge(e.id)) {
-        g.addEdge(e.source, e.target, {
-          label: e.label,
-          color: e.color || "#999"
-        });
-      }
-    });
-
-    spinner.style.display = "none"; // hide spinner
-  }
-
-    renderer.setSetting("nodeReducer", (node, data) => {
-      const res = { ...data };
-      if (data.glow) {
-        res.size = data.size * 1.5;        // make it bigger
-        // keep original fill color
-        res.color = data.color;
-        // add a contrasting border to simulate glow
-        res.borderColor = "#FFD700";       // gold border
-        res.borderSize = 3;                // thicker border
-      }
-      return res;
-    });
-
-
-  loadGraph();
-
-let selectedNode = null;
-
-renderer.on("clickNode", ({ node }) => {
-  // Clear previous selection glow
-  if (selectedNode) {
-    g.setNodeAttribute(selectedNode, "glow", false);
-  }
-
-  selectedNode = node;
-
-  // Mark this node as glowing
-  g.setNodeAttribute(node, "glow", true);
-
-  // Update details block
-  const attrs = g.getNodeAttributes(node);
-  const yamlString = jsyaml.dump(attrs.attrs || attrs, { indent: 2, lineWidth: -1 });
-  document.getElementById("node-details").textContent = yamlString;
-});
-
-renderer.on("clickStage", () => {
-  if (selectedNode) {
-    g.setNodeAttribute(selectedNode, "glow", false);
-    selectedNode = null;
-  }
-  document.getElementById("node-details").textContent = "";
-});
-
-</script>
-
 {% endblock %}
