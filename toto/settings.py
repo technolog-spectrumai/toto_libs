@@ -345,16 +345,15 @@ AUDITED_APPS = [
 ]
 
 
-if DEBUG:
-    NEOMODEL_NEO4J_BOLT_URL = "bolt://neo4j:strongpassword123@localhost:7687"
-    NEOMODEL_SIGNALS = True  # optional, if you want Django signals integration
-    config.DATABASE_URL = NEOMODEL_NEO4J_BOLT_URL
-else:
-    NEO4J_HOST = os.getenv("NEO4J_HOST", "neo4j")   # container name or localhost
-    NEO4J_PORT = os.getenv("NEO4J_PORT", "7687")
-    NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
-    NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "strongpassword123")
+NEO4J_HOST = os.getenv("NEO4J_HOST", "localhost" if DEBUG else "neo4j")
+NEO4J_PORT = os.getenv("NEO4J_PORT", "7687")
+NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
+NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "strongpassword123")
 
-    config.DATABASE_URL = f"bolt://{NEO4J_USER}:{NEO4J_PASSWORD}@{NEO4J_HOST}:{NEO4J_PORT}"
+# Homogenized DATABASE_URL
+NEOMODEL_NEO4J_BOLT_URL = f"bolt://{NEO4J_USER}:{NEO4J_PASSWORD}@{NEO4J_HOST}:{NEO4J_PORT}"
+config.DATABASE_URL = NEOMODEL_NEO4J_BOLT_URL
 
+# Optional signals
+NEOMODEL_SIGNALS = True
 NEO4J_CHECK_ALIVE = DEBUG
