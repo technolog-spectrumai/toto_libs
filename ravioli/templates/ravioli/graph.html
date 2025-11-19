@@ -37,27 +37,29 @@
 <!-- Modal -->
 <div id="color-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
   <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg w-[700px] max-h-[80vh] overflow-y-auto">
-    <h3 class="text-lg font-bold mb-4">Customize Colors</h3>
+    <h3 class="text-lg font-bold mb-4">Customize Styles</h3>
 
-    <!-- Node Colors Table -->
+    <!-- Node Colors & Sizes Table -->
     <h4 class="font-semibold mb-2">Node Types</h4>
     <table class="w-full border-collapse mb-6">
       <thead>
         <tr>
           <th class="border px-2 py-1 text-left">Node Type</th>
           <th class="border px-2 py-1 text-left">Color</th>
+          <th class="border px-2 py-1 text-left">Size</th>
         </tr>
       </thead>
       <tbody id="node-type-table"></tbody>
     </table>
 
-    <!-- Edge Colors Table -->
+    <!-- Edge Colors & Widths Table -->
     <h4 class="font-semibold mb-2">Edge Types</h4>
     <table class="w-full border-collapse">
       <thead>
         <tr>
           <th class="border px-2 py-1 text-left">Edge Type</th>
           <th class="border px-2 py-1 text-left">Color</th>
+          <th class="border px-2 py-1 text-left">Width</th>
         </tr>
       </thead>
       <tbody id="edge-type-table"></tbody>
@@ -69,6 +71,7 @@
     </div>
   </div>
 </div>
+
 
 <script>
      function jetColor(t) {
@@ -248,6 +251,9 @@ function adjustColor([r, g, b], darkMode, saturationFactor = 1) {
         <td class="border px-2 py-1">
           <input type="color" value="${color}" data-type="${type}" class="node-color-picker w-10 h-10 border rounded">
         </td>
+        <td class="border px-2 py-1">
+          <input type="number" value="20" min="5" max="100" data-type="${type}" class="node-size-input w-16 border rounded">
+        </td>
       `;
       nodeTable.appendChild(row);
     });
@@ -263,6 +269,9 @@ function adjustColor([r, g, b], darkMode, saturationFactor = 1) {
         <td class="border px-2 py-1">
           <input type="color" value="${color}" data-type="${type}" class="edge-color-picker w-10 h-10 border rounded">
         </td>
+        <td class="border px-2 py-1">
+          <input type="number" value="2" min="1" max="10" data-type="${type}" class="edge-size-input w-16 border rounded">
+        </td>
       `;
       edgeTable.appendChild(row);
     });
@@ -276,23 +285,36 @@ function adjustColor([r, g, b], darkMode, saturationFactor = 1) {
       modal.classList.add("hidden");
     });
 
-    // Apply all colors
     document.getElementById("apply-color-btn").addEventListener("click", () => {
+      // Nodes
       document.querySelectorAll(".node-color-picker").forEach(input => {
         const type = input.dataset.type;
         const chosenColor = input.value;
-        cy.nodes().filter(n => n.data("type") === type).style("background-color", chosenColor);
+        const sizeInput = document.querySelector(`.node-size-input[data-type="${type}"]`);
+        const chosenSize = sizeInput ? parseInt(sizeInput.value, 10) : 20;
+        cy.nodes().filter(n => n.data("type") === type).style({
+          "background-color": chosenColor,
+          "width": chosenSize,
+          "height": chosenSize
+        });
       });
+
+      // Edges
       document.querySelectorAll(".edge-color-picker").forEach(input => {
         const type = input.dataset.type;
         const chosenColor = input.value;
+        const sizeInput = document.querySelector(`.edge-size-input[data-type="${type}"]`);
+        const chosenWidth = sizeInput ? parseInt(sizeInput.value, 10) : 2;
         cy.edges().filter(e => e.data("type") === type).style({
           "line-color": chosenColor,
-          "target-arrow-color": chosenColor
+          "target-arrow-color": chosenColor,
+          "width": chosenWidth
         });
       });
+
       modal.classList.add("hidden");
     });
+    
   });
 </script>
 
