@@ -345,8 +345,7 @@ function adjustColor([r, g, b], darkMode, saturationFactor = 1) {
           "width": chosenSize,
           "height": chosenSize
         });
-        const currentData = n.data();
-        n.data({ ...currentData, label: chosenLabel });
+        n.data("label", chosenLabel);
       });
     });
 
@@ -364,8 +363,7 @@ function adjustColor([r, g, b], darkMode, saturationFactor = 1) {
           "target-arrow-color": chosenColor,
           "width": chosenWidth
         });
-        const currentData = e.data();
-        e.data({ ...currentData, label: chosenLabel });
+        e.data("label", chosenLabel);
       });
     });
 
@@ -395,7 +393,6 @@ function adjustColor([r, g, b], darkMode, saturationFactor = 1) {
             "width": chosenSize,
             "height": chosenSize
           });
-          n.data({ ...currentData, label: chosenLabel });
           n.data("label", chosenLabel);
         });
       });
@@ -415,8 +412,7 @@ function adjustColor([r, g, b], darkMode, saturationFactor = 1) {
             "target-arrow-color": chosenColor,
             "width": chosenWidth
           });
-          const currentData = e.data();
-          e.data({ ...currentData, label: chosenLabel });
+          e.data("label", chosenLabel);
         });
       });
 
