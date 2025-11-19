@@ -70,18 +70,104 @@
   </div>
 </div>
 
+<script>
+     function jetColor(t) {
+      const r = Math.floor(255 * Math.min(Math.max(1.5 - Math.abs(4*t - 3), 0), 1));
+      const g = Math.floor(255 * Math.min(Math.max(1.5 - Math.abs(4*t - 2), 0), 1));
+      const b = Math.floor(255 * Math.min(Math.max(1.5 - Math.abs(4*t - 1), 0), 1));
+      return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+    }
+</script>
+
 <!-- Cytoscape.js -->
 <script src="https://unpkg.com/cytoscape@3.28.0/dist/cytoscape.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+<script>
 
+
+// Convert RGB to HSL
+function rgbToHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h, s, l = (max + min) / 2;
+
+  if (max === min) {
+    h = s = 0; // achromatic
+  } else {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch(max) {
+      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+      case g: h = (b - r) / d + 2; break;
+      case b: h = (r - g) / d + 4; break;
+    }
+    h /= 6;
+  }
+  return [h, s, l];
+}
+
+// Convert HSL back to hex
+function hslToHex(h, s, l) {
+  function hue2rgb(p, q, t) {
+    if(t < 0) t += 1;
+    if(t > 1) t -= 1;
+    if(t < 1/6) return p + (q - p) * 6 * t;
+    if(t < 1/2) return q;
+    if(t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+    return p;
+  }
+  let r, g, b;
+  if(s === 0){
+    r = g = b = l; // achromatic
+  } else {
+    const q = l < 0.5 ? l * (1 + s) : l + s - l*s;
+    const p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1/3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1/3);
+  }
+  return "#" + [r, g, b].map(x => {
+    const hex = Math.round(x * 255).toString(16);
+    return hex.length === 1 ? "0" + hex : hex;
+  }).join("");
+}
+
+function jetColor(t) {
+  const r = Math.floor(255 * Math.min(Math.max(1.5 - Math.abs(4*t - 3), 0), 1));
+  const g = Math.floor(255 * Math.min(Math.max(1.5 - Math.abs(4*t - 2), 0), 1));
+  const b = Math.floor(255 * Math.min(Math.max(1.5 - Math.abs(4*t - 1), 0), 1));
+  return [r, g, b];
+}
+
+function adjustColor([r, g, b], darkMode, saturationFactor = 1) {
+  if (!darkMode) {
+    // lighten → blend with white
+    r = Math.floor((r + 255) / 2);
+    g = Math.floor((g + 255) / 2);
+    b = Math.floor((b + 255) / 2);
+  } else {
+    // darken → blend with black (smoked)
+    r = Math.floor(r * 0.6);
+    g = Math.floor(g * 0.6);
+    b = Math.floor(b * 0.6);
+  }
+
+  // Convert to HSL and adjust saturation
+  let [h, s, l] = rgbToHsl(r, g, b);
+  s *= saturationFactor;
+  s = Math.max(0, Math.min(1, s)); // clamp
+
+  return hslToHex(h, s, l);
+}
+
+
+</script>
 <script>
   document.addEventListener("DOMContentLoaded", function() {
     const darkMode = localStorage.getItem("darkMode") === "true";
     const themeColors = {{ theme.theme.colors|safe }};
     const elements = {{ cypher_results_json|safe }};
 
-    const nodeColor = darkMode ? themeColors["accent-dark"] : themeColors["accent-light"];
-    const edgeColor = darkMode ? themeColors["text-main-dark"] : themeColors["text-main-light"];
     const backgroundColor = darkMode ? themeColors["primary-bg-dark"] : themeColors["primary-bg-light"];
 
     const cyElements = [];
@@ -108,6 +194,7 @@
       if (el.data.label) nodeTypes.add(el.data.label);
     });
 
+
     const cy = cytoscape({
       container: document.getElementById('cy-container'),
       elements: cyElements,
@@ -116,13 +203,13 @@
           selector: 'node',
           style: {
             'label': 'data(label)',
-            'background-color': nodeColor,
+            'background-color': '#888',
             'color': darkMode ? themeColors["text-main-dark"] : themeColors["text-main-light"],
             'font-size': '8px',
             'text-valign': 'center',
             'text-halign': 'center',
-            'width': 'mapData(degree, 0, 5, 10, 30)',
-            'height': 'mapData(degree, 0, 5, 10, 30)',
+            'width': 'mapData(degree, 0, 3, 5, 7)',
+            'height': 'mapData(degree, 0, 3, 5, 7)',
           }
         },
         {
@@ -133,8 +220,8 @@
             'font-size': '6px',
             'curve-style': 'bezier',
             'target-arrow-shape': 'triangle',
-            'line-color': edgeColor,
-            'target-arrow-color': edgeColor
+            'line-color': '#aaa',
+            'target-arrow-color': '#aaa'
           }
         }
       ],
@@ -142,35 +229,39 @@
         name: 'cose',
         animate: true,
         padding: 50,
-        nodeRepulsion: 800,
-        idealEdgeLength: 20
+        nodeRepulsion: 2000,
+        idealEdgeLength: 50
       },
       wheelSensitivity: 0.2
     });
 
     document.getElementById("cy-container").style.backgroundColor = backgroundColor;
 
-    // Populate node type table
+    // Populate node type table with Jet colors
     const nodeTable = document.getElementById("node-type-table");
-    nodeTypes.forEach(type => {
+    Array.from(nodeTypes).forEach((type, i) => {
+      const base = jetColor(i / Math.max(1, nodeTypes.size - 1));
+      const color = adjustColor(base, darkMode);
       const row = document.createElement("tr");
       row.innerHTML = `
         <td class="border px-2 py-1">${type}</td>
         <td class="border px-2 py-1">
-          <input type="color" value="#${Math.floor(Math.random()*16777215).toString(16)}" data-type="${type}" class="node-color-picker w-10 h-10 border rounded">
+          <input type="color" value="${color}" data-type="${type}" class="node-color-picker w-10 h-10 border rounded">
         </td>
       `;
       nodeTable.appendChild(row);
     });
 
-    // Populate edge type table
+    // Populate edge type table with Jet colors
     const edgeTable = document.getElementById("edge-type-table");
-    edgeTypes.forEach(type => {
+    Array.from(edgeTypes).forEach((type, i) => {
+      const base = jetColor(i / Math.max(1, edgeTypes.size - 1));
+      const color = adjustColor(base, darkMode, 0.5);
       const row = document.createElement("tr");
       row.innerHTML = `
         <td class="border px-2 py-1">${type}</td>
         <td class="border px-2 py-1">
-          <input type="color" value="#${Math.floor(Math.random()*16777215).toString(16)}" data-type="${type}" class="edge-color-picker w-10 h-10 border rounded">
+          <input type="color" value="${color}" data-type="${type}" class="edge-color-picker w-10 h-10 border rounded">
         </td>
       `;
       edgeTable.appendChild(row);
@@ -187,13 +278,11 @@
 
     // Apply all colors
     document.getElementById("apply-color-btn").addEventListener("click", () => {
-      // Nodes
       document.querySelectorAll(".node-color-picker").forEach(input => {
         const type = input.dataset.type;
         const chosenColor = input.value;
         cy.nodes().filter(n => n.data("type") === type).style("background-color", chosenColor);
       });
-      // Edges
       document.querySelectorAll(".edge-color-picker").forEach(input => {
         const type = input.dataset.type;
         const chosenColor = input.value;
@@ -206,4 +295,5 @@
     });
   });
 </script>
+
 {% endblock %}
