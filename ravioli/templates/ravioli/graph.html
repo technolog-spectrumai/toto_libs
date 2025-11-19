@@ -25,7 +25,7 @@
 
       <!-- 🎨 Open Modal Button -->
       <button id="open-menu-btn" class="px-3 py-1 bg-blue-500 text-white rounded">
-        Customize Colors
+        Customize
       </button>
 
       <div id="cy-container" style="width:100%; height:600px; border:1px solid #ccc;"></div>
@@ -37,7 +37,7 @@
 <!-- Modal -->
 <div id="color-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
   <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg w-[700px] max-h-[80vh] overflow-y-auto">
-    <h3 class="text-lg font-bold mb-4">Customize Styles</h3>
+    <h3 class="text-lg font-bold mb-4">Customization</h3>
 
     <!-- Node Colors & Sizes Table -->
     <h4 class="font-semibold mb-2">Node Types</h4>
@@ -282,6 +282,43 @@ function adjustColor([r, g, b], darkMode, saturationFactor = 1) {
         </td>
       `;
       edgeTable.appendChild(row);
+    });
+
+    // Pre‑apply initial styles from the modal inputs
+    document.querySelectorAll(".node-color-picker").forEach(input => {
+      const type = input.dataset.type;
+      const chosenColor = input.value;
+      const sizeInput = document.querySelector(`.node-size-input[data-type="${type}"]`);
+      const chosenSize = sizeInput ? parseInt(sizeInput.value, 10) : 20;
+      const labelInput = document.querySelector(`.node-label-input[data-type="${type}"]`);
+      const chosenLabel = labelInput ? labelInput.value : type;
+
+      cy.nodes().filter(n => n.data("type") === type).forEach(n => {
+        n.style({
+          "background-color": chosenColor,
+          "width": chosenSize,
+          "height": chosenSize
+        });
+        n.data("label", chosenLabel);
+      });
+    });
+
+    document.querySelectorAll(".edge-color-picker").forEach(input => {
+      const type = input.dataset.type;
+      const chosenColor = input.value;
+      const sizeInput = document.querySelector(`.edge-size-input[data-type="${type}"]`);
+      const chosenWidth = sizeInput ? parseInt(sizeInput.value, 10) : 2;
+      const labelInput = document.querySelector(`.edge-label-input[data-type="${type}"]`);
+      const chosenLabel = labelInput ? labelInput.value : type;
+
+      cy.edges().filter(e => e.data("type") === type).forEach(e => {
+        e.style({
+          "line-color": chosenColor,
+          "target-arrow-color": chosenColor,
+          "width": chosenWidth
+        });
+        e.data("label", chosenLabel);
+      });
     });
 
 
