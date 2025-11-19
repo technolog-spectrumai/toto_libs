@@ -19,18 +19,17 @@
       <h1 class="text-2xl font-bold mb-2">{{title}}</h1>
     </section>
 
-    <!-- Sigma Graph Container -->
+    <!-- Cytoscape Graph Container -->
     <section class="p-6 rounded-lg border">
       <h2 class="text-lg font-bold mb-4">Graph Visualization</h2>
-      <div id="sigma-container" style="width:100%; height:600px; border:1px solid #ccc;"></div>
+      <div id="cy-container" style="width:100%; height:600px; border:1px solid #ccc;"></div>
     </section>
 
   </div>
 </div>
 
-<!-- Sigma.js -->
-<script src="https://unpkg.com/graphology@0.25.0/dist/graphology.umd.min.js"></script>
-<script src="https://unpkg.com/sigma@2.4.0/build/sigma.min.js"></script>
+<!-- Cytoscape.js -->
+<script src="https://unpkg.com/cytoscape@3.28.0/dist/cytoscape.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
 
 <script>
@@ -44,55 +43,95 @@
     const edgeColor = darkMode ? themeColors["text-main-dark"] : themeColors["text-main-light"];
     const backgroundColor = darkMode ? themeColors["primary-bg-dark"] : themeColors["primary-bg-light"];
 
-    // Build graph
-    const graph = new graphology.Graph();
+    // Prepare Cytoscape elements
+    const cyElements = [];
     elements.forEach(el => {
-      console.log(el);
-
       if (el.data.source && el.data.target) {
-        if (!graph.hasNode(el.data.source)) {
-          graph.addNode(el.data.source, {
-            label: el.data.source,
-            size: 5,
-            color: nodeColor,
-            x: Math.random(),   // add coordinates
-            y: Math.random()
-          });
-        }
-        if (!graph.hasNode(el.data.target)) {
-          graph.addNode(el.data.target, {
-            label: el.data.target,
-            size: 5,
-            color: nodeColor,
-            x: Math.random(),
-            y: Math.random()
-          });
-        }
-        graph.addEdge(el.data.source, el.data.target, {
-          label: el.data.type,
-          size: 1,
-          color: edgeColor
+        cyElements.push({
+          data: {
+            id: el.data.source
+          },
+          style: {
+            'background-color': nodeColor,
+            'label': el.data.source
+          }
+        });
+        cyElements.push({
+          data: {
+            id: el.data.target
+          },
+          style: {
+            'background-color': nodeColor,
+            'label': el.data.target
+          }
+        });
+        cyElements.push({
+          data: {
+            id: el.data.source + "-" + el.data.target,
+            source: el.data.source,
+            target: el.data.target,
+            label: el.data.type
+          },
+          style: {
+            'line-color': edgeColor,
+            'width': 1,
+            'label': el.data.type
+          }
         });
       } else {
-        if (!graph.hasNode(el.data.id)) {
-          graph.addNode(el.data.id, {
-            label: el.data.label,
-            size: 8,
-            color: nodeColor,
-            x: Math.random(),
-            y: Math.random()
-          });
-        }
+        cyElements.push({
+          data: {
+            id: el.data.id,
+            label: el.data.label
+          },
+          style: {
+            'background-color': nodeColor,
+            'label': el.data.label
+          }
+        });
       }
     });
 
+    // Initialize Cytoscape
+    const cy = cytoscape({
+      container: document.getElementById('cy-container'),
+      elements: cyElements,
+      style: [
+        {
+          selector: 'node',
+          style: {
+            'label': 'data(label)',
+            'color': darkMode ? themeColors["text-main-dark"] : themeColors["text-main-light"],
+            'font-size': '8px',
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'width': 'mapData(degree, 0, 5, 10, 30)',
+            'height': 'mapData(degree, 0, 5, 10, 30)',
+          }
+        },
+        {
+          selector: 'edge',
+          style: {
+            'label': 'data(label)',
+            'color': darkMode ? themeColors["text-main-dark"] : themeColors["text-main-light"],
+            'font-size': '6px',
+            'curve-style': 'bezier',
+            'target-arrow-shape': 'triangle'
+          }
+        }
+      ],
+      layout: {
+        name: 'cose', // force-directed layout
+        animate: true,
+        padding: 50,         // extra space around graph
+        nodeRepulsion: 800, // push nodes apart
+        idealEdgeLength: 20 // longer edges
+      },
+      wheelSensitivity: 0.2
+    });
 
-    // Initialize Sigma renderer with background color
-    const container = document.getElementById("sigma-container");
-    container.style.backgroundColor = backgroundColor;
-
-    const renderer = new Sigma(graph, container);
-    renderer.getCamera().animatedZoom({ duration: 600, factor: 0.8 });
+    // Set background color
+    document.getElementById("cy-container").style.backgroundColor = backgroundColor;
   });
 </script>
 {% endblock %}
