@@ -172,7 +172,7 @@ function adjustColor([r, g, b], darkMode, saturationFactor = 1) {
     const darkMode = localStorage.getItem("darkMode") === "true";
     const themeColors = {{ theme.theme.colors|safe }};
     const elements = {{ cypher_results_json|safe }};
-
+    console.log(elements);
     const backgroundColor = darkMode ? themeColors["primary-bg-dark"] : themeColors["primary-bg-light"];
 
     const cyElements = [];
@@ -180,6 +180,7 @@ function adjustColor([r, g, b], darkMode, saturationFactor = 1) {
     const edgeTypes = new Set();
 
     elements.forEach(el => {
+
       if (el.data.source && el.data.target) {
         cyElements.push({ data: { id: el.data.source, label: el.data.source, type: el.data.label || el.data.source } });
         cyElements.push({ data: { id: el.data.target, label: el.data.target, type: el.data.label || el.data.target } });
