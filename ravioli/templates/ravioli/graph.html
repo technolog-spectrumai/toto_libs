@@ -35,35 +35,63 @@
 
 <script>
   document.addEventListener("DOMContentLoaded", function() {
-    // Elements passed from Django context (nodes + edges from Cypher query)
+    const darkMode = localStorage.getItem("darkMode") === "true";
+    const themeColors = {{ theme.theme.colors|safe }};
     const elements = {{ cypher_results_json|safe }};
 
-    // Build a Graphology graph from elements
-    const graph = new graphology.Graph();
+    // Pick colors based on mode
+    const nodeColor = darkMode ? themeColors["accent-dark"] : themeColors["accent-light"];
+    const edgeColor = darkMode ? themeColors["text-main-dark"] : themeColors["text-main-light"];
+    const backgroundColor = darkMode ? themeColors["primary-bg-dark"] : themeColors["primary-bg-light"];
 
+    // Build graph
+    const graph = new graphology.Graph();
     elements.forEach(el => {
+      console.log(el);
+
       if (el.data.source && el.data.target) {
-        // edge
         if (!graph.hasNode(el.data.source)) {
-          graph.addNode(el.data.source, { label: el.data.source, x: Math.random(), y: Math.random(), size: 5, color: '#0074D9' });
+          graph.addNode(el.data.source, {
+            label: el.data.source,
+            size: 5,
+            color: nodeColor,
+            x: Math.random(),   // add coordinates
+            y: Math.random()
+          });
         }
         if (!graph.hasNode(el.data.target)) {
-          graph.addNode(el.data.target, { label: el.data.target, x: Math.random(), y: Math.random(), size: 5, color: '#FF4136' });
+          graph.addNode(el.data.target, {
+            label: el.data.target,
+            size: 5,
+            color: nodeColor,
+            x: Math.random(),
+            y: Math.random()
+          });
         }
-        graph.addEdge(el.data.source, el.data.target, { label: el.data.type, size: 1, color: '#aaa' });
+        graph.addEdge(el.data.source, el.data.target, {
+          label: el.data.type,
+          size: 1,
+          color: edgeColor
+        });
       } else {
-        // node
         if (!graph.hasNode(el.data.id)) {
-          graph.addNode(el.data.id, { label: el.data.label, x: Math.random(), y: Math.random(), size: 8, color: '#2ECC40' });
+          graph.addNode(el.data.id, {
+            label: el.data.label,
+            size: 8,
+            color: nodeColor,
+            x: Math.random(),
+            y: Math.random()
+          });
         }
       }
     });
 
-    // Initialize Sigma renderer
-    const container = document.getElementById("sigma-container");
-    const renderer = new Sigma(graph, container);
 
-    // Fit view to graph
+    // Initialize Sigma renderer with background color
+    const container = document.getElementById("sigma-container");
+    container.style.backgroundColor = backgroundColor;
+
+    const renderer = new Sigma(graph, container);
     renderer.getCamera().animatedZoom({ duration: 600, factor: 0.8 });
   });
 </script>
