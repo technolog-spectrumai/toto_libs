@@ -45,6 +45,7 @@
       <thead>
         <tr>
           <th class="border px-2 py-1 text-left">Node Type</th>
+          <th class="border px-2 py-1 text-left">Label</th>
           <th class="border px-2 py-1 text-left">Color</th>
           <th class="border px-2 py-1 text-left">Size</th>
         </tr>
@@ -58,6 +59,7 @@
       <thead>
         <tr>
           <th class="border px-2 py-1 text-left">Edge Type</th>
+          <th class="border px-2 py-1 text-left">Label</th>
           <th class="border px-2 py-1 text-left">Color</th>
           <th class="border px-2 py-1 text-left">Width</th>
         </tr>
@@ -249,6 +251,9 @@ function adjustColor([r, g, b], darkMode, saturationFactor = 1) {
       row.innerHTML = `
         <td class="border px-2 py-1">${type}</td>
         <td class="border px-2 py-1">
+          <input type="text" value="${type}" data-type="${type}" class="node-label-input w-full border rounded px-1">
+        </td>
+        <td class="border px-2 py-1">
           <input type="color" value="${color}" data-type="${type}" class="node-color-picker w-10 h-10 border rounded">
         </td>
         <td class="border px-2 py-1">
@@ -267,6 +272,9 @@ function adjustColor([r, g, b], darkMode, saturationFactor = 1) {
       row.innerHTML = `
         <td class="border px-2 py-1">${type}</td>
         <td class="border px-2 py-1">
+          <input type="text" value="${type}" data-type="${type}" class="edge-label-input w-full border rounded px-1">
+        </td>
+        <td class="border px-2 py-1">
           <input type="color" value="${color}" data-type="${type}" class="edge-color-picker w-10 h-10 border rounded">
         </td>
         <td class="border px-2 py-1">
@@ -275,6 +283,7 @@ function adjustColor([r, g, b], darkMode, saturationFactor = 1) {
       `;
       edgeTable.appendChild(row);
     });
+
 
     // Modal controls
     const modal = document.getElementById("color-modal");
@@ -292,10 +301,16 @@ function adjustColor([r, g, b], darkMode, saturationFactor = 1) {
         const chosenColor = input.value;
         const sizeInput = document.querySelector(`.node-size-input[data-type="${type}"]`);
         const chosenSize = sizeInput ? parseInt(sizeInput.value, 10) : 20;
-        cy.nodes().filter(n => n.data("type") === type).style({
-          "background-color": chosenColor,
-          "width": chosenSize,
-          "height": chosenSize
+        const labelInput = document.querySelector(`.node-label-input[data-type="${type}"]`);
+        const chosenLabel = labelInput ? labelInput.value : type;
+
+        cy.nodes().filter(n => n.data("type") === type).forEach(n => {
+          n.style({
+            "background-color": chosenColor,
+            "width": chosenSize,
+            "height": chosenSize
+          });
+          n.data("label", chosenLabel);
         });
       });
 
@@ -305,16 +320,23 @@ function adjustColor([r, g, b], darkMode, saturationFactor = 1) {
         const chosenColor = input.value;
         const sizeInput = document.querySelector(`.edge-size-input[data-type="${type}"]`);
         const chosenWidth = sizeInput ? parseInt(sizeInput.value, 10) : 2;
-        cy.edges().filter(e => e.data("type") === type).style({
-          "line-color": chosenColor,
-          "target-arrow-color": chosenColor,
-          "width": chosenWidth
+        const labelInput = document.querySelector(`.edge-label-input[data-type="${type}"]`);
+        const chosenLabel = labelInput ? labelInput.value : type;
+
+        cy.edges().filter(e => e.data("type") === type).forEach(e => {
+          e.style({
+            "line-color": chosenColor,
+            "target-arrow-color": chosenColor,
+            "width": chosenWidth
+          });
+          e.data("label", chosenLabel);
         });
       });
 
       modal.classList.add("hidden");
     });
-    
+
+
   });
 </script>
 
