@@ -20,11 +20,53 @@
     </section>
 
     <!-- Cytoscape Graph Container -->
-    <section class="p-6 rounded-lg border">
+    <section class="p-6 rounded-lg border space-y-4">
       <h2 class="text-lg font-bold mb-4">Graph Visualization</h2>
+
+      <!-- 🎨 Open Modal Button -->
+      <button id="open-menu-btn" class="px-3 py-1 bg-blue-500 text-white rounded">
+        Customize Colors
+      </button>
+
       <div id="cy-container" style="width:100%; height:600px; border:1px solid #ccc;"></div>
     </section>
 
+  </div>
+</div>
+
+<!-- Modal -->
+<div id="color-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
+  <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg w-[700px] max-h-[80vh] overflow-y-auto">
+    <h3 class="text-lg font-bold mb-4">Customize Colors</h3>
+
+    <!-- Node Colors Table -->
+    <h4 class="font-semibold mb-2">Node Types</h4>
+    <table class="w-full border-collapse mb-6">
+      <thead>
+        <tr>
+          <th class="border px-2 py-1 text-left">Node Type</th>
+          <th class="border px-2 py-1 text-left">Color</th>
+        </tr>
+      </thead>
+      <tbody id="node-type-table"></tbody>
+    </table>
+
+    <!-- Edge Colors Table -->
+    <h4 class="font-semibold mb-2">Edge Types</h4>
+    <table class="w-full border-collapse">
+      <thead>
+        <tr>
+          <th class="border px-2 py-1 text-left">Edge Type</th>
+          <th class="border px-2 py-1 text-left">Color</th>
+        </tr>
+      </thead>
+      <tbody id="edge-type-table"></tbody>
+    </table>
+
+    <div class="flex justify-end space-x-2 mt-6">
+      <button id="close-menu-btn" class="px-3 py-1 bg-gray-400 text-white rounded">Cancel</button>
+      <button id="apply-color-btn" class="px-3 py-1 bg-blue-600 text-white rounded">Apply</button>
+    </div>
   </div>
 </div>
 
@@ -38,61 +80,34 @@
     const themeColors = {{ theme.theme.colors|safe }};
     const elements = {{ cypher_results_json|safe }};
 
-    // Pick colors based on mode
     const nodeColor = darkMode ? themeColors["accent-dark"] : themeColors["accent-light"];
     const edgeColor = darkMode ? themeColors["text-main-dark"] : themeColors["text-main-light"];
     const backgroundColor = darkMode ? themeColors["primary-bg-dark"] : themeColors["primary-bg-light"];
 
-    // Prepare Cytoscape elements
     const cyElements = [];
+    const nodeTypes = new Set();
+    const edgeTypes = new Set();
+
     elements.forEach(el => {
       if (el.data.source && el.data.target) {
-        cyElements.push({
-          data: {
-            id: el.data.source
-          },
-          style: {
-            'background-color': nodeColor,
-            'label': el.data.source
-          }
-        });
-        cyElements.push({
-          data: {
-            id: el.data.target
-          },
-          style: {
-            'background-color': nodeColor,
-            'label': el.data.target
-          }
-        });
+        cyElements.push({ data: { id: el.data.source, label: el.data.source, type: el.data.label || el.data.source } });
+        cyElements.push({ data: { id: el.data.target, label: el.data.target, type: el.data.label || el.data.target } });
         cyElements.push({
           data: {
             id: el.data.source + "-" + el.data.target,
             source: el.data.source,
             target: el.data.target,
-            label: el.data.type
-          },
-          style: {
-            'line-color': edgeColor,
-            'width': 1,
-            'label': el.data.type
+            label: el.data.type,
+            type: el.data.type
           }
         });
+        if (el.data.type) edgeTypes.add(el.data.type);
       } else {
-        cyElements.push({
-          data: {
-            id: el.data.id,
-            label: el.data.label
-          },
-          style: {
-            'background-color': nodeColor,
-            'label': el.data.label
-          }
-        });
+        cyElements.push({ data: { id: el.data.id, label: el.data.label, type: el.data.label } });
       }
+      if (el.data.label) nodeTypes.add(el.data.label);
     });
 
-    // Initialize Cytoscape
     const cy = cytoscape({
       container: document.getElementById('cy-container'),
       elements: cyElements,
@@ -101,6 +116,7 @@
           selector: 'node',
           style: {
             'label': 'data(label)',
+            'background-color': nodeColor,
             'color': darkMode ? themeColors["text-main-dark"] : themeColors["text-main-light"],
             'font-size': '8px',
             'text-valign': 'center',
@@ -116,22 +132,78 @@
             'color': darkMode ? themeColors["text-main-dark"] : themeColors["text-main-light"],
             'font-size': '6px',
             'curve-style': 'bezier',
-            'target-arrow-shape': 'triangle'
+            'target-arrow-shape': 'triangle',
+            'line-color': edgeColor,
+            'target-arrow-color': edgeColor
           }
         }
       ],
       layout: {
-        name: 'cose', // force-directed layout
+        name: 'cose',
         animate: true,
-        padding: 50,         // extra space around graph
-        nodeRepulsion: 800, // push nodes apart
-        idealEdgeLength: 20 // longer edges
+        padding: 50,
+        nodeRepulsion: 800,
+        idealEdgeLength: 20
       },
       wheelSensitivity: 0.2
     });
 
-    // Set background color
     document.getElementById("cy-container").style.backgroundColor = backgroundColor;
+
+    // Populate node type table
+    const nodeTable = document.getElementById("node-type-table");
+    nodeTypes.forEach(type => {
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td class="border px-2 py-1">${type}</td>
+        <td class="border px-2 py-1">
+          <input type="color" value="#${Math.floor(Math.random()*16777215).toString(16)}" data-type="${type}" class="node-color-picker w-10 h-10 border rounded">
+        </td>
+      `;
+      nodeTable.appendChild(row);
+    });
+
+    // Populate edge type table
+    const edgeTable = document.getElementById("edge-type-table");
+    edgeTypes.forEach(type => {
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td class="border px-2 py-1">${type}</td>
+        <td class="border px-2 py-1">
+          <input type="color" value="#${Math.floor(Math.random()*16777215).toString(16)}" data-type="${type}" class="edge-color-picker w-10 h-10 border rounded">
+        </td>
+      `;
+      edgeTable.appendChild(row);
+    });
+
+    // Modal controls
+    const modal = document.getElementById("color-modal");
+    document.getElementById("open-menu-btn").addEventListener("click", () => {
+      modal.classList.remove("hidden");
+    });
+    document.getElementById("close-menu-btn").addEventListener("click", () => {
+      modal.classList.add("hidden");
+    });
+
+    // Apply all colors
+    document.getElementById("apply-color-btn").addEventListener("click", () => {
+      // Nodes
+      document.querySelectorAll(".node-color-picker").forEach(input => {
+        const type = input.dataset.type;
+        const chosenColor = input.value;
+        cy.nodes().filter(n => n.data("type") === type).style("background-color", chosenColor);
+      });
+      // Edges
+      document.querySelectorAll(".edge-color-picker").forEach(input => {
+        const type = input.dataset.type;
+        const chosenColor = input.value;
+        cy.edges().filter(e => e.data("type") === type).style({
+          "line-color": chosenColor,
+          "target-arrow-color": chosenColor
+        });
+      });
+      modal.classList.add("hidden");
+    });
   });
 </script>
 {% endblock %}
