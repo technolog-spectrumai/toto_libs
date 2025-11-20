@@ -79,12 +79,13 @@ class SharePackage(SerializableModel):
         """
         Resolve a human-readable name from the linked SocialEntity.
         """
-        if isinstance(self.social_entity, CommunityMember):
-            return self.social_entity.display_name
-        elif isinstance(self.social_entity, Company):
-            return self.social_entity.name
-        elif isinstance(self.social_entity, Community):
-            return self.social_entity.name
+        real_intstance = self.social_entity.get_real_instance()
+        if isinstance(real_intstance, CommunityMember):
+            return real_intstance.display_name
+        elif isinstance(real_intstance, Company):
+            return real_intstance.name
+        elif isinstance(real_intstance, Community):
+            return real_intstance.name
         return f"Entity {self.social_entity.id}"
 
 
