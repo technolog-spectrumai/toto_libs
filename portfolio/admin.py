@@ -1,11 +1,17 @@
 from django.contrib import admin
 from .models import (
+    Chamber,
     Company,
     SharePackage,
-    Chamber,
-    FundingRound
+    FundingRound,
 )
 from toto.admin import BaseSerializableAdmin
+from toto.neo4j import Neo4jSyncMixin
+from portfolio.graph.sync import (
+    CompanyConversionStrategy,
+    SharePackageConversionStrategy,
+    FundingRoundConversionStrategy,
+)
 
 
 @admin.register(Chamber)
@@ -16,7 +22,11 @@ class ChamberAdmin(BaseSerializableAdmin):
 
 
 @admin.register(Company)
-class CompanyAdmin(BaseSerializableAdmin):
+class CompanyAdmin(BaseSerializableAdmin, Neo4jSyncMixin):
+    strategy_class = CompanyConversionStrategy
+    strategy_label = "Companies"
+    actions = BaseSerializableAdmin.actions + ['sync_with_neo4j']
+
     list_display = (
         'name', 'registration_number', 'country', 'industry',
         'date_founded', 'is_active', 'identity_type'
@@ -25,32 +35,35 @@ class CompanyAdmin(BaseSerializableAdmin):
     search_fields = ('name', 'registration_number')
 
     def identity_type(self, obj):
-        # Polymorphic identity type
-        return obj.get_identity_type()
+        return obj.get_real_instance_class().__name__
     identity_type.short_description = "Identity Type"
 
 
 @admin.register(SharePackage)
-class SharePackageAdmin(BaseSerializableAdmin):
+class SharePackageAdmin(BaseSerializableAdmin, Neo4jSyncMixin):
+    strategy_class = SharePackageConversionStrategy
+    strategy_label = "Shares"
+    actions = BaseSerializableAdmin.actions + ['sync_with_neo4j']
+
     list_display = (
         'get_full_name',
         'shares_owned',
         'company',
         'date_joined',
         'is_active',
-        'identity_type',
+        #'identity_type',
     )
     list_filter = ('is_active', 'company')
     search_fields = (
         'company__name',
         'social_entity__id',
-        'social_entity__member__display_name',   # CommunityMember
-        'social_entity__company__name',          # Company
-        'social_entity__community__name',        # Community
+        'social_entity__member__display_name',
+        'social_entity__company__name',
+        'social_entity__community__name',
     )
 
     def identity_type(self, obj):
-        return obj.get_identity_type()
+        return obj.get_real_instance_class().__name__
     identity_type.short_description = "Identity Type"
 
     def get_full_name(self, obj):
@@ -58,9 +71,12 @@ class SharePackageAdmin(BaseSerializableAdmin):
     get_full_name.short_description = "Full Name"
 
 
-
 @admin.register(FundingRound)
-class FundingRoundAdmin(BaseSerializableAdmin):
+class FundingRoundAdmin(BaseSerializableAdmin, Neo4jSyncMixin):
+    strategy_class = FundingRoundConversionStrategy
+    strategy_label = "Funding Rounds"
+    actions = BaseSerializableAdmin.actions + ['sync_with_neo4j']
+
     list_display = ('name', 'venture', 'amount', 'currency', 'timestamp', 'transaction')
     list_filter = ('currency', 'venture')
     search_fields = ('name', 'venture__name')
