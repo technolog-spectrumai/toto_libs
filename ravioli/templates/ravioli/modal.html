@@ -53,6 +53,7 @@
 
 <script>
 function openColorModal(nodeTypes, edgeTypes, darkMode) {
+  const themeColors = {{ theme.theme.colors|safe }};
   const nodeTable = document.getElementById("node-type-table");
   nodeTable.innerHTML = "";
 
@@ -61,8 +62,8 @@ function openColorModal(nodeTypes, edgeTypes, darkMode) {
   const savedEdgeStyles = JSON.parse(localStorage.getItem("edgeStyles") || "{}");
 
   Array.from(nodeTypes).forEach((type, i) => {
-    const base = jetColor(i / Math.max(1, nodeTypes.size - 1));
-    const defaultColor = adjustColor(base, darkMode);
+    const darkMode = localStorage.getItem("darkMode") === "true";
+    const defaultColor = darkMode ? themeColors["text-main-dark"] : themeColors["text-main-light"];
     const saved = savedNodeStyles[type] || {};
 
     const row = document.createElement("tr");
@@ -89,8 +90,8 @@ function openColorModal(nodeTypes, edgeTypes, darkMode) {
   edgeTable.innerHTML = "";
 
   Array.from(edgeTypes).forEach((type, i) => {
-    const base = jetColor(i / Math.max(1, edgeTypes.size - 1));
-    const defaultColor = adjustColor(base, darkMode, 0.5);
+    const darkMode = localStorage.getItem("darkMode") === "true";
+    const defaultColor = darkMode ? themeColors["text-main-dark"] : themeColors["text-main-light"];
     const saved = savedEdgeStyles[type] || {};
 
     const row = document.createElement("tr");
@@ -118,6 +119,7 @@ function openColorModal(nodeTypes, edgeTypes, darkMode) {
 
 
 function applyColors() {
+
   // Load existing styles
   const nodeStyles = JSON.parse(localStorage.getItem("nodeStyles") || "{}");
   const edgeStyles = JSON.parse(localStorage.getItem("edgeStyles") || "{}");
