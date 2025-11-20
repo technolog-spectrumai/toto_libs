@@ -52,74 +52,75 @@
 </div>
 
 <script>
-    function openColorModal(nodeTypes, edgeTypes, darkMode) {
-        const nodeTable = document.getElementById("node-type-table");
-        nodeTable.innerHTML = "";
-        Array.from(nodeTypes).forEach((type, i) => {
-          const base = jetColor(i / Math.max(1, nodeTypes.size - 1));
-          const color = adjustColor(base, darkMode);
-          const row = document.createElement("tr");
-          row.innerHTML = `
-            <td class="border px-2 py-1">${type}</td>
-            <td class="border px-2 py-1">
-              <input type="text" value="${type}" data-type="${type}"
-                     class="node-label-input w-full border rounded px-1 transition-colors duration-300"
-                     :class="darkMode ? 'bg-primary-bg-dark text-main-dark border-accent-1'
-                                      : 'bg-primary-bg-light text-main-light border-accent-2'">
-            </td>
-            <td class="border px-2 py-1">
-              <input type="color" value="${color}" data-type="${type}"
-                     class="node-color-picker w-10 h-10 border rounded transition-colors duration-300"
-                     :class="darkMode ? 'bg-primary-bg-dark border-accent-1'
-                                      : 'bg-primary-bg-light border-accent-2'">
-            </td>
-            <td class="border px-2 py-1">
-              <input type="number" value="20" min="5" max="100" data-type="${type}"
-                     class="node-size-input w-16 border rounded transition-colors duration-300"
-                     :class="darkMode ? 'bg-primary-bg-dark text-main-dark border-accent-1'
-                                      : 'bg-primary-bg-light text-main-light border-accent-2'">
-            </td>
-          `;
-          nodeTable.appendChild(row);
-        });
+function openColorModal(nodeTypes, edgeTypes, darkMode) {
+  const nodeTable = document.getElementById("node-type-table");
+  nodeTable.innerHTML = "";
 
-        // Populate edge type table with Jet colors
-        const edgeTable = document.getElementById("edge-type-table");
-        edgeTable.innerHTML = "";
-        Array.from(edgeTypes).forEach((type, i) => {
-          const base = jetColor(i / Math.max(1, edgeTypes.size - 1));
-          const color = adjustColor(base, darkMode, 0.5);
-          const row = document.createElement("tr");
-          row.innerHTML = `
-            <td class="border px-2 py-1">${type}</td>
-            <td class="border px-2 py-1">
-              <input type="text" value="${type}" data-type="${type}"
-                     class="edge-label-input w-full border rounded px-1 transition-colors duration-300"
-                     :class="darkMode ? 'bg-primary-bg-dark text-main-dark border-accent-1'
-                                      : 'bg-primary-bg-light text-main-light border-accent-2'">
-            </td>
-            <td class="border px-2 py-1">
-              <input type="color" value="${color}" data-type="${type}"
-                     class="edge-color-picker w-10 h-10 border rounded transition-colors duration-300"
-                     :class="darkMode ? 'bg-primary-bg-dark border-accent-1'
-                                      : 'bg-primary-bg-light border-accent-2'">
-            </td>
-            <td class="border px-2 py-1">
-              <input type="number" value="2" min="1" max="10" data-type="${type}"
-                     class="edge-size-input w-16 border rounded transition-colors duration-300"
-                     :class="darkMode ? 'bg-primary-bg-dark text-main-dark border-accent-1'
-                                      : 'bg-primary-bg-light text-main-light border-accent-2'">
-            </td>
-          `;
-          edgeTable.appendChild(row);
-        });
-    }
+  // load saved styles
+  const savedNodeStyles = JSON.parse(localStorage.getItem("nodeStyles") || "{}");
+  const savedEdgeStyles = JSON.parse(localStorage.getItem("edgeStyles") || "{}");
+
+  Array.from(nodeTypes).forEach((type, i) => {
+    const base = jetColor(i / Math.max(1, nodeTypes.size - 1));
+    const defaultColor = adjustColor(base, darkMode);
+    const saved = savedNodeStyles[type] || {};
+
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td class="border px-2 py-1">${type}</td>
+      <td class="border px-2 py-1">
+        <input type="text" value="${saved.label || type}" data-type="${type}"
+               class="node-label-input w-full border rounded px-1 transition-colors duration-300">
+      </td>
+      <td class="border px-2 py-1">
+        <input type="color" value="${saved.color || defaultColor}" data-type="${type}"
+               class="node-color-picker w-10 h-10 border rounded transition-colors duration-300">
+      </td>
+      <td class="border px-2 py-1">
+        <input type="number" value="${saved.size || 20}" min="5" max="100" data-type="${type}"
+               class="node-size-input w-16 border rounded transition-colors duration-300">
+      </td>
+    `;
+    nodeTable.appendChild(row);
+  });
+
+  // Edge types
+  const edgeTable = document.getElementById("edge-type-table");
+  edgeTable.innerHTML = "";
+
+  Array.from(edgeTypes).forEach((type, i) => {
+    const base = jetColor(i / Math.max(1, edgeTypes.size - 1));
+    const defaultColor = adjustColor(base, darkMode, 0.5);
+    const saved = savedEdgeStyles[type] || {};
+
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td class="border px-2 py-1">${type}</td>
+      <td class="border px-2 py-1">
+        <input type="text" value="${saved.label || type}" data-type="${type}"
+               class="edge-label-input w-full border rounded px-1 transition-colors duration-300">
+      </td>
+      <td class="border px-2 py-1">
+        <input type="color" value="${saved.color || defaultColor}" data-type="${type}"
+               class="edge-color-picker w-10 h-10 border rounded transition-colors duration-300">
+      </td>
+      <td class="border px-2 py-1">
+        <input type="number" value="${saved.width || 2}" min="1" max="10" data-type="${type}"
+               class="edge-size-input w-16 border rounded transition-colors duration-300">
+      </td>
+    `;
+    edgeTable.appendChild(row);
+  });
+}
 </script>
 
 <script>
+
+
 function applyColors() {
-  const nodeStyles = {};
-  const edgeStyles = {};
+  // Load existing styles
+  const nodeStyles = JSON.parse(localStorage.getItem("nodeStyles") || "{}");
+  const edgeStyles = JSON.parse(localStorage.getItem("edgeStyles") || "{}");
 
   // Nodes
   document.querySelectorAll(".node-color-picker").forEach(input => {
@@ -132,11 +133,18 @@ function applyColors() {
     const labelInput = document.querySelector(`.node-label-input[data-type="${type}"]`);
     const chosenLabel = labelInput ? labelInput.value : type;
 
-    nodeStyles[type] = {
-      color: chosenColor,
-      size: chosenSize,
-      label: chosenLabel
-    };
+    const current = nodeStyles[type] || {};
+    const updated = { color: chosenColor, size: chosenSize, label: chosenLabel };
+
+    // Only update if something changed
+    if (
+      current.color !== updated.color ||
+      current.size !== updated.size ||
+      current.label !== updated.label
+    ) {
+      nodeStyles[type] = updated;
+      console.log("Updated node style:", type, updated);
+    }
   });
 
   // Edges
@@ -150,14 +158,20 @@ function applyColors() {
     const labelInput = document.querySelector(`.edge-label-input[data-type="${type}"]`);
     const chosenLabel = labelInput ? labelInput.value : type;
 
-    edgeStyles[type] = {
-      color: chosenColor,
-      width: chosenWidth,
-      label: chosenLabel
-    };
+    const current = edgeStyles[type] || {};
+    const updated = { color: chosenColor, width: chosenWidth, label: chosenLabel };
+
+    if (
+      current.color !== updated.color ||
+      current.width !== updated.width ||
+      current.label !== updated.label
+    ) {
+      edgeStyles[type] = updated;
+      console.log("Updated edge style:", type, updated);
+    }
   });
 
-  // Persist to localStorage
+  // Persist back to localStorage
   localStorage.setItem("nodeStyles", JSON.stringify(nodeStyles));
   localStorage.setItem("edgeStyles", JSON.stringify(edgeStyles));
 
@@ -166,3 +180,4 @@ function applyColors() {
   modal.classList.add("hidden");
 }
 </script>
+

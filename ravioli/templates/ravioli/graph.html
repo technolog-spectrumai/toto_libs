@@ -89,45 +89,46 @@ document.addEventListener("DOMContentLoaded", function() {
   const themeColors = {{ theme.theme.colors|safe }};
   const backgroundColor = darkMode ? themeColors["primary-bg-dark"] : themeColors["primary-bg-light"];
   let nodeTypes = [];
-  let edgeTypes = []
+  let edgeTypes = [];
+
   function loadGraph(queryId) {
     const url = "{% url 'ravioli:graph_data' %}" + (queryId ? `?query_id=${queryId}` : "");
     fetch(url)
       .then(resp => resp.json())
       .then(data => {
-      nodeTypes = data.node_labels || [];
-      edgeTypes = data.edge_types || [];
+        nodeTypes = data.node_labels || [];
+        edgeTypes = data.edge_types || [];
 
         if (cy) cy.destroy(); // reset old graph
         cy = cytoscape({
           container: document.getElementById("cy-container"),
           elements: data.elements,
-            style: [
-              {
-                selector: 'node',
-                style: {
-                  'label': 'data(label)',
-                  'background-color': darkMode ? themeColors["accent-dark"] : themeColors["accent-light"],
-                  'color': darkMode ? themeColors["text-main-dark"] : themeColors["text-main-light"],
-                  'font-size': '10px',
-                  'text-valign': 'center',
-                  'text-halign': 'center'
-                }
-              },
-              {
-                selector: 'edge',
-                style: {
-                  'label': 'data(type)',
-                  'width': 2,
-                  'line-color': darkMode ? themeColors["accent-1"] : themeColors["accent-2"],
-                  'target-arrow-color': darkMode ? themeColors["accent-1"] : themeColors["accent-2"],
-                  'target-arrow-shape': 'triangle',
-                  'curve-style': 'bezier',
-                  'font-size': '8px',
-                  'color': darkMode ? themeColors["text-main-dark"] : themeColors["text-main-light"],
-                }
+          style: [
+            {
+              selector: 'node',
+              style: {
+                'label': 'data(label)',
+                'background-color': darkMode ? themeColors["accent-dark"] : themeColors["accent-light"],
+                'color': darkMode ? themeColors["text-main-dark"] : themeColors["text-main-light"],
+                'font-size': '10px',
+                'text-valign': 'center',
+                'text-halign': 'center'
               }
-            ],
+            },
+            {
+              selector: 'edge',
+              style: {
+                'label': 'data(type)',
+                'width': 2,
+                'line-color': darkMode ? themeColors["accent-1"] : themeColors["accent-2"],
+                'target-arrow-color': darkMode ? themeColors["accent-1"] : themeColors["accent-2"],
+                'target-arrow-shape': 'triangle',
+                'curve-style': 'bezier',
+                'font-size': '8px',
+                'color': darkMode ? themeColors["text-main-dark"] : themeColors["text-main-light"],
+              }
+            }
+          ],
           layout: {
             name: 'cose',
             animate: true,
@@ -137,14 +138,47 @@ document.addEventListener("DOMContentLoaded", function() {
           },
           wheelSensitivity: 0.2
         });
-        window.cy = cy;
+
+        // --- override with saved styles from localStorage ---
+        const savedNodeStyles = JSON.parse(localStorage.getItem("nodeStyles") || "{}");
+        const savedEdgeStyles = JSON.parse(localStorage.getItem("edgeStyles") || "{}");
+        console.log("Applying saved styles:", savedNodeStyles, savedEdgeStyles);
+
+        cy.nodes().forEach(n => {
+          const type = n.data("label");
+          if (savedNodeStyles[type]) {
+            const s = savedNodeStyles[type];
+
+            n.style({
+              "background-color": s.color,
+              "width": s.size,
+              "height": s.size
+            });
+            n.data("label", s.label);
+          }
+        });
+
+        cy.edges().forEach(e => {
+          const type = e.data("label");
+          if (savedEdgeStyles[type]) {
+            const s = savedEdgeStyles[type];
+            //console.log(s);
+            e.style({
+              "line-color": s.color,
+              "target-arrow-color": s.color,
+              "width": s.width
+            });
+            e.data("label", s.label);
+          }
+        });
+
       });
 
-      document.getElementById("cy-container").style.backgroundColor = backgroundColor;
+    document.getElementById("cy-container").style.backgroundColor = backgroundColor;
   }
 
   // Initial load
-  //loadGraph(querySelect.value);
+  // loadGraph(querySelect.value);
 
   // Reload when dropdown changes
   querySelect.addEventListener("change", () => {
@@ -156,22 +190,23 @@ document.addEventListener("DOMContentLoaded", function() {
     loadGraph(querySelect.value);
   });
 
-    const modal = document.getElementById("color-modal");
-    document.getElementById("open-menu-btn").addEventListener("click", () => {
-      modal.classList.remove("hidden");
-      openColorModal(nodeTypes, edgeTypes, darkMode)
-    });
-    document.getElementById("close-menu-btn").addEventListener("click", () => {
-      modal.classList.add("hidden");
-      openColorModal(nodeTypes, edgeTypes, darkMode);
-    });
+  const modal = document.getElementById("color-modal");
+  document.getElementById("open-menu-btn").addEventListener("click", () => {
+    modal.classList.remove("hidden");
+    openColorModal(nodeTypes, edgeTypes, darkMode);
+  });
+  document.getElementById("close-menu-btn").addEventListener("click", () => {
+    modal.classList.add("hidden");
+    openColorModal(nodeTypes, edgeTypes, darkMode);
+  });
 
-    document.getElementById("apply-color-btn").addEventListener("click", () => {
-      applyColors();
-    });
-
+  document.getElementById("apply-color-btn").addEventListener("click", () => {
+    applyColors();
+    loadGraph(querySelect.value);
+  });
 });
 </script>
+
 <script>
 </script>
 {% endblock %}
