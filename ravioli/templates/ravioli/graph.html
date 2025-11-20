@@ -79,7 +79,34 @@
 <script src="https://unpkg.com/cytoscape@3.28.0/dist/cytoscape.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
 <script src="{% static 'ravioli/colors.js' %}"></script>
+<script>
+function setDefaultColors(nodeTypes, edgeTypes) {
+  const darkMode = localStorage.getItem("darkMode") === "true";
+  const themeColors = {{ theme.theme.colors|safe }};
+  const savedNodeStyles = {};
+  const savedEdgeStyles = {};
 
+  nodeTypes.forEach(type => {
+    savedNodeStyles[type] = {
+      label: type,
+      color: darkMode ? themeColors["accent-dark"] : themeColors["accent-light"],
+      size: 20
+    };
+  });
+
+  edgeTypes.forEach(type => {
+    savedEdgeStyles[type] = {
+      label: type,
+      color: darkMode ? themeColors["accent-1"] : themeColors["accent-2"],
+      width: 2
+    };
+  });
+
+  localStorage.setItem("nodeStyles", JSON.stringify(savedNodeStyles));
+  localStorage.setItem("edgeStyles", JSON.stringify(savedEdgeStyles));
+}
+
+</script>
 <script>
 document.addEventListener("DOMContentLoaded", function() {
   const querySelect = document.getElementById("query_id");
@@ -98,6 +125,7 @@ document.addEventListener("DOMContentLoaded", function() {
       .then(data => {
         nodeTypes = data.node_labels || [];
         edgeTypes = data.edge_types || [];
+        setDefaultColors(nodeTypes, edgeTypes);
 
         if (cy) cy.destroy(); // reset old graph
         cy = cytoscape({
