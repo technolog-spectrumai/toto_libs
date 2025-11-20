@@ -1,0 +1,52 @@
+<div id="color-modal"
+     class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
+  <div
+    class="p-6 rounded-lg shadow-lg w-[700px] max-h-[80vh] overflow-y-auto transition-colors duration-300"
+    :class="darkMode
+      ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
+      : 'bg-primary-bg-light text-text-main-light border-accent-2'">
+
+    <h3 class="text-lg font-bold mb-4">Customization</h3>
+
+    <!-- Node Colors & Sizes Table -->
+    <h4 class="font-semibold mb-2">Node Types</h4>
+    <table class="w-full border-collapse mb-6">
+      <thead>
+        <tr>
+          <th class="border px-2 py-1 text-left">Node Type</th>
+          <th class="border px-2 py-1 text-left">Label</th>
+          <th class="border px-2 py-1 text-left">Color</th>
+          <th class="border px-2 py-1 text-left">Size</th>
+        </tr>
+      </thead>
+      <tbody id="node-type-table"></tbody>
+    </table>
+
+    <!-- Edge Colors & Widths Table -->
+    <h4 class="font-semibold mb-2">Edge Types</h4>
+    <table class="w-full border-collapse">
+      <thead>
+        <tr>
+          <th class="border px-2 py-1 text-left">Edge Type</th>
+          <th class="border px-2 py-1 text-left">Label</th>
+          <th class="border px-2 py-1 text-left">Color</th>
+          <th class="border px-2 py-1 text-left">Width</th>
+        </tr>
+      </thead>
+      <tbody id="edge-type-table"></tbody>
+    </table>
+
+    <div class="flex justify-end space-x-2 mt-6">
+      <button id="close-menu-btn"
+              class="px-3 py-1 rounded transition-colors duration-300"
+              :class="darkMode ? 'bg-gray-600 text-white' : 'bg-gray-400 text-white'">
+        Cancel
+      </button>
+      <button id="apply-color-btn"
+              class="px-3 py-1 rounded transition-colors duration-300"
+              :class="darkMode ? 'bg-blue-700 text-white' : 'bg-blue-600 text-white'">
+        Apply
+      </button>
+    </div>
+  </div>
+</div>

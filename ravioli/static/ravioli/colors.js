@@ -26,7 +26,6 @@ function rgbToHsl(r, g, b) {
   }
   return [h, s, l];
 }
-alert("HUUUUUJ")
 // Convert HSL back to hex
 function hslToHex(h, s, l) {
   function hue2rgb(p, q, t) {

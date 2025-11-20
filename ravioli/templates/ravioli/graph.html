@@ -4,11 +4,13 @@
 {% block title %}Graph Explorer – {{ platform.site_name }}{% endblock %}
 
 {% block content %}
+<style>[x-cloak] { display: none !important; }</style>
+
 <div
   :class="darkMode
     ? 'bg-primary-bg-dark text-text-main-dark'
     : 'bg-primary-bg-light text-text-main-light'"
-  class="min-h-screen px-4 py-10 transition-colors duration-300">
+  class="min-h-screen px-4 py-10 transition-colors duration-300" >
 
   <div class="max-w-6xl mx-auto space-y-8">
 
@@ -35,10 +37,15 @@
         </select>
         <!-- 🔄 Refresh Button -->
         <button type="button" id="refresh-btn"
-                class="px-3 py-1 bg-blue-500 text-white rounded">
+                class="px-3 py-1 rounded transition-colors duration-300 border"
+                :class="darkMode
+                  ? 'border-accent-1 text-text-main-dark'
+                  : 'border-accent-2 text-text-main-light'">
           Refresh
         </button>
+
       </form>
+
 
       <!-- Cytoscape Graph Container -->
       <div id="cy-container" style="width:100%; height:600px; border:1px solid #ccc;"></div>
@@ -58,18 +65,22 @@
     </section>
 
   </div>
+
 </div>
 
 <!-- Cytoscape.js -->
 <script src="https://unpkg.com/cytoscape@3.28.0/dist/cytoscape.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+<script src="{% static 'ravioli/colors.js' %}"></script>
 
 <script>
 document.addEventListener("DOMContentLoaded", function() {
   const querySelect = document.getElementById("query_id");
   const refreshBtn = document.getElementById("refresh-btn");
-  const infoPanel = document.getElementById("info-panel");
   let cy;
+  const darkMode = localStorage.getItem("darkMode") === "true";
+  const themeColors = {{ theme.theme.colors|safe }};
+  const backgroundColor = darkMode ? themeColors["primary-bg-dark"] : themeColors["primary-bg-light"];
 
   function loadGraph(queryId) {
     const url = "{% url 'ravioli:graph_data' %}" + (queryId ? `?query_id=${queryId}` : "");
@@ -80,32 +91,32 @@ document.addEventListener("DOMContentLoaded", function() {
         cy = cytoscape({
           container: document.getElementById("cy-container"),
           elements: data.elements,
-          style: [
-            {
-              selector: 'node',
-              style: {
-                'label': 'data(label)',
-                'background-color': '#0074D9',
-                'color': '#fff',
-                'font-size': '10px',
-                'text-valign': 'center',
-                'text-halign': 'center'
+            style: [
+              {
+                selector: 'node',
+                style: {
+                  'label': 'data(label)',
+                  'background-color': darkMode ? themeColors["accent-dark"] : themeColors["accent-light"],
+                  'color': darkMode ? themeColors["text-main-dark"] : themeColors["text-main-light"],
+                  'font-size': '10px',
+                  'text-valign': 'center',
+                  'text-halign': 'center'
+                }
+              },
+              {
+                selector: 'edge',
+                style: {
+                  'label': 'data(type)',
+                  'width': 2,
+                  'line-color': darkMode ? themeColors["accent-1"] : themeColors["accent-2"],
+                  'target-arrow-color': darkMode ? themeColors["accent-1"] : themeColors["accent-2"],
+                  'target-arrow-shape': 'triangle',
+                  'curve-style': 'bezier',
+                  'font-size': '8px',
+                  'color': darkMode ? themeColors["text-main-dark"] : themeColors["text-main-light"],
+                }
               }
-            },
-            {
-              selector: 'edge',
-              style: {
-                'label': 'data(type)',
-                'width': 2,
-                'line-color': '#aaa',
-                'target-arrow-color': '#aaa',
-                'target-arrow-shape': 'triangle',
-                'curve-style': 'bezier',
-                'font-size': '8px',
-                'color': '#555'
-              }
-            }
-          ],
+            ],
           layout: {
             name: 'cose',
             animate: true,
@@ -116,14 +127,9 @@ document.addEventListener("DOMContentLoaded", function() {
           wheelSensitivity: 0.2
         });
 
-        // Click handlers
-        cy.on("tap", "node", evt => {
-          infoPanel.textContent = jsyaml.dump(evt.target.data());
-        });
-        cy.on("tap", "edge", evt => {
-          infoPanel.textContent = jsyaml.dump(evt.target.data());
-        });
       });
+
+      document.getElementById("cy-container").style.backgroundColor = backgroundColor;
   }
 
   // Initial load
@@ -139,5 +145,7 @@ document.addEventListener("DOMContentLoaded", function() {
     loadGraph(querySelect.value);
   });
 });
+</script>
+<script>
 </script>
 {% endblock %}

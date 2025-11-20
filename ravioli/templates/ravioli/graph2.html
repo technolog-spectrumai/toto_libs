@@ -134,7 +134,6 @@
     const darkMode = localStorage.getItem("darkMode") === "true";
     const themeColors = {{ theme.theme.colors|safe }};
     const elements = {{ cypher_results_json|safe }};
-    console.log(elements);
     const backgroundColor = darkMode ? themeColors["primary-bg-dark"] : themeColors["primary-bg-light"];
 
     const cyElements = [];
