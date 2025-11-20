@@ -13,16 +13,12 @@ class Command(IngressCommand):
 
     def process(self, _):
         # 📊 Dashboard block
-        if settings.DEBUG:
-            link = reverse_lazy("ravioli:graph")
-        else:
-            link = "/neo4j/"
 
         self.create_dashboard_item(
             title="Graph Database",
             icon="fa-solid fa-database",
             description="Creates one read-only Bolt user for demo purposes.",
-            link=link,
+            link=reverse_lazy("ravioli:graph"),
             public=False,
         )
         if not self.full:
