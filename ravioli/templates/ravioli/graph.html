@@ -142,7 +142,6 @@ document.addEventListener("DOMContentLoaded", function() {
         // --- override with saved styles from localStorage ---
         const savedNodeStyles = JSON.parse(localStorage.getItem("nodeStyles") || "{}");
         const savedEdgeStyles = JSON.parse(localStorage.getItem("edgeStyles") || "{}");
-        console.log("Applying saved styles:", savedNodeStyles, savedEdgeStyles);
 
         cy.nodes().forEach(n => {
           const type = n.data("label");
@@ -187,6 +186,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
   // Reload when refresh button clicked
   refreshBtn.addEventListener("click", () => {
+    applyColors();
     loadGraph(querySelect.value);
   });
 
