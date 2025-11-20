@@ -137,7 +137,7 @@ document.addEventListener("DOMContentLoaded", function() {
           },
           wheelSensitivity: 0.2
         });
-
+        window.cy = cy;
       });
 
       document.getElementById("cy-container").style.backgroundColor = backgroundColor;
@@ -165,6 +165,11 @@ document.addEventListener("DOMContentLoaded", function() {
       modal.classList.add("hidden");
       openColorModal(nodeTypes, edgeTypes, darkMode);
     });
+
+    document.getElementById("apply-color-btn").addEventListener("click", () => {
+      applyColors();
+    });
+
 });
 </script>
 <script>

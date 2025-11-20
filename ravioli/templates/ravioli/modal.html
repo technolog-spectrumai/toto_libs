@@ -115,3 +115,54 @@
         });
     }
 </script>
+
+<script>
+function applyColors() {
+  const nodeStyles = {};
+  const edgeStyles = {};
+
+  // Nodes
+  document.querySelectorAll(".node-color-picker").forEach(input => {
+    const type = input.dataset.type;
+    const chosenColor = input.value;
+
+    const sizeInput = document.querySelector(`.node-size-input[data-type="${type}"]`);
+    const chosenSize = sizeInput ? parseInt(sizeInput.value, 10) : 20;
+
+    const labelInput = document.querySelector(`.node-label-input[data-type="${type}"]`);
+    const chosenLabel = labelInput ? labelInput.value : type;
+
+    nodeStyles[type] = {
+      color: chosenColor,
+      size: chosenSize,
+      label: chosenLabel
+    };
+  });
+
+  // Edges
+  document.querySelectorAll(".edge-color-picker").forEach(input => {
+    const type = input.dataset.type;
+    const chosenColor = input.value;
+
+    const sizeInput = document.querySelector(`.edge-size-input[data-type="${type}"]`);
+    const chosenWidth = sizeInput ? parseInt(sizeInput.value, 10) : 2;
+
+    const labelInput = document.querySelector(`.edge-label-input[data-type="${type}"]`);
+    const chosenLabel = labelInput ? labelInput.value : type;
+
+    edgeStyles[type] = {
+      color: chosenColor,
+      width: chosenWidth,
+      label: chosenLabel
+    };
+  });
+
+  // Persist to localStorage
+  localStorage.setItem("nodeStyles", JSON.stringify(nodeStyles));
+  localStorage.setItem("edgeStyles", JSON.stringify(edgeStyles));
+
+  // Close modal
+  const modal = document.getElementById("color-modal");
+  modal.classList.add("hidden");
+}
+</script>
