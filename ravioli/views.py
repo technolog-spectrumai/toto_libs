@@ -65,12 +65,15 @@ def graph_data(request):
 
     elements = []
     seen_nodes = set()
+    node_labels = set()
+    edge_types = set()
 
     for record in results:
         n, m, r = record["n"], record["m"], record["r"]
 
         if str(n.id) not in seen_nodes:
             seen_nodes.add(str(n.id))
+            node_labels.update(n.labels)
             elements.append({
                 "data": {
                     "id": str(n.id),
@@ -81,6 +84,7 @@ def graph_data(request):
 
         if str(m.id) not in seen_nodes:
             seen_nodes.add(str(m.id))
+            node_labels.update(m.labels)
             elements.append({
                 "data": {
                     "id": str(m.id),
@@ -88,7 +92,7 @@ def graph_data(request):
                     **m._properties
                 }
             })
-
+        edge_types.add(r.type)
         elements.append({
             "data": {
                 "id": f"{n.id}-{m.id}",
@@ -99,4 +103,4 @@ def graph_data(request):
             }
         })
 
-    return JsonResponse({"elements": elements})
+    return JsonResponse({"elements": elements, "node_labels": list(node_labels), "edge_types": list(edge_types)})

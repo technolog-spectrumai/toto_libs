@@ -43,6 +43,13 @@
                   : 'border-accent-2 text-text-main-light'">
           Refresh
         </button>
+        <button type="button" id="open-menu-btn"
+                class="px-3 py-1 rounded transition-colors duration-300 border"
+                :class="darkMode
+                  ? 'border-accent-1 text-text-main-dark'
+                  : 'border-accent-2 text-text-main-light'">
+          Customize
+        </button>
 
       </form>
 
@@ -65,7 +72,7 @@
     </section>
 
   </div>
-
+{% include "ravioli/modal.html" %}
 </div>
 
 <!-- Cytoscape.js -->
@@ -81,12 +88,16 @@ document.addEventListener("DOMContentLoaded", function() {
   const darkMode = localStorage.getItem("darkMode") === "true";
   const themeColors = {{ theme.theme.colors|safe }};
   const backgroundColor = darkMode ? themeColors["primary-bg-dark"] : themeColors["primary-bg-light"];
-
+  let nodeTypes = [];
+  let edgeTypes = []
   function loadGraph(queryId) {
     const url = "{% url 'ravioli:graph_data' %}" + (queryId ? `?query_id=${queryId}` : "");
     fetch(url)
       .then(resp => resp.json())
       .then(data => {
+      nodeTypes = data.node_labels || [];
+      edgeTypes = data.edge_types || [];
+
         if (cy) cy.destroy(); // reset old graph
         cy = cytoscape({
           container: document.getElementById("cy-container"),
@@ -144,6 +155,16 @@ document.addEventListener("DOMContentLoaded", function() {
   refreshBtn.addEventListener("click", () => {
     loadGraph(querySelect.value);
   });
+
+    const modal = document.getElementById("color-modal");
+    document.getElementById("open-menu-btn").addEventListener("click", () => {
+      modal.classList.remove("hidden");
+      openColorModal(nodeTypes, edgeTypes, darkMode)
+    });
+    document.getElementById("close-menu-btn").addEventListener("click", () => {
+      modal.classList.add("hidden");
+      openColorModal(nodeTypes, edgeTypes, darkMode);
+    });
 });
 </script>
 <script>
