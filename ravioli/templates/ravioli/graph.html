@@ -176,6 +176,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
         cy.nodes().forEach(n => {
           const type = n.data("label");
+
           if (savedNodeStyles[type]) {
             const s = savedNodeStyles[type];
 
@@ -189,10 +190,10 @@ document.addEventListener("DOMContentLoaded", function() {
         });
 
         cy.edges().forEach(e => {
-          const type = e.data("label");
+          console.log(e.data("label"));
+          const type = e.data("type");
           if (savedEdgeStyles[type]) {
             const s = savedEdgeStyles[type];
-            //console.log(s);
             e.style({
               "line-color": s.color,
               "target-arrow-color": s.color,
