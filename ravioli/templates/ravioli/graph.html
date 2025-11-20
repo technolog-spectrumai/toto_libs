@@ -202,6 +202,26 @@ document.addEventListener("DOMContentLoaded", function() {
           }
         });
 
+        // --- Info Panel Update on Selection ---
+        function updateInfoPanel(ele) {
+          const data = ele.data();
+          console.log(data);
+          const yamlText = jsyaml.dump(data);
+          document.getElementById("info-panel").textContent = yamlText;
+        }
+
+        // Node click
+        cy.on("tap", "node", function(evt){
+          const node = evt.target;
+          updateInfoPanel(node);
+        });
+
+        // Edge click
+        cy.on("tap", "edge", function(evt){
+          const edge = evt.target;
+          updateInfoPanel(edge);
+        });
+
       });
 
     document.getElementById("cy-container").style.backgroundColor = backgroundColor;
@@ -243,6 +263,7 @@ document.addEventListener("DOMContentLoaded", function() {
     localStorage.removeItem("edgeStyles");
     loadGraph(querySelect.value);
   });
+
 });
 </script>
 
