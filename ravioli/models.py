@@ -1,10 +1,10 @@
 from typing import List
-
 from django.db import models
 from django.contrib.auth.models import User
+from toto.models import SerializableModel
 
 
-class CypherQuery(models.Model):
+class CypherQuery(SerializableModel):
     """
     Represents a predefined Cypher query that can be reused in the graph explorer.
     """

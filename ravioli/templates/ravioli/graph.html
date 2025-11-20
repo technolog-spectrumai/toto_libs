@@ -23,6 +23,21 @@
     <section class="p-6 rounded-lg border space-y-4">
       <h2 class="text-lg font-bold mb-4">Graph Visualization</h2>
 
+       <form method="get" class="mb-4">
+        <label for="query_id" class="mr-2 font-semibold">Choose Query:</label>
+        <select name="query_id" id="query_id"
+                class="border rounded px-2 py-1 transition-colors duration-300"
+                :class="darkMode ? 'bg-primary-bg-dark text-main-dark border-accent-1'
+                                 : 'bg-primary-bg-light text-main-light border-accent-2'"
+                onchange="this.form.submit()">
+          {% for q in queries %}
+            <option value="{{ q.id }}" {% if q.id|stringformat:"s" == selected_query %}selected{% endif %}>
+              {{ q.name }}
+            </option>
+          {% endfor %}
+        </select>
+      </form>
+
       <!-- 🎨 Open Modal Button -->
       <button id="open-menu-btn" class="px-3 py-1 bg-blue-500 text-white rounded">
         Customize

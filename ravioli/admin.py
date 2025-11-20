@@ -3,6 +3,7 @@ from django.utils.html import format_html
 from neo4j import GraphDatabase
 from django.conf import settings
 from .models import CypherQuery
+from toto.admin import BaseSerializableAdmin
 
 # Use connection details from settings.py
 driver = GraphDatabase.driver(
@@ -24,7 +25,7 @@ def test_cypher_query(query: str) -> bool:
 
 
 @admin.register(CypherQuery)
-class CypherQueryAdmin(admin.ModelAdmin):
+class CypherQueryAdmin(BaseSerializableAdmin):
     list_display = (
         "name",
         "created_by",
