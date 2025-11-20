@@ -107,6 +107,7 @@ function setDefaultColors(nodeTypes, edgeTypes) {
 }
 
 </script>
+
 <script>
 document.addEventListener("DOMContentLoaded", function() {
   const querySelect = document.getElementById("query_id");
@@ -125,7 +126,9 @@ document.addEventListener("DOMContentLoaded", function() {
       .then(data => {
         nodeTypes = data.node_labels || [];
         edgeTypes = data.edge_types || [];
-        setDefaultColors(nodeTypes, edgeTypes);
+        if (!localStorage.getItem("nodeStyles") || !localStorage.getItem("edgeStyles")) {
+          setDefaultColors(nodeTypes, edgeTypes);
+        }
 
         if (cy) cy.destroy(); // reset old graph
         cy = cytoscape({
@@ -229,7 +232,15 @@ document.addEventListener("DOMContentLoaded", function() {
   });
 
   document.getElementById("apply-color-btn").addEventListener("click", () => {
+    modal.classList.add("hidden");
+    loadGraph(querySelect.value);
     applyColors();
+  });
+
+  document.getElementById("reset-color-btn").addEventListener("click", () => {
+    modal.classList.add("hidden");
+    localStorage.removeItem("nodeStyles");
+    localStorage.removeItem("edgeStyles");
     loadGraph(querySelect.value);
   });
 });
