@@ -1,60 +1,66 @@
-# from django.db import models
-# from django.utils.timezone import now
-# from toto.models import SerializableModel
-# from community.models import SocialEntity
-# from events.models import Event
-# from django.contrib.auth.models import User
-#
-#
-# class Tag(models.Model):
-#     """
-#     Represents a tag or keyword attached to notes.
-#     """
-#     name = models.CharField(max_length=100, unique=True)
-#     created_at = models.DateTimeField(default=now)
-#
-#     def __str__(self):
-#         return self.name
-#
-#
-# class Note(SerializableModel):
-#     """
-#     Represents an Intel Note in the relational database.
-#     """
-#     title = models.CharField(max_length=255, db_index=True)
-#     content = models.TextField(blank=True, null=True)   # main text of the note
-#     metadata = models.JSONField(blank=True, null=True)  # audit info, provenance, etc.
-#     created_at = models.DateTimeField(default=now)
-#     category = models.CharField(max_length=100, blank=True, null=True)  # e.g., "Intel", "Observation", "Report"
-#     subject = models.ForeignKey(
-#         SocialEntity,
-#         blank=True,
-#         null=True,
-#         on_delete=models.SET_NULL,
-#         related_name="related_intel_notes"
-#     )
-#     event = models.ForeignKey(
-#         Event,
-#         blank=True,
-#         null=True,
-#         on_delete=models.SET_NULL,
-#         related_name="notes_for_event"
-#     )
-#
-#     # Tags are simple many-to-many
-#     tags = models.ManyToManyField(
-#         Tag,
-#         blank=True,
-#         related_name="notes_for_tag"
-#     )
-#     is_public = models.BooleanField(default=True, help_text="Mark note as public")
-#     author = models.ForeignKey(
-#         User,
-#         blank=True,
-#         null=True,
-#         on_delete=models.SET_NULL,
-#         related_name="notes"
-#     )
-#
-#     def __str__(self):
-#         return self.title
+from typing import List
+
+from django.db import models
+from django.contrib.auth.models import User
+
+
+class CypherQuery(models.Model):
+    """
+    Represents a predefined Cypher query that can be reused in the graph explorer.
+    """
+
+    name = models.CharField(
+        max_length=200,
+        unique=True,
+        help_text="Human-readable name of the query (e.g. 'All Nodes and Relationships')."
+    )
+    description = models.TextField(
+        blank=True,
+        help_text="Optional description of what this query does."
+    )
+    query = models.TextField(
+        help_text="The Cypher query string to run against Neo4j."
+    )
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="cypher_queries",
+        help_text="User who created this query."
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+    @staticmethod
+    def for_node_types(node_types: List[str], created_by: User = None) -> "CypherQuery":
+        """
+        Factory method: build a CypherQuery that fetches all nodes of given types
+        and their one-hop neighbours.
+        """
+        if not node_types:
+            raise ValueError("You must provide at least one node type.")
+
+        # Build label string like ":Person|Company|Product"
+        label_expr = ":`" + "`|:`".join(node_types) + "`"
+
+        cypher = f"""
+        MATCH (n{label_expr})-[r]-(m)
+        RETURN n, r, m
+        LIMIT 100
+        """
+
+        return CypherQuery(
+            name=f"{', '.join(node_types)} with one-hop neighbours",
+            description=f"Fetch all {', '.join(node_types)} nodes and their immediate neighbours.",
+            query=cypher.strip(),
+            created_by=created_by,
+            is_active=True,
+        )
+

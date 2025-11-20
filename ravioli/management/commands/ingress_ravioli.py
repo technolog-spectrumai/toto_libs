@@ -3,11 +3,13 @@ from faker import Faker
 from oya.ingress import IngressCommand
 from rest_framework.reverse import reverse_lazy
 
+from ravioli.models import CypherQuery  # adjust import path to where your model lives
+
 fake = Faker()
 
 
 class Command(IngressCommand):
-    help = "Creates a demo Bolt user with read-only permissions"
+    help = "Creates a demo Bolt user with read-only permissions and a default Cypher query"
 
     def process(self, _):
         # 📊 Dashboard block
@@ -22,4 +24,22 @@ class Command(IngressCommand):
             description="Creates one read-only Bolt user for demo purposes.",
             link=link,
             public=False,
+        )
+        if not self.full:
+            return
+        # 🧩 Predefined Cypher query: show all nodes and edges
+        cypher = """
+        MATCH (n)-[r]->(m)
+        RETURN n, r, m
+        LIMIT 500
+        """
+
+        # Create or update the query in DB
+        CypherQuery.objects.update_or_create(
+            name="All Nodes and Edges",
+            defaults={
+                "description": "Fetch all nodes and relationships in the graph (limited to 500).",
+                "query": cypher.strip(),
+                "is_active": True,
+            },
         )
