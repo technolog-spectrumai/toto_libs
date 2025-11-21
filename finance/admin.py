@@ -2,6 +2,8 @@ from django.contrib import admin
 from .models import Currency, Account, Transaction, ExchangeRate
 from community.models import SocialEntity
 from .batch import BatchAction
+from toto.admin import BaseSerializableAdmin
+from toto.neo4j import Neo4jSyncMixin
 
 
 @admin.register(Currency)
@@ -20,7 +22,7 @@ class ExchangeRateAdmin(admin.ModelAdmin):
 
 
 @admin.register(Account)
-class AccountAdmin(admin.ModelAdmin):
+class AccountAdmin(BaseSerializableAdmin, Neo4jSyncMixin):
     list_display = ("name", "owner_display", "manager", "currency", "balance", "active", "created_at")
     search_fields = ("name", "owner__name")
     list_filter = ("currency", "active")
@@ -31,13 +33,14 @@ class AccountAdmin(admin.ModelAdmin):
         Show the polymorphic identity of the owner (CommunityMember, Company, etc.)
         """
         if obj.owner:
-            return f"{obj.owner.get_identity_type()}: {obj.owner}"
+            real_instance = obj.owner.get_real_instance_class()
+            return f"{real_instance.__name__}: id={obj.owner.id}"
         return "-"
     owner_display.short_description = "Owner"
 
 
 @admin.register(Transaction)
-class TransactionAdmin(admin.ModelAdmin):
+class TransactionAdmin(BaseSerializableAdmin, Neo4jSyncMixin):
     list_display = ("name", "amount", "currency", "source", "destination", "timestamp")
     search_fields = ("name", "source__name", "destination__name")
     list_filter = ("currency", "timestamp")

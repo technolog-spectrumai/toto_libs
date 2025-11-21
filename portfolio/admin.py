@@ -43,7 +43,6 @@ class CompanyAdmin(BaseSerializableAdmin, Neo4jSyncMixin):
 class SharePackageAdmin(BaseSerializableAdmin, Neo4jSyncMixin):
     strategy_class = SharePackageConversionStrategy
     strategy_label = "Shares"
-    actions = BaseSerializableAdmin.actions + ['sync_with_neo4j']
 
     list_display = (
         'get_full_name',
@@ -75,7 +74,6 @@ class SharePackageAdmin(BaseSerializableAdmin, Neo4jSyncMixin):
 class FundingRoundAdmin(BaseSerializableAdmin, Neo4jSyncMixin):
     strategy_class = FundingRoundConversionStrategy
     strategy_label = "Funding Rounds"
-    actions = BaseSerializableAdmin.actions + ['sync_with_neo4j']
 
     list_display = ('name', 'venture', 'amount', 'currency', 'timestamp', 'transaction')
     list_filter = ('currency', 'venture')
