@@ -95,17 +95,19 @@ class BaseSerializableAdmin(admin.ModelAdmin):
             filename = form.cleaned_data["filename"]
             owner = request.user
 
-            def dump_one(obj):
-                serializer = ModelSerializer(model_class)
-                return serializer.dump_queryset_to_bucket(
-                    queryset=[obj],
+            serializer = ModelSerializer(model_class)
+            try:
+                # Dump the entire queryset in one go
+                serializer.dump_queryset_to_bucket(
+                    queryset=queryset,
                     owner=owner,
                     bucket=bucket,
                     filename=filename
                 )
+                self.message_user(request, f"{queryset.count()} objects dumped to {filename}.")
+            except ValueError as e:
+                self.message_user(request, f"Error: {str(e)}", level=messages.ERROR)
 
-            result = BatchAction(queryset).run(dump_one)
-            BatchAction.display_messages(result, self.message_user, request, verb="dumped")
             opts = model_class._meta
             return redirect(reverse(f"admin:{opts.app_label}_{opts.model_name}_changelist"))
 
