@@ -187,30 +187,31 @@ document.addEventListener("DOMContentLoaded", function() {
 
         cy.nodes().forEach(n => {
           const type = n.data("label");
-
-          if (savedNodeStyles[type]) {
-            const s = savedNodeStyles[type];
-
+          const s = savedNodeStyles[type];
+          if (s) {
             n.style({
               "background-color": s.color,
               "width": s.size,
               "height": s.size
             });
-            n.data("label", s.label);
+            n.data("label", type);
+            // show/hide
+            n.style("display", s.visible ? "element" : "none");
           }
         });
 
         cy.edges().forEach(e => {
-          console.log(e.data("label"));
           const type = e.data("type");
-          if (savedEdgeStyles[type]) {
-            const s = savedEdgeStyles[type];
+          const s = savedEdgeStyles[type];
+          if (s) {
             e.style({
               "line-color": s.color,
               "target-arrow-color": s.color,
               "width": s.width
             });
-            e.data("label", s.label);
+            e.data("label", type);
+            // show/hide
+            e.style("display", s.visible ? "element" : "none");
           }
         });
 

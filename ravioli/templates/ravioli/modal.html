@@ -72,27 +72,26 @@ function openColorModal(nodeTypes, edgeTypes, darkMode) {
   const edgeTable = document.getElementById("edge-type-table");
   edgeTable.innerHTML = "";
 
-  // load saved styles
   const savedNodeStyles = JSON.parse(localStorage.getItem("nodeStyles") || "{}");
   const savedEdgeStyles = JSON.parse(localStorage.getItem("edgeStyles") || "{}");
 
   // Nodes
   nodeTypes.forEach(type => {
     const saved = savedNodeStyles[type] || {};
-
-    // fallback values
-    const labelValue = saved.label || type;
-    const colorValue = saved.color || "#808080"; // gray fallback
+    const colorValue = saved.color || "#808080";
     const sizeValue = saved.size || 20;
+    const visibleValue = saved.visible !== false; // default true
 
     const row = document.createElement("tr");
     row.innerHTML = `
       <td class="border px-2 py-1">${type}</td>
       <td class="border px-2 py-1">
-        <input type="text" value="${labelValue}" data-type="${type}"
-               class="node-label-input w-full border rounded px-1 transition-colors duration-300"
-               :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
-                                : 'bg-primary-bg-light text-text-main-light border-accent-2'">
+        <label class="flex items-center space-x-2">
+          <input type="checkbox" ${visibleValue ? "checked" : ""} data-type="${type}"
+                 class="node-visible-checkbox transition-colors duration-300"
+                 :class="darkMode ? 'accent-accent-dark' : 'accent-accent-light'">
+          <span>Show</span>
+        </label>
       </td>
       <td class="border px-2 py-1">
         <input type="color" value="${colorValue}" data-type="${type}"
@@ -113,19 +112,20 @@ function openColorModal(nodeTypes, edgeTypes, darkMode) {
   // Edges
   edgeTypes.forEach(type => {
     const saved = savedEdgeStyles[type] || {};
-
-    const labelValue = saved.label || type;
-    const colorValue = saved.color || "#808080"; // gray fallback
+    const colorValue = saved.color || "#808080";
     const widthValue = saved.width || 2;
+    const visibleValue = saved.visible !== false; // default true
 
     const row = document.createElement("tr");
     row.innerHTML = `
       <td class="border px-2 py-1">${type}</td>
       <td class="border px-2 py-1">
-        <input type="text" value="${labelValue}" data-type="${type}"
-               class="edge-label-input w-full border rounded px-1 transition-colors duration-300"
-               :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
-                                : 'bg-primary-bg-light text-text-main-light border-accent-2'">
+        <label class="flex items-center space-x-2">
+          <input type="checkbox" ${visibleValue ? "checked" : ""} data-type="${type}"
+                 class="edge-visible-checkbox transition-colors duration-300"
+                 :class="darkMode ? 'accent-accent-dark' : 'accent-accent-light'">
+          <span>Show</span>
+        </label>
       </td>
       <td class="border px-2 py-1">
         <input type="color" value="${colorValue}" data-type="${type}"
@@ -148,10 +148,7 @@ function openColorModal(nodeTypes, edgeTypes, darkMode) {
 
 <script>
 
-
 function applyColors() {
-
-  // Load existing styles
   const nodeStyles = JSON.parse(localStorage.getItem("nodeStyles") || "{}");
   const edgeStyles = JSON.parse(localStorage.getItem("edgeStyles") || "{}");
 
@@ -163,17 +160,16 @@ function applyColors() {
     const sizeInput = document.querySelector(`.node-size-input[data-type="${type}"]`);
     const chosenSize = sizeInput ? parseInt(sizeInput.value, 10) : 20;
 
-    const labelInput = document.querySelector(`.node-label-input[data-type="${type}"]`);
-    const chosenLabel = labelInput ? labelInput.value : type;
+    const visibleInput = document.querySelector(`.node-visible-checkbox[data-type="${type}"]`);
+    const chosenVisible = visibleInput ? visibleInput.checked : true;
 
     const current = nodeStyles[type] || {};
-    const updated = { color: chosenColor, size: chosenSize, label: chosenLabel };
+    const updated = { color: chosenColor, size: chosenSize, visible: chosenVisible };
 
-    // Only update if something changed
     if (
       current.color !== updated.color ||
       current.size !== updated.size ||
-      current.label !== updated.label
+      current.visible !== updated.visible
     ) {
       nodeStyles[type] = updated;
       console.log("Updated node style:", type, updated);
@@ -188,29 +184,26 @@ function applyColors() {
     const sizeInput = document.querySelector(`.edge-size-input[data-type="${type}"]`);
     const chosenWidth = sizeInput ? parseInt(sizeInput.value, 10) : 2;
 
-    const labelInput = document.querySelector(`.edge-label-input[data-type="${type}"]`);
-    const chosenLabel = labelInput ? labelInput.value : type;
+    const visibleInput = document.querySelector(`.edge-visible-checkbox[data-type="${type}"]`);
+    const chosenVisible = visibleInput ? visibleInput.checked : true;
 
     const current = edgeStyles[type] || {};
-    const updated = { color: chosenColor, width: chosenWidth, label: chosenLabel };
+    const updated = { color: chosenColor, width: chosenWidth, visible: chosenVisible };
 
     if (
       current.color !== updated.color ||
       current.width !== updated.width ||
-      current.label !== updated.label
+      current.visible !== updated.visible
     ) {
       edgeStyles[type] = updated;
       console.log("Updated edge style:", type, updated);
     }
   });
 
-  // Persist back to localStorage
   localStorage.setItem("nodeStyles", JSON.stringify(nodeStyles));
   localStorage.setItem("edgeStyles", JSON.stringify(edgeStyles));
 
-  // Close modal
-  const modal = document.getElementById("color-modal");
-  modal.classList.add("hidden");
+  document.getElementById("color-modal").classList.add("hidden");
 }
 </script>
 
