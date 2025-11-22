@@ -1,6 +1,7 @@
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect, get_object_or_404
 from django.http import JsonResponse
+from django.urls import reverse
 from django.views.generic import TemplateView
 from django.utils import timezone
 from django.contrib.auth.models import User
@@ -181,6 +182,7 @@ def org_chart_data(request):
             "img": person.avatar.url if person.avatar else None,
             "activity": person.slug,
             "profile": person.slug,
+            "profile_url": str(reverse("community:profile", args=[person.slug])),
         })
     logger.info(f"Org chart data requested for company slug '{company_slug}' by user '{request.user.username}'.")
     return JsonResponse({"nodes": nodes})
