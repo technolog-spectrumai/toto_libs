@@ -23,35 +23,44 @@
 
     <!-- Query Selector -->
     <section class="p-6 rounded-lg border space-y-4">
-      <form id="query-form" class="mb-4 flex items-center space-x-2">
-        <label for="query_id" class="font-semibold">Choose Query:</label>
-        <select name="query_id" id="query_id"
-                class="border rounded px-2 py-1 transition-colors duration-300"
-                :class="darkMode ? 'bg-primary-bg-dark text-main-dark border-accent-1'
-                                 : 'bg-primary-bg-light text-main-light border-accent-2'">
-          {% for q in queries %}
-            <option value="{{ q.id }}" {% if q.id|stringformat:"s" == selected_query %}selected{% endif %}>
-              {{ q.name }}
-            </option>
-          {% endfor %}
-        </select>
-        <!-- 🔄 Refresh Button -->
-        <button type="button" id="refresh-btn"
-                class="px-3 py-1 rounded transition-colors duration-300 border"
-                :class="darkMode
-                  ? 'border-accent-1 text-text-main-dark'
-                  : 'border-accent-2 text-text-main-light'">
-          Refresh
-        </button>
-        <button type="button" id="open-menu-btn"
-                class="px-3 py-1 rounded transition-colors duration-300 border"
-                :class="darkMode
-                  ? 'border-accent-1 text-text-main-dark'
-                  : 'border-accent-2 text-text-main-light'">
-          Customize
-        </button>
+        <form id="query-form"
+              class="mb-4 flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-2 w-full">
 
-      </form>
+          <!-- Label -->
+          <label for="query_id" class="font-semibold">
+            Choose Query:
+          </label>
+
+          <!-- Select Dropdown -->
+          <select name="query_id" id="query_id"
+                  class="border rounded px-2 py-1 transition-colors duration-300 w-full sm:w-auto"
+                  :class="darkMode ? 'bg-primary-bg-dark text-main-dark border-accent-1'
+                                   : 'bg-primary-bg-light text-main-light border-accent-2'">
+            {% for q in queries %}
+              <option value="{{ q.id }}" {% if q.id|stringformat:"s" == selected_query %}selected{% endif %}>
+                {{ q.name }}
+              </option>
+            {% endfor %}
+          </select>
+
+          <!-- 🔄 Refresh Button -->
+          <button type="button" id="refresh-btn"
+                  class="px-3 py-1 rounded transition-colors duration-300 border w-full sm:w-auto"
+                  :class="darkMode
+                    ? 'border-accent-1 text-text-main-dark'
+                    : 'border-accent-2 text-text-main-light'">
+            Refresh
+          </button>
+
+          <!-- ⚙️ Customize Button -->
+          <button type="button" id="open-menu-btn"
+                  class="px-3 py-1 rounded transition-colors duration-300 border w-full sm:w-auto"
+                  :class="darkMode
+                    ? 'border-accent-1 text-text-main-dark'
+                    : 'border-accent-2 text-main-light'">
+            Customize
+          </button>
+        </form>
 
 
       <!-- Cytoscape Graph Container -->
