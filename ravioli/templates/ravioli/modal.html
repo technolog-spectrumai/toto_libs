@@ -14,7 +14,7 @@
       <thead>
         <tr>
           <th class="border px-2 py-1 text-left">Node Type</th>
-          <th class="border px-2 py-1 text-left">Label</th>
+          <th class="border px-2 py-1 text-left">Show</th>
           <th class="border px-2 py-1 text-left">Color</th>
           <th class="border px-2 py-1 text-left">Size</th>
         </tr>
@@ -28,7 +28,7 @@
       <thead>
         <tr>
           <th class="border px-2 py-1 text-left">Edge Type</th>
-          <th class="border px-2 py-1 text-left">Label</th>
+          <th class="border px-2 py-1 text-left">Show</th>
           <th class="border px-2 py-1 text-left">Color</th>
           <th class="border px-2 py-1 text-left">Width</th>
         </tr>
@@ -90,7 +90,6 @@ function openColorModal(nodeTypes, edgeTypes, darkMode) {
           <input type="checkbox" ${visibleValue ? "checked" : ""} data-type="${type}"
                  class="node-visible-checkbox transition-colors duration-300"
                  :class="darkMode ? 'accent-accent-dark' : 'accent-accent-light'">
-          <span>Show</span>
         </label>
       </td>
       <td class="border px-2 py-1">
@@ -124,7 +123,6 @@ function openColorModal(nodeTypes, edgeTypes, darkMode) {
           <input type="checkbox" ${visibleValue ? "checked" : ""} data-type="${type}"
                  class="edge-visible-checkbox transition-colors duration-300"
                  :class="darkMode ? 'accent-accent-dark' : 'accent-accent-light'">
-          <span>Show</span>
         </label>
       </td>
       <td class="border px-2 py-1">
