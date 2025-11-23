@@ -6,7 +6,6 @@ from .models import (
     FundingRound,
 )
 from toto.admin import BaseSerializableAdmin
-from toto.neo4j import Neo4jSyncMixin
 from portfolio.graph.sync import (
     CompanyConversionStrategy,
     SharePackageConversionStrategy,
@@ -22,7 +21,7 @@ class ChamberAdmin(BaseSerializableAdmin):
 
 
 @admin.register(Company)
-class CompanyAdmin(BaseSerializableAdmin, Neo4jSyncMixin):
+class CompanyAdmin(BaseSerializableAdmin):
     strategy_class = CompanyConversionStrategy
     strategy_label = "Companies"
     actions = BaseSerializableAdmin.actions + ['sync_with_neo4j']
@@ -40,7 +39,7 @@ class CompanyAdmin(BaseSerializableAdmin, Neo4jSyncMixin):
 
 
 @admin.register(SharePackage)
-class SharePackageAdmin(BaseSerializableAdmin, Neo4jSyncMixin):
+class SharePackageAdmin(BaseSerializableAdmin):
     strategy_class = SharePackageConversionStrategy
     strategy_label = "Shares"
 
@@ -71,7 +70,7 @@ class SharePackageAdmin(BaseSerializableAdmin, Neo4jSyncMixin):
 
 
 @admin.register(FundingRound)
-class FundingRoundAdmin(BaseSerializableAdmin, Neo4jSyncMixin):
+class FundingRoundAdmin(BaseSerializableAdmin):
     strategy_class = FundingRoundConversionStrategy
     strategy_label = "Funding Rounds"
 
