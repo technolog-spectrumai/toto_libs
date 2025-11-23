@@ -1,7 +1,5 @@
 
 from .models import Platform, DashboardBlock, Font, Theme, AppIngress, ColorMix
-from django_json_widget.widgets import JSONEditorWidget
-from django.db.models import JSONField
 from django.contrib import admin, messages
 from django.utils.html import format_html
 
@@ -132,9 +130,6 @@ class DashboardBlockAdmin(admin.ModelAdmin):
 
 @admin.register(AppIngress)
 class AppIngressAdmin(admin.ModelAdmin):
-    formfield_overrides = {
-        JSONField: {'widget': JSONEditorWidget}
-    }
     list_display = ("app_name", "scheduled_at")
     actions = ["run_ingress"]
 
