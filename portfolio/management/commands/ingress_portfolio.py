@@ -2,12 +2,11 @@ import random
 from django.utils.timezone import now
 from datetime import timedelta
 from faker import Faker
-
 from oya.ingress import IngressCommand
 from portfolio.models import Chamber, Company, SharePackage, FundingRound
 from finance.models import Currency
 from community.models import CommunityMember, SocialEntity
-from django.contrib.auth.models import User
+
 
 fake = Faker()
 
@@ -102,7 +101,7 @@ class Command(IngressCommand):
     # -----------------------------
     # Main process
     # -----------------------------
-    def process(self, _):
+    def process(self):
         # 📊 Dashboard block
         self.create_dashboard_item(
             title="Portfolio",

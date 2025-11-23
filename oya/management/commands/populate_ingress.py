@@ -14,7 +14,6 @@ class Command(BaseCommand):
             obj, was_created = AppIngress.objects.get_or_create(
                 app_name=app_name,
                 defaults={
-                    "args": {},
                     "scheduled_at": timezone.now()
                 }
             )

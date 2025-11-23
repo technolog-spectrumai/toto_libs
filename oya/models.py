@@ -211,6 +211,7 @@ class DashboardBlock(models.Model):
 
 _INGRESS_ALLOWED_APPS = getattr(settings, "INGRESS_ALLOWED_APPS", [])
 
+
 class AppIngress(models.Model):
 
     class IngressCommandError(Exception):
@@ -227,11 +228,6 @@ class AppIngress(models.Model):
         max_length=64,
         choices=[(app, app) for app in _INGRESS_ALLOWED_APPS],
         help_text="Target app for ingress"
-    )
-    args = models.JSONField(
-        default=dict,
-        blank=True,
-        help_text="Arguments to pass to the ingress command"
     )
     scheduled_at = models.DateTimeField(
         default=timezone.now,
@@ -257,11 +253,8 @@ class AppIngress(models.Model):
 
         try:
             out = StringIO()
-            json_args = json.dumps(self.args)
             full_ingress_mode = getattr(settings, 'FULL_INGRESS', False)
-            call_command(f"ingress_{self.app_name}", json=json_args,
-                         stdout=out, stderr=out, full=full_ingress_mode)
-
+            call_command(f"ingress_{self.app_name}", stdout=out, stderr=out, full=full_ingress_mode)
             output = out.getvalue()
             sys.stdout.write(output)
 

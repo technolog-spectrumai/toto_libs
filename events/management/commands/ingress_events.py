@@ -12,7 +12,7 @@ fake = Faker()
 class Command(IngressCommand):
     help = "Seed sample data for Events: categories, events, and registrations"
 
-    def process(self, _):
+    def process(self):
         # 📅 Dashboard block
         self.create_dashboard_item(
             title="Events",

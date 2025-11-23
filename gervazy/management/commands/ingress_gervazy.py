@@ -7,7 +7,7 @@ import os
 class Command(IngressCommand):
     help = "Seed Gervazy app with a demo KeyRing and create dashboard item + RSA keypair"
 
-    def process(self, _):
+    def process(self):
 
         username = "admin"
         try:

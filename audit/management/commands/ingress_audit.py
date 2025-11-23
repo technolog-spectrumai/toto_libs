@@ -8,7 +8,7 @@ from oya.ingress import IngressCommand
 class Command(IngressCommand):
     help = "Seed sample data for Events: categories, events, and registrations"
 
-    def process(self, _):
+    def process(self):
         log_dir = Path(settings.BASE_DIR) / 'logs'
         log_dir.mkdir(exist_ok=True)
 

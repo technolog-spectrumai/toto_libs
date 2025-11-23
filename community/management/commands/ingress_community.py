@@ -10,7 +10,7 @@ from django.core.exceptions import ObjectDoesNotExist
 class Command(IngressCommand):
     help = "Populate the platform with fake community data: address, community, members, and relationships"
 
-    def process(self, _):
+    def process(self):
         # 📊 Dashboard block
         self.create_dashboard_item(
             title="Community",

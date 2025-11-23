@@ -12,12 +12,6 @@ class IngressCommand(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
-            '--json',
-            type=str,
-            required=False,
-            help="Optional JSON string to be processed by the command"
-        )
-        parser.add_argument(
             '--full',
             action='store_true',
             help="If set, run full data fill; otherwise, only process indispensable data"
@@ -25,20 +19,10 @@ class IngressCommand(BaseCommand):
 
     def handle(self, *args, **options):
         self.full = options.get('full', False)
-        json_input = options.get('json', '{}')
+        self.process()
 
-        if not json_input:
-            self.stdout.write("No JSON input provided.")
-            data = {}
-        else:
-            try:
-                data = json.loads(json_input)
-            except json.JSONDecodeError as e:
-                raise CommandError(f"Invalid JSON input: {e}")
-        self.process(data)
-
-    def process(self, data):
-        raise NotImplementedError("Subclasses must implement process(data)")
+    def process(self):
+        raise NotImplementedError("Subclasses must implement process()")
 
     def create_dashboard_item(self, **item_data):
         """

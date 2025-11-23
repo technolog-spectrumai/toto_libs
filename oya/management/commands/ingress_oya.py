@@ -8,11 +8,10 @@ from oya.ingress import IngressCommand
 class Command(IngressCommand):
     help = "Ingress themes from a directory of JSON files"
 
-    def process(self,data):
+    def process(self):
         if not self.full:
             return
-        default_dir = os.path.join(os.path.dirname(__file__), '../../../../data/themes')
-        themes_dir = data.get('dir', default_dir)
+        themes_dir = os.path.join(os.path.dirname(__file__), '../../../../data/themes')
 
         if not os.path.isdir(themes_dir):
             raise CommandError(f"Provided path is not a directory: {themes_dir}")

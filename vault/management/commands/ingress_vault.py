@@ -8,7 +8,7 @@ import os
 class Command(IngressCommand):
     help = "Seed Vault app with demo data and create dashboard item"
 
-    def process(self, _):
+    def process(self):
         # Create dashboard block
         self.create_dashboard_item(
             title="Vault",

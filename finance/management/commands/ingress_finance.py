@@ -90,7 +90,7 @@ class Command(IngressCommand):
                 timestamp=now() - timedelta(days=random.randint(0, 30))
             )
 
-    def process(self, _):
+    def process(self):
         # 📊 Dashboard block
         self.create_dashboard_item(
             title="Finance",

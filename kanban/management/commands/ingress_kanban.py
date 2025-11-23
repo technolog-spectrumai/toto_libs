@@ -9,7 +9,7 @@ from oya.ingress import IngressCommand
 class Command(IngressCommand):
     help = "Creates a demo kanban setup with a current sprint using existing ColorMix themes"
 
-    def process(self, _):
+    def process(self):
         self.create_dashboard_item(
             title="Tasks",
             icon="fa-solid fa-tasks",

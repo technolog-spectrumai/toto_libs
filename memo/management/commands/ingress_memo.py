@@ -8,7 +8,7 @@ import random
 class Command(IngressCommand):
     help = "Populate the database with sample MemoDecks, MemoCards, Tags, and LaTeX presets"
 
-    def process(self, _):
+    def process(self):
         self.create_dashboard_item(
             title="MemoDecks",
             icon="fa-solid fa-eye",

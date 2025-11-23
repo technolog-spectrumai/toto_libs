@@ -14,7 +14,7 @@ from editor.convert import LatexToHTMLConverter
 class Command(IngressCommand):
     help = "Seed a LaTeX document with department, presets, structured content, and in-place HTML conversion"
 
-    def process(self, _):
+    def process(self):
         if not self.full:
             return
 

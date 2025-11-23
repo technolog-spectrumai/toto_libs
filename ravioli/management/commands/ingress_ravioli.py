@@ -11,7 +11,7 @@ fake = Faker()
 class Command(IngressCommand):
     help = "Creates a demo Bolt user with read-only permissions and a default Cypher query"
 
-    def process(self, _):
+    def process(self):
         # 📊 Dashboard block
 
         self.create_dashboard_item(

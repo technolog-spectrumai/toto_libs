@@ -15,7 +15,7 @@ fake = Faker()
 class Command(IngressCommand):
     help = "Creates demo Intel Notes with sample notes, tags, subjects, and events"
 
-    def process(self, _):
+    def process(self):
         # 📊 Dashboard block
         self.create_dashboard_item(
             title="Intel Notes",

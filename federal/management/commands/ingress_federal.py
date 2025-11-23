@@ -16,7 +16,7 @@ from oya.ingress import IngressCommand
 class Command(IngressCommand):
     help = "Populate the platform with fake federal data: federations and federated identities"
 
-    def process(self, _):
+    def process(self):
         # 📊 Dashboard block
         self.create_dashboard_item(
             title="Federation",
