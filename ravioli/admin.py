@@ -1,15 +1,17 @@
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.utils.html import format_html
 from neo4j import GraphDatabase
 from django.conf import settings
 from .models import CypherQuery, GraphSync
 from toto.admin import BaseSerializableAdmin
 
+
 # Use connection details from settings.py
 driver = GraphDatabase.driver(
     f"bolt://{settings.NEO4J_HOST}:{settings.NEO4J_PORT}",
     auth=(settings.NEO4J_USER, settings.NEO4J_PASSWORD)
 )
+
 
 def test_cypher_query(query: str) -> bool:
     """
@@ -71,4 +73,34 @@ class GraphSyncAdmin(admin.ModelAdmin):
             "fields": ("app_name", "scheduled_at", "executed_at")
         }),
     )
+    actions = ["run_sync"]
 
+
+    @admin.action(description="Run sync command for selected entries")
+    def run_sync(self, request, queryset):
+        for sync in queryset:
+            try:
+                sync.run_sync_command()
+                self.message_user(
+                    request,
+                    f"✅ Success: Ran sync for {sync.app_name}",
+                    level=messages.SUCCESS
+                )
+            except GraphSync.SyncCommandNotFound as nf:
+                self.message_user(
+                    request,
+                    f"⚠️ Not Found: {nf}",
+                    level=messages.WARNING
+                )
+            except GraphSync.SyncCommandExecutionFailed as ef:
+                self.message_user(
+                    request,
+                    f"💥 Execution Failed: {ef}",
+                    level=messages.ERROR
+                )
+            except GraphSync.SyncCommandError as e:
+                self.message_user(
+                    request,
+                    f"❓ Unknown Error: {e}",
+                    level=messages.ERROR
+                )
