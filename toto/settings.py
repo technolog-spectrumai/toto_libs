@@ -290,7 +290,16 @@ BACKUP_ALLOWED_APPS = [
     "finance",
     "portfolio",
     "events",
-    "ravioli"
+    "notes"
+]
+
+GRAPH_APPS = [
+    "community",
+    "finance",
+    "portfolio",
+    "events",
+    "federal",
+    "notes"
 ]
 
 FULL_INGRESS = DEBUG

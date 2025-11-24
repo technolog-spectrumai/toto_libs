@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.utils.html import format_html
 from neo4j import GraphDatabase
 from django.conf import settings
-from .models import CypherQuery
+from .models import CypherQuery, GraphSync
 from toto.admin import BaseSerializableAdmin
 
 # Use connection details from settings.py
@@ -55,3 +55,20 @@ class CypherQueryAdmin(BaseSerializableAdmin):
         return format_html('<span style="color: red; font-weight: bold;">No</span>')
 
     query_valid.short_description = "Valid?"
+
+
+@admin.register(GraphSync)
+class GraphSyncAdmin(admin.ModelAdmin):
+    list_display = ("app_name", "scheduled_at", "executed_at")
+    list_filter = ("app_name",)
+    search_fields = ("app_name",)
+    ordering = ("-scheduled_at",)
+
+    readonly_fields = ("executed_at",)
+
+    fieldsets = (
+        (None, {
+            "fields": ("app_name", "scheduled_at", "executed_at")
+        }),
+    )
+
