@@ -285,7 +285,15 @@ INGRESS_ALLOWED_APPS = [
     "ravioli"
 ]
 
-FULL_INGRESS = True#DEBUG
+BACKUP_ALLOWED_APPS = [
+    "community",
+    "finance",
+    "portfolio",
+    "events",
+    "ravioli"
+]
+
+FULL_INGRESS = DEBUG
 
 GIT_REPO_BASE_DIR = BASE_DIR / 'git_repos'
 

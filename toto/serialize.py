@@ -2,10 +2,15 @@ import os
 import tempfile
 from django.core.files import File
 from vault.models import VaultFile
+from .models import SerializableModel
 
 
 class ModelSerializer:
     def __init__(self, model_class):
+        if not issubclass(model_class, SerializableModel):
+            raise TypeError(
+                f"{model_class.__name__} is not a subclass of SerializableModel"
+            )
         self.model_class = model_class
 
     def dump_queryset_to_bucket(self, queryset, owner, bucket, filename):

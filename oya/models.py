@@ -1,16 +1,17 @@
 from django_jsonform.models.fields import JSONField
-from django.db import models
 from django.utils import timezone
 from django.core.management import call_command
 from django.apps import apps
 import os
 from io import StringIO
 import sys
-import json
 from django.conf import settings
 from django.db import models
-from colorfield.fields import ColorField  # Ensure you have django-colorfield installed
+from colorfield.fields import ColorField
 from gervazy.models import SecretKey
+from vault.models import Bucket
+from toto.models import SerializableModel
+
 
 class Font(models.Model):
     FONT_FAMILY_CHOICES = [
@@ -262,3 +263,85 @@ class AppIngress(models.Model):
             raise self.IngressCommandExecutionFailed(f"Error running ingress for '{self.app_name}': {str(e)}")
 
 
+_BACKUP_ALLOWED_APPS = getattr(settings, "BACKUP_ALLOWED_APPS", [])
+
+
+class AppBackup(models.Model):
+
+    class BackupCommandError(Exception):
+        """Base class for backup command errors."""
+
+    class BackupCommandExecutionFailed(BackupCommandError):
+        """Raised when the command execution throws an error."""
+
+    BACKUP_ALLOWED_APPS = _BACKUP_ALLOWED_APPS
+
+    app_name = models.CharField(
+        max_length=64,
+        choices=[(app, app) for app in _BACKUP_ALLOWED_APPS],
+        help_text="Target app for backup"
+    )
+    bucket = models.ForeignKey(
+        Bucket,
+        on_delete=models.CASCADE,
+        related_name="backups",
+        help_text="Target Vault bucket for backup"
+    )
+    filename = models.CharField(
+        max_length=128,
+        help_text="Base filename prefix to use for backup dumps"
+    )
+    scheduled_at = models.DateTimeField(
+        default=timezone.now,
+        help_text="When this backup should be executed"
+    )
+
+    def __str__(self):
+        return (
+            f"Backup for {self.app_name} "
+            f"at {self.scheduled_at} → {self.bucket.name}/{self.filename}*"
+        )
+
+    def run_backup_command(self):
+        """
+        Runs the generic 'app_backup' management command for all serializable models
+        in the specified app. Each model gets its own file (filename_model.json).
+        Raises:
+            BackupCommandExecutionFailed: if execution fails
+        """
+        try:
+            out = StringIO()
+            full_backup_mode = getattr(settings, 'FULL_BACKUP', False)
+
+            # autodetect all serializable models in the app
+            app_config = apps.get_app_config(self.app_name)
+            serializable_models = [
+                m for m in app_config.get_models()
+                if issubclass(m, SerializableModel)
+            ]
+
+            if not serializable_models:
+                raise self.BackupCommandExecutionFailed(
+                    f"No serializable models found in app '{self.app_name}'"
+                )
+            #
+            for model in serializable_models:
+                model_filename = f"{self.filename}_{model.__name__.lower()}.json"
+                call_command(
+                    "app_backup",
+                    stdout=out,
+                    stderr=out,
+                    full=full_backup_mode,
+                    app=self.app_name,
+                    model=model.__name__,
+                    bucket=self.bucket.name,
+                    filename=model_filename
+                )
+
+            output = out.getvalue()
+            sys.stdout.write(output)
+
+        except Exception as e:
+            raise self.BackupCommandExecutionFailed(
+                f"Error running backup for app '{self.app_name}': {str(e)}"
+            )
