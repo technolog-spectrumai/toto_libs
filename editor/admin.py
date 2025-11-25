@@ -22,7 +22,6 @@ class DepartmentAdmin(admin.ModelAdmin):
     list_display = ['name', 'owner', 'bucket']
     search_fields = ['name']
     list_filter = ['owner']
-    readonly_fields = ['owner']
     fieldsets = (
         (None, {'fields': ['name', 'owner', 'seal', 'bucket']}),
     )
