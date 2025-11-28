@@ -8,12 +8,13 @@ from .compiler import LatexCompiler
 from .models import (
     Department,
     LatexPreset, Figure,
-    Document, DocumentSection, DocumentSubSection
+    Document, DocumentSection, DocumentSubSection, Bibliography
 )
 from .batch import BatchAction
 from django_ace import AceWidget
 from django.utils.html import format_html
 from latextile.models import LatexProject, TexFile
+from nested_admin import NestedTabularInline
 
 
 
@@ -97,6 +98,20 @@ class DocumentSectionInline(NestedStackedInline):
                 super().__init__(*args, **kwargs)
 
         return CustomFormSet
+
+
+@admin.register(Bibliography)
+class BibliographyAdmin(admin.ModelAdmin):
+    list_display = ("title", "document", "item_count")
+    search_fields = ("title", "document__title")
+    list_filter = ("document",)
+
+    filter_horizontal = ("items",)  # nice UI for ManyToMany selection
+
+    def item_count(self, obj):
+        return obj.items.count()
+    item_count.short_description = "Number of References"
+
 
 
 @admin.register(Document)

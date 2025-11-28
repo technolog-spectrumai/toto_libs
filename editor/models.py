@@ -5,7 +5,7 @@ from django_jsonform.models.fields import JSONField
 import reversion
 from .convert import LatexToHTMLConverter, HTMLToLatexConverter
 from vault.models import Bucket
-
+from library.models import ReferenceItem
 
 # ────────────────────────────────────────────────
 # 🏢 Department Model
@@ -43,7 +43,6 @@ class Document(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True)
     preset = models.ForeignKey(LatexPreset, on_delete=models.SET_NULL, null=True, blank=True)
-
 
     def __str__(self):
         return f"{self.title} (v{self.version})"
@@ -100,3 +99,16 @@ class DocumentSubSection(DocumentItem):
     section = models.ForeignKey(DocumentSection, on_delete=models.CASCADE, related_name='subsections')
     content = models.TextField(blank=True)
     image = models.ForeignKey(Figure, on_delete=models.SET_NULL, null=True, blank=True, related_name='subsections')
+
+
+class Bibliography(models.Model):
+    """
+    A bibliography attached to a document, linking to ReferenceItems from the biblio app.
+    """
+    document = models.ForeignKey(Document, on_delete=models.CASCADE, related_name='bibliographies')
+    items = models.ManyToManyField(ReferenceItem, related_name='bibliographies', blank=True)
+
+    title = models.CharField(max_length=255, default="References")
+
+    def __str__(self):
+        return f"Bibliography for {self.document.title}"
