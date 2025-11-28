@@ -77,7 +77,8 @@ INSTALLED_APPS = [
     "federal",
     "gate",
     "ravioli",
-    "notes"
+    "notes",
+    "library"
 ]
 
 
@@ -282,7 +283,8 @@ INGRESS_ALLOWED_APPS = [
     "events",
     "kanban",
     "notes",
-    "ravioli"
+    "ravioli",
+    "library"
 ]
 
 BACKUP_ALLOWED_APPS = [
