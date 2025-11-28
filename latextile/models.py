@@ -63,6 +63,30 @@ class LatexProject(models.Model):
         return self.name
 
 
+class BibFile(models.Model):
+    project = models.ForeignKey(
+        LatexProject,
+        on_delete=models.CASCADE,
+        related_name='bib_files'
+    )
+    filename = models.CharField(max_length=255)
+    file = models.FileField(upload_to='bib_sources/', blank=True)  # Actual .bib file
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.filename
+
+
+    @staticmethod
+    def run_bibtex(output_dir, aux_path):
+        subprocess.run(
+            ['bibtex', str(aux_path)],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+
+
 class LatexCompilationProcess(models.Model):
     STATUS_CHOICES = [
         ('pending', 'Pending'),
@@ -76,6 +100,7 @@ class LatexCompilationProcess(models.Model):
     finished_at = models.DateTimeField(null=True, blank=True)
     tex_file = models.FileField(upload_to='latex_compilation/tex/', blank=True, null=True)
     aux_file = models.FileField(upload_to='latex_compilation/aux/', blank=True, null=True)
+    bib_file = models.FileField(upload_to='latex_compilation/bib/', blank=True, null=True)
     pdf_file = models.FileField(upload_to='latex_compilation/pdf/', blank=True, null=True)
     output_dir = models.CharField(max_length=512, blank=True, null=True)
 
@@ -109,6 +134,14 @@ class LatexCompilationProcess(models.Model):
                 f.write(self.tex_file.read())
             log.append(f"Copied source file to '{tex_path}'")
 
+            # Copy bibliography file if provided
+            if self.bib_file:
+                bib_path = output_dir / Path(self.bib_file.name).name
+                with open(bib_path, 'wb') as f:
+                    f.write(self.bib_file.read())
+                log.append(f"Copied bibliography file to '{bib_path}'")
+
+
             # Run pdflatex (first pass)
             self.run_pdflatex(str(output_dir), str(tex_path))
             log.append("First pdflatex run completed.")
@@ -118,6 +151,15 @@ class LatexCompilationProcess(models.Model):
             if not aux_path.exists():
                 self.run_pdflatex(str(output_dir), str(tex_path))
                 log.append("Second pdflatex run completed (aux file was missing).")
+
+            # Run bibtex if bibliography exists
+            if any(output_dir.glob("*.bib")) and aux_path.exists():
+                BibFile.run_bibtex(str(output_dir), aux_path.stem)
+                log.append("BibTeX run completed.")
+                # Run pdflatex twice more to resolve references
+                self.run_pdflatex(str(output_dir), str(tex_path))
+                self.run_pdflatex(str(output_dir), str(tex_path))
+                log.append("Final pdflatex runs completed after bibliography.")
 
             # Check for PDF output
             pdf_path = output_dir / 'main.pdf'
@@ -159,6 +201,7 @@ class TexFile(models.Model):
     filename = models.CharField(max_length=255)
     file = models.FileField(upload_to='tex_sources/', blank=True)  # This is the actual LaTeX source file
     created_at = models.DateTimeField(auto_now_add=True)
+    bibliography = models.ManyToManyField(BibFile, blank=True, related_name='tex_files')
 
     def __str__(self):
         return self.filename

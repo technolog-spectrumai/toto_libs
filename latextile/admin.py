@@ -12,7 +12,7 @@ from .batch import BatchAction
 import jsonschema
 from django.contrib import admin
 from django.utils.html import format_html
-from .models import LatexCompilationProcess
+from .models import LatexCompilationProcess, BibFile
 from .tasks import compile_project_task
 
 
@@ -185,7 +185,7 @@ class LatexCompilationProcessAdmin(admin.ModelAdmin):
         'finished_at',
         'colored_status',
     )
-    search_fields = ('tex_file__name', 'pdf_file__name')
+    search_fields = ('tex_file__name', 'pdf_file__name', 'bib_file__name')
     list_filter = ('status', 'started_at', 'finished_at')
     readonly_fields = (
         'log',
@@ -195,8 +195,9 @@ class LatexCompilationProcessAdmin(admin.ModelAdmin):
         'tex_file_link',
         'aux_file_link',
         'pdf_file_link',
+        'bib_file_link',   # NEW
     )
-    exclude = ('tex_file', 'aux_file', 'pdf_file')
+    exclude = ('tex_file', 'aux_file', 'pdf_file', 'bib_file')  # NEW
 
     def tex_file_name(self, obj):
         if obj.tex_file:
@@ -237,4 +238,15 @@ class LatexCompilationProcessAdmin(admin.ModelAdmin):
         return "—"
     pdf_file_link.short_description = "PDF File"
 
+    def bib_file_link(self, obj):   # NEW
+        if obj.bib_file:
+            return format_html('<a href="{}" target="_blank">📚 {}</a>', obj.bib_file.url, obj.bib_file.name)
+        return "—"
+    bib_file_link.short_description = "Bib File"
 
+
+@admin.register(BibFile)
+class BibFileAdmin(admin.ModelAdmin):
+    list_display = ['filename', 'project', 'created_at']
+    search_fields = ['filename', 'project__name']
+    list_filter = ['created_at', 'project']
