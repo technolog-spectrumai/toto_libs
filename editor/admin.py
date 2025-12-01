@@ -2,6 +2,7 @@ import os
 from django.contrib import admin
 from django import forms
 from django.core.files import File
+from django.core.files.base import ContentFile
 from nested_admin import NestedModelAdmin, NestedStackedInline
 from reversion.admin import VersionAdmin
 from .compiler import LatexCompiler
@@ -13,7 +14,7 @@ from .models import (
 from .batch import BatchAction
 from django_ace import AceWidget
 from django.utils.html import format_html
-from latextile.models import LatexProject, TexFile
+from latextile.models import LatexProject, TexFile, BibFile
 from nested_admin import NestedTabularInline
 
 
