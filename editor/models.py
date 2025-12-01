@@ -112,3 +112,8 @@ class Bibliography(models.Model):
 
     def __str__(self):
         return f"Bibliography for {self.document.title}"
+
+    def to_bibtex(self):
+        references = self.items.all()
+        bib_entries = [ref.to_latex() for ref in references]
+        return "\n\n".join(bib_entries)

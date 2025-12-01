@@ -107,11 +107,44 @@ class BibliographyAdmin(admin.ModelAdmin):
     list_filter = ("document",)
 
     filter_horizontal = ("items",)  # nice UI for ManyToMany selection
+    actions = ["export_bib"]
+
 
     def item_count(self, obj):
         return obj.items.count()
     item_count.short_description = "Number of References"
 
+    @admin.action(description="Export selected bibliographies to BibFile")
+    def export_bib(self, request, queryset):
+
+        def export_one(biblio):
+            document = biblio.document
+            if not document.department or not document.department.bucket:
+                raise ValueError(f"Document '{document.title}' has no department bucket assigned.")
+
+            # Create or get LatexProject
+            project, _ = LatexProject.objects.get_or_create(
+                user=document.created_by,
+                name=f"{document.title} (auto-bibtex)",
+                bucket=document.department.bucket
+            )
+
+            # Build BibTeX content
+            bib_content = biblio.to_bibtex()
+            filename = f"{document.slug or document.id}.bib"
+
+            # Create BibFile
+            bibfile = BibFile.objects.create(
+                project=project,
+                filename=filename
+            )
+            bibfile.file.save(filename, ContentFile(bib_content.encode("utf-8")))
+
+            return biblio
+
+        # BatchAction trick
+        result = BatchAction(queryset).run(export_one)
+        BatchAction.display_messages(result, self.message_user, request, verb="export to BibFile")
 
 
 @admin.register(Document)

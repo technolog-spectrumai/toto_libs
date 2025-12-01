@@ -97,12 +97,11 @@ class AudioReferenceAdmin(PolymorphicChildModelAdmin):
         return ", ".join(tag.name for tag in obj.tags.all())
 
 
-# 🌐 Website Reference Admin
 @admin.register(WebsiteReference)
 class WebsiteReferenceAdmin(PolymorphicChildModelAdmin):
     base_model = WebsiteReference
-    list_display = ("title", "site_name", "url", "author", "year", "accessed_date", "tag_list")
-    search_fields = ("title", "site_name", "author", "url")
+    list_display = ("title", "sitename", "url", "author", "year", "accessed_date", "tag_list")
+    search_fields = ("title", "sitename", "author", "url")
 
     def tag_list(self, obj):
         return ", ".join(tag.name for tag in obj.tags.all())
@@ -112,8 +111,8 @@ class WebsiteReferenceAdmin(PolymorphicChildModelAdmin):
 @admin.register(GenericReference)
 class GenericReferenceAdmin(PolymorphicChildModelAdmin):
     base_model = GenericReference
-    list_display = ("title", "author", "source_type", "url", "year", "tag_list")
-    search_fields = ("title", "author", "source_type", "url")
+    list_display = ("title", "author", "sourcetype", "url", "year", "tag_list")
+    search_fields = ("title", "author", "sourcetype", "url")
 
     def tag_list(self, obj):
         return ", ".join(tag.name for tag in obj.tags.all())
