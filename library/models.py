@@ -1,5 +1,10 @@
+# models.py
+
+import os
+from django.conf import settings
 from django.db import models
 from polymorphic.models import PolymorphicModel
+
 
 # ────────────────────────────────────────────────
 # 🔖 Base Reference Item (Polymorphic)
@@ -49,6 +54,15 @@ class BookReference(ReferenceItem):
     def __str__(self):
         return f"Book: {self.author}, {self.title} ({self.year})"
 
+    def to_latex(self):
+        return f"""@book{{book{self.pk},
+          author = {{{self.author}}},
+          title = {{{self.title}}},
+          publisher = {{{self.publisher}}},
+          year = {{{self.year}}},
+          isbn = {{{self.isbn}}}
+        }}"""
+
 
 # 📰 Journal Reference
 class JournalReference(ReferenceItem):
@@ -63,6 +77,18 @@ class JournalReference(ReferenceItem):
     def __str__(self):
         return f"Journal: {self.author}, {self.title}, {self.journal} ({self.year})"
 
+    def to_latex(self):
+        return f"""@article{{journal{self.pk},
+          author = {{{self.author}}},
+          title = {{{self.title}}},
+          journal = {{{self.journal}}},
+          volume = {{{self.volume}}},
+          number = {{{self.issue}}},
+          pages = {{{self.pages}}},
+          year = {{{self.year}}},
+          doi = {{{self.doi}}}
+        }}"""
+
 
 # 🎥 Video Reference
 class VideoReference(ReferenceItem):
@@ -73,6 +99,15 @@ class VideoReference(ReferenceItem):
 
     def __str__(self):
         return f"Video: {self.title} [{self.platform}]"
+
+    def to_latex(self):
+        return f"""@misc{{video{self.pk},
+          title = {{{self.title}}},
+          author = {{{self.creator}}},
+          howpublished = {{\\url{{{self.url}}}}},
+          note = {{{self.platform}}},
+          year = {{{self.year}}}
+        }}"""
 
 
 # 🎵 Audio Reference
@@ -85,17 +120,36 @@ class AudioReference(ReferenceItem):
     def __str__(self):
         return f"Audio: {self.artist} - {self.title} ({self.year})"
 
+    def to_latex(self):
+        return f"""@misc{{audio{self.pk},
+          title = {{{self.title}}},
+          author = {{{self.artist}}},
+          howpublished = {{\\url{{{self.url}}}}},
+          note = {{{self.album}}},
+          year = {{{self.year}}}
+        }}"""
+
 
 # 🌐 Website Reference
 class WebsiteReference(ReferenceItem):
     author = models.CharField(max_length=255, blank=True)
-    site_name = models.CharField(max_length=255, blank=True)   # e.g. "BBC News"
+    sitename = models.CharField(max_length=255, blank=True)   # e.g. "BBC News"
     url = models.URLField()
     accessed_date = models.DateField(blank=True, null=True)
     year = models.CharField(max_length=10, blank=True)
 
     def __str__(self):
-        return f"Website: {self.site_name or self.url} ({self.year})"
+        return f"Website: {self.sitename or self.url} ({self.year})"
+
+    def to_latex(self):
+        return f"""@misc{{website{self.pk},
+          author = {{{self.author}}},
+          title = {{{self.title}}},
+          howpublished = {{\\url{{{self.url}}}}},
+          note = {{{self.sitename}}},
+          year = {{{self.year}}},
+          accessed = {{{self.accessed_date}}}
+        }}"""
 
 
 # 🗂 Generic Reference
@@ -104,7 +158,17 @@ class GenericReference(ReferenceItem):
     url = models.URLField(blank=True)
     year = models.CharField(max_length=10, blank=True)
     author = models.CharField(max_length=255, blank=True)
-    source_type = models.CharField(max_length=100, blank=True)  # e.g. Dataset, Report
+    sourcetype = models.CharField(max_length=100, blank=True)  # e.g. Dataset, Report
 
     def __str__(self):
-        return f"Generic: {self.title} ({self.source_type})"
+        return f"Generic: {self.title} ({self.sourcetype})"
+
+    def to_latex(self):
+        return f"""@misc{{generic{self.pk},
+          author = {{{self.author}}},
+          title = {{{self.title}}},
+          howpublished = {{\\url{{{self.url}}}}},
+          note = {{{self.sourcetype}}},
+          year = {{{self.year}}},
+          description = {{{self.description}}}
+        }}"""
