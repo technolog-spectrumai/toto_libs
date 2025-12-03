@@ -73,7 +73,7 @@ class Command(IngressCommand):
 
         website = WebsiteReference.objects.create(
             title="BBC News Article on Climate",
-            site_name="BBC News",
+            sitename="BBC News",
             url="https://bbc.com/climate",
             accessed_date=timezone.now().date(),
             year="2022",
@@ -84,7 +84,7 @@ class Command(IngressCommand):
         generic = GenericReference.objects.create(
             title="UN Climate Report",
             author="United Nations",
-            source_type="Report",
+            sourcetype="Report",
             url="https://un.org/climate-report",
             year="2023",
             description="Comprehensive climate change assessment",
