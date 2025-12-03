@@ -78,7 +78,8 @@ INSTALLED_APPS = [
     "gate",
     "ravioli",
     "notes",
-    "library"
+    "library",
+    "webfront"
 ]
 
 
@@ -284,7 +285,8 @@ INGRESS_ALLOWED_APPS = [
     "kanban",
     "notes",
     "ravioli",
-    "library"
+    "library",
+    "webfront"
 ]
 
 BACKUP_ALLOWED_APPS = [

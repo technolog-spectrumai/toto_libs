@@ -27,6 +27,7 @@ urlpatterns = [
     path("gate/", include("gate.urls", namespace="gate")),
     path("notes/", include("notes.urls", namespace="notes")),
     path("ravioli/", include("ravioli.urls", namespace="ravioli")),
+    path("webfront/", include("webfront.urls", namespace="webfront")),
 ]
 
 
