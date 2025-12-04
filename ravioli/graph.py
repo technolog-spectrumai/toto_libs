@@ -30,11 +30,8 @@ class GraphTranslator:
             neo_node = NeoDataNode(
                 name=node.name,
                 type=node.collection_type.name,
-                data=node.data or {},
-                created_at=node.created_at
+                data=node.data or {}
             ).save()
-            # tag with graph name for scoping
-            neo_node._set_properties({"graph_name": self.graph.name})
             neo_node.save()
             self.node_map[node.id] = neo_node
 
@@ -49,8 +46,7 @@ class GraphTranslator:
                 rel = source.relates_to.connect(target, {
                     "relation_type": edge.relation_type.name,
                     "label": edge.label,
-                    "metadata": edge.metadata or {},
-                    "created_at": edge.created_at,
+                    "metadata": edge.metadata or {}
                 })
                 rel.save()
 

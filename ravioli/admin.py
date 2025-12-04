@@ -106,7 +106,7 @@ class GraphAdmin(admin.ModelAdmin):
         def export_one(graph_obj):
             translator = GraphTranslator(graph_obj)
             summary = translator.export()
-            return summary
+            return graph_obj
 
         result = BatchAction(queryset).run(export_one)
         BatchAction.display_messages(result, self.message_user, request, verb="export")
