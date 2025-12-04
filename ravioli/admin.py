@@ -4,7 +4,8 @@ from neo4j import GraphDatabase
 from django.conf import settings
 from django_ace import AceWidget
 from django import forms
-
+from .graph import GraphTranslator
+from toto.batch import BatchAction
 from .models import (
     CypherQuery,
     Graph,
@@ -97,6 +98,18 @@ class GraphAdmin(admin.ModelAdmin):
     list_display = ("name", "description", "created_by", "created_at")
     search_fields = ("name", "description")
     list_filter = ("created_by",)
+
+    actions = ["export_graphs_to_neo4j"]
+
+    @admin.action(description="Export selected graphs to Neo4j")
+    def export_graphs_to_neo4j(self, request, queryset):
+        def export_one(graph_obj):
+            translator = GraphTranslator(graph_obj)
+            summary = translator.export()
+            return summary
+
+        result = BatchAction(queryset).run(export_one)
+        BatchAction.display_messages(result, self.message_user, request, verb="export")
 
 
 @admin.register(CollectionType)

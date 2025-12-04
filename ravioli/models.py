@@ -2,7 +2,7 @@ from typing import List
 from django.contrib.auth.models import User
 from toto.models import SerializableModel
 from django.db import models
-
+from .graph import GraphTranslator
 
 class CypherQuery(SerializableModel):
     """
@@ -84,6 +84,10 @@ class Graph(models.Model):
 
     def __str__(self):
         return self.name
+
+    def export_to_neo4j(self):
+        translator = GraphTranslator(self)
+        return translator.export()
 
 
 class CollectionType(models.Model):
