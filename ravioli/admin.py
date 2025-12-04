@@ -2,7 +2,7 @@ from django.contrib import admin, messages
 from django.utils.html import format_html
 from neo4j import GraphDatabase
 from django.conf import settings
-from django_ace import AceWidget   # <-- ACE editor widget
+from django_ace import AceWidget
 from django import forms
 
 from .models import (
@@ -14,6 +14,7 @@ from .models import (
     DataEdge,
 )
 from toto.admin import BaseSerializableAdmin
+from .forms import DynamicDataNodeForm   # <-- import your dynamic form
 
 
 # Use connection details from settings.py
@@ -43,15 +44,6 @@ class CollectionTypeForm(forms.ModelForm):
         widgets = {
             "json_schema": AceWidget(mode="json", theme="chrome"),
             "form_layout": AceWidget(mode="json", theme="chrome"),
-        }
-
-
-class DataNodeForm(forms.ModelForm):
-    class Meta:
-        model = DataNode
-        fields = "__all__"
-        widgets = {
-            "data": AceWidget(mode="json", theme="chrome"),
         }
 
 
@@ -116,11 +108,43 @@ class CollectionTypeAdmin(admin.ModelAdmin):
 
 @admin.register(DataNode)
 class DataNodeAdmin(admin.ModelAdmin):
-    form = DataNodeForm
     list_display = ("name", "collection_type", "graph", "created_at")
     search_fields = ("name", "data")
     list_filter = ("collection_type", "graph")
+    exclude = ("data",)  # hide raw JSON textarea
 
+    def get_form(self, request, obj=None, **kwargs):
+        """
+        Return a form class that injects layout_json from the object's collection_type.
+        """
+        layout = None
+        if obj and obj.collection_type and obj.collection_type.form_layout:
+            layout = obj.collection_type.form_layout
+
+        class ParametricDynamicForm(DynamicDataNodeForm):
+            def __init__(self, *args, **kw):
+                kw["layout_json"] = layout
+                super().__init__(*args, **kw)
+
+        return ParametricDynamicForm
+
+    def get_fieldsets(self, request, obj=None):
+        """
+        Split into two fieldsets:
+        - Basic info: name + collection_type
+        - Data: dynamic fields
+        """
+        form_class = self.get_form(request, obj)
+        form = form_class(instance=obj)
+
+        all_fields = list(form.fields.keys())
+        basic_fields = ["name", "collection_type"]
+        dynamic_fields = [f for f in all_fields if f not in basic_fields]
+
+        return [
+            ("Basic info", {"fields": basic_fields}),
+            ("Data", {"fields": dynamic_fields}),
+        ]
 
 @admin.register(RelationType)
 class RelationTypeAdmin(admin.ModelAdmin):
@@ -131,7 +155,6 @@ class RelationTypeAdmin(admin.ModelAdmin):
 
 @admin.register(DataEdge)
 class DataEdgeAdmin(admin.ModelAdmin):
-    form = DataEdgeForm
     list_display = ("source", "target", "relation_type", "graph", "label", "created_at")
     search_fields = ("label", "metadata")
     list_filter = ("relation_type", "graph")

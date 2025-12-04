@@ -41,9 +41,9 @@ class PlatformMiddleware:
             now = time.time()
             # Keep only requests in the last `window` seconds
             requests = [t for t in requests if now - t < window]
-            if len(requests) >= max_requests:
-
-                return HttpResponse("Too many requests, slow down!", status=429)
+            # if len(requests) >= max_requests:
+            #
+            #     return HttpResponse("Too many requests, slow down!", status=429)
 
             requests.append(now)
             cache.set(key, requests, timeout=window)
