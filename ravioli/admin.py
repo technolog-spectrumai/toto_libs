@@ -138,7 +138,7 @@ class DataNodeAdmin(admin.ModelAdmin):
         form = form_class(instance=obj)
 
         all_fields = list(form.fields.keys())
-        basic_fields = ["name", "collection_type"]
+        basic_fields = ["name", "collection_type", "graph"]
         dynamic_fields = [f for f in all_fields if f not in basic_fields]
 
         return [

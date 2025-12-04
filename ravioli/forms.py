@@ -53,7 +53,7 @@ class DynamicDataNodeForm(forms.ModelForm):
 
     class Meta:
         model = DataNode
-        fields = ["name", "collection_type"]
+        fields = ["name", "collection_type", "graph"]
         #exclude = ["data", "graph", "created_at"]
 
     def __init__(self, *args, layout_json=None, **kwargs):
