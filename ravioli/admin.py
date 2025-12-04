@@ -2,7 +2,7 @@ from django.contrib import admin, messages
 from django.utils.html import format_html
 from neo4j import GraphDatabase
 from django.conf import settings
-from .models import CypherQuery, GraphSync
+from .models import CypherQuery
 from toto.admin import BaseSerializableAdmin
 
 
@@ -57,50 +57,3 @@ class CypherQueryAdmin(BaseSerializableAdmin):
         return format_html('<span style="color: red; font-weight: bold;">No</span>')
 
     query_valid.short_description = "Valid?"
-
-
-@admin.register(GraphSync)
-class GraphSyncAdmin(admin.ModelAdmin):
-    list_display = ("app_name", "scheduled_at", "executed_at")
-    list_filter = ("app_name",)
-    search_fields = ("app_name",)
-    ordering = ("-scheduled_at",)
-
-    readonly_fields = ("executed_at",)
-
-    fieldsets = (
-        (None, {
-            "fields": ("app_name", "scheduled_at", "executed_at")
-        }),
-    )
-    actions = ["run_sync"]
-
-
-    @admin.action(description="Run sync command for selected entries")
-    def run_sync(self, request, queryset):
-        for sync in queryset:
-            try:
-                sync.run_sync_command()
-                self.message_user(
-                    request,
-                    f"✅ Success: Ran sync for {sync.app_name}",
-                    level=messages.SUCCESS
-                )
-            except GraphSync.SyncCommandNotFound as nf:
-                self.message_user(
-                    request,
-                    f"⚠️ Not Found: {nf}",
-                    level=messages.WARNING
-                )
-            except GraphSync.SyncCommandExecutionFailed as ef:
-                self.message_user(
-                    request,
-                    f"💥 Execution Failed: {ef}",
-                    level=messages.ERROR
-                )
-            except GraphSync.SyncCommandError as e:
-                self.message_user(
-                    request,
-                    f"❓ Unknown Error: {e}",
-                    level=messages.ERROR
-                )

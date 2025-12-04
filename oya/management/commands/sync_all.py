@@ -1,5 +1,5 @@
 from django.core.management.base import BaseCommand
-from ravioli.models import GraphSync
+from oya.models import GraphSync
 
 
 class Command(BaseCommand):

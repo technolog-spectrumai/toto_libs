@@ -345,3 +345,38 @@ class AppBackup(models.Model):
             raise self.BackupCommandExecutionFailed(
                 f"Error running backup for app '{self.app_name}': {str(e)}"
             )
+
+
+
+# 🔹 Moved GraphSync here
+_GRAPH_ALLOWED_APPS = getattr(settings, "GRAPH_APPS", [])
+
+
+class GraphSync(models.Model):
+    class SyncCommandError(Exception): pass
+    class SyncCommandNotFound(SyncCommandError): pass
+    class SyncCommandExecutionFailed(SyncCommandError): pass
+
+    GRAPH_ALLOWED_APPS = _GRAPH_ALLOWED_APPS
+    app_name = models.CharField(max_length=64, choices=[(app, app) for app in _GRAPH_ALLOWED_APPS])
+    scheduled_at = models.DateTimeField(default=timezone.now)
+    executed_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"GraphSync for {self.app_name} scheduled at {self.scheduled_at}, executed at {self.executed_at or 'pending'}"
+
+    def run_sync_command(self):
+        app_config = apps.get_app_config(self.app_name)
+        cmd_path = os.path.join(app_config.path, "management", "commands", f"sync_{self.app_name}.py")
+
+        if not os.path.isfile(cmd_path):
+            raise self.SyncCommandNotFound(f"No sync command found for '{self.app_name}'")
+
+        try:
+            out = StringIO()
+            call_command(f"sync_{self.app_name}", stdout=out, stderr=out)
+            sys.stdout.write(out.getvalue())
+            self.executed_at = timezone.now()
+            self.save(update_fields=["executed_at"])
+        except Exception as e:
+            raise self.SyncCommandExecutionFailed(f"Error running sync for '{self.app_name}': {str(e)}")
