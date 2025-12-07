@@ -27,15 +27,24 @@ class StaticPageForm(forms.ModelForm):
 class HtmlTemplateForm(forms.ModelForm):
     class Meta:
         model = HtmlTemplate
-        fields = ['name', 'content']
+        fields = ['name', 'content', 'json_schema']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # HTML editor for template content
         self.fields['content'].widget = AceWidget(
             mode='html',
             theme='chrome',
             width="100%",
             height="400px",
+            showprintmargin=False
+        )
+        # JSON editor for schema
+        self.fields['json_schema'].widget = AceWidget(
+            mode='json',
+            theme='chrome',
+            width="100%",
+            height="300px",
             showprintmargin=False
         )
 

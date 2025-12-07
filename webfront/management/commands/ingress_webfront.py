@@ -16,19 +16,36 @@ class Command(IngressCommand):
     # -----------------------------
     def create_templates(self, count=2):
         """
-        Ensure at least `count` HTML templates exist.
+        Ensure at least `count` HTML templates exist, with schema.
         """
         templates = list(HtmlTemplate.objects.all())
         while len(templates) < count:
             name = f"Template{len(templates)+1}"
             content = """
+                {% load include_from_db %}
                 <h2>{{ headline }}</h2>
                 {% for p in paragraphs %}
                   <p>{{ p }}</p>
                 {% endfor %}
                 <p><em>Published {{ published }}</em></p>
             """
-            tmpl = HtmlTemplate.objects.create(name=name, content=content)
+            schema = {
+                "type": "object",
+                "properties": {
+                    "headline": {"type": "string"},
+                    "paragraphs": {
+                        "type": "array",
+                        "items": {"type": "string"}
+                    },
+                    "published": {"type": "string"}
+                },
+                "required": ["headline", "paragraphs", "published"]
+            }
+            tmpl = HtmlTemplate.objects.create(
+                name=name,
+                content=content,
+                json_schema=schema
+            )
             templates.append(tmpl)
             self.stdout.write(self.style.SUCCESS(f"🖼️ Template: {tmpl.name}"))
         return templates
