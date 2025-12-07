@@ -26,7 +26,8 @@ def dynamic_page_detail(request, slug):
     page = get_object_or_404(DynamicPage, slug=slug)
 
     # Render JSON data into the template content → becomes page.body
-    template = Template(page.template.content)
+    preamble = "{% load include_from_db %}\n"
+    template = Template(preamble + page.template.content)
     rendered_body = template.render(Context(page.data))
 
     # Mutate page-like object for consistency
