@@ -14,7 +14,6 @@ class AssetAdmin(admin.ModelAdmin):
     list_display = (
         "name",
         "asset_type",
-        "serial_number",
         "assigned_to",
         "location",
         "is_active",
