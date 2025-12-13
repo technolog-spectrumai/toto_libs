@@ -81,7 +81,8 @@ INSTALLED_APPS = [
     "notes",
     "library",
     "webfront",
-    "locations"
+    "locations",
+    "assets"
 ]
 
 
@@ -289,7 +290,8 @@ INGRESS_ALLOWED_APPS = [
     "ravioli",
     "library",
     "webfront",
-    "locations"
+    "locations",
+    "assets"
 ]
 
 BACKUP_ALLOWED_APPS = [
