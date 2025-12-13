@@ -53,16 +53,14 @@ class Task(models.Model):
     due_date = models.DateField(null=True, blank=True)
     position = models.PositiveIntegerField(default=0)
 
-    # ✅ New structured fields
-    urgency = models.CharField(
-        max_length=20,
+
+    urgency = models.IntegerField(
         choices=[(1, "Low"), (2, "Medium"), (3, "High")],
-        default="medium"
+        default=2
     )
-    impact = models.CharField(
-        max_length=20,
+    impact = models.IntegerField(
         choices=[(1, "Low"), (2, "Medium"), (3, "High")],
-        default="medium"
+        default=2
     )
     weight = models.PositiveIntegerField(default=1)
 

@@ -1,5 +1,6 @@
 {% extends "oya/base.html" %}
 {% load static %}
+{% load static yaml_filters %}
 
 {% block title %}Kanban Project | {{ project.name }}{% endblock %}
 
@@ -133,6 +134,19 @@
                   {% endif %}
 
                   <p><strong>Position:</strong> {{ task.position }}</p>
+                  <p><strong>Urgency:</strong> {{ task.urgency|title }}</p>
+                  <p><strong>Impact:</strong> {{ task.impact|title }}</p>
+                  <p><strong>Weight:</strong> {{ task.weight }}</p>
+
+                  <!-- Metadata rendered as YAML -->
+                  {% if task.metadata %}
+                    <div class="mt-2">
+                      <strong>Metadata:</strong>
+                        <div class="text-xs p-2 rounded">
+                          {{ task.metadata|yaml_print }}
+                        </div>
+                    </div>
+                  {% endif %}
                 </div>
               </div>
             </div>
