@@ -44,7 +44,7 @@ class StaticPageForm(forms.ModelForm):
 class HtmlTemplateForm(forms.ModelForm):
     class Meta:
         model = HtmlTemplate
-        fields = ['name', 'content', 'json_schema']
+        fields = ['name', 'content', 'json_schema', 'script']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -62,6 +62,14 @@ class HtmlTemplateForm(forms.ModelForm):
             height="300px",
             showprintmargin=False
         )
+        self.fields['script'].widget = AceWidget(
+            mode='javascript',
+            theme='chrome',
+            width="100%",
+            height="300px",
+            showprintmargin=False
+        )
+
 
 
 class DynamicPageForm(forms.ModelForm):

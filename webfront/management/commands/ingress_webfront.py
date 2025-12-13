@@ -10,7 +10,7 @@ fake = Faker()
 
 
 class Command(IngressCommand):
-    help = "Seed sample data for Webfront: static pages, templates, dynamic pages, and a special LambdaNode"
+    help = "Seed sample data for Webfront: static pages, templates, dynamic pages, chart templates, and a special LambdaNode"
 
     # -----------------------------
     # Helpers
@@ -46,6 +46,60 @@ class Command(IngressCommand):
             templates.append(tmpl)
             self.stdout.write(self.style.SUCCESS(f"🖼️ Template: {tmpl.name}"))
         return templates
+
+    def create_chart_templates(self):
+        """
+        Create chart templates for line, pie, and bar charts.
+        """
+        chart_templates = []
+        chart_types = [
+            ("LineChartTemplate", "line"),
+            ("PieChartTemplate", "pie"),
+            ("BarChartTemplate", "bar"),
+        ]
+
+        for name, chart_type in chart_types:
+            if not HtmlTemplate.objects.filter(name=name).exists():
+                content = """
+                    <h2>{{ title }}</h2>
+                    <canvas id="chartCanvas"></canvas>
+                """
+                script = f"""
+                    const ctx = document.getElementById('chartCanvas').getContext('2d');
+                    new Chart(ctx, {{
+                        type: '{chart_type}',
+                        data: {{
+                            labels: {{ labels|safe }},
+                            datasets: [{{
+                                label: '{{ dataset_label }}',
+                                data: {{ data|safe }},
+                                backgroundColor: {{ colors|safe }},
+                            }}]
+                        }},
+                        options: {{ options|safe }}
+                    }});
+                """
+                schema = {
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string"},
+                        "labels": {"type": "array", "items": {"type": "string"}},
+                        "dataset_label": {"type": "string"},
+                        "data": {"type": "array", "items": {"type": "number"}},
+                        "colors": {"type": "array", "items": {"type": "string"}},
+                        "options": {"type": "object"},
+                    },
+                    "required": ["title", "labels", "data"],
+                }
+                tmpl = HtmlTemplate.objects.create(
+                    name=name,
+                    content=content,
+                    script=script,
+                    json_schema=schema,
+                )
+                chart_templates.append(tmpl)
+                self.stdout.write(self.style.SUCCESS(f"📊 Chart template: {tmpl.name}"))
+        return chart_templates
 
     def create_static_pages(self, templates, count=5):
         pages = list(StaticPage.objects.all())
@@ -103,16 +157,33 @@ def main(context):
         while len(pages) < count:
             title = fake.sentence(nb_words=2).rstrip(".")
             slug = fake.unique.slug()
-            data = {
-                "headline": title,
-                "paragraphs": [fake.paragraph(nb_sentences=2) for _ in range(2)],
-                "published": now().strftime("%B %d, %Y"),
-            }
+
+            # If chart template, seed chart data
+            if "ChartTemplate" in random.choice(templates).name:
+                labels = ["Jan", "Feb", "Mar", "Apr", "May"]
+                data = [random.randint(10, 100) for _ in labels]
+                colors = ["#FF6384", "#36A2EB", "#FFCE56", "#4BC0C0", "#9966FF"]
+                dataset_label = "Sample Data"
+                page_data = {
+                    "title": title,
+                    "labels": labels,
+                    "dataset_label": dataset_label,
+                    "data": data,
+                    "colors": colors,
+                    "options": {},
+                }
+            else:
+                page_data = {
+                    "headline": title,
+                    "paragraphs": [fake.paragraph(nb_sentences=2) for _ in range(2)],
+                    "published": now().strftime("%B %d, %Y"),
+                }
+
             template = random.choice(templates)
             page = DynamicPage.objects.create(
                 slug=slug,
                 title=title,
-                data=data,
+                data=page_data,
                 template=template,
                 lambda_node=special_node,
                 created_at=now(),
@@ -129,9 +200,10 @@ def main(context):
             return
 
         templates = self.create_templates(count=2)
+        chart_templates = self.create_chart_templates()
         self.create_static_pages(templates, count=5)
 
         special_node = self.create_special_lambda_node()
-        self.create_dynamic_pages(templates, special_node, count=5)
+        self.create_dynamic_pages(templates + chart_templates, special_node, count=5)
 
         self.stdout.write(self.style.SUCCESS("✅ Webfront ingress complete."))

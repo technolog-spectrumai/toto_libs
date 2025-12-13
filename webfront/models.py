@@ -14,6 +14,11 @@ class HtmlTemplate(models.Model):
         null=True,
         help_text="Optional JSON Schema to validate DynamicPage data"
     )
+    script = models.TextField(
+        blank=True,
+        null=True,
+        help_text="Optional JavaScript to be injected into the page"
+    )
 
     class Meta:
         verbose_name = "HTML Template"

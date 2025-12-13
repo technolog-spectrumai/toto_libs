@@ -34,3 +34,9 @@
   </a>
 </div>
 {% endblock %}
+{% block end_script %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    {{ page.script|safe }}
+</script>
+{% endblock %}
