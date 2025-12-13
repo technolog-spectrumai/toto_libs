@@ -8,6 +8,7 @@ import base64
 from io import BytesIO
 from django.utils.html import mark_safe
 from django.contrib.auth.models import User
+from locations.models import Address
 
 
 class Federation(models.Model):
@@ -32,6 +33,7 @@ class Federation(models.Model):
         related_name="federation",
         help_text="Platform associated with this federation"
     )
+    location = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True, blank=True)
 
     def __str__(self):
         return self.name
