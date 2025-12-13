@@ -2,10 +2,11 @@
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from RestrictedPython import compile_restricted, safe_builtins, utility_builtins, limited_builtins
+from django_jsonform.models.fields import JSONField  # use JSONField with schema support
 
 # Your custom safe clients
-#from storage.client import StorageClient
-#from data.client import DataClient
+# from storage.client import StorageClient
+# from data.client import DataClient
 
 
 class Workflow(models.Model):
@@ -25,6 +26,12 @@ class Workflow(models.Model):
         return self.name
 
 
+_TEST_CONTEXT_SCHEMA = {
+    "type": "object",
+    "properties": {},
+    "additionalProperties": True
+}
+
 class LambdaNode(models.Model):
     """
     Node that executes restricted Python code.
@@ -36,13 +43,25 @@ class LambdaNode(models.Model):
     is_final = models.BooleanField(default=False)
     code = models.TextField(help_text=_("Restricted Python code snippet"))
 
+    # 🔹 Add a JSON test context field
+    test_context = JSONField(
+        default=dict,
+        blank=True,
+        help_text="Optional JSON context for testing this node",
+        schema=_TEST_CONTEXT_SCHEMA
+    )
+
     class Meta:
         unique_together = ("workflow", "name")
 
     def __str__(self):
         return f"{self.workflow.name}: {self.name}"
 
-    def execute(self, context: dict):
+    def execute(self, context: dict = None):
+        """
+        Execute restricted Python code. Requires a main(context) function.
+        If no context is passed, falls back to test_context.
+        """
         try:
             byte_code = compile_restricted(
                 self.code,
@@ -58,7 +77,7 @@ class LambdaNode(models.Model):
 
             allowed_globals = {
                 "__builtins__": allowed_builtins,
-                "context": context,
+                "context": context or self.test_context,  # use test_context if none provided
                 # "cv2": cv2,
                 # "StorageClient": StorageClient,
                 # "DataClient": DataClient,
@@ -67,16 +86,15 @@ class LambdaNode(models.Model):
             local_vars = {}
             exec(byte_code, allowed_globals, local_vars)
 
-            # Require a main() function
             if "main" not in local_vars or not callable(local_vars["main"]):
                 return {"error": "No main() function defined in node code"}
 
-            # Call main(context) and return its result
-            result = local_vars["main"](context)
+            result = local_vars["main"](context or self.test_context)
             return result
 
         except Exception as e:
             return {"error": str(e)}
+
 
 class Edge(models.Model):
     """
@@ -91,4 +109,4 @@ class Edge(models.Model):
         unique_together = ("workflow", "source", "target", "action")
 
     def __str__(self):
-        return f"{self.source.name} --[{self.action}]--> {self.target.name}" 
+        return f"{self.source.name} --[{self.action}]--> {self.target.name}"
