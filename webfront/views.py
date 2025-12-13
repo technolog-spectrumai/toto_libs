@@ -25,19 +25,23 @@ def dynamic_page_detail(request, slug):
     """
     page = get_object_or_404(DynamicPage, slug=slug)
 
-    # Base context includes both JSON data and request
-    context = {
-        "data": page.data,
-        "request": request,
-    }
-
-    # If a LambdaNode is attached, execute it to transform/enrich context
+    context = page.data
     if page.lambda_node:
+        request_context = {
+            "user": {
+                "username": request.user.username if request.user.is_authenticated else None,
+                "is_authenticated": request.user.is_authenticated,
+                "email": getattr(request.user, "email", None),
+            },
+            "method": request.method,
+            "path": request.path,
+            "query_params": request.GET.dict()
+        }
+        context.update({"request": request_context})
         result = page.lambda_node.execute(context)
         # Merge result back into context
         if isinstance(result, dict):
             context.update(result)
-
     # Render JSON data into the template content → becomes page.body
     preamble = "{% load include_from_db %}\n"
     template = Template(preamble + page.template.content)
