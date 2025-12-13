@@ -15,13 +15,13 @@ class Command(IngressCommand):
     help = "Creates a demo bibliography setup with sample references and tags"
 
     def process(self):
-        self.create_dashboard_item(
-            title="Bibliography",
-            icon="fa-solid fa-book",
-            description="A demo bibliography with references of different types.",
-            link="/biblio/",
-            public=False,
-        )
+        # self.create_dashboard_item(
+        #     title="Bibliography",
+        #     icon="fa-solid fa-book",
+        #     description="A demo bibliography with references of different types.",
+        #     link="/biblio/",
+        #     public=False,
+        # )
         if not self.full:
             return
 
