@@ -1,0 +1,94 @@
+#import cv2
+from django.db import models
+from django.utils.translation import gettext_lazy as _
+from RestrictedPython import compile_restricted, safe_builtins, utility_builtins, limited_builtins
+
+# Your custom safe clients
+#from storage.client import StorageClient
+#from data.client import DataClient
+
+
+class Workflow(models.Model):
+    """
+    Workflow definition: a chain of Lambda nodes.
+    Identified only by primary key or name.
+    """
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True)
+    timeout = models.PositiveIntegerField(
+        default=30,
+        help_text=_("Timeout in seconds for workflow execution")
+    )
+    metadata = models.JSONField(default=dict, blank=True)
+
+    def __str__(self):
+        return self.name
+
+
+class LambdaNode(models.Model):
+    """
+    Node that executes restricted Python code.
+    Whitelisted imports: cv2, StorageClient, DataClient.
+    """
+    workflow = models.ForeignKey(Workflow, on_delete=models.CASCADE, related_name="nodes")
+    name = models.CharField(max_length=100)
+    is_initial = models.BooleanField(default=False)
+    is_final = models.BooleanField(default=False)
+    code = models.TextField(help_text=_("Restricted Python code snippet"))
+
+    class Meta:
+        unique_together = ("workflow", "name")
+
+    def __str__(self):
+        return f"{self.workflow.name}: {self.name}"
+
+    def execute(self, context: dict):
+        try:
+            byte_code = compile_restricted(
+                self.code,
+                filename=f"<lambda:{self.name}>",
+                mode="exec"
+            )
+
+            # Merge builtins safely
+            allowed_builtins = {}
+            allowed_builtins.update(safe_builtins)
+            allowed_builtins.update(utility_builtins)
+            allowed_builtins.update(limited_builtins)
+
+            allowed_globals = {
+                "__builtins__": allowed_builtins,
+                "context": context,
+                # "cv2": cv2,
+                # "StorageClient": StorageClient,
+                # "DataClient": DataClient,
+            }
+
+            local_vars = {}
+            exec(byte_code, allowed_globals, local_vars)
+
+            # Require a main() function
+            if "main" not in local_vars or not callable(local_vars["main"]):
+                return {"error": "No main() function defined in node code"}
+
+            # Call main(context) and return its result
+            result = local_vars["main"](context)
+            return result
+
+        except Exception as e:
+            return {"error": str(e)}
+
+class Edge(models.Model):
+    """
+    Transition between Lambda nodes.
+    """
+    workflow = models.ForeignKey(Workflow, on_delete=models.CASCADE, related_name="edges")
+    source = models.ForeignKey(LambdaNode, on_delete=models.CASCADE, related_name="outgoing_edges")
+    target = models.ForeignKey(LambdaNode, on_delete=models.CASCADE, related_name="incoming_edges")
+    action = models.CharField(max_length=100, help_text=_("Trigger name for this transition"))
+
+    class Meta:
+        unique_together = ("workflow", "source", "target", "action")
+
+    def __str__(self):
+        return f"{self.source.name} --[{self.action}]--> {self.target.name}" 
