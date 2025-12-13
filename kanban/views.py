@@ -91,3 +91,25 @@ class EisenhowerMatrixView(LoginRequiredMixin, DetailView):
         })
         return context
 
+
+class BacklogView(LoginRequiredMixin, DetailView):
+    model = Project
+    template_name = "kanban/backlog.html"
+    context_object_name = "project"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context = PageProcessor().decorate(context, self.request)
+
+        project = self.get_object()
+        # Prefetch campaigns and tasks for efficiency
+        missions = (
+            Mission.objects.filter(campaign__project=project)
+            .select_related("campaign")
+            .prefetch_related("tasks")
+        )
+
+        context.update({
+            "missions": missions,
+        })
+        return context
