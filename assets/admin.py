@@ -4,7 +4,7 @@ from .models import Asset, AssetType
 
 @admin.register(AssetType)
 class AssetTypeAdmin(admin.ModelAdmin):
-    list_display = ("name", "description", "created_at", "updated_at")
+    list_display = ("name", "description", "created_at",)
     search_fields = ("name",)
     ordering = ("name",)
 
@@ -21,13 +21,12 @@ class AssetAdmin(admin.ModelAdmin):
         "purchase_date",
         "purchase_price",
         "created_at",
-        "updated_at",
     )
     list_filter = ("asset_type", "is_active", "purchase_date")
     search_fields = ("name", "serial_number", "location", "assigned_to__username")
     ordering = ("name",)
     autocomplete_fields = ("asset_type", "assigned_to")
-    readonly_fields = ("created_at", "updated_at")
+    readonly_fields = ("created_at",)
 
     fieldsets = (
         (None, {
@@ -43,6 +42,6 @@ class AssetAdmin(admin.ModelAdmin):
             "fields": ("purchase_date", "purchase_price")
         }),
         ("Timestamps", {
-            "fields": ("created_at", "updated_at")
+            "fields": ("created_at",)
         }),
     )

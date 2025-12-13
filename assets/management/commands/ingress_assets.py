@@ -4,6 +4,7 @@ from community.models import CommunityMember
 from django.contrib.auth.models import User
 import random
 from faker import Faker
+from locations.models import Address
 
 fake = Faker()
 
@@ -45,7 +46,9 @@ class Command(IngressCommand):
                 users.append(user)
 
         for i in range(15):
-            holder = random.choice(members)
+            addresses = list(Address.objects.all())
+            if not addresses:
+                raise RuntimeError("No addresses found. Please seed addresses before seeding assets.")
             asset_type = random.choice(asset_types)
             asset = Asset.objects.create(
                 name=fake.word().capitalize() + " " + asset_type.name,
@@ -55,7 +58,7 @@ class Command(IngressCommand):
                 purchase_date=fake.date_between(start_date="-2y", end_date="today"),
                 purchase_price=round(random.uniform(500, 5000), 2),
                 assigned_to=random.choice(users),
-                location=fake.city(),
+                location=random.choice(addresses),
                 is_active=random.choice([True, True, False]),
                 metadata={
                     "warranty_expiry": str(fake.date_between(start_date="today", end_date="+2y")),
