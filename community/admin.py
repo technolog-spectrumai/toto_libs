@@ -3,19 +3,10 @@ from django.utils.html import format_html
 from .models import (
     Community,
     CommunityMember,
-    Address,
     MembershipApplication,
     ReferenceRequest
 )
 from toto.admin import BaseSerializableAdmin
-
-
-@admin.register(Address)
-class AddressAdmin(BaseSerializableAdmin):
-    list_display = ('street', 'building', 'apartment', 'locality_name', 'state_or_province_name', 'country_name')
-    search_fields = ('street', 'locality_name', 'state_or_province_name', 'country_name')
-    list_filter = ('country_name', 'state_or_province_name')
-    ordering = ('locality_name', 'street')
 
 
 @admin.register(Community)

@@ -1,10 +1,11 @@
 import random
 from django.contrib.auth.models import User
 from django.utils import timezone
-from community.models import Address, Community, CommunityMember
+from community.models import Community, CommunityMember
 from oya.ingress import IngressCommand
 from federal.models import Federation
 from django.core.exceptions import ObjectDoesNotExist
+from locations.models import Address
 
 
 class Command(IngressCommand):

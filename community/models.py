@@ -7,21 +7,9 @@ from polymorphic.models import PolymorphicModel
 from toto.models import SerializableModel
 from federal.models import Federation
 from toto.models import SerializableModel
+from locations.models import Address
 
 
-class Address(SerializableModel):
-    country_name = models.CharField(max_length=2, verbose_name="Country")
-    state_or_province_name = models.CharField(max_length=128, verbose_name="State/Province")
-    locality_name = models.CharField(max_length=128, verbose_name="Locality")
-    street = models.CharField(max_length=255, verbose_name="Street")
-    building = models.CharField(max_length=64, verbose_name="Building Number")
-    apartment = models.CharField(max_length=64, verbose_name="Apartment Number", blank=True, null=True)
-
-    def __str__(self):
-        base = f"{self.street} {self.building}"
-        if self.apartment:
-            base += f", Apt {self.apartment}"
-        return f"{base}, {self.locality_name}, {self.state_or_province_name}, {self.country_name}"
 
 
 class SocialEntity(SerializableModel, PolymorphicModel):

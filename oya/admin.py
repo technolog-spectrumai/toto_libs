@@ -1,7 +1,7 @@
 from .models import Platform, DashboardBlock, Font, Theme, AppIngress, ColorMix, AppBackup, GraphSync
 from django.contrib import admin, messages
 from django.utils.html import format_html
-
+from toto.admin import BaseSerializableAdmin
 
 
 @admin.register(Font)
@@ -224,4 +224,3 @@ class GraphSyncAdmin(admin.ModelAdmin):
                     f"❌ Unknown Error: {e}",
                     level=messages.ERROR
                 )
-

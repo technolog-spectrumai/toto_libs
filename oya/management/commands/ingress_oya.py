@@ -8,6 +8,7 @@ from oya.ingress import IngressCommand
 class Command(IngressCommand):
     help = "Ingress themes from a directory of JSON files"
 
+
     def process(self):
         if not self.full:
             return
@@ -45,5 +46,4 @@ class Command(IngressCommand):
                 "--colors", json.dumps(theme["colors"]),
                 "--header", json.dumps(theme.get("header", {}))
             )
-
         self.stdout.write(self.style.SUCCESS("Themes created successfully."))

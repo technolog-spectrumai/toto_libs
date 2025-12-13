@@ -1,11 +1,20 @@
-from django.utils import timezone
 from django.contrib.gis.geos import Point, Polygon, MultiLineString
-from locations.models import PointFeature, ZoneFeature, PathFeature
+from locations.models import PointFeature, ZoneFeature, PathFeature, Address
 from oya.ingress import IngressCommand
 
 
 class Command(IngressCommand):
     help = "Creates demo geospatial features (points, zones, paths) for testing"
+
+    def create_address(self):
+        return Address.objects.create(
+            country_name="US",
+            state_or_province_name="California",
+            locality_name="San Francisco",
+            street="123 Business St",
+            building="HQ Tower",
+            apartment="5A"
+        )
 
     def process(self):
         if not self.full:
@@ -43,5 +52,10 @@ class Command(IngressCommand):
         #         ],
         #     ),
         # )
+
+        address = self.create_address()
+        if not address:
+            self.stderr.write(self.style.ERROR("❌ Address creation failed."))
+            return
 
         print("[Ingress] Demo geospatial features created successfully.")
