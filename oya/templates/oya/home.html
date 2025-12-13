@@ -5,6 +5,7 @@
 
 {% block content %}
 <section
+  x-data="{ showDetails: false }"
   :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
   class="flex flex-col items-center justify-center px-6 py-12 transition-colors duration-300">
 
@@ -31,6 +32,47 @@
       Enter Dashboard
     </a>
 
+    <!-- Toggle button -->
+    <button
+      @click="showDetails = !showDetails"
+      :class="darkMode
+        ? 'bg-accent-dark text-primary-bg-dark'
+        : 'bg-accent-light text-primary-bg-light'"
+      class="mt-4 inline-block px-4 py-2 rounded font-semibold text-sm hover:opacity-90 transition">
+      <span x-show="!showDetails">Show Details</span>
+      <span x-show="showDetails">Hide Details</span>
+    </button>
+
+    <!-- Hidden section -->
+    <div x-show="showDetails" x-transition class="mt-6">
+      <div
+        :class="darkMode
+          ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
+          : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+        class="rounded-xl border p-6 space-y-8 transition-colors duration-300"
+      >
+        <h2
+          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+          class="text-2xl font-bold text-center"
+        >
+          {{ federation.name }}
+        </h2>
+
+        <div class="text-center space-y-4">
+          <p class="opacity-80">{{ federation.description }}</p>
+          <p>Created {{ federation.created_at|date:"F j, Y, g:i a" }}</p>
+          {% if federation.logo %}
+            <img src="{{ federation.logo.url }}" alt="{{ federation.name }} logo"
+                 class="mx-auto max-h-48 rounded-lg shadow-md">
+          {% endif %}
+
+          <div class="mt-6 space-y-2">
+            <p><strong>Platform:</strong> {{ federation.platform.site_name }}</p>
+            <p><strong>Domain:</strong> {{ federation.platform.domain }}</p>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </section>
 {% endblock %}

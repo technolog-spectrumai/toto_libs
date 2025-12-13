@@ -18,13 +18,13 @@ class Command(IngressCommand):
 
     def process(self):
         # 📊 Dashboard block
-        self.create_dashboard_item(
-            title="Federation",
-            icon="fa-solid fa-landmark",
-            description="Federation and federated identities.",
-            link=reverse("federal:current_federation"),
-            public=False
-        )
+        # self.create_dashboard_item(
+        #     title="Federation",
+        #     icon="fa-solid fa-landmark",
+        #     description="Federation and federated identities.",
+        #     link=reverse("federal:current_federation"),
+        #     public=False
+        # )
         if not self.full:
             return
 

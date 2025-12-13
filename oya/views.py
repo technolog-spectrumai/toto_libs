@@ -1,12 +1,8 @@
-from django.shortcuts import redirect
 from oya.models import DashboardBlock
 from .page import PageProcessor
 import os
-from django.shortcuts import render
-from django.http import Http404
-from .apps import OyaConfig
-from django.urls import reverse
-
+from django.shortcuts import render, get_object_or_404
+from federal.models import Federation
 
 template_dir = "oya"
 
@@ -17,7 +13,13 @@ def _get_template(name):
 
 def home_view(request):
     processor = PageProcessor()
-    return render(request, _get_template("home.html"), processor.decorate({}, request))
+    federation = get_object_or_404(
+        Federation,
+        active=True,
+        platform__active=True
+    )
+    context = {"federation": federation}
+    return render(request, _get_template("home.html"), processor.decorate(context, request))
 
 
 def dashboard_view(request):
