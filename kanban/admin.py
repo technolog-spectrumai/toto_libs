@@ -1,7 +1,11 @@
 from django.contrib import admin
 from django import forms
+from django_json_widget.widgets import JSONEditorWidget
 from .models import Project, Column, Task, Sprint
 from .batch import BatchAction
+from events.models import Event
+from django.utils.timezone import now
+from datetime import timedelta
 
 
 # 🧠 Project Admin
@@ -16,7 +20,7 @@ class ProjectAdmin(admin.ModelAdmin):
 class TaskInline(admin.TabularInline):
     model = Task
     extra = 1
-    fields = ('title', 'assignee', 'due_date', 'position', 'sprint')
+    fields = ('title', 'assignee', 'due_date', 'position', 'sprint', 'urgency', 'impact', 'weight')
     ordering = ('position',)
 
 
@@ -28,9 +32,10 @@ class ColumnAdmin(admin.ModelAdmin):
     inlines = [TaskInline]
 
 
-# 📝 Task Admin with TipTap and Event Conversion
+# 📝 Task Admin with TipTap, JSON editor, and Event Conversion
 class TaskAdminForm(forms.ModelForm):
     description = forms.CharField()
+    metadata = forms.JSONField(widget=JSONEditorWidget, required=False)
 
     class Meta:
         model = Task
@@ -40,18 +45,17 @@ class TaskAdminForm(forms.ModelForm):
 @admin.register(Task)
 class TaskAdmin(admin.ModelAdmin):
     form = TaskAdminForm
-    list_display = ('title', 'column', 'sprint', 'assignee', 'due_date', 'position')
-    list_filter = ('due_date', 'sprint')
+    list_display = (
+        'title', 'column', 'sprint', 'assignee',
+        'due_date', 'position', 'urgency', 'impact', 'weight'
+    )
+    list_filter = ('due_date', 'sprint', 'urgency', 'impact')
     search_fields = ('title', 'description')
     ordering = ('position',)
     actions = ['convert_to_event']
 
     @admin.action(description="Convert selected tasks to events")
     def convert_to_event(self, request, queryset):
-        from events.models import Event
-        from django.utils.timezone import now
-        from datetime import timedelta
-
         def convert_one(task):
             venture = getattr(task.sprint.project, 'venture', None)
             if not venture:
@@ -81,9 +85,6 @@ class SprintAdmin(admin.ModelAdmin):
 
     @admin.action(description="Convert selected sprints to events")
     def convert_to_event(self, request, queryset):
-        from events.models import Event
-        from django.utils.timezone import now
-        from datetime import timedelta
 
         def convert_one(sprint):
             venture = getattr(sprint.project, 'venture', None)
@@ -103,4 +104,3 @@ class SprintAdmin(admin.ModelAdmin):
 
         result = BatchAction(queryset).run(convert_one)
         BatchAction.display_messages(result, self.message_user, request, verb="convert to event")
-
