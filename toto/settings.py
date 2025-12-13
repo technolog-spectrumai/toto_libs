@@ -78,7 +78,6 @@ INSTALLED_APPS = [
     "federal",
     "gate",
     "ravioli",
-    "notes",
     "library",
     "webfront",
     "locations",
@@ -286,7 +285,6 @@ INGRESS_ALLOWED_APPS = [
     "portfolio",
     "events",
     "kanban",
-    "notes",
     "ravioli",
     "library",
     "webfront",
@@ -298,8 +296,7 @@ BACKUP_ALLOWED_APPS = [
     "community",
     "finance",
     "portfolio",
-    "events",
-    "notes"
+    "events"
 ]
 
 GRAPH_APPS = [
@@ -307,8 +304,7 @@ GRAPH_APPS = [
     "finance",
     "portfolio",
     "events",
-    "federal",
-    "notes"
+    "federal"
 ]
 
 FULL_INGRESS = DEBUG
