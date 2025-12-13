@@ -70,6 +70,15 @@ class CommunityMember(SocialEntity):
     avatar = models.ImageField(upload_to='avatars/', null=True, blank=True)
     joined_date = models.DateTimeField(default=timezone.now)
     slug = models.SlugField(unique=True, blank=True)
+    # ➕ Add address field
+    address = models.ForeignKey(
+        Address,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='residents',
+        help_text="Optional address for this community member"
+    )
 
     def __str__(self):
         return self.display_name
