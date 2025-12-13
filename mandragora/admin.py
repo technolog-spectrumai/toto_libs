@@ -2,7 +2,7 @@ from django.contrib import admin
 from django import forms
 from django_ace import AceWidget
 from .models import Workflow, LambdaNode, Edge
-from django_json_widget.widgets import JSONEditorWidget
+
 
 # --- Workflow Runner (agnostic) ---
 def run_workflow(workflow, context=None):

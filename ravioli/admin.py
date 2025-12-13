@@ -4,6 +4,8 @@ from neo4j import GraphDatabase
 from django.conf import settings
 from django_ace import AceWidget
 from django import forms
+from django_json_widget.widgets import JSONEditorWidget   # <-- use JSONEditorWidget
+
 from .graph import GraphTranslator
 from toto.batch import BatchAction
 from .models import (
@@ -18,7 +20,9 @@ from toto.admin import BaseSerializableAdmin
 from .forms import DynamicDataNodeForm   # <-- import your dynamic form
 
 
-# Use connection details from settings.py
+# ---------------------------
+# Neo4j connection
+# ---------------------------
 driver = GraphDatabase.driver(
     f"bolt://{settings.NEO4J_HOST}:{settings.NEO4J_PORT}",
     auth=(settings.NEO4J_USER, settings.NEO4J_PASSWORD)
@@ -35,7 +39,7 @@ def test_cypher_query(query: str) -> bool:
 
 
 # ---------------------------
-# Custom Forms with ACE editor
+# Custom Forms
 # ---------------------------
 
 class CollectionTypeForm(forms.ModelForm):
@@ -43,8 +47,8 @@ class CollectionTypeForm(forms.ModelForm):
         model = CollectionType
         fields = "__all__"
         widgets = {
-            "json_schema": AceWidget(mode="json", theme="chrome"),
-            "form_layout": AceWidget(mode="json", theme="chrome"),
+            "json_schema": JSONEditorWidget(),   # JSON editor
+            "form_layout": JSONEditorWidget(),
         }
 
 
@@ -53,8 +57,8 @@ class RelationTypeForm(forms.ModelForm):
         model = RelationType
         fields = "__all__"
         widgets = {
-            "json_schema": AceWidget(mode="json", theme="chrome"),
-            "form_layout": AceWidget(mode="json", theme="chrome"),
+            "json_schema": JSONEditorWidget(),
+            "form_layout": JSONEditorWidget(),
         }
 
 
@@ -63,7 +67,7 @@ class DataEdgeForm(forms.ModelForm):
         model = DataEdge
         fields = "__all__"
         widgets = {
-            "metadata": AceWidget(mode="json", theme="chrome"),
+            "metadata": JSONEditorWidget(),
         }
 
 
@@ -158,6 +162,7 @@ class DataNodeAdmin(admin.ModelAdmin):
             ("Basic info", {"fields": basic_fields}),
             ("Data", {"fields": dynamic_fields}),
         ]
+
 
 @admin.register(RelationType)
 class RelationTypeAdmin(admin.ModelAdmin):

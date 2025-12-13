@@ -4,6 +4,7 @@ from toto.models import SerializableModel
 from django.db import models
 from .graph import GraphTranslator
 
+
 class CypherQuery(SerializableModel):
     """
     Represents a predefined Cypher query that can be reused in the graph explorer.
