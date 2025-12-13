@@ -4,7 +4,23 @@ from django.utils.html import format_html
 from django_ace import AceWidget
 from .models import StaticPage, HtmlTemplate, DynamicPage
 from mandragora.models import LambdaNode
+from oya.models import DashboardBlock
 
+
+@admin.action(description="Add selected pages to Dashboard")
+def add_to_dashboard(modeladmin, request, queryset):
+    """
+    Create DashboardBlock entries in oya app for selected pages.
+    """
+    for page in queryset:
+        DashboardBlock.objects.create(
+            title=page.title,
+            description=f"Dashboard link to {page.title}",
+            icon="fa-solid fa-file",  # you can customize per type
+            link=page.get_absolute_url(),
+            public=True,
+        )
+        modeladmin.message_user(request, f"✅ Added '{page.title}' to dashboard")
 
 # -----------------------------
 # Forms with Ace editor
@@ -73,6 +89,7 @@ class StaticPageAdmin(admin.ModelAdmin):
     search_fields = ('title', 'slug')
     prepopulated_fields = {"slug": ("title",)}
     ordering = ('-created_at',)
+    actions = [add_to_dashboard]
 
     def view_link(self, obj):
         return format_html('<a href="{}" target="_blank">🔗 View</a>', obj.get_absolute_url())
@@ -94,7 +111,7 @@ class DynamicPageAdmin(admin.ModelAdmin):
     search_fields = ('title', 'slug')
     prepopulated_fields = {"slug": ("title",)}
     ordering = ('-created_at',)
-
+    actions = [add_to_dashboard]
 
     def view_link(self, obj):
         return format_html('<a href="{}" target="_blank">🔗 View</a>', obj.get_absolute_url())
