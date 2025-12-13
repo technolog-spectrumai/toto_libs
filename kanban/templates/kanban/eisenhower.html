@@ -2,28 +2,31 @@
 {% block title %}Eisenhower Matrix | {{ project.name }}{% endblock %}
 
 {% block content %}
-<div class="max-w-6xl mx-auto px-6 py-10">
-  <h2 class="text-2xl font-bold mb-6 text-center">3×3 Eisenhower Matrix for {{ project.name }}</h2>
+<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10">
+  <h2 class="text-xl sm:text-2xl font-bold mb-4 sm:mb-6 text-center">
+    3×3 Eisenhower Matrix for {{ project.name }}
+  </h2>
 
-  <div class="overflow-x-auto mb-8">
-    <table class="table-auto border-collapse border w-full text-sm rounded-lg">
+  <!-- Responsive scroll container -->
+  <div class="overflow-x-auto mb-6 sm:mb-8">
+    <table class="min-w-full border-collapse border text-xs sm:text-sm rounded-lg">
       <thead>
         <tr>
-          <th class="border px-6 py-3 text-left">Urgency \ Impact</th>
+          <th class="border px-3 sm:px-6 py-2 sm:py-3 text-left">Urgency \ Impact</th>
           {% for i_label in impact_levels %}
-            <th class="border px-6 py-3 text-center">{{ i_label }}</th>
+            <th class="border px-3 sm:px-6 py-2 sm:py-3 text-center">{{ i_label }}</th>
           {% endfor %}
         </tr>
       </thead>
       <tbody>
         {% for row in matrix %}
           <tr>
-            <td class="border px-6 py-4 font-semibold">{{ row.urgency }}</td>
+            <td class="border px-3 sm:px-6 py-2 sm:py-4 font-semibold">{{ row.urgency }}</td>
             {% for cell in row.cells %}
-              <td class="border px-6 py-4 align-top">
+              <td class="border px-3 sm:px-6 py-2 sm:py-4 align-top">
                 <ul class="space-y-1">
                   {% for mission in cell.missions %}
-                    <li class="p-1 rounded">{{ mission.title }}</li>
+                    <li class="p-1 rounded break-words">{{ mission.title }}</li>
                   {% empty %}
                     <li class="opacity-50 italic">None</li>
                   {% endfor %}
@@ -39,7 +42,7 @@
   <!-- 🔙 Back to Project button -->
   <div class="text-center">
     <a href="{% url 'kanban:project_detail' project.pk %}"
-       class="inline-block px-5 py-2 rounded-lg font-semibold text-sm hover:opacity-90 transition"
+       class="inline-block px-4 sm:px-5 py-2 rounded-lg font-semibold text-xs sm:text-sm hover:opacity-90 transition"
        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'">
       Back to Project
     </a>
