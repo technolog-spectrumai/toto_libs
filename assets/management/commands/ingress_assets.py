@@ -1,3 +1,4 @@
+from django.urls import reverse
 from oya.ingress import IngressCommand
 from assets.models import Asset, AssetType
 from community.models import CommunityMember
@@ -78,7 +79,7 @@ class Command(IngressCommand):
             title="Assets",
             icon="fa-solid fa-boxes-stacked",
             description="Assets and asset types linked to community members",
-            link="/assets/",
+            link=reverse("assets:assets_list"),  # ✅ use named URL
             public=False
         )
 
