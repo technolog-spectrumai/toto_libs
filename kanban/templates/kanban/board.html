@@ -117,8 +117,6 @@
                     <p><strong>Description:</strong> {{ task.description|safe }}</p>
                   {% endif %}
 
-                  <p><strong>Column:</strong> {{ task.column.name }}</p>
-
                   {% if task.assignee %}
                     <p><strong>Assignee:</strong> {{ task.assignee.get_full_name|default:task.assignee.username }}</p>
                   {% else %}
@@ -129,13 +127,7 @@
                     <p><strong>Due Date:</strong> {{ task.due_date|date:"F j, Y" }}</p>
                   {% endif %}
 
-                  {% if task.sprint %}
-                    <p><strong>Sprint:</strong> {{ task.sprint.name }} ({{ task.sprint.start_time|date:"M j" }} – {{ task.sprint.end_time|date:"M j" }})</p>
-                  {% endif %}
-
-                  <p><strong>Position:</strong> {{ task.position }}</p>
-                  <p><strong>Urgency:</strong> {{ task.urgency|title }}</p>
-                  <p><strong>Impact:</strong> {{ task.impact|title }}</p>
+                  <p><strong>Urgency:</strong> {{ task.urgency|title }} | <strong>Impact:</strong> {{ task.impact|title }} </p>
                   <p><strong>Weight:</strong> {{ task.weight }}</p>
 
                   <!-- Metadata rendered as YAML -->
