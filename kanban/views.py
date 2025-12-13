@@ -2,7 +2,7 @@ from django.views.generic import DetailView, ListView
 from django.db.models import Q
 from django.contrib.auth.models import AnonymousUser
 from django.contrib.auth.mixins import LoginRequiredMixin
-from kanban.models import Project, Column, Task, Sprint
+from kanban.models import Project, Column, Task, Sprint, Mission
 from oya.page import PageProcessor
 
 
@@ -55,3 +55,39 @@ class ProjectListView(LoginRequiredMixin, ListView):
         context = super().get_context_data(**kwargs)
         context = PageProcessor().decorate(context, self.request)
         return context
+
+
+class EisenhowerMatrixView(LoginRequiredMixin, DetailView):
+    model = Project
+    template_name = "kanban/eisenhower.html"
+    context_object_name = "project"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context = PageProcessor().decorate(context, self.request)
+
+        project = self.get_object()
+        missions = Mission.objects.filter(campaign__project=project)
+
+        urgency_levels = {1: "Low", 2: "Medium", 3: "High"}
+        impact_levels = {1: "Low", 2: "Medium", 3: "High"}
+
+        # Build a 3×3 matrix as a list of rows
+        matrix = []
+        for u, u_label in urgency_levels.items():
+            row = []
+            for i, i_label in impact_levels.items():
+                cell_missions = missions.filter(urgency=u, impact=i)
+                row.append({
+                    "urgency": u_label,
+                    "impact": i_label,
+                    "missions": cell_missions,
+                })
+            matrix.append({"urgency": u_label, "cells": row})
+
+        context.update({
+            "matrix": matrix,
+            "impact_levels": impact_levels.values(),
+        })
+        return context
+
