@@ -25,17 +25,26 @@ def dynamic_page_detail(request, slug):
     """
     page = get_object_or_404(DynamicPage, slug=slug)
 
+    # Base context includes both JSON data and request
+    context = {
+        "data": page.data,
+        "request": request,
+    }
+
+    # If a LambdaNode is attached, execute it to transform/enrich context
+    if page.lambda_node:
+        result = page.lambda_node.execute(context)
+        # Merge result back into context
+        if isinstance(result, dict):
+            context.update(result)
+
     # Render JSON data into the template content → becomes page.body
     preamble = "{% load include_from_db %}\n"
     template = Template(preamble + page.template.content)
-    rendered_body = template.render(Context(page.data))
+    rendered_body = template.render(Context(context))
 
     # Mutate page-like object for consistency
     page.body = rendered_body
 
-    context = {
-        "page": page,
-    }
-
-    decorated_context = PageProcessor().decorate(context, request)
+    decorated_context = PageProcessor().decorate({"page": page}, request)
     return render(request, "webfront/page.html", decorated_context)

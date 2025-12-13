@@ -2,6 +2,7 @@ from django.db import models
 from django.urls import reverse
 import jsonschema
 from django.core.exceptions import ValidationError
+from mandragora.models import LambdaNode
 
 
 class HtmlTemplate(models.Model):
@@ -45,6 +46,14 @@ class DynamicPage(models.Model):
     data = models.JSONField(help_text="JSON data to be injected into template")
     template = models.ForeignKey(HtmlTemplate, on_delete=models.CASCADE, related_name="pages")
     created_at = models.DateTimeField(auto_now_add=True)
+    lambda_node = models.ForeignKey(
+        LambdaNode,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="dynamic_pages",
+        help_text="Optional LambdaNode to process context before rendering"
+    )
 
     class Meta:
         verbose_name = "Dynamic Page"

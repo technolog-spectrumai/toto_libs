@@ -3,6 +3,7 @@ from django import forms
 from django.utils.html import format_html
 from django_ace import AceWidget
 from .models import StaticPage, HtmlTemplate, DynamicPage
+from mandragora.models import LambdaNode
 
 
 # -----------------------------
@@ -31,7 +32,6 @@ class HtmlTemplateForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # HTML editor for template content
         self.fields['content'].widget = AceWidget(
             mode='html',
             theme='chrome',
@@ -39,7 +39,6 @@ class HtmlTemplateForm(forms.ModelForm):
             height="400px",
             showprintmargin=False
         )
-        # JSON editor for schema
         self.fields['json_schema'].widget = AceWidget(
             mode='json',
             theme='chrome',
@@ -52,11 +51,10 @@ class HtmlTemplateForm(forms.ModelForm):
 class DynamicPageForm(forms.ModelForm):
     class Meta:
         model = DynamicPage
-        fields = ['slug', 'title', 'data', 'template']
+        fields = ['slug', 'title', 'data', 'template', 'lambda_node']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Use Ace editor for JSON data field
         self.fields['data'].widget = AceWidget(
             mode='json',
             theme='chrome',
@@ -64,7 +62,6 @@ class DynamicPageForm(forms.ModelForm):
             height="400px",
             showprintmargin=False
         )
-
 
 # -----------------------------
 # Admins
@@ -78,10 +75,7 @@ class StaticPageAdmin(admin.ModelAdmin):
     ordering = ('-created_at',)
 
     def view_link(self, obj):
-        return format_html(
-            '<a href="{}" target="_blank">🔗 View</a>',
-            obj.get_absolute_url()
-        )
+        return format_html('<a href="{}" target="_blank">🔗 View</a>', obj.get_absolute_url())
     view_link.short_description = "Page Link"
 
 
@@ -96,14 +90,12 @@ class HtmlTemplateAdmin(admin.ModelAdmin):
 @admin.register(DynamicPage)
 class DynamicPageAdmin(admin.ModelAdmin):
     form = DynamicPageForm
-    list_display = ('title', 'slug', 'template', 'created_at', 'view_link')
+    list_display = ('title', 'slug', 'template', 'lambda_node', 'created_at', 'view_link')
     search_fields = ('title', 'slug')
     prepopulated_fields = {"slug": ("title",)}
     ordering = ('-created_at',)
 
+
     def view_link(self, obj):
-        return format_html(
-            '<a href="{}" target="_blank">🔗 View</a>',
-            obj.get_absolute_url()
-        )
+        return format_html('<a href="{}" target="_blank">🔗 View</a>', obj.get_absolute_url())
     view_link.short_description = "Page Link"
