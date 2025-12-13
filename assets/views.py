@@ -1,5 +1,5 @@
 from django.core.paginator import Paginator
-from django.shortcuts import render
+from django.shortcuts import render, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from .models import Asset
 from oya.page import PageProcessor
@@ -25,4 +25,40 @@ def assets_list(request):
         "assets/asset_list.html",
         PageProcessor().decorate(context, request)
     )
+
+
+PageProcessor
+
+
+@login_required
+def asset_detail(request, pk):
+    """
+    Detail view for a single active asset.
+    """
+    asset = get_object_or_404(
+        Asset.objects.select_related("asset_type", "assigned_to", "location"),
+        pk=pk,
+        is_active=True,  # only allow active assets
+    )
+
+    context = {
+        "asset": asset,
+        "asset_data": {
+            "id": asset.id,
+            "name": asset.name,
+            "type": asset.asset_type.name if asset.asset_type else None,
+            "description": asset.description,
+            "serial_number": asset.serial_number,
+            "purchase_date": asset.purchase_date,
+            "purchase_price": asset.purchase_price,
+            "assigned_to": asset.assigned_to.username if asset.assigned_to else None,
+            "location": str(asset.location) if asset.location else None,
+            "metadata": asset.metadata or {},
+            "created_at": asset.created_at,
+        },
+    }
+    return render(
+        request,
+        "assets/asset_detail.html",
+        PageProcessor().decorate(context, request))
 

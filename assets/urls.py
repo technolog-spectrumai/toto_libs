@@ -5,5 +5,5 @@ app_name = "assets"
 
 urlpatterns = [
     path("", views.assets_list, name="assets_list"),  # /assets/
-    #path("<int:pk>/", views.public_asset_detail, name="public_asset_detail"),  # /assets/5/
+    path("<int:pk>/", views.asset_detail, name="asset_detail"),  # /assets/5/
 ]

@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import User
 from locations.models import Address
+from django_jsonform.models.fields import JSONField
 
 
 class AssetType(models.Model):
@@ -30,7 +31,7 @@ class Asset(models.Model):
     is_active = models.BooleanField(default=True)
 
     # 🔑 Flexible metadata field
-    metadata = models.JSONField(blank=True, null=True)
+    metadata = JSONField(blank=True, null=True) # <------ !!!!
 
     created_at = models.DateTimeField(auto_now_add=True)
 
