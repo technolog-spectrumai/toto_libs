@@ -24,8 +24,21 @@ class PathFeatureAdmin(OSMGeoAdmin, BaseSerializableAdmin):
 
 
 @admin.register(Address)
-class AddressAdmin(BaseSerializableAdmin):
-    list_display = ('street', 'building', 'apartment', 'locality_name', 'state_or_province_name', 'country_name')
-    search_fields = ('street', 'locality_name', 'state_or_province_name', 'country_name')
+class AddressAdmin(OSMGeoAdmin, BaseSerializableAdmin):
+    list_display = (
+        'street',
+        'building',
+        'apartment',
+        'locality_name',
+        'state_or_province_name',
+        'country_name',
+        'location',  # show coordinates
+    )
+    search_fields = (
+        'street',
+        'locality_name',
+        'state_or_province_name',
+        'country_name',
+    )
     list_filter = ('country_name', 'state_or_province_name')
     ordering = ('locality_name', 'street')

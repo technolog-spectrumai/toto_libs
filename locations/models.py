@@ -37,6 +37,7 @@ class Address(SerializableModel):
     street = models.CharField(max_length=255, verbose_name="Street")
     building = models.CharField(max_length=64, verbose_name="Building Number")
     apartment = models.CharField(max_length=64, verbose_name="Apartment Number", blank=True, null=True)
+    location = models.PointField(srid=SRID, null=True, blank=True)
 
     def __str__(self):
         base = f"{self.street} {self.building}"
