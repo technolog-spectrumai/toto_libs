@@ -51,6 +51,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.gis',
     'corsheaders',
     'django_celery_beat',
     'django_jsonform',
@@ -79,7 +80,8 @@ INSTALLED_APPS = [
     "ravioli",
     "notes",
     "library",
-    "webfront"
+    "webfront",
+    "locations"
 ]
 
 
@@ -138,7 +140,7 @@ WSGI_APPLICATION = 'toto.wsgi.application'
 if DJANGO_ENV == "PROD":
     DATABASES = {
         'default': {
-            'ENGINE': 'django.db.backends.postgresql',
+            'ENGINE': 'django.contrib.gis.db.backends.postgis',
             'NAME': os.getenv('DB_NAME'),
             'USER': os.getenv('DB_USER'),
             'PASSWORD': os.getenv('DB_PASSWORD'),
@@ -149,7 +151,7 @@ if DJANGO_ENV == "PROD":
 else:
     DATABASES = {
         'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
+            'ENGINE': 'django.contrib.gis.db.backends.spatialite',
             'NAME': BASE_DIR / 'db.sqlite3',
         }
     }
@@ -286,7 +288,8 @@ INGRESS_ALLOWED_APPS = [
     "notes",
     "ravioli",
     "library",
-    "webfront"
+    "webfront",
+    "locations"
 ]
 
 BACKUP_ALLOWED_APPS = [
