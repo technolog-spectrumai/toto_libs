@@ -6,12 +6,74 @@
 {% endblock %}
 
 {% block content %}
+
+<script>
+  const isDark = localStorage.getItem('darkMode') === 'true';
+
+
+    const chartOptions = {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: {
+          grid: {
+            color: isDark ? '#555' : '#ccc',
+            borderColor: isDark ? '#777' : '#999'
+          },
+          ticks: {
+            color: isDark ? '#eee' : '#333'
+          }
+        },
+        y: {
+          beginAtZero: true,   // 👈 ensures the y-axis starts at 0
+          grid: {
+            color: isDark ? '#555' : '#ccc',
+            borderColor: isDark ? '#777' : '#999'
+          },
+          ticks: {
+            color: isDark ? '#eee' : '#333'
+          }
+        }
+      }
+    };
+
+
+    const stackedOptions = {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: {
+          stacked: true,
+          grid: {
+            color: isDark ? '#555' : '#ccc',
+            borderColor: isDark ? '#777' : '#999'
+          },
+          ticks: {
+            color: isDark ? '#eee' : '#333'
+          }
+        },
+        y: {
+          stacked: true,
+          beginAtZero: true,   // 👈 always start from zero
+          grid: {
+            color: isDark ? '#555' : '#ccc',
+            borderColor: isDark ? '#777' : '#999'
+          },
+          ticks: {
+            color: isDark ? '#eee' : '#333'
+          }
+        }
+      }
+    };
+    
+</script>
+
 <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10 space-y-12">
 
   <h2 class="text-2xl font-bold mb-6 text-center">Metrics Dashboard for {{ project.name }}</h2>
 
   <!-- Responsive grid: two columns on desktop, stacked on mobile -->
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-8" :class="darkMode ? 'text-gray-100' : 'text-gray-900'">
 
     <!-- 📉 Burndown Chart -->
     <section>
@@ -19,22 +81,22 @@
       <div class="h-64">
         <canvas id="burndownChart"></canvas>
       </div>
-      <script>
-        new Chart(document.getElementById('burndownChart'), {
-          type: 'line',
-          data: {
-            labels: {{ burndown_labels|safe }},
-            datasets: [{
-              label: 'Remaining Weight',
-              data: {{ burndown_data|safe }},
-              borderColor: '#36A2EB',
-              fill: false,
-              tension: 0.1
-            }]
-          },
-          options: { responsive: true, maintainAspectRatio: false }
-        });
-      </script>
+        <script>
+          new Chart(document.getElementById('burndownChart'), {
+            type: 'line',
+            data: {
+              labels: {{ burndown_labels|safe }},
+              datasets: [{
+                label: 'Remaining Weight',
+                data: {{ burndown_data|safe }},
+                borderColor: '#36A2EB',
+                fill: false,
+                tension: 0.1
+              }]
+            },
+            options: chartOptions
+          });
+        </script>
     </section>
 
     <!-- 📈 Velocity Chart -->
@@ -54,7 +116,7 @@
               backgroundColor: '#2196F3'
             }]
           },
-          options: { responsive: true, maintainAspectRatio: false }
+          options: chartOptions
         });
       </script>
     </section>
@@ -76,7 +138,7 @@
               backgroundColor: '#FF5722'
             }]
           },
-          options: { responsive: true, maintainAspectRatio: false }
+          options: chartOptions
         });
       </script>
     </section>
@@ -105,11 +167,7 @@
               }
             ]
           },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: { x: { stacked: true }, y: { stacked: true } }
-          }
+          options: stackedOptions
         });
       </script>
     </section>
