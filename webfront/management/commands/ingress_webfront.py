@@ -1,251 +1,172 @@
-import random
+import os, json
+from django.conf import settings
 from django.utils.timezone import now
-from faker import Faker
 from django.template import Template, Context
-from oya.ingress import IngressCommand
-from webfront.models import StaticPage, HtmlTemplate, DynamicPage
+from django.core.management.base import BaseCommand
+from webfront.models import HtmlTemplate, StaticPage, DynamicPage, MetricsPage, Chart
 from mandragora.models import Workflow, LambdaNode
-from webfront.models import MetricsPage, Chart
+from oya.ingress import IngressCommand
 
 
-fake = Faker()
+DATA_ROOT = os.path.join(settings.BASE_DIR, "..", "data")  # parent of project root
+
+def read_text(*parts):
+    path = os.path.join(DATA_ROOT, *parts)
+    print("---->", os.path.abspath(path))
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
+
+def read_json(*parts):
+    path = os.path.join(DATA_ROOT, *parts)
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 
 class Command(IngressCommand):
-    help = "Seed sample data for Webfront: static pages, templates, dynamic pages, chart templates, and a special LambdaNode"
+    help = "Sync Webfront assets (templates, pages, lambdas, charts) from filesystem"
 
-    # -----------------------------
-    # Helpers
-    # -----------------------------
-    def create_templates(self, count=2):
-        templates = list(HtmlTemplate.objects.all())
-        while len(templates) < count:
-            name = f"Template{len(templates)+1}"
-            content = """
-                {% load include_from_db %}
-                <h2>{{ headline }}</h2>
-                {% for p in paragraphs %}
-                  <p>{{ p }}</p>
-                {% endfor %}
-                <p><em>Published {{ published }}</em></p>
-                <p><strong>{{ extra_message }}</strong></p>
-            """
-            schema = {
-                "type": "object",
-                "properties": {
-                    "headline": {"type": "string"},
-                    "paragraphs": {"type": "array", "items": {"type": "string"}},
-                    "published": {"type": "string"},
-                    "extra_message": {"type": "string"},
-                },
-                "required": ["headline", "paragraphs", "published"],
-            }
-            tmpl = HtmlTemplate.objects.create(
+    def sync_html_templates(self):
+        html_dir = os.path.join(DATA_ROOT, "webfront", "html")
+        schema_dir = os.path.join(DATA_ROOT, "webfront", "schema")
+        for filename in os.listdir(html_dir):
+            if not filename.endswith(".html"):
+                continue
+            name = os.path.splitext(filename)[0]
+            content = read_text("webfront", "html", filename)
+            schema_file = os.path.join(schema_dir, f"{name}.json")
+            schema = read_json("webfront", "schema", f"{name}.json") if os.path.exists(schema_file) else None
+
+            tmpl, created = HtmlTemplate.objects.get_or_create(
                 name=name,
-                content=content,
-                json_schema=schema,
+                defaults={"content": content, "json_schema": schema}
             )
-            templates.append(tmpl)
-            self.stdout.write(self.style.SUCCESS(f"🖼️ Template: {tmpl.name}"))
-        return templates
+            if not created:
+                tmpl.content = content
+                tmpl.json_schema = schema
+                tmpl.save()
+            self.stdout.write(self.style.SUCCESS(f"🖼️ HtmlTemplate synced: {tmpl.name}"))
 
-    def create_chart_templates(self):
-        """
-        Create chart templates for line, pie, and bar charts.
-        """
-        chart_templates = []
-        chart_types = [
-            ("LineChartTemplate", "line"),
-            ("PieChartTemplate", "pie"),
-            ("BarChartTemplate", "bar"),
-        ]
-
-        for name, chart_type in chart_types:
-            if not HtmlTemplate.objects.filter(name=name).exists():
-                content = """
-                    <h2>{{ title }}</h2>
-                    <canvas id="chartCanvas"></canvas>
-                """
-                script = f"""
-                    const ctx = document.getElementById('chartCanvas').getContext('2d');
-                    new Chart(ctx, {{
-                        type: '{chart_type}',
-                        data: {{
-                            labels: {{ labels|safe }},
-                            datasets: [{{
-                                label: '{{ dataset_label }}',
-                                data: {{ data|safe }},
-                                backgroundColor: {{ colors|safe }},
-                            }}]
-                        }},
-                        options: {{ options|safe }}
-                    }});
-                """
-                schema = {
-                    "type": "object",
-                    "properties": {
-                        "title": {"type": "string"},
-                        "labels": {"type": "array", "items": {"type": "string"}},
-                        "dataset_label": {"type": "string"},
-                        "data": {"type": "array", "items": {"type": "number"}},
-                        "colors": {"type": "array", "items": {"type": "string"}},
-                        "options": {"type": "object"},
-                    },
-                    "required": ["title", "labels", "data"],
-                }
-                tmpl = HtmlTemplate.objects.create(
-                    name=name,
-                    content=content,
-                    script=script,
-                    json_schema=schema,
-                )
-                chart_templates.append(tmpl)
-                self.stdout.write(self.style.SUCCESS(f"📊 Chart template: {tmpl.name}"))
-        return chart_templates
-
-    def create_static_pages(self, templates, count=5):
-        pages = list(StaticPage.objects.all())
-        while len(pages) < count:
-            title = fake.sentence(nb_words=3).rstrip(".")
-            slug = fake.unique.slug()
-            data = {
-                "headline": title,
-                "paragraphs": [fake.paragraph(nb_sentences=2) for _ in range(2)],
-                "published": now().strftime("%B %d, %Y"),
-                "extra_message": "Static content only",
-            }
-            template = random.choice(templates)
-            rendered_body = Template(template.content).render(Context(data))
-
-            page = StaticPage.objects.create(
-                slug=slug,
-                title=title,
-                body=rendered_body,
-                created_at=now(),
+    def seed_static_pages(self):
+        config_dir = os.path.join(DATA_ROOT, "webfront", "page_config")
+        for filename in os.listdir(config_dir):
+            if not filename.endswith(".json"):
+                continue
+            name = os.path.splitext(filename)[0]
+            data = read_json("webfront", "page_config", filename)
+            tmpl = HtmlTemplate.objects.filter(name=name).first()
+            if not tmpl:
+                continue
+            rendered = Template(tmpl.content).render(Context(data))
+            page, created = StaticPage.objects.get_or_create(
+                slug=name,
+                defaults={"title": name.capitalize(), "body": rendered}
             )
-            pages.append(page)
-            self.stdout.write(self.style.SUCCESS(f"📄 Static page: {page.title}"))
-        return pages
+            if not created:
+                page.title = name.capitalize()
+                page.body = rendered
+                page.save()
+            self.stdout.write(self.style.SUCCESS(f"📄 StaticPage seeded: {page.title}"))
 
-    def create_special_lambda_node(self, workflow_name="Webfront Workflow"):
-        """
-        Create a special LambdaNode that enriches context with an extra message.
-        """
+    def seed_dynamic_pages(self):
+        config_dir = os.path.join(DATA_ROOT, "webfront", "page_config")
+        for filename in os.listdir(config_dir):
+            if not filename.endswith(".json"):
+                continue
+            name = os.path.splitext(filename)[0]
+            data = read_json("webfront", "page_config", filename)
+            tmpl = HtmlTemplate.objects.filter(name=name).first()
+            if not tmpl:
+                continue
+            page, created = DynamicPage.objects.get_or_create(
+                slug=f"{name}-dyn",
+                defaults={"title": f"{name.capitalize()} (dynamic)", "data": data, "template": tmpl}
+            )
+            if not created:
+                page.title = f"{name.capitalize()} (dynamic)"
+                page.data = data
+                page.template = tmpl
+                page.save()
+            self.stdout.write(self.style.SUCCESS(f"⚡ DynamicPage seeded: {page.title}"))
+
+    def sync_lambda_nodes(self, workflow_name="Webfront Workflow"):
         workflow, _ = Workflow.objects.get_or_create(
             name=workflow_name,
-            defaults={"description": "Workflow for webfront dynamic pages"},
+            defaults={"description": "Workflow for webfront lambdas"},
         )
-
-        node, _ = LambdaNode.objects.get_or_create(
-            workflow=workflow,
-            name="AddExtraMessage",
-            defaults={
-                "is_initial": False,
-                "is_final": False,
-                "code": """
-def main(context):
-    # Add an extra message based on request user
-    user = getattr(context.get('request'), 'user', None)
-    username = getattr(user, 'username', 'guest') if user else 'guest'
-    return {"extra_message": f"Hello from LambdaNode, {username}!"}
-""",
-            },
-        )
-        self.stdout.write(self.style.SUCCESS(f"✨ Special LambdaNode: {node.name}"))
-        return node
-
-    def create_dynamic_pages(self, templates, special_node, count=5):
-        pages = list(DynamicPage.objects.all())
-        while len(pages) < count:
-            title = fake.sentence(nb_words=2).rstrip(".")
-            slug = fake.unique.slug()
-
-            # If chart template, seed chart data
-            if "ChartTemplate" in random.choice(templates).name:
-                labels = ["Jan", "Feb", "Mar", "Apr", "May"]
-                data = [random.randint(10, 100) for _ in labels]
-                colors = ["#FF6384", "#36A2EB", "#FFCE56", "#4BC0C0", "#9966FF"]
-                dataset_label = "Sample Data"
-                page_data = {
-                    "title": title,
-                    "labels": labels,
-                    "dataset_label": dataset_label,
-                    "data": data,
-                    "colors": colors,
-                    "options": {},
-                }
-            else:
-                page_data = {
-                    "headline": title,
-                    "paragraphs": [fake.paragraph(nb_sentences=2) for _ in range(2)],
-                    "published": now().strftime("%B %d, %Y"),
-                }
-
-            template = random.choice(templates)
-            page = DynamicPage.objects.create(
-                slug=slug,
-                title=title,
-                data=page_data,
-                template=template,
-                lambda_node=special_node,
-                created_at=now(),
+        lambdas_dir = os.path.join(DATA_ROOT, "webfront", "lambdas")
+        nodes = []
+        for filename in os.listdir(lambdas_dir):
+            if not filename.endswith(".py"):
+                continue
+            base = os.path.splitext(filename)[0]
+            code = read_text("webfront", "lambdas", filename)
+            node_name = f"{base.capitalize()}Node"
+            node, created = LambdaNode.objects.get_or_create(
+                workflow=workflow,
+                name=node_name,
+                defaults={"code": code}
             )
-            pages.append(page)
-            self.stdout.write(self.style.SUCCESS(f"⚡ Dynamic page: {page.title}"))
-        return pages
+            if not created:
+                node.code = code
+                node.save()
+            nodes.append(node)
+            self.stdout.write(self.style.SUCCESS(f"📊 LambdaNode synced: {node.name}"))
+        return nodes
 
-    def create_sample_charts(self, special_node, count=3):
-        """
-        Create sample Chart objects with random data and optional LambdaNode.
-        """
-        charts = list(Chart.objects.all())
-        while len(charts) < count:
-            title = f"Sample Chart {len(charts)+1}"
-            chart_type = random.choice(["line", "bar", "pie"])
-            chart = Chart.objects.create(
-                title=title,
-                description=f"Auto-generated {chart_type} chart",
-                chart_type=chart_type,
-                stacked=(chart_type == "bar"),
-                lambda_node=special_node,
-                params={"metric": "random", "seed": random.randint(1, 100)},
+    def sync_charts(self, nodes):
+        config_dir = os.path.join(DATA_ROOT, "webfront", "lambda_config")
+        charts = []
+        for filename in os.listdir(config_dir):
+            if not filename.endswith(".json"):
+                continue
+            base = os.path.splitext(filename)[0]
+            config = read_json("webfront", "lambda_config", filename)
+            node = next((n for n in nodes if n.name.lower().startswith(base.lower())), None)
+            chart_type = config.get("chart_type", "bar")
+            stacked = config.get("stacked", "bar")
+            chart, created = Chart.objects.get_or_create(
+                title=f"{base.capitalize()} Chart",
+                defaults={
+                    "description": f"Chart from {filename}",
+                    "chart_type": chart_type,
+                    "stacked": stacked,
+                    "lambda_node": node,
+                    "params": config,
+                }
             )
+            if not created:
+                chart.description = f"Chart updated from {filename}"
+                chart.chart_type = chart_type
+                chart.stacked = stacked
+                chart.lambda_node = node
+                chart.params = config
+                chart.save()
             charts.append(chart)
-            self.stdout.write(self.style.SUCCESS(f"📊 Chart: {chart.title}"))
+            self.stdout.write(self.style.SUCCESS(f"📈 Chart synced: {chart.title}"))
         return charts
 
-    def create_metrics_page(self, charts):
-        """
-        Create a MetricsPage grouping the given charts.
-        """
-        if not MetricsPage.objects.exists():
-            page = MetricsPage.objects.create(
-                slug="sample-metrics",
-                title="Sample Metrics Dashboard",
-                description="Auto-generated metrics page with sample charts",
-                order=1,
-                created_at=now(),
-            )
-            page.charts.set(charts)
-            self.stdout.write(self.style.SUCCESS(f"📈 MetricsPage: {page.title}"))
-            return page
-        return MetricsPage.objects.first()
+    def ensure_metrics_page(self, charts):
+        page, created = MetricsPage.objects.get_or_create(
+            slug="metrics-dashboard",
+            defaults={
+                "title": "Metrics Dashboard",
+                "description": "Charts loaded from webfront configs & lambdas",
+                "order": 1,
+                "created_at": now(),
+            }
+        )
+        page.charts.set(charts)
+        page.save()
+        self.stdout.write(self.style.SUCCESS(f"🗂️ MetricsPage ready: {page.title}"))
 
     # -----------------------------
     # Main process
     # -----------------------------
     def process(self):
-        if not self.full:
-            return
-
-        templates = self.create_templates(count=2)
-        chart_templates = self.create_chart_templates()
-        self.create_static_pages(templates, count=5)
-
-        special_node = self.create_special_lambda_node()
-        self.create_dynamic_pages(templates + chart_templates, special_node, count=5)
-
-        charts = self.create_sample_charts(special_node, count=3)
-        self.create_metrics_page(charts)
-
-        self.stdout.write(self.style.SUCCESS("✅ Webfront ingress complete."))
+        self.sync_html_templates()
+        self.seed_static_pages()
+        self.seed_dynamic_pages()
+        nodes = self.sync_lambda_nodes()
+        charts = self.sync_charts(nodes)
+        self.ensure_metrics_page(charts)
+        self.stdout.write(self.style.SUCCESS("✅ Webfront assets synced"))

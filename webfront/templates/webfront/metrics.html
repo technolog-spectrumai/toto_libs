@@ -8,6 +8,67 @@
 {% endblock %}
 
 {% block content %}
+<script>
+  const isDark = localStorage.getItem('darkMode') === 'true';
+
+
+    const chartOptions = {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: {
+          grid: {
+            color: isDark ? '#555' : '#ccc',
+            borderColor: isDark ? '#777' : '#999'
+          },
+          ticks: {
+            color: isDark ? '#eee' : '#333'
+          }
+        },
+        y: {
+          beginAtZero: true,   // 👈 ensures the y-axis starts at 0
+          grid: {
+            color: isDark ? '#555' : '#ccc',
+            borderColor: isDark ? '#777' : '#999'
+          },
+          ticks: {
+            color: isDark ? '#eee' : '#333'
+          }
+        }
+      }
+    };
+
+
+    const stackedOptions = {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: {
+          stacked: true,
+          grid: {
+            color: isDark ? '#555' : '#ccc',
+            borderColor: isDark ? '#777' : '#999'
+          },
+          ticks: {
+            color: isDark ? '#eee' : '#333'
+          }
+        },
+        y: {
+          stacked: true,
+          beginAtZero: true,   // 👈 always start from zero
+          grid: {
+            color: isDark ? '#555' : '#ccc',
+            borderColor: isDark ? '#777' : '#999'
+          },
+          ticks: {
+            color: isDark ? '#eee' : '#333'
+          }
+        }
+      }
+    };
+
+</script>
+
 <div
   :class="darkMode
     ? 'bg-primary-bg-dark text-text-main-dark'

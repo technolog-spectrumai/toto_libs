@@ -1,3 +1,5 @@
+import json
+
 from django.db import models
 from django.urls import reverse
 import jsonschema
@@ -173,8 +175,8 @@ class MetricsPage(models.Model):
                 "title": chart.title,
                 "description": chart.description,
                 "type": chart.chart_type,
-                "stacked": chart.stacked,
-                "labels": chart_data["labels"],
-                "datasets": chart_data["datasets"],
+                "stacked": json.dumps(chart.stacked),
+                "labels":  json.dumps(chart_data["labels"]),
+                "datasets":  json.dumps(chart_data["datasets"]),
             })
         return data
