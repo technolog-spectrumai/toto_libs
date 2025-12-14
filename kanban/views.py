@@ -133,7 +133,7 @@ class MetricsView(LoginRequiredMixin, DetailView):
         project = self.get_object()
         sprint = Sprint.objects.filter(project=project).order_by("-start_time").first()
 
-        # Burndown (unchanged, using completed_at)
+        # Burndown (using completed_at)
         burndown_labels, burndown_data = [], []
         if sprint:
             total_weight = sprint.tasks.aggregate(total=Sum("weight"))["total"] or 0
@@ -147,7 +147,7 @@ class MetricsView(LoginRequiredMixin, DetailView):
                 )
                 burndown_data.append(max(total_weight - completed_weight, 0))
 
-        # Incomplete tasks per assignee (by weight)
+        # Incomplete tasks per assignee
         incomplete_labels, incomplete_weights = [], []
         tasks_incomplete = (
             Task.objects.filter(mission__campaign__project=project, completed_at__isnull=True)
@@ -158,12 +158,34 @@ class MetricsView(LoginRequiredMixin, DetailView):
             incomplete_labels.append(row["assignee__username"] or "Unassigned")
             incomplete_weights.append(row["total_weight"] or 0)
 
+        # Velocity: completed weight per sprint
+        velocity_labels, velocity_data = [], []
+        for sp in Sprint.objects.filter(project=project).order_by("start_time"):
+            velocity_labels.append(sp.name)
+            completed_weight = (
+                sp.tasks.filter(completed_at__isnull=False)
+                .aggregate(done=Sum("weight"))["done"] or 0
+            )
+            velocity_data.append(completed_weight)
+
+        # Lead time: average days from creation → completion
+        lead_labels, lead_data = [], []
+        tasks_completed = Task.objects.filter(mission__campaign__project=project, completed_at__isnull=False)
+        for task in tasks_completed:
+            if task.completed_at:
+                lead_labels.append(task.title)
+                lead_data.append((task.completed_at.date() - task.sprint.start_time.date()).days)
+
         context.update({
             "sprint": sprint,
             "burndown_labels": json.dumps(burndown_labels),
             "burndown_data": json.dumps(burndown_data),
             "incomplete_labels": json.dumps(incomplete_labels),
             "incomplete_weights": json.dumps(incomplete_weights),
+            "velocity_labels": json.dumps(velocity_labels),
+            "velocity_data": json.dumps(velocity_data),
+            "lead_labels": json.dumps(lead_labels),
+            "lead_data": json.dumps(lead_data),
         })
         return context
 

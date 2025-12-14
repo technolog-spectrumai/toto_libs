@@ -57,6 +57,52 @@
         });
       </script>
     </section>
+
+    <!-- 📈 Velocity Chart -->
+    <section>
+      <h3 class="text-lg font-semibold mb-3">Velocity per Sprint</h3>
+      <div class="h-64">
+        <canvas id="velocityChart"></canvas>
+      </div>
+      <script>
+        new Chart(document.getElementById('velocityChart'), {
+          type: 'bar',
+          data: {
+            labels: {{ velocity_labels|safe }},
+            datasets: [{
+              label: 'Completed Weight',
+              data: {{ velocity_data|safe }},
+              backgroundColor: '#2196F3'
+            }]
+          },
+          options: { responsive: true, maintainAspectRatio: false }
+        });
+      </script>
+    </section>
+
+    <!-- ⏱️ Lead Time Chart -->
+    <section>
+      <h3 class="text-lg font-semibold mb-3">Lead Time (days per task)</h3>
+      <div class="h-64">
+        <canvas id="leadChart"></canvas>
+      </div>
+      <script>
+        new Chart(document.getElementById('leadChart'), {
+          type: 'bar',
+          data: {
+            labels: {{ lead_labels|safe }},
+            datasets: [{
+              label: 'Days',
+              data: {{ lead_data|safe }},
+              backgroundColor: '#FF5722'
+            }]
+          },
+          options: { responsive: true, maintainAspectRatio: false }
+        });
+      </script>
+    </section>
+
+
   </div>
 
   <!-- 🔙 Back to Project -->
