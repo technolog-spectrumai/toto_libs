@@ -1,9 +1,15 @@
+import json
+
 from django.views.generic import DetailView, ListView
 from django.db.models import Q
 from django.contrib.auth.models import AnonymousUser
-from django.contrib.auth.mixins import LoginRequiredMixin
 from kanban.models import Project, Column, Task, Sprint, Mission
 from oya.page import PageProcessor
+from django.contrib.auth.mixins import LoginRequiredMixin
+from oya.page import PageProcessor
+from django.db.models import Sum
+from datetime import timedelta
+from django.utils import timezone
 
 
 class ProjectDetailView(LoginRequiredMixin, DetailView):
@@ -113,3 +119,44 @@ class BacklogView(LoginRequiredMixin, DetailView):
             "missions": missions,
         })
         return context
+
+
+class MetricsView(LoginRequiredMixin, DetailView):
+    model = Project
+    template_name = "kanban/metrics.html"
+    context_object_name = "project"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context = PageProcessor().decorate(context, self.request)
+
+        project = self.get_object()
+        sprint = Sprint.objects.filter(project=project).order_by("-start_time").first()
+
+        burndown_labels, burndown_data = [], []
+        if sprint:
+            total_weight = sprint.tasks.aggregate(total=Sum("weight"))["total"] or 0
+            days = (sprint.end_time.date() - sprint.start_time.date()).days + 1
+
+            # iterate across the full sprint duration
+            for i in range(days):
+                day = sprint.start_time.date() + timedelta(days=i)
+                burndown_labels.append(day.strftime("%b %d"))
+
+                # use completed_at instead of column
+                completed_weight = (
+                    sprint.tasks.filter(completed_at__date__lte=day)
+                    .aggregate(done=Sum("weight"))["done"] or 0
+                )
+                burndown_data.append(max(total_weight - completed_weight, 0))
+
+        context.update({
+            "sprint": sprint,
+            "burndown_labels": json.dumps(burndown_labels),
+            "burndown_data": json.dumps(burndown_data),
+        })
+        return context
+
+
+
+

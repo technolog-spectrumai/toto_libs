@@ -94,5 +94,7 @@ class Task(models.Model):
     weight = models.PositiveIntegerField(default=1)
     metadata = models.JSONField(blank=True, null=True)
 
+    completed_at = models.DateTimeField(null=True, blank=True)
+
     def __str__(self):
         return self.title

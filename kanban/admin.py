@@ -108,7 +108,7 @@ class TaskAdmin(admin.ModelAdmin):
     form = TaskAdminForm
     list_display = (
         'title', 'column', 'sprint', 'mission', 'assignee',
-        'due_date', 'position', 'weight'
+        'due_date', 'position', 'weight', "completed_at",
     )
     list_filter = ('due_date', 'sprint', 'mission')
     search_fields = ('title', 'description')

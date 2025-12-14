@@ -1,0 +1,40 @@
+{% extends "oya/base.html" %}
+{% block title %}Burndown | {{ project.name }}{% endblock %}
+
+{% block start_script %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-6 py-10">
+  <h2 class="text-2xl font-bold mb-6 text-center">Burndown Chart for {{ project.name }}</h2>
+
+  <div class="h-64">
+    <canvas id="burndownChart"></canvas>
+  </div>
+  <script>
+    new Chart(document.getElementById('burndownChart'), {
+      type: 'line',
+      data: {
+        labels: {{ burndown_labels|safe }},
+        datasets: [{
+          label: 'Remaining Weight',
+          data: {{ burndown_data|safe }},
+          borderColor: '#36A2EB',
+          fill: false,
+          tension: 0.1
+        }]
+      },
+      options: { responsive: true, maintainAspectRatio: false }
+    });
+  </script>
+
+  <div class="text-center mt-6">
+    <a href="{% url 'kanban:project_detail' project.pk %}"
+       class="inline-block px-5 py-2 rounded-lg font-semibold text-sm hover:opacity-90 transition"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'">
+      Back to Project
+    </a>
+  </div>
+</div>
+{% endblock %}
