@@ -1,9 +1,7 @@
 # models.py
-
-import os
-from django.conf import settings
 from django.db import models
 from polymorphic.models import PolymorphicModel
+from vault.models import VaultFile
 
 
 # ────────────────────────────────────────────────
@@ -22,6 +20,14 @@ class ReferenceItem(PolymorphicModel):
         'ReferenceTag',
         blank=True,
         related_name='references'
+    )
+    vault_file = models.ForeignKey(
+        VaultFile,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="reference_items",
+        help_text="Optional link to a file stored in the vault"
     )
 
     class Meta:

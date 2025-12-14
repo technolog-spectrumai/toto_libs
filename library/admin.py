@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.utils.html import format_html
 from polymorphic.admin import (
     PolymorphicParentModelAdmin,
     PolymorphicChildModelAdmin,
@@ -42,12 +43,20 @@ class ReferenceItemParentAdmin(PolymorphicParentModelAdmin):
         GenericReference,
     )
     list_filter = (PolymorphicChildModelFilter,)
-    list_display = ("title", "order", "polymorphic_ctype", "tag_list")
+    list_display = ("title", "order", "polymorphic_ctype", "tag_list", "download_link")
     search_fields = ("title",)
 
     def tag_list(self, obj):
         return ", ".join(tag.name for tag in obj.tags.all())
     tag_list.short_description = "Tags"
+
+    def download_link(self, obj):
+        if obj.vault_file and obj.vault_file.file:
+            return format_html(
+                '<a href="{}" download>Download</a>', obj.vault_file.file.url
+            )
+        return "-"
+    download_link.short_description = "Download"
 
 
 # ────────────────────────────────────────────────
