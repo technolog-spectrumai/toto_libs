@@ -1,6 +1,8 @@
 from django.contrib import admin
 from django import forms
 from django_ace import AceWidget
+from django_json_widget.widgets import JSONEditorWidget
+
 from .models import Workflow, LambdaNode, Edge, LambdaLayer
 
 
@@ -53,12 +55,13 @@ def test_selected_nodes(modeladmin, request, queryset):
 
 # --- Forms ---
 class LambdaNodeForm(forms.ModelForm):
+
     class Meta:
         model = LambdaNode
         fields = "__all__"
         widgets = {
             "code": AceWidget(mode="python", theme="chrome", width="100%", height="400px"),
-            #"test_context": JSONEditorWidget(),
+            "test_context": JSONEditorWidget()
         }
 
 
@@ -72,7 +75,7 @@ class WorkflowAdmin(admin.ModelAdmin):
 @admin.register(LambdaNode)
 class LambdaNodeAdmin(admin.ModelAdmin):
     form = LambdaNodeForm
-    list_display = ("name", "workflow", "is_initial", "is_final")
+    list_display = ("name", "workflow", "is_initial", "is_final", "layer")
     list_filter = ("workflow", "is_initial", "is_final")
     actions = [test_selected_nodes]  # attach the test action
 

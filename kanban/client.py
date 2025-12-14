@@ -1,70 +1,95 @@
-from django.db.models import Sum, Q
-from .models import Project, Column, Campaign, Mission, Sprint, Task
+# kanban/client.py
+from datetime import date
+from .models import Project, Sprint, Task, Campaign, Mission, Column
 
 
 class KanbanClient:
-    """
-    Kanban client for querying core objects.
-    Provides simple reusable methods returning querysets or dicts.
-    """
 
-    Q = Q
-    Sum = Sum
+    @staticmethod
+    def format_date(d: date, fmt: str = "%b %d") -> str:
+        """
+        Format a date object into a string using the given format.
+        Default format is abbreviated month + day (e.g. 'Dec 14').
+        """
+        return d.strftime(fmt)
 
-    # --- Projects ---
-    def get_project(self, project_id: int):
-        return Project.objects.filter(id=project_id).first()
+    # --- Queries returning dicts ---
+    def get_project(self, project_id: int) -> dict:
+        project = Project.objects.filter(id=project_id).first()
+        if not project:
+            return {}
+        return self._project_to_dict(project)
 
-    def get_project_by_slug(self, slug: str):
-        return Project.objects.filter(slug=slug).first()
+    def get_projects(self) -> list[dict]:
+        return [self._project_to_dict(p) for p in Project.objects.all()]
 
-    def all_projects(self):
-        return Project.objects.all()
+    def get_sprints(self, project_id: int) -> list[dict]:
+        project = Project.objects.filter(id=project_id).first()
+        if not project:
+            return []
+        return [self._sprint_to_dict(sp) for sp in Sprint.objects.filter(project=project).order_by("start_time")]
 
-    # --- Columns ---
-    def get_columns(self, project: Project):
-        return Column.objects.filter(project=project).order_by("position")
+    def latest_sprint(self, project_id: int) -> dict:
+        project = Project.objects.filter(id=project_id).first()
+        if not project:
+            return {}
+        sprint = Sprint.objects.filter(project=project).order_by("-start_time").first()
+        return self._sprint_to_dict(sprint) if sprint else {}
 
-    # --- Campaigns ---
-    def get_campaigns(self, project: Project):
-        return Campaign.objects.filter(project=project)
+    def get_tasks(self, project_id: int) -> list[dict]:
+        project = Project.objects.filter(id=project_id).first()
+        if not project:
+            return []
+        return [self._task_to_dict(t) for t in Task.objects.filter(mission__campaign__project=project)]
 
-    # --- Missions ---
-    def get_missions(self, campaign: Campaign):
-        return campaign.missions.all()
+    def get_campaigns(self, project_id: int) -> list[dict]:
+        project = Project.objects.filter(id=project_id).first()
+        if not project:
+            return []
+        return [self._campaign_to_dict(c) for c in Campaign.objects.filter(project=project)]
 
-    def get_missions_for_project(self, project: Project):
-        return Mission.objects.filter(campaign__project=project)
+    def get_columns(self, project_id: int) -> list[dict]:
+        project = Project.objects.filter(id=project_id).first()
+        if not project:
+            return []
+        return [self._column_to_dict(c) for c in Column.objects.filter(project=project).order_by("position")]
 
-    # --- Sprints ---
-    def get_sprints(self, project: Project):
-        return Sprint.objects.filter(project=project).order_by("start_time")
+    # --- Protected dict converters ---
+    def _project_to_dict(self, project: Project) -> dict:
+        return {"id": project.id, "name": project.name, "slug": project.slug}
 
-    def latest_sprint(self, project: Project):
-        return Sprint.objects.filter(project=project).order_by("-start_time").first()
+    def _sprint_to_dict(self, sprint: Sprint) -> dict:
+        return {
+            "id": sprint.id,
+            "name": sprint.name,
+            "start_date": sprint.start_time.date(),
+            "end_date": sprint.end_time.date(),
+            "tasks": [self._task_to_dict(t) for t in sprint.tasks.all()],
+        }
 
-    # --- Tasks ---
-    def get_tasks(self, project: Project):
-        return Task.objects.filter(mission__campaign__project=project)
+    def _task_to_dict(self, task: Task) -> dict:
+        return {
+            "id": task.id,
+            "title": task.title,
+            "weight": task.weight,
+            "assignee": getattr(task.assignee, "username", None),
+            "completed_at": task.completed_at.date() if task.completed_at else None,
+            "sprint_start": task.sprint.start_time.date() if task.sprint else None,
+        }
 
-    def completed_tasks(self, project: Project):
-        return self.get_tasks(project).filter(completed_at__isnull=False)
+    def _campaign_to_dict(self, campaign: Campaign) -> dict:
+        return {
+            "id": campaign.id,
+            "name": campaign.name,
+            "missions": [
+                {
+                    "id": m.id,
+                    "title": m.title,
+                    "tasks": [self._task_to_dict(t) for t in m.tasks.all()],
+                }
+                for m in campaign.missions.all()
+            ],
+        }
 
-    def incomplete_tasks(self, project: Project):
-        return self.get_tasks(project).filter(completed_at__isnull=True)
-
-    # --- Simple metrics ---
-    def sprint_velocity(self, sprint: Sprint):
-        """Total completed weight in a sprint."""
-        return sprint.tasks.filter(completed_at__isnull=False).aggregate(
-            total=self.Sum("weight")
-        )["total"] or 0
-
-    def campaign_progress(self, campaign: Campaign):
-        """Return progress percentage for a campaign."""
-        total = campaign.missions.aggregate(total=self.Sum("tasks__weight"))["total"] or 0
-        done = campaign.missions.aggregate(
-            done=self.Sum("tasks__weight", filter=self.Q(tasks__completed_at__isnull=False))
-        )["done"] or 0
-        pct = (done / total * 100) if total > 0 else 0
-        return {"label": campaign.name, "pct": round(pct, 1)}
+    def _column_to_dict(self, column: Column) -> dict:
+        return {"id": column.id, "name": column.name, "position": column.position}

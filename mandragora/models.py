@@ -1,4 +1,7 @@
 #import cv2
+import json
+from datetime import timedelta
+
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from RestrictedPython import compile_restricted, safe_builtins, utility_builtins, limited_builtins
@@ -7,6 +10,8 @@ from django_jsonform.models.fields import JSONField  # use JSONField with schema
 # Your custom safe clients
 # from storage.client import StorageClient
 # from data.client import DataClient
+import operator
+from RestrictedPython.Guards import guarded_unpack_sequence, full_write_guard
 
 
 class Workflow(models.Model):
@@ -24,13 +29,6 @@ class Workflow(models.Model):
 
     def __str__(self):
         return self.name
-
-
-_TEST_CONTEXT_SCHEMA = {
-    "type": "object",
-    "properties": {},
-    "additionalProperties": True
-}
 
 
 class LambdaLayer(models.Model):
@@ -58,9 +56,8 @@ class LambdaLayer(models.Model):
             deps["cv2"] = cv2
         if self.use_kanban_client:
             from kanban.client import KanbanClient
-            deps["kanban"] = KanbanClient
+            deps["KanbanClient"] = KanbanClient
         return deps
-
 
 class LambdaNode(models.Model):
     """
@@ -75,11 +72,9 @@ class LambdaNode(models.Model):
     code = models.TextField(help_text=_("Restricted Python code snippet"))
 
     # 🔹 Add a JSON test context field
-    test_context = JSONField(
-        default=dict,
-        blank=True,
-        help_text="Optional JSON context for testing this node",
-        schema=_TEST_CONTEXT_SCHEMA
+    test_context = models.JSONField(
+        blank=True, null=True,
+        help_text="Optional JSON context for testing this node"
     )
 
     class Meta:
@@ -93,6 +88,7 @@ class LambdaNode(models.Model):
         Execute restricted Python code. Requires a main(context) function.
         If no context is passed, falls back to test_context.
         """
+        print("|", json.dumps(context, indent=2), "|")
         try:
             byte_code = compile_restricted(
                 self.code,
@@ -108,7 +104,18 @@ class LambdaNode(models.Model):
 
             allowed_globals = {
                 "__builtins__": allowed_builtins,
-                "context": context or self.test_context
+                "context": context or self.test_context,
+                "_getitem_": operator.getitem,
+                "_setitem_": operator.setitem,
+                "_delitem_": operator.delitem,
+                "_unpack_sequence_": guarded_unpack_sequence,
+                "_getiter_": iter,
+                "timedelta": timedelta,
+                "sum": sum,
+                "len": len,
+                "max": max,
+                "min": min,
+                "_write_": full_write_guard,
             }
 
             if self.layer:

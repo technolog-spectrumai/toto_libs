@@ -355,13 +355,13 @@ AUDITED_APPS = [
     "memo",
     "editor",
     "vault",
-    "portfolio",
     "latextile",
     "community",
     "events",
     "finance",
-    "notes",
-    "ravioli"
+    "ravioli",
+    "mandragora",
+    "kanban"
 ]
 
 

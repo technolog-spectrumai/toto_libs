@@ -2,12 +2,11 @@ from datetime import timedelta
 from django.utils import timezone
 from django.contrib.auth.models import User
 from kanban.models import Project, Column, Task, Sprint, Mission, Campaign
-from oya.models import Platform, Theme
 from oya.ingress import IngressCommand
 
 
 class Command(IngressCommand):
-    help = "Creates a demo kanban setup with a current sprint using existing ColorMix themes"
+    help = "Creates a demo kanban setup with multiple campaigns, missions, sprints, and tasks"
 
     def process(self):
         self.create_dashboard_item(
@@ -30,8 +29,14 @@ class Command(IngressCommand):
             owner=user
         )
 
-        # Create demo campaign under project
-        campaign = Campaign.objects.create(
+        # Columns
+        todo = Column.objects.create(project=project, name="To Do", position=1)
+        doing = Column.objects.create(project=project, name="In Progress", position=2)
+        review = Column.objects.create(project=project, name="Review", position=3)
+        done = Column.objects.create(project=project, name="Done", position=4)
+
+        # Campaigns
+        frontend_campaign = Campaign.objects.create(
             project=project,
             name="Frontend Rollout",
             description="Deliver UI components and wireframes for MVP",
@@ -39,37 +44,64 @@ class Command(IngressCommand):
             end_date=(timezone.now() + timedelta(days=30)).date(),
             owner=user
         )
-
-        # Create demo mission under campaign
-        mission = Mission.objects.create(
-            campaign=campaign,
-            title="Launch MVP",
-            description="Prepare and release the minimum viable product",
-            urgency=3,  # High
-            impact=3,   # High
+        backend_campaign = Campaign.objects.create(
+            project=project,
+            name="Backend API",
+            description="Develop core API endpoints and authentication",
+            start_date=timezone.now().date(),
+            end_date=(timezone.now() + timedelta(days=45)).date(),
             owner=user
         )
 
-        # Create columns directly under project
-        todo = Column.objects.create(project=project, name="To Do", position=1)
-        doing = Column.objects.create(project=project, name="In Progress", position=2)
-        done = Column.objects.create(project=project, name="Done", position=3)
+        # Missions
+        mission1 = Mission.objects.create(
+            campaign=frontend_campaign,
+            title="Launch MVP",
+            description="Prepare and release the minimum viable product",
+            urgency=3,
+            impact=3,
+            owner=user
+        )
+        mission2 = Mission.objects.create(
+            campaign=backend_campaign,
+            title="Authentication System",
+            description="Implement JWT-based authentication and user management",
+            urgency=2,
+            impact=3,
+            owner=user
+        )
 
-        # Create tasks linked to mission
-        task1 = Task.objects.create(column=todo, title="Set up project repo", position=1, mission=mission)
-        task2 = Task.objects.create(column=doing, title="Build UI components", position=1, mission=mission)
-        task3 = Task.objects.create(column=done, title="Create wireframes", position=1, mission=mission)
+        # Tasks (varied columns and missions)
+        tasks = [
+            Task.objects.create(column=todo, title="Set up project repo", position=1, mission=mission1),
+            Task.objects.create(column=doing, title="Build UI components", position=2, mission=mission1),
+            Task.objects.create(column=review, title="Peer review wireframes", position=3, mission=mission1),
+            Task.objects.create(column=done, title="Create wireframes", position=4, mission=mission1),
+            Task.objects.create(column=todo, title="Design database schema", position=1, mission=mission2),
+            Task.objects.create(column=doing, title="Implement login endpoint", position=2, mission=mission2),
+            Task.objects.create(column=review, title="Security audit", position=3, mission=mission2),
+            Task.objects.create(column=done, title="Unit tests for API", position=4, mission=mission2),
+        ]
 
-        # Create sprint
+        # Sprints
         now = timezone.now()
-        sprint = Sprint.objects.create(
+        sprint1 = Sprint.objects.create(
             name="Sprint 1",
+            project=project,
+            start_time=now - timedelta(days=14),
+            end_time=now
+        )
+        sprint2 = Sprint.objects.create(
+            name="Sprint 2",
             project=project,
             start_time=now,
             end_time=now + timedelta(days=14)
         )
 
-        # Assign tasks to sprint
-        for task in [task1, task2, task3]:
-            task.sprint = sprint
+        # Assign tasks to sprints (half to sprint1, half to sprint2)
+        for task in tasks[:4]:
+            task.sprint = sprint1
+            task.save()
+        for task in tasks[4:]:
+            task.sprint = sprint2
             task.save()

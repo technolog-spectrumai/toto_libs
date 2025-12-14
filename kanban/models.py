@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
+from webfront.models import MetricsPage
 
 
 # 📁 Project
@@ -8,6 +9,14 @@ class Project(models.Model):
     description = models.TextField(blank=True)
     owner = models.ForeignKey(User, on_delete=models.CASCADE)
     collaborators = models.ManyToManyField(User, related_name='collaborating_projects')
+    metrics_page = models.ForeignKey(
+        MetricsPage,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="projects",
+        help_text="Optional MetricsPage associated with this project"
+    )
 
     def __str__(self):
         return self.name
