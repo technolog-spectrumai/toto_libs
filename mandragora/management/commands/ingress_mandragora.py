@@ -1,9 +1,8 @@
-from datetime import timedelta
-from django.utils import timezone
 from django.contrib.auth.models import User
-from mandragora.models import Workflow, LambdaNode, Edge
+from mandragora.models import Workflow, LambdaNode, Edge, LambdaLayer
 from oya.models import Platform, Theme
 from oya.ingress import IngressCommand
+
 
 
 class Command(IngressCommand):
@@ -33,11 +32,16 @@ class Command(IngressCommand):
             # Avoid duplicating nodes/edges if workflow already exists
             return
 
+        kanban_layer, created = LambdaLayer.objects.get_or_create(
+            name="KanbanLayer",
+        )
+
         # Create nodes with enforced main() function
         start_node = LambdaNode.objects.create(
             workflow=workflow,
             name="Start",
             is_initial=True,
+            layer=kanban_layer,
             code="""
 def main(context):
     return {"message": "Workflow started"}

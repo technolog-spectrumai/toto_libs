@@ -32,12 +32,43 @@ _TEST_CONTEXT_SCHEMA = {
     "additionalProperties": True
 }
 
+
+class LambdaLayer(models.Model):
+    """
+    Layer definition: declares which external dependencies are required.
+    Standalone, reusable across workflows.
+    """
+    name = models.CharField(max_length=100, unique=True)
+
+    # Boolean flags for important dependencies
+    use_opencv = models.BooleanField(default=False)
+    use_kanban_client = models.BooleanField(default=False)
+
+
+    def __str__(self):
+        return f"Layer: {self.name}"
+
+    def render_dependencies(self) -> dict:
+        """
+        Return a dict of allowed globals based on enabled flags.
+        """
+        deps = {}
+        if self.use_opencv:
+            import cv2
+            deps["cv2"] = cv2
+        if self.use_kanban_client:
+            from kanban.client import KanbanClient
+            deps["kanban"] = KanbanClient
+        return deps
+
+
 class LambdaNode(models.Model):
     """
     Node that executes restricted Python code.
     Whitelisted imports: cv2, StorageClient, DataClient.
     """
     workflow = models.ForeignKey(Workflow, on_delete=models.CASCADE, related_name="nodes")
+    layer = models.ForeignKey(LambdaLayer, on_delete=models.SET_NULL, null=True, blank=True, related_name="nodes")
     name = models.CharField(max_length=100)
     is_initial = models.BooleanField(default=False)
     is_final = models.BooleanField(default=False)
@@ -77,11 +108,11 @@ class LambdaNode(models.Model):
 
             allowed_globals = {
                 "__builtins__": allowed_builtins,
-                "context": context or self.test_context,  # use test_context if none provided
-                # "cv2": cv2,
-                # "StorageClient": StorageClient,
-                # "DataClient": DataClient,
+                "context": context or self.test_context
             }
+
+            if self.layer:
+                allowed_globals.update(self.layer.render_dependencies())
 
             local_vars = {}
             exec(byte_code, allowed_globals, local_vars)

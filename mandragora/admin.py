@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django import forms
 from django_ace import AceWidget
-from .models import Workflow, LambdaNode, Edge
+from .models import Workflow, LambdaNode, Edge, LambdaLayer
 
 
 # --- Workflow Runner (agnostic) ---
@@ -81,3 +81,13 @@ class LambdaNodeAdmin(admin.ModelAdmin):
 class EdgeAdmin(admin.ModelAdmin):
     list_display = ("workflow", "source", "target", "action")
     list_filter = ("workflow",)
+
+
+
+@admin.register(LambdaLayer)
+class LambdaLayerAdmin(admin.ModelAdmin):
+    list_display = (
+        "name",
+    )
+    search_fields = ("name",)
+
