@@ -37,27 +37,6 @@
       </script>
     </section>
 
-    <!-- 🍕 Incomplete Tasks per Assignee -->
-    <section>
-      <h3 class="text-lg font-semibold mb-3">Incomplete Tasks per Assignee</h3>
-      <div class="h-64">
-        <canvas id="incompleteChart"></canvas>
-      </div>
-      <script>
-        new Chart(document.getElementById('incompleteChart'), {
-          type: 'pie',
-          data: {
-            labels: {{ incomplete_labels|safe }},
-            datasets: [{
-              data: {{ incomplete_weights|safe }},
-              backgroundColor: ['#36A2EB','#FF6384','#FFCE56','#4CAF50','#9C27B0']
-            }]
-          },
-          options: { responsive: true, maintainAspectRatio: false }
-        });
-      </script>
-    </section>
-
     <!-- 📈 Velocity Chart -->
     <section>
       <h3 class="text-lg font-semibold mb-3">Velocity per Sprint</h3>
@@ -98,6 +77,39 @@
             }]
           },
           options: { responsive: true, maintainAspectRatio: false }
+        });
+      </script>
+    </section>
+
+    <!-- 👥 Completed vs Incomplete per Assignee -->
+    <section>
+      <h3 class="text-lg font-semibold mb-3">Completed vs Incomplete per Assignee</h3>
+      <div class="h-64">
+        <canvas id="assigneeStackedChart"></canvas>
+      </div>
+      <script>
+        new Chart(document.getElementById('assigneeStackedChart'), {
+          type: 'bar',
+          data: {
+            labels: {{ assignee_labels|safe }},
+            datasets: [
+              {
+                label: 'Completed',
+                data: {{ completed_counts|safe }},
+                backgroundColor: '#4CAF50'
+              },
+              {
+                label: 'Incomplete',
+                data: {{ incomplete_counts|safe }},
+                backgroundColor: '#F44336'
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: { x: { stacked: true }, y: { stacked: true } }
+          }
         });
       </script>
     </section>
