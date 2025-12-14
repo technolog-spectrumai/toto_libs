@@ -2,7 +2,7 @@ from django.contrib import admin
 from django import forms
 from django.utils.html import format_html
 from django_ace import AceWidget
-from .models import StaticPage, HtmlTemplate, DynamicPage
+from .models import StaticPage, HtmlTemplate, DynamicPage, Chart, MetricsPage
 from mandragora.models import LambdaNode
 from oya.models import DashboardBlock
 
@@ -16,11 +16,12 @@ def add_to_dashboard(modeladmin, request, queryset):
         DashboardBlock.objects.create(
             title=page.title,
             description=f"Dashboard link to {page.title}",
-            icon="fa-solid fa-file",  # you can customize per type
+            icon="fa-solid fa-file",  # customize per type
             link=page.get_absolute_url(),
             public=True,
         )
         modeladmin.message_user(request, f"✅ Added '{page.title}' to dashboard")
+
 
 # -----------------------------
 # Forms with Ace editor
@@ -71,7 +72,6 @@ class HtmlTemplateForm(forms.ModelForm):
         )
 
 
-
 class DynamicPageForm(forms.ModelForm):
     class Meta:
         model = DynamicPage
@@ -86,6 +86,40 @@ class DynamicPageForm(forms.ModelForm):
             height="400px",
             showprintmargin=False
         )
+
+
+class ChartForm(forms.ModelForm):
+    class Meta:
+        model = Chart
+        fields = ['title', 'description', 'chart_type', 'stacked', 'lambda_node', 'params']
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['params'].widget = AceWidget(
+            mode='json',
+            theme='chrome',
+            width="100%",
+            height="300px",
+            showprintmargin=False
+        )
+
+
+class MetricsPageForm(forms.ModelForm):
+    class Meta:
+        model = MetricsPage
+        fields = ['slug', 'title', 'description', 'charts', 'order']
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # optional: use AceWidget for description if you want rich editing
+        self.fields['description'].widget = AceWidget(
+            mode='html',
+            theme='chrome',
+            width="100%",
+            height="200px",
+            showprintmargin=False
+        )
+
 
 # -----------------------------
 # Admins
@@ -119,6 +153,28 @@ class DynamicPageAdmin(admin.ModelAdmin):
     search_fields = ('title', 'slug')
     prepopulated_fields = {"slug": ("title",)}
     ordering = ('-created_at',)
+    actions = [add_to_dashboard]
+
+    def view_link(self, obj):
+        return format_html('<a href="{}" target="_blank">🔗 View</a>', obj.get_absolute_url())
+    view_link.short_description = "Page Link"
+
+
+@admin.register(Chart)
+class ChartAdmin(admin.ModelAdmin):
+    form = ChartForm
+    list_display = ('title', 'chart_type', 'stacked', 'lambda_node', 'description')
+    search_fields = ('title', 'description')
+    ordering = ('title',)
+
+
+@admin.register(MetricsPage)
+class MetricsPageAdmin(admin.ModelAdmin):
+    form = MetricsPageForm
+    list_display = ('title', 'slug', 'order', 'created_at', 'view_link')
+    search_fields = ('title', 'slug', 'description')
+    prepopulated_fields = {"slug": ("title",)}
+    ordering = ('order', 'title')
     actions = [add_to_dashboard]
 
     def view_link(self, obj):

@@ -79,3 +79,102 @@ class DynamicPage(models.Model):
                 jsonschema.validate(instance=self.data, schema=self.template.json_schema)
             except jsonschema.ValidationError as e:
                 raise ValidationError({"data": f"Invalid data for template '{self.template.name}': {e.message}"})
+
+
+class Chart(models.Model):
+    CHART_TYPES = [
+        ('line', 'Line'),
+        ('bar', 'Bar'),
+        ('pie', 'Pie'),
+        ('doughnut', 'Doughnut'),
+    ]
+
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    chart_type = models.CharField(max_length=20, choices=CHART_TYPES)
+    stacked = models.BooleanField(default=False)
+
+    # Optional LambdaNode to compute chart data
+    lambda_node = models.ForeignKey(
+        LambdaNode,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="charts",
+        help_text="Optional LambdaNode to compute chart data"
+    )
+
+    # Optional JSON parameters for the chart
+    params = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Optional JSON parameters passed to LambdaNode when computing data"
+    )
+
+    class Meta:
+        ordering = ["title"]
+
+    def __str__(self):
+        return self.title
+
+    def compute_data(self, extra_context=None):
+        """
+        Execute linked LambdaNode to get chart data.
+        Expected return: {"labels": [...], "datasets": [...]}
+        """
+        if self.lambda_node:
+            context = {**self.params, **(extra_context or {})}
+            result = self.lambda_node.execute(context)
+            if isinstance(result, dict):
+                return {
+                    "labels": result.get("labels", []),
+                    "datasets": result.get("datasets", [])
+                }
+        return {"labels": [], "datasets": []}
+
+
+# ────────────────────────────────────────────────
+# 📑 Metrics Page Model
+# ────────────────────────────────────────────────
+
+class MetricsPage(models.Model):
+    slug = models.SlugField(max_length=255, unique=True)
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    charts = models.ManyToManyField(
+        Chart,
+        related_name="metrics_pages",
+        blank=True,
+        help_text="Charts included in this metrics page"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["order", "title"]
+        verbose_name = "Metrics Page"
+        verbose_name_plural = "Metrics Pages"
+
+    def __str__(self):
+        return self.title
+
+    def get_absolute_url(self):
+        return reverse("webfront:metrics_page_detail", args=[self.slug])
+
+    def get_chart_data(self, context=None):
+        """
+        Collect chart data for all charts in this page.
+        """
+        data = []
+        for chart in self.charts.all():
+            chart_data = chart.compute_data(extra_context=context)
+            data.append({
+                "id": f"chart_{chart.pk}",
+                "title": chart.title,
+                "description": chart.description,
+                "type": chart.chart_type,
+                "stacked": chart.stacked,
+                "labels": chart_data["labels"],
+                "datasets": chart_data["datasets"],
+            })
+        return data

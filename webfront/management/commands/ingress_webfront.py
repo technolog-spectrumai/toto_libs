@@ -5,6 +5,8 @@ from django.template import Template, Context
 from oya.ingress import IngressCommand
 from webfront.models import StaticPage, HtmlTemplate, DynamicPage
 from mandragora.models import Workflow, LambdaNode
+from webfront.models import MetricsPage, Chart
+
 
 fake = Faker()
 
@@ -192,6 +194,43 @@ def main(context):
             self.stdout.write(self.style.SUCCESS(f"⚡ Dynamic page: {page.title}"))
         return pages
 
+    def create_sample_charts(self, special_node, count=3):
+        """
+        Create sample Chart objects with random data and optional LambdaNode.
+        """
+        charts = list(Chart.objects.all())
+        while len(charts) < count:
+            title = f"Sample Chart {len(charts)+1}"
+            chart_type = random.choice(["line", "bar", "pie"])
+            chart = Chart.objects.create(
+                title=title,
+                description=f"Auto-generated {chart_type} chart",
+                chart_type=chart_type,
+                stacked=(chart_type == "bar"),
+                lambda_node=special_node,
+                params={"metric": "random", "seed": random.randint(1, 100)},
+            )
+            charts.append(chart)
+            self.stdout.write(self.style.SUCCESS(f"📊 Chart: {chart.title}"))
+        return charts
+
+    def create_metrics_page(self, charts):
+        """
+        Create a MetricsPage grouping the given charts.
+        """
+        if not MetricsPage.objects.exists():
+            page = MetricsPage.objects.create(
+                slug="sample-metrics",
+                title="Sample Metrics Dashboard",
+                description="Auto-generated metrics page with sample charts",
+                order=1,
+                created_at=now(),
+            )
+            page.charts.set(charts)
+            self.stdout.write(self.style.SUCCESS(f"📈 MetricsPage: {page.title}"))
+            return page
+        return MetricsPage.objects.first()
+
     # -----------------------------
     # Main process
     # -----------------------------
@@ -205,5 +244,8 @@ def main(context):
 
         special_node = self.create_special_lambda_node()
         self.create_dynamic_pages(templates + chart_templates, special_node, count=5)
+
+        charts = self.create_sample_charts(special_node, count=3)
+        self.create_metrics_page(charts)
 
         self.stdout.write(self.style.SUCCESS("✅ Webfront ingress complete."))
