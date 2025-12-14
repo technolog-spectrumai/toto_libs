@@ -68,7 +68,6 @@ INSTALLED_APPS = [
     "memo",
     "editor",
     "vault",
-    "portfolio",
     "latextile",
     "community",
     "events",
@@ -283,7 +282,6 @@ INGRESS_ALLOWED_APPS = [
     "federal",
     "community",
     "finance",
-    "portfolio",
     "events",
     "kanban",
     "ravioli",
@@ -297,14 +295,12 @@ INGRESS_ALLOWED_APPS = [
 BACKUP_ALLOWED_APPS = [
     "community",
     "finance",
-    "portfolio",
     "events"
 ]
 
 GRAPH_APPS = [
     "community",
     "finance",
-    "portfolio",
     "events",
     "federal"
 ]

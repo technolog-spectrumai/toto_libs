@@ -1,6 +1,5 @@
 from django.db import models
 from django.contrib.auth.models import User
-from portfolio.models import Company
 
 
 # 📁 Project
@@ -8,13 +7,6 @@ class Project(models.Model):
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     owner = models.ForeignKey(User, on_delete=models.CASCADE)
-    venture = models.ForeignKey(
-        Company,
-        on_delete=models.CASCADE,
-        related_name='kanban_projects',
-        null=True,
-        blank=True
-    )
     collaborators = models.ManyToManyField(User, related_name='collaborating_projects')
 
     def __str__(self):

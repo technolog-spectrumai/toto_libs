@@ -1,6 +1,5 @@
 from oya.ingress import IngressCommand
 from django.contrib.auth.models import User
-from portfolio.models import Company
 from events.models import EventCategory, Event
 from django.utils.timezone import now
 from faker import Faker
@@ -35,10 +34,6 @@ class Command(IngressCommand):
             cat, _ = EventCategory.objects.get_or_create(name=name, defaults={"description": desc})
             categories.append(cat)
 
-        # 📦 Get ventures
-        companies = list(Company.objects.all())
-        if not companies:
-            raise Exception("❌ No Companies found. Please seed companies first.")
 
         # 👥 Get users
         users = list(User.objects.all())
@@ -46,17 +41,19 @@ class Command(IngressCommand):
             raise Exception("❌ No users found. Please create some users first.")
         n_events = 12
         # 📅 Create Events
+        companies = [
+            fake.company() for _ in range(4)
+        ]
         for company in random.sample(companies, min(3, len(companies))):
             for i in range(n_events):
                 start = now() + timedelta(days=random.randint(1, 30))
                 end = start + timedelta(hours=random.randint(1, 5))
                 event = Event.objects.create(
-                    title=f"{company.name} {random.choice(['Summit', 'Bootcamp', 'Forum'])}",
+                    title=f"{company} {random.choice(['Summit', 'Bootcamp', 'Forum'])}",
                     description=fake.paragraph(nb_sentences=3),
                     location=fake.city(),
                     start_time=start,
                     end_time=end,
-                    company=company,
                     organizer=random.choice(users),
                     category=random.choice(categories)
                 )

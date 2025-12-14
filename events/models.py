@@ -1,6 +1,5 @@
 from django.db import models
 from django.contrib.auth.models import User
-from portfolio.models import Company
 from toto.models import SerializableModel
 
 
@@ -21,12 +20,6 @@ class Event(SerializableModel):
     description = models.TextField()
     location = models.CharField(max_length=200)
 
-    company = models.ForeignKey(
-        Company,
-        on_delete=models.CASCADE,
-        related_name='events'
-    )
-
     organizer = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
@@ -44,6 +37,6 @@ class Event(SerializableModel):
     )
 
     def __str__(self):
-        return f"{self.title} ({self.company.name})"
+        return f"{self.title}"
 
     public = models.BooleanField(default=True, help_text="Check if this event is publicly visible.")
