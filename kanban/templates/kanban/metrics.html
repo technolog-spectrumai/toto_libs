@@ -1,35 +1,66 @@
 {% extends "oya/base.html" %}
-{% block title %}Burndown | {{ project.name }}{% endblock %}
+{% block title %}Metrics | {{ project.name }}{% endblock %}
 
 {% block start_script %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 {% endblock %}
 
 {% block content %}
-<div class="max-w-4xl mx-auto px-6 py-10">
-  <h2 class="text-2xl font-bold mb-6 text-center">Burndown Chart for {{ project.name }}</h2>
+<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10 space-y-12">
 
-  <div class="h-64">
-    <canvas id="burndownChart"></canvas>
+  <h2 class="text-2xl font-bold mb-6 text-center">Metrics Dashboard for {{ project.name }}</h2>
+
+  <!-- Responsive grid: two columns on desktop, stacked on mobile -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+
+    <!-- 📉 Burndown Chart -->
+    <section>
+      <h3 class="text-lg font-semibold mb-3">Burndown Chart</h3>
+      <div class="h-64">
+        <canvas id="burndownChart"></canvas>
+      </div>
+      <script>
+        new Chart(document.getElementById('burndownChart'), {
+          type: 'line',
+          data: {
+            labels: {{ burndown_labels|safe }},
+            datasets: [{
+              label: 'Remaining Weight',
+              data: {{ burndown_data|safe }},
+              borderColor: '#36A2EB',
+              fill: false,
+              tension: 0.1
+            }]
+          },
+          options: { responsive: true, maintainAspectRatio: false }
+        });
+      </script>
+    </section>
+
+    <!-- 🍕 Incomplete Tasks per Assignee -->
+    <section>
+      <h3 class="text-lg font-semibold mb-3">Incomplete Tasks per Assignee</h3>
+      <div class="h-64">
+        <canvas id="incompleteChart"></canvas>
+      </div>
+      <script>
+        new Chart(document.getElementById('incompleteChart'), {
+          type: 'pie',
+          data: {
+            labels: {{ incomplete_labels|safe }},
+            datasets: [{
+              data: {{ incomplete_weights|safe }},
+              backgroundColor: ['#36A2EB','#FF6384','#FFCE56','#4CAF50','#9C27B0']
+            }]
+          },
+          options: { responsive: true, maintainAspectRatio: false }
+        });
+      </script>
+    </section>
   </div>
-  <script>
-    new Chart(document.getElementById('burndownChart'), {
-      type: 'line',
-      data: {
-        labels: {{ burndown_labels|safe }},
-        datasets: [{
-          label: 'Remaining Weight',
-          data: {{ burndown_data|safe }},
-          borderColor: '#36A2EB',
-          fill: false,
-          tension: 0.1
-        }]
-      },
-      options: { responsive: true, maintainAspectRatio: false }
-    });
-  </script>
 
-  <div class="text-center mt-6">
+  <!-- 🔙 Back to Project -->
+  <div class="text-center mt-8">
     <a href="{% url 'kanban:project_detail' project.pk %}"
        class="inline-block px-5 py-2 rounded-lg font-semibold text-sm hover:opacity-90 transition"
        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'">

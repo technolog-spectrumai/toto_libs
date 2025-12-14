@@ -133,29 +133,40 @@ class MetricsView(LoginRequiredMixin, DetailView):
         project = self.get_object()
         sprint = Sprint.objects.filter(project=project).order_by("-start_time").first()
 
+        # Burndown (unchanged, using completed_at)
         burndown_labels, burndown_data = [], []
         if sprint:
             total_weight = sprint.tasks.aggregate(total=Sum("weight"))["total"] or 0
             days = (sprint.end_time.date() - sprint.start_time.date()).days + 1
-
-            # iterate across the full sprint duration
             for i in range(days):
                 day = sprint.start_time.date() + timedelta(days=i)
                 burndown_labels.append(day.strftime("%b %d"))
-
-                # use completed_at instead of column
                 completed_weight = (
                     sprint.tasks.filter(completed_at__date__lte=day)
                     .aggregate(done=Sum("weight"))["done"] or 0
                 )
                 burndown_data.append(max(total_weight - completed_weight, 0))
 
+        # Incomplete tasks per assignee (by weight)
+        incomplete_labels, incomplete_weights = [], []
+        tasks_incomplete = (
+            Task.objects.filter(mission__campaign__project=project, completed_at__isnull=True)
+            .values("assignee__username")
+            .annotate(total_weight=Sum("weight"))
+        )
+        for row in tasks_incomplete:
+            incomplete_labels.append(row["assignee__username"] or "Unassigned")
+            incomplete_weights.append(row["total_weight"] or 0)
+
         context.update({
             "sprint": sprint,
             "burndown_labels": json.dumps(burndown_labels),
             "burndown_data": json.dumps(burndown_data),
+            "incomplete_labels": json.dumps(incomplete_labels),
+            "incomplete_weights": json.dumps(incomplete_weights),
         })
         return context
+
 
 
 
