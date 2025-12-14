@@ -21,6 +21,7 @@ class Command(IngressCommand):
 
         # Use existing user or create demo
         user, _ = User.objects.get_or_create(username="admin", defaults={"email": "demo@example.com"})
+        other, _ = User.objects.get_or_create(username="developer", defaults={"email": "dev@example.com"})
 
         # Create demo project
         project = Project.objects.create(
@@ -29,11 +30,10 @@ class Command(IngressCommand):
             owner=user
         )
 
-        # Columns
+        # Columns (no Review column)
         todo = Column.objects.create(project=project, name="To Do", position=1)
         doing = Column.objects.create(project=project, name="In Progress", position=2)
-        review = Column.objects.create(project=project, name="Review", position=3)
-        done = Column.objects.create(project=project, name="Done", position=4)
+        done = Column.objects.create(project=project, name="Done", position=3)
 
         # Campaigns
         frontend_campaign = Campaign.objects.create(
@@ -50,7 +50,7 @@ class Command(IngressCommand):
             description="Develop core API endpoints and authentication",
             start_date=timezone.now().date(),
             end_date=(timezone.now() + timedelta(days=45)).date(),
-            owner=user
+            owner=other
         )
 
         # Missions
@@ -68,19 +68,17 @@ class Command(IngressCommand):
             description="Implement JWT-based authentication and user management",
             urgency=2,
             impact=3,
-            owner=user
+            owner=other
         )
 
-        # Tasks (varied columns and missions)
+        # Tasks (varied columns, missions, assignees, weights)
         tasks = [
-            Task.objects.create(column=todo, title="Set up project repo", position=1, mission=mission1),
-            Task.objects.create(column=doing, title="Build UI components", position=2, mission=mission1),
-            Task.objects.create(column=review, title="Peer review wireframes", position=3, mission=mission1),
-            Task.objects.create(column=done, title="Create wireframes", position=4, mission=mission1),
-            Task.objects.create(column=todo, title="Design database schema", position=1, mission=mission2),
-            Task.objects.create(column=doing, title="Implement login endpoint", position=2, mission=mission2),
-            Task.objects.create(column=review, title="Security audit", position=3, mission=mission2),
-            Task.objects.create(column=done, title="Unit tests for API", position=4, mission=mission2),
+            Task.objects.create(column=todo, title="Set up project repo", position=1, mission=mission1, assignee=user, weight=3),
+            Task.objects.create(column=doing, title="Build UI components", position=2, mission=mission1, assignee=other, weight=5),
+            Task.objects.create(column=done, title="Create wireframes", position=3, mission=mission1, assignee=other, weight=4),
+            Task.objects.create(column=todo, title="Design database schema", position=1, mission=mission2, assignee=user, weight=3),
+            Task.objects.create(column=doing, title="Implement login endpoint", position=2, mission=mission2, assignee=other, weight=6),
+            Task.objects.create(column=done, title="Unit tests for API", position=3, mission=mission2, assignee=other, weight=2),
         ]
 
         # Sprints
@@ -98,10 +96,20 @@ class Command(IngressCommand):
             end_time=now + timedelta(days=14)
         )
 
-        # Assign tasks to sprints (half to sprint1, half to sprint2)
-        for task in tasks[:4]:
+        # Assign tasks to sprints
+        for task in tasks[:3]:
             task.sprint = sprint1
             task.save()
-        for task in tasks[4:]:
+        for task in tasks[3:]:
             task.sprint = sprint2
             task.save()
+
+        # Mark some tasks as completed with realistic timestamps
+        completed_time1 = sprint1.end_time - timedelta(days=2)
+        completed_time2 = sprint2.start_time + timedelta(days=3)
+
+        tasks[2].completed_at = completed_time1  # Create wireframes
+        tasks[2].save()
+
+        tasks[5].completed_at = completed_time2  # Unit tests for API
+        tasks[5].save()

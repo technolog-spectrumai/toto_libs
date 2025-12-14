@@ -44,7 +44,7 @@ class LambdaLayer(models.Model):
 
 
     def __str__(self):
-        return f"Layer: {self.name}"
+        return self.name
 
     def render_dependencies(self) -> dict:
         """
@@ -88,7 +88,7 @@ class LambdaNode(models.Model):
         Execute restricted Python code. Requires a main(context) function.
         If no context is passed, falls back to test_context.
         """
-        print("|", json.dumps(context, indent=2), "|")
+        print("||", json.dumps(context, indent=2), "|")
         try:
             byte_code = compile_restricted(
                 self.code,

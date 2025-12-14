@@ -29,7 +29,7 @@ class Column(models.Model):
     position = models.PositiveIntegerField()
 
     def __str__(self):
-        return f"{self.name} ({self.project.name})"
+        return self.name
 
 
 # 📣 Campaign
@@ -44,7 +44,7 @@ class Campaign(models.Model):
     metadata = models.JSONField(blank=True, null=True)
 
     def __str__(self):
-        return f"Campaign: {self.name} ({self.project.name})"
+        return self.name
 
 
 # 🎯 Mission
@@ -66,7 +66,7 @@ class Mission(models.Model):
     metadata = models.JSONField(blank=True, null=True)
 
     def __str__(self):
-        return f"Mission: {self.title} ({self.campaign.name})"
+        return f"{self.title} ({self.campaign.name})"
 
 
 # 🚀 Sprint
@@ -77,7 +77,7 @@ class Sprint(models.Model):
     end_time = models.DateTimeField()
 
     def __str__(self):
-        return f"Sprint: {self.name} ({self.project.name})"
+        return self.name
 
 
 # 📝 Task
