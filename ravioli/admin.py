@@ -2,10 +2,8 @@ from django.contrib import admin, messages
 from django.utils.html import format_html
 from neo4j import GraphDatabase
 from django.conf import settings
-from django_ace import AceWidget
 from django import forms
-from django_json_widget.widgets import JSONEditorWidget   # <-- use JSONEditorWidget
-
+from django_json_widget.widgets import JSONEditorWidget
 from .graph import GraphTranslator
 from toto.batch import BatchAction
 from .models import (
@@ -15,6 +13,7 @@ from .models import (
     DataNode,
     RelationType,
     DataEdge,
+    GraphProposal
 )
 from toto.admin import BaseSerializableAdmin
 from .forms import DynamicDataNodeForm   # <-- import your dynamic form
@@ -177,3 +176,20 @@ class DataEdgeAdmin(admin.ModelAdmin):
     list_display = ("source", "target", "relation_type", "graph", "label", "created_at")
     search_fields = ("label", "metadata")
     list_filter = ("relation_type", "graph")
+
+
+class GraphProposalForm(forms.ModelForm):
+    class Meta:
+        model = GraphProposal
+        fields = "__all__"
+        widgets = {
+            "config": JSONEditorWidget,  # use JSON editor for config field
+        }
+
+@admin.register(GraphProposal)
+class GraphProposalAdmin(admin.ModelAdmin):
+    form = GraphProposalForm
+
+    list_display = ("name", "status", "created_by", "created_at")
+    list_filter = ("status",)
+    search_fields = ("name",)

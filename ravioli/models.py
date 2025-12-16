@@ -3,6 +3,7 @@ from django.contrib.auth.models import User
 from toto.models import SerializableModel
 from django.db import models
 from .graph import GraphTranslator
+from django.utils.timezone import now
 
 
 class CypherQuery(SerializableModel):
@@ -176,3 +177,93 @@ class DataEdge(models.Model):
 
     def __str__(self):
         return f"{self.source} -> {self.target} [{self.relation_type.name}] ({self.label})"
+
+
+class GraphProposal(models.Model):
+    """
+    Proposal for building or extending a Graph.
+    Stores JSON config with nodes and relations referencing existing CollectionTypes.
+    Requires human approval before applying.
+    """
+    name = models.CharField(max_length=150, unique=True)
+    description = models.TextField(blank=True, null=True)
+
+    # JSON config: nodes + relations referencing existing types
+    config = models.JSONField(
+        help_text="Draft proposal config with nodes and relations referencing CollectionTypes"
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=[
+            ("pending", "Pending"),
+            ("approved", "Approved"),
+            ("rejected", "Rejected"),
+        ],
+        default="pending"
+    )
+
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="graph_proposals"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    reviewed_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reviewed_graph_proposals"
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"GraphProposal: {self.name} ({self.status})"
+
+    def approve(self, reviewer: User):
+        """
+        Apply the proposal: create DataNodes and DataEdges
+        using existing CollectionTypes and RelationTypes.
+        """
+
+        graph = Graph.objects.get(pk=self.config["graph_id"])
+
+        # Create nodes referencing existing CollectionTypes
+        for node in self.config.get("nodes", []):
+            collection = CollectionType.objects.get(name=node["type"])
+            DataNode.objects.create(
+                name=node["name"],
+                data=node.get("data", {}),
+                collection_type=collection,
+                graph=graph
+            )
+
+        # Create relation types + edges
+        for rt in self.config.get("relations", []):
+            relation, _ = RelationType.objects.get_or_create(
+                name=rt["name"],
+                defaults={
+                    "json_schema": rt.get("json_schema", {"relation": "unspecified"}),
+                    "form_layout": rt.get("form_layout", {"layout": "auto"})
+                }
+            )
+            for edge in rt.get("edges", []):
+                source = DataNode.objects.get(name=edge["source"], graph=graph)
+                target = DataNode.objects.get(name=edge["target"], graph=graph)
+                DataEdge.objects.create(
+                    source=source,
+                    target=target,
+                    relation_type=relation,
+                    graph=graph,
+                    label=edge.get("label"),
+                    metadata=edge.get("metadata", {})
+                )
+
+        self.status = "approved"
+        self.reviewed_by = reviewer
+        self.reviewed_at = now()
+        self.save()
