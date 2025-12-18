@@ -108,19 +108,26 @@ class Command(IngressCommand):
             graph=graph,
         )
 
-        # RelationTypes with schema + layout
+        # RelationTypes with metadata
         works_at, _ = RelationType.objects.get_or_create(
             name="WORKS_AT",
             defaults={
-                "json_schema": {"type": "object", "properties": {"since": {"type": "integer"}}},
-                "form_layout": {"fields": [{"name": "since", "type": "integer", "label": "Since Year"}]},
+                "metadata": {
+                    "properties": {
+                        "since": {"type": "integer", "label": "Since Year"}
+                    }
+                }
             },
         )
+
         knows, _ = RelationType.objects.get_or_create(
             name="KNOWS",
             defaults={
-                "json_schema": {"type": "object", "properties": {"met": {"type": "string"}}},
-                "form_layout": {"fields": [{"name": "met", "type": "string", "label": "Met At"}]},
+                "metadata": {
+                    "properties": {
+                        "met": {"type": "string", "label": "Met At"}
+                    }
+                }
             },
         )
 
