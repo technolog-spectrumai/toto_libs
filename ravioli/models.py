@@ -131,16 +131,17 @@ class DataNode(models.Model):
 
 class RelationType(models.Model):
     """
-    Represents a relation type with schema and form layout.
+    Represents a relation type with a name and optional metadata.
     """
     name = models.CharField(max_length=100, unique=True)
-    json_schema = models.JSONField()       # schema definition for relation metadata
-    form_layout = models.JSONField()       # UI layout for relation forms
+    metadata = models.JSONField(blank=True, null=True)  # flexible key-value info
 
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return self.name
+
+
 
 
 class DataEdge(models.Model):
@@ -177,74 +178,3 @@ class DataEdge(models.Model):
 
     def __str__(self):
         return f"{self.source} -> {self.target} [{self.relation_type.name}] ({self.label})"
-
-
-class BaseCollectionModel(models.Model): # FIXME
-    """
-    Abstract base class for models that can be represented
-    as nodes and edges in a Graph.
-    """
-
-    class Meta:
-        abstract = True
-
-    def convert_to_node(self, graph: Graph) -> DataNode:
-        """
-        Convert this model instance into a DataNode.
-        Uses CollectionType based on the model name.
-        """
-        collection, _ = CollectionType.objects.get_or_create(
-            name=self.__class__.__name__,
-            defaults={
-                "json_schema": {"properties": {}},
-                "form_layout": {"layout": "auto"}
-            }
-        )
-
-        node, _ = DataNode.objects.get_or_create(
-            name=f"{self.__class__.__name__}-{self.pk}",
-            defaults={
-                "data": self._extract_data(),
-                "collection_type": collection,
-                "graph": graph
-            }
-        )
-        return node
-
-    def link_edges(self, graph: Graph):
-        """
-        Create DataEdges for all relational fields of this model.
-        """
-        source_node = self.to_node(graph)
-
-        for field in self._meta.get_fields():
-            if field.is_relation and not field.auto_created:
-                target_obj = getattr(self, field.name, None)
-                if target_obj:
-                    target_node = target_obj.to_node(graph)
-
-                    relation, _ = RelationType.objects.get_or_create(
-                        name=f"{self.__class__.__name__}_{field.name}",
-                        defaults={
-                            "json_schema": {"relation": "unspecified"},
-                            "form_layout": {"layout": "auto"}
-                        }
-                    )
-
-                    DataEdge.objects.get_or_create(
-                        source=source_node,
-                        target=target_node,
-                        relation_type=relation,
-                        graph=graph,
-                        defaults={"label": field.name, "metadata": {}}
-                    )
-
-    def _extract_data(self) -> dict:
-        """
-        Extract non-relational fields into a dict for node data.
-        """
-        return {
-            f.name: getattr(self, f.name)
-            for f in self._meta.fields
-            if not f.is_relation
-        }
