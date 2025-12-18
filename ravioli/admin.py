@@ -176,20 +176,3 @@ class DataEdgeAdmin(admin.ModelAdmin):
     list_display = ("source", "target", "relation_type", "graph", "label", "created_at")
     search_fields = ("label", "metadata")
     list_filter = ("relation_type", "graph")
-
-
-class GraphProposalForm(forms.ModelForm):
-    class Meta:
-        model = GraphProposal
-        fields = "__all__"
-        widgets = {
-            "config": JSONEditorWidget,  # use JSON editor for config field
-        }
-
-@admin.register(GraphProposal)
-class GraphProposalAdmin(admin.ModelAdmin):
-    form = GraphProposalForm
-
-    list_display = ("name", "status", "created_by", "created_at")
-    list_filter = ("status",)
-    search_fields = ("name",)

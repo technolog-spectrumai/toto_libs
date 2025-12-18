@@ -179,91 +179,72 @@ class DataEdge(models.Model):
         return f"{self.source} -> {self.target} [{self.relation_type.name}] ({self.label})"
 
 
-class GraphProposal(models.Model):
+class BaseCollectionModel(models.Model): # FIXME
     """
-    Proposal for building or extending a Graph.
-    Stores JSON config with nodes and relations referencing existing CollectionTypes.
-    Requires human approval before applying.
+    Abstract base class for models that can be represented
+    as nodes and edges in a Graph.
     """
-    name = models.CharField(max_length=150, unique=True)
-    description = models.TextField(blank=True, null=True)
 
-    # JSON config: nodes + relations referencing existing types
-    config = models.JSONField(
-        help_text="Draft proposal config with nodes and relations referencing CollectionTypes"
-    )
+    class Meta:
+        abstract = True
 
-    status = models.CharField(
-        max_length=20,
-        choices=[
-            ("pending", "Pending"),
-            ("approved", "Approved"),
-            ("rejected", "Rejected"),
-        ],
-        default="pending"
-    )
-
-    created_by = models.ForeignKey(
-        User,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="graph_proposals"
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    reviewed_by = models.ForeignKey(
-        User,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="reviewed_graph_proposals"
-    )
-    reviewed_at = models.DateTimeField(null=True, blank=True)
-
-    def __str__(self):
-        return f"GraphProposal: {self.name} ({self.status})"
-
-    def approve(self, reviewer: User):
+    def convert_to_node(self, graph: Graph) -> DataNode:
         """
-        Apply the proposal: create DataNodes and DataEdges
-        using existing CollectionTypes and RelationTypes.
+        Convert this model instance into a DataNode.
+        Uses CollectionType based on the model name.
         """
+        collection, _ = CollectionType.objects.get_or_create(
+            name=self.__class__.__name__,
+            defaults={
+                "json_schema": {"properties": {}},
+                "form_layout": {"layout": "auto"}
+            }
+        )
 
-        graph = Graph.objects.get(pk=self.config["graph_id"])
+        node, _ = DataNode.objects.get_or_create(
+            name=f"{self.__class__.__name__}-{self.pk}",
+            defaults={
+                "data": self._extract_data(),
+                "collection_type": collection,
+                "graph": graph
+            }
+        )
+        return node
 
-        # Create nodes referencing existing CollectionTypes
-        for node in self.config.get("nodes", []):
-            collection = CollectionType.objects.get(name=node["type"])
-            DataNode.objects.create(
-                name=node["name"],
-                data=node.get("data", {}),
-                collection_type=collection,
-                graph=graph
-            )
+    def link_edges(self, graph: Graph):
+        """
+        Create DataEdges for all relational fields of this model.
+        """
+        source_node = self.to_node(graph)
 
-        # Create relation types + edges
-        for rt in self.config.get("relations", []):
-            relation, _ = RelationType.objects.get_or_create(
-                name=rt["name"],
-                defaults={
-                    "json_schema": rt.get("json_schema", {"relation": "unspecified"}),
-                    "form_layout": rt.get("form_layout", {"layout": "auto"})
-                }
-            )
-            for edge in rt.get("edges", []):
-                source = DataNode.objects.get(name=edge["source"], graph=graph)
-                target = DataNode.objects.get(name=edge["target"], graph=graph)
-                DataEdge.objects.create(
-                    source=source,
-                    target=target,
-                    relation_type=relation,
-                    graph=graph,
-                    label=edge.get("label"),
-                    metadata=edge.get("metadata", {})
-                )
+        for field in self._meta.get_fields():
+            if field.is_relation and not field.auto_created:
+                target_obj = getattr(self, field.name, None)
+                if target_obj:
+                    target_node = target_obj.to_node(graph)
 
-        self.status = "approved"
-        self.reviewed_by = reviewer
-        self.reviewed_at = now()
-        self.save()
+                    relation, _ = RelationType.objects.get_or_create(
+                        name=f"{self.__class__.__name__}_{field.name}",
+                        defaults={
+                            "json_schema": {"relation": "unspecified"},
+                            "form_layout": {"layout": "auto"}
+                        }
+                    )
+
+                    DataEdge.objects.get_or_create(
+                        source=source_node,
+                        target=target_node,
+                        relation_type=relation,
+                        graph=graph,
+                        defaults={"label": field.name, "metadata": {}}
+                    )
+
+    def _extract_data(self) -> dict:
+        """
+        Extract non-relational fields into a dict for node data.
+        """
+        return {
+            f.name: getattr(self, f.name)
+            for f in self._meta.fields
+            if not f.is_relation
+        }
