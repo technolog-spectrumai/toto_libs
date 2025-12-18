@@ -109,8 +109,28 @@ class CollectionType(models.Model):
 
     def convert_instance(self, instance):
         """
-        Convert a Django model instance into this CollectionType schema
-        using conversion_rules.
+            Convert a Django model instance into a dictionary that matches
+            this CollectionType's schema.
+
+            The conversion is guided by the `conversion_rules` JSON field,
+            which maps schema field names to Django model field names.
+
+            Example conversion_rules:
+                {
+                    "title": "name",
+                    "createdOn": "created_at",
+                    "owner": "created_by_id"
+                }
+
+            Args:
+                instance (models.Model): A Django model instance to be converted.
+
+            Returns:
+                dict: A dictionary where keys are schema field names and values
+                      are taken from the corresponding fields of the model instance.
+
+            Raises:
+                ValueError: If no conversion_rules are defined for this CollectionType.
         """
         if not self.conversion_rules:
             raise ValueError("No conversion rules defined for this CollectionType")
@@ -154,13 +174,64 @@ class RelationType(models.Model):
     """
     name = models.CharField(max_length=100, unique=True)
     metadata = models.JSONField(blank=True, null=True)  # flexible key-value info
+    conversion_rules = models.JSONField(
+        blank=True,
+        null=True,
+        help_text="Rules for mapping Django model relations to this schema"
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return self.name
 
+    def convert_relation(self, source_instance, target_instance):
+        """
+            Convert a relation between two Django model instances into a dictionary
+            that matches this RelationType's schema.
 
+            The conversion is guided by the `conversion_rules` JSON field,
+            which maps schema field names to either source or target model fields,
+            or to literal values.
+
+            Example conversion_rules:
+                {
+                    "relationLabel": "friendship",
+                    "sourceId": "source.id",
+                    "targetId": "target.id",
+                    "since": "source.created_at"
+                }
+
+            Args:
+                source_instance (models.Model): The Django model instance representing
+                                                the source of the relation.
+                target_instance (models.Model): The Django model instance representing
+                                                the target of the relation.
+
+            Returns:
+                dict: A dictionary where keys are schema field names and values
+                      are derived from source/target fields or literal values.
+
+            Raises:
+                ValueError: If no conversion_rules are defined for this RelationType.
+        """
+        if not self.conversion_rules:
+            raise ValueError("No conversion rules defined for this RelationType")
+
+        result = {}
+        for schema_field, mapping in self.conversion_rules.items():
+            # mapping can specify 'source.field' or 'target.field'
+            if mapping.startswith("source."):
+                field_name = mapping.split(".", 1)[1]
+                value = getattr(source_instance, field_name, None)
+            elif mapping.startswith("target."):
+                field_name = mapping.split(".", 1)[1]
+                value = getattr(target_instance, field_name, None)
+            else:
+                # fallback: treat mapping as a literal or metadata key
+                value = mapping
+            result[schema_field] = value
+        return result
 
 
 class DataEdge(models.Model):
