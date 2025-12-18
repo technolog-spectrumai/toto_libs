@@ -210,59 +210,6 @@ class DashboardBlock(models.Model):
         return self.title
 
 
-_INGRESS_ALLOWED_APPS = getattr(settings, "INGRESS_ALLOWED_APPS", [])
-
-
-class AppIngress(models.Model):
-
-    class IngressCommandError(Exception):
-        """Base class for ingress command errors."""
-
-    class IngressCommandNotFound(IngressCommandError):
-        """Raised when the ingress command file is missing."""
-
-    class IngressCommandExecutionFailed(IngressCommandError):
-        """Raised when the command execution throws an error."""
-
-    INGRESS_ALLOWED_APPS = _INGRESS_ALLOWED_APPS
-    app_name = models.CharField(
-        max_length=64,
-        choices=[(app, app) for app in _INGRESS_ALLOWED_APPS],
-        help_text="Target app for ingress"
-    )
-    scheduled_at = models.DateTimeField(
-        default=timezone.now,
-        help_text="When this ingress should be executed"
-    )
-
-    def __str__(self):
-        return f"Ingress for {self.app_name} at {self.scheduled_at}"
-
-    def run_ingress_command(self):
-        """
-        Runs the 'ingress' management command for the specified app,
-        passing args as a JSON string.
-        Raises:
-            IngressCommandNotFound: if the command file doesn't exist
-            IngressCommandExecutionFailed: if execution fails
-        """
-        app_config = apps.get_app_config(self.app_name)
-        cmd_path = os.path.join(app_config.path, "management", "commands", f"ingress_{self.app_name}.py")
-
-        if not os.path.isfile(cmd_path):
-            raise self.IngressCommandNotFound(f"No ingress command found for '{self.app_name}'")
-
-        try:
-            out = StringIO()
-            full_ingress_mode = getattr(settings, 'FULL_INGRESS', False)
-            call_command(f"ingress_{self.app_name}", stdout=out, stderr=out, full=full_ingress_mode)
-            output = out.getvalue()
-            sys.stdout.write(output)
-
-        except Exception as e:
-            raise self.IngressCommandExecutionFailed(f"Error running ingress for '{self.app_name}': {str(e)}")
-
-
 _BACKUP_ALLOWED_APPS = getattr(settings, "BACKUP_ALLOWED_APPS", [])
 
 
@@ -347,36 +294,3 @@ class AppBackup(models.Model):
             )
 
 
-
-# 🔹 Moved GraphSync here
-_GRAPH_ALLOWED_APPS = getattr(settings, "GRAPH_APPS", [])
-
-
-class GraphSync(models.Model):
-    class SyncCommandError(Exception): pass
-    class SyncCommandNotFound(SyncCommandError): pass
-    class SyncCommandExecutionFailed(SyncCommandError): pass
-
-    GRAPH_ALLOWED_APPS = _GRAPH_ALLOWED_APPS
-    app_name = models.CharField(max_length=64, choices=[(app, app) for app in _GRAPH_ALLOWED_APPS])
-    scheduled_at = models.DateTimeField(default=timezone.now)
-    executed_at = models.DateTimeField(null=True, blank=True)
-
-    def __str__(self):
-        return f"GraphSync for {self.app_name} scheduled at {self.scheduled_at}, executed at {self.executed_at or 'pending'}"
-
-    def run_sync_command(self):
-        app_config = apps.get_app_config(self.app_name)
-        cmd_path = os.path.join(app_config.path, "management", "commands", f"sync_{self.app_name}.py")
-
-        if not os.path.isfile(cmd_path):
-            raise self.SyncCommandNotFound(f"No sync command found for '{self.app_name}'")
-
-        try:
-            out = StringIO()
-            call_command(f"sync_{self.app_name}", stdout=out, stderr=out)
-            sys.stdout.write(out.getvalue())
-            self.executed_at = timezone.now()
-            self.save(update_fields=["executed_at"])
-        except Exception as e:
-            raise self.SyncCommandExecutionFailed(f"Error running sync for '{self.app_name}': {str(e)}")

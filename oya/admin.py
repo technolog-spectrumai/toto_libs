@@ -1,4 +1,4 @@
-from .models import Platform, DashboardBlock, Font, Theme, AppIngress, ColorMix, AppBackup, GraphSync
+from .models import Platform, DashboardBlock, Font, Theme, ColorMix, AppBackup
 from django.contrib import admin, messages
 from django.utils.html import format_html
 from toto.admin import BaseSerializableAdmin
@@ -127,41 +127,6 @@ class DashboardBlockAdmin(admin.ModelAdmin):
     ordering = ('title',)
 
 
-@admin.register(AppIngress)
-class AppIngressAdmin(admin.ModelAdmin):
-    list_display = ("app_name", "scheduled_at")
-    actions = ["run_ingress"]
-
-    @admin.action(description="Run ingress command for selected entries")
-    def run_ingress(self, request, queryset):
-        for ingress in queryset:
-            try:
-                ingress.run_ingress_command()
-                self.message_user(
-                    request,
-                    f"Success: Ran ingress for {ingress.app_name}",
-                    level=messages.SUCCESS
-                )
-            except AppIngress.IngressCommandNotFound as nf:
-                self.message_user(
-                    request,
-                    f"Not Found: {nf}",
-                    level=messages.WARNING
-                )
-            except AppIngress.IngressCommandExecutionFailed as ef:
-                self.message_user(
-                    request,
-                    f"Execution Failed: {ef}",
-                    level=messages.ERROR
-                )
-            except AppIngress.IngressCommandError as e:
-                self.message_user(
-                    request,
-                    f"Unknown Error: {e}",
-                    level=messages.ERROR
-                )
-
-
 @admin.register(AppBackup)
 class AppBackupAdmin(admin.ModelAdmin):
     list_display = ("app_name", "bucket", "filename", "scheduled_at")
@@ -188,39 +153,4 @@ class AppBackupAdmin(admin.ModelAdmin):
                     request,
                     f"⚠️ Error: {e}",
                     level=messages.WARNING
-                )
-
-
-@admin.register(GraphSync)
-class GraphSyncAdmin(admin.ModelAdmin):
-    list_display = ("app_name", "scheduled_at", "executed_at")
-    actions = ["run_sync"]
-
-    @admin.action(description="Run sync command for selected entries")
-    def run_sync(self, request, queryset):
-        for sync in queryset:
-            try:
-                sync.run_sync_command()
-                self.message_user(
-                    request,
-                    f"✅ Success: Ran sync for {sync.app_name}",
-                    level=messages.SUCCESS
-                )
-            except GraphSync.SyncCommandNotFound as nf:
-                self.message_user(
-                    request,
-                    f"⚠️ Not Found: {nf}",
-                    level=messages.WARNING
-                )
-            except GraphSync.SyncCommandExecutionFailed as ef:
-                self.message_user(
-                    request,
-                    f"💥 Execution Failed: {ef}",
-                    level=messages.ERROR
-                )
-            except GraphSync.SyncCommandError as e:
-                self.message_user(
-                    request,
-                    f"❌ Unknown Error: {e}",
-                    level=messages.ERROR
                 )
