@@ -12,7 +12,8 @@ from .models import (
     CollectionType,
     DataNode,
     RelationType,
-    DataEdge
+    DataEdge,
+    AppCollector
 )
 from toto.admin import BaseSerializableAdmin
 from .forms import DynamicDataNodeForm   # <-- import your dynamic form
@@ -175,3 +176,21 @@ class DataEdgeAdmin(admin.ModelAdmin):
     list_display = ("source", "target", "relation_type", "graph", "label", "created_at")
     search_fields = ("label", "metadata")
     list_filter = ("relation_type", "graph")
+
+
+
+class AppCollectorForm(forms.ModelForm):
+    class Meta:
+        model = AppCollector
+        fields = "__all__"
+        widgets = {
+            "config": JSONEditorWidget(),
+        }
+
+@admin.register(AppCollector)
+class AppCollectorAdmin(admin.ModelAdmin):
+    form = AppCollectorForm
+    list_display = ("app_name", "created_at")
+    search_fields = ("app_name",)
+    readonly_fields = ("created_at",)
+

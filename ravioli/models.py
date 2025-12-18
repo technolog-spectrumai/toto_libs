@@ -1,4 +1,6 @@
 from typing import List
+
+from django.conf import settings
 from django.contrib.auth.models import User
 from toto.models import SerializableModel
 from django.db import models
@@ -173,3 +175,68 @@ class DataEdge(models.Model):
 
     def __str__(self):
         return f"{self.source} -> {self.target} [{self.relation_type.name}] ({self.label})"
+
+
+class AppCollector(models.Model):
+
+    APP_CHOICES = [(app, app) for app in getattr(settings, "GRAPH_APPS", [])]
+
+    app_name = models.CharField(
+        max_length=100,
+        unique=True,
+        choices=APP_CHOICES,
+        help_text="Select an app from settings.GRAPH_APPS"
+    )
+    config = models.JSONField()
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.app_name
+
+    def convert_model(self, instance):
+        """
+        Convert a Django model instance into a DataNode payload,
+        automatically linking to the correct CollectionType.
+        """
+        model_name = instance.__class__.__name__
+        rules = self.config.get("models", {}).get(model_name)
+        if not rules:
+            raise ValueError(f"No conversion rules for model {model_name}")
+
+        collection_type = CollectionType.objects.get(name=rules["collection_type"])
+        data = {schema_field: getattr(instance, model_field, None)
+                for schema_field, model_field in rules["fields"].items()}
+
+        return {
+            "collection_type": collection_type,
+            "data": data,
+            "name": getattr(instance, "name", str(instance))
+        }
+
+    def convert_relation(self, source_instance, target_instance, relation_name):
+        """
+        Convert two Django model instances into a DataEdge payload,
+        automatically linking to the correct RelationType.
+        """
+        rules = self.config.get("relations", {}).get(relation_name)
+        if not rules:
+            raise ValueError(f"No conversion rules for relation {relation_name}")
+
+        relation_type = RelationType.objects.get(name=rules["relation_type"])
+        result = {}
+        for schema_field, mapping in rules["fields"].items():
+            if mapping.startswith(source_instance.__class__.__name__ + "."):
+                field_name = mapping.split(".", 1)[1]
+                result[schema_field] = getattr(source_instance, field_name, None)
+            elif mapping.startswith(target_instance.__class__.__name__ + "."):
+                field_name = mapping.split(".", 1)[1]
+                result[schema_field] = getattr(target_instance, field_name, None)
+            else:
+                result[schema_field] = mapping
+
+        return {
+            "relation_type": relation_type,
+            "metadata": result,
+            "label": result.get("label")
+        }
