@@ -132,6 +132,7 @@ class BaseExecutableModel(models.Model):
             "_write_": full_write_guard,
         }
 
+
 class LambdaNode(BaseExecutableModel):
     workflow = models.ForeignKey("Workflow", on_delete=models.CASCADE, related_name="nodes")
     layer = models.ForeignKey("LambdaLayer", on_delete=models.SET_NULL, null=True, blank=True, related_name="nodes")
