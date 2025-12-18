@@ -12,8 +12,7 @@ from .models import (
     CollectionType,
     DataNode,
     RelationType,
-    DataEdge,
-    GraphProposal
+    DataEdge
 )
 from toto.admin import BaseSerializableAdmin
 from .forms import DynamicDataNodeForm   # <-- import your dynamic form
