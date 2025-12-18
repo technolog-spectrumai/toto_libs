@@ -132,8 +132,8 @@ class CollectionType(models.Model):
     Represents a node type with schema and form layout.
     """
     name = models.CharField(max_length=100, unique=True)
-    json_schema = models.JSONField()       # schema definition for node data
-    form_layout = models.JSONField()       # UI layout for forms
+    json_schema = models.JSONField(null=True, blank=True)
+    form_layout = models.JSONField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
 

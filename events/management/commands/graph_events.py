@@ -5,52 +5,61 @@ from ravioli.models import CollectionType, RelationType, AppCollector, Graph
 class Command(BaseCommand):
     help = "Create graph schema and AppCollector + Graph for the events app"
 
+    def ensure_collection_type(self, name, schema, layout):
+        """Create or update a CollectionType with schema/layout."""
+        ct, created = CollectionType.objects.get_or_create(
+            name=name,
+            defaults={"json_schema": schema, "form_layout": layout}
+        )
+        if not created:
+            ct.json_schema = schema
+            ct.form_layout = layout
+            ct.save()
+
     def create_collection_types(self):
         """Define CollectionTypes for EventCategory and Event models."""
-        event_category_schema = {
-            "type": "object",
-            "properties": {
-                "name": {"type": "string", "maxLength": 100},
-                "description": {"type": "string"}
+        self.ensure_collection_type(
+            "EventCategory",
+            {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "maxLength": 100},
+                    "description": {"type": "string"}
+                },
+                "required": ["name"]
             },
-            "required": ["name"]
-        }
-        event_category_layout = {
-            "fields": [
-                {"name": "name", "widget": "text"},
-                {"name": "description", "widget": "textarea"}
-            ]
-        }
-        CollectionType.objects.get_or_create(
-            name="EventCategory",
-            defaults={"json_schema": event_category_schema, "form_layout": event_category_layout}
+            {
+                "fields": [
+                    {"name": "name", "widget": "text"},
+                    {"name": "description", "widget": "textarea"}
+                ]
+            }
         )
 
-        event_schema = {
-            "type": "object",
-            "properties": {
-                "title": {"type": "string", "maxLength": 200},
-                "description": {"type": "string"},
-                "location": {"type": "string", "maxLength": 200},
-                "start_time": {"type": "string", "format": "date-time"},
-                "end_time": {"type": "string", "format": "date-time"},
-                "public": {"type": "boolean"}
+        self.ensure_collection_type(
+            "Event",
+            {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "maxLength": 200},
+                    "description": {"type": "string"},
+                    "location": {"type": "string", "maxLength": 200},
+                    "start_time": {"type": "string", "format": "date-time"},
+                    "end_time": {"type": "string", "format": "date-time"},
+                    "public": {"type": "boolean"}
+                },
+                "required": ["title", "start_time", "end_time"]
             },
-            "required": ["title", "start_time", "end_time"]
-        }
-        event_layout = {
-            "fields": [
-                {"name": "title", "widget": "text"},
-                {"name": "description", "widget": "textarea"},
-                {"name": "location", "widget": "text"},
-                {"name": "start_time", "widget": "datetime"},
-                {"name": "end_time", "widget": "datetime"},
-                {"name": "public", "widget": "checkbox"}
-            ]
-        }
-        CollectionType.objects.get_or_create(
-            name="Event",
-            defaults={"json_schema": event_schema, "form_layout": event_layout}
+            {
+                "fields": [
+                    {"name": "title", "widget": "text"},
+                    {"name": "description", "widget": "textarea"},
+                    {"name": "location", "widget": "text"},
+                    {"name": "start_time", "widget": "datetime"},
+                    {"name": "end_time", "widget": "datetime"},
+                    {"name": "public", "widget": "checkbox"}
+                ]
+            }
         )
 
     def create_relation_types(self):
@@ -75,10 +84,7 @@ class Command(BaseCommand):
                 },
                 "Event": {
                     "collection_type": "Event",
-                    "fields": [
-                        "title", "description", "location",
-                        "start_time", "end_time", "public"
-                    ],
+                    "fields": ["title", "description", "location", "start_time", "end_time", "public"],
                     "relations": {
                         "category": "Event-Category",
                         "organizer": "Event-Organizer"

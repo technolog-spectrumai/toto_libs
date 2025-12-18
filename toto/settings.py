@@ -298,11 +298,10 @@ BACKUP_ALLOWED_APPS = [
     "events"
 ]
 
-GRAPH_APPS = [
-    "community",
+GRAPH_ALLOWED_APPS = [
+    "kanban",
     "finance",
-    "events",
-    "federal"
+    "events"
 ]
 
 FULL_INGRESS = DEBUG

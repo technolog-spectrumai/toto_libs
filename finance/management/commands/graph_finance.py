@@ -5,49 +5,40 @@ from ravioli.models import CollectionType, RelationType, AppCollector, Graph
 class Command(BaseCommand):
     help = "Create graph schema and AppCollector + Graph for the finance app"
 
+    def ensure_collection_type(self, name, schema=None, layout=None):
+        """Create or update a CollectionType with optional schema/layout."""
+        ct, created = CollectionType.objects.get_or_create(
+            name=name,
+            defaults={"json_schema": schema or {}, "form_layout": layout or {}}
+        )
+        if not created:
+            ct.json_schema = schema or {}
+            ct.form_layout = layout or {}
+            ct.save()
+
     def create_collection_types(self):
         """Define all CollectionTypes for finance models."""
-        CollectionType.objects.get_or_create(name="Currency")
-        CollectionType.objects.get_or_create(name="ExchangeRate")
-        CollectionType.objects.get_or_create(name="Account")
-        CollectionType.objects.get_or_create(name="Transaction")
-        CollectionType.objects.get_or_create(name="User")
-        CollectionType.objects.get_or_create(name="CommunityMember")
+        self.ensure_collection_type("Currency")
+        self.ensure_collection_type("ExchangeRate")
+        self.ensure_collection_type("Account")
+        self.ensure_collection_type("Transaction")
+        self.ensure_collection_type("User")
+        self.ensure_collection_type("CommunityMember")
 
     def create_relation_types(self):
         """Define all RelationTypes for finance models."""
-        RelationType.objects.get_or_create(
-            name="Base-Currency",
-            defaults={"metadata": {"from": "ExchangeRate", "to": "Currency"}}
-        )
-        RelationType.objects.get_or_create(
-            name="Quote-Currency",
-            defaults={"metadata": {"from": "ExchangeRate", "to": "Currency"}}
-        )
-        RelationType.objects.get_or_create(
-            name="Account-Owner",
-            defaults={"metadata": {"from": "Account", "to": "CommunityMember"}}
-        )
-        RelationType.objects.get_or_create(
-            name="Account-Manager",
-            defaults={"metadata": {"from": "Account", "to": "User"}}
-        )
-        RelationType.objects.get_or_create(
-            name="Account-Currency",
-            defaults={"metadata": {"from": "Account", "to": "Currency"}}
-        )
-        RelationType.objects.get_or_create(
-            name="Transaction-Currency",
-            defaults={"metadata": {"from": "Transaction", "to": "Currency"}}
-        )
-        RelationType.objects.get_or_create(
-            name="Transaction-Source",
-            defaults={"metadata": {"from": "Transaction", "to": "Account"}}
-        )
-        RelationType.objects.get_or_create(
-            name="Transaction-Destination",
-            defaults={"metadata": {"from": "Transaction", "to": "Account"}}
-        )
+        relations = [
+            ("Base-Currency", {"from": "ExchangeRate", "to": "Currency"}),
+            ("Quote-Currency", {"from": "ExchangeRate", "to": "Currency"}),
+            ("Account-Owner", {"from": "Account", "to": "CommunityMember"}),
+            ("Account-Manager", {"from": "Account", "to": "User"}),
+            ("Account-Currency", {"from": "Account", "to": "Currency"}),
+            ("Transaction-Currency", {"from": "Transaction", "to": "Currency"}),
+            ("Transaction-Source", {"from": "Transaction", "to": "Account"}),
+            ("Transaction-Destination", {"from": "Transaction", "to": "Account"}),
+        ]
+        for name, metadata in relations:
+            RelationType.objects.get_or_create(name=name, defaults={"metadata": metadata})
 
     def create_collector_config(self):
         """Register AppCollector + Graph with descriptive config."""
