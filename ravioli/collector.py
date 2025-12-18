@@ -14,9 +14,8 @@ class Collector:
 
     def run(self):
         """Run both phases: nodes then edges."""
-        pass
-        # self.create_nodes()
-        # self.create_edges()
+        self.create_nodes()
+        self.create_edges()
 
     def create_nodes(self):
         """Create DataNodes for all configured models."""
