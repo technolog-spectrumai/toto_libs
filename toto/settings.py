@@ -301,7 +301,9 @@ BACKUP_ALLOWED_APPS = [
 GRAPH_ALLOWED_APPS = [
     "kanban",
     "finance",
-    "events"
+    "events",
+    "library",
+    "locations"
 ]
 
 FULL_INGRESS = DEBUG
