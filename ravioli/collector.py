@@ -4,13 +4,16 @@ from .models import DataNode, DataEdge, CollectionType, RelationType
 
 class Collector:
     """
-    Collector takes a Graph with a JSON config and builds
-    nodes and edges according to the rules.
+    Collector takes a Graph with a linked AppCollector + JSON config
+    and builds nodes and edges according to the rules.
     """
 
     def __init__(self, graph):
         self.graph = graph
-        self.config = graph.conversion_rules or {}
+        # config now comes from the linked AppCollector
+        self.config = {}
+        if graph.collector and graph.collector.config:
+            self.config = graph.collector.config
 
     def run(self):
         """Run both phases: nodes then edges."""
@@ -20,10 +23,21 @@ class Collector:
     def create_nodes(self):
         """Create DataNodes for all configured models."""
         models_cfg = self.config.get("models", {})
-        for model in apps.get_models():
-            if model.__name__ not in models_cfg:
+        if not models_cfg:
+            return
+
+        # restrict to the app specified in the collector
+        app_name = self.graph.collector.app_name if self.graph.collector else None
+        if not app_name:
+            return
+
+        app_config = apps.get_app_config(app_name)
+
+        for model_name, model_cfg in models_cfg.items():
+            try:
+                model = app_config.get_model(model_name)
+            except LookupError:
                 continue
-            model_cfg = models_cfg[model.__name__]
 
             try:
                 collection_type = CollectionType.objects.get(
@@ -34,7 +48,7 @@ class Collector:
 
             for instance in model.objects.all():
                 DataNode.objects.get_or_create(
-                    name=f"{model.__name__}:{instance.pk}",
+                    name=f"{model_name}:{instance.pk}",
                     graph=self.graph,
                     collection_type=collection_type,
                     defaults={"data": self._serialize_instance(instance, model_cfg)}
@@ -43,13 +57,23 @@ class Collector:
     def create_edges(self):
         """Create DataEdges for all configured relations."""
         models_cfg = self.config.get("models", {})
-        for model in apps.get_models():
-            if model.__name__ not in models_cfg:
+        if not models_cfg:
+            return
+
+        app_name = self.graph.collector.app_name if self.graph.collector else None
+        if not app_name:
+            return
+
+        app_config = apps.get_app_config(app_name)
+
+        for model_name, model_cfg in models_cfg.items():
+            try:
+                model = app_config.get_model(model_name)
+            except LookupError:
                 continue
-            model_cfg = models_cfg[model.__name__]
 
             for instance in model.objects.all():
-                source_name = f"{model.__name__}:{instance.pk}"
+                source_name = f"{model_name}:{instance.pk}"
                 try:
                     source_node = DataNode.objects.get(name=source_name, graph=self.graph)
                 except DataNode.DoesNotExist:
@@ -62,7 +86,11 @@ class Collector:
 
                     related_qs = related_obj.all() if hasattr(related_obj, "all") else [related_obj]
                     for target in related_qs:
-                        self._create_edge(source_node, f"{target.__class__.__name__}:{target.pk}", relation_type_name)
+                        self._create_edge(
+                            source_node,
+                            f"{target.__class__.__name__}:{target.pk}",
+                            relation_type_name
+                        )
 
     def _serialize_instance(self, instance, model_cfg):
         """Serialize configured fields into JSON data."""

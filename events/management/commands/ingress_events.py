@@ -5,7 +5,7 @@ from django.utils.timezone import now
 from faker import Faker
 import random
 from datetime import timedelta
-from ravioli.models import CollectionType, RelationType
+from ravioli.models import CollectionType, RelationType, AppCollector
 
 
 fake = Faker()
@@ -75,7 +75,25 @@ class Command(IngressCommand):
             name="Event-Organizer",
             defaults={"metadata": {"from": "Event", "to": "User", "type": "organized_by"}}
         )
-
+        collector, _ = AppCollector.objects.get_or_create(
+            app_name="events",
+            defaults={"config": {
+                "models": {
+                    "EventCategory": {
+                        "collection_type": "EventCategory",
+                        "fields": ["name", "description"],
+                        "relations": {}
+                    },
+                    "Event": {
+                        "collection_type": "Event",
+                        "fields": ["title", "description", "location", "start_time", "end_time", "public"],
+                        "relations": {
+                            "category": "Event-Category"
+                        }
+                    }
+                }
+            }}
+        )
         self.stdout.write(self.style.SUCCESS("✅ Graph config created (collections + relations)."))
 
     def process(self):
