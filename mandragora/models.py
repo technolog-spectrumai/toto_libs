@@ -110,7 +110,27 @@ class BaseExecutableModel(models.Model):
         except Exception as e:
             return {"error": str(e)}
 
+    @staticmethod
+    def get_default_allowed_globals() -> dict:
+        allowed_builtins = {}
+        allowed_builtins.update(safe_builtins)
+        allowed_builtins.update(utility_builtins)
+        allowed_builtins.update(limited_builtins)
 
+        return {
+            "__builtins__": allowed_builtins,
+            "_getitem_": operator.getitem,
+            "_setitem_": operator.setitem,
+            "_delitem_": operator.delitem,
+            "_unpack_sequence_": guarded_unpack_sequence,
+            "_getiter_": iter,
+            "timedelta": timedelta,
+            "sum": sum,
+            "len": len,
+            "max": max,
+            "min": min,
+            "_write_": full_write_guard,
+        }
 
 class LambdaNode(BaseExecutableModel):
     workflow = models.ForeignKey("Workflow", on_delete=models.CASCADE, related_name="nodes")
@@ -126,26 +146,16 @@ class LambdaNode(BaseExecutableModel):
         return f"{self.workflow.name}: {self.name}"
 
     def get_allowed_globals(self, context: dict) -> dict:
-        allowed_builtins = {}
-        allowed_builtins.update(safe_builtins)
-        allowed_builtins.update(utility_builtins)
-        allowed_builtins.update(limited_builtins)
+        # start with the base defaults
+        globals_dict = BaseExecutableModel.get_default_allowed_globals()
+        # add the runtime context
+        globals_dict["context"] = context
 
-        return {
-            "__builtins__": allowed_builtins,
-            "context": context,
-            "_getitem_": operator.getitem,
-            "_setitem_": operator.setitem,
-            "_delitem_": operator.delitem,
-            "_unpack_sequence_": guarded_unpack_sequence,
-            "_getiter_": iter,
-            "timedelta": timedelta,
-            "sum": sum,
-            "len": len,
-            "max": max,
-            "min": min,
-            "_write_": full_write_guard,
-        }
+        # merge in layer dependencies if present
+        if self.layer:
+            globals_dict.update(self.layer.render_dependencies())
+
+        return globals_dict
 
 
 class Edge(models.Model):
