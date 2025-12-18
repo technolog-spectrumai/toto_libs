@@ -12,11 +12,11 @@ from .models import (
     CollectionType,
     DataNode,
     RelationType,
-    DataEdge,
-    AppCollector
+    DataEdge
 )
 from toto.admin import BaseSerializableAdmin
 from .forms import DynamicDataNodeForm   # <-- import your dynamic form
+from .collector import Collector
 
 
 # ---------------------------
@@ -96,13 +96,24 @@ class CypherQueryAdmin(BaseSerializableAdmin):
             self.message_user(request, f"Cypher query '{obj.name}' failed validation.", level=messages.ERROR)
 
 
+class GraphForm(forms.ModelForm):
+    class Meta:
+        model = Graph
+        fields = "__all__"
+        widgets = {
+            "conversion_rules": JSONEditorWidget(),  # if you named the field conversion_rules
+            "config": JSONEditorWidget(),            # if you kept the name config
+        }
+
+
 @admin.register(Graph)
 class GraphAdmin(admin.ModelAdmin):
+    form = GraphForm
     list_display = ("name", "description", "created_by", "created_at")
     search_fields = ("name", "description")
     list_filter = ("created_by",)
 
-    actions = ["export_graphs_to_neo4j"]
+    actions = ["export_graphs_to_neo4j", "build_graphs_from_models"]
 
     @admin.action(description="Export selected graphs to Neo4j")
     def export_graphs_to_neo4j(self, request, queryset):
@@ -113,6 +124,16 @@ class GraphAdmin(admin.ModelAdmin):
 
         result = BatchAction(queryset).run(export_one)
         BatchAction.display_messages(result, self.message_user, request, verb="export")
+
+    @admin.action(description="Build selected graphs from models")
+    def build_graphs_from_models(self, request, queryset):
+        def build_one(graph_obj):
+            collector = Collector(graph_obj)
+            collector.run()
+            return graph_obj
+
+        result = BatchAction(queryset).run(build_one)
+        BatchAction.display_messages(result, self.message_user, request, verb="build")
 
 
 @admin.register(CollectionType)
@@ -177,20 +198,4 @@ class DataEdgeAdmin(admin.ModelAdmin):
     search_fields = ("label", "metadata")
     list_filter = ("relation_type", "graph")
 
-
-
-class AppCollectorForm(forms.ModelForm):
-    class Meta:
-        model = AppCollector
-        fields = "__all__"
-        widgets = {
-            "config": JSONEditorWidget(),
-        }
-
-@admin.register(AppCollector)
-class AppCollectorAdmin(admin.ModelAdmin):
-    form = AppCollectorForm
-    list_display = ("app_name", "created_at")
-    search_fields = ("app_name",)
-    readonly_fields = ("created_at",)
 
