@@ -101,6 +101,25 @@ class CollectionType(models.Model):
     form_layout = models.JSONField()       # UI layout for forms
 
     created_at = models.DateTimeField(auto_now_add=True)
+    conversion_rules = models.JSONField(
+        blank=True,
+        null=True,
+        help_text="Rules for mapping Django model fields to this schema"
+    )
+
+    def convert_instance(self, instance):
+        """
+        Convert a Django model instance into this CollectionType schema
+        using conversion_rules.
+        """
+        if not self.conversion_rules:
+            raise ValueError("No conversion rules defined for this CollectionType")
+
+        result = {}
+        for schema_field, model_field in self.conversion_rules.items():
+            value = getattr(instance, model_field, None)
+            result[schema_field] = value
+        return result
 
     def __str__(self):
         return self.name
