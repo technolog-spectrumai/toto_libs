@@ -8,33 +8,20 @@ from mandragora.models import Workflow, LambdaNode
 from oya.ingress import IngressCommand
 
 
-DATA_ROOT = os.path.join(settings.BASE_DIR, "..", "data")  # parent of project root
-
-def read_text(*parts):
-    path = os.path.join(DATA_ROOT, *parts)
-    print("---->", os.path.abspath(path))
-    with open(path, "r", encoding="utf-8") as f:
-        return f.read()
-
-def read_json(*parts):
-    path = os.path.join(DATA_ROOT, *parts)
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
 
 class Command(IngressCommand):
     help = "Sync Webfront assets (templates, pages, lambdas, charts) from filesystem"
 
     def sync_html_templates(self):
-        html_dir = os.path.join(DATA_ROOT, "webfront", "html")
-        schema_dir = os.path.join(DATA_ROOT, "webfront", "schema")
+        html_dir = os.path.join(self.DATA_ROOT, "webfront", "html")
+        schema_dir = os.path.join(self.DATA_ROOT, "webfront", "schema")
         for filename in os.listdir(html_dir):
             if not filename.endswith(".html"):
                 continue
             name = os.path.splitext(filename)[0]
-            content = read_text("webfront", "html", filename)
+            content = self.read_text("webfront", "html", filename)
             schema_file = os.path.join(schema_dir, f"{name}.json")
-            schema = read_json("webfront", "schema", f"{name}.json") if os.path.exists(schema_file) else None
+            schema = self.read_json("webfront", "schema", f"{name}.json") if os.path.exists(schema_file) else None
 
             tmpl, created = HtmlTemplate.objects.get_or_create(
                 name=name,
@@ -47,12 +34,12 @@ class Command(IngressCommand):
             self.stdout.write(self.style.SUCCESS(f"🖼️ HtmlTemplate synced: {tmpl.name}"))
 
     def seed_static_pages(self):
-        config_dir = os.path.join(DATA_ROOT, "webfront", "page_config")
+        config_dir = os.path.join(self.DATA_ROOT, "webfront", "page_config")
         for filename in os.listdir(config_dir):
             if not filename.endswith(".json"):
                 continue
             name = os.path.splitext(filename)[0]
-            data = read_json("webfront", "page_config", filename)
+            data = self.read_json("webfront", "page_config", filename)
             tmpl = HtmlTemplate.objects.filter(name=name).first()
             if not tmpl:
                 continue
@@ -68,12 +55,12 @@ class Command(IngressCommand):
             self.stdout.write(self.style.SUCCESS(f"📄 StaticPage seeded: {page.title}"))
 
     def seed_dynamic_pages(self):
-        config_dir = os.path.join(DATA_ROOT, "webfront", "page_config")
+        config_dir = os.path.join(self.DATA_ROOT, "webfront", "page_config")
         for filename in os.listdir(config_dir):
             if not filename.endswith(".json"):
                 continue
             name = os.path.splitext(filename)[0]
-            data = read_json("webfront", "page_config", filename)
+            data = self.read_json("webfront", "page_config", filename)
             tmpl = HtmlTemplate.objects.filter(name=name).first()
             if not tmpl:
                 continue
@@ -93,13 +80,13 @@ class Command(IngressCommand):
             name=workflow_name,
             defaults={"description": "Workflow for webfront lambdas"},
         )
-        lambdas_dir = os.path.join(DATA_ROOT, "webfront", "lambdas")
+        lambdas_dir = os.path.join(self.DATA_ROOT, "webfront", "lambdas")
         nodes = []
         for filename in os.listdir(lambdas_dir):
             if not filename.endswith(".py"):
                 continue
             base = os.path.splitext(filename)[0]
-            code = read_text("webfront", "lambdas", filename)
+            code = self.read_text("webfront", "lambdas", filename)
             node_name = f"{base.capitalize()}Node"
             node, created = LambdaNode.objects.get_or_create(
                 workflow=workflow,
@@ -114,13 +101,13 @@ class Command(IngressCommand):
         return nodes
 
     def sync_charts(self, nodes):
-        config_dir = os.path.join(DATA_ROOT, "webfront", "lambda_config")
+        config_dir = os.path.join(self.DATA_ROOT, "webfront", "lambda_config")
         charts = []
         for filename in os.listdir(config_dir):
             if not filename.endswith(".json"):
                 continue
             base = os.path.splitext(filename)[0]
-            config = read_json("webfront", "lambda_config", filename)
+            config = self.read_json("webfront", "lambda_config", filename)
             node = next((n for n in nodes if n.name.lower().startswith(base.lower())), None)
             chart_type = config.get("chart_type", "bar")
             stacked = config.get("stacked", "bar")
