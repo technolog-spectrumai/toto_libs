@@ -59,79 +59,93 @@ class LambdaLayer(models.Model):
             deps["KanbanClient"] = KanbanClient
         return deps
 
-class LambdaNode(models.Model):
-    """
-    Node that executes restricted Python code.
-    Whitelisted imports: cv2, StorageClient, DataClient.
-    """
-    workflow = models.ForeignKey(Workflow, on_delete=models.CASCADE, related_name="nodes")
-    layer = models.ForeignKey(LambdaLayer, on_delete=models.SET_NULL, null=True, blank=True, related_name="nodes")
-    name = models.CharField(max_length=100)
-    is_initial = models.BooleanField(default=False)
-    is_final = models.BooleanField(default=False)
-    code = models.TextField(help_text=_("Restricted Python code snippet"))
 
-    # 🔹 Add a JSON test context field
-    test_context = models.JSONField(
-        blank=True, null=True,
-        help_text="Optional JSON context for testing this node"
-    )
+class BaseExecutableModel(models.Model):
+    """
+    Abstract base model for any node that executes restricted Python code.
+    Provides `code` and `test_context` fields plus an `execute` method.
+    Delegates allowed_globals construction to child classes.
+    """
+
+    code = models.TextField(help_text="Restricted Python code snippet")
+    test_context = models.JSONField(blank=True, null=True, help_text="Optional JSON context for testing")
 
     class Meta:
-        unique_together = ("workflow", "name")
+        abstract = True
 
-    def __str__(self):
-        return f"{self.workflow.name}: {self.name}"
+    def get_context(self, context: dict = None) -> dict:
+        """
+        Default context resolution. Subclasses can override if needed.
+        """
+        return context or self.test_context or {}
+
+    def get_allowed_globals(self, context: dict) -> dict:
+        """
+        Subclasses must override this to provide their own allowed globals.
+        """
+        raise NotImplementedError("Child class must implement get_allowed_globals()")
 
     def execute(self, context: dict = None):
         """
         Execute restricted Python code. Requires a main(context) function.
-        If no context is passed, falls back to test_context.
         """
-        print("||", json.dumps(context, indent=2), "|")
+        ctx = self.get_context(context)
+
         try:
             byte_code = compile_restricted(
                 self.code,
-                filename=f"<lambda:{self.name}>",
+                filename=f"<lambda:{getattr(self, 'name', 'unnamed')}>",
                 mode="exec"
             )
 
-            # Merge builtins safely
-            allowed_builtins = {}
-            allowed_builtins.update(safe_builtins)
-            allowed_builtins.update(utility_builtins)
-            allowed_builtins.update(limited_builtins)
-
-            allowed_globals = {
-                "__builtins__": allowed_builtins,
-                "context": context or self.test_context,
-                "_getitem_": operator.getitem,
-                "_setitem_": operator.setitem,
-                "_delitem_": operator.delitem,
-                "_unpack_sequence_": guarded_unpack_sequence,
-                "_getiter_": iter,
-                "timedelta": timedelta,
-                "sum": sum,
-                "len": len,
-                "max": max,
-                "min": min,
-                "_write_": full_write_guard,
-            }
-
-            if self.layer:
-                allowed_globals.update(self.layer.render_dependencies())
-
+            allowed_globals = self.get_allowed_globals(ctx)
             local_vars = {}
             exec(byte_code, allowed_globals, local_vars)
 
             if "main" not in local_vars or not callable(local_vars["main"]):
                 return {"error": "No main() function defined in node code"}
 
-            result = local_vars["main"](context or self.test_context)
-            return result
+            return local_vars["main"](ctx)
 
         except Exception as e:
             return {"error": str(e)}
+
+
+
+class LambdaNode(BaseExecutableModel):
+    workflow = models.ForeignKey("Workflow", on_delete=models.CASCADE, related_name="nodes")
+    layer = models.ForeignKey("LambdaLayer", on_delete=models.SET_NULL, null=True, blank=True, related_name="nodes")
+    name = models.CharField(max_length=100)
+    is_initial = models.BooleanField(default=False)
+    is_final = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"{self.workflow.name}: {self.name}"
+
+    def __str__(self):
+        return f"{self.workflow.name}: {self.name}"
+
+    def get_allowed_globals(self, context: dict) -> dict:
+        allowed_builtins = {}
+        allowed_builtins.update(safe_builtins)
+        allowed_builtins.update(utility_builtins)
+        allowed_builtins.update(limited_builtins)
+
+        return {
+            "__builtins__": allowed_builtins,
+            "context": context,
+            "_getitem_": operator.getitem,
+            "_setitem_": operator.setitem,
+            "_delitem_": operator.delitem,
+            "_unpack_sequence_": guarded_unpack_sequence,
+            "_getiter_": iter,
+            "timedelta": timedelta,
+            "sum": sum,
+            "len": len,
+            "max": max,
+            "min": min,
+            "_write_": full_write_guard,
+        }
 
 
 class Edge(models.Model):
