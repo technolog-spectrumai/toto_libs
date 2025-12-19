@@ -73,35 +73,9 @@ class Command(BaseCommand):
             defaults={"metadata": {"from": "Event", "to": "User", "type": "organized_by"}}
         )
 
-    def create_collector_config(self):
-        """Register AppCollector + Graph with descriptive config."""
-        events_config = {
-            "models": {
-                "EventCategory": {
-                    "collection_type": "EventCategory",
-                    "fields": ["name", "description"],
-                    "relations": {}
-                },
-                "Event": {
-                    "collection_type": "Event",
-                    "fields": ["title", "description", "location", "start_time", "end_time", "public"],
-                    "relations": {
-                        "category": "Event-Category",
-                        "organizer": "Event-Organizer"
-                    }
-                },
-                "User": {
-                    "collection_type": "User",
-                    "fields": ["username", "email"],
-                    "relations": {}
-                }
-            }
-        }
-
 
     def handle(self, *args, **options):
         """Run all steps in order."""
         self.create_collection_types()
         self.create_relation_types()
-        self.create_collector_config()
         self.stdout.write(self.style.SUCCESS("✅ Events graph schema + AppCollector created."))

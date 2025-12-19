@@ -33,69 +33,8 @@ class Command(BaseCommand):
         for name, metadata in relations:
             RelationType.objects.get_or_create(name=name, defaults={"metadata": metadata})
 
-    def create_collector_config(self):
-        """Register AppCollector + Graph with descriptive config."""
-        kanban_config = {
-            "models": {
-                "Project": {
-                    "collection_type": "Project",
-                    "fields": ["name", "description"],
-                    "relations": {
-                        "owner": "Project-Owner",
-                        "collaborators": "Project-Collaborator",
-                        "columns": "Project-Column",
-                        "campaigns": "Project-Campaign",
-                    }
-                },
-                "Column": {
-                    "collection_type": "Column",
-                    "fields": ["name", "position"],
-                    "relations": {}
-                },
-                "Campaign": {
-                    "collection_type": "Campaign",
-                    "fields": ["name", "description", "start_date", "end_date"],
-                    "relations": {
-                        "missions": "Campaign-Mission",
-                        "project": "Project-Campaign",
-                        "owner": "Project-Owner",
-                    }
-                },
-                "Mission": {
-                    "collection_type": "Mission",
-                    "fields": ["title", "description", "urgency", "impact"],
-                    "relations": {
-                        "tasks": "Mission-Task",
-                        "campaign": "Campaign-Mission",
-                        "owner": "Task-Assignee",
-                    }
-                },
-                "Sprint": {
-                    "collection_type": "Sprint",
-                    "fields": ["name", "start_time", "end_time"],
-                    "relations": {}
-                },
-                "Task": {
-                    "collection_type": "Task",
-                    "fields": ["title", "description", "position", "weight", "completed_at"],
-                    "relations": {
-                        "mission": "Mission-Task",
-                        "column": "Task-Column",
-                        "sprint": "Task-Sprint",
-                        "assignee": "Task-Assignee",
-                    }
-                },
-                "User": {
-                    "collection_type": "User",
-                    "fields": ["username", "email"],
-                    "relations": {}
-                }
-            }
-        }
-
     def handle(self, *args, **options):
         """Run all steps in order."""
         self.create_collection_types()
         self.create_relation_types()
-        self.create_collector_config()
         self.stdout.write(self.style.SUCCESS("✅ Kanban graph schema + AppCollector created."))

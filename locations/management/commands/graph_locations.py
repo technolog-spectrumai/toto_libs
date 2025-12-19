@@ -26,39 +26,8 @@ class Command(BaseCommand):
         for name, metadata in relations:
             RelationType.objects.get_or_create(name=name, defaults={"metadata": metadata})
 
-    def create_collector_config(self):
-        """Register AppCollector + Graph with descriptive config."""
-        locations_config = {
-            "models": {
-                "PointFeature": {
-                    "collection_type": "PointFeature",
-                    "fields": ["name", "geometry"],
-                    "relations": {"zone": "Point-Zone"}
-                },
-                "ZoneFeature": {
-                    "collection_type": "ZoneFeature",
-                    "fields": ["name", "geometry"],
-                    "relations": {}
-                },
-                "PathFeature": {
-                    "collection_type": "PathFeature",
-                    "fields": ["name", "geometry"],
-                    "relations": {"zone": "Path-Zone"}
-                },
-                "Address": {
-                    "collection_type": "Address",
-                    "fields": [
-                        "country_name", "state_or_province_name", "locality_name",
-                        "street", "building", "apartment", "location"
-                    ],
-                    "relations": {"location": "Address-Location"}
-                }
-            }
-        }
-
     def handle(self, *args, **options):
         """Run all steps in order."""
         self.create_collection_types()
         self.create_relation_types()
-        self.create_collector_config()
         self.stdout.write(self.style.SUCCESS("✅ Locations graph schema + AppCollector created."))
