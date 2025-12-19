@@ -154,7 +154,7 @@ class Command(IngressCommand):
             graph=graph,
             defaults={
                 "description": "A demo ETL pipeline that performs no transformation.",
-                "test_data": {"message": "Hello from demo pipeline"},
+                "test_context": {"message": "Hello from demo pipeline"},
                 "code": """
         def main(context):
             # This pipeline does nothing — it simply returns the input.

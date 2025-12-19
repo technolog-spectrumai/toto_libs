@@ -189,8 +189,6 @@ class DataTransform(BaseExecutableModel):
     name = models.CharField(max_length=120)
     description = models.TextField(blank=True, null=True)
 
-    # Optional test data for running transform without Stage 1
-    test_data = models.JSONField(blank=True, null=True)
     graph = models.ForeignKey(
         "Graph",
         on_delete=models.SET_NULL,
