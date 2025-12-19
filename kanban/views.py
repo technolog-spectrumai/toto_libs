@@ -39,7 +39,7 @@ class ProjectDetailView(LoginRequiredMixin, DetailView):
 
 class ProjectListView(LoginRequiredMixin, ListView):
     model = Project
-    template_name = 'kanban/board_list.html'
+    template_name = 'kanban/project_list.html'
     context_object_name = 'projects'
 
     def get_queryset(self):
