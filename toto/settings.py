@@ -304,7 +304,8 @@ GRAPH_ALLOWED_APPS = [
     "events",
     "library",
     "locations",
-    "community"
+    "community",
+    "assets"
 ]
 
 FULL_INGRESS = DEBUG

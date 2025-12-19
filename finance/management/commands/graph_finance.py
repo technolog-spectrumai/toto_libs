@@ -40,57 +40,9 @@ class Command(BaseCommand):
         for name, metadata in relations:
             RelationType.objects.get_or_create(name=name, defaults={"metadata": metadata})
 
-    def create_collector_config(self):
-        """Register AppCollector + Graph with descriptive config."""
-        finance_config = {
-            "models": {
-                "Currency": {
-                    "collection_type": "Currency",
-                    "fields": ["symbol", "name", "is_crypto", "decimals", "active"],
-                    "relations": {}
-                },
-                "ExchangeRate": {
-                    "collection_type": "ExchangeRate",
-                    "fields": ["rate", "timestamp"],
-                    "relations": {
-                        "base_currency": "Base-Currency",
-                        "quote_currency": "Quote-Currency"
-                    }
-                },
-                "Account": {
-                    "collection_type": "Account",
-                    "fields": ["name", "balance", "created_at", "active"],
-                    "relations": {
-                        "owner": "Account-Owner",
-                        "manager": "Account-Manager",
-                        "currency": "Account-Currency"
-                    }
-                },
-                "Transaction": {
-                    "collection_type": "Transaction",
-                    "fields": ["name", "amount", "timestamp"],
-                    "relations": {
-                        "currency": "Transaction-Currency",
-                        "source": "Transaction-Source",
-                        "destination": "Transaction-Destination"
-                    }
-                },
-                "User": {
-                    "collection_type": "User",
-                    "fields": ["username", "email"],
-                    "relations": {}
-                },
-                "CommunityMember": {
-                    "collection_type": "CommunityMember",
-                    "fields": ["name"],
-                    "relations": {}
-                }
-            }
-        }
 
     def handle(self, *args, **options):
         """Run all steps in order."""
         self.create_collection_types()
         self.create_relation_types()
-        self.create_collector_config()
         self.stdout.write(self.style.SUCCESS("✅ Finance graph schema + AppCollector created."))
