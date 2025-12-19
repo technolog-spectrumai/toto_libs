@@ -63,8 +63,5 @@ class AccountDetailView(DetailView):
         context["selected_period"] = period_days
         context["available_periods"] = [7, 30, 90, 180, 365]
 
-        decorated = PageProcessor().decorate(context, self.request)
-        theme = decorated.get("theme", {}).get("colors", {})
-        context["chart_colors"] = get_chart_colors(theme)
-        return context
+        return PageProcessor().decorate(context, self.request)
 

@@ -124,14 +124,17 @@
       </div>
     </section>
 
-    <!-- 📊 Activity Chart -->
     <section>
-      <h2 class="text-2xl font-bold mb-4">Balance</h2>
-      <div class="p-4 rounded border"
+      <h2 class="text-2xl font-bold mb-4">Balance Summary</h2>
+      <div class="p-4 rounded border text-lg"
            :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
-        <canvas id="activityBarChart" height="300"></canvas>
+
+        <p><strong>Balance:</strong> {{ account.balance|floatformat:2 }} {{ account.currency.symbol }}</p>
+        <p><strong>Incoming transactions:</strong> {{ transactions_incoming|length }}</p>
+        <p><strong>Outgoing transactions:</strong> {{ transactions_outgoing|length }}</p>
+
       </div>
-    </section>
+</section>
 
   </div>
 </div>
