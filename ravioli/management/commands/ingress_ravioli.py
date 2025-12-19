@@ -148,23 +148,4 @@ class Command(IngressCommand):
             defaults={"label": "friend", "metadata": {"met": fake.city()}},
         )
 
-        # Demo DataTransform (pipeline) that does nothing
-        DataTransform.objects.update_or_create(
-            name="Demo Pipeline",
-            graph=graph,
-            defaults={
-                "description": "A demo ETL pipeline that performs no transformation.",
-                "test_context": {"message": "Hello from demo pipeline"},
-                "code": """
-def main(context):
-    # This pipeline does nothing — it simply returns the input.
-    return {
-        "nodes": [],
-        "edges": [],
-        "echo": context.get("data")
-    }
-""",
-            },
-        )
-
 

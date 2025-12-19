@@ -3,7 +3,6 @@ from django.contrib.auth.models import User
 from toto.models import SerializableModel
 from django.db import models
 from .graph import GraphTranslator
-from mandragora.models import BaseExecutableModel
 
 
 class CypherQuery(SerializableModel):
@@ -92,7 +91,7 @@ class Graph(models.Model):
         return translator.export()
 
 
-class CollectionType(models.Model):
+class CollectionType(models.Model):  # Node type
     """
     Represents a node type with schema and form layout.
     """
@@ -129,7 +128,7 @@ class DataNode(models.Model):
         return f"{self.name} ({self.collection_type.name})"
 
 
-class RelationType(models.Model):
+class RelationType(models.Model): # Edge type
     """
     Represents a relation type with a name and optional metadata.
     """
@@ -176,58 +175,5 @@ class DataEdge(models.Model):
 
     def __str__(self):
         return f"{self.source} -> {self.target} [{self.relation_type.name}] ({self.label})"
-
-
-class DataTransform(BaseExecutableModel):
-    """
-    Stage 2 of ETL: transforms extracted data.
-    Executes restricted Python code that receives:
-        context = {"data": <extracted_data>}
-    and returns transformed data.
-    """
-
-    name = models.CharField(max_length=120)
-    description = models.TextField(blank=True, null=True)
-
-    graph = models.ForeignKey(
-        "Graph",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="transforms"
-    )
-
-    def __str__(self):
-        return f"Transform: {self.name}"
-
-    # ---------------------------------------------------------
-    # Allowed globals for restricted execution
-    # ---------------------------------------------------------
-    def get_allowed_globals(self, context: dict) -> dict:
-        globals_dict = BaseExecutableModel.get_default_allowed_globals()
-
-        # expose context to restricted code
-        globals_dict["context"] = context
-
-        # ETL helpers
-        globals_dict.update({
-            "map_values": lambda d, fn: {k: fn(v) for k, v in d.items()},
-            "filter_values": lambda d, fn: {k: v for k, v in d.items() if fn(v)},
-            "flatten": lambda lst: [item for sub in lst for item in sub],
-        })
-
-        return globals_dict
-
-    # ---------------------------------------------------------
-    # Execute transform
-    # ---------------------------------------------------------
-    def run(self, extracted_data: dict = None):
-        """
-        Executes the transform on extracted data.
-        If no data is provided, uses test_data.
-        """
-        data = extracted_data or self.test_data or {}
-        context = {"data": data}
-        return self.execute(context)
 
 

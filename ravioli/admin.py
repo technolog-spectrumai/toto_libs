@@ -4,6 +4,8 @@ from neo4j import GraphDatabase
 from django.conf import settings
 from django import forms
 from django_json_widget.widgets import JSONEditorWidget
+from psycopg import adapters
+
 from .graph import GraphTranslator
 from toto.batch import BatchAction
 from .models import (
@@ -12,12 +14,10 @@ from .models import (
     CollectionType,
     DataNode,
     RelationType,
-    DataEdge,
-    DataTransform
+    DataEdge
 )
 from toto.admin import BaseSerializableAdmin
 from .forms import DynamicDataNodeForm   # <-- import your dynamic form
-from .conversion import GraphConversionPipeline
 
 # ---------------------------
 # Neo4j connection
@@ -124,7 +124,6 @@ class GraphAdmin(admin.ModelAdmin):
         result = BatchAction(queryset).run(export_one)
         BatchAction.display_messages(result, self.message_user, request, verb="export")
 
-
 @admin.register(CollectionType)
 class CollectionTypeAdmin(admin.ModelAdmin):
     form = CollectionTypeForm
@@ -186,38 +185,4 @@ class DataEdgeAdmin(admin.ModelAdmin):
     list_display = ("source", "target", "relation_type", "graph", "label", "created_at")
     search_fields = ("label", "metadata")
     list_filter = ("relation_type", "graph")
-
-
-@admin.register(DataTransform)
-class DataTransformAdmin(admin.ModelAdmin):
-    list_display = ("name", "graph", "description")
-    actions = ["run_transform"]
-
-    @admin.action(description="Run selected transforms")
-    def run_transform(self, request, queryset):
-
-        def run_one(transform: DataTransform):
-            app_labels = getattr(settings, "GRAPH_ALLOWED_APPS", [])
-            if not app_labels:
-                raise ValueError("GRAPH_ALLOWED_APPS is empty or missing in settings.")
-            if not transform.graph:
-                raise ValueError(f"Transform '{transform.name}' has no graph assigned.")
-            pipeline = GraphConversionPipeline(
-                app_labels=app_labels,
-                transform_node=transform,
-                graph=transform.graph
-            )
-            result = pipeline.run()
-            if result is None:
-                raise ValueError("Pipeline returned no result.")
-            return transform
-
-        result = BatchAction(queryset).run(run_one)
-
-        BatchAction.display_messages(
-            result,
-            self.message_user,
-            request,
-            verb="run"
-        )
 
