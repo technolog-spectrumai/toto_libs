@@ -6,10 +6,6 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 from RestrictedPython import compile_restricted, safe_builtins, utility_builtins, limited_builtins
 from django_jsonform.models.fields import JSONField  # use JSONField with schema support
-
-# Your custom safe clients
-# from storage.client import StorageClient
-# from data.client import DataClient
 import operator
 from RestrictedPython.Guards import guarded_unpack_sequence, full_write_guard
 

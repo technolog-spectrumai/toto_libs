@@ -12,11 +12,12 @@ from .models import (
     CollectionType,
     DataNode,
     RelationType,
-    DataEdge
+    DataEdge,
+    DataTransform
 )
 from toto.admin import BaseSerializableAdmin
 from .forms import DynamicDataNodeForm   # <-- import your dynamic form
-
+from .conversion import GraphConversionPipeline
 
 # ---------------------------
 # Neo4j connection
@@ -186,4 +187,37 @@ class DataEdgeAdmin(admin.ModelAdmin):
     search_fields = ("label", "metadata")
     list_filter = ("relation_type", "graph")
 
+
+@admin.register(DataTransform)
+class DataTransformAdmin(admin.ModelAdmin):
+    list_display = ("name", "graph", "description")
+    actions = ["run_transform"]
+
+    @admin.action(description="Run selected transforms")
+    def run_transform(self, request, queryset):
+
+        def run_one(transform: DataTransform):
+            app_labels = getattr(settings, "GRAPH_ALLOWED_APPS", [])
+            if not app_labels:
+                raise ValueError("GRAPH_ALLOWED_APPS is empty or missing in settings.")
+            if not transform.graph:
+                raise ValueError(f"Transform '{transform.name}' has no graph assigned.")
+            pipeline = GraphConversionPipeline(
+                app_labels=app_labels,
+                transform_node=transform,
+                graph=transform.graph
+            )
+            result = pipeline.run()
+            if result is None:
+                raise ValueError("Pipeline returned no result.")
+            return transform
+
+        result = BatchAction(queryset).run(run_one)
+
+        BatchAction.display_messages(
+            result,
+            self.message_user,
+            request,
+            verb="run"
+        )
 
