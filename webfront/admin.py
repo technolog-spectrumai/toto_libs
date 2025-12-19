@@ -5,6 +5,7 @@ from django_ace import AceWidget
 from .models import StaticPage, HtmlTemplate, DynamicPage, Chart, MetricsPage
 from mandragora.models import LambdaNode
 from oya.models import DashboardBlock
+from django_json_widget.widgets import JSONEditorWidget
 
 
 @admin.action(description="Add selected pages to Dashboard")
@@ -91,17 +92,11 @@ class DynamicPageForm(forms.ModelForm):
 class ChartForm(forms.ModelForm):
     class Meta:
         model = Chart
-        fields = ['title', 'description', 'chart_type', 'stacked', 'lambda_node', 'params']
+        fields = ['title', 'description', 'chart_type', 'stacked', 'params']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['params'].widget = AceWidget(
-            mode='json',
-            theme='chrome',
-            width="100%",
-            height="300px",
-            showprintmargin=False
-        )
+        self.fields['params'].widget = JSONEditorWidget()
 
 
 class MetricsPageForm(forms.ModelForm):
@@ -163,7 +158,7 @@ class DynamicPageAdmin(admin.ModelAdmin):
 @admin.register(Chart)
 class ChartAdmin(admin.ModelAdmin):
     form = ChartForm
-    list_display = ('title', 'chart_type', 'stacked', 'lambda_node', 'description')
+    list_display = ('title', 'chart_type', 'stacked', 'description')
     search_fields = ('title', 'description')
     ordering = ('title',)
 

@@ -61,16 +61,7 @@ def metrics_page_detail(request, slug):
     page = get_object_or_404(MetricsPage, slug=slug)
 
     # Collect chart data
-    charts_data = page.get_chart_data(context={
-        "user": {
-            "username": request.user.username if request.user.is_authenticated else None,
-            "is_authenticated": request.user.is_authenticated,
-            "email": getattr(request.user, "email", None),
-        },
-        "method": request.method,
-        "path": request.path,
-        "query_params": request.GET.dict()
-    })
+    charts_data = page.get_chart_data()
 
     # Mutate page-like object for consistency
     page.body = ""  # optional: you can render description or leave empty

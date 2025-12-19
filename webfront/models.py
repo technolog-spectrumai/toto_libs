@@ -96,16 +96,6 @@ class Chart(models.Model):
     chart_type = models.CharField(max_length=20, choices=CHART_TYPES)
     stacked = models.BooleanField(default=False)
 
-    # Optional LambdaNode to compute chart data
-    lambda_node = models.ForeignKey(
-        LambdaNode,
-        on_delete=models.SET_NULL,
-        blank=True,
-        null=True,
-        related_name="charts",
-        help_text="Optional LambdaNode to compute chart data"
-    )
-
     # Optional JSON parameters for the chart
     params = models.JSONField(
         default=dict,
@@ -119,20 +109,13 @@ class Chart(models.Model):
     def __str__(self):
         return self.title
 
-    def compute_data(self, extra_context=None):
-        """
-        Execute linked LambdaNode to get chart data.
-        Expected return: {"labels": [...], "datasets": [...]}
-        """
-        if self.lambda_node:
-            context = {**self.params, **(extra_context or {})}
-            result = self.lambda_node.execute(context)
-            if isinstance(result, dict):
-                return {
-                    "labels": result.get("labels", []),
-                    "datasets": result.get("datasets", [])
-                }
-        return {"labels": [], "datasets": []}
+    # def compute_data(self):
+    #     if isinstance(self.params, dict):
+    #         return {
+    #             "labels": self.params.get("labels", []),
+    #             "datasets": self.params.get("datasets", [])
+    #         }
+    #     return {"labels": [], "datasets": []}
 
 
 # ────────────────────────────────────────────────
@@ -163,13 +146,13 @@ class MetricsPage(models.Model):
     def get_absolute_url(self):
         return reverse("webfront:metrics_page_detail", args=[self.slug])
 
-    def get_chart_data(self, context=None):
+    def get_chart_data(self):
         """
         Collect chart data for all charts in this page.
         """
         data = []
         for chart in self.charts.all():
-            chart_data = chart.compute_data(extra_context=context)
+            chart_data = chart.params
             data.append({
                 "id": f"chart_{chart.pk}",
                 "title": chart.title,

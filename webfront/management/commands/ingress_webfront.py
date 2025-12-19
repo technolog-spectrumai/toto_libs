@@ -108,7 +108,6 @@ class Command(IngressCommand):
                 continue
             base = os.path.splitext(filename)[0]
             config = self.read_json("webfront", "lambda_config", filename)
-            node = next((n for n in nodes if n.name.lower().startswith(base.lower())), None)
             chart_type = config.get("chart_type", "bar")
             stacked = config.get("stacked", "bar")
             chart, created = Chart.objects.get_or_create(
@@ -117,7 +116,6 @@ class Command(IngressCommand):
                     "description": f"Chart from {filename}",
                     "chart_type": chart_type,
                     "stacked": stacked,
-                    "lambda_node": node,
                     "params": config,
                 }
             )
@@ -125,7 +123,6 @@ class Command(IngressCommand):
                 chart.description = f"Chart updated from {filename}"
                 chart.chart_type = chart_type
                 chart.stacked = stacked
-                chart.lambda_node = node
                 chart.params = config
                 chart.save()
             charts.append(chart)
