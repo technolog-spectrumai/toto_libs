@@ -156,14 +156,14 @@ class Command(IngressCommand):
                 "description": "A demo ETL pipeline that performs no transformation.",
                 "test_context": {"message": "Hello from demo pipeline"},
                 "code": """
-        def main(context):
-            # This pipeline does nothing — it simply returns the input.
-            return {
-                "nodes": [],
-                "edges": [],
-                "echo": context.get("data")
-            }
-        """,
+def main(context):
+    # This pipeline does nothing — it simply returns the input.
+    return {
+        "nodes": [],
+        "edges": [],
+        "echo": context.get("data")
+    }
+""",
             },
         )
 
