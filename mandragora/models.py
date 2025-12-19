@@ -1,13 +1,12 @@
 #import cv2
 import json
 from datetime import timedelta
-
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from RestrictedPython import compile_restricted, safe_builtins, utility_builtins, limited_builtins
-from django_jsonform.models.fields import JSONField  # use JSONField with schema support
 import operator
 from RestrictedPython.Guards import guarded_unpack_sequence, full_write_guard
+import cv2
 
 
 class Workflow(models.Model):
@@ -36,7 +35,6 @@ class LambdaLayer(models.Model):
 
     # Boolean flags for important dependencies
     use_opencv = models.BooleanField(default=False)
-    use_kanban_client = models.BooleanField(default=False)
 
 
     def __str__(self):
@@ -48,11 +46,8 @@ class LambdaLayer(models.Model):
         """
         deps = {}
         if self.use_opencv:
-            import cv2
+
             deps["cv2"] = cv2
-        if self.use_kanban_client:
-            from kanban.client import KanbanClient
-            deps["KanbanClient"] = KanbanClient
         return deps
 
 

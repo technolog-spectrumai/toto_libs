@@ -9,14 +9,6 @@ class Project(models.Model):
     description = models.TextField(blank=True)
     owner = models.ForeignKey(User, on_delete=models.CASCADE)
     collaborators = models.ManyToManyField(User, related_name='collaborating_projects')
-    metrics_page = models.ForeignKey(
-        MetricsPage,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="projects",
-        help_text="Optional MetricsPage associated with this project"
-    )
 
     def __str__(self):
         return self.name
@@ -24,7 +16,8 @@ class Project(models.Model):
 
 # 📦 Column
 class Column(models.Model):
-    project = models.ForeignKey(Project, on_delete=models.CASCADE)
+    graph_node_type = "kanban.TaskStatus"
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, db_column="belongs_to_project")
     name = models.CharField(max_length=100)
     position = models.PositiveIntegerField()
 
@@ -34,7 +27,7 @@ class Column(models.Model):
 
 # 📣 Campaign
 class Campaign(models.Model):
-    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="campaigns")
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="campaigns", db_column="belongs_to_project")
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     start_date = models.DateField(null=True, blank=True)
@@ -49,7 +42,7 @@ class Campaign(models.Model):
 
 # 🎯 Mission
 class Mission(models.Model):
-    campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name="missions")
+    campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name="missions", db_column="belongs_to_campaign")
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
 
@@ -72,7 +65,7 @@ class Mission(models.Model):
 # 🚀 Sprint
 class Sprint(models.Model):
     name = models.CharField(max_length=100)
-    project = models.ForeignKey(Project, on_delete=models.CASCADE)
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, db_column="belongs_to_project")
     start_time = models.DateTimeField()
     end_time = models.DateTimeField()
 
@@ -82,13 +75,13 @@ class Sprint(models.Model):
 
 # 📝 Task
 class Task(models.Model):
-    mission = models.ForeignKey(Mission, on_delete=models.CASCADE, related_name="tasks")
-    column = models.ForeignKey(Column, on_delete=models.CASCADE, related_name='tasks')
-    sprint = models.ForeignKey(Sprint, on_delete=models.SET_NULL, null=True, blank=True, related_name='tasks')
+    mission = models.ForeignKey(Mission, on_delete=models.CASCADE, related_name="tasks", db_column="belongs_to_mission")
+    column = models.ForeignKey(Column, on_delete=models.CASCADE, related_name='tasks', db_column="has_status")
+    sprint = models.ForeignKey(Sprint, on_delete=models.SET_NULL, null=True, blank=True, related_name='tasks', db_column="belongs_to_sprint")
 
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
-    assignee = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    assignee = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, db_column="assigned_to")
     due_date = models.DateField(null=True, blank=True)
     position = models.PositiveIntegerField(default=0)
 

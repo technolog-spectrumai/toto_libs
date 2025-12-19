@@ -300,7 +300,6 @@ BACKUP_ALLOWED_APPS = [
 
 GRAPH_ALLOWED_APPS = [
     "kanban",
-    "finance",
     "events",
     "library",
     "locations",

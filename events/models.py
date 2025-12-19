@@ -25,7 +25,8 @@ class Event(SerializableModel):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='organized_events'
+        related_name='organized_events',
+        db_comment="organized_by"
     )
 
     category = models.ForeignKey(

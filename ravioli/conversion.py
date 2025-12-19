@@ -71,7 +71,15 @@ class GraphConverter:
             if model._meta.app_label not in self.allowed_apps:
                 continue
 
-            name = f"{model._meta.app_label}.{model.__name__}"
+            # Read custom node type name from Meta
+            custom_name = getattr(model, "graph_node_type", None)
+
+            if custom_name:
+                name = custom_name
+            else:
+                # Default fallback
+                name = f"{model._meta.app_label}.{model.__name__}"
+
             ct, _ = CollectionType.objects.get_or_create(name=name)
 
             self.collection_map[model] = ct
@@ -101,6 +109,21 @@ class GraphConverter:
     # ---------------------------------------------------------
     # STEP 3 — Create DataEdges
     # ---------------------------------------------------------
+
+    def get_relation_name(self, field, default_name):
+        """
+        Extract relation name from db_comment in Django 4.
+        Example:
+            db_comment="PLACED_BY"
+        """
+        comment = getattr(field, "db_comment", "") or ""
+
+        # If db_comment is set, use it directly
+        if comment:
+            return comment.strip()
+
+        return default_name
+
     def create_fk_edges(self):
         for model in self.collection_map.keys():
             for field in model._meta.get_fields():
@@ -111,7 +134,8 @@ class GraphConverter:
                 if field.related_model not in self.collection_map:
                     continue
 
-                rel_name = f"FK:{model.__name__}->{field.related_model.__name__}"
+                default_name = f"FK:{model.__name__}->{field.related_model.__name__}"
+                rel_name = self.get_relation_name(field, default_name)
                 relation_type, _ = RelationType.objects.get_or_create(name=rel_name)
 
                 for obj in model.objects.all():
@@ -144,7 +168,8 @@ class GraphConverter:
                 if field.related_model not in self.collection_map:
                     continue
 
-                rel_name = f"M2M:{model.__name__}->{field.related_model.__name__}"
+                default_name = f"M2M:{model.__name__}->{field.related_model.__name__}"
+                rel_name = self.get_relation_name(field, default_name)
                 relation_type, _ = RelationType.objects.get_or_create(name=rel_name)
 
                 for obj in model.objects.all():

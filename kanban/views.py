@@ -1,5 +1,3 @@
-import json
-
 from django.views.generic import DetailView, ListView
 from django.db.models import Q
 from django.contrib.auth.models import AnonymousUser
@@ -7,9 +5,6 @@ from kanban.models import Project, Column, Task, Sprint, Mission
 from oya.page import PageProcessor
 from django.contrib.auth.mixins import LoginRequiredMixin
 from oya.page import PageProcessor
-from django.db.models import Sum
-from datetime import timedelta
-from django.utils import timezone
 
 
 class ProjectDetailView(LoginRequiredMixin, DetailView):
@@ -118,42 +113,6 @@ class BacklogView(LoginRequiredMixin, DetailView):
         context.update({
             "missions": missions,
         })
-        return context
-
-
-class MetricsView(LoginRequiredMixin, DetailView):
-    model = Project
-    template_name = "webfront/metrics.html"
-    context_object_name = "project"
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        project = self.get_object()
-
-        # decorate base context
-        context = PageProcessor().decorate(context, self.request)
-
-        if project.metrics_page:
-            page = project.metrics_page
-            charts_data = page.get_chart_data(context={
-                "user": {
-                    "username": self.request.user.username if self.request.user.is_authenticated else None,
-                    "is_authenticated": self.request.user.is_authenticated,
-                },
-                "method": self.request.method,
-                "path": self.request.path,
-                "query_params": self.request.GET.dict(),
-                "project_id": project.id,
-            })
-
-            # mutate page-like object for consistency
-            page.body = project.description or ""
-
-            context.update({
-                "page": page,
-                "charts": charts_data
-            })
-
         return context
 
 
