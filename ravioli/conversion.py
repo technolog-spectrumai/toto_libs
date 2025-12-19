@@ -1,3 +1,7 @@
+import json
+import datetime
+from decimal import Decimal
+
 from django.apps import apps
 from django.core import serializers
 
@@ -29,37 +33,52 @@ class GraphConversionPipeline:
         self.transform_node = transform_node
         self.graph = graph
 
-        self.serialized_data = {}
-        self.transformed_data = None
         self.node_index = {}  # ETL id → DataNode instance
+
+
+    @staticmethod
+    def normalize_value(value):
+        if isinstance(value, (datetime.date, datetime.datetime)):
+            return value.isoformat()
+
+        if isinstance(value, Decimal):
+            return float(value)
+
+        if isinstance(value, (list, tuple)):
+            return [GraphConversionPipeline.normalize_value(v) for v in value]
+
+        if isinstance(value, dict):
+            return {k: GraphConversionPipeline.normalize_value(v) for k, v in value.items()}
+
+        return value
 
     # ---------------------------------------------------------
     # 1. EXTRACT
     # ---------------------------------------------------------
     def extract(self):
+        serialized_data = {}
         for app_label in self.app_labels:
             app_config = apps.get_app_config(app_label)
             app_models = app_config.get_models()
 
-            self.serialized_data[app_label] = {}
+            serialized_data[app_label] = {}
 
             for model in app_models:
                 queryset = model.objects.all()
                 serialized = serializers.serialize("python", queryset)
-                self.serialized_data[app_label][model.__name__] = serialized
+                normalized = self.normalize_value(serialized)
+                serialized_data[app_label][model.__name__] = normalized
 
-        return self.serialized_data
+        return serialized_data
 
     # ---------------------------------------------------------
     # 2. TRANSFORM
     # ---------------------------------------------------------
-    def transform(self):
+    def transform(self, serialized_data):
         if not self.transform_node:
-            self.transformed_data = self.serialized_data
-            return self.transformed_data
+            return serialized_data
 
-        self.transformed_data = self.transform_node.run(self.serialized_data)
-        return self.transformed_data
+        return self.transform_node.run(serialized_data)
 
     # ---------------------------------------------------------
     # HELPERS: get or create types
@@ -115,12 +134,12 @@ class GraphConversionPipeline:
     # ---------------------------------------------------------
     # 3. LOAD
     # ---------------------------------------------------------
-    def load(self):
+    def load(self, transformed_data):
         if not self.graph:
-            return self.transformed_data  # nothing to load
+            return transformed_data  # nothing to load
 
-        nodes = self.transformed_data.get("nodes", [])
-        edges = self.transformed_data.get("edges", [])
+        nodes = transformed_data.get("nodes", [])
+        edges = transformed_data.get("edges", [])
 
         self.create_nodes(nodes)
         self.create_edges(edges)
@@ -134,6 +153,8 @@ class GraphConversionPipeline:
     # RUN ALL
     # ---------------------------------------------------------
     def run(self):
-        self.extract()
-        self.transform()
-        return self.load()
+        data1 = self.extract()
+        print(json.dumps(data1, indent=2))
+        data2 = self.transform(data1)
+        data3 = self.load(data2)
+        return data3
