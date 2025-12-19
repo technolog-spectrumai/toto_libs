@@ -1,40 +1,38 @@
-import json
 import datetime
 from decimal import Decimal
-
 from django.apps import apps
+from django.conf import settings
+from django.db import transaction
+from django.db.models.fields.related import ForeignKey, ManyToManyField
 from django.core import serializers
 
-from .models import (
+from ravioli.models import (
     Graph,
     CollectionType,
-    RelationType,
     DataNode,
-    DataEdge
+    RelationType,
+    DataEdge,
 )
 
 
-class GraphConversionPipeline:
+class GraphConverter:
     """
-    ETL pipeline using per-app Adapters.
-
-    Steps:
-      1. Extract Django model data for each app
-      2. For each adapter:
-            - build collection types
-            - build relation types
-            - build nodes
-            - build edges
-      3. Load nodes + edges into the graph
+    Converts Django models into Graph / CollectionType / DataNode / DataEdge.
+    Can be used anywhere in Python, not only as a Django management command.
     """
 
-    def __init__(self, adapters: list, graph: Graph = None):
-        self.adapters = adapters
+    def __init__(self, graph, allowed_apps=None):
+        self.allowed_apps = allowed_apps or getattr(settings, "GRAPH_ALLOWED_APPS", None)
+
+        if not self.allowed_apps:
+            raise ValueError("GRAPH_ALLOWED_APPS is not defined or empty.")
+
+        self.collection_map = {}
+        self.node_map = {}
         self.graph = graph
-        self.node_index = {}  # ETL id → DataNode instance
 
     # ---------------------------------------------------------
-    # NORMALIZATION
+    # Normalization helper
     # ---------------------------------------------------------
     @staticmethod
     def normalize_value(value):
@@ -45,131 +43,128 @@ class GraphConversionPipeline:
             return float(value)
 
         if isinstance(value, (list, tuple)):
-            return [GraphConversionPipeline.normalize_value(v) for v in value]
+            return [GraphConverter.normalize_value(v) for v in value]
 
         if isinstance(value, dict):
-            return {k: GraphConversionPipeline.normalize_value(v) for k, v in value.items()}
+            return {k: GraphConverter.normalize_value(v) for k, v in value.items()}
 
         return value
 
     # ---------------------------------------------------------
-    # 1. EXTRACT PER APP
+    # Public entry point
     # ---------------------------------------------------------
-    def extract(self):
-        serialized_data = {}
+    def migrate(self):
+        print(f"Migrating models from allowed apps: {', '.join(self.allowed_apps)}")
 
-        for adapter in self.adapters:
-            app_label = adapter.app_label
-            app_config = apps.get_app_config(app_label)
-            app_models = app_config.get_models()
+        with transaction.atomic():
+            self.create_collection_types()
+            self.create_nodes()
+            self.create_edges()
 
-            serialized_data[app_label] = {}
-
-            for model in app_models:
-                queryset = model.objects.all()
-                serialized = serializers.serialize("python", queryset)
-                normalized = self.normalize_value(serialized)
-                serialized_data[app_label][model.__name__] = normalized
-
-        return serialized_data
+        print("Migration completed successfully!")
 
     # ---------------------------------------------------------
-    # TYPE CREATION
+    # STEP 1 — Create CollectionTypes
     # ---------------------------------------------------------
-    def ensure_collection_types(self, type_defs: list[dict]):
-        for t in type_defs:
-            CollectionType.objects.get_or_create(
-                name=t["name"],
-                defaults={
-                    "json_schema": t.get("json_schema"),
-                    "form_layout": t.get("form_layout"),
-                }
-            )
+    def create_collection_types(self):
+        for model in apps.get_models():
+            if model._meta.app_label not in self.allowed_apps:
+                continue
 
-    def ensure_relation_types(self, type_defs: list[dict]):
-        for t in type_defs:
-            RelationType.objects.get_or_create(
-                name=t["name"],
-                defaults={"metadata": t.get("metadata")}
-            )
+            name = f"{model._meta.app_label}.{model.__name__}"
+            ct, _ = CollectionType.objects.get_or_create(name=name)
+
+            self.collection_map[model] = ct
+            print(f"Created CollectionType: {name}")
 
     # ---------------------------------------------------------
-    # 2. TRANSFORM USING ADAPTERS
+    # STEP 2 — Create DataNodes
     # ---------------------------------------------------------
-    def transform(self, extracted_data):
-        all_nodes = []
-        all_edges = []
+    def create_nodes(self):
+        for model, collection_type in self.collection_map.items():
+            for obj in model.objects.all():
+                serialized = serializers.serialize("python", [obj])[0]
+                fields = serialized["fields"]
+                normalized = self.normalize_value(fields)
 
-        for adapter in self.adapters:
-            app_data = extracted_data.get(adapter.app_label, {})
-            self.ensure_collection_types(adapter.build_collection_types())
-            nodes = adapter.build_nodes(app_data)
-            all_nodes.extend(nodes)
+                node = DataNode.objects.create(
+                    name=f"{model.__name__}-{obj.pk}",
+                    data=normalized,
+                    collection_type=collection_type,
+                    graph=self.graph,
+                )
 
-        for adapter in self.adapters:
-            app_data = extracted_data.get(adapter.app_label, {})
-            self.ensure_relation_types(adapter.build_relation_types())
-            edges = adapter.build_edges(app_data)
-            all_edges.extend(edges)
-        return {"nodes": all_nodes, "edges": all_edges}
+                self.node_map[(model, obj.pk)] = node
 
-    # ---------------------------------------------------------
-    # 3A. CREATE NODES
-    # ---------------------------------------------------------
-    def create_nodes(self, nodes: list[dict]):
-        for node in nodes:
-            type_name = node["type"]
-            collection_type = CollectionType.objects.get(name=type_name)
-
-            obj = DataNode.objects.create(
-                name=node.get("name", node["id"]),
-                data=node.get("data", {}),
-                collection_type=collection_type,
-                graph=self.graph
-            )
-
-            self.node_index[node["id"]] = obj
+            print(f"Created nodes for {model.__name__}")
 
     # ---------------------------------------------------------
-    # 3B. CREATE EDGES
+    # STEP 3 — Create DataEdges
     # ---------------------------------------------------------
-    def create_edges(self, edges: list[dict]):
-        for edge in edges:
-            type_name = edge["type"]
-            relation_type = RelationType.objects.get(name=type_name)
+    def create_fk_edges(self):
+        for model in self.collection_map.keys():
+            for field in model._meta.get_fields():
 
-            DataEdge.objects.create(
-                source=self.node_index[edge["source"]],
-                target=self.node_index[edge["target"]],
-                label=edge.get("label"),
-                metadata=edge.get("metadata", {}),
-                relation_type=relation_type,
-                graph=self.graph
-            )
+                if not isinstance(field, ForeignKey):
+                    continue
 
-    # ---------------------------------------------------------
-    # 3. LOAD
-    # ---------------------------------------------------------
-    def load(self, transformed_data):
-        if not self.graph:
-            return transformed_data
+                if field.related_model not in self.collection_map:
+                    continue
 
-        nodes = transformed_data["nodes"]
-        edges = transformed_data["edges"]
+                rel_name = f"FK:{model.__name__}->{field.related_model.__name__}"
+                relation_type, _ = RelationType.objects.get_or_create(name=rel_name)
 
-        self.create_nodes(nodes)
-        self.create_edges(edges)
+                for obj in model.objects.all():
+                    target_obj = getattr(obj, field.name, None)
+                    if not target_obj:
+                        continue
 
-        return {
-            "nodes_created": len(nodes),
-            "edges_created": len(edges)
-        }
+                    source_node = self.node_map[(model, obj.pk)]
+                    target_node = self.node_map.get((field.related_model, target_obj.pk))
 
-    # ---------------------------------------------------------
-    # RUN ALL
-    # ---------------------------------------------------------
-    def run(self):
-        extracted = self.extract()
-        transformed = self.transform(extracted)
-        loaded = self.load(transformed)
-        return loaded
+                    if not target_node:
+                        continue
+
+                    DataEdge.objects.get_or_create(
+                        source=source_node,
+                        target=target_node,
+                        relation_type=relation_type,
+                        graph=self.graph,
+                    )
+
+            print(f"Created FK edges for {model.__name__}")
+
+    def create_m2m_edges(self):
+        for model in self.collection_map.keys():
+            for field in model._meta.get_fields():
+
+                if not isinstance(field, ManyToManyField):
+                    continue
+
+                if field.related_model not in self.collection_map:
+                    continue
+
+                rel_name = f"M2M:{model.__name__}->{field.related_model.__name__}"
+                relation_type, _ = RelationType.objects.get_or_create(name=rel_name)
+
+                for obj in model.objects.all():
+                    source_node = self.node_map[(model, obj.pk)]
+
+                    for target_obj in getattr(obj, field.name).all():
+                        target_node = self.node_map.get((field.related_model, target_obj.pk))
+
+                        if not target_node:
+                            continue
+
+                        DataEdge.objects.get_or_create(
+                            source=source_node,
+                            target=target_node,
+                            relation_type=relation_type,
+                            graph=self.graph,
+                        )
+
+            print(f"Created M2M edges for {model.__name__}")
+
+    def create_edges(self):
+        self.create_fk_edges()
+        self.create_m2m_edges()

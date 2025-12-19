@@ -41,7 +41,7 @@ class Command(IngressCommand):
 
         # Graph
         graph, _ = Graph.objects.get_or_create(
-            name="Demo Graph",
+            name="demo_graph",
             defaults={"description": "Sample graph with fake data"},
         )
 
