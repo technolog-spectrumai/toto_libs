@@ -1,5 +1,5 @@
 from django.core.management.base import BaseCommand
-from ravioli.models import CollectionType, RelationType, AppCollector, Graph
+from ravioli.models import CollectionType, RelationType, Graph
 
 
 class Command(BaseCommand):
@@ -55,19 +55,6 @@ class Command(BaseCommand):
                 }
             }
         }
-
-        collector, _ = AppCollector.objects.get_or_create(
-            app_name="locations",
-            defaults={"config": locations_config}
-        )
-
-        graph, _ = Graph.objects.get_or_create(
-            name="LocationsGraph",
-            defaults={"description": "Graph for Locations app", "collector": collector}
-        )
-        if graph.collector != collector:
-            graph.collector = collector
-            graph.save()
 
     def handle(self, *args, **options):
         """Run all steps in order."""

@@ -5,8 +5,6 @@ from django.utils.timezone import now
 from faker import Faker
 import random
 from datetime import timedelta
-from ravioli.models import CollectionType, RelationType, AppCollector
-
 
 fake = Faker()
 

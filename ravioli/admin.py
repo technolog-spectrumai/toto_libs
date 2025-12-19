@@ -12,12 +12,10 @@ from .models import (
     CollectionType,
     DataNode,
     RelationType,
-    DataEdge,
-    AppCollector
+    DataEdge
 )
 from toto.admin import BaseSerializableAdmin
 from .forms import DynamicDataNodeForm   # <-- import your dynamic form
-from .collector import Collector
 
 
 # ---------------------------
@@ -109,11 +107,11 @@ class GraphForm(forms.ModelForm):
 
 @admin.register(Graph)
 class GraphAdmin(admin.ModelAdmin):
-    list_display = ("name", "description", "created_by", "created_at", "collector")
+    list_display = ("name", "description", "created_by", "created_at")
     search_fields = ("name", "description")
-    list_filter = ("created_by", "collector")
+    list_filter = ("created_by",)
 
-    actions = ["export_graphs_to_neo4j", "collect_graphs"]
+    actions = ["export_graphs_to_neo4j"]
 
     @admin.action(description="Export selected graphs to Neo4j")
     def export_graphs_to_neo4j(self, request, queryset):
@@ -124,47 +122,6 @@ class GraphAdmin(admin.ModelAdmin):
 
         result = BatchAction(queryset).run(export_one)
         BatchAction.display_messages(result, self.message_user, request, verb="export")
-
-    @admin.action(description="Collect/build selected graphs from models")
-    def collect_graphs(self, request, queryset):
-        def collect_one(graph_obj):
-            c = Collector(graph_obj)
-            c.run()
-            return graph_obj
-
-        result = BatchAction(queryset).run(collect_one)
-        BatchAction.display_messages(result, self.message_user, request, verb="collect")
-
-
-class AppCollectorForm(forms.ModelForm):
-    class Meta:
-        model = AppCollector
-        fields = "__all__"
-        widgets = {
-            "config": JSONEditorWidget(),  # JSON editor for config field
-        }
-
-
-@admin.register(AppCollector)
-class AppCollectorAdmin(admin.ModelAdmin):
-    form = AppCollectorForm
-    list_display = ("app_name", "created_at")
-    search_fields = ("app_name",)
-    list_filter = ("app_name",)
-
-    actions = ["build_graphs"]
-
-    @admin.action(description="Build graphs linked to selected collectors")
-    def build_graphs(self, request, queryset):
-        def build_one(collector_obj):
-            if collector_obj.graphs.exists():
-                for graph in collector_obj.graphs.all():
-                    c = Collector(graph)
-                    c.run()
-            return collector_obj
-
-        result = BatchAction(queryset).run(build_one)
-        BatchAction.display_messages(result, self.message_user, request, verb="build")
 
 
 @admin.register(CollectionType)

@@ -1,10 +1,8 @@
 from typing import List
-from django.conf import settings
 from django.contrib.auth.models import User
 from toto.models import SerializableModel
 from django.db import models
 from .graph import GraphTranslator
-from django.apps import apps
 
 
 class CypherQuery(SerializableModel):
@@ -68,30 +66,6 @@ class CypherQuery(SerializableModel):
         )
 
 
-
-class AppCollector(models.Model):
-    """
-    Collector bound to a specific Django app.
-    Can optionally link to a Graph that defines conversion rules.
-    """
-
-    APP_CHOICES = [(app, app) for app in getattr(settings, "GRAPH_APPS", [])]
-
-    app_name = models.CharField(
-        max_length=100,
-        unique=True,
-        choices=APP_CHOICES,
-        help_text="Select an app from settings.GRAPH_APPS"
-    )
-
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    config = models.JSONField(default=dict, blank=True)
-
-    def __str__(self):
-        return f"AppCollector: {self.app_name}"
-
-
 class Graph(models.Model):
     """
     Represents a whole graph (like a sheet or canvas).
@@ -108,14 +82,6 @@ class Graph(models.Model):
         related_name="graphs"
     )
     created_at = models.DateTimeField(auto_now_add=True)
-    collector = models.ForeignKey(
-        "AppCollector",   # use string reference if AppCollector is defined later
-        related_name="graphs",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        help_text="Optionally bind this graph to an AppCollector"
-    )
 
     def __str__(self):
         return self.name
@@ -123,8 +89,6 @@ class Graph(models.Model):
     def export_to_neo4j(self):
         translator = GraphTranslator(self)
         return translator.export()
-
-
 
 
 class CollectionType(models.Model):
@@ -139,6 +103,7 @@ class CollectionType(models.Model):
 
     def __str__(self):
         return self.name
+
 
 class DataNode(models.Model):
     """

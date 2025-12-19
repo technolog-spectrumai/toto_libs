@@ -303,7 +303,8 @@ GRAPH_ALLOWED_APPS = [
     "finance",
     "events",
     "library",
-    "locations"
+    "locations",
+    "community"
 ]
 
 FULL_INGRESS = DEBUG
