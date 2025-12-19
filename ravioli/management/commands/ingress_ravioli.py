@@ -8,8 +8,7 @@ from ravioli.models import (
     CollectionType,
     DataNode,
     RelationType,
-    DataEdge,
-    DataTransform
+    DataEdge
 )
 
 fake = Faker()
