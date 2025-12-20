@@ -30,7 +30,8 @@ class Command(BaseCommand):
             "Orbitron": "https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap",
             "Cormorant Garamond": "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;700&display=swap",
             "Exo": "https://fonts.googleapis.com/css2?family=Exo:wght@400;700&display=swap",
-            "Cinzel Decorative": "https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700&display=swap"
+            "Cinzel Decorative": "https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700&display=swap",
+            "Merriweather": "https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700&display=swap"
         }
 
         for name, cdn in font_data.items():
