@@ -59,13 +59,8 @@
         </h2>
 
         <div class="text-center space-y-4">
-          <p class="opacity-80">{{ federation.description }}</p>
+          <p class="opacity-80">Federation {{ federation.description }}</p>
           <p>Created {{ federation.created_at|date:"F j, Y, g:i a" }}</p>
-          {% if federation.logo %}
-            <img src="{{ federation.logo.url }}" alt="{{ federation.name }} logo"
-                 class="mx-auto max-h-48 rounded-lg shadow-md">
-          {% endif %}
-
           <div class="mt-6 space-y-2">
             <p><strong>Platform:</strong> {{ federation.platform.site_name }}</p>
             <p><strong>Domain:</strong> {{ federation.platform.domain }}</p>
