@@ -66,7 +66,7 @@ INSTALLED_APPS = [
     "oya",
     "captcha",
     "memo",
-    "editor",
+    #"editor",
     "vault",
     "latextile",
     "community",
