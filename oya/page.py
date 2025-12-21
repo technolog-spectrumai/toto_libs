@@ -37,9 +37,6 @@ class PageProcessor:
 
         # Normal mode: inject full platform data
         platform = PlatformSerializer(self.config).data
-        federation_logo = None
-        if hasattr(self.config, "federation") and self.config.federation.logo:
-            federation_logo = self.config.federation.logo.url
         theme_data = platform.get("theme") or {}
 
         context.update({
@@ -48,6 +45,6 @@ class PageProcessor:
             "font": theme_data.get("font", {}),
             "theme": theme_data,
             "is_authenticated": request.user.is_authenticated,
-            "federation_logo": federation_logo,
+            "federation_logo": self.config.logo.url
         })
         return context

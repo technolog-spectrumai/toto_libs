@@ -194,6 +194,12 @@ class Platform(models.Model):
         default=20,
         help_text="Max requests allowed per window"
     )
+    logo = models.ImageField(
+        upload_to='federation_logos/',
+        null=True,
+        blank=True,
+        help_text="Optional logo for this federation"
+    )
 
     def __str__(self):
         return f"{self.site_name} Platform"
