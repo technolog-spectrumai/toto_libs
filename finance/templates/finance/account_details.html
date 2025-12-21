@@ -6,58 +6,51 @@
 {% block start_script %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-  document.addEventListener('DOMContentLoaded', function () {
-    const ctx = document.getElementById('activityBarChart').getContext('2d');
+  const isDark = localStorage.getItem('darkMode') === 'true';
 
-    const chartColors = {
-      background: localStorage.getItem('darkMode') === 'true' ? '{{ chart_colors.background_dark }}' : '{{ chart_colors.background_light }}',
-      border: localStorage.getItem('darkMode') === 'true' ? '{{ chart_colors.border_dark }}' : '{{ chart_colors.border_light }}',
-      text: localStorage.getItem('darkMode') === 'true' ? '{{ chart_colors.text_dark }}' : '{{ chart_colors.text_light }}',
-      grid: localStorage.getItem('darkMode') === 'true' ? '{{ chart_colors.grid_dark }}' : '{{ chart_colors.grid_light }}'
-    };
+  const lineOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: {
+      x: {
+        title: {
+          display: true,
+          text: 'Days Ago',
+          color: isDark ? '#eee' : '#333'
+        },
+        ticks: { color: isDark ? '#eee' : '#333' },
+        grid: { color: isDark ? '#555' : '#ccc' }
+      },
+      y: {
+        beginAtZero: false,
+        ticks: { color: isDark ? '#eee' : '#333' },
+        grid: { color: isDark ? '#555' : '#ccc' }
+      }
+    }
+  };
+
+  document.addEventListener('DOMContentLoaded', function () {
+    const ctx = document.getElementById('balanceHistoryChart').getContext('2d');
 
     new Chart(ctx, {
-      type: 'bar',
+      type: 'line',
       data: {
-        labels: ['Incoming', 'Outgoing'],
+        labels: {{ balance_dates|safe }},
         datasets: [{
-          label: 'Count',
-          data: [
-            {{ transactions_incoming|length }},
-            {{ transactions_outgoing|length }}
-          ],
-          backgroundColor: chartColors.background,
-          borderColor: chartColors.border,
-          borderWidth: 1
+          label: 'Balance',
+          data: {{ balance_values|safe }},
+          borderColor: isDark ? '#FFCE56' : '#36A2EB',
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          pointRadius: 2,
+          tension: 0
         }]
       },
-      options: {
-        responsive: true,
-        plugins: {
-          legend: { labels: { color: chartColors.text } },
-          tooltip: {
-            backgroundColor: chartColors.background,
-            titleColor: chartColors.text,
-            bodyColor: chartColors.text
-          }
-        },
-        scales: {
-          x: {
-            ticks: { color: chartColors.text },
-            grid: { color: chartColors.grid },
-            title: { display: true, text: 'Activity Type', color: chartColors.text }
-          },
-          y: {
-            beginAtZero: true,
-            ticks: { color: chartColors.text },
-            grid: { color: chartColors.grid },
-            title: { display: true, text: 'Count', color: chartColors.text }
-          }
-        }
-      }
+      options: lineOptions
     });
   });
 </script>
+
 {% endblock %}
 
 {% block content %}
@@ -134,7 +127,14 @@
         <p><strong>Outgoing transactions:</strong> {{ transactions_outgoing|length }}</p>
 
       </div>
-</section>
+    </section>
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Balance History</h2>
+      <div class="p-4 rounded border h-72"
+           :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+        <canvas id="balanceHistoryChart"></canvas>
+      </div>
+    </section>
 
   </div>
 </div>

@@ -11,63 +11,54 @@
 <script>
   const isDark = localStorage.getItem('darkMode') === 'true';
 
-
-    const chartOptions = {
-      responsive: true,
-      maintainAspectRatio: false,
-      scales: {
-        x: {
-          grid: {
-            color: isDark ? '#555' : '#ccc',
-            borderColor: isDark ? '#777' : '#999'
-          },
-          ticks: {
-            color: isDark ? '#eee' : '#333'
-          }
+  const lineOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: {
+      x: {
+        grid: {
+          color: isDark ? '#555' : '#ccc',
+          borderColor: isDark ? '#777' : '#999'
         },
-        y: {
-          beginAtZero: true,   // 👈 ensures the y-axis starts at 0
-          grid: {
-            color: isDark ? '#555' : '#ccc',
-            borderColor: isDark ? '#777' : '#999'
-          },
-          ticks: {
-            color: isDark ? '#eee' : '#333'
-          }
+        ticks: {
+          color: isDark ? '#eee' : '#333'
+        }
+      },
+      y: {
+        beginAtZero: false,
+        grid: {
+          color: isDark ? '#555' : '#ccc',
+          borderColor: isDark ? '#777' : '#999'
+        },
+        ticks: {
+          color: isDark ? '#eee' : '#333'
         }
       }
-    };
+    }
+  };
 
+  document.addEventListener('DOMContentLoaded', function () {
+    const ctx = document.getElementById('balanceHistoryChart').getContext('2d');
 
-    const stackedOptions = {
-      responsive: true,
-      maintainAspectRatio: false,
-      scales: {
-        x: {
-          stacked: true,
-          grid: {
-            color: isDark ? '#555' : '#ccc',
-            borderColor: isDark ? '#777' : '#999'
-          },
-          ticks: {
-            color: isDark ? '#eee' : '#333'
-          }
-        },
-        y: {
-          stacked: true,
-          beginAtZero: true,   // 👈 always start from zero
-          grid: {
-            color: isDark ? '#555' : '#ccc',
-            borderColor: isDark ? '#777' : '#999'
-          },
-          ticks: {
-            color: isDark ? '#eee' : '#333'
-          }
-        }
-      }
-    };
-
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: {{ balance_dates|safe }},
+        datasets: [{
+          label: 'Balance',
+          data: {{ balance_values|safe }},
+          borderColor: isDark ? '#FFCE56' : '#36A2EB',
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          pointRadius: 2,
+          tension: 0   // 👈 straight line, no curve
+        }]
+      },
+      options: lineOptions
+    });
+  });
 </script>
+
 
 <div
   :class="darkMode
