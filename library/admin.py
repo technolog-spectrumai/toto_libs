@@ -1,4 +1,8 @@
+import datetime
+
 from django.contrib import admin
+from django.http import HttpResponse
+from django.template.defaultfilters import slugify
 from django.utils.html import format_html
 from polymorphic.admin import (
     PolymorphicParentModelAdmin,
@@ -16,6 +20,9 @@ from .models import (
     GenericReference,
     Library
 )
+from .batch import BatchAction
+
+
 
 @admin.register(Library)
 class LibraryAdmin(admin.ModelAdmin):
@@ -23,10 +30,38 @@ class LibraryAdmin(admin.ModelAdmin):
     search_fields = ("name", "owner__username", "owner__email")
     list_filter = ("owner",)
     filter_horizontal = ("references",)
+    actions = ["export_bib"]
 
     def reference_count(self, obj):
         return obj.references.count()
     reference_count.short_description = "References"
+
+    @admin.action(description="Download BibTeX file for selected libraries")
+    def export_bib(self, request, queryset):
+
+        # If only one library is selected → simple export
+        if queryset.count() == 1:
+            library = queryset.first()
+            filename = f"{slugify(library.name)}.bib"
+            content = library.to_latex()
+
+        else:
+            # Multiple libraries → combined export
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M")
+            filename = f"libraries_{timestamp}.bib"
+
+            parts = []
+            for lib in queryset:
+                parts.append(f"% ===== Library: {lib.name} =====")
+                parts.append(lib.to_latex())
+                parts.append("")  # spacing
+
+            content = "\n".join(parts)
+
+        # Create downloadable response
+        response = HttpResponse(content, content_type="text/plain")
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
 
 # ────────────────────────────────────────────────
 # 🏷️ ReferenceTag Admin

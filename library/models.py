@@ -35,7 +35,22 @@ class Library(models.Model):
     def __str__(self):
         return f"{self.name} (Owner: {self.owner})"
 
+        # ────────────────────────────────────────────────
+        # 📚 Export Library to BibTeX
+        # ────────────────────────────────────────────────
 
+    def to_latex(self):
+        """
+        Returns a combined BibTeX string for all references in this library.
+        """
+        items = self.references.all().order_by("order", "title")
+
+        if not items.exists():
+            return f"% Library '{self.name}' contains no references."
+
+        latex_entries = [item.to_latex() for item in items]
+
+        return "\n\n".join(latex_entries)
 
 # ────────────────────────────────────────────────
 # 🔖 Base Reference Item (Polymorphic)
