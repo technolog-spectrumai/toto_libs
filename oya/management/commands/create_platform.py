@@ -1,3 +1,8 @@
+import os
+
+from django.conf import settings
+from django.core.files import File
+from django.core.management import CommandError
 from django.core.management.base import BaseCommand
 from oya.models import Platform, Theme
 from gervazy.models import SecretKey   # import SecretKey from gervazy app
@@ -51,7 +56,15 @@ class Command(BaseCommand):
             active=active,
             theme = theme
         )
+        # 📷 Upload logo from data/img/logo.png
+        logo_path = os.path.join(settings.BASE_DIR, "..", "data", "img", "logo.png")
+        logo_path = os.path.abspath(logo_path)
+        if not os.path.exists(logo_path):
+            raise CommandError(f"Logo file not found at {logo_path}")
 
+        if not platform.logo:
+            with open(logo_path, "rb") as f:
+                platform.logo.save("logo.png", File(f), save=True)
         platform.save()
 
         if created:
