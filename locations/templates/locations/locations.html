@@ -26,10 +26,12 @@
     </section>
 
     <script>
+      let map = null;
+      let featuresDict = {};
       document.addEventListener("DOMContentLoaded", function () {
         const isDark = localStorage.getItem("darkMode") === "true";
 
-        const map = L.map("map").setView([52.0, 19.0], 6);
+        map = L.map("map").setView([52.0, 19.0], 6);
 
         const lightTiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png");
         const darkTiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png");
@@ -38,11 +40,12 @@
 
         const features = JSON.parse(`{{ locations_json|escapejs }}`);
 
+
         features.forEach(item => {
           const type = item.type;
           const name = item.name;
           const geom = item.geometry;
-
+          featuresDict[name] = item;
           if (!geom) return;
 
           const layer = L.geoJSON(geom, {
@@ -62,26 +65,67 @@
           }).addTo(map);
 
           layer.bindPopup(`<strong>${type}</strong><br>${name}`);
+
         });
       });
+      function zoomToFeature(name) {
+        const item = featuresDict[name];
+        if (!item || !item.geometry) return;
+
+        const layer = L.geoJSON(item.geometry);
+        const bounds = layer.getBounds();
+
+        if (bounds.isValid()) {
+          map.fitBounds(bounds, { padding: [20, 20] });
+        }
+      }
     </script>
 
-    <!-- 📋 LIST OF LOCATIONS -->
+    <!-- 📋 TABLE OF LOCATIONS -->
     <section>
-      <h3 class="text-xl font-semibold mb-3">Location List</h3>
+      <h3 class="text-xl font-semibold mb-3">Location Table</h3>
 
-      <div class="space-y-3">
-        {% for loc in locations %}
-        <div class="p-4 rounded border"
-             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
-          <p><strong>{{ loc.type }}:</strong> {{ loc.name }}</p>
-        </div>
-        {% empty %}
-        <div class="p-4 rounded border text-center text-sm"
-             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
-          No locations available.
-        </div>
-        {% endfor %}
+      <div class="overflow-x-auto rounded border"
+           :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+
+        <table class="min-w-full text-sm">
+          <thead
+            :class="darkMode ? 'bg-bubble-bg-dark text-text-main-dark' : 'bg-bubble-bg-light text-text-main-light'">
+            <tr class="border-b"
+                :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+              <th class="px-4 py-2 text-left">Type</th>
+              <th class="px-4 py-2 text-left">Name</th>
+            </tr>
+          </thead>
+
+            <tbody>
+              {% for loc in locations %}
+              <tr class="border-b"
+                  :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+
+                <td class="px-4 py-2 font-medium">{{ loc.type }}</td>
+                <td class="px-4 py-2">{{ loc.name }}</td>
+
+                <td class="px-4 py-2">
+                  <button
+                    onclick="zoomToFeature('{{ loc.name }}')"
+                    class="underline text-blue-600 dark:text-blue-400">
+                    Zoom
+                  </button>
+                </td>
+
+              </tr>
+              {% empty %}
+              <tr>
+                <td colspan="3" class="px-4 py-4 text-center text-sm"
+                    :class="darkMode ? 'text-text-main-dark' : 'text-gray-500'">
+                  No locations available.
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+        </table>
+
       </div>
     </section>
 
