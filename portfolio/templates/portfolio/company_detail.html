@@ -3,6 +3,24 @@
 {% load yaml_filters %}
 
 {% block title %}Company Details – {{ platform.site_name }}{% endblock %}
+{% block start_script %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  const isDark = localStorage.getItem('darkMode') === 'true';
+
+  const pieOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        labels: {
+          color: isDark ? '#eee' : '#333'
+        }
+      }
+    }
+  };
+</script>
+{% endblock %}
 
 {% block content %}
 <div
@@ -52,6 +70,7 @@
     </section>
 
     <!-- 📊 Ownership Received (Cap Table) -->
+    <!-- 📊 Ownership Pie Chart -->
     {% if ownership_received %}
     <section class="p-6 rounded-lg border space-y-4 transition-colors duration-300"
       :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
@@ -59,7 +78,31 @@
 
       <h2 class="text-lg font-semibold">Ownership Structure</h2>
 
-      <div class="space-y-2">
+      <div class="h-64">
+        <canvas id="ownershipPie"></canvas>
+      </div>
+
+      <script>
+        new Chart(document.getElementById('ownershipPie'), {
+          type: 'pie',
+          data: {
+            labels: {{ chart_labels|safe }},
+            datasets: [{
+              data: {{ chart_values|safe }},
+              backgroundColor: [
+                '#4F46E5', '#10B981', '#F59E0B', '#EF4444',
+                '#3B82F6', '#8B5CF6', '#EC4899', '#14B8A6'
+              ],
+              borderColor: isDark ? '#222' : '#fff',
+              borderWidth: 1
+            }]
+          },
+          options: pieOptions
+        });
+      </script>
+
+      <!-- Ownership list -->
+      <div class="space-y-2 mt-6">
         {% for o in ownership_received %}
         <div class="border rounded p-3 text-sm">
           <p>
@@ -69,6 +112,7 @@
         </div>
         {% endfor %}
       </div>
+
     </section>
     {% endif %}
 

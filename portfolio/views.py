@@ -32,22 +32,15 @@ def resolve_entity_label(entity):
     """
     Returns a human-readable label for any SocialEntity subclass.
     """
+    real_instnce = entity.get_real_instance()
     model = entity.get_real_instance_class().__name__
-
-    # Company
-    if hasattr(entity, "name"):
-        return f"Company {entity.name}"
-
-    # Community
-    if model == "Community":
-        return f"Community {entity.name}"
-
-    # CommunityMember
     if model == "CommunityMember":
-        return f"Person {entity.display_name}"
-
-    # Fallback
-    return f"{model} {entity.id}"
+        return f"Person {real_instnce.display_name}"
+    elif model == "Company":
+        return f"Company {real_instnce.name}"
+    elif model == "Community":
+        return f"Community {real_instnce.name}"
+    return f"{model} {real_instnce.id}"
 
 @login_required
 def company_detail(request, pk):
@@ -71,10 +64,14 @@ def company_detail(request, pk):
         }
         for o in ownership_received
     ]
+    chart_labels = [o["label"] for o in ownership_received]
+    chart_values = [float(o["percentage"]) for o in ownership_received]
 
     context = {
         "company": company,
         "ownership_received": ownership_received,
+        "chart_labels": chart_labels,
+        "chart_values": chart_values,
         "company_data": {
             "id": company.id,
             "name": company.name,
