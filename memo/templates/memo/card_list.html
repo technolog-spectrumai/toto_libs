@@ -2,9 +2,14 @@
 {% load static %}
 
 {% block title %} Presentations | {{ platform.site_name }} {% endblock %}
+
 {% block start_script %}
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js/dist/reveal.css">
   <link rel="stylesheet" id="reveal-theme">
+
+  <!-- Mermaid.js -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+
   <script>
     let lastDarkMode = localStorage.getItem('darkMode');
 
@@ -25,6 +30,9 @@
         updateRevealTheme();
       }
     }, 500);
+
+    // Mermaid initialization
+    mermaid.initialize({ startOnLoad: false });
   </script>
 {% endblock %}
 
@@ -42,12 +50,22 @@
 
     {% if cards %}
       {% for card in cards %}
-        <!-- Card Title Slide -->
         <section>
           <h3>{{ card.title }}</h3>
-          <p>{{ card.content }}</p>
+
+          {% if card.content %}
+            <p>{{ card.content }}</p>
+          {% endif %}
+
           {% if card.image_url %}
-          <img src="{{ card.image_url }}" alt="Diagram for {{ card.title }}" style="max-width: 100%; height: auto;">
+            <img src="{{ card.image_url }}" alt="Image for {{ card.title }}"
+                 style="max-width: 100%; height: auto;">
+          {% endif %}
+
+          {% if card.chart %}
+            <div class="mermaid" style="margin-top: 20px;">
+              {{ card.chart.code|safe }}
+            </div>
           {% endif %}
         </section>
       {% endfor %}
@@ -65,13 +83,24 @@
   </div>
 </div>
 {% endblock %}
+
 {% block end_script %}
 <script src="https://cdn.jsdelivr.net/npm/reveal.js/dist/reveal.js"></script>
+
 <script>
   Reveal.initialize({
     transition: 'slide',
     hash: true
   });
-</script>
 
+  // Render Mermaid after Reveal initializes
+  Reveal.on('ready', () => {
+    mermaid.run();
+  });
+
+  // Re-render when navigating slides
+  Reveal.on('slidechanged', () => {
+    mermaid.run();
+  });
+</script>
 {% endblock %}

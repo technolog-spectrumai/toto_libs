@@ -2,13 +2,11 @@ import datetime
 import io
 import json
 import zipfile
-
 from django.contrib import admin
 from adminsortable2.admin import SortableAdminMixin
 from django.http import HttpResponse
 from django.template.defaultfilters import slugify
-
-from .models import MemoDeck, MemoCard, Tag
+from .models import MemoDeck, MemoCard, Tag, MermaidChart
 from vault.models import VaultFile
 from .batch import BatchAction
 
@@ -30,6 +28,7 @@ class MemoCardInline(admin.TabularInline):
     model = MemoCard
     extra = 1
     ordering = ['order']
+    fields = ('title', 'content', 'order', 'image', 'chart')
 
 # ────────────────────────────────────────────────
 # 📦 MemoDeck Admin

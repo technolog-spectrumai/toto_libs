@@ -1,11 +1,11 @@
 from django.contrib.auth.models import User
-from memo.models import MemoDeck, MemoCard, Tag
+from memo.models import MemoDeck, MemoCard, Tag, MermaidChart
 from oya.ingress import IngressCommand
 import random
 
 
 class Command(IngressCommand):
-    help = "Populate the database with sample MemoDecks, MemoCards and Tags"
+    help = "Populate the database with sample MemoDecks, MemoCards, Tags, and MermaidCharts"
 
     def process(self):
         self.create_dashboard_item(
@@ -19,6 +19,7 @@ class Command(IngressCommand):
 
         user = self.get_or_create_demo_user()
         tags = self.get_or_create_tags()
+        charts = self.get_or_create_charts()
 
         decks = self.get_sample_decks()
 
@@ -28,9 +29,13 @@ class Command(IngressCommand):
                 continue
 
             deck = self.create_deck(deck_title, user, tags)
-            self.create_cards(deck, cards)
+            self.create_cards(deck, cards, charts)
 
         self.stdout.write(self.style.SUCCESS("✅ MemoDeck ingress complete."))
+
+    # ────────────────────────────────────────────────
+    # USERS & TAGS
+    # ────────────────────────────────────────────────
 
     def get_or_create_demo_user(self):
         user, _ = User.objects.get_or_create(
@@ -42,6 +47,43 @@ class Command(IngressCommand):
     def get_or_create_tags(self):
         tag_names = ['django', 'python', 'study', 'backend', 'frontend', 'devtools', 'testing']
         return [Tag.objects.get_or_create(name=name)[0] for name in tag_names]
+
+    # ────────────────────────────────────────────────
+    # SAMPLE MERMAID CHARTS
+    # ────────────────────────────────────────────────
+
+    def get_or_create_charts(self):
+        samples = [
+            (
+                "Simple Flow",
+                "Basic flowchart example",
+                "graph TD; A[Start] --> B[Process]; B --> C[End];"
+            ),
+            (
+                "Decision Tree",
+                "A branching decision example",
+                "graph TD; A -->|Yes| B; A -->|No| C;"
+            ),
+            (
+                "Sequence Example",
+                "Basic sequence diagram",
+                "sequenceDiagram; Alice->>Bob: Hello Bob; Bob-->>Alice: Hi Alice;"
+            ),
+        ]
+
+        charts = []
+        for title, desc, code in samples:
+            chart, _ = MermaidChart.objects.get_or_create(
+                title=title,
+                defaults={"description": desc, "code": code}
+            )
+            charts.append(chart)
+
+        return charts
+
+    # ────────────────────────────────────────────────
+    # SAMPLE DECKS & CARDS
+    # ────────────────────────────────────────────────
 
     def get_sample_decks(self):
         return {
@@ -72,12 +114,20 @@ class Command(IngressCommand):
         self.stdout.write(self.style.SUCCESS(f"📘 Created deck: {title}"))
         return deck
 
-    def create_cards(self, deck, cards):
+    def create_cards(self, deck, cards, charts):
         for i, (card_title, card_content) in enumerate(cards, start=1):
+
+            # Randomly attach a Mermaid chart to ~50% of cards
+            chart = random.choice(charts) if random.random() < 0.5 else None
+
             MemoCard.objects.create(
                 deck=deck,
                 title=card_title,
                 content=card_content,
-                order=i
+                order=i,
+                chart=chart
             )
-        self.stdout.write(self.style.SUCCESS(f"🃏 Added {len(cards)} cards to deck: {deck.title}"))
+
+        self.stdout.write(self.style.SUCCESS(
+            f"🃏 Added {len(cards)} cards to deck: {deck.title}"
+        ))
