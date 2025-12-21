@@ -1,7 +1,12 @@
+import datetime
+import json
+
 from django.contrib import admin
 from adminsortable2.admin import SortableAdminMixin
+from django.http import HttpResponse
+from django.template.defaultfilters import slugify
+
 from .models import MemoDeck, MemoCard, Tag
-from .export import DeckLatexExporter
 from vault.models import VaultFile
 from .batch import BatchAction
 
@@ -37,26 +42,41 @@ class MemoDeckAdmin(admin.ModelAdmin):
     autocomplete_fields = ('author', 'tags')
     readonly_fields = ('created_at',)
     inlines = [MemoCardInline]
-    actions = ['export_to_latex']
+    actions = ['export_to_json']
 
     def tag_list(self, obj):
         return ", ".join(tag.name for tag in obj.tags.all())
     tag_list.short_description = "Tags"
 
-    @admin.action(description="Export selected decks to LaTeX source files")
-    def export_to_latex(self, request, queryset):
+    @admin.action(description="Export selected decks to JSON")
+    def export_to_json(self, request, queryset):
 
         def export_one(deck):
-            exporter = DeckLatexExporter(deck)
-            tex_file = exporter.export_to_latex()
-
-            if not tex_file or not tex_file.file:
-                raise FileNotFoundError("LaTeX file was not generated.")
-
+            # Just return the deck; BatchAction handles errors
             return deck
 
         result = BatchAction(queryset).run(export_one)
-        BatchAction.display_messages(result, self.message_user, request, verb="export to LaTeX")
+
+        # Build JSON output
+        if queryset.count() == 1:
+            deck = queryset.first()
+            filename = f"{slugify(deck.title)}.json"
+            content = json.dumps(deck.to_json(), indent=2)
+
+        else:
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M")
+            filename = f"decks_{timestamp}.json"
+            content = json.dumps(
+                [deck.to_json() for deck in queryset],
+                indent=2
+            )
+
+        # Send file to browser
+        response = HttpResponse(content, content_type="application/json")
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+
+        BatchAction.display_messages(result, self.message_user, request, verb="export to JSON")
+        return response
 
 
 

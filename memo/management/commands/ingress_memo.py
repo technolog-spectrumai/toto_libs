@@ -1,12 +1,11 @@
-from django.utils.text import slugify
 from django.contrib.auth.models import User
-from memo.models import MemoDeck, MemoCard, Tag, MemoLatexPreset
+from memo.models import MemoDeck, MemoCard, Tag
 from oya.ingress import IngressCommand
 import random
 
 
 class Command(IngressCommand):
-    help = "Populate the database with sample MemoDecks, MemoCards, Tags, and LaTeX presets"
+    help = "Populate the database with sample MemoDecks, MemoCards and Tags"
 
     def process(self):
         self.create_dashboard_item(
@@ -20,8 +19,6 @@ class Command(IngressCommand):
 
         user = self.get_or_create_demo_user()
         tags = self.get_or_create_tags()
-        self.create_presets()
-        presets = list(MemoLatexPreset.objects.all())
 
         decks = self.get_sample_decks()
 
@@ -30,8 +27,7 @@ class Command(IngressCommand):
                 self.stdout.write(self.style.WARNING(f"⚠️ Skipped existing deck: {deck_title}"))
                 continue
 
-            preset = random.choice(presets) if presets else None
-            deck = self.create_deck(deck_title, user, tags, preset)
+            deck = self.create_deck(deck_title, user, tags)
             self.create_cards(deck, cards)
 
         self.stdout.write(self.style.SUCCESS("✅ MemoDeck ingress complete."))
@@ -66,12 +62,11 @@ class Command(IngressCommand):
             ]
         }
 
-    def create_deck(self, title, user, tags, preset=None):
+    def create_deck(self, title, user, tags):
         deck = MemoDeck.objects.create(
             title=title,
             description=f"A deck about {title}.",
-            author=user,
-            latex_preset=preset
+            author=user
         )
         deck.tags.set(random.sample(tags, k=min(3, len(tags))))
         self.stdout.write(self.style.SUCCESS(f"📘 Created deck: {title}"))
@@ -86,47 +81,3 @@ class Command(IngressCommand):
                 order=i
             )
         self.stdout.write(self.style.SUCCESS(f"🃏 Added {len(cards)} cards to deck: {deck.title}"))
-
-    def create_presets(self):
-        presets = [
-            {
-                "name": "Classic Beamer",
-                "include_title_page": True,
-                "include_table_of_contents": True,
-                "theme": "Madrid",
-                "color_theme": "dolphin",
-                "packages": ["graphicx", "amsmath", "hyperref"]
-            },
-            {
-                "name": "Minimal Article",
-                "include_title_page": False,
-                "include_table_of_contents": False,
-                "theme": "default",
-                "color_theme": "default",
-                "packages": ["geometry", "xcolor"]
-            },
-            {
-                "name": "Academic Poster",
-                "include_title_page": True,
-                "include_table_of_contents": False,
-                "theme": "Berkeley",
-                "color_theme": "beaver",
-                "packages": ["tikz", "multicol", "graphicx"]
-            }
-        ]
-
-        for preset_data in presets:
-            preset, created = MemoLatexPreset.objects.get_or_create(
-                name=preset_data["name"],
-                defaults={
-                    "include_title_page": preset_data["include_title_page"],
-                    "include_table_of_contents": preset_data["include_table_of_contents"],
-                    "theme": preset_data["theme"],
-                    "color_theme": preset_data["color_theme"],
-                    "packages": preset_data["packages"]
-                }
-            )
-            if created:
-                self.stdout.write(self.style.SUCCESS(f"🎨 Created preset: {preset.name}"))
-            else:
-                self.stdout.write(self.style.WARNING(f"⚠️ Preset already exists: {preset.name}"))

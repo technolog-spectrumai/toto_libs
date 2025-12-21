@@ -1,4 +1,5 @@
 import datetime
+import json
 
 from django.contrib import admin
 from django.http import HttpResponse
@@ -30,38 +31,36 @@ class LibraryAdmin(admin.ModelAdmin):
     search_fields = ("name", "owner__username", "owner__email")
     list_filter = ("owner",)
     filter_horizontal = ("references",)
-    actions = ["export_bib"]
+    actions = ["export_json"]
 
     def reference_count(self, obj):
         return obj.references.count()
     reference_count.short_description = "References"
 
-    @admin.action(description="Download BibTeX file for selected libraries")
-    def export_bib(self, request, queryset):
+    @admin.action(description="Download JSON file for selected libraries")
+    def export_json(self, request, queryset):
 
-        # If only one library is selected → simple export
+        # Single library → simple JSON export
         if queryset.count() == 1:
             library = queryset.first()
-            filename = f"{slugify(library.name)}.bib"
-            content = library.to_latex()
+            filename = f"{slugify(library.name)}.json"
+            content = json.dumps(library.to_json(), indent=2)
 
         else:
-            # Multiple libraries → combined export
+            # Multiple libraries → combined JSON array
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M")
-            filename = f"libraries_{timestamp}.bib"
+            filename = f"libraries_{timestamp}.json"
 
-            parts = []
-            for lib in queryset:
-                parts.append(f"% ===== Library: {lib.name} =====")
-                parts.append(lib.to_latex())
-                parts.append("")  # spacing
-
-            content = "\n".join(parts)
+            content = json.dumps(
+                [lib.to_json() for lib in queryset],
+                indent=2
+            )
 
         # Create downloadable response
-        response = HttpResponse(content, content_type="text/plain")
+        response = HttpResponse(content, content_type="application/json")
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response
+
 
 # ────────────────────────────────────────────────
 # 🏷️ ReferenceTag Admin

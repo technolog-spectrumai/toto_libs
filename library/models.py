@@ -3,6 +3,8 @@ from django.db import models
 from polymorphic.models import PolymorphicModel
 from vault.models import VaultFile
 from django.contrib.auth import get_user_model
+from django.forms.models import model_to_dict
+from datetime import date, datetime
 
 
 User = get_user_model()
@@ -39,18 +41,15 @@ class Library(models.Model):
         # 📚 Export Library to BibTeX
         # ────────────────────────────────────────────────
 
-    def to_latex(self):
-        """
-        Returns a combined BibTeX string for all references in this library.
-        """
+    def to_json(self):
         items = self.references.all().order_by("order", "title")
+        return {
+            "library": self.name,
+            "description": self.description,
+            "owner": self.owner.username,
+            "references": [item.to_json() for item in items]
+        }
 
-        if not items.exists():
-            return f"% Library '{self.name}' contains no references."
-
-        latex_entries = [item.to_latex() for item in items]
-
-        return "\n\n".join(latex_entries)
 
 # ────────────────────────────────────────────────
 # 🔖 Base Reference Item (Polymorphic)
@@ -84,6 +83,22 @@ class ReferenceItem(PolymorphicModel):
     def __str__(self):
         return f"{self.__class__.__name__}: {self.title}"
 
+    def to_json(self):
+        data = model_to_dict(self)
+        for key, value in data.items():
+            if isinstance(value, (date, datetime)):
+                data[key] = value.isoformat()
+        # Add polymorphic type
+        data["type"] = self.__class__.__name__
+
+        # Convert tags to names
+        data["tags"] = [tag.name for tag in self.tags.all()]
+
+        # Convert vault file to ID
+        data["vault_file"] = self.vault_file_id
+
+        return data
+
 
 class ReferenceTag(models.Model):
     """
@@ -108,15 +123,6 @@ class BookReference(ReferenceItem):
     def __str__(self):
         return f"Book: {self.author}, {self.title} ({self.year})"
 
-    def to_latex(self):
-        return f"""@book{{book{self.pk},
-          author = {{{self.author}}},
-          title = {{{self.title}}},
-          publisher = {{{self.publisher}}},
-          year = {{{self.year}}},
-          isbn = {{{self.isbn}}}
-        }}"""
-
 
 # 📰 Journal Reference
 class JournalReference(ReferenceItem):
@@ -131,18 +137,6 @@ class JournalReference(ReferenceItem):
     def __str__(self):
         return f"Journal: {self.author}, {self.title}, {self.journal} ({self.year})"
 
-    def to_latex(self):
-        return f"""@article{{journal{self.pk},
-          author = {{{self.author}}},
-          title = {{{self.title}}},
-          journal = {{{self.journal}}},
-          volume = {{{self.volume}}},
-          number = {{{self.issue}}},
-          pages = {{{self.pages}}},
-          year = {{{self.year}}},
-          doi = {{{self.doi}}}
-        }}"""
-
 
 # 🎥 Video Reference
 class VideoReference(ReferenceItem):
@@ -154,15 +148,6 @@ class VideoReference(ReferenceItem):
     def __str__(self):
         return f"Video: {self.title} [{self.platform}]"
 
-    def to_latex(self):
-        return f"""@misc{{video{self.pk},
-          title = {{{self.title}}},
-          author = {{{self.creator}}},
-          howpublished = {{\\url{{{self.url}}}}},
-          note = {{{self.platform}}},
-          year = {{{self.year}}}
-        }}"""
-
 
 # 🎵 Audio Reference
 class AudioReference(ReferenceItem):
@@ -173,15 +158,6 @@ class AudioReference(ReferenceItem):
 
     def __str__(self):
         return f"Audio: {self.artist} - {self.title} ({self.year})"
-
-    def to_latex(self):
-        return f"""@misc{{audio{self.pk},
-          title = {{{self.title}}},
-          author = {{{self.artist}}},
-          howpublished = {{\\url{{{self.url}}}}},
-          note = {{{self.album}}},
-          year = {{{self.year}}}
-        }}"""
 
 
 # 🌐 Website Reference
@@ -195,16 +171,6 @@ class WebsiteReference(ReferenceItem):
     def __str__(self):
         return f"Website: {self.sitename or self.url} ({self.year})"
 
-    def to_latex(self):
-        return f"""@misc{{website{self.pk},
-          author = {{{self.author}}},
-          title = {{{self.title}}},
-          howpublished = {{\\url{{{self.url}}}}},
-          note = {{{self.sitename}}},
-          year = {{{self.year}}},
-          accessed = {{{self.accessed_date}}}
-        }}"""
-
 
 # 🗂 Generic Reference
 class GenericReference(ReferenceItem):
@@ -216,13 +182,3 @@ class GenericReference(ReferenceItem):
 
     def __str__(self):
         return f"Generic: {self.title} ({self.sourcetype})"
-
-    def to_latex(self):
-        return f"""@misc{{generic{self.pk},
-          author = {{{self.author}}},
-          title = {{{self.title}}},
-          howpublished = {{\\url{{{self.url}}}}},
-          note = {{{self.sourcetype}}},
-          year = {{{self.year}}},
-          description = {{{self.description}}}
-        }}"""

@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import User
 from django_jsonform.models.fields import JSONField
+from django.forms.models import model_to_dict
 
 
 class Tag(models.Model):
@@ -10,33 +11,25 @@ class Tag(models.Model):
         return self.name
 
 
-class MemoLatexPreset(models.Model):
-    name = models.CharField(max_length=100, unique=True)
-    include_title_page = models.BooleanField(default=True)
-    include_table_of_contents = models.BooleanField(default=True)
-    theme = models.CharField(max_length=100, default="Rochester")
-    color_theme = models.CharField(max_length=100, default="seahorse")
-
-    # Replace TextField with structured JSONField
-    packages = JSONField(
-        default=list,
-        help_text="List of LaTeX package names, e.g. ['graphicx', 'amsmath']"
-    )
-
-    def __str__(self):
-        return self.name
-
-
 class MemoDeck(models.Model):
-    title = models.CharField(max_length=200)
+    title = models.CharField(max_length=200, unique=True)
     description = models.TextField(blank=True)
     author = models.ForeignKey(User, on_delete=models.CASCADE, related_name='decks')
     created_at = models.DateTimeField(auto_now_add=True)
     tags = models.ManyToManyField(Tag, related_name='decks', blank=True)
-    latex_preset = models.ForeignKey('MemoLatexPreset', on_delete=models.SET_NULL, null=True, blank=True, related_name='decks')
 
     def __str__(self):
         return self.title
+
+    def to_json(self):
+        return {
+            "title": self.title,
+            "description": self.description,
+            "author": self.author.username,
+            "created_at": self.created_at.isoformat(),
+            "tags": [tag.name for tag in self.tags.all()],
+            "cards": [card.to_json() for card in self.cards.all()],
+        }
 
 
 class MemoCard(models.Model):
@@ -64,4 +57,10 @@ class MemoCard(models.Model):
             if old.image and old.image != self.image:
                 old.image.delete(save=False)
         super().save(*args, **kwargs)
+
+    def to_json(self):
+        data = model_to_dict(self, fields=["id", "title", "content", "order"])
+        data["image"] = self.image_url
+        data["deck"] = self.deck.title
+        return data
 
