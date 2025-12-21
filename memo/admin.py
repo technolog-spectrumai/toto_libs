@@ -1,5 +1,7 @@
 import datetime
+import io
 import json
+import zipfile
 
 from django.contrib import admin
 from adminsortable2.admin import SortableAdminMixin
@@ -42,42 +44,45 @@ class MemoDeckAdmin(admin.ModelAdmin):
     autocomplete_fields = ('author', 'tags')
     readonly_fields = ('created_at',)
     inlines = [MemoCardInline]
-    actions = ['export_to_json']
+    actions = ['export_to_zip']
 
     def tag_list(self, obj):
         return ", ".join(tag.name for tag in obj.tags.all())
     tag_list.short_description = "Tags"
 
-    @admin.action(description="Export selected decks to JSON")
-    def export_to_json(self, request, queryset):
+    @admin.action(description="Export selected decks as ZIP (JSON + images)")
+    def export_to_zip(self, request, queryset):
 
-        def export_one(deck):
-            # Just return the deck; BatchAction handles errors
-            return deck
+        # Create in-memory ZIP
+        buffer = io.BytesIO()
+        zip_file = zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED)
 
-        result = BatchAction(queryset).run(export_one)
+        for deck in queryset:
+            deck_folder = slugify(deck.title)
 
-        # Build JSON output
-        if queryset.count() == 1:
-            deck = queryset.first()
-            filename = f"{slugify(deck.title)}.json"
-            content = json.dumps(deck.to_json(), indent=2)
+            # 1) Add deck.json
+            deck_json = json.dumps(deck.to_json(), indent=2)
+            zip_file.writestr(f"{deck_folder}/deck.json", deck_json)
 
-        else:
-            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M")
-            filename = f"decks_{timestamp}.json"
-            content = json.dumps(
-                [deck.to_json() for deck in queryset],
-                indent=2
-            )
+            # 2) Add card images
+            for card in deck.cards.all():
+                if card.image:
+                    image_path = card.image.path
+                    image_name = image_path.split("/")[-1]
+                    zip_file.write(
+                        image_path,
+                        arcname=f"{deck_folder}/images/{image_name}"
+                    )
 
-        # Send file to browser
-        response = HttpResponse(content, content_type="application/json")
+        zip_file.close()
+
+        # Prepare ZIP response
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M")
+        filename = f"decks_{timestamp}.zip"
+
+        response = HttpResponse(buffer.getvalue(), content_type="application/zip")
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
-
-        BatchAction.display_messages(result, self.message_user, request, verb="export to JSON")
         return response
-
 
 
 # ────────────────────────────────────────────────
