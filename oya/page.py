@@ -31,7 +31,7 @@ class PageProcessor:
                 "font": {},
                 "theme": {},
                 "is_authenticated": request.user.is_authenticated,
-                "federation_logo": None,
+                "logo": None,
             })
             return context
 
@@ -45,6 +45,6 @@ class PageProcessor:
             "font": theme_data.get("font", {}),
             "theme": theme_data,
             "is_authenticated": request.user.is_authenticated,
-            "federation_logo": self.config.logo.url
+            "logo": self.config.logo.url
         })
         return context
