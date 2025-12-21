@@ -1,7 +1,7 @@
 {% extends "oya/base.html" %}
 {% load static %}
 
-{% block title %}Companies – {{ platform.site_name }}{% endblock %}
+{% block title %}Active Assets – {{ platform.site_name }}{% endblock %}
 
 {% block content %}
 <div class="min-h-screen px-4 py-10 transition-colors duration-300"
@@ -9,50 +9,32 @@
 
   <div class="max-w-6xl mx-auto space-y-12">
 
-    <!-- 🏢 Companies Table -->
+    <!-- 📦 Active Assets Table -->
     <section>
-      <h2 class="text-2xl font-bold mb-4">Companies</h2>
+      <h2 class="text-2xl font-bold mb-4">Active Assets</h2>
 
-      <!-- Desktop Table -->
       <div class="hidden md:block overflow-x-auto">
         <table class="min-w-full text-sm border rounded">
             <thead>
               <tr class="text-left border-b">
                 <th class="px-4 py-2">Name</th>
-                <th class="px-4 py-2">Registration #</th>
-                <th class="px-4 py-2">Founded</th>
-                <th class="px-4 py-2">Website</th>
-                <th class="px-4 py-2">Headquarters</th>
-                <th class="px-4 py-2">Action</th>
+                <th class="px-4 py-2">Type</th>
+                <th class="px-4 py-2">Assigned To</th>
+                <th class="px-4 py-2">Location</th>
+                <th class="px-4 py-2">Purchase Date</th>
+                <th class="px-4 py-2">Action</th>  <!-- NEW -->
               </tr>
             </thead>
             <tbody>
-              {% for company in page_obj %}
+              {% for asset in page_obj %}
               <tr class="border-b">
-                <td class="px-4 py-2 font-medium">{{ company.name }}</td>
-                <td class="px-4 py-2">{{ company.registration_number|default:"—" }}</td>
+                <td class="px-4 py-2 font-medium">{{ asset.name }}</td>
+                <td class="px-4 py-2">{{ asset.asset_type.name }}</td>
+                <td class="px-4 py-2">{% if asset.assigned_to %}{{ asset.assigned_to.username }}{% else %}—{% endif %}</td>
+                <td class="px-4 py-2">{{ asset.location|default:"—" }}</td>
+                <td class="px-4 py-2">{{ asset.purchase_date|date:"F j, Y" }}</td>
                 <td class="px-4 py-2">
-                  {% if company.founded_date %}
-                    {{ company.founded_date|date:"Y" }}
-                  {% else %}
-                    —
-                  {% endif %}
-                </td>
-                <td class="px-4 py-2">
-                  {% if company.website %}
-                    <a href="{{ company.website }}" target="_blank"
-                       class="underline text-blue-600 dark:text-blue-400">
-                      Visit
-                    </a>
-                  {% else %}
-                    —
-                  {% endif %}
-                </td>
-                <td class="px-4 py-2">
-                  {{ company.headquarters|default:"—" }}
-                </td>
-                <td class="px-4 py-2">
-                  <a href="{% url 'companies:company_detail' company.pk %}"
+                  <a href="{% url 'assets:asset_detail' asset.pk %}"
                      class="underline text-blue-600 dark:text-blue-400">
                     View
                   </a>
@@ -61,7 +43,7 @@
               {% empty %}
               <tr>
                 <td colspan="6" class="px-4 py-4 text-center text-sm text-gray-500">
-                  No companies available.
+                  No active assets available.
                 </td>
               </tr>
               {% endfor %}
@@ -69,45 +51,21 @@
         </table>
       </div>
 
-      <!-- Mobile Card View -->
+      <!-- 📱 Card View -->
       <div class="md:hidden space-y-4">
-        {% for company in page_obj %}
+        {% for asset in page_obj %}
         <div class="border rounded-lg p-4">
-          <p class="font-semibold text-base">{{ company.name }}</p>
-          <p class="text-sm text-gray-500">
-            Founded:
-            {% if company.founded_date %}
-              {{ company.founded_date|date:"Y" }}
-            {% else %}
-              —
-            {% endif %}
-          </p>
-
+          <p class="font-semibold text-base">{{ asset.name }}</p>
+          <p class="text-sm text-gray-500">Purchased: {{ asset.purchase_date|date:"F j, Y" }}</p>
           <div class="mt-2 space-y-1 text-sm">
-            <p><strong>Registration #:</strong> {{ company.registration_number|default:"—" }}</p>
-            <p><strong>Website:</strong>
-              {% if company.website %}
-                <a href="{{ company.website }}" target="_blank"
-                   class="underline text-blue-600 dark:text-blue-400">
-                  Visit
-                </a>
-              {% else %}
-                —
-              {% endif %}
-            </p>
-            <p><strong>Headquarters:</strong> {{ company.headquarters|default:"—" }}</p>
-          </div>
-
-          <div class="mt-3">
-            <a href="{% url 'companies:company_detail' company.pk %}"
-               class="underline text-blue-600 dark:text-blue-400">
-              View Details
-            </a>
+            <p><strong>Type:</strong> {{ asset.asset_type.name }}</p>
+            <p><strong>Assigned To:</strong> {% if asset.assigned_to %}{{ asset.assigned_to.username }}{% else %}—{% endif %}</p>
+            <p><strong>Location:</strong> {{ asset.location|default:"—" }}</p>
           </div>
         </div>
         {% empty %}
         <div class="p-4 rounded border text-sm text-center">
-          No companies available.
+          No active assets available.
         </div>
         {% endfor %}
       </div>
