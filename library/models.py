@@ -2,6 +2,39 @@
 from django.db import models
 from polymorphic.models import PolymorphicModel
 from vault.models import VaultFile
+from django.contrib.auth import get_user_model
+
+
+User = get_user_model()
+
+
+class Library(models.Model):
+    """
+    A collection of reference items owned by a user.
+    """
+    owner = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="libraries"
+    )
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+
+    # A library can contain many reference items
+    references = models.ManyToManyField(
+        'ReferenceItem',
+        related_name='libraries',
+        blank=True
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return f"{self.name} (Owner: {self.owner})"
+
 
 
 # ────────────────────────────────────────────────

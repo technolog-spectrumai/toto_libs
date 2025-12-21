@@ -68,7 +68,7 @@ INSTALLED_APPS = [
     "memo",
     #"editor",
     "vault",
-    "latextile",
+    #"latextile",
     "community",
     "events",
     "audit",

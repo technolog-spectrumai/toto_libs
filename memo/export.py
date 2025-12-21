@@ -1,6 +1,6 @@
 from pathlib import Path
 from django.core.files.base import ContentFile
-from latextile.models import LatexProject, TexFile
+#from latextile.models import LatexProject, TexFile
 from vault.models import VaultFile
 from django.conf import settings
 import logging
@@ -81,18 +81,18 @@ class DeckLatexExporter:
 
     def export_to_latex(self):
         logger.info(f"Exporting deck '{self.deck.title}' to LaTeX project")
-        project = LatexProject.objects.create(
-            user=self.deck.author,
-            name=self.deck.title
-        )
-
-        tex_content = self.generate_tex_content()
-        tex_filename = f"{self.deck.title.replace(' ', '_')}.tex"
-
-        tex_file = TexFile.objects.create(
-            project=project,
-            filename=tex_filename
-        )
-        tex_file.file.save(tex_filename, ContentFile(tex_content), save=True)
-        logger.info(f"TexFile '{tex_filename}' saved for project '{project.name}' (ID: {tex_file.id})")
-        return tex_file
+        # project = LatexProject.objects.create(
+        #     user=self.deck.author,
+        #     name=self.deck.title
+        # )
+        #
+        # tex_content = self.generate_tex_content()
+        # tex_filename = f"{self.deck.title.replace(' ', '_')}.tex"
+        #
+        # tex_file = TexFile.objects.create(
+        #     project=project,
+        #     filename=tex_filename
+        # )
+        # tex_file.file.save(tex_filename, ContentFile(tex_content), save=True)
+        # logger.info(f"TexFile '{tex_filename}' saved for project '{project.name}' (ID: {tex_file.id})")
+        return None#tex_file

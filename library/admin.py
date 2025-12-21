@@ -14,7 +14,19 @@ from .models import (
     AudioReference,
     WebsiteReference,
     GenericReference,
+    Library
 )
+
+@admin.register(Library)
+class LibraryAdmin(admin.ModelAdmin):
+    list_display = ("name", "owner", "reference_count", "created_at")
+    search_fields = ("name", "owner__username", "owner__email")
+    list_filter = ("owner",)
+    filter_horizontal = ("references",)
+
+    def reference_count(self, obj):
+        return obj.references.count()
+    reference_count.short_description = "References"
 
 # ────────────────────────────────────────────────
 # 🏷️ ReferenceTag Admin
@@ -32,7 +44,6 @@ class ReferenceTagAdmin(admin.ModelAdmin):
 
 @admin.register(ReferenceItem)
 class ReferenceItemParentAdmin(PolymorphicParentModelAdmin):
-    """Parent admin that shows all reference items together."""
     base_model = ReferenceItem
     child_models = (
         BookReference,
@@ -43,12 +54,23 @@ class ReferenceItemParentAdmin(PolymorphicParentModelAdmin):
         GenericReference,
     )
     list_filter = (PolymorphicChildModelFilter,)
-    list_display = ("title", "order", "polymorphic_ctype", "tag_list", "download_link")
+    list_display = (
+        "title",
+        "order",
+        "polymorphic_ctype",
+        "tag_list",
+        "library_list",
+        "download_link",
+    )
     search_fields = ("title",)
 
     def tag_list(self, obj):
         return ", ".join(tag.name for tag in obj.tags.all())
     tag_list.short_description = "Tags"
+
+    def library_list(self, obj):
+        return ", ".join(lib.name for lib in obj.libraries.all())
+    library_list.short_description = "Libraries"
 
     def download_link(self, obj):
         if obj.vault_file and obj.vault_file.file:

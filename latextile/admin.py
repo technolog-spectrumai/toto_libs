@@ -148,6 +148,7 @@ class TexFileForm(forms.ModelForm):
             instance.save()
         return instance
 
+
 @admin.register(TexFile)
 class TexFileAdmin(admin.ModelAdmin):
     form = TexFileForm
