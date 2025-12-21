@@ -14,7 +14,8 @@ class Command(IngressCommand):
             locality_name="San Francisco",
             street="123 Business St",
             building="HQ Tower",
-            apartment="5A"
+            apartment="5A",
+            geometry=Point(-122.4194, 37.7749)
         )
 
     def process(self):

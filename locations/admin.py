@@ -31,8 +31,7 @@ class AddressAdmin(OSMGeoAdmin, BaseSerializableAdmin):
         'apartment',
         'locality_name',
         'state_or_province_name',
-        'country_name',
-        'location',  # show coordinates
+        'country_name'
     )
     search_fields = (
         'street',

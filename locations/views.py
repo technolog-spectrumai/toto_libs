@@ -41,8 +41,8 @@ def locations_all(request):
         locations.append({
             "type": "Address",
             "name": str(addr),
-            "geometry": json.loads(addr.location.geojson) if addr.location else None,
-            "geometry_json": json.dumps(addr.location.geojson if addr.location else None),
+            "geometry": json.loads(addr.geometry.geojson) if addr.geometry else None,
+            "geometry_json": json.dumps(addr.geometry.geojson if addr.geometry else None),
         })
 
     context = {
