@@ -63,29 +63,8 @@
         {% for o in ownership_received %}
         <div class="border rounded p-3 text-sm">
           <p>
-            <strong>{{ o.owner_entity }}</strong>
+            <strong>{{ o.label }}</strong>
             owns <strong>{{ o.percentage }}%</strong>
-          </p>
-        </div>
-        {% endfor %}
-      </div>
-    </section>
-    {% endif %}
-
-    <!-- 📈 Ownership Given (Investments) -->
-    {% if ownership_given %}
-    <section class="p-6 rounded-lg border space-y-4 transition-colors duration-300"
-      :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
-                       : 'bg-primary-bg-light text-text-main-light border-accent-2'">
-
-      <h2 class="text-lg font-semibold">Investments</h2>
-
-      <div class="space-y-2">
-        {% for o in ownership_given %}
-        <div class="border rounded p-3 text-sm">
-          <p>
-            This company owns <strong>{{ o.percentage }}%</strong> of
-            <strong>{{ o.owned_company.name }}</strong>
           </p>
         </div>
         {% endfor %}

@@ -28,6 +28,26 @@ def company_list(request):
         PageProcessor().decorate(context, request)
     )
 
+def resolve_entity_label(entity):
+    """
+    Returns a human-readable label for any SocialEntity subclass.
+    """
+    model = entity.get_real_instance_class().__name__
+
+    # Company
+    if hasattr(entity, "name"):
+        return f"Company {entity.name}"
+
+    # Community
+    if model == "Community":
+        return f"Community {entity.name}"
+
+    # CommunityMember
+    if model == "CommunityMember":
+        return f"Person {entity.display_name}"
+
+    # Fallback
+    return f"{model} {entity.id}"
 
 @login_required
 def company_detail(request, pk):
@@ -44,15 +64,17 @@ def company_detail(request, pk):
         "owner_entity"
     ).filter(owned_company=company)
 
-    # Ownership given (what this company owns)
-    ownership_given = FractionalOwnership.objects.select_related(
-        "owned_company"
-    ).filter(owner_entity=company)
+    ownership_received = [
+        {
+            "label": resolve_entity_label(o.owner_entity),
+            "percentage": o.percentage,
+        }
+        for o in ownership_received
+    ]
 
     context = {
         "company": company,
         "ownership_received": ownership_received,
-        "ownership_given": ownership_given,
         "company_data": {
             "id": company.id,
             "name": company.name,
