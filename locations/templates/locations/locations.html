@@ -29,37 +29,21 @@
       document.addEventListener("DOMContentLoaded", function () {
         const isDark = localStorage.getItem("darkMode") === "true";
 
-        const map = L.map("map").setView([52.0, 19.0], 6); // Center on Poland
+        const map = L.map("map").setView([52.0, 19.0], 6);
 
-        // Tile layers
-        const lightTiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-          attribution: "&copy; OpenStreetMap contributors"
-        });
+        const lightTiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png");
+        const darkTiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png");
 
-        const darkTiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-          attribution: "&copy; CartoDB"
-        });
+        (isDark ? darkTiles : lightTiles).addTo(map);
 
-        if (isDark) {
-          darkTiles.addTo(map);
-        } else {
-          lightTiles.addTo(map);
-        }
-
-        // Load features (JSON-safe)
         const features = JSON.parse(`{{ locations_json|escapejs }}`);
 
         features.forEach(item => {
           const type = item.type;
           const name = item.name;
-          let geom = item.geometry;
+          const geom = item.geometry;
 
           if (!geom) return;
-
-          // Parse GeoJSON if needed
-          if (typeof geom === "string") {
-            geom = JSON.parse(geom);
-          }
 
           const layer = L.geoJSON(geom, {
             style: {
