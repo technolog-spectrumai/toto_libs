@@ -1,0 +1,106 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}Locations – {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+{% endblock %}
+
+{% block content %}
+<div
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300">
+
+  <div class="max-w-6xl mx-auto space-y-10">
+
+    <h2 class="text-2xl font-bold mb-4">All Locations</h2>
+
+    <!-- 🌍 MAP -->
+    <section>
+      <div id="map" class="w-full h-96 rounded border"
+           :class="darkMode ? 'border-accent-1' : 'border-accent-2'"></div>
+    </section>
+
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        const isDark = localStorage.getItem("darkMode") === "true";
+
+        const map = L.map("map").setView([52.0, 19.0], 6); // Center on Poland
+
+        // Tile layers
+        const lightTiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          attribution: "&copy; OpenStreetMap contributors"
+        });
+
+        const darkTiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+          attribution: "&copy; CartoDB"
+        });
+
+        if (isDark) {
+          darkTiles.addTo(map);
+        } else {
+          lightTiles.addTo(map);
+        }
+
+        // Load features (JSON-safe)
+        const features = JSON.parse(`{{ locations_json|escapejs }}`);
+
+        features.forEach(item => {
+          const type = item.type;
+          const name = item.name;
+          let geom = item.geometry;
+
+          if (!geom) return;
+
+          // Parse GeoJSON if needed
+          if (typeof geom === "string") {
+            geom = JSON.parse(geom);
+          }
+
+          const layer = L.geoJSON(geom, {
+            style: {
+              color: isDark ? "#FFCE56" : "#2563EB",
+              weight: 2
+            },
+            pointToLayer: function (feature, latlng) {
+              return L.circleMarker(latlng, {
+                radius: 6,
+                fillColor: isDark ? "#FFCE56" : "#2563EB",
+                color: "#000",
+                weight: 1,
+                fillOpacity: 0.9
+              });
+            }
+          }).addTo(map);
+
+          layer.bindPopup(`<strong>${type}</strong><br>${name}`);
+        });
+      });
+    </script>
+
+    <!-- 📋 LIST OF LOCATIONS -->
+    <section>
+      <h3 class="text-xl font-semibold mb-3">Location List</h3>
+
+      <div class="space-y-3">
+        {% for loc in locations %}
+        <div class="p-4 rounded border"
+             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+          <p><strong>{{ loc.type }}:</strong> {{ loc.name }}</p>
+        </div>
+        {% empty %}
+        <div class="p-4 rounded border text-center text-sm"
+             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+          No locations available.
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+
+  </div>
+</div>
+{% endblock %}

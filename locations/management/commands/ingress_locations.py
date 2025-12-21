@@ -1,4 +1,5 @@
 from django.contrib.gis.geos import Point, Polygon, MultiLineString
+from django.urls import reverse
 from locations.models import PointFeature, ZoneFeature, PathFeature, Address
 from oya.ingress import IngressCommand
 
@@ -17,6 +18,14 @@ class Command(IngressCommand):
         )
 
     def process(self):
+        self.create_dashboard_item(
+            title="Locations",
+            icon="fa-solid fa-map-location-dot",
+            description="Interactive map with points, zones, paths, and addresses.",
+            link=reverse("locations:locations_all"),
+            public=False,
+        )
+
         if not self.full:
             return
 
