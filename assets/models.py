@@ -31,7 +31,7 @@ class Asset(models.Model):
     is_active = models.BooleanField(default=True)
 
     # 🔑 Flexible metadata field
-    metadata = JSONField(blank=True, null=True) # <------ !!!!
+    metadata = JSONField(blank=True, null=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
 

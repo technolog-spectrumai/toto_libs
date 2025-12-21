@@ -79,7 +79,8 @@ INSTALLED_APPS = [
     "webfront",
     "locations",
     "assets",
-    "mandragora"
+    "mandragora",
+    "portfolio"
 ]
 
 
@@ -287,7 +288,8 @@ INGRESS_ALLOWED_APPS = [
     "webfront",
     "locations",
     "assets",
-    "mandragora"
+    "mandragora",
+    "portfolio"
 ]
 
 BACKUP_ALLOWED_APPS = [

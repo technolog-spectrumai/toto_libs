@@ -27,6 +27,7 @@ urlpatterns = [
     path("ravioli/", include("ravioli.urls", namespace="ravioli")),
     path("webfront/", include("webfront.urls", namespace="webfront")),
     path("assets/", include("assets.urls", namespace="assets")),
+    path("portfolio/", include("portfolio.urls", namespace="portfolio")),
 ]
 
 
