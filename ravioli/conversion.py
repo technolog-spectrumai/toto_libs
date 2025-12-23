@@ -78,7 +78,7 @@ class GraphConverter:
                 name = custom_name
             else:
                 # Default fallback
-                name = f"{model._meta.app_label}.{model.__name__}"
+                name = model.__name__
 
             ct, _ = CollectionType.objects.get_or_create(name=name)
 

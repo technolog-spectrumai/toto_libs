@@ -21,13 +21,13 @@ class AssetType(models.Model):
 
 class Asset(models.Model):
     name = models.CharField(max_length=255)
-    asset_type = models.ForeignKey(AssetType, on_delete=models.CASCADE, related_name="assets")
+    asset_type = models.ForeignKey(AssetType, on_delete=models.CASCADE, related_name="assets", db_comment="is_type_of")
     description = models.TextField(blank=True, null=True)
     serial_number = models.CharField(max_length=100, unique=True, blank=True, null=True)
     purchase_date = models.DateField(blank=True, null=True)
     purchase_price = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
-    assigned_to = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True)
-    location = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True, blank=True)
+    assigned_to = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True, db_comment="assigned_to")
+    location = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True, blank=True, db_comment="located_at")
     is_active = models.BooleanField(default=True)
 
     # 🔑 Flexible metadata field
