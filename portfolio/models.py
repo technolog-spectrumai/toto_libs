@@ -26,7 +26,8 @@ class Company(SocialEntity):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="company_headquarters"
+        related_name="company_headquarters",
+        db_comment="located_in"
     )
 
     metadata = JSONField(blank=True, null=True)
@@ -51,12 +52,6 @@ class Company(SocialEntity):
 
 
 class FractionalOwnership(models.Model):
-    # Only companies can be owned
-    owned_company = models.ForeignKey(
-        Company,
-        on_delete=models.CASCADE,
-        related_name="ownerships_received"
-    )
 
     # Any SocialEntity can be an owner (Company, Community, Member, etc.)
     owner_entity = models.ForeignKey(

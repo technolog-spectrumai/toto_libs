@@ -85,7 +85,6 @@ class Command(IngressCommand):
                 remaining -= pct
 
                 FractionalOwnership.objects.get_or_create(
-                    owned_company=company,
                     owner_entity=owner,
                     defaults={
                         "percentage": pct,
