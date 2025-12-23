@@ -17,7 +17,8 @@ class Library(models.Model):
     owner = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
-        related_name="libraries"
+        related_name="libraries",
+        db_comment="owned_by"
     )
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
@@ -66,7 +67,8 @@ class ReferenceItem(PolymorphicModel):
     tags = models.ManyToManyField(
         'ReferenceTag',
         blank=True,
-        related_name='references'
+        related_name='references',
+        db_comment="tagged_by"
     )
     vault_file = models.ForeignKey(
         VaultFile,
@@ -74,7 +76,8 @@ class ReferenceItem(PolymorphicModel):
         blank=True,
         on_delete=models.SET_NULL,
         related_name="reference_items",
-        help_text="Optional link to a file stored in the vault"
+        help_text="Optional link to a file stored in the vault",
+        db_comment="linked_vault_file"
     )
 
     class Meta:
