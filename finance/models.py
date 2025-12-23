@@ -21,12 +21,14 @@ class ExchangeRate(models.Model):
     base_currency = models.ForeignKey(
         Currency,
         on_delete=models.CASCADE,
-        related_name="base_rates"
+        related_name="base_rates",
+        db_comment = "base_in"
     )
     quote_currency = models.ForeignKey(
         Currency,
         on_delete=models.CASCADE,
-        related_name="quote_rates"
+        related_name="quote_rates",
+        db_comment="quoted_in"
     )
     rate = models.DecimalField(max_digits=20, decimal_places=8)
     timestamp = models.DateTimeField(default=now)
@@ -42,9 +44,9 @@ class ExchangeRate(models.Model):
 # 🏦 Account
 class Account(SerializableModel):
     name = models.CharField(max_length=255, unique=True)
-    owner = models.ForeignKey(SocialEntity, on_delete=models.CASCADE, related_name="accounts")
-    manager = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True, related_name="managed_accounts")
-    currency = models.ForeignKey(Currency, on_delete=models.CASCADE)
+    owner = models.ForeignKey(SocialEntity, on_delete=models.CASCADE, related_name="accounts", db_comment="owned_by")
+    manager = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True, related_name="managed_accounts", db_comment="managed_by")
+    currency = models.ForeignKey(Currency, on_delete=models.CASCADE, db_comment="denominated_in")
     balance = models.DecimalField(max_digits=20, decimal_places=2, default=0.00)
     created_at = models.DateTimeField(default=now)
     active = models.BooleanField(default=True)
@@ -56,9 +58,9 @@ class Account(SerializableModel):
 class Transaction(SerializableModel):
     name = models.CharField(max_length=255)
     amount = models.DecimalField(max_digits=20, decimal_places=2)
-    currency = models.ForeignKey(Currency, on_delete=models.CASCADE)
-    source = models.ForeignKey(Account, on_delete=models.CASCADE, related_name="%(class)s_outgoing")
-    destination = models.ForeignKey(Account, on_delete=models.CASCADE, related_name="%(class)s_incoming")
+    currency = models.ForeignKey(Currency, on_delete=models.CASCADE, db_comment="denominated_in")
+    source = models.ForeignKey(Account, on_delete=models.CASCADE, related_name="%(class)s_outgoing", db_comment="source_account")
+    destination = models.ForeignKey(Account, on_delete=models.CASCADE, related_name="%(class)s_incoming", db_comment="destination_account")
     timestamp = models.DateTimeField(default=now)
 
     def __str__(self):
