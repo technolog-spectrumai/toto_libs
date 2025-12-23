@@ -7,7 +7,7 @@ from webfront.models import MetricsPage
 class Project(models.Model):
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
-    owner = models.ForeignKey(User, on_delete=models.CASCADE)
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, db_comment="owned_by")
     collaborators = models.ManyToManyField(User, related_name='collaborating_projects')
 
     def __str__(self):
@@ -17,7 +17,7 @@ class Project(models.Model):
 # 📦 Column
 class Column(models.Model):
     graph_node_type = "kanban.TaskStatus"
-    project = models.ForeignKey(Project, on_delete=models.CASCADE, db_column="belongs_to_project")
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, db_column="belongs_to_project", db_comment="belongs_to")
     name = models.CharField(max_length=100)
     position = models.PositiveIntegerField()
 
@@ -27,13 +27,13 @@ class Column(models.Model):
 
 # 📣 Campaign
 class Campaign(models.Model):
-    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="campaigns", db_column="belongs_to_project")
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="campaigns", db_comment="belongs_to_project")
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     start_date = models.DateField(null=True, blank=True)
     end_date = models.DateField(null=True, blank=True)
 
-    owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, db_comment="owned_by")
     metadata = models.JSONField(blank=True, null=True)
 
     def __str__(self):
@@ -42,7 +42,7 @@ class Campaign(models.Model):
 
 # 🎯 Mission
 class Mission(models.Model):
-    campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name="missions", db_column="belongs_to_campaign")
+    campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name="missions", db_comment="belongs_to_campaign")
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
 
@@ -55,7 +55,7 @@ class Mission(models.Model):
         default=2
     )
 
-    owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, db_comment="owned_by")
     metadata = models.JSONField(blank=True, null=True)
 
     def __str__(self):
@@ -65,7 +65,7 @@ class Mission(models.Model):
 # 🚀 Sprint
 class Sprint(models.Model):
     name = models.CharField(max_length=100)
-    project = models.ForeignKey(Project, on_delete=models.CASCADE, db_column="belongs_to_project")
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, db_comment="belongs_to")
     start_time = models.DateTimeField()
     end_time = models.DateTimeField()
 
@@ -75,13 +75,13 @@ class Sprint(models.Model):
 
 # 📝 Task
 class Task(models.Model):
-    mission = models.ForeignKey(Mission, on_delete=models.CASCADE, related_name="tasks", db_column="belongs_to_mission")
-    column = models.ForeignKey(Column, on_delete=models.CASCADE, related_name='tasks', db_column="has_status")
-    sprint = models.ForeignKey(Sprint, on_delete=models.SET_NULL, null=True, blank=True, related_name='tasks', db_column="belongs_to_sprint")
+    mission = models.ForeignKey(Mission, on_delete=models.CASCADE, related_name="tasks", db_comment="belongs_to")
+    column = models.ForeignKey(Column, on_delete=models.CASCADE, related_name='tasks', db_comment="has_status")
+    sprint = models.ForeignKey(Sprint, on_delete=models.SET_NULL, null=True, blank=True, related_name='tasks', db_comment="belongs_to")
 
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
-    assignee = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, db_column="assigned_to")
+    assignee = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, db_comment="assigned_to")
     due_date = models.DateField(null=True, blank=True)
     position = models.PositiveIntegerField(default=0)
 
