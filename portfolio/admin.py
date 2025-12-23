@@ -33,17 +33,4 @@ class FractionalOwnershipAdmin(admin.ModelAdmin):
         "owner_entity__id",
         "owner_entity__polymorphic_ctype__model",
     )
-    list_filter = ("owned_company",)
     readonly_fields = ("created_at",)
-
-    fieldsets = (
-        ("Ownership", {
-            "fields": ("owned_company", "owner_entity", "percentage")
-        }),
-        ("Metadata", {
-            "fields": ("metadata",)
-        }),
-        ("System", {
-            "fields": ("created_at",),
-        }),
-    )

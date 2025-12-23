@@ -70,7 +70,6 @@ class FractionalOwnership(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ("owned_company", "owner_entity")
         ordering = ["-percentage"]
 
     def clean(self):
