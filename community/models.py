@@ -1,3 +1,5 @@
+import random
+
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
@@ -21,21 +23,23 @@ class SocialEntity(SerializableModel, PolymorphicModel):
 class Community(SocialEntity):
     name = models.CharField(max_length=255, help_text="Name of the community or organization")
     slug = models.SlugField(unique=True, blank=True, help_text="URL-friendly identifier")
-    location = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True, blank=True)
+    location = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True, blank=True, db_comment="located_at")
     established_year = models.IntegerField(null=True, blank=True)
     head = models.ForeignKey(
         'CommunityMember',
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='headed_communities'
+        related_name='headed_communities',
+        db_comment = "headed_by"
     )
     federation = models.ForeignKey(
         Federation,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='communities'
+        related_name='communities',
+        db_comment="part_of_federation"
     )
     updated_at = models.DateTimeField(auto_now=True)
     email = models.EmailField(unique=True, blank=True, null=True)
@@ -63,7 +67,8 @@ class CommunityMember(SocialEntity):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='mentees'
+        related_name='mentees',
+        db_comment="mentored_by"
     )
     display_name = models.CharField(max_length=150)
     bio = models.TextField(null=True, blank=True)
@@ -77,7 +82,8 @@ class CommunityMember(SocialEntity):
         null=True,
         blank=True,
         related_name='residents',
-        help_text="Optional address for this community member"
+        help_text="Optional address for this community member",
+        db_comment="resides_at"
     )
 
     def __str__(self):
