@@ -1,3 +1,5 @@
+import json
+
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from django.http import JsonResponse
@@ -42,6 +44,21 @@ def graph_explorer(request):
     return render(request, "ravioli/graph.html", context)
 
 
+def resolve_label(node):
+    if getattr(node, "labels", None):
+        labels = list(node.labels)
+        if labels:
+            return labels[0]
+    return "Node"
+
+
+def get_props(n):
+    props = dict(n._properties)
+    data = json.loads(props.get("data", "{}"))
+    props.pop("data", None)
+    props.update(data)
+    return props
+
 @login_required
 def graph_data(request):
     """
@@ -73,33 +90,38 @@ def graph_data(request):
 
         if str(n.id) not in seen_nodes:
             seen_nodes.add(str(n.id))
-            node_labels.update(n.labels)
+            props = get_props(n)
+            label = props.get("type", resolve_label(n))
+            node_labels.update(label)
             elements.append({
                 "data": {
                     "id": str(n.id),
-                    "label": list(n.labels)[0] if n.labels else "Node",
-                    **n._properties
+                    "label": label,
+                    **props
                 }
             })
 
         if str(m.id) not in seen_nodes:
             seen_nodes.add(str(m.id))
-            node_labels.update(m.labels)
+            props = get_props(n)
+            label = props.get("type", resolve_label(n))
+            node_labels.update(label)
             elements.append({
                 "data": {
                     "id": str(m.id),
-                    "label": list(m.labels)[0] if m.labels else "Node",
-                    **m._properties
+                    "label": label,
+                    **props
                 }
             })
         edge_types.add(r.type)
+        props = dict(r._properties)
         elements.append({
             "data": {
                 "id": f"{n.id}-{m.id}",
                 "source": str(n.id),
                 "target": str(m.id),
-                "type": r.type,
-                **r._properties
+                "type": props.get("label", r.type),
+                **props
             }
         })
 

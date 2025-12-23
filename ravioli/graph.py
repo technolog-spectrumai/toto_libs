@@ -18,8 +18,7 @@ class GraphTranslator:
         Remove any existing Neo4j nodes tagged with this graph name.
         """
         db.cypher_query(
-            "MATCH (n {graph_name:$graph}) DETACH DELETE n",
-            {"graph": self.graph.name}
+            "MATCH (n) DETACH DELETE n;"
         )
 
     def export_nodes(self):
@@ -30,8 +29,9 @@ class GraphTranslator:
             neo_node = NeoDataNode(
                 name=node.name,
                 type=node.collection_type.name,
+                label=node.collection_type.name,
                 data=node.data or {}
-            ).save()
+            )
             neo_node.save()
             self.node_map[node.id] = neo_node
 
@@ -45,9 +45,10 @@ class GraphTranslator:
             if source and target:
                 rel = source.relates_to.connect(target, {
                     "relation_type": edge.relation_type.name,
-                    "label": edge.label,
+                    "label": edge.relation_type.name,
                     "metadata": edge.metadata or {}
                 })
+
                 rel.save()
 
     def export(self):
