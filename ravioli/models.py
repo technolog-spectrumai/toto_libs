@@ -4,7 +4,7 @@ from toto.models import SerializableModel
 from django.db import models
 from .graph import GraphTranslator
 from colorfield.fields import ColorField
-from toto.colors import ColorGenerator
+
 
 
 
@@ -184,50 +184,41 @@ class NodeStyle(models.Model):
     """
     Visual style for nodes of a given CollectionType within a specific Graph.
     """
-    graph = models.ForeignKey(
-        Graph,
-        related_name="node_styles",
-        on_delete=models.CASCADE
-    )
+    cypher_query = models.ForeignKey(CypherQuery, related_name="node_styles", on_delete=models.CASCADE)
     collection_type = models.ForeignKey(
         CollectionType,
         related_name="styles",
         on_delete=models.CASCADE
     )
-
-    color = ColorField(default=ColorGenerator.random_mpl_color)  # default blue
+    color = ColorField(default="#000000")  # default blue
     size = models.PositiveIntegerField(default=20)  # node radius or similar
 
     class Meta:
-        unique_together = ("graph", "collection_type")
+        unique_together = ("cypher_query", "collection_type")
 
     def __str__(self):
-        return f"NodeStyle({self.collection_type.name} in {self.graph.name})"
+        return f"NodeStyle({self.collection_type.name} in {self.cypher_query.name})"
 
 
 class EdgeStyle(models.Model):
     """
     Visual style for edges of a given RelationType within a specific Graph.
     """
-    graph = models.ForeignKey(
-        Graph,
-        related_name="edge_styles",
-        on_delete=models.CASCADE
-    )
+    cypher_query = models.ForeignKey(CypherQuery, related_name="edge_styles", on_delete=models.CASCADE )
     relation_type = models.ForeignKey(
         RelationType,
         related_name="styles",
         on_delete=models.CASCADE
     )
 
-    color = ColorField(default=ColorGenerator.random_mpl_color)  # default grey
+    color = ColorField(default="#000000")  # default grey
     size = models.PositiveIntegerField(default=2)  # stroke width
 
     class Meta:
-        unique_together = ("graph", "relation_type")
+        unique_together = ("cypher_query", "relation_type")
 
     def __str__(self):
-        return f"EdgeStyle({self.relation_type.name} in {self.graph.name})"
+        return f"EdgeStyle({self.relation_type.name} in {self.cypher_query.name})"
 
 
 

@@ -1,11 +1,12 @@
 import uuid
 from django.core import serializers
-from datetime import timedelta
 from django.db import models
-from RestrictedPython import compile_restricted, safe_builtins, utility_builtins, limited_builtins
-import operator
-from RestrictedPython.Guards import guarded_unpack_sequence, full_write_guard
+from toto.executor import RestrictedPythonExecutor
 
+
+# =====================================================================
+#  Django Models
+# =====================================================================
 
 class BaseExecutableModel(models.Model):
     """
@@ -21,9 +22,6 @@ class BaseExecutableModel(models.Model):
         abstract = True
 
     def get_context(self, context: dict = None) -> dict:
-        """
-        Default context resolution. Subclasses can override if needed.
-        """
         return context or self.test_context or {}
 
     def get_allowed_globals(self, context: dict) -> dict:
@@ -34,50 +32,37 @@ class BaseExecutableModel(models.Model):
 
     def execute(self, context: dict = None):
         """
-        Execute restricted Python code. Requires a main(context) function.
+        Execute restricted Python code using the helper executor.
         """
         ctx = self.get_context(context)
 
-        try:
-            byte_code = compile_restricted(
-                self.code,
-                filename=f"<lambda:{getattr(self, 'name', 'unnamed')}>",
-                mode="exec"
-            )
+        executor = RestrictedPythonExecutor(
+            code=self.code,
+            context=ctx,
+            name=getattr(self, "name", "unnamed")
+        )
 
-            allowed_globals = self.get_allowed_globals(ctx)
-            local_vars = {}
-            exec(byte_code, allowed_globals, local_vars)
+        # Merge model-level allowed globals with executor defaults
+        extra_globals = self.get_allowed_globals(ctx)
 
-            if "main" not in local_vars or not callable(local_vars["main"]):
-                return {"error": "No main() function defined in node code"}
+        return executor.execute(extra_globals=extra_globals)
 
-            return local_vars["main"](ctx)
 
-        except Exception as e:
-            return {"error": str(e)}
 
-    @staticmethod
-    def get_default_allowed_globals() -> dict:
-        allowed_builtins = {}
-        allowed_builtins.update(safe_builtins)
-        allowed_builtins.update(utility_builtins)
-        allowed_builtins.update(limited_builtins)
+class SerializableModel(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
-        return {
-            "__builtins__": allowed_builtins,
-            "_getitem_": operator.getitem,
-            "_setitem_": operator.setitem,
-            "_delitem_": operator.delitem,
-            "_unpack_sequence_": guarded_unpack_sequence,
-            "_getiter_": iter,
-            "timedelta": timedelta,
-            "sum": sum,
-            "len": len,
-            "max": max,
-            "min": min,
-            "_write_": full_write_guard,
-        }
+    class Meta:
+        abstract = True
+
+    @classmethod
+    def serialize_queryset(cls, queryset, format="json"):
+        return serializers.serialize(format, queryset)
+
+    @classmethod
+    def deserialize_data(cls, data, format="json"):
+        return serializers.deserialize(format, data)
+
 
 
 

@@ -4,7 +4,8 @@ from neo4j import GraphDatabase
 from django.conf import settings
 from django import forms
 from django_json_widget.widgets import JSONEditorWidget
-from psycopg import adapters
+from toto.colors import ColorGenerator
+
 
 from .graph import GraphTranslator
 from toto.batch import BatchAction
@@ -72,6 +73,26 @@ class DataEdgeForm(forms.ModelForm):
         }
 
 
+
+class NodeStyleInline(admin.TabularInline):
+    model = NodeStyle
+    extra = 0
+    fields = ("collection_type", "color", "size")
+
+
+class EdgeStyleInline(admin.TabularInline):
+    model = EdgeStyle
+    extra = 0
+    fields = ("relation_type", "color", "size")
+
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+
+        # Only set a random color when creating a new object
+        if obj is None:
+            form.base_fields["color"].initial = ColorGenerator.random_mpl_color
+
+        return form
 # ---------------------------
 # Admin registrations
 # ---------------------------
@@ -83,6 +104,7 @@ class CypherQueryAdmin(BaseSerializableAdmin):
     search_fields = ("name", "description", "query")
     ordering = ("name",)
     readonly_fields = ("created_at",)
+    inlines = [NodeStyleInline, EdgeStyleInline]
 
     def query_valid(self, obj):
         if test_cypher_query(obj.query):
@@ -189,39 +211,4 @@ class DataEdgeAdmin(admin.ModelAdmin):
     list_filter = ("relation_type", "graph")
 
 
-
-# # --- Inline Admins ---------------------------------------------------
-#
-# class NodeStyleInline(admin.TabularInline):
-#     model = NodeStyle
-#     extra = 0
-#     readonly_fields = ("color_preview",)
-#     fields = ("collection_type", "color", "color_preview", "size")
-#
-#     def color_preview(self, obj):
-#         return color_preview(obj)
-#
-#
-# class EdgeStyleInline(admin.TabularInline):
-#     model = EdgeStyle
-#     extra = 0
-#     readonly_fields = ("color_preview",)
-#     fields = ("relation_type", "color", "color_preview", "size")
-#
-#     def color_preview(self, obj):
-#         return color_preview(obj)
-
-
-@admin.register(NodeStyle)
-class NodeStyleAdmin(admin.ModelAdmin):
-    list_display = ("graph", "collection_type", "size")
-    list_filter = ("graph", "collection_type")
-    search_fields = ("graph__name", "collection_type__name")
-
-
-@admin.register(EdgeStyle)
-class EdgeStyleAdmin(admin.ModelAdmin):
-    list_display = ("graph", "relation_type", "size")
-    list_filter = ("graph", "relation_type")
-    search_fields = ("graph__name", "relation_type__name")
 
