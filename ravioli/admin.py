@@ -14,7 +14,9 @@ from .models import (
     CollectionType,
     DataNode,
     RelationType,
-    DataEdge
+    DataEdge,
+    NodeStyle,
+    EdgeStyle,
 )
 from toto.admin import BaseSerializableAdmin
 from .forms import DynamicDataNodeForm   # <-- import your dynamic form
@@ -185,4 +187,41 @@ class DataEdgeAdmin(admin.ModelAdmin):
     list_display = ("source", "target", "relation_type", "graph", "label", "created_at")
     search_fields = ("label", "metadata")
     list_filter = ("relation_type", "graph")
+
+
+
+# # --- Inline Admins ---------------------------------------------------
+#
+# class NodeStyleInline(admin.TabularInline):
+#     model = NodeStyle
+#     extra = 0
+#     readonly_fields = ("color_preview",)
+#     fields = ("collection_type", "color", "color_preview", "size")
+#
+#     def color_preview(self, obj):
+#         return color_preview(obj)
+#
+#
+# class EdgeStyleInline(admin.TabularInline):
+#     model = EdgeStyle
+#     extra = 0
+#     readonly_fields = ("color_preview",)
+#     fields = ("relation_type", "color", "color_preview", "size")
+#
+#     def color_preview(self, obj):
+#         return color_preview(obj)
+
+
+@admin.register(NodeStyle)
+class NodeStyleAdmin(admin.ModelAdmin):
+    list_display = ("graph", "collection_type", "size")
+    list_filter = ("graph", "collection_type")
+    search_fields = ("graph__name", "collection_type__name")
+
+
+@admin.register(EdgeStyle)
+class EdgeStyleAdmin(admin.ModelAdmin):
+    list_display = ("graph", "relation_type", "size")
+    list_filter = ("graph", "relation_type")
+    search_fields = ("graph__name", "relation_type__name")
 

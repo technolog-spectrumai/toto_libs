@@ -3,6 +3,9 @@ from django.contrib.auth.models import User
 from toto.models import SerializableModel
 from django.db import models
 from .graph import GraphTranslator
+from colorfield.fields import ColorField
+from toto.colors import ColorGenerator
+
 
 
 class CypherQuery(SerializableModel):
@@ -175,5 +178,56 @@ class DataEdge(models.Model):
 
     def __str__(self):
         return f"{self.source} -> {self.target} [{self.relation_type.name}] ({self.label})"
+
+
+class NodeStyle(models.Model):
+    """
+    Visual style for nodes of a given CollectionType within a specific Graph.
+    """
+    graph = models.ForeignKey(
+        Graph,
+        related_name="node_styles",
+        on_delete=models.CASCADE
+    )
+    collection_type = models.ForeignKey(
+        CollectionType,
+        related_name="styles",
+        on_delete=models.CASCADE
+    )
+
+    color = ColorField(default=ColorGenerator.random_mpl_color)  # default blue
+    size = models.PositiveIntegerField(default=20)  # node radius or similar
+
+    class Meta:
+        unique_together = ("graph", "collection_type")
+
+    def __str__(self):
+        return f"NodeStyle({self.collection_type.name} in {self.graph.name})"
+
+
+class EdgeStyle(models.Model):
+    """
+    Visual style for edges of a given RelationType within a specific Graph.
+    """
+    graph = models.ForeignKey(
+        Graph,
+        related_name="edge_styles",
+        on_delete=models.CASCADE
+    )
+    relation_type = models.ForeignKey(
+        RelationType,
+        related_name="styles",
+        on_delete=models.CASCADE
+    )
+
+    color = ColorField(default=ColorGenerator.random_mpl_color)  # default grey
+    size = models.PositiveIntegerField(default=2)  # stroke width
+
+    class Meta:
+        unique_together = ("graph", "relation_type")
+
+    def __str__(self):
+        return f"EdgeStyle({self.relation_type.name} in {self.graph.name})"
+
 
 
