@@ -73,7 +73,6 @@ class DataEdgeForm(forms.ModelForm):
         }
 
 
-
 class NodeStyleInline(admin.TabularInline):
     model = NodeStyle
     extra = 0
@@ -85,14 +84,7 @@ class EdgeStyleInline(admin.TabularInline):
     extra = 0
     fields = ("relation_type", "color", "size")
 
-    def get_form(self, request, obj=None, **kwargs):
-        form = super().get_form(request, obj, **kwargs)
 
-        # Only set a random color when creating a new object
-        if obj is None:
-            form.base_fields["color"].initial = ColorGenerator.random_mpl_color
-
-        return form
 # ---------------------------
 # Admin registrations
 # ---------------------------
