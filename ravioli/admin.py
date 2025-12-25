@@ -102,7 +102,8 @@ class CypherQueryAdmin(BaseSerializableAdmin):
     @admin.action(description="Create missing styles")
     def create_missing_styles(modeladmin, request, queryset):
         created_count = 0
-        generator = ColorGenerator("tab20")
+        node_color_generator = ColorGenerator("tab20")
+        edge_color_generator = ColorGenerator("tab20c")
 
         for cypher_query in queryset:
 
@@ -112,7 +113,7 @@ class CypherQueryAdmin(BaseSerializableAdmin):
                     cypher_query=cypher_query,
                     collection_type=ct,
                     defaults={
-                        "color": generator.color_for_id(idx),
+                        "color": node_color_generator.color_for_id(idx),
                         "size": 20,
                     }
                 )
@@ -125,7 +126,7 @@ class CypherQueryAdmin(BaseSerializableAdmin):
                     cypher_query=cypher_query,
                     relation_type=rt,
                     defaults={
-                        "color": generator.color_for_id(idx),
+                        "color": edge_color_generator.color_for_id(idx),
                         "size": 2,
                     }
                 )
