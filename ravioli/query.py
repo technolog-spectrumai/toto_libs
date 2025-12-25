@@ -1,17 +1,13 @@
 import json
-from .models import CypherQuery
-from toto.colors import ColorGenerator
+import networkx as nx
 from neo4j import GraphDatabase
 from django.conf import settings
-
+from .models import CypherQuery
+from toto.colors import ColorGenerator
+from toto.executor import RestrictedPythonExecutor
 
 
 class GraphStyleResolver:
-    """
-    Resolves node and edge visual styles for a CypherQuery.
-    Falls back to grey + default size if style is missing.
-    """
-
     FALLBACK_NODE_COLOR = "#888888"
     FALLBACK_EDGE_COLOR = "#888888"
     FALLBACK_NODE_SIZE = 20
@@ -30,24 +26,26 @@ class GraphStyleResolver:
             for es in cypher_query.edge_styles.all()
         }
 
-    def node_color(self, label: str):
+    def node_color(self, label):
         style = self.node_styles.get(label)
         return style.color if style else self.FALLBACK_NODE_COLOR
 
-    def node_size(self, label: str):
+    def node_size(self, label):
         style = self.node_styles.get(label)
         return style.size if style else self.FALLBACK_NODE_SIZE
 
-    def edge_color(self, rel_type: str):
+    def edge_color(self, rel_type):
         style = self.edge_styles.get(rel_type)
         return style.color if style else self.FALLBACK_EDGE_COLOR
 
-    def edge_size(self, rel_type: str):
+    def edge_size(self, rel_type):
         style = self.edge_styles.get(rel_type)
         return style.size if style else self.FALLBACK_EDGE_SIZE
 
 
-
+# ---------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------
 
 def resolve_label(node):
     if getattr(node, "labels", None):
@@ -77,10 +75,110 @@ def run_cypher(query: str):
     return records
 
 
+# ---------------------------------------------------------
+# NetworkX conversion
+# ---------------------------------------------------------
+
+def records_to_networkx(records):
+    G = nx.DiGraph()
+
+    for record in records:
+        n, m, r = record["n"], record["m"], record["r"]
+
+        # Node n
+        props_n = get_props(n)
+        label_n = props_n.get("type", resolve_label(n))
+        G.add_node(str(n.id), label=label_n, **props_n)
+
+        # Node m
+        props_m = get_props(m)
+        label_m = props_m.get("type", resolve_label(m))
+        G.add_node(str(m.id), label=label_m, **props_m)
+
+        # Edge r
+        edge_type = r._properties.get("label", r.type)
+        props_r = dict(r._properties)
+        G.add_edge(str(n.id), str(m.id), type=edge_type, **props_r)
+
+    return G
+
+def apply_user_lambda(cypher_query, graph):
+    """
+    Executes restricted Python code stored in cypher_query.code.
+    The code must define:  def main(G): return G
+    """
+    if not cypher_query.code:
+        return graph
+
+    executor = RestrictedPythonExecutor(
+        code=cypher_query.code,
+        context={"G": graph},
+        name=f"cypher_query_{cypher_query.id}"
+    )
+
+    result = executor.execute(extra_globals={"nx": nx})
+
+    # If RestrictedPython returns an error, keep original graph
+    if isinstance(result, dict) and "error" in result:
+        print("RestrictedPython error:", result["error"])
+        return graph
+
+    # If user returned nothing, keep original graph
+    if result is None:
+        return graph
+
+    return result
+
+
+
+def networkx_to_elements(G, style):
+    elements = []
+    node_labels = set()
+    edge_types = set()
+
+    # Nodes
+    for node_id, data in G.nodes(data=True):
+        label = data.get("label", "Node")
+        node_labels.add(label)
+
+        elements.append({
+            "data": {
+                "id": node_id,
+                "label": label,
+                "color": style.node_color(label) if style else None,
+                "size": style.node_size(label) if style else None,
+                **data
+            }
+        })
+
+    # Edges
+    for u, v, data in G.edges(data=True):
+        edge_type = data.get("type", "REL")
+        edge_types.add(edge_type)
+
+        elements.append({
+            "data": {
+                "id": f"{u}-{v}",
+                "source": u,
+                "target": v,
+                "type": edge_type,
+                "color": style.edge_color(edge_type) if style else None,
+                "size": style.edge_size(edge_type) if style else None,
+                **data
+            }
+        })
+
+    return elements, node_labels, edge_types
+
+
+# ---------------------------------------------------------
+# Main QueryHelper
+# ---------------------------------------------------------
 
 class QueryHelper:
     """
-    Loads a CypherQuery, runs it, applies styles,
+    Loads a CypherQuery, runs it, converts to NetworkX,
+    applies user lambda, converts back, applies styles,
     and returns graph JSON for the frontend.
     """
 
@@ -89,11 +187,6 @@ class QueryHelper:
         self.query_obj = None
         self.cypher = None
         self.style = None
-
-        self.elements = []
-        self.seen_nodes = set()
-        self.node_labels = set()
-        self.edge_types = set()
 
         self._load_query()
 
@@ -106,58 +199,21 @@ class QueryHelper:
             self.cypher = "MATCH (n)-[r]->(m) RETURN n,r,m LIMIT 500"
             self.style = None
 
-    def add_node(self, node):
-        node_id = str(node.id)
-        if node_id in self.seen_nodes:
-            return
-
-        self.seen_nodes.add(node_id)
-
-        props = get_props(node)
-        label = props.get("type", resolve_label(node))
-        self.node_labels.add(label)
-
-        self.elements.append({
-            "data": {
-                "id": node_id,
-                "label": label,
-                "color": self.style.node_color(label) if self.style else None,
-                "size": self.style.node_size(label) if self.style else None,
-                **props
-            }
-        })
-
-    def add_edge(self, n, m, r):
-        edge_type = r._properties.get("label", r.type)
-        self.edge_types.add(edge_type)
-
-        props = dict(r._properties)
-
-        self.elements.append({
-            "data": {
-                "id": f"{n.id}-{m.id}",
-                "source": str(n.id),
-                "target": str(m.id),
-                "type": edge_type,
-                "color": self.style.edge_color(edge_type) if self.style else None,
-                "size": self.style.edge_size(edge_type) if self.style else None,
-                **props
-            }
-        })
-    # ---------------------------------------------------------
-    # Main entry point
-    # ---------------------------------------------------------
     def run(self):
-        results = run_cypher(self.cypher)
+        # Step 1: run cypher
+        records = run_cypher(self.cypher)
 
-        for record in results:
-            n, m, r = record["n"], record["m"], record["r"]
-            self.add_node(n)
-            self.add_node(m)
-            self.add_edge(n, m, r)
+        # Step 2: convert to networkx
+        G = records_to_networkx(records)
+
+        # Step 3: apply user lambda
+        G = apply_user_lambda(self.query_obj, G)
+
+        # Step 4: convert back to cytoscape JSON
+        elements, node_labels, edge_types = networkx_to_elements(G, self.style)
 
         return {
-            "elements": self.elements,
-            "node_labels": list(self.node_labels),
-            "edge_types": list(self.edge_types),
+            "elements": elements,
+            "node_labels": list(node_labels),
+            "edge_types": list(edge_types),
         }

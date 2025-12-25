@@ -4,7 +4,7 @@ from toto.models import SerializableModel
 from django.db import models
 from .graph import GraphTranslator
 from colorfield.fields import ColorField
-
+from toto.models import BaseExecutableModel
 
 
 
@@ -35,38 +35,14 @@ class CypherQuery(SerializableModel):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     is_active = models.BooleanField(default=True)
+    code = models.TextField(help_text="Restricted Python code snippet")
+    test_context = models.JSONField(blank=True, null=True, help_text="Optional JSON context for testing")
 
     class Meta:
         ordering = ["name"]
 
     def __str__(self):
         return self.name
-
-    @staticmethod
-    def for_node_types(node_types: List[str], created_by: User = None) -> "CypherQuery":
-        """
-        Factory method: build a CypherQuery that fetches all nodes of given types
-        and their one-hop neighbours.
-        """
-        if not node_types:
-            raise ValueError("You must provide at least one node type.")
-
-        # Build label string like ":Person|Company|Product"
-        label_expr = ":`" + "`|:`".join(node_types) + "`"
-
-        cypher = f"""
-        MATCH (n{label_expr})-[r]-(m)
-        RETURN n, r, m
-        LIMIT 100
-        """
-
-        return CypherQuery(
-            name=f"{', '.join(node_types)} with one-hop neighbours",
-            description=f"Fetch all {', '.join(node_types)} nodes and their immediate neighbours.",
-            query=cypher.strip(),
-            created_by=created_by,
-            is_active=True,
-        )
 
 
 class Graph(models.Model):

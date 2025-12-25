@@ -5,6 +5,7 @@ from django.conf import settings
 from django import forms
 from django_json_widget.widgets import JSONEditorWidget
 from toto.colors import ColorGenerator
+from django_ace import AceWidget
 
 
 from .graph import GraphTranslator
@@ -89,8 +90,19 @@ class EdgeStyleInline(admin.TabularInline):
 # Admin registrations
 # ---------------------------
 
+class CypherQueryForm(forms.ModelForm):
+    class Meta:
+        model = CypherQuery
+        fields = "__all__"
+        widgets = {
+            "code": AceWidget(mode="python", theme="chrome", width="100%", height="400px"),
+            "test_context": JSONEditorWidget()
+        }
+
+
 @admin.register(CypherQuery)
-class CypherQueryAdmin(BaseSerializableAdmin):
+class CypherQueryAdmin(admin.ModelAdmin):
+    form = CypherQueryForm
     list_display = ("name", "created_by", "created_at", "is_active", "query_valid")
     list_filter = ("is_active", "created_by")
     search_fields = ("name", "description", "query")
@@ -98,6 +110,7 @@ class CypherQueryAdmin(BaseSerializableAdmin):
     readonly_fields = ("created_at",)
     inlines = [NodeStyleInline, EdgeStyleInline]
     actions = ["create_missing_styles"]
+
 
     @admin.action(description="Create missing styles")
     def create_missing_styles(modeladmin, request, queryset):
