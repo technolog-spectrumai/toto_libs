@@ -10,6 +10,7 @@ class ColorGenerator:
     def __init__(self, palette_name="tab20"):
         self.palette_name = palette_name
         self.colors = self._load_palette(palette_name)
+        random.shuffle(self.colors)
 
     @staticmethod
     def _rgb_to_hex(rgb):
@@ -38,3 +39,6 @@ class ColorGenerator:
     def random_mpl_color(palette_name="tab20"):
         generator = ColorGenerator(palette_name)
         return generator.random_color()
+
+    def color_for_id(self, id_value):
+        return self.colors[id_value % len(self.colors)]
