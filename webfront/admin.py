@@ -66,30 +66,11 @@ class PageWidgetInline(admin.StackedInline):
     form = PageWidgetForm
     extra = 0
     show_change_link = True
-
-    readonly_fields = ("lambda_valid",)
-
-    fieldsets = (
-        ("Widget", {
-            "fields": ("widget_type", "lambda_valid")
-        }),
-        ("Configuration", {
-            "fields": ("config",)
-        }),
-        ("Lambda", {
-            "fields": ("code", "test_context")
-        })
+    fields = (
+        "widget_type",
+        "config",
+        "code",
     )
-
-    def lambda_valid(self, obj):
-        if not obj.code:
-            return format_html('<span style="color: gray;">No code</span>')
-        if "def main" in obj.code:
-            return format_html('<span style="color: green; font-weight: bold;">Valid</span>')
-        return format_html('<span style="color: red; font-weight: bold;">Invalid</span>')
-
-    lambda_valid.short_description = "Lambda OK?"
-
 
 # ---------------------------------------------------------
 # Admin Actions

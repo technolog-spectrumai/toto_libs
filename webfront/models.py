@@ -53,10 +53,10 @@ class PageWidget(models.Model):
         related_name="widgets"
     )
 
-    widget_type = models.CharField(
-        max_length=100,
-        help_text="Identifier for the widget micro-frontend (e.g. 'chart.line', 'table.basic')"
-    )
+    WIDGET_TYPES = [("chart.line", "Line Chart"), ("chart.bar", "Bar Chart"), ("chart.pie", "Pie Chart"),
+                    ("table.basic", "Table"), ("card.basic", "Card"), ("list.basic", "List"), ]
+
+    widget_type = models.CharField( max_length=100, choices=WIDGET_TYPES, help_text="Type of widget to render" )
 
     config = models.JSONField(
         default=dict,
