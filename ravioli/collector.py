@@ -2,7 +2,6 @@ import datetime
 from decimal import Decimal
 from django.db.models.fields.related import ForeignKey, ManyToManyField
 from django.core import serializers
-
 from ravioli.models import (
     Graph,
     CollectionType,
@@ -10,6 +9,7 @@ from ravioli.models import (
     RelationType,
     DataEdge,
 )
+from django.apps import apps
 
 
 class CollectorHelper:
@@ -110,3 +110,40 @@ class CollectorHelper:
 
     def get_node(self, model, pk):
         return self.node_lookup.get((model, pk))
+
+    @staticmethod
+    def build_graph(collectors, graph):
+        """
+        Run multiple collectors into a single graph.
+        Uses one shared CollectorHelper instance.
+        For each collector, uses its app_name to discover models.
+        """
+
+        if graph is None:
+            raise ValueError("A graph instance is required.")
+
+        helper = CollectorHelper(graph)
+
+        for collector in collectors:
+            app_label = collector.app_name
+
+            # Get app config from app_label (e.g. "auth", "myapp")
+            app_config = apps.get_app_config(app_label)
+
+            # Iterate over all models in that app
+            for model in app_config.get_models():
+
+                # 1. Create collection type
+                collection_type = CollectorHelper.create_collection_type(model)
+
+                # 2. Create nodes
+                for obj in model.objects.all():
+                    helper.create_node(model, obj, collection_type)
+
+                # 3. Create edges
+                for obj in model.objects.all():
+                    node = helper.get_node(model, obj.pk)
+                    helper.create_fk_edges(model, obj, node)
+                    helper.create_m2m_edges(model, obj, node)
+
+        return helper

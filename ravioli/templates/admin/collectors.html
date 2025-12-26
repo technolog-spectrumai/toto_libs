@@ -1,0 +1,23 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block content %}
+<h1>{{ title }}</h1>
+
+<form method="post" action="">
+    {% csrf_token %}
+
+    {{ form.as_p }}
+
+    <!-- Required for Django admin to re-run the action -->
+    <input type="hidden" name="action" value="run_collectors">
+    {% for obj in collectors %}
+        <input type="hidden" name="_selected_action" value="{{ obj.pk }}">
+    {% endfor %}
+
+    <!-- Your confirmation flag -->
+    <input type="hidden" name="apply" value="1">
+
+    <button type="submit" class="button default">Run Collectors</button>
+</form>
+{% endblock %}

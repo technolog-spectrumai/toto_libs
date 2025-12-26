@@ -1,9 +1,8 @@
-# forms.py
-from django import forms
 from django.core.exceptions import ValidationError
 import jsonschema
-
-from .models import DataNode, CollectionType
+from .models import DataNode, CollectionType, Graph
+from django import forms
+from django.apps import apps
 
 
 class FieldFactory:
@@ -105,3 +104,31 @@ class DynamicDataNodeForm(forms.ModelForm):
                 raise ValidationError({"data": f"Schema validation error: {e.message}"})
 
         return cleaned_data
+
+
+class RunCollectorsForm(forms.Form):
+    graph = forms.ModelChoiceField(
+        queryset=Graph.objects.all(),
+        required=True,
+        help_text="Choose the graph to ingest data into."
+    )
+    #
+    # models = forms.MultipleChoiceField(
+    #     required=True,
+    #     help_text="Select models to process.",
+    #     widget=forms.CheckboxSelectMultiple
+    # )
+    #
+    # def __init__(self, *args, **kwargs):
+    #     super().__init__(*args, **kwargs)
+    #
+    #     # Dynamically load all models from allowed apps
+    #     model_choices = []
+    #     for app_label in apps.app_configs.keys():
+    #         app = apps.get_app_config(app_label)
+    #         for model in app.get_models():
+    #             model_choices.append(
+    #                 (f"{model._meta.app_label}.{model.__name__}", model.__name__)
+    #             )
+    #
+    #     self.fields["models"].choices = model_choices

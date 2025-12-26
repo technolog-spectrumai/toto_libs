@@ -1,6 +1,4 @@
-from django.contrib import admin, messages
 from django import forms
-from django_json_widget.widgets import JSONEditorWidget
 from toto.colors import ColorGenerator
 from .translate import GraphTranslator
 from toto.batch import BatchAction
@@ -14,7 +12,12 @@ from .models import (
 )
 from .forms import DynamicDataNodeForm
 from django_json_widget.widgets import JSONEditorWidget
-from django.conf import settings
+from django.contrib import admin, messages
+from django.shortcuts import render, redirect
+from django.urls import path
+from .forms import RunCollectorsForm
+from .collector import CollectorHelper
+
 
 # ---------------------------
 # Custom Forms
@@ -156,8 +159,49 @@ class CollectorAdminForm(forms.ModelForm):
 @admin.register(Collector)
 class CollectorAdmin(admin.ModelAdmin):
     form = CollectorAdminForm
-
     list_display = ("app_name", "created_at")
     search_fields = ("app_name",)
     list_filter = ("app_name", "created_at")
+    actions = ["run_collectors"]
+
+    def run_collectors(self, request, queryset):
+        if request.POST.get("apply"):
+            form = RunCollectorsForm(request.POST)
+            if form.is_valid():
+                graph = form.cleaned_data["graph"]
+
+                CollectorHelper.build_graph(queryset, graph)
+
+                self.message_user(
+                    request,
+                    f"Successfully ran {queryset.count()} collectors into graph '{graph}'.",
+                    level=messages.SUCCESS,
+                )
+                return redirect(request.get_full_path())
+        else:
+            form = RunCollectorsForm()
+
+        return render(
+            request,
+            "admin/collectors.html",
+            context={
+                "collectors": queryset,
+                "form": form,
+                "title": "Run collectors into graph",
+            },
+        )
+
+    run_collectors.short_description = "Run selected collectors into a graph"
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom = [
+            path(
+                "run-collectors/",
+                self.admin_site.admin_view(self.run_collectors),
+                name="run_collectors",
+            )
+        ]
+        return custom + urls
+
 
