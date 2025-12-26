@@ -186,9 +186,6 @@ class CollectorHelper:
             if not isinstance(field, ForeignKey):
                 continue
 
-            # Skip ContentType and any FK without db_comment
-            if str(field).find("asset") != -1:
-                i = 0
             rel_name = getattr(field, "db_comment", None)
             if not rel_name:
                 continue
