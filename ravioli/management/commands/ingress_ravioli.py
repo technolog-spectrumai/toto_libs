@@ -1,12 +1,14 @@
 from faker import Faker
 from oya.ingress import IngressCommand
-
+from django.apps import apps
+from django.conf import settings
 from ravioli.models import (
     Graph,
     CollectionType,
     DataNode,
     RelationType,
-    DataEdge
+    DataEdge,
+    Collector
 )
 
 fake = Faker()
@@ -15,8 +17,17 @@ fake = Faker()
 class Command(IngressCommand):
     help = "Seeds a demo graph with sample nodes, relations, and a Cypher query"
 
-    def process(self):
+    @staticmethod
+    def create_collectors_from_settings():
+        allowed = getattr(settings, "GRAPH_ALLOWED_APPS", [])
 
+        for app_label in allowed:
+            Collector.objects.get_or_create(app_name=app_label)
+
+    def process(self):
+        self.create_collectors_from_settings()
+        if not self.full:
+            return
         # Graph
         graph, _ = Graph.objects.get_or_create(
             name="demo_graph",

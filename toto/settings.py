@@ -304,7 +304,10 @@ GRAPH_ALLOWED_APPS = [
     "library",
     "locations",
     "community",
-    "assets"
+    "assets",
+    "finance",
+    "portfolio",
+    "federal"
 ]
 
 FULL_INGRESS = DEBUG
