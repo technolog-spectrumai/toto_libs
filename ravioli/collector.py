@@ -105,7 +105,8 @@ class CollectorHelper:
             # Skip relations
             if field.is_relation:
                 continue
-
+            if field.primary_key:
+                continue
             field_type = field.get_internal_type()
             json_type = CollectorHelper.DJANGO_TO_JSON.get(field_type, "string")
 

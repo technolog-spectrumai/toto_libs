@@ -58,7 +58,7 @@ class Command(IngressCommand):
         )
 
         company_type, _ = CollectionType.objects.get_or_create(
-            name="Company",
+            name="FakeCompany",
             defaults={
                 "json_schema": {
                     "type": "object",
