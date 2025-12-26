@@ -78,10 +78,7 @@ class PageWidgetInline(admin.StackedInline):
         }),
         ("Lambda", {
             "fields": ("code", "test_context")
-        }),
-        ("Layout", {
-            "fields": ("layout",)
-        }),
+        })
     )
 
     def lambda_valid(self, obj):
@@ -182,10 +179,7 @@ class PageWidgetAdmin(admin.ModelAdmin):
         }),
         ("Lambda", {
             "fields": ("code", "test_context")
-        }),
-        ("Layout", {
-            "fields": ("layout",)
-        }),
+        })
     )
 
     def lambda_valid(self, obj):

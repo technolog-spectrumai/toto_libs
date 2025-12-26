@@ -76,8 +76,7 @@ class Command(BaseCommand):
                 defaults={
                     "config": w.get("config", {}),
                     "code": code,
-                    "test_context": w.get("test_context"),
-                    "layout": w.get("layout", {}),
+                    "test_context": w.get("test_context")
                 },
             )
 
