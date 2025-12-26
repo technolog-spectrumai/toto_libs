@@ -1,5 +1,5 @@
 from django.shortcuts import render, get_object_or_404
-from .models import StaticPage, DynamicPage, MetricsPage
+from .models import StaticPage, DynamicPage
 from oya.page import PageProcessor
 from django.template import Template, Context
 
@@ -52,23 +52,3 @@ def dynamic_page_detail(request, slug):
 
     decorated_context = PageProcessor().decorate({"page": page}, request)
     return render(request, "webfront/page.html", decorated_context)
-
-
-def metrics_page_detail(request, slug):
-    """
-    Display a MetricsPage by slug, rendering its charts dynamically.
-    """
-    page = get_object_or_404(MetricsPage, slug=slug)
-
-    # Collect chart data
-    charts_data = page.get_chart_data()
-
-    # Mutate page-like object for consistency
-    page.body = ""  # optional: you can render description or leave empty
-
-    decorated_context = PageProcessor().decorate({
-        "page": page,
-        "charts": charts_data
-    }, request)
-
-    return render(request, "webfront/metrics.html", decorated_context)

@@ -5,6 +5,5 @@ app_name = "webfront"
 
 urlpatterns = [
     path("static/<slug:slug>/", views.static_page_detail, name="static_page_detail"),
-    path("dynamic/<slug:slug>/", views.dynamic_page_detail, name="dynamic_page_detail"),
-    path("metrics/<slug:slug>/", views.metrics_page_detail, name="metrics_page_detail"),
+    path("dynamic/<slug:slug>/", views.dynamic_page_detail, name="dynamic_page_detail")
 ]
