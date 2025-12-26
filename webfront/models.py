@@ -15,13 +15,13 @@ class DynamicPage(models.Model):
     slug = models.SlugField(max_length=200, unique=True)
     description = models.TextField(blank=True)
 
-    created_by = models.ForeignKey(
+    owner = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="created_pages",
-        help_text="User who created this page"
+        related_name="owned_pages",
+        help_text="User who owns this page"
     )
 
     created_at = models.DateTimeField(auto_now_add=True)

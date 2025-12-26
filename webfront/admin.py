@@ -86,23 +86,22 @@ def test_selected_widgets(modeladmin, request, queryset):
 class DynamicPageAdmin(admin.ModelAdmin):
     form = DynamicPageForm
 
-    list_display = ("name", "slug", "created_by", "created_at")
+    list_display = ("name", "slug", "owner", "created_at")
     search_fields = ("name", "slug")
 
     inlines = [PageWidgetInline]
 
-    readonly_fields = ("slug", "created_by")
+    readonly_fields = ("slug",)
 
     fieldsets = (
         ("Page Info", {
-            "fields": ("name", "slug", "description", "created_by")
+            "fields": ("name", "slug", "description", "owner")
         }),
     )
 
     def save_model(self, request, obj, form, change):
-        # Auto-assign created_by only on creation
         if not obj.pk:
-            obj.created_by = request.user
+            obj.owner = request.user
         super().save_model(request, obj, form, change)
 
 
