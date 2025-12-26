@@ -1,77 +1,102 @@
+from django.contrib.auth.models import User
+from toto.models import SerializableModel
 from django.db import models
-from django.contrib.auth import get_user_model
-from django.utils.text import slugify
+from colorfield.fields import ColorField
+from ravioli.models import CollectionType, RelationType
 
 
-User = get_user_model()
-
-
-class DynamicPage(models.Model):
+class BaseQuery(SerializableModel):
     """
-    A Dynamic Page composed of widgets.
+    Minimal abstract base class for reusable query definitions.
+    Contains only a name and a query string.
     """
 
-    name = models.CharField(max_length=200)
-    slug = models.SlugField(max_length=200, unique=True)
-    description = models.TextField(blank=True)
-
-    owner = models.ForeignKey(
-        User,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="owned_pages",
-        help_text="User who owns this page"
+    name = models.CharField(
+        max_length=200,
+        unique=True,
+        help_text="Human-readable name of the query."
     )
 
-    created_at = models.DateTimeField(auto_now_add=True)
+    query = models.TextField(
+        help_text="The query string to run (Cypher, SQL, API, etc.)."
+    )
 
-    def save(self, *args, **kwargs):
-        # Auto-generate slug if missing
-        if not self.slug:
-            self.slug = slugify(self.name)
-        super().save(*args, **kwargs)
+    class Meta:
+        abstract = True
+        ordering = ["name"]
 
     def __str__(self):
         return self.name
 
 
-class PageWidget(models.Model):
+class CypherQuery(BaseQuery):
     """
-    A widget instance on a Dynamic Page.
+    Represents a predefined Cypher query that can be reused in the graph explorer.
     """
 
-    name = models.CharField(
-        max_length=200,
-        help_text="Unique widget name within this page"
+    description = models.TextField(
+        blank=True,
+        help_text="Optional description of what this query does."
     )
-
-    page = models.ForeignKey(
-        DynamicPage,
-        on_delete=models.CASCADE,
-        related_name="widgets"
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="cypher_queries",
+        help_text="User who created this query."
     )
-
-    WIDGET_TYPES = [
-        ("chart.line", "Line Chart"),
-        ("chart.bar", "Bar Chart"),
-        ("chart.pie", "Pie Chart"),
-        ("table.basic", "Table"),
-        ("card.basic", "Card"),
-        ("list.basic", "List"),
-    ]
-
-    widget_type = models.CharField(max_length=100, choices=WIDGET_TYPES)
-    config = models.JSONField(default=dict)
-    code = models.TextField(blank=True, null=True)
-    test_context = models.JSONField(blank=True, null=True)
-
     created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    is_active = models.BooleanField(default=True)
+    code = models.TextField(help_text="Restricted Python code snippet")
+    test_context = models.JSONField(blank=True, null=True, help_text="Optional JSON context for testing")
 
     class Meta:
-        unique_together = ("page", "name")
-        ordering = ["created_at"]
+        ordering = ["name"]
 
     def __str__(self):
-        return f"{self.name} ({self.widget_type}) on {self.page}"
+        return self.name
+
+
+class NodeStyle(models.Model):
+    """
+    Visual style for nodes of a given CollectionType within a specific Graph.
+    """
+    cypher_query = models.ForeignKey(CypherQuery, related_name="node_styles", on_delete=models.CASCADE)
+    collection_type = models.ForeignKey(
+        CollectionType,
+        related_name="styles",
+        on_delete=models.CASCADE
+    )
+    color = ColorField(default="#000000")  # default blue
+    size = models.PositiveIntegerField(default=20)  # node radius or similar
+
+    class Meta:
+        unique_together = ("cypher_query", "collection_type")
+
+    def __str__(self):
+        return f"NodeStyle({self.collection_type.name} in {self.cypher_query.name})"
+
+
+class EdgeStyle(models.Model):
+    """
+    Visual style for edges of a given RelationType within a specific Graph.
+    """
+    cypher_query = models.ForeignKey(CypherQuery, related_name="edge_styles", on_delete=models.CASCADE )
+    relation_type = models.ForeignKey(
+        RelationType,
+        related_name="styles",
+        on_delete=models.CASCADE
+    )
+
+    color = ColorField(default="#000000")  # default grey
+    size = models.PositiveIntegerField(default=2)  # stroke width
+
+    class Meta:
+        unique_together = ("cypher_query", "relation_type")
+
+    def __str__(self):
+        return f"EdgeStyle({self.relation_type.name} in {self.cypher_query.name})"
+
+
+

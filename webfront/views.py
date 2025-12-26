@@ -1,54 +1,55 @@
-# from django.shortcuts import render, get_object_or_404
-# from .models import StaticPage, DynamicPage
-# from oya.page import PageProcessor
-# from django.template import Template, Context
-#
-#
-# def static_page_detail(request, slug):
-#     """
-#     Display a single StaticPage by slug, decorated with PageProcessor.
-#     """
-#     page = get_object_or_404(StaticPage, slug=slug)
-#
-#     # Normalize into the same structure: page.body is already HTML
-#     context = {
-#         "page": page,
-#     }
-#
-#     decorated_context = PageProcessor().decorate(context, request)
-#     return render(request, "webfront/page.html", decorated_context)
-#
-#
-# def dynamic_page_detail(request, slug):
-#     """
-#     Display a DynamicPage by slug, rendering its JSON data into the linked HtmlTemplate.
-#     """
-#     page = get_object_or_404(DynamicPage, slug=slug)
-#
-#     context = page.data
-#     if page.lambda_node:
-#         request_context = {
-#             "user": {
-#                 "username": request.user.username if request.user.is_authenticated else None,
-#                 "is_authenticated": request.user.is_authenticated,
-#                 "email": getattr(request.user, "email", None),
-#             },
-#             "method": request.method,
-#             "path": request.path,
-#             "query_params": request.GET.dict()
-#         }
-#         context.update({"request": request_context})
-#         result = page.lambda_node.execute(context)
-#         # Merge result back into context
-#         if isinstance(result, dict):
-#             context.update(result)
-#     # Render JSON data into the template content → becomes page.body
-#     preamble = "{% load include_from_db %}\n"
-#     template = Template(preamble + page.template.content)
-#     rendered_body = template.render(Context(context))
-#
-#     # Mutate page-like object for consistency
-#     page.body = rendered_body
-#
-#     decorated_context = PageProcessor().decorate({"page": page}, request)
-#     return render(request, "webfront/page.html", decorated_context)
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import render
+from oya.page import PageProcessor
+from .models import CypherQuery
+from .query import CypherQueryHelper
+from django.http import JsonResponse, Http404
+
+
+@login_required
+def graph_explorer(request):
+    """
+    Render the Graph Explorer page shell.
+    Data is fetched asynchronously via graph_data endpoint.
+    """
+    available_queries = CypherQuery.objects.filter(is_active=True).order_by("name")
+
+    # Default to first query if none selected
+    query_id = request.GET.get("query_id")
+    if not query_id and available_queries.exists():
+        query_id = str(available_queries.first().id)
+
+    processor = PageProcessor()
+    context = {
+        "title": "Graph Explorer",
+        "queries": available_queries,
+        "selected_query": query_id,
+    }
+    context = processor.decorate(context, request)
+    return render(request, "webfront/graph.html", context)
+
+
+
+@login_required
+def graph_data(request):
+    query_id = request.GET.get("query_id")
+
+    # Default to first active query
+    if not query_id:
+        first = CypherQuery.objects.filter(is_active=True).order_by("name").first()
+        if not first:
+            raise Http404("No active Cypher queries found")
+        query_id = first.id
+
+    # Load query object
+    try:
+        query_obj = CypherQuery.objects.get(pk=query_id, is_active=True)
+    except CypherQuery.DoesNotExist:
+        raise Http404("Query not found")
+
+    # Run using static helper
+    data = CypherQueryHelper.run(query_obj)
+
+    return JsonResponse(data)
+
+
