@@ -35,6 +35,7 @@ class Event(SerializableModel):
         null=True,
         blank=True,
         related_name='events',
+        db_comment="belongs_to"
     )
 
     def __str__(self):
