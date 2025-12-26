@@ -15,7 +15,7 @@ class Project(models.Model):
 
 # 📦 Column
 class Column(models.Model):
-    graph_node_type = "kanban.TaskStatus"
+    graph_node_type = "TaskStatus"
     project = models.ForeignKey(Project, on_delete=models.CASCADE, db_column="belongs_to_project", db_comment="belongs_to")
     name = models.CharField(max_length=100)
     position = models.PositiveIntegerField()
