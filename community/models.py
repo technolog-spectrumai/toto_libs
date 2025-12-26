@@ -106,6 +106,7 @@ def generate_code(k=6):
 
 
 class MembershipApplication(models.Model):
+    graph_node_type = None
     email = models.EmailField(unique=True)
     community = models.ForeignKey(Community, on_delete=models.CASCADE, related_name='applications')
     code = models.CharField(max_length=10, unique=True, default=generate_code)
@@ -134,6 +135,7 @@ class MembershipApplication(models.Model):
 
 
 class ReferenceRequest(models.Model):
+    graph_node_type = None
     application = models.ForeignKey(MembershipApplication, on_delete=models.CASCADE, related_name='reference_requests')
     referrer = models.ForeignKey(CommunityMember, on_delete=models.CASCADE, related_name='sent_references')
     message = models.TextField(blank=True)

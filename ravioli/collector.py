@@ -91,8 +91,9 @@ class CollectorHelper:
         based on the Django model fields.
         """
 
-        custom_name = getattr(model, "graph_node_type", None)
-        name = custom_name or model.__name__
+        name = getattr(model, "graph_node_type", model.__name__)
+        if name is None:
+            return None
         app_label = model._meta.app_label
         model_path = f"{app_label}.{model.__name__}"
 
@@ -185,6 +186,11 @@ class CollectorHelper:
             if not isinstance(field, ForeignKey):
                 continue
 
+            # Skip ContentType and any FK without db_comment
+            rel_name = getattr(field, "db_comment", None)
+            if not rel_name:
+                continue
+
             target_obj = getattr(obj, field.name, None)
             if not target_obj:
                 continue
@@ -193,14 +199,10 @@ class CollectorHelper:
             if not target_node:
                 continue
 
-            # Build relation name
-            default_name = f"FK:{model.__name__}->{field.related_model.__name__}"
-            rel_name = getattr(field, "db_comment", "") or default_name
-
             # Lookup only — do NOT create
             relation_type = RelationType.objects.filter(name=rel_name).first()
             if not relation_type:
-                continue  # skip missing relation types
+                continue
 
             DataEdge.objects.get_or_create(
                 source=node,
@@ -214,14 +216,15 @@ class CollectorHelper:
             if not isinstance(field, ManyToManyField):
                 continue
 
-            # Build relation name
-            default_name = f"M2M:{model.__name__}->{field.related_model.__name__}"
-            rel_name = getattr(field, "db_comment", "") or default_name
+            # Skip if no db_comment
+            rel_name = getattr(field, "db_comment", None)
+            if not rel_name:
+                continue
 
             # Lookup only — do NOT create
             relation_type = RelationType.objects.filter(name=rel_name).first()
             if not relation_type:
-                continue  # skip missing relation types
+                continue
 
             for target_obj in getattr(obj, field.name).all():
                 target_node = self.node_lookup.get((field.related_model, target_obj.pk))
@@ -248,18 +251,22 @@ class CollectorHelper:
             # 1. Create CollectionType
             ct = CollectorHelper.create_collection_type(model)
 
-            # 2. Create RelationTypes for FK + M2M
+            # 2. Create RelationTypes ONLY if db_comment is present
             for field in model._meta.get_fields():
 
                 # ForeignKey
                 if isinstance(field, ForeignKey):
-                    CollectorHelper.create_relation_type(model, field, prefix="FK")
+                    rel_name = getattr(field, "db_comment", None)
+                    if rel_name:  # only create if explicitly defined
+                        CollectorHelper.create_relation_type(model, field, prefix="FK")
 
                 # ManyToMany
                 if isinstance(field, ManyToManyField):
-                    CollectorHelper.create_relation_type(model, field, prefix="M2M")
-        return app_label
+                    rel_name = getattr(field, "db_comment", None)
+                    if rel_name:
+                        CollectorHelper.create_relation_type(model, field, prefix="M2M")
 
+        return app_label
 
     @staticmethod
     def build_graph(collectors, graph):
