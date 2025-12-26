@@ -1,4 +1,3 @@
-from typing import List
 from django.contrib.auth.models import User
 from toto.models import SerializableModel
 from django.db import models
@@ -7,23 +6,38 @@ from colorfield.fields import ColorField
 from toto.models import BaseExecutableModel
 
 
-
-class CypherQuery(SerializableModel):
+class BaseQuery(SerializableModel):
     """
-    Represents a predefined Cypher query that can be reused in the graph explorer.
+    Minimal abstract base class for reusable query definitions.
+    Contains only a name and a query string.
     """
 
     name = models.CharField(
         max_length=200,
         unique=True,
-        help_text="Human-readable name of the query (e.g. 'All Nodes and Relationships')."
+        help_text="Human-readable name of the query."
     )
+
+    query = models.TextField(
+        help_text="The query string to run (Cypher, SQL, API, etc.)."
+    )
+
+    class Meta:
+        abstract = True
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
+class CypherQuery(BaseQuery):
+    """
+    Represents a predefined Cypher query that can be reused in the graph explorer.
+    """
+
     description = models.TextField(
         blank=True,
         help_text="Optional description of what this query does."
-    )
-    query = models.TextField(
-        help_text="The Cypher query string to run against Neo4j."
     )
     created_by = models.ForeignKey(
         User,

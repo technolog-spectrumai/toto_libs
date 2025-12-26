@@ -1,11 +1,9 @@
-import json
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
-from django.http import JsonResponse
 from oya.page import PageProcessor
 from .models import CypherQuery
-from .query import QueryHelper
-
+from .query import CypherQueryHelper
+from django.http import JsonResponse, Http404
 
 
 @login_required
@@ -31,6 +29,7 @@ def graph_explorer(request):
     return render(request, "ravioli/graph.html", context)
 
 
+
 @login_required
 def graph_data(request):
     query_id = request.GET.get("query_id")
@@ -38,11 +37,19 @@ def graph_data(request):
     # Default to first active query
     if not query_id:
         first = CypherQuery.objects.filter(is_active=True).order_by("name").first()
-        if first:
-            query_id = str(first.id)
+        if not first:
+            raise Http404("No active Cypher queries found")
+        query_id = first.id
 
-    helper = QueryHelper(query_id)
-    data = helper.run()
+    # Load query object
+    try:
+        query_obj = CypherQuery.objects.get(pk=query_id, is_active=True)
+    except CypherQuery.DoesNotExist:
+        raise Http404("Query not found")
+
+    # Run using static helper
+    data = CypherQueryHelper.run(query_obj)
 
     return JsonResponse(data)
+
 
