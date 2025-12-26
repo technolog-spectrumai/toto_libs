@@ -126,14 +126,14 @@ class Command(IngressCommand):
             target=acme,
             relation_type=works_at,
             graph=graph,
-            defaults={"label": "employee", "metadata": {"since": int(fake.year())}},
+            defaults={"metadata": {"since": int(fake.year())}},
         )
         DataEdge.objects.get_or_create(
             source=alice,
             target=bob,
             relation_type=knows,
             graph=graph,
-            defaults={"label": "friend", "metadata": {"met": fake.city()}},
+            defaults={"metadata": {"met": fake.city()}},
         )
 
 

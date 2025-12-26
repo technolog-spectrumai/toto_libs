@@ -136,8 +136,8 @@ class RelationTypeAdmin(admin.ModelAdmin):
 @admin.register(DataEdge)
 class DataEdgeAdmin(admin.ModelAdmin):
     form = DataEdgeForm
-    list_display = ("source", "target", "relation_type", "graph", "label", "created_at")
-    search_fields = ("label", "metadata")
+    list_display = ("source", "target", "relation_type", "graph",  "created_at")
+    search_fields = ("metadata", "source__name", "target__name")
     list_filter = ("relation_type", "graph")
 
 

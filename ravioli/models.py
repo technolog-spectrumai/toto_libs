@@ -96,7 +96,6 @@ class DataEdge(models.Model):
         related_name="incoming_edges",
         on_delete=models.CASCADE
     )
-    label = models.CharField(max_length=100, blank=True, null=True)
     metadata = models.JSONField(blank=True, null=True)  # edge-specific metadata
     relation_type = models.ForeignKey(
         RelationType,
@@ -112,7 +111,7 @@ class DataEdge(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ("source", "target", "label", "relation_type")
+        unique_together = ("source", "target", "relation_type")
 
     def __str__(self):
         return f"{self.source} -> {self.target} [{self.relation_type.name}] ({self.label})"
