@@ -44,135 +44,7 @@ class GraphStyleResolver:
 
 
 # ---------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------
-
-def resolve_label(node):
-    if getattr(node, "labels", None):
-        labels = list(node.labels)
-        if labels:
-            return labels[0]
-    return "Node"
-
-
-def get_props(n):
-    props = dict(n._properties)
-    data = json.loads(props.get("data", "{}"))
-    props.pop("data", None)
-    props.update(data)
-    return props
-
-
-def run_cypher(query: str):
-    driver = GraphDatabase.driver(
-        f"bolt://{settings.NEO4J_HOST}:{settings.NEO4J_PORT}",
-        auth=(settings.NEO4J_USER, settings.NEO4J_PASSWORD)
-    )
-    with driver.session() as session:
-        result = session.run(query)
-        records = list(result)
-    driver.close()
-    return records
-
-
-# ---------------------------------------------------------
-# NetworkX conversion
-# ---------------------------------------------------------
-
-def records_to_networkx(records):
-    G = nx.DiGraph()
-
-    for record in records:
-        n, m, r = record["n"], record["m"], record["r"]
-
-        # Node n
-        props_n = get_props(n)
-        label_n = props_n.get("type", resolve_label(n))
-        G.add_node(str(n.id), label=label_n, **props_n)
-
-        # Node m
-        props_m = get_props(m)
-        label_m = props_m.get("type", resolve_label(m))
-        G.add_node(str(m.id), label=label_m, **props_m)
-
-        # Edge r
-        edge_type = r._properties.get("label", r.type)
-        props_r = dict(r._properties)
-        G.add_edge(str(n.id), str(m.id), type=edge_type, **props_r)
-
-    return G
-
-def apply_user_lambda(cypher_query, graph):
-    """
-    Executes restricted Python code stored in cypher_query.code.
-    The code must define:  def main(G): return G
-    """
-    if not cypher_query.code:
-        return graph
-
-    executor = RestrictedPythonExecutor(
-        code=cypher_query.code,
-        context={"G": graph},
-        name=f"cypher_query_{cypher_query.id}"
-    )
-
-    result = executor.execute(extra_globals={"nx": nx})
-
-    # If RestrictedPython returns an error, keep original graph
-    if isinstance(result, dict) and "error" in result:
-        print("RestrictedPython error:", result["error"])
-        return graph
-
-    # If user returned nothing, keep original graph
-    if result is None:
-        return graph
-
-    return result
-
-
-
-def networkx_to_elements(G, style):
-    elements = []
-    node_labels = set()
-    edge_types = set()
-
-    # Nodes
-    for node_id, data in G.nodes(data=True):
-        label = data.get("label", "Node")
-        node_labels.add(label)
-
-        elements.append({
-            "data": {
-                "id": node_id,
-                "label": label,
-                "color": style.node_color(label) if style else None,
-                "size": style.node_size(label) if style else None,
-                **data
-            }
-        })
-
-    # Edges
-    for u, v, data in G.edges(data=True):
-        edge_type = data.get("type", "REL")
-        edge_types.add(edge_type)
-
-        elements.append({
-            "data": {
-                "id": f"{u}-{v}",
-                "source": u,
-                "target": v,
-                "type": edge_type,
-                "color": style.edge_color(edge_type) if style else None,
-                "size": style.edge_size(edge_type) if style else None,
-                **data
-            }
-        })
-
-    return elements, node_labels, edge_types
-
-
-# ---------------------------------------------------------
-# Main QueryHelper
+# Main QueryHelper (all helpers moved inside)
 # ---------------------------------------------------------
 
 class QueryHelper:
@@ -199,18 +71,128 @@ class QueryHelper:
             self.cypher = "MATCH (n)-[r]->(m) RETURN n,r,m LIMIT 500"
             self.style = None
 
+    # ---------------------------------------------------------
+    # Static helper methods (moved from global scope)
+    # ---------------------------------------------------------
+
+    @staticmethod
+    def resolve_label(node):
+        if getattr(node, "labels", None):
+            labels = list(node.labels)
+            if labels:
+                return labels[0]
+        return "Node"
+
+    @staticmethod
+    def get_props(n):
+        props = dict(n._properties)
+        data = json.loads(props.get("data", "{}"))
+        props.pop("data", None)
+        props.update(data)
+        return props
+
+    @staticmethod
+    def run_cypher(query: str):
+        driver = GraphDatabase.driver(
+            f"bolt://{settings.NEO4J_HOST}:{settings.NEO4J_PORT}",
+            auth=(settings.NEO4J_USER, settings.NEO4J_PASSWORD)
+        )
+        with driver.session() as session:
+            result = session.run(query)
+            records = list(result)
+        driver.close()
+        return records
+
+    @staticmethod
+    def records_to_networkx(records):
+        G = nx.DiGraph()
+
+        for record in records:
+            n, m, r = record["n"], record["m"], record["r"]
+
+            props_n = QueryHelper.get_props(n)
+            label_n = props_n.get("type", QueryHelper.resolve_label(n))
+            G.add_node(str(n.id), label=label_n, **props_n)
+
+            props_m = QueryHelper.get_props(m)
+            label_m = props_m.get("type", QueryHelper.resolve_label(m))
+            G.add_node(str(m.id), label=label_m, **props_m)
+
+            edge_type = r._properties.get("label", r.type)
+            props_r = dict(r._properties)
+            G.add_edge(str(n.id), str(m.id), type=edge_type, **props_r)
+
+        return G
+
+    @staticmethod
+    def apply_user_lambda(cypher_query, graph):
+        if not cypher_query.code:
+            return graph
+
+        executor = RestrictedPythonExecutor(
+            code=cypher_query.code,
+            context={"G": graph},
+            name=f"cypher_query_{cypher_query.id}"
+        )
+
+        result = executor.execute(extra_globals={"nx": nx})
+
+        if isinstance(result, dict) and "error" in result:
+            print("RestrictedPython error:", result["error"])
+            return graph
+
+        if result is None:
+            return graph
+
+        return result
+
+    @staticmethod
+    def networkx_to_elements(G, style):
+        elements = []
+        node_labels = set()
+        edge_types = set()
+
+        for node_id, data in G.nodes(data=True):
+            label = data.get("label", "Node")
+            node_labels.add(label)
+
+            elements.append({
+                "data": {
+                    "id": node_id,
+                    "label": label,
+                    "color": style.node_color(label) if style else None,
+                    "size": style.node_size(label) if style else None,
+                    **data
+                }
+            })
+
+        for u, v, data in G.edges(data=True):
+            edge_type = data.get("type", "REL")
+            edge_types.add(edge_type)
+
+            elements.append({
+                "data": {
+                    "id": f"{u}-{v}",
+                    "source": u,
+                    "target": v,
+                    "type": edge_type,
+                    "color": style.edge_color(edge_type) if style else None,
+                    "size": style.edge_size(edge_type) if style else None,
+                    **data
+                }
+            })
+
+        return elements, node_labels, edge_types
+
+    # ---------------------------------------------------------
+    # Main execution
+    # ---------------------------------------------------------
+
     def run(self):
-        # Step 1: run cypher
-        records = run_cypher(self.cypher)
-
-        # Step 2: convert to networkx
-        G = records_to_networkx(records)
-
-        # Step 3: apply user lambda
-        G = apply_user_lambda(self.query_obj, G)
-
-        # Step 4: convert back to cytoscape JSON
-        elements, node_labels, edge_types = networkx_to_elements(G, self.style)
+        records = self.run_cypher(self.cypher)
+        G = self.records_to_networkx(records)
+        G = self.apply_user_lambda(self.query_obj, G)
+        elements, node_labels, edge_types = self.networkx_to_elements(G, self.style)
 
         return {
             "elements": elements,
