@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.utils.html import format_html
 from gate.models import Challenge, RefreshToken
-from .batch import BatchAction
+from toto.batch import BatchAction
 
 
 @admin.register(Challenge)

@@ -21,8 +21,7 @@ from .models import (
     GenericReference,
     Library
 )
-from .batch import BatchAction
-
+from toto.batch import BatchAction
 
 
 @admin.register(Library)

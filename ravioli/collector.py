@@ -112,24 +112,18 @@ class CollectorHelper:
         return self.node_lookup.get((model, pk))
 
     @staticmethod
-    def build_types(collectors):
-        """
-        Pre-build all CollectionTypes for all collectors.
-        Persist them in the DB so build_graph() can find them later.
-        """
+    def build_types(collector):
+        app_label = collector.app_name
+        app_config = apps.get_app_config(app_label)
 
-        for collector in collectors:
-            app_label = collector.app_name
-            app_config = apps.get_app_config(app_label)
+        for model in app_config.get_models():
+            model_path = f"{model._meta.app_label}.{model.__name__}"
+            name = getattr(model, "graph_node_type", model.__name__)
 
-            for model in app_config.get_models():
-                model_path = f"{model._meta.app_label}.{model.__name__}"
-                name = getattr(model, "graph_node_type", model.__name__)
-
-                CollectionType.objects.get_or_create(
-                    model_name=model_path,
-                    defaults={"name": name},
-                )
+            CollectionType.objects.get_or_create(
+                model_name=model_path,
+                defaults={"name": name},
+            )
 
     @staticmethod
     def build_graph(collectors, graph):

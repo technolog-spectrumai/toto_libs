@@ -2,7 +2,7 @@ from django.contrib import admin
 from django import forms
 from django_json_widget.widgets import JSONEditorWidget
 from .models import Project, Column, Task, Sprint, Mission, Campaign
-from .batch import BatchAction
+from toto.batch import BatchAction
 from events.models import Event
 from django.utils.timezone import now
 from datetime import timedelta

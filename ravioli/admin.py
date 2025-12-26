@@ -164,20 +164,17 @@ class CollectorAdmin(admin.ModelAdmin):
     list_filter = ("app_name", "created_at")
     actions = ["create_types", "run_collectors"]
 
-    # ---------------------------------------------------------
-    # ACTION 1: Create CollectionTypes
-    # ---------------------------------------------------------
+    @admin.action(description="Create CollectionTypes")
     def create_types(self, request, queryset):
-        CollectorHelper.build_types(queryset)
 
-        self.message_user(
+        result = BatchAction(queryset).run(CollectorHelper.build_types)
+
+        BatchAction.display_messages(
+            result,
+            self.message_user,
             request,
-            f"Collection types created for {queryset.count()} collectors.",
-            level=messages.SUCCESS,
+            verb="create collection types for"
         )
-
-    create_types.short_description = "Create CollectionTypes for selected collectors"
-
     # ---------------------------------------------------------
     # ACTION 2: Run Collectors (with form)
     # ---------------------------------------------------------

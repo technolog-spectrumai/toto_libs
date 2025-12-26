@@ -8,7 +8,7 @@ from django.http import HttpResponse
 from django.template.defaultfilters import slugify
 from .models import MemoDeck, MemoCard, Tag, MermaidChart
 from vault.models import VaultFile
-from .batch import BatchAction
+from toto.batch import BatchAction
 
 # ────────────────────────────────────────────────
 # 🔖 Tag Admin
