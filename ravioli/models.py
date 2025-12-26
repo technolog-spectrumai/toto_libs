@@ -1,7 +1,8 @@
 from django.contrib.auth.models import User
 from toto.models import SerializableModel
-from django.db import models
 from .translate import GraphTranslator
+from django.conf import settings
+from django.db import models
 
 
 class Graph(models.Model):
@@ -114,5 +115,40 @@ class DataEdge(models.Model):
     def __str__(self):
         return f"{self.source} -> {self.target} [{self.relation_type.name}] ({self.label})"
 
+
+def get_graph_allowed_app_choices():
+    apps = getattr(settings, "GRAPH_ALLOWED_APPS", [])
+    return [(app, app) for app in apps] if apps else []
+
+
+class Collector(models.Model):
+    """
+    Defines how an external app maps its data into this graph system.
+    Stores JSON mappings for nodes and edges.
+    """
+
+    app_name = models.CharField(
+        max_length=150,
+        unique=True,
+        choices=get_graph_allowed_app_choices(),
+        help_text="Name of the external app or integration."
+    )
+
+    node_map = models.JSONField(
+        blank=True,
+        null=True,
+        help_text="JSON mapping describing how external node data maps to CollectionTypes."
+    )
+
+    edge_map = models.JSONField(
+        blank=True,
+        null=True,
+        help_text="JSON mapping describing how external edge data maps to RelationTypes."
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.app_name
 
 

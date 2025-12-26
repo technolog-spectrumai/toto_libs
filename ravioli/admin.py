@@ -9,10 +9,12 @@ from .models import (
     CollectionType,
     DataNode,
     RelationType,
-    DataEdge
+    DataEdge,
+    Collector
 )
 from .forms import DynamicDataNodeForm
-
+from django_json_widget.widgets import JSONEditorWidget
+from django.conf import settings
 
 # ---------------------------
 # Custom Forms
@@ -140,4 +142,22 @@ class DataEdgeAdmin(admin.ModelAdmin):
     list_filter = ("relation_type", "graph")
 
 
+
+class CollectorAdminForm(forms.ModelForm):
+    class Meta:
+        model = Collector
+        fields = "__all__"
+        widgets = {
+            "node_map": JSONEditorWidget,
+            "edge_map": JSONEditorWidget,
+        }
+
+
+@admin.register(Collector)
+class CollectorAdmin(admin.ModelAdmin):
+    form = CollectorAdminForm
+
+    list_display = ("app_name", "created_at")
+    search_fields = ("app_name",)
+    list_filter = ("app_name", "created_at")
 
