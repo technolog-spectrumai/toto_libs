@@ -12,6 +12,7 @@ from ravioli.models import (
 from django.apps import apps
 
 
+
 class CollectorHelper:
     """
     Instance-based helper for converting Django models into graph structures.
@@ -43,8 +44,17 @@ class CollectorHelper:
     def create_collection_type(model):
         custom_name = getattr(model, "graph_node_type", None)
         name = custom_name or model.__name__
-        ct, _ = CollectionType.objects.get_or_create(name=name)
+        app_label = model._meta.app_label
+        model_name = f"{app_label}.{model.__name__}"
+        ct, _ = CollectionType.objects.get_or_create(name=name, model_name=model_name)
         return ct
+
+    @staticmethod
+    def create_relation_type(model, field, prefix):
+        default_name = f"{prefix}:{model.__name__}->{field.related_model.__name__}"
+        rel_name = getattr(field, "db_comment", "") or default_name
+        relation_type, _ = RelationType.objects.get_or_create(name=rel_name)
+        return relation_type
 
     def create_node(self, model, obj, collection_type):
         serialized = serializers.serialize("python", [obj])[0]
@@ -74,10 +84,14 @@ class CollectorHelper:
             if not target_node:
                 continue
 
+            # Build relation name
             default_name = f"FK:{model.__name__}->{field.related_model.__name__}"
             rel_name = getattr(field, "db_comment", "") or default_name
 
-            relation_type, _ = RelationType.objects.get_or_create(name=rel_name)
+            # Lookup only — do NOT create
+            relation_type = RelationType.objects.filter(name=rel_name).first()
+            if not relation_type:
+                continue  # skip missing relation types
 
             DataEdge.objects.get_or_create(
                 source=node,
@@ -91,10 +105,14 @@ class CollectorHelper:
             if not isinstance(field, ManyToManyField):
                 continue
 
+            # Build relation name
             default_name = f"M2M:{model.__name__}->{field.related_model.__name__}"
             rel_name = getattr(field, "db_comment", "") or default_name
 
-            relation_type, _ = RelationType.objects.get_or_create(name=rel_name)
+            # Lookup only — do NOT create
+            relation_type = RelationType.objects.filter(name=rel_name).first()
+            if not relation_type:
+                continue  # skip missing relation types
 
             for target_obj in getattr(obj, field.name).all():
                 target_node = self.node_lookup.get((field.related_model, target_obj.pk))
@@ -117,13 +135,21 @@ class CollectorHelper:
         app_config = apps.get_app_config(app_label)
 
         for model in app_config.get_models():
-            model_path = f"{model._meta.app_label}.{model.__name__}"
-            name = getattr(model, "graph_node_type", model.__name__)
 
-            CollectionType.objects.get_or_create(
-                model_name=model_path,
-                defaults={"name": name},
-            )
+            # 1. Create CollectionType
+            ct = CollectorHelper.create_collection_type(model)
+
+            # 2. Create RelationTypes for FK + M2M
+            for field in model._meta.get_fields():
+
+                # ForeignKey
+                if isinstance(field, ForeignKey):
+                    CollectorHelper.create_relation_type(model, field, prefix="FK")
+
+                # ManyToMany
+                if isinstance(field, ManyToManyField):
+                    CollectorHelper.create_relation_type(model, field, prefix="M2M")
+
 
     @staticmethod
     def build_graph(collectors, graph):
