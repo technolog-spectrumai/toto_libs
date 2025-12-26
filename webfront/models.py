@@ -1,37 +1,36 @@
 from django.db import models
+from django.contrib.auth import get_user_model
+from django.utils.text import slugify
+
+
+User = get_user_model()
 
 
 class DynamicPage(models.Model):
     """
     A Dynamic Page composed of widgets.
-    The page may define a loader lambda that prepares shared context
-    for all widgets before rendering.
     """
 
     name = models.CharField(max_length=200)
+    slug = models.SlugField(max_length=200, unique=True)
     description = models.TextField(blank=True)
 
-    # Page-level loader lambda (optional)
-    loader_code = models.TextField(
-        blank=True,
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
         null=True,
-        help_text="Restricted Python code that prepares shared context for all widgets on this page"
-    )
-
-    loader_test_context = models.JSONField(
         blank=True,
-        null=True,
-        help_text="Optional JSON context for testing the loader lambda"
-    )
-
-    # Optional global layout or metadata
-    layout = models.JSONField(
-        default=dict,
-        help_text="Optional global layout or metadata for the dynamic page"
+        related_name="created_pages",
+        help_text="User who created this page"
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        # Auto-generate slug if missing
+        if not self.slug:
+            self.slug = slugify(self.name)
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.name
@@ -40,12 +39,12 @@ class DynamicPage(models.Model):
 class PageWidget(models.Model):
     """
     A widget instance on a Dynamic Page.
-    Each widget:
-    - maps to a micro-frontend component via widget_type
-    - has a JSON config
-    - may define a transform lambda
-    - has layout metadata for positioning
     """
+
+    name = models.CharField(
+        max_length=200,
+        help_text="Unique widget name within this page"
+    )
 
     page = models.ForeignKey(
         DynamicPage,
@@ -53,35 +52,26 @@ class PageWidget(models.Model):
         related_name="widgets"
     )
 
-    WIDGET_TYPES = [("chart.line", "Line Chart"), ("chart.bar", "Bar Chart"), ("chart.pie", "Pie Chart"),
-                    ("table.basic", "Table"), ("card.basic", "Card"), ("list.basic", "List"), ]
+    WIDGET_TYPES = [
+        ("chart.line", "Line Chart"),
+        ("chart.bar", "Bar Chart"),
+        ("chart.pie", "Pie Chart"),
+        ("table.basic", "Table"),
+        ("card.basic", "Card"),
+        ("list.basic", "List"),
+    ]
 
-    widget_type = models.CharField( max_length=100, choices=WIDGET_TYPES, help_text="Type of widget to render" )
-
-    config = models.JSONField(
-        default=dict,
-        help_text="Widget-specific configuration passed to the micro-frontend"
-    )
-
-    code = models.TextField(
-        blank=True,
-        null=True,
-        help_text="Restricted Python code snippet for transforming widget data"
-    )
-
-    test_context = models.JSONField(
-        blank=True,
-        null=True,
-        help_text="Optional JSON context for testing the widget lambda"
-    )
-
-    layout = models.JSONField(
-        default=dict,
-        help_text="Layout information for the widget (x, y, w, h)"
-    )
+    widget_type = models.CharField(max_length=100, choices=WIDGET_TYPES)
+    config = models.JSONField(default=dict)
+    code = models.TextField(blank=True, null=True)
+    test_context = models.JSONField(blank=True, null=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        unique_together = ("page", "name")
+        ordering = ["created_at"]
+
     def __str__(self):
-        return f"{self.widget_type} on {self.page}"
+        return f"{self.name} ({self.widget_type}) on {self.page}"

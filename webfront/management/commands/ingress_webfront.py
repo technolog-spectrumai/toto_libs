@@ -31,18 +31,18 @@ class Command(BaseCommand):
             with open(full_path, "r") as f:
                 data = json.load(f)
 
+            # Create or update page
             page, created = DynamicPage.objects.update_or_create(
                 name=data["name"],
                 defaults={
                     "description": data.get("description", ""),
-                    "loader_code": self._load_lambda(lambdas_path, data.get("loader")),
-                    "loader_test_context": data.get("loader_test_context"),
-                    "layout": data.get("layout", {}),
+                    # slug auto-generated in model save()
                 },
             )
 
             self.stdout.write(f"  - Page: {page.name} ({'created' if created else 'updated'})")
 
+            # Sync widgets
             self._sync_widgets(page, data.get("widgets", []), lambdas_path)
 
         self.stdout.write(self.style.SUCCESS("Dynamic Page ingress complete"))
@@ -72,11 +72,12 @@ class Command(BaseCommand):
 
             widget, created = PageWidget.objects.update_or_create(
                 page=page,
-                widget_type=w["widget_type"],
+                name=w["name"],  # unique per page
                 defaults={
+                    "widget_type": w["widget_type"],
                     "config": w.get("config", {}),
                     "code": code,
-                    "test_context": w.get("test_context")
+                    "test_context": w.get("test_context"),
                 },
             )
 

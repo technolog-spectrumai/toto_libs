@@ -1,6 +1,5 @@
 from django.contrib import admin, messages
 from django import forms
-from django.utils.html import format_html
 
 from django_json_widget.widgets import JSONEditorWidget
 from django_ace import AceWidget
@@ -9,14 +8,10 @@ from .models import DynamicPage, PageWidget
 
 
 # ---------------------------------------------------------
-# Lambda Execution Helper
+# Lambda Execution Helper (kept for test action)
 # ---------------------------------------------------------
 
 def execute_lambda(code: str, context: dict):
-    """
-    Executes a lambda file's code safely by loading it into a namespace
-    and calling main(ctx).
-    """
     if not code:
         return None
 
@@ -31,18 +26,13 @@ def execute_lambda(code: str, context: dict):
 
 
 # ---------------------------------------------------------
-# Custom Forms
+# Forms
 # ---------------------------------------------------------
 
 class DynamicPageForm(forms.ModelForm):
     class Meta:
         model = DynamicPage
         fields = "__all__"
-        widgets = {
-            "loader_code": AceWidget(mode="python", theme="chrome", width="100%", height="300px"),
-            "loader_test_context": JSONEditorWidget(),
-            "layout": JSONEditorWidget(),
-        }
 
 
 class PageWidgetForm(forms.ModelForm):
@@ -52,13 +42,12 @@ class PageWidgetForm(forms.ModelForm):
         widgets = {
             "config": JSONEditorWidget(),
             "test_context": JSONEditorWidget(),
-            "layout": JSONEditorWidget(),
             "code": AceWidget(mode="python", theme="chrome", width="100%", height="300px"),
         }
 
 
 # ---------------------------------------------------------
-# Inline Widget Admin
+# Inline Widget Admin (kept EXACTLY as you requested)
 # ---------------------------------------------------------
 
 class PageWidgetInline(admin.StackedInline):
@@ -66,11 +55,14 @@ class PageWidgetInline(admin.StackedInline):
     form = PageWidgetForm
     extra = 0
     show_change_link = True
+
     fields = (
+        "name",
         "widget_type",
         "config",
-        "code",
+        "code"
     )
+
 
 # ---------------------------------------------------------
 # Admin Actions
@@ -82,17 +74,7 @@ def test_selected_widgets(modeladmin, request, queryset):
         result = execute_lambda(widget.code, widget.test_context)
         modeladmin.message_user(
             request,
-            f"Widget '{widget.widget_type}' executed. Result: {result}"
-        )
-
-
-@admin.action(description="Run loader test on selected pages")
-def test_selected_loaders(modeladmin, request, queryset):
-    for page in queryset:
-        result = execute_lambda(page.loader_code, page.loader_test_context)
-        modeladmin.message_user(
-            request,
-            f"Loader for page '{page.name}' executed. Result: {result}"
+            f"Widget '{widget.name}' executed. Result: {result}"
         )
 
 
@@ -104,35 +86,24 @@ def test_selected_loaders(modeladmin, request, queryset):
 class DynamicPageAdmin(admin.ModelAdmin):
     form = DynamicPageForm
 
-    list_display = ("name", "updated_at", "loader_valid")
-    search_fields = ("name",)
+    list_display = ("name", "slug", "created_by", "created_at")
+    search_fields = ("name", "slug")
 
     inlines = [PageWidgetInline]
 
-    readonly_fields = ("loader_valid",)
+    readonly_fields = ("slug", "created_by")
 
     fieldsets = (
         ("Page Info", {
-            "fields": ("name", "description")
-        }),
-        ("Loader Lambda", {
-            "fields": ("loader_code", "loader_test_context", "loader_valid")
-        }),
-        ("Layout", {
-            "fields": ("layout",)
+            "fields": ("name", "slug", "description", "created_by")
         }),
     )
 
-    actions = [test_selected_loaders]
-
-    def loader_valid(self, obj):
-        if not obj.loader_code:
-            return format_html('<span style="color: gray;">No loader</span>')
-        if "def main" in obj.loader_code:
-            return format_html('<span style="color: green; font-weight: bold;">Valid</span>')
-        return format_html('<span style="color: red; font-weight: bold;">Invalid</span>')
-
-    loader_valid.short_description = "Loader OK?"
+    def save_model(self, request, obj, form, change):
+        # Auto-assign created_by only on creation
+        if not obj.pk:
+            obj.created_by = request.user
+        super().save_model(request, obj, form, change)
 
 
 # ---------------------------------------------------------
@@ -143,31 +114,20 @@ class DynamicPageAdmin(admin.ModelAdmin):
 class PageWidgetAdmin(admin.ModelAdmin):
     form = PageWidgetForm
 
-    list_display = ("widget_type", "page", "updated_at", "lambda_valid")
+    list_display = ("name", "widget_type", "page", "updated_at")
     list_filter = ("widget_type", "page")
-    search_fields = ("widget_type",)
-
-    readonly_fields = ("lambda_valid",)
+    search_fields = ("name", "widget_type")
 
     actions = [test_selected_widgets]
 
     fieldsets = (
         ("Widget", {
-            "fields": ("page", "widget_type", "lambda_valid")
+            "fields": ("page", "name", "widget_type")
         }),
         ("Configuration", {
             "fields": ("config",)
         }),
         ("Lambda", {
             "fields": ("code", "test_context")
-        })
+        }),
     )
-
-    def lambda_valid(self, obj):
-        if not obj.code:
-            return format_html('<span style="color: gray;">No code</span>')
-        if "def main" in obj.code:
-            return format_html('<span style="color: green; font-weight: bold;">Valid</span>')
-        return format_html('<span style="color: red; font-weight: bold;">Invalid</span>')
-
-    lambda_valid.short_description = "Lambda OK?"
