@@ -1,85 +1,87 @@
-import os, json
+import os
+import json
 from django.conf import settings
-from django.utils.timezone import now
-from django.template import Template, Context
 from django.core.management.base import BaseCommand
-from webfront.models import HtmlTemplate, StaticPage, DynamicPage
-from mandragora.models import Workflow, LambdaNode
-from oya.ingress import IngressCommand
+from webfront.models import DynamicPage, PageWidget
 
 
+class Command(BaseCommand):
+    help = "Sync Dynamic Pages and Page Widgets from filesystem"
 
-class Command(IngressCommand):
-    help = "Sync Webfront assets (templates, pages, lambdas, charts) from filesystem"
+    def handle(self, *args, **options):
+        # Example: project_root/../data/webfront
+        base_path = os.path.abspath(
+            os.path.join(settings.BASE_DIR, "..", "data", "webfront")
+        )
 
-    def sync_html_templates(self):
-        html_dir = os.path.join(self.DATA_ROOT, "webfront", "html")
-        schema_dir = os.path.join(self.DATA_ROOT, "webfront", "schema")
-        for filename in os.listdir(html_dir):
-            if not filename.endswith(".html"):
+        pages_path = os.path.join(base_path, "pages")
+        lambdas_path = os.path.join(base_path, "lambdas")
+
+        if not os.path.isdir(pages_path):
+            self.stdout.write(self.style.WARNING(f"No pages directory found at {pages_path}"))
+            return
+
+        self.stdout.write(self.style.MIGRATE_HEADING("Syncing Dynamic Pages…"))
+
+        for fname in os.listdir(pages_path):
+            if not fname.endswith(".json"):
                 continue
-            name = os.path.splitext(filename)[0]
-            content = self.read_text("webfront", "html", filename)
-            schema_file = os.path.join(schema_dir, f"{name}.json")
-            schema = self.read_json("webfront", "schema", f"{name}.json") if os.path.exists(schema_file) else None
 
-            tmpl, created = HtmlTemplate.objects.get_or_create(
-                name=name,
-                defaults={"content": content, "json_schema": schema}
+            full_path = os.path.join(pages_path, fname)
+            with open(full_path, "r") as f:
+                data = json.load(f)
+
+            page, created = DynamicPage.objects.update_or_create(
+                name=data["name"],
+                defaults={
+                    "description": data.get("description", ""),
+                    "loader_code": self._load_lambda(lambdas_path, data.get("loader")),
+                    "loader_test_context": data.get("loader_test_context"),
+                    "layout": data.get("layout", {}),
+                },
             )
-            if not created:
-                tmpl.content = content
-                tmpl.json_schema = schema
-                tmpl.save()
-            self.stdout.write(self.style.SUCCESS(f"🖼️ HtmlTemplate synced: {tmpl.name}"))
 
-    def seed_static_pages(self):
-        config_dir = os.path.join(self.DATA_ROOT, "webfront", "page_config")
-        for filename in os.listdir(config_dir):
-            if not filename.endswith(".json"):
-                continue
-            name = os.path.splitext(filename)[0]
-            data = self.read_json("webfront", "page_config", filename)
-            tmpl = HtmlTemplate.objects.filter(name=name).first()
-            if not tmpl:
-                continue
-            rendered = Template(tmpl.content).render(Context(data))
-            page, created = StaticPage.objects.get_or_create(
-                slug=name,
-                defaults={"title": name.capitalize(), "body": rendered}
+            self.stdout.write(f"  - Page: {page.name} ({'created' if created else 'updated'})")
+
+            self._sync_widgets(page, data.get("widgets", []), lambdas_path)
+
+        self.stdout.write(self.style.SUCCESS("Dynamic Page ingress complete"))
+
+    #
+    # Load lambda file from lambdas directory
+    #
+    def _load_lambda(self, lambdas_root, rel_path):
+        if not rel_path:
+            return None
+
+        full_path = os.path.join(lambdas_root, rel_path)
+        if not os.path.isfile(full_path):
+            return None
+
+        with open(full_path, "r") as f:
+            return f.read()
+
+    #
+    # Sync widgets for a page
+    #
+    def _sync_widgets(self, page, widgets_data, lambdas_path):
+        existing_ids = []
+
+        for w in widgets_data:
+            code = self._load_lambda(lambdas_path, w.get("lambda"))
+
+            widget, created = PageWidget.objects.update_or_create(
+                page=page,
+                widget_type=w["widget_type"],
+                defaults={
+                    "config": w.get("config", {}),
+                    "code": code,
+                    "test_context": w.get("test_context"),
+                    "layout": w.get("layout", {}),
+                },
             )
-            if not created:
-                page.title = name.capitalize()
-                page.body = rendered
-                page.save()
-            self.stdout.write(self.style.SUCCESS(f"📄 StaticPage seeded: {page.title}"))
 
-    def seed_dynamic_pages(self):
-        config_dir = os.path.join(self.DATA_ROOT, "webfront", "page_config")
-        for filename in os.listdir(config_dir):
-            if not filename.endswith(".json"):
-                continue
-            name = os.path.splitext(filename)[0]
-            data = self.read_json("webfront", "page_config", filename)
-            tmpl = HtmlTemplate.objects.filter(name=name).first()
-            if not tmpl:
-                continue
-            page, created = DynamicPage.objects.get_or_create(
-                slug=f"{name}-dyn",
-                defaults={"title": f"{name.capitalize()} (dynamic)", "data": data, "template": tmpl}
-            )
-            if not created:
-                page.title = f"{name.capitalize()} (dynamic)"
-                page.data = data
-                page.template = tmpl
-                page.save()
-            self.stdout.write(self.style.SUCCESS(f"⚡ DynamicPage seeded: {page.title}"))
+            existing_ids.append(widget.id)
 
-    # -----------------------------
-    # Main process
-    # -----------------------------
-    def process(self):
-        self.sync_html_templates()
-        self.seed_static_pages()
-        self.seed_dynamic_pages()
-        self.stdout.write(self.style.SUCCESS("✅ Webfront assets synced"))
+        # Remove widgets not present in filesystem
+        PageWidget.objects.filter(page=page).exclude(id__in=existing_ids).delete()
