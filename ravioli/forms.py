@@ -14,26 +14,64 @@ class FieldFactory:
         ftype = self.field_def.get("type", "string")
         required = self.field_def.get("required", False)
         label = self.field_def.get("label", self.field_def["name"].capitalize())
+
+        # Map JSON schema types → factory methods
         method = getattr(self, f"create_{ftype}", self.create_string)
         return method(label, required)
 
+    # -------------------------
+    # BASIC TYPES
+    # -------------------------
     def create_string(self, label, required):
         return forms.CharField(label=label, required=required, initial=self.initial)
 
     def create_integer(self, label, required):
         return forms.IntegerField(label=label, required=required, initial=self.initial)
 
+    def create_number(self, label, required):
+        return forms.FloatField(label=label, required=required, initial=self.initial)
+
     def create_boolean(self, label, required):
         return forms.BooleanField(label=label, required=required, initial=self.initial)
 
     def create_text(self, label, required):
         return forms.CharField(
-            label=label, required=required, initial=self.initial, widget=forms.Textarea
+            label=label,
+            required=required,
+            initial=self.initial,
+            widget=forms.Textarea
         )
 
+    # -------------------------
+    # DATE / TIME TYPES
+    # -------------------------
     def create_date(self, label, required):
-        return forms.DateField(label=label, required=required, initial=self.initial)
+        return forms.DateField(
+            label=label,
+            required=required,
+            initial=self.initial,
+            widget=forms.DateInput(attrs={"type": "date"})
+        )
 
+    def create_datetime(self, label, required):
+        return forms.DateTimeField(
+            label=label,
+            required=required,
+            initial=self.initial,
+            widget=forms.DateTimeInput(attrs={"type": "datetime-local"})
+        )
+
+    def create_time(self, label, required):
+        return forms.TimeField(
+            label=label,
+            required=required,
+            initial=self.initial,
+            widget=forms.TimeInput(attrs={"type": "time"})
+        )
+
+    # -------------------------
+    # CHOICE FIELDS
+    # -------------------------
     def create_choice(self, label, required):
         choices = self.field_def.get("choices", [])
         return forms.ChoiceField(
@@ -42,6 +80,30 @@ class FieldFactory:
             initial=self.initial,
             choices=[(c, c) for c in choices],
         )
+
+    # -------------------------
+    # JSON / OBJECT
+    # -------------------------
+    def create_object(self, label, required):
+        return forms.JSONField(
+            label=label,
+            required=required,
+            initial=self.initial,
+            widget=forms.Textarea
+        )
+
+    # -------------------------
+    # ARRAY / LIST
+    # -------------------------
+    def create_array(self, label, required):
+        return forms.CharField(
+            label=label,
+            required=required,
+            initial=self.initial,
+            help_text="Enter a JSON list, e.g. ['a', 'b', 'c']",
+            widget=forms.Textarea
+        )
+
 
 
 class DynamicDataNodeForm(forms.ModelForm):

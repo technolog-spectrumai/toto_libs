@@ -21,6 +21,50 @@ class CollectorHelper:
       - self.node_lookup
     """
 
+    DJANGO_TO_JSON = {
+        # Strings
+        "CharField": "string",
+        "TextField": "text",  # textarea
+        "EmailField": "string",
+        "URLField": "string",
+        "UUIDField": "string",
+        "SlugField": "string",
+        "GenericIPAddressField": "string",
+
+        # Numbers
+        "IntegerField": "integer",
+        "BigIntegerField": "integer",
+        "SmallIntegerField": "integer",
+        "PositiveIntegerField": "integer",
+        "PositiveSmallIntegerField": "integer",
+        "AutoField": "integer",
+        "BigAutoField": "integer",
+
+        "FloatField": "number",
+        "DecimalField": "number",
+
+        # Boolean
+        "BooleanField": "boolean",
+        "NullBooleanField": "boolean",
+
+        # Dates / Times
+        "DateField": "date",
+        "DateTimeField": "datetime",
+        "TimeField": "time",
+        "DurationField": "string",  # ISO 8601 duration
+
+        # JSON / Array
+        "JSONField": "object",
+        "ArrayField": "array",
+
+        # Files / Images
+        "FileField": "string",  # URL
+        "ImageField": "string",  # URL
+
+        # Choice fields (detected separately)
+        "ChoiceField": "choice",
+    }
+
     def __init__(self, graph):
         self.graph = graph
         self.node_lookup = {}
@@ -42,11 +86,75 @@ class CollectorHelper:
 
     @staticmethod
     def create_collection_type(model):
+        """
+        Create a CollectionType with auto-generated JSON schema and form layout
+        based on the Django model fields.
+        """
+
         custom_name = getattr(model, "graph_node_type", None)
         name = custom_name or model.__name__
         app_label = model._meta.app_label
-        model_name = f"{app_label}.{model.__name__}"
-        ct, _ = CollectionType.objects.get_or_create(name=name, model_name=model_name)
+        model_path = f"{app_label}.{model.__name__}"
+
+        # Build JSON schema + form layout
+        properties = {}
+        required = []
+        form_fields = []
+
+        for field in model._meta.get_fields():
+            # Skip relations
+            if field.is_relation:
+                continue
+
+            field_type = field.get_internal_type()
+            json_type = CollectorHelper.DJANGO_TO_JSON.get(field_type, "string")
+
+            properties[field.name] = {"type": json_type}
+
+            if not field.null and not field.blank:
+                required.append(field.name)
+
+            form_fields.append({
+                "name": field.name,
+                "type": json_type,
+                "label": field.verbose_name.title(),
+                "required": not field.blank,
+            })
+
+        json_schema = {
+            "type": "object",
+            "properties": properties,
+            "required": required,
+        }
+
+        form_layout = {
+            "fields": form_fields
+        }
+
+        ct, created = CollectionType.objects.get_or_create(
+            model_name=model_path,
+            defaults={
+                "name": name,
+                "json_schema": json_schema,
+                "form_layout": form_layout,
+            },
+        )
+
+        # If it already exists but is empty, enrich it
+        if not created:
+            updated = False
+
+            if not ct.json_schema:
+                ct.json_schema = json_schema
+                updated = True
+
+            if not ct.form_layout:
+                ct.form_layout = form_layout
+                updated = True
+
+            if updated:
+                ct.save()
+
         return ct
 
     @staticmethod
@@ -149,6 +257,7 @@ class CollectorHelper:
                 # ManyToMany
                 if isinstance(field, ManyToManyField):
                     CollectorHelper.create_relation_type(model, field, prefix="M2M")
+        return app_label
 
 
     @staticmethod

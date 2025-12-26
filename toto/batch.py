@@ -16,15 +16,15 @@ class BatchActionResult:
 
     @property
     def success_titles(self) -> List[str]:
-        return [getattr(obj, 'title', str(obj)) for obj in self.success]
+        return [str(obj) for obj in self.success]
 
     @property
     def failed_titles(self) -> List[str]:
-        return [getattr(obj, 'title', str(obj)) for obj, _ in self.failed]
+        return [str(obj) for obj, _ in self.failed]
 
     @property
     def errors(self) -> Dict[str, str]:
-        return {getattr(obj, 'title', str(obj)): str(err) for obj, err in self.failed}
+        return {str(obj): str(err) for obj, err in self.failed}
 
 
 class BatchAction:
