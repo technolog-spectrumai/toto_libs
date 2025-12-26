@@ -19,10 +19,6 @@ from .forms import RunCollectorsForm
 from .collector import CollectorHelper
 
 
-# ---------------------------
-# Custom Forms
-# ---------------------------
-
 class CollectionTypeForm(forms.ModelForm):
     class Meta:
         model = CollectionType
@@ -209,9 +205,6 @@ class CollectorAdmin(admin.ModelAdmin):
 
     run_collectors.short_description = "Run selected collectors into a graph"
 
-    # ---------------------------------------------------------
-    # Required for custom admin action view
-    # ---------------------------------------------------------
     def get_urls(self):
         urls = super().get_urls()
         custom = [
