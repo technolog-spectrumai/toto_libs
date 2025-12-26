@@ -39,6 +39,8 @@ class CollectionType(models.Model):  # Node type
     form_layout = models.JSONField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
+    model_name = models.CharField(max_length=200, null=True, blank=True,
+                                  help_text="Optional dotted model path: 'app_label.ModelName'")
 
     def __str__(self):
         return self.name
@@ -132,18 +134,6 @@ class Collector(models.Model):
         unique=True,
         choices=get_graph_allowed_app_choices(),
         help_text="Name of the external app or integration."
-    )
-
-    node_map = models.JSONField(
-        blank=True,
-        null=True,
-        help_text="JSON mapping describing how external node data maps to CollectionTypes."
-    )
-
-    edge_map = models.JSONField(
-        blank=True,
-        null=True,
-        help_text="JSON mapping describing how external edge data maps to RelationTypes."
     )
 
     created_at = models.DateTimeField(auto_now_add=True)

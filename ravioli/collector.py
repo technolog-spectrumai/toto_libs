@@ -112,11 +112,30 @@ class CollectorHelper:
         return self.node_lookup.get((model, pk))
 
     @staticmethod
+    def build_types(collectors):
+        """
+        Pre-build all CollectionTypes for all collectors.
+        Persist them in the DB so build_graph() can find them later.
+        """
+
+        for collector in collectors:
+            app_label = collector.app_name
+            app_config = apps.get_app_config(app_label)
+
+            for model in app_config.get_models():
+                model_path = f"{model._meta.app_label}.{model.__name__}"
+                name = getattr(model, "graph_node_type", model.__name__)
+
+                CollectionType.objects.get_or_create(
+                    model_name=model_path,
+                    defaults={"name": name},
+                )
+
+    @staticmethod
     def build_graph(collectors, graph):
         """
-        Run multiple collectors into a single graph.
-        Uses one shared CollectorHelper instance.
-        For each collector, uses its app_name to discover models.
+        Build graph using previously created CollectionTypes.
+        If a model has no CollectionType, skip it.
         """
 
         if graph is None:
@@ -126,24 +145,30 @@ class CollectorHelper:
 
         for collector in collectors:
             app_label = collector.app_name
-
-            # Get app config from app_label (e.g. "auth", "myapp")
             app_config = apps.get_app_config(app_label)
 
-            # Iterate over all models in that app
             for model in app_config.get_models():
 
-                # 1. Create collection type
-                collection_type = CollectorHelper.create_collection_type(model)
+                model_path = f"{model._meta.app_label}.{model.__name__}"
 
-                # 2. Create nodes
+                # Look up type fresh from DB
+                collection_type = CollectionType.objects.filter(
+                    model_name=model_path
+                ).first()
+
+                if not collection_type:
+                    # Skip models without types
+                    continue
+
+                # Create nodes
                 for obj in model.objects.all():
                     helper.create_node(model, obj, collection_type)
 
-                # 3. Create edges
+                # Create edges
                 for obj in model.objects.all():
                     node = helper.get_node(model, obj.pk)
                     helper.create_fk_edges(model, obj, node)
                     helper.create_m2m_edges(model, obj, node)
 
         return helper
+

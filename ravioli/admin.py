@@ -162,14 +162,32 @@ class CollectorAdmin(admin.ModelAdmin):
     list_display = ("app_name", "created_at")
     search_fields = ("app_name",)
     list_filter = ("app_name", "created_at")
-    actions = ["run_collectors"]
+    actions = ["create_types", "run_collectors"]
 
+    # ---------------------------------------------------------
+    # ACTION 1: Create CollectionTypes
+    # ---------------------------------------------------------
+    def create_types(self, request, queryset):
+        CollectorHelper.build_types(queryset)
+
+        self.message_user(
+            request,
+            f"Collection types created for {queryset.count()} collectors.",
+            level=messages.SUCCESS,
+        )
+
+    create_types.short_description = "Create CollectionTypes for selected collectors"
+
+    # ---------------------------------------------------------
+    # ACTION 2: Run Collectors (with form)
+    # ---------------------------------------------------------
     def run_collectors(self, request, queryset):
         if request.POST.get("apply"):
             form = RunCollectorsForm(request.POST)
             if form.is_valid():
                 graph = form.cleaned_data["graph"]
 
+                # Build graph using helper
                 CollectorHelper.build_graph(queryset, graph)
 
                 self.message_user(
@@ -178,6 +196,7 @@ class CollectorAdmin(admin.ModelAdmin):
                     level=messages.SUCCESS,
                 )
                 return redirect(request.get_full_path())
+
         else:
             form = RunCollectorsForm()
 
@@ -193,6 +212,9 @@ class CollectorAdmin(admin.ModelAdmin):
 
     run_collectors.short_description = "Run selected collectors into a graph"
 
+    # ---------------------------------------------------------
+    # Required for custom admin action view
+    # ---------------------------------------------------------
     def get_urls(self):
         urls = super().get_urls()
         custom = [
@@ -203,5 +225,6 @@ class CollectorAdmin(admin.ModelAdmin):
             )
         ]
         return custom + urls
+
 
 
