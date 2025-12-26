@@ -12,13 +12,12 @@ from toto.models import SerializableModel
 from locations.models import Address
 
 
-
-
 class SocialEntity(SerializableModel, PolymorphicModel):
     created_at = models.DateTimeField(default=now)
 
     def __str__(self):
         return f"Social Entity id={str(self.id)}"
+
 
 class Community(SocialEntity):
     name = models.CharField(max_length=255, help_text="Name of the community or organization")
@@ -61,7 +60,7 @@ class Community(SocialEntity):
 
 class CommunityMember(SocialEntity):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='community_profile')
-    communities = models.ManyToManyField(Community, related_name='members')
+    communities = models.ManyToManyField(Community, related_name='members', db_comment="member_of")
     patron = models.ForeignKey(
         'self',
         on_delete=models.SET_NULL,

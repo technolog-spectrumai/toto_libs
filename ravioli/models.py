@@ -114,7 +114,7 @@ class DataEdge(models.Model):
         unique_together = ("source", "target", "relation_type")
 
     def __str__(self):
-        return f"{self.source} -> {self.target} [{self.relation_type.name}] ({self.label})"
+        return f"{self.source} -> {self.target} [{self.relation_type.name}]"
 
 
 def get_graph_allowed_app_choices():

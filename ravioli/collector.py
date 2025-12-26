@@ -187,6 +187,8 @@ class CollectorHelper:
                 continue
 
             # Skip ContentType and any FK without db_comment
+            if str(field).find("asset") != -1:
+                i = 0
             rel_name = getattr(field, "db_comment", None)
             if not rel_name:
                 continue
@@ -268,6 +270,27 @@ class CollectorHelper:
 
         return app_label
 
+    def create_nodes_for_model(self, model):
+        model_path = f"{model._meta.app_label}.{model.__name__}"
+
+        # Look up type fresh from DB
+        collection_type = CollectionType.objects.filter(
+            model_name=model_path
+        ).first()
+
+        if not collection_type:
+            # Skip models without types
+            return
+
+        for obj in model.objects.all():
+            self.create_node(model, obj, collection_type)
+
+    def create_edges_for_model(self, model):
+        for obj in model.objects.all():
+            node = self.get_node(model, obj.pk)
+            self.create_fk_edges(model, obj, node)
+            self.create_m2m_edges(model, obj, node)
+
     @staticmethod
     def build_graph(collectors, graph):
         """
@@ -283,29 +306,14 @@ class CollectorHelper:
         for collector in collectors:
             app_label = collector.app_name
             app_config = apps.get_app_config(app_label)
-
             for model in app_config.get_models():
+                helper.create_nodes_for_model(model)
 
-                model_path = f"{model._meta.app_label}.{model.__name__}"
-
-                # Look up type fresh from DB
-                collection_type = CollectionType.objects.filter(
-                    model_name=model_path
-                ).first()
-
-                if not collection_type:
-                    # Skip models without types
-                    continue
-
-                # Create nodes
-                for obj in model.objects.all():
-                    helper.create_node(model, obj, collection_type)
-
-                # Create edges
-                for obj in model.objects.all():
-                    node = helper.get_node(model, obj.pk)
-                    helper.create_fk_edges(model, obj, node)
-                    helper.create_m2m_edges(model, obj, node)
+        for collector in collectors:
+            app_label = collector.app_name
+            app_config = apps.get_app_config(app_label)
+            for model in app_config.get_models():
+                helper.create_edges_for_model(model)
 
         return helper
 
