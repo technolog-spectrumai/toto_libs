@@ -37,14 +37,6 @@ class Command(IngressCommand):
 
     def create_assets(self, members, asset_types):
         assets = []
-        users = list(User.objects.all())
-        if not users:
-            for i in range(3):
-                user, _ = User.objects.get_or_create(
-                    username=f"user{i}",
-                    defaults={"email": f"user{i}@example.com"}
-                )
-                users.append(user)
 
         for i in range(15):
             addresses = list(Address.objects.all())
@@ -58,7 +50,7 @@ class Command(IngressCommand):
                 serial_number=fake.uuid4(),
                 purchase_date=fake.date_between(start_date="-2y", end_date="today"),
                 purchase_price=round(random.uniform(500, 5000), 2),
-                assigned_to=random.choice(users),
+                assigned_to=random.choice(members),
                 location=random.choice(addresses),
                 is_active=random.choice([True, True, False]),
                 metadata={
