@@ -27,7 +27,7 @@ from toto.batch import BatchAction
 @admin.register(Library)
 class LibraryAdmin(admin.ModelAdmin):
     list_display = ("name", "owner", "reference_count", "created_at")
-    search_fields = ("name", "owner__username", "owner__email")
+    search_fields = ("name", "owner__user__username", "owner__user__email", "owner__display_name")
     list_filter = ("owner",)
     filter_horizontal = ("references",)
     actions = ["export_json"]

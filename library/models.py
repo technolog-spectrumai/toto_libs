@@ -5,7 +5,7 @@ from vault.models import VaultFile
 from django.contrib.auth import get_user_model
 from django.forms.models import model_to_dict
 from datetime import date, datetime
-
+from community.models import CommunityMember
 
 User = get_user_model()
 
@@ -15,7 +15,7 @@ class Library(models.Model):
     A collection of reference items owned by a user.
     """
     owner = models.ForeignKey(
-        User,
+        CommunityMember,
         on_delete=models.CASCADE,
         related_name="libraries",
         db_comment="owned_by"
@@ -27,7 +27,8 @@ class Library(models.Model):
     references = models.ManyToManyField(
         'ReferenceItem',
         related_name='libraries',
-        blank=True
+        blank=True,
+        db_comment="contains_references"
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
