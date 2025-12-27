@@ -125,9 +125,20 @@ class CypherQueryHelper:
 
         return elements, node_labels, edge_types
 
-    # ---------------------------------------------------------
-    # Main entry point
-    # ---------------------------------------------------------
+    @staticmethod
+    def build_graph(query):
+        records = CypherQueryHelper.run_cypher(query)
+        return CypherQueryHelper.records_to_networkx(records)
+
+    @staticmethod
+    def graph_to_cytoscape(graph, style):
+        elements, node_labels, edge_types = CypherQueryHelper.networkx_to_elements(graph, style)
+        return {
+            "elements": elements,
+            "node_labels": list(node_labels),
+            "edge_types": list(edge_types),
+        }
+
     @staticmethod
     def run(query_obj):
         """

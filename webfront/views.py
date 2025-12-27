@@ -51,8 +51,17 @@ def graph_data(request):
     except CypherQuery.DoesNotExist:
         raise Http404("Query not found")
 
-    # Run using static helper
-    data = CypherQueryHelper.run(query_obj)
+    try:
+        graph = CypherQueryHelper.build_graph(query_obj.query)
+        CypherQueryHelper.apply_user_lambda(
+            code=query_obj.code,
+            graph=graph,
+            name=f"cypher_query_{query_obj.id}"
+        )
+        style = GraphStyleResolver(query_obj)
+        data = CypherQueryHelper.graph_to_cytoscape(graph, style)
+    except Exception as e:
+        raise Http404(f"Error executing query: {str(e)}")
 
     return JsonResponse(data)
 
@@ -69,9 +78,19 @@ class DynamicPageView(View):
         except CypherQuery.DoesNotExist:
             raise Http404("Query not found")
 
-        result = CypherQueryHelper.run(query_obj)
+        try:
+            graph = CypherQueryHelper.build_graph(query_obj.query)
+            CypherQueryHelper.apply_user_lambda(
+                code=query_obj.code,
+                graph=graph,
+                name=f"cypher_query_{query_obj.id}"
+            )
+            style = GraphStyleResolver(query_obj)
+            data = CypherQueryHelper.graph_to_cytoscape(graph, style)
+        except Exception as e:
+            raise Http404(f"Error executing query: {str(e)}")
 
-        context = processor.decorate({"page": page, "result": json.dumps(result)}, request)
+        context = processor.decorate({"page": page, "result": json.dumps(data)}, request)
         return render(request, self.template_name, context)
 
 
