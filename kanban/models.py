@@ -1,12 +1,13 @@
 from django.db import models
 from django.contrib.auth.models import User
+from community.models import CommunityMember
 
 
 # 📁 Project
 class Project(models.Model):
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
-    owner = models.ForeignKey(User, on_delete=models.CASCADE, db_comment="owned_by")
+    owner = models.ForeignKey(CommunityMember, on_delete=models.CASCADE, db_comment="owned_by")
     collaborators = models.ManyToManyField(User, related_name='collaborating_projects')
 
     def __str__(self):
@@ -32,7 +33,7 @@ class Campaign(models.Model):
     start_date = models.DateField(null=True, blank=True)
     end_date = models.DateField(null=True, blank=True)
 
-    owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, db_comment="owned_by")
+    owner = models.ForeignKey(CommunityMember, on_delete=models.SET_NULL, null=True, blank=True, db_comment="owned_by")
     metadata = models.JSONField(blank=True, null=True)
 
     def __str__(self):
@@ -54,7 +55,7 @@ class Mission(models.Model):
         default=2
     )
 
-    owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, db_comment="owned_by")
+    owner = models.ForeignKey(CommunityMember, on_delete=models.SET_NULL, null=True, blank=True, db_comment="owned_by")
     metadata = models.JSONField(blank=True, null=True)
 
     def __str__(self):
@@ -80,7 +81,7 @@ class Task(models.Model):
 
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
-    assignee = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, db_comment="assigned_to")
+    assignee = models.ForeignKey(CommunityMember, on_delete=models.SET_NULL, null=True, blank=True, db_comment="assigned_to")
     due_date = models.DateField(null=True, blank=True)
     position = models.PositiveIntegerField(default=0)
 
