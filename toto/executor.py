@@ -9,6 +9,7 @@ from RestrictedPython import (
 from RestrictedPython.Guards import (
     guarded_unpack_sequence,
     full_write_guard,
+    guarded_iter_unpack_sequence
 )
 
 
@@ -39,6 +40,7 @@ class RestrictedPythonExecutor:
             "_setitem_": operator.setitem,
             "_delitem_": operator.delitem,
             "_unpack_sequence_": guarded_unpack_sequence,
+            "_iter_unpack_sequence_": guarded_iter_unpack_sequence,
             "_getiter_": iter,
             "_write_": full_write_guard,
             "timedelta": timedelta,
