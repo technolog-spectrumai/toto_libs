@@ -1,4 +1,5 @@
 import random
+import uuid
 
 from django.db import models
 from django.contrib.auth.models import User
@@ -8,15 +9,15 @@ from django.utils.timezone import now
 from polymorphic.models import PolymorphicModel
 from toto.models import SerializableModel
 from federal.models import Federation
-from toto.models import SerializableModel
 from locations.models import Address
 
 
-class Persona(SerializableModel, PolymorphicModel):
+class Persona(PolymorphicModel):
     created_at = models.DateTimeField(default=now)
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
     def __str__(self):
-        return f"Social Entity id={str(self.id)}"
+        return f"Persona id={str(self.id)}"
 
 
 class Community(Persona):

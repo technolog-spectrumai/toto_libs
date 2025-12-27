@@ -170,7 +170,6 @@ class CollectorHelper:
         serialized = serializers.serialize("python", [obj])[0]
         fields = serialized["fields"]
         normalized = CollectorHelper.normalize_value(fields)
-
         node = DataNode.objects.create(
             name=f"{model.__name__}-{obj.pk}",
             data=normalized,
@@ -267,16 +266,21 @@ class CollectorHelper:
 
         return app_label
 
+    def node_exists(self, model, obj):
+        return DataNode.objects.filter(
+            name=f"{model.__name__}-{obj.pk}",
+        ).exists()
+
     def create_nodes_for_model(self, model):
+        # If this is a polymorphic base model, iterate through concrete subclasses
+        # Normal (non-polymorphic or concrete) model handling
         model_path = f"{model._meta.app_label}.{model.__name__}"
 
-        # Look up type fresh from DB
         collection_type = CollectionType.objects.filter(
             model_name=model_path
         ).first()
 
         if not collection_type:
-            # Skip models without types
             return
 
         for obj in model.objects.all():
