@@ -1,6 +1,6 @@
 from django.db import models
-from django.contrib.auth.models import User
 from toto.models import SerializableModel
+from community.models import CommunityMember
 
 
 # 📁 Event Category
@@ -21,7 +21,7 @@ class Event(SerializableModel):
     location = models.CharField(max_length=200)
 
     organizer = models.ForeignKey(
-        User,
+        CommunityMember,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

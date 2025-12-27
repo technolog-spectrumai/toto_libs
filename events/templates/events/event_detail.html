@@ -59,7 +59,7 @@
         <div>
           <h3 class="text-md font-bold uppercase tracking-wide"
           :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">Organizer</h3>
-          <p class="text-base">{{ organizer.get_full_name|default:organizer.username }}</p>
+          <p class="text-base">{{ organizer.display_name }}</p>
         </div>
         {% endif %}
       </div>

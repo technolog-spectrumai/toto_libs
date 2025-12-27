@@ -1,6 +1,7 @@
 from oya.ingress import IngressCommand
 from django.contrib.auth.models import User
 from events.models import EventCategory, Event
+from community.models import CommunityMember
 from django.utils.timezone import now
 from faker import Faker
 import random
@@ -20,6 +21,7 @@ class Command(IngressCommand):
             description="Manage and explore venture-related events",
             link="/events/calendar/"
         )
+
         if not self.full:
             return
 
@@ -31,32 +33,41 @@ class Command(IngressCommand):
             ("Webinar", "Online educational event"),
             ("Networking", "Meet and connect with peers")
         ]
+
         for name, desc in category_names:
-            cat, _ = EventCategory.objects.get_or_create(name=name, defaults={"description": desc})
+            cat, _ = EventCategory.objects.get_or_create(
+                name=name,
+                defaults={"description": desc}
+            )
             categories.append(cat)
 
+        # 👥 Get community members (NOT Users anymore)
+        members = list(CommunityMember.objects.all())
+        if not members:
+            raise Exception("❌ No community members found. Please create some first.")
 
-        # 👥 Get users
-        users = list(User.objects.all())
-        if not users:
-            raise Exception("❌ No users found. Please create some users first.")
-        n_events = 12
         # 📅 Create Events
-        companies = [
-            fake.company() for _ in range(4)
-        ]
+        n_events = 12
+        companies = [fake.company() for _ in range(4)]
+
         for company in random.sample(companies, min(3, len(companies))):
             for i in range(n_events):
                 start = now() + timedelta(days=random.randint(1, 30))
                 end = start + timedelta(hours=random.randint(1, 5))
+
                 event = Event.objects.create(
                     title=f"{company} {random.choice(['Summit', 'Bootcamp', 'Forum'])}",
                     description=fake.paragraph(nb_sentences=3),
                     location=fake.city(),
                     start_time=start,
                     end_time=end,
-                    organizer=random.choice(users),
-                    category=random.choice(categories)
+                    organizer=random.choice(members),  # ✅ FIXED
+                    category=random.choice(categories),
+                    public=True
                 )
-                self.stdout.write(self.style.SUCCESS(f"📅 Created event: {event.title}"))
+
+                self.stdout.write(
+                    self.style.SUCCESS(f"📅 Created event: {event.title}")
+                )
+
         self.stdout.write(self.style.SUCCESS("✅ Event seeding complete."))
