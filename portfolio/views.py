@@ -30,7 +30,7 @@ def company_list(request):
 
 def resolve_entity_label(entity):
     """
-    Returns a human-readable label for any SocialEntity subclass.
+    Returns a human-readable label for any Persona subclass.
     """
     real_instnce = entity.get_real_instance()
     model = entity.get_real_instance_class().__name__

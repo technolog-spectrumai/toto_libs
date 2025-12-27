@@ -1,6 +1,5 @@
 from django.contrib import admin
 from .models import Currency, Account, Transaction, ExchangeRate
-from community.models import SocialEntity
 from toto.batch import BatchAction
 from toto.admin import BaseSerializableAdmin
 

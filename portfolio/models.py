@@ -2,11 +2,11 @@ from django.db import models
 from django.utils.text import slugify
 from django.core.exceptions import ValidationError
 from django_jsonform.models.fields import JSONField
-from community.models import SocialEntity      # your polymorphic base class
+from community.models import Persona      # your polymorphic base class
 from locations.models import Address        # optional company HQ address
 
 
-class Company(SocialEntity):
+class Company(Persona):
     name = models.CharField(max_length=255, unique=True)
     slug = models.SlugField(unique=True, blank=True)
 
@@ -55,7 +55,7 @@ class FractionalOwnership(models.Model):
 
     # Any SocialEntity can be an owner (Company, Community, Member, etc.)
     owner_entity = models.ForeignKey(
-        SocialEntity,
+        Persona,
         on_delete=models.CASCADE,
         related_name="ownerships_given"
     )

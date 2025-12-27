@@ -3,7 +3,7 @@ from oya.ingress import IngressCommand
 
 from portfolio.models import Company, FractionalOwnership
 from locations.models import Address
-from community.models import SocialEntity
+from community.models import Persona
 
 from faker import Faker
 import random
@@ -66,10 +66,10 @@ class Command(IngressCommand):
         """
         Any SocialEntity can be an owner, but only Company can be owned.
         """
-        owners = list(SocialEntity.objects.all())
+        owners = list(Persona.objects.all())
 
         if not owners:
-            raise RuntimeError("No SocialEntity records found. Seed communities/members first.")
+            raise RuntimeError("No Persona records found. Seed communities/members first.")
 
         for company in companies:
             # Each company gets 1–3 random owners
