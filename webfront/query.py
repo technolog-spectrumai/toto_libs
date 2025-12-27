@@ -63,26 +63,33 @@ class CypherQueryHelper:
 
         return G
 
-    # ---------------------------------------------------------
-    # Lambda execution
-    # ---------------------------------------------------------
+
     @staticmethod
     def apply_user_lambda(code, graph, name="cypher_lambda"):
         if not code:
             return graph
 
+        # Prepare context
+        context = {"G": graph}
+
         executor = RestrictedPythonExecutor(
             code=code,
-            context={"G": graph},
+            context=context,
             name=name
         )
 
+        # This will run main(context) internally
         result = executor.execute(extra_globals={"nx": nx})
 
+        # If executor returned an error dict → bail out
         if isinstance(result, dict) and "error" in result:
             return graph
 
-        return result if result is not None else graph
+        # Enforce graph-only return
+        if not isinstance(result, nx.Graph):
+            return graph
+
+        return result
 
     # ---------------------------------------------------------
     # Convert NetworkX → Cytoscape JSON
@@ -124,6 +131,55 @@ class CypherQueryHelper:
             })
 
         return elements, node_labels, edge_types
+
+    @staticmethod
+    def networkx_to_simple_graph(G, style=None):
+        nodes = []
+        edges = []
+
+        # Nodes
+        for node_id, data in G.nodes(data=True):
+            node = {
+                "id": node_id,
+                "label": data.get("label", "Node"),
+            }
+
+            # Add styling if provided
+            if style:
+                node["color"] = style.node_color(node["label"])
+                node["size"] = style.node_size(node["label"])
+
+            # Add all other node attributes
+            for k, v in data.items():
+                if k not in ("label",):
+                    node[k] = v
+
+            nodes.append(node)
+
+        # Edges
+        for u, v, data in G.edges(data=True):
+            edge = {
+                "source": u,
+                "target": v,
+                "type": data.get("type", "REL"),
+            }
+
+            # Add styling if provided
+            if style:
+                edge["color"] = style.edge_color(edge["type"])
+                edge["size"] = style.edge_size(edge["type"])
+
+            # Add all other edge attributes
+            for k, v in data.items():
+                if k not in ("type",):
+                    edge[k] = v
+
+            edges.append(edge)
+
+        return {
+            "nodes": nodes,
+            "edges": edges,
+        }
 
     @staticmethod
     def build_graph(query):

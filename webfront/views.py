@@ -86,7 +86,7 @@ class DynamicPageView(View):
                 name=f"cypher_query_{query_obj.id}"
             )
             style = GraphStyleResolver(query_obj)
-            data = CypherQueryHelper.graph_to_cytoscape(graph, style)
+            data = CypherQueryHelper.networkx_to_simple_graph(graph, style)
         except Exception as e:
             raise Http404(f"Error executing query: {str(e)}")
 
