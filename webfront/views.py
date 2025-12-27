@@ -1,5 +1,4 @@
 import json
-
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from oya.page import PageProcessor
@@ -8,6 +7,7 @@ from .query import CypherQueryHelper
 from django.http import JsonResponse, Http404
 from django.shortcuts import render, get_object_or_404
 from django.views import View
+from .style import GraphStyleResolver
 
 
 @login_required
@@ -63,23 +63,17 @@ class DynamicPageView(View):
 
     def get(self, request, slug):
         page = get_object_or_404(DynamicPage, slug=slug)
-        try:
-            result = CypherQueryHelper.run(page.cypher_query)
-        except Exception as e:
-            result = {"error": str(e)}
-
-        # 3. Decorate with theme, user prefs, etc.
         processor = PageProcessor()
-        context = processor.decorate(
-            {
-                "page": page,
-                "result": json.dumps(result)
-            },
-            request
-        )
+        try:
+            query_obj = CypherQuery.objects.get(pk=page.cypher_query.id)
+        except CypherQuery.DoesNotExist:
+            raise Http404("Query not found")
 
-        # 4. Render
+        result = CypherQueryHelper.run(query_obj)
+
+        context = processor.decorate({"page": page, "result": json.dumps(result)}, request)
         return render(request, self.template_name, context)
+
 
 
 
