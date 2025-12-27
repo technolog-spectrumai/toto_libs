@@ -3,6 +3,7 @@ from django.contrib.auth.models import User
 from toto.models import SerializableModel, BaseExecutableModel
 from colorfield.fields import ColorField
 from ravioli.models import CollectionType, RelationType
+from django.utils.text import slugify
 
 
 class BaseQuery(SerializableModel):
@@ -106,80 +107,51 @@ class EdgeStyle(models.Model):
         unique_together = ("cypher_query", "relation_type")
 
 
-# ---------------------------------------------------------
-# Widgets (no CypherQuery FK)
-# ---------------------------------------------------------
 
-class Widget(BaseExecutableModel, SerializableModel):
-    """
-    A reusable widget that can represent charts, lists, cards, etc.
-    """
+class DynamicPage(SerializableModel):
+    name = models.CharField(max_length=200, unique=True)
 
-    LINE_CHART = "line_chart"
-    PIE_CHART = "pie_chart"
-    BAR_CHART = "bar_chart"
-    LIST = "list"
-    CARD = "card"
-
-    WIDGET_TYPES = [
-        (LINE_CHART, "Line Chart"),
-        (PIE_CHART, "Pie Chart"),
-        (BAR_CHART, "Bar Chart"),
-        (LIST, "List"),
-        (CARD, "Card"),
-    ]
-
-    name = models.CharField(max_length=200)
-
-    type = models.CharField(
-        max_length=50,
-        choices=WIDGET_TYPES,
-        help_text="Type of widget."
-    )
-
-    config = models.JSONField(
+    slug = models.SlugField(
+        max_length=200,
+        unique=True,
         blank=True,
-        null=True,
-        help_text="Widget-specific configuration."
+        help_text="URL-friendly identifier for this page."
     )
 
-    class Meta:
-        ordering = ["name"]
-
-    def __str__(self):
-        return self.name
-
-
-# ---------------------------------------------------------
-# Dynamic Page (same base as CypherQuery)
-# ---------------------------------------------------------
-
-class DynamicPage(BaseExecutableQuery):
-    """
-    A dynamic page that:
-    - has a name
-    - has a query
-    - has optional Python code
-    - contains widgets
-    """
-
-    description = models.TextField(blank=True)
-
-    widgets = models.ManyToManyField(
-        Widget,
-        blank=True,
-        related_name="pages"
+    cypher_query = models.ForeignKey(
+        CypherQuery,
+        on_delete=models.CASCADE,
+        related_name="dynamic_pages",
+        help_text="The Cypher query this page is based on."
     )
 
-    created_by = models.ForeignKey(
+    owner = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="dynamic_pages"
+        related_name="dynamic_pages",
+        help_text="Owner of this page."
     )
-
-    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["name"]
+
+    def save(self, *args, **kwargs):
+        # Auto-generate slug if missing
+        if not self.slug:
+            base = slugify(self.name)
+            slug = base
+            counter = 1
+
+            while DynamicPage.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                slug = f"{base}-{counter}"
+                counter += 1
+
+            self.slug = slug
+
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.name
+

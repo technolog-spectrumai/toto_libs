@@ -161,3 +161,5 @@ class CypherQueryHelper:
             "node_labels": list(node_labels),
             "edge_types": list(edge_types),
         }
+
+

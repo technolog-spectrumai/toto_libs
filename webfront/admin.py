@@ -1,24 +1,19 @@
 from django.contrib import admin
 from django import forms
-
 from django_ace import AceWidget
 from django_json_widget.widgets import JSONEditorWidget
-
 from .models import (
     CypherQuery,
     NodeStyle,
     EdgeStyle,
-    Widget,
     DynamicPage
 )
 
 from ravioli.models import CollectionType, RelationType
 from toto.colors import ColorGenerator
+from django.utils.html import format_html
+from django.urls import reverse
 
-
-# ---------------------------------------------------------
-# Forms
-# ---------------------------------------------------------
 
 class CypherQueryForm(forms.ModelForm):
     class Meta:
@@ -29,16 +24,6 @@ class CypherQueryForm(forms.ModelForm):
             "test_context": JSONEditorWidget(),
         }
 
-
-class WidgetForm(forms.ModelForm):
-    class Meta:
-        model = Widget
-        fields = "__all__"
-        widgets = {
-            "code": AceWidget(mode="python", theme="chrome", width="100%", height="300px"),
-            "config": JSONEditorWidget(),
-            "test_context": JSONEditorWidget(),
-        }
 
 
 class DynamicPageForm(forms.ModelForm):
@@ -82,29 +67,26 @@ class CypherQueryAdmin(admin.ModelAdmin):
     inlines = [NodeStyleInline, EdgeStyleInline]
 
 
-# ---------------------------------------------------------
-# Widget Admin
-# ---------------------------------------------------------
-
-@admin.register(Widget)
-class WidgetAdmin(admin.ModelAdmin):
-    form = WidgetForm
-    list_display = ("name", "type")
-    list_filter = ("type",)
-    search_fields = ("name",)
-    ordering = ("name",)
-
-
-# ---------------------------------------------------------
-# DynamicPage Admin
-# ---------------------------------------------------------
-
 @admin.register(DynamicPage)
 class DynamicPageAdmin(admin.ModelAdmin):
-    form = DynamicPageForm
-    list_display = ("name", "created_by", "created_at")
-    list_filter = ("created_by",)
-    search_fields = ("name", "query")
-    readonly_fields = ("created_at",)
+    form = DynamicPageForm  # optional, remove if not needed
+
+    list_display = ("name", "slug", "cypher_query", "owner", "open_link")
+    list_filter = ("owner", "cypher_query")
+    search_fields = ("name", "slug")
     ordering = ("name",)
-    filter_horizontal = ("widgets",)
+
+    def open_link(self, obj):
+        """Clickable link to view the dynamic page."""
+        url = reverse("webfront:dynamic_page", args=[obj.slug])
+        return format_html('<a href="{}" target="_blank">Open</a>', url)
+
+    open_link.short_description = "View"
+
+    def save_model(self, request, obj, form, change):
+        """Automatically assign owner if not set."""
+        if not obj.owner:
+            obj.owner = request.user
+        super().save_model(request, obj, form, change)
+
+

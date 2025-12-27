@@ -1,9 +1,13 @@
+import json
+
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from oya.page import PageProcessor
-from .models import CypherQuery
+from .models import CypherQuery, DynamicPage
 from .query import CypherQueryHelper
 from django.http import JsonResponse, Http404
+from django.shortcuts import render, get_object_or_404
+from django.views import View
 
 
 @login_required
@@ -51,5 +55,32 @@ def graph_data(request):
     data = CypherQueryHelper.run(query_obj)
 
     return JsonResponse(data)
+
+
+class DynamicPageView(View):
+
+    template_name = "webfront/page.html"
+
+    def get(self, request, slug):
+        page = get_object_or_404(DynamicPage, slug=slug)
+        try:
+            result = CypherQueryHelper.run(page.cypher_query)
+        except Exception as e:
+            result = {"error": str(e)}
+
+        # 3. Decorate with theme, user prefs, etc.
+        processor = PageProcessor()
+        context = processor.decorate(
+            {
+                "page": page,
+                "result": json.dumps(result)
+            },
+            request
+        )
+
+        # 4. Render
+        return render(request, self.template_name, context)
+
+
 
 

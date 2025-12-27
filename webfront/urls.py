@@ -9,5 +9,6 @@ urlpatterns = [
     # Graph Explorer (requires login)
     path("graph/", login_required(views.graph_explorer), name="graph"),
     path("graph/data/", views.graph_data, name="graph_data"),
+    path("page/<slug:slug>/", views.DynamicPageView.as_view(), name="dynamic_page")
 ]
 
