@@ -21,43 +21,44 @@
            :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
 
         <div>
-          <p class="text-sm font-medium uppercase tracking-wide text-accent-1">Description</p>
+          <h3 class="text-md font-bold uppercase tracking-wide"
+            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">Description</h3>
           <p class="text-base">
             {{ event.description }}
           </p>
         </div>
 
         <div>
-          <p class="text-sm font-medium uppercase tracking-wide text-accent-1">Location</p>
+          <h3 class="text-md font-bold uppercase tracking-wide"
+            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">Location</h3>
           <p class="text-base">{{ event.location }}</p>
         </div>
 
         <div class="grid grid-cols-2 gap-6">
           <div>
-            <p class="text-sm font-medium uppercase tracking-wide text-accent-1">Start Time</p>
+            <p class="text-md font-bold uppercase tracking-wide"
+              :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">Start Time</p>
             <p class="text-base">{{ event.start_time|date:"F j, Y, g:i A" }}</p>
           </div>
           <div>
-            <p class="text-sm font-medium uppercase tracking-wide text-accent-1">End Time</p>
+            <h3 class="text-md font-bold uppercase tracking-wide"
+            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">End Time</h3>
             <p class="text-base">{{ event.end_time|date:"F j, Y, g:i A" }}</p>
           </div>
         </div>
 
-        <div>
-          <p class="text-sm font-medium uppercase tracking-wide text-accent-1">Company</p>
-          <p class="text-base">{{ company.name }}</p>
-        </div>
-
         {% if category %}
         <div>
-          <p class="text-sm font-medium uppercase tracking-wide text-accent-1">Category</p>
+          <h3 class="text-md font-bold uppercase tracking-wide"
+          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">Category</h3>
           <p class="text-base">{{ category.name }}</p>
         </div>
         {% endif %}
 
         {% if organizer %}
         <div>
-          <p class="text-sm font-medium uppercase tracking-wide text-accent-1">Organizer</p>
+          <h3 class="text-md font-bold uppercase tracking-wide"
+          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">Organizer</h3>
           <p class="text-base">{{ organizer.get_full_name|default:organizer.username }}</p>
         </div>
         {% endif %}

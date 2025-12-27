@@ -57,7 +57,6 @@ class EventDetailView(LoginRequiredMixin, DetailView):
         context = super().get_context_data(**kwargs)
 
         # Add related info
-        context["venture"] = self.object.venture
         context["category"] = self.object.category
         context["organizer"] = self.object.organizer
 
