@@ -1,4 +1,4 @@
-from django.contrib import admin
+from django.contrib import admin, messages
 from django import forms
 from django_ace import AceWidget
 from django_json_widget.widgets import JSONEditorWidget
@@ -65,6 +65,45 @@ class CypherQueryAdmin(admin.ModelAdmin):
     readonly_fields = ("created_at",)
     ordering = ("name",)
     inlines = [NodeStyleInline, EdgeStyleInline]
+    actions = ["create_missing_styles"]
+
+
+    @admin.action(description="Create missing styles")
+    def create_missing_styles(modeladmin, request, queryset):
+        created_count = 0
+        node_color_generator = ColorGenerator("tab20")
+        edge_color_generator = ColorGenerator("tab20c")
+
+        for cypher_query in queryset:
+
+            # Node styles — use enumerate index
+            for idx, ct in enumerate(CollectionType.objects.all()):
+                obj, created = NodeStyle.objects.get_or_create(
+                    cypher_query=cypher_query,
+                    collection_type=ct,
+                    defaults={
+                        "color": node_color_generator.color_for_id(idx),
+                        "size": 20,
+                    }
+                )
+                if created:
+                    created_count += 1
+
+            # Edge styles — also use enumerate index
+            for idx, rt in enumerate(RelationType.objects.all()):
+                obj, created = EdgeStyle.objects.get_or_create(
+                    cypher_query=cypher_query,
+                    relation_type=rt,
+                    defaults={
+                        "color": edge_color_generator.color_for_id(idx),
+                        "size": 2,
+                    }
+                )
+                if created:
+                    created_count += 1
+
+        messages.success(request, f"Created {created_count} missing styles.")
+
 
 
 @admin.register(DynamicPage)

@@ -46,22 +46,8 @@ class Command(IngressCommand):
             },
         )
 
-        # ---------------------------------------------------------
-        # 2. DynamicPage: Centrality Analysis
-        # ---------------------------------------------------------
         DynamicPage.objects.update_or_create(
-            name="Centrality Analysis",
-            defaults={
-                "slug": "centrality-analysis",
-                "query": "MATCH (n)-[r]->(m) RETURN n,r,m LIMIT 500",
-                "code": load_lambda(
-                    os.path.join(base_path, "page.py")
-                ),
-            },
-        )
-
-        DynamicPage.objects.update_or_create(
-            name="Centrality Analysis",
+            name="Story Points Kanban",
             defaults={
                 "slug": "kanban",
                 "query": "MATCH (n)-[r]->(m) RETURN n,r,m LIMIT 500",
