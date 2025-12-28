@@ -10,7 +10,7 @@ from django.urls import reverse
 
 
 class Bucket(models.Model):
-    name = models.CharField(max_length=100)
+    name = models.CharField(max_length=100, unique=True)
     owner = models.ForeignKey(User, on_delete=models.CASCADE)
 
     class Meta:

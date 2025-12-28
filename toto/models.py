@@ -21,31 +21,31 @@ class BaseExecutableModel(models.Model):
     class Meta:
         abstract = True
 
-    def get_context(self, context: dict = None) -> dict:
-        return context or self.test_context or {}
-
-    def get_allowed_globals(self, context: dict) -> dict:
-        """
-        Subclasses must override this to provide their own allowed globals.
-        """
-        raise NotImplementedError("Child class must implement get_allowed_globals()")
-
-    def execute(self, context: dict = None):
-        """
-        Execute restricted Python code using the helper executor.
-        """
-        ctx = self.get_context(context)
-
-        executor = RestrictedPythonExecutor(
-            code=self.code,
-            context=ctx,
-            name=getattr(self, "name", "unnamed")
-        )
-
-        # Merge model-level allowed globals with executor defaults
-        extra_globals = self.get_allowed_globals(ctx)
-
-        return executor.execute(extra_globals=extra_globals)
+    # def get_context(self, context: dict = None) -> dict:
+    #     return context or self.test_context or {}
+    #
+    # def get_allowed_globals(self, context: dict) -> dict:
+    #     """
+    #     Subclasses must override this to provide their own allowed globals.
+    #     """
+    #     raise NotImplementedError("Child class must implement get_allowed_globals()")
+    #
+    # def execute(self, context: dict = None):
+    #     """
+    #     Execute restricted Python code using the helper executor.
+    #     """
+    #     ctx = self.get_context(context)
+    #
+    #     executor = RestrictedPythonExecutor(
+    #         code=self.code,
+    #         context=ctx,
+    #         name=getattr(self, "name", "unnamed")
+    #     )
+    #
+    #     # Merge model-level allowed globals with executor defaults
+    #     extra_globals = self.get_allowed_globals(ctx)
+    #
+    #     return executor.execute(extra_globals=extra_globals)
 
 
 
