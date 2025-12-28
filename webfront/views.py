@@ -53,7 +53,7 @@ def graph_data(request):
 
     try:
         graph = CypherQueryHelper.build_graph(query_obj.query)
-        CypherQueryHelper.apply_user_lambda(
+        graph = CypherQueryHelper.apply_graph_lambda(
             code=query_obj.code,
             graph=graph,
             name=f"cypher_query_{query_obj.id}"
@@ -73,24 +73,21 @@ class DynamicPageView(View):
     def get(self, request, slug):
         page = get_object_or_404(DynamicPage, slug=slug)
         processor = PageProcessor()
-        try:
-            query_obj = CypherQuery.objects.get(pk=page.cypher_query.id)
-        except CypherQuery.DoesNotExist:
-            raise Http404("Query not found")
 
         try:
-            graph = CypherQueryHelper.build_graph(query_obj.query)
-            CypherQueryHelper.apply_user_lambda(
-                code=query_obj.code,
+            graph = CypherQueryHelper.build_graph(page.query)
+            result = CypherQueryHelper.apply_user_lambda(
+                code=page.code,
                 graph=graph,
-                name=f"cypher_query_{query_obj.id}"
+                name=f"page_{page.id}"
             )
-            style = GraphStyleResolver(query_obj)
-            data = CypherQueryHelper.networkx_to_simple_graph(graph, style)
+            #data = CypherQueryHelper.networkx_to_simple_graph(graph)
         except Exception as e:
             raise Http404(f"Error executing query: {str(e)}")
-
-        context = processor.decorate({"page": page, "result": json.dumps(data)}, request)
+        if not isinstance(result, list):
+            raise Http404("Page code must return a list of widgets")
+        result = [{"data": json.dumps(i), "id": i["id"], "title":i["title"]} for i in result]
+        context = processor.decorate({"page": page, "result": result}, request)
         return render(request, self.template_name, context)
 
 

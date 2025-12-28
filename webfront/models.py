@@ -108,7 +108,7 @@ class EdgeStyle(models.Model):
 
 
 
-class DynamicPage(SerializableModel):
+class DynamicPage(BaseExecutableQuery):
     name = models.CharField(max_length=200, unique=True)
 
     slug = models.SlugField(
@@ -116,13 +116,6 @@ class DynamicPage(SerializableModel):
         unique=True,
         blank=True,
         help_text="URL-friendly identifier for this page."
-    )
-
-    cypher_query = models.ForeignKey(
-        CypherQuery,
-        on_delete=models.CASCADE,
-        related_name="dynamic_pages",
-        help_text="The Cypher query this page is based on."
     )
 
     owner = models.ForeignKey(

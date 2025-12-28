@@ -71,9 +71,9 @@ class CypherQueryAdmin(admin.ModelAdmin):
 class DynamicPageAdmin(admin.ModelAdmin):
     form = DynamicPageForm  # optional, remove if not needed
 
-    list_display = ("name", "slug", "cypher_query", "owner", "open_link")
-    list_filter = ("owner", "cypher_query")
-    search_fields = ("name", "slug")
+    list_display = ("name", "slug", "owner", "open_link")
+    list_filter = ("owner",)
+    search_fields = ("name", "slug", "query")
     ordering = ("name",)
 
     def open_link(self, obj):

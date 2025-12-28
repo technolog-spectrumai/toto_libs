@@ -23,27 +23,25 @@
       {% if page.description %}
       <p class="opacity-80 mb-4">{{ page.description }}</p>
       {% endif %}
+      {% for widget in result %}
+          <div class="p-4 rounded border"
+               :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+            <h3 class="text-xl font-semibold mb-2">{{ widget.title }}</h3>
+            <!-- 🔮 YAML Output -->
+            <pre id="yaml-{{widget.id}}"
+                 class="whitespace-pre-wrap break-words text-sm"></pre>
+            <script>
+              // Safely load Django dict → JS object
+              const data = JSON.parse('{{ widget.data|escapejs }}');
 
-      <div class="p-4 rounded border"
-           :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+              // Convert JS object → YAML
+              const yamlText = jsyaml.dump(data);
 
-        <!-- 🔮 YAML Output -->
-        <pre id="yaml-output"
-             class="whitespace-pre-wrap break-words text-sm"></pre>
-
-        <script>
-          // Safely load Django dict → JS object
-          const data = JSON.parse('{{ result|escapejs }}');
-          console.log('{{ result|escapejs }}');
-
-          // Convert JS object → YAML
-          const yamlText = jsyaml.dump(data);
-
-          // Display YAML
-          document.getElementById("yaml-output").textContent = yamlText;
-        </script>
-
-      </div>
+              // Display YAML
+              document.getElementById("yaml-{{widget.id}}").textContent = yamlText;
+            </script>
+          </div>
+      {% endfor %}
     </section>
 
   </div>

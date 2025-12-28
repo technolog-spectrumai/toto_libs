@@ -4,6 +4,7 @@ from neo4j import GraphDatabase
 from django.conf import settings
 from toto.executor import RestrictedPythonExecutor
 from .style import GraphStyleResolver
+import numpy as np
 
 
 class CypherQueryHelper:
@@ -63,7 +64,6 @@ class CypherQueryHelper:
 
         return G
 
-
     @staticmethod
     def apply_user_lambda(code, graph, name="cypher_lambda"):
         if not code:
@@ -77,9 +77,18 @@ class CypherQueryHelper:
             context=context,
             name=name
         )
+        result = {}
+        try:
+            result = executor.execute(extra_globals={"nx": nx, "np": np})
+        except Exception as e:
+            result["error"] = str(e)
 
-        # This will run main(context) internally
-        result = executor.execute(extra_globals={"nx": nx})
+        return result
+
+
+    @staticmethod
+    def apply_graph_lambda(code, graph, name="cypher_lambda"):
+        result = CypherQueryHelper.apply_user_lambda(code, graph, name)
 
         # If executor returned an error dict → bail out
         if isinstance(result, dict) and "error" in result:
@@ -103,15 +112,15 @@ class CypherQueryHelper:
         for node_id, data in G.nodes(data=True):
             label = data.get("label", "Node")
             node_labels.add(label)
-
+            node_data = {
+                "id": node_id,
+                "label": label,
+                "color": style.node_color(label) if style else None,
+                "size": style.node_size(label) if style else None,
+                **data
+            }
             elements.append({
-                "data": {
-                    "id": node_id,
-                    "label": label,
-                    "color": style.node_color(label) if style else None,
-                    "size": style.node_size(label) if style else None,
-                    **data
-                }
+                "data": node_data
             })
 
         for u, v, data in G.edges(data=True):
@@ -132,54 +141,44 @@ class CypherQueryHelper:
 
         return elements, node_labels, edge_types
 
-    @staticmethod
-    def networkx_to_simple_graph(G, style=None):
-        nodes = []
-        edges = []
-
-        # Nodes
-        for node_id, data in G.nodes(data=True):
-            node = {
-                "id": node_id,
-                "label": data.get("label", "Node"),
-            }
-
-            # Add styling if provided
-            if style:
-                node["color"] = style.node_color(node["label"])
-                node["size"] = style.node_size(node["label"])
-
-            # Add all other node attributes
-            for k, v in data.items():
-                if k not in ("label",):
-                    node[k] = v
-
-            nodes.append(node)
-
-        # Edges
-        for u, v, data in G.edges(data=True):
-            edge = {
-                "source": u,
-                "target": v,
-                "type": data.get("type", "REL"),
-            }
-
-            # Add styling if provided
-            if style:
-                edge["color"] = style.edge_color(edge["type"])
-                edge["size"] = style.edge_size(edge["type"])
-
-            # Add all other edge attributes
-            for k, v in data.items():
-                if k not in ("type",):
-                    edge[k] = v
-
-            edges.append(edge)
-
-        return {
-            "nodes": nodes,
-            "edges": edges,
-        }
+    # @staticmethod
+    # def networkx_to_simple_graph(G):
+    #     nodes = []
+    #     edges = []
+    #
+    #     # Nodes
+    #     for node_id, data in G.nodes(data=True):
+    #         node = {
+    #             "id": node_id,
+    #             "label": data.get("label", "Node"),
+    #         }
+    #
+    #         # Add all other node attributes
+    #         for k, v in data.items():
+    #             if k not in ("label",):
+    #                 node[k] = v
+    #
+    #         nodes.append(node)
+    #
+    #     # Edges
+    #     for u, v, data in G.edges(data=True):
+    #         edge = {
+    #             "source": u,
+    #             "target": v,
+    #             "type": data.get("type", "REL"),
+    #         }
+    #
+    #         # Add all other edge attributes
+    #         for k, v in data.items():
+    #             if k not in ("type",):
+    #                 edge[k] = v
+    #
+    #         edges.append(edge)
+    #
+    #     return {
+    #         "nodes": nodes,
+    #         "edges": edges,
+    #     }
 
     @staticmethod
     def build_graph(query):
@@ -211,7 +210,7 @@ class CypherQueryHelper:
         G = CypherQueryHelper.records_to_networkx(records)
 
         # 3. Apply lambda
-        G = CypherQueryHelper.apply_user_lambda(
+        G = CypherQueryHelper.apply_graph_lambda(
             code=query_obj.code,
             graph=G,
             name=f"cypher_query_{query_obj.id}"
