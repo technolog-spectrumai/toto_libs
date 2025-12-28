@@ -108,6 +108,79 @@ class DynamicPageView(View):
         context = processor.decorate({"page": page, "result": result}, request)
         return render(request, self.template_name, context)
 
+import json
+from django.contrib.auth.decorators import login_required
+from django.http import JsonResponse, Http404
+from django.shortcuts import get_object_or_404
+from django.views.decorators.http import require_POST
+
+from vault.client import VaultClient
+from vault.models import VaultFile
+from .models import Gateway
+
+
+@login_required
+@require_POST
+def gateway_upload(request, slug):
+    """
+    Handle file drop into a Gateway.
+    1. Resolve gateway
+    2. Upload file into its workflow bucket
+    3. Execute workflow
+    4. Return workflow result as JSON
+    """
+
+    gateway = get_object_or_404(Gateway, slug=slug)
+    workflow = gateway.workflow
+
+    if not workflow.is_active:
+        raise Http404("Workflow is not active")
+
+    # Ensure file was provided
+    uploaded_file = request.FILES.get("file")
+    if not uploaded_file:
+        return JsonResponse({"error": "No file uploaded"}, status=400)
+
+    # Upload file into workflow bucket using VaultClient
+    client = VaultClient(bucket_name=workflow.bucket.name)
+    file_info = client.upload_file(uploaded_file, name=uploaded_file.name)
+
+    # Retrieve the actual VaultFile instance
+    try:
+        vault_file = VaultFile.objects.get(
+            key=file_info["key"],
+            owner=request.user,
+            bucket=workflow.bucket
+        )
+    except VaultFile.DoesNotExist:
+        return JsonResponse({"error": "Uploaded file not found"}, status=500)
+
+    # Execute workflow
+    try:
+        result = workflow.execute({
+            "file": vault_file,
+            "file_path": vault_file.file.path,
+            "file_type": vault_file.file_type,
+            "owner": vault_file.owner,
+            "bucket": vault_file.bucket,
+        })
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+    # Must be JSON-serializable
+    return JsonResponse({"result": result})
+
+from django.views import View
+from django.shortcuts import render
+
+class GatewayView(View):
+    template_name = "webfront/gateway.html"
+
+    def get(self, request, slug):
+        gateway = get_object_or_404(Gateway, slug=slug)
+        processor = PageProcessor()
+        context = processor.decorate({"gateway": gateway}, request)
+        return render(request, self.template_name, context)
 
 
 

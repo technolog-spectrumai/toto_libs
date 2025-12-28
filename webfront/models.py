@@ -4,6 +4,7 @@ from toto.models import SerializableModel, BaseExecutableModel
 from colorfield.fields import ColorField
 from ravioli.models import CollectionType, RelationType
 from django.utils.text import slugify
+from vault.models import Bucket
 
 
 class BaseQuery(SerializableModel):
@@ -147,4 +148,73 @@ class DynamicPage(BaseExecutableQuery):
 
     def __str__(self):
         return self.name
+
+
+class FileWorkflow(BaseExecutableModel, SerializableModel):
+    """
+    A reusable, executable workflow that processes VaultFiles.
+    """
+
+    name = models.CharField(max_length=200, unique=True)
+    description = models.TextField(blank=True)
+    owner = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="file_workflows"
+    )
+
+    bucket = models.ForeignKey(
+        Bucket,
+        on_delete=models.CASCADE,
+        related_name="workflows",
+        help_text="Workflow is restricted to files inside this bucket."
+    )
+
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
+class Gateway(models.Model):
+    name = models.CharField(max_length=200, unique=True)
+
+    slug = models.SlugField(
+        max_length=200,
+        unique=True,
+        blank=True,
+        help_text="URL-friendly identifier for this gateway."
+    )
+
+    workflow = models.ForeignKey(
+        FileWorkflow,
+        on_delete=models.CASCADE,
+        related_name="gateways",
+        help_text="The workflow this gateway triggers."
+    )
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            base = slugify(self.name)
+            slug = base
+            counter = 1
+
+            while Gateway.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                slug = f"{base}-{counter}"
+                counter += 1
+
+            self.slug = slug
+
+        super().save(*args, **kwargs)
 

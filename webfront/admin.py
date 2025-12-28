@@ -6,7 +6,9 @@ from .models import (
     CypherQuery,
     NodeStyle,
     EdgeStyle,
-    DynamicPage
+    DynamicPage,
+    FileWorkflow,
+    Gateway
 )
 
 from ravioli.models import CollectionType, RelationType
@@ -102,3 +104,55 @@ class DynamicPageAdmin(admin.ModelAdmin):
             obj.owner = request.user
         super().save_model(request, obj, form, change)
 
+
+class FileWorkflowForm(forms.ModelForm):
+    class Meta:
+        model = FileWorkflow
+        fields = "__all__"
+        widgets = {
+            "code": AceWidget(
+                mode="python",
+                theme="chrome",
+                width="100%",
+                height="400px"
+            ),
+            "test_context": JSONEditorWidget(),
+        }
+
+
+@admin.register(FileWorkflow)
+class FileWorkflowAdmin(admin.ModelAdmin):
+    form = FileWorkflowForm
+
+    list_display = ("name", "bucket", "owner", "is_active")
+    list_filter = ("bucket", "owner", "is_active")
+    search_fields = ("name", "description")
+    ordering = ("name",)
+
+    def save_model(self, request, obj, form, change):
+        if not obj.owner:
+            obj.owner = request.user
+        super().save_model(request, obj, form, change)
+
+
+# ---------------------------------------------------------
+# Gateway Admin
+# ---------------------------------------------------------
+
+@admin.register(Gateway)
+class GatewayAdmin(admin.ModelAdmin):
+    list_display = ("name", "slug", "workflow", "open_link")
+    list_filter = ("workflow",)
+    search_fields = ("name", "slug")
+    ordering = ("name",)
+
+    def open_link(self, obj):
+        """Optional: link to a future gateway endpoint."""
+        url = reverse("webfront:gateway", args=[obj.slug])
+        return format_html('<a href="{}" target="_blank">Open</a>', url)
+
+    open_link.short_description = "View"
+
+    def save_model(self, request, obj, form, change):
+        # No owner field here, but slug auto-generation is handled in model
+        super().save_model(request, obj, form, change)
