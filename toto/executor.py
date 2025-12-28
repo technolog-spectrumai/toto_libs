@@ -1,5 +1,5 @@
 import operator
-from datetime import timedelta
+from datetime import timedelta, datetime, date
 from RestrictedPython import (
     compile_restricted,
     safe_builtins,
@@ -44,6 +44,8 @@ class RestrictedPythonExecutor:
             "_getiter_": iter,
             "_write_": full_write_guard,
             "timedelta": timedelta,
+            "datetime": datetime,
+            "date": date,
             "sum": sum,
             "len": len,
             "max": max,

@@ -59,3 +59,14 @@ class Command(IngressCommand):
                 ),
             },
         )
+
+        DynamicPage.objects.update_or_create(
+            name="Centrality Analysis",
+            defaults={
+                "slug": "kanban",
+                "query": "MATCH (n)-[r]->(m) RETURN n,r,m LIMIT 500",
+                "code": load_lambda(
+                    os.path.join(base_path, "kanban.py")
+                ),
+            },
+        )

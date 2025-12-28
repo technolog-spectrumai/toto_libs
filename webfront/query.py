@@ -6,7 +6,6 @@ from toto.executor import RestrictedPythonExecutor
 from .style import GraphStyleResolver
 import numpy as np
 
-
 class CypherQueryHelper:
     """
     Pure static helper for running Cypher queries and converting results.
@@ -79,7 +78,7 @@ class CypherQueryHelper:
         )
         result = {}
         try:
-            result = executor.execute(extra_globals={"nx": nx, "np": np})
+            result = executor.execute(extra_globals={ "nx": nx, "np": np } )
         except Exception as e:
             result["error"] = str(e)
 
