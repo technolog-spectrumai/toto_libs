@@ -81,7 +81,6 @@ class DynamicPageView(View):
                 graph=graph,
                 name=f"page_{page.id}"
             )
-            #data = CypherQueryHelper.networkx_to_simple_graph(graph)
         except Exception as e:
             raise Http404(f"Error executing query: {str(e)}")
         if not isinstance(result, list):
