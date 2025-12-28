@@ -1,16 +1,20 @@
-import json
-
-from celery.bin.result import result
 from django.contrib.auth.decorators import login_required
 from oya.page import PageProcessor
-from .models import CypherQuery, DynamicPage
+from .models import CypherQuery, DynamicPage, Gateway
 from .graph_lambda import GraphLambdaHelper
-from django.http import JsonResponse, Http404, HttpResponseServerError
-from django.shortcuts import render, get_object_or_404
-from django.views import View
 from .style import GraphStyleResolver
 from ravioli.builder import GraphBuilder
 from .query import CypherQueryHelper
+from django.views import View
+from django.shortcuts import render
+import json
+from django.contrib.auth.decorators import login_required
+from django.http import JsonResponse, Http404
+from django.shortcuts import get_object_or_404
+from django.views.decorators.http import require_POST
+from vault.client import VaultClient
+from vault.models import VaultFile
+
 
 
 @login_required
@@ -108,16 +112,6 @@ class DynamicPageView(View):
         context = processor.decorate({"page": page, "result": result}, request)
         return render(request, self.template_name, context)
 
-import json
-from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse, Http404
-from django.shortcuts import get_object_or_404
-from django.views.decorators.http import require_POST
-
-from vault.client import VaultClient
-from vault.models import VaultFile
-from .models import Gateway
-
 
 @login_required
 @require_POST
@@ -156,22 +150,25 @@ def gateway_upload(request, slug):
         return JsonResponse({"error": "Uploaded file not found"}, status=500)
 
     # Execute workflow
-    try:
-        result = workflow.execute({
-            "file": vault_file,
-            "file_path": vault_file.file.path,
-            "file_type": vault_file.file_type,
-            "owner": vault_file.owner,
-            "bucket": vault_file.bucket,
-        })
-    except Exception as e:
-        return JsonResponse({"error": str(e)}, status=500)
+    # try:
+    #     result = workflow.execute({
+    #         "file": vault_file,
+    #         "file_path": vault_file.file.path,
+    #         "file_type": vault_file.file_type,
+    #         "owner": vault_file.owner,
+    #         "bucket": vault_file.bucket,
+    #     })
+    # except Exception as e:
+    #     return JsonResponse({"error": str(e)}, status=500)
+    result = {
+        "file_name": vault_file.title,
+        "file_size_bytes": vault_file.file.size
+    }
 
     # Must be JSON-serializable
     return JsonResponse({"result": result})
 
-from django.views import View
-from django.shortcuts import render
+
 
 class GatewayView(View):
     template_name = "webfront/gateway.html"
