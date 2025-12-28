@@ -13,6 +13,7 @@ from ravioli.models import CollectionType, RelationType
 from toto.colors import ColorGenerator
 from django.utils.html import format_html
 from django.urls import reverse
+from .style_factory import StyleFactory
 
 
 class CypherQueryForm(forms.ModelForm):
@@ -70,40 +71,13 @@ class CypherQueryAdmin(admin.ModelAdmin):
 
     @admin.action(description="Create missing styles")
     def create_missing_styles(modeladmin, request, queryset):
-        created_count = 0
-        node_color_generator = ColorGenerator("tab20")
-        edge_color_generator = ColorGenerator("tab20c")
+        factory = StyleFactory()
+        total_created = 0
 
         for cypher_query in queryset:
+            total_created += factory.create_missing_styles(cypher_query)
 
-            # Node styles — use enumerate index
-            for idx, ct in enumerate(CollectionType.objects.all()):
-                obj, created = NodeStyle.objects.get_or_create(
-                    cypher_query=cypher_query,
-                    collection_type=ct,
-                    defaults={
-                        "color": node_color_generator.color_for_id(idx),
-                        "size": 20,
-                    }
-                )
-                if created:
-                    created_count += 1
-
-            # Edge styles — also use enumerate index
-            for idx, rt in enumerate(RelationType.objects.all()):
-                obj, created = EdgeStyle.objects.get_or_create(
-                    cypher_query=cypher_query,
-                    relation_type=rt,
-                    defaults={
-                        "color": edge_color_generator.color_for_id(idx),
-                        "size": 2,
-                    }
-                )
-                if created:
-                    created_count += 1
-
-        messages.success(request, f"Created {created_count} missing styles.")
-
+        messages.success(request, f"Created {total_created} missing styles.")
 
 
 @admin.register(DynamicPage)
@@ -127,5 +101,4 @@ class DynamicPageAdmin(admin.ModelAdmin):
         if not obj.owner:
             obj.owner = request.user
         super().save_model(request, obj, form, change)
-
 
