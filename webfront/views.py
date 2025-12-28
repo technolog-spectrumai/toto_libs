@@ -1,13 +1,14 @@
 import json
 from django.contrib.auth.decorators import login_required
-from django.shortcuts import render
 from oya.page import PageProcessor
 from .models import CypherQuery, DynamicPage
-from .query import CypherQueryHelper
+from .graph_lambda import GraphLambdaHelper
 from django.http import JsonResponse, Http404
 from django.shortcuts import render, get_object_or_404
 from django.views import View
 from .style import GraphStyleResolver
+from ravioli.builder import GraphBuilder
+from .query import CypherQueryHelper
 
 
 @login_required
@@ -52,8 +53,8 @@ def graph_data(request):
         raise Http404("Query not found")
 
     try:
-        graph = CypherQueryHelper.build_graph(query_obj.query)
-        graph = CypherQueryHelper.apply_graph_lambda(
+        graph = GraphBuilder.build_graph(query_obj.query)
+        graph = GraphLambdaHelper.apply_graph_lambda(
             code=query_obj.code,
             graph=graph,
             name=f"cypher_query_{query_obj.id}"
@@ -75,8 +76,8 @@ class DynamicPageView(View):
         processor = PageProcessor()
 
         try:
-            graph = CypherQueryHelper.build_graph(page.query)
-            result = CypherQueryHelper.apply_user_lambda(
+            graph = GraphBuilder.build_graph(page.query)
+            result = GraphLambdaHelper.apply_user_lambda(
                 code=page.code,
                 graph=graph,
                 name=f"page_{page.id}"
