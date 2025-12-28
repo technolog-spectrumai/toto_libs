@@ -55,6 +55,17 @@ class VaultClient:
 
         return self._file_to_json(file)
 
+    def file_exists(self, key: str) -> bool:
+        """
+        Check if a file with the given key exists in this bucket
+        for this bucket's owner.
+        """
+        return VaultFile.objects.filter(
+            key=key,
+            owner=self.owner,
+            bucket=self.bucket
+        ).exists()
+
     # ---------------------------------------------------------
     # Read (by key)
     # ---------------------------------------------------------

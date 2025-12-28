@@ -1,5 +1,6 @@
-from django.contrib.auth.decorators import login_required
+from django.utils.text import slugify
 from oya.page import PageProcessor
+from .files import FileHelper
 from .models import CypherQuery, DynamicPage, Gateway
 from .graph_lambda import GraphLambdaHelper
 from .style import GraphStyleResolver
@@ -14,7 +15,26 @@ from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_POST
 from vault.client import VaultClient
 from vault.models import VaultFile
+import random
+import string
 
+
+def short_hash(length=3):
+    return ''.join(random.choices(string.ascii_lowercase, k=length))
+
+
+def save_file(uploaded_file, client):
+    base_name = uploaded_file.name
+    base_key = slugify(base_name)
+
+    # Add 3‑letter hash
+    key = f"{base_key}-{short_hash()}"
+
+    # Ensure uniqueness inside bucket
+    while client.file_exists(key):
+        key = f"{base_key}-{short_hash()}"
+
+    client.upload_file(uploaded_file, name=key)
 
 
 @login_required
@@ -119,9 +139,9 @@ def gateway_upload(request, slug):
     """
     Handle file drop into a Gateway.
     1. Resolve gateway
-    2. Upload file into its workflow bucket
-    3. Execute workflow
-    4. Return workflow result as JSON
+    2. Save file into workflow bucket using FileHelper
+    3. Execute workflow (disabled here)
+    4. Return result as JSON
     """
 
     gateway = get_object_or_404(Gateway, slug=slug)
@@ -130,43 +150,28 @@ def gateway_upload(request, slug):
     if not workflow.is_active:
         raise Http404("Workflow is not active")
 
-    # Ensure file was provided
     uploaded_file = request.FILES.get("file")
     if not uploaded_file:
         return JsonResponse({"error": "No file uploaded"}, status=400)
 
-    # Upload file into workflow bucket using VaultClient
-    client = VaultClient(bucket_name=workflow.bucket.name)
-    file_info = client.upload_file(uploaded_file, name=uploaded_file.name)
+    # Use FileHelper instead of VaultClient
+    helper = FileHelper(bucket_name=workflow.bucket.name)
 
-    # Retrieve the actual VaultFile instance
-    try:
-        vault_file = VaultFile.objects.get(
-            key=file_info["key"],
-            owner=request.user,
-            bucket=workflow.bucket
-        )
-    except VaultFile.DoesNotExist:
-        return JsonResponse({"error": "Uploaded file not found"}, status=500)
+    # Save file (returns VaultFile instance)
+    vault_file = helper.save_file(uploaded_file)
 
-    # Execute workflow
-    # try:
-    #     result = workflow.execute({
-    #         "file": vault_file,
-    #         "file_path": vault_file.file.path,
-    #         "file_type": vault_file.file_type,
-    #         "owner": vault_file.owner,
-    #         "bucket": vault_file.bucket,
-    #     })
-    # except Exception as e:
-    #     return JsonResponse({"error": str(e)}, status=500)
+    if not vault_file:
+        return JsonResponse({"error": "File could not be saved"}, status=500)
+
+    # Example result (workflow disabled)
     result = {
         "file_name": vault_file.title,
-        "file_size_bytes": vault_file.file.size
+        "file_key": vault_file.key,
+        "file_size_bytes": vault_file.file.size,
     }
 
-    # Must be JSON-serializable
     return JsonResponse({"result": result})
+
 
 
 
