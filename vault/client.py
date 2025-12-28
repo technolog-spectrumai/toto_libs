@@ -1,26 +1,28 @@
 # client.py
-from django.utils.text import slugify
 from vault.models import VaultFile, Bucket
+from vault.file_helper import FileHelper
 
 
 class VaultClient:
     """
-    Strict bucket-scoped CRUD client for VaultFile.
-    Always returns JSON-serializable dicts.
+    JSON-returning wrapper around FileHelper.
+    FileHelper handles:
+      - bucket resolution
+      - unique key generation
+      - hashing
+      - saving files
+      - CRUD
+    VaultClient only serializes results to JSON.
     """
 
     def __init__(self, bucket_name: str):
-        self.bucket = self._resolve_bucket(bucket_name)
-        self.owner = self.bucket.owner
+        self.helper = FileHelper(bucket_name)
+        self.bucket = self.helper.bucket
+        self.owner = self.helper.owner
 
     # ---------------------------------------------------------
-    # Internal helpers
+    # JSON serializer
     # ---------------------------------------------------------
-    def _resolve_bucket(self, bucket_name: str) -> Bucket:
-        try:
-            return Bucket.objects.get(name=bucket_name)
-        except Bucket.DoesNotExist:
-            raise Bucket.DoesNotExist(f"Bucket '{bucket_name}' does not exist")
 
     def _file_to_json(self, file: VaultFile) -> dict:
         return {
@@ -35,93 +37,46 @@ class VaultClient:
         }
 
     # ---------------------------------------------------------
-    # Create (upload)
+    # Create (upload) — delegates to FileHelper
     # ---------------------------------------------------------
-    def upload_file(self, uploaded_file, name: str) -> dict:
-        """
-        Upload a file into this bucket.
-        Returns JSON only.
-        """
 
-        key = slugify(name)
-
-        file = VaultFile.objects.create(
-            owner=self.owner,
-            title=name,
-            key=key,
-            file=uploaded_file,
-            bucket=self.bucket,
-        )
-
+    def upload_file(self, uploaded_file) -> dict:
+        file = self.helper.save_file(uploaded_file)
         return self._file_to_json(file)
 
-    def file_exists(self, key: str) -> bool:
-        """
-        Check if a file with the given key exists in this bucket
-        for this bucket's owner.
-        """
-        return VaultFile.objects.filter(
-            key=key,
-            owner=self.owner,
-            bucket=self.bucket
-        ).exists()
+    # ---------------------------------------------------------
+    # Read
+    # ---------------------------------------------------------
 
-    # ---------------------------------------------------------
-    # Read (by key)
-    # ---------------------------------------------------------
     def get_file(self, key: str) -> dict:
-        try:
-            file = VaultFile.objects.get(
-                key=key,
-                owner=self.owner,
-                bucket=self.bucket
-            )
-        except VaultFile.DoesNotExist:
+        file = self.helper.get_file(key)
+        if not file:
             return {"error": f"File with key '{key}' not found"}
-
         return self._file_to_json(file)
 
     def list_files(self) -> dict:
-        files = VaultFile.objects.filter(
-            owner=self.owner,
-            bucket=self.bucket
-        )
-
+        files = self.helper.list_files()
         return {
             "bucket": self.bucket.name,
             "files": [self._file_to_json(f) for f in files]
         }
 
     # ---------------------------------------------------------
-    # Update (content only)
+    # Update
     # ---------------------------------------------------------
-    def update_file(self, key: str, new_file_content) -> dict:
-        file = VaultFile.objects.filter(
-            key=key,
-            owner=self.owner,
-            bucket=self.bucket
-        ).first()
 
+    def update_file(self, key: str, new_file_content) -> dict:
+        file = self.helper.update_file(key, new_file_content)
         if not file:
             return {"error": f"File with key '{key}' not found"}
-
-        file.file = new_file_content
-        file.save()
-
         return self._file_to_json(file)
 
     # ---------------------------------------------------------
     # Delete
     # ---------------------------------------------------------
+
     def delete_file(self, key: str) -> dict:
-        file = VaultFile.objects.filter(
-            key=key,
-            owner=self.owner,
-            bucket=self.bucket
-        ).first()
-
-        if not file:
+        ok = self.helper.delete_file(key)
+        if not ok:
             return {"error": f"File with key '{key}' not found"}
-
-        file.delete()
         return {"status": "deleted", "key": key}

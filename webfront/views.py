@@ -1,6 +1,6 @@
 from django.utils.text import slugify
 from oya.page import PageProcessor
-from .files import FileHelper
+from toto.vault.file_helper import FileHelper
 from .models import CypherQuery, DynamicPage, Gateway
 from .graph_lambda import GraphLambdaHelper
 from .style import GraphStyleResolver
