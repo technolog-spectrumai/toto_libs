@@ -8,6 +8,7 @@ class GraphLambdaHelper:
     Pure static helper for running Cypher queries and converting results.
     No state, no instances, no loading.
     """
+    Error = RestrictedPythonExecutor.ExecutionError
 
     @staticmethod
     def apply_user_lambda(code, graph, name="cypher_lambda"):
@@ -22,13 +23,7 @@ class GraphLambdaHelper:
             context=context,
             name=name
         )
-        result = {}
-        try:
-            result = executor.execute(extra_globals={ "nx": nx, "np": np } )
-        except Exception as e:
-            result["error"] = str(e)
-
-        return result
+        return executor.execute(extra_globals={ "nx": nx, "np": np } )
 
 
     @staticmethod

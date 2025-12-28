@@ -1,9 +1,11 @@
 import json
+
+from celery.bin.result import result
 from django.contrib.auth.decorators import login_required
 from oya.page import PageProcessor
 from .models import CypherQuery, DynamicPage
 from .graph_lambda import GraphLambdaHelper
-from django.http import JsonResponse, Http404
+from django.http import JsonResponse, Http404, HttpResponseServerError
 from django.shortcuts import render, get_object_or_404
 from django.views import View
 from .style import GraphStyleResolver
@@ -74,7 +76,7 @@ class DynamicPageView(View):
     def get(self, request, slug):
         page = get_object_or_404(DynamicPage, slug=slug)
         processor = PageProcessor()
-
+        result = []
         try:
             graph = GraphBuilder.build_graph(page.query)
             result = GraphLambdaHelper.apply_user_lambda(
@@ -82,11 +84,26 @@ class DynamicPageView(View):
                 graph=graph,
                 name=f"page_{page.id}"
             )
-        except Exception as e:
-            raise Http404(f"Error executing query: {str(e)}")
+        except GraphLambdaHelper.Error as e:
+            result.append({
+                "id": f"error_{page.id}",
+                "title": "Error",
+                "error": str(e),
+                "data": None
+            })
         if not isinstance(result, list):
-            raise Http404("Page code must return a list of widgets")
-        result = [{"data": json.dumps(i), "id": i["id"], "title":i["title"]} for i in result]
+            result.append({
+                "id": f"error_{page.id}",
+                "title": "Error",
+                "error": "Page code must return a list of widgets",
+                "data": None
+            })
+        else:
+            result.extend([
+                {"data": json.dumps(i), "id": i["id"], "title": i["title"]}
+                if "error" not in i else i
+                for i in result
+            ])
         context = processor.decorate({"page": page, "result": result}, request)
         return render(request, self.template_name, context)
 

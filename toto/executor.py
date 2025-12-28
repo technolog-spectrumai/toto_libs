@@ -19,6 +19,9 @@ class RestrictedPythonExecutor:
     Requires the code to define a main(context) function.
     """
 
+    class ExecutionError(Exception):
+        pass
+
     def __init__(self, code: str, context: dict = None, name: str = "snippet"):
         self.code = code
         self.context = context or {}
@@ -80,4 +83,4 @@ class RestrictedPythonExecutor:
             return local_vars["main"](self.context)
 
         except Exception as e:
-            return {"error": str(e)}
+            raise self.ExecutionError(f"Execution failed: {e}" ) from e
