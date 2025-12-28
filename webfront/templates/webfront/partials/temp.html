@@ -1,6 +1,0 @@
-        <div class="p-4 rounded border"
-              :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
-             {% for chart in charts %}
-                {% include "webfront/partial/chart.html" with config=result chart_id= %}
-             {% endfor %}
-         </div>
