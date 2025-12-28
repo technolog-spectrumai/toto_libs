@@ -77,9 +77,10 @@ class DynamicPageView(View):
         page = get_object_or_404(DynamicPage, slug=slug)
         processor = PageProcessor()
         result = []
+        lambda_result = {}
         try:
             graph = GraphBuilder.build_graph(page.query)
-            result = GraphLambdaHelper.apply_user_lambda(
+            lambda_result = GraphLambdaHelper.apply_user_lambda(
                 code=page.code,
                 graph=graph,
                 name=f"page_{page.id}"
@@ -102,7 +103,7 @@ class DynamicPageView(View):
             result.extend([
                 {"data": json.dumps(i), "id": i["id"], "title": i["title"]}
                 if "error" not in i else i
-                for i in result
+                for i in lambda_result
             ])
         context = processor.decorate({"page": page, "result": result}, request)
         return render(request, self.template_name, context)
