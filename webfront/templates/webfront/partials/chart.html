@@ -7,13 +7,59 @@
     const chart = JSON.parse('{{ data|escapejs }}');
     const ctx = document.getElementById('{{ chart_id }}').getContext('2d');
 
+    // Detect dark mode from Alpine/localStorage
+    const isDark = localStorage.getItem('darkMode') === 'true';
+
+    // Your full theme color dictionary
+    const themeColors = {{ theme.theme.colors|safe }};
+
+    // Pick colors based on mode
+    const textColor = isDark ? themeColors["text-main-dark"] : themeColors["text-main-light"];
+    const gridColor = isDark ? themeColors["primary-bg-dark"] : themeColors["primary-bg-light"];
+    const tooltipBg = isDark ? themeColors["bubble-bg-dark"] : "#ffffff";
+    const tooltipText = textColor;
+    const accentColor = isDark ? themeColors["accent-dark"] : themeColors["accent-light"];
+
+    // Build final options
+    const options = Object.assign({}, chart.options || {}, {
+        responsive: true,
+        maintainAspectRatio: false,
+
+        plugins: {
+            legend: {
+                labels: {
+                    color: textColor
+                }
+            },
+            tooltip: {
+                backgroundColor: tooltipBg,
+                titleColor: tooltipText,
+                bodyColor: tooltipText,
+                borderColor: accentColor,
+                borderWidth: 1
+            }
+        },
+
+        // Only apply axes if chart type supports them
+        scales: (chart.type !== 'pie' && chart.type !== 'doughnut') ? {
+            x: {
+                ticks: { color: textColor },
+                grid: { color: gridColor }
+            },
+            y: {
+                ticks: { color: textColor },
+                grid: { color: gridColor }
+            }
+        } : {}
+    });
+
     new Chart(ctx, {
         type: chart.type,
         data: {
             labels: chart.labels,
             datasets: chart.datasets
         },
-        options: chart.options || {}
+        options: options
     });
 })();
 </script>
