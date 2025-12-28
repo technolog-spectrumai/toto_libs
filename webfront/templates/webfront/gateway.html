@@ -5,7 +5,9 @@
 
 {% block start_script %}
 <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
 {% endblock %}
+
 
 {% block content %}
 <div
@@ -52,7 +54,7 @@
       <h3 class="text-xl font-semibold mb-4">Workflow Result</h3>
 
       <pre class="p-4 bg-gray-100 rounded text-sm whitespace-pre-wrap"
-           x-text="JSON.stringify(results, null, 2)">
+           x-text="jsyaml.dump(results)">
       </pre>
     </section>
 
