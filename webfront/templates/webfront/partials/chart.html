@@ -15,7 +15,7 @@
 
     // Pick colors based on mode
     const textColor = isDark ? themeColors["text-main-dark"] : themeColors["text-main-light"];
-    const gridColor = isDark ? themeColors["primary-bg-dark"] : themeColors["primary-bg-light"];
+    const gridColor = dim(textColor, 0.25);
     const tooltipBg = isDark ? themeColors["bubble-bg-dark"] : "#ffffff";
     const tooltipText = textColor;
     const accentColor = isDark ? themeColors["accent-dark"] : themeColors["accent-light"];
