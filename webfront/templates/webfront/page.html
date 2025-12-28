@@ -5,6 +5,8 @@
 
 {% block start_script %}
 <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 {% endblock %}
 
 {% block content %}
@@ -23,24 +25,38 @@
       {% if page.description %}
       <p class="opacity-80 mb-4">{{ page.description }}</p>
       {% endif %}
+
       {% for widget in result %}
-          <div class="p-4 rounded border"
-               :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
-            <h3 class="text-xl font-semibold mb-2">{{ widget.title }}</h3>
-            <!-- 🔮 YAML Output -->
+        <div
+          x-data="{ open: false }"
+          class="p-4 rounded border"
+          :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+
+          <!-- Header -->
+          <div class="flex justify-between items-center cursor-pointer"
+               @click="open = !open">
+
+            <!-- Chevron Icon -->
+            <i class="fa-solid fa-chevron-down transition-transform duration-300"
+               :class="open ? 'rotate-180' : 'rotate-0'"></i>
+          </div>
+
+          <!-- Collapsible YAML -->
+          <div x-show="open" x-collapse class="mt-3">
+            {% include "webfront/partials/chart.html" with data=widget.data chart_id=widget.id %}
+
             <pre id="yaml-{{widget.id}}"
                  class="whitespace-pre-wrap break-words text-sm"></pre>
-            <script>
-              // Safely load Django dict → JS object
-              const data = JSON.parse('{{ widget.data|escapejs }}');
-
-              // Convert JS object → YAML
-              const yamlText = jsyaml.dump(data);
-
-              // Display YAML
-              document.getElementById("yaml-{{widget.id}}").textContent = yamlText;
-            </script>
           </div>
+
+
+          <script>
+            const data_{{widget.id}} = JSON.parse('{{ widget.data|escapejs }}');
+            const yamlText_{{widget.id}} = jsyaml.dump(data_{{widget.id}});
+            document.getElementById("yaml-{{widget.id}}").textContent = yamlText_{{widget.id}};
+          </script>
+
+        </div>
       {% endfor %}
     </section>
 

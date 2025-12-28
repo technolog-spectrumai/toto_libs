@@ -1,0 +1,19 @@
+<div class="chart-container" style="width: 100%; height: 400px;">
+    <canvas id="{{ chart_id }}"></canvas>
+</div>
+
+<script>
+(function() {
+    const chart = JSON.parse('{{ data|escapejs }}');
+    const ctx = document.getElementById('{{ chart_id }}').getContext('2d');
+
+    new Chart(ctx, {
+        type: chart.type,
+        data: {
+            labels: chart.labels,
+            datasets: chart.datasets
+        },
+        options: chart.options || {}
+    });
+})();
+</script>
