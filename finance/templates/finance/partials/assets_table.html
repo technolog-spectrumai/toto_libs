@@ -1,7 +1,6 @@
-<section>
+<section x-data="paginate({ perPage: 8 })" x-init="init()">
   <h2 class="text-2xl font-bold mb-4">Active Assets</h2>
 
-  <!-- Desktop Table -->
   <div class="hidden md:block overflow-x-auto">
     <table class="min-w-full text-sm border rounded">
       <thead>
@@ -15,7 +14,7 @@
         </tr>
       </thead>
 
-      <tbody>
+      <tbody x-ref="items">
         {% for asset in assets %}
         <tr class="border-b">
           <td class="px-4 py-2 font-medium">{{ asset.name }}</td>
@@ -36,47 +35,23 @@
             </a>
           </td>
         </tr>
-        {% empty %}
-        <tr>
-          <td colspan="6" class="px-4 py-4 text-center text-sm text-gray-500">
-            No active assets available.
-          </td>
-        </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
 
-  <!-- Mobile Cards -->
-  <div class="md:hidden space-y-4">
-    {% for asset in assets %}
-    <div class="border rounded-lg p-4">
-      <p class="font-semibold text-base">{{ asset.name }}</p>
-      <p class="text-sm text-gray-500">
-        Purchased: {{ asset.purchase_date|date:"F j, Y" }}
-      </p>
+  <!-- Pagination Controls -->
+  <div class="mt-6 flex justify-center items-center gap-4 text-sm">
+    <button @click="prev" :disabled="page === 1"
+            class="px-3 py-1 border rounded disabled:opacity-50">
+      Prev
+    </button>
 
-      <div class="mt-2 space-y-1 text-sm">
-        <p><strong>Type:</strong> {{ asset.asset_type.name }}</p>
-        <p><strong>Assigned To:</strong>
-          {% if asset.assigned_to %}
-            {{ asset.assigned_to.username }}
-          {% else %}
-            —
-          {% endif %}
-        </p>
-        <p><strong>Location:</strong> {{ asset.location|default:"—" }}</p>
-      </div>
+    <span>Page <span x-text="page"></span> of <span x-text="pages"></span></span>
 
-      <a href="{% url 'finance:asset-detail' asset.pk %}"
-         class="mt-3 inline-block underline text-blue-600 dark:text-blue-400">
-        View Details
-      </a>
-    </div>
-    {% empty %}
-    <div class="p-4 rounded border text-sm text-center">
-      No active assets available.
-    </div>
-    {% endfor %}
+    <button @click="next" :disabled="page === pages"
+            class="px-3 py-1 border rounded disabled:opacity-50">
+      Next
+    </button>
   </div>
 </section>

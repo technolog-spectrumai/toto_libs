@@ -3,6 +3,7 @@
 
 {% block title %}Finance Dashboard – {{ platform.site_name }}{% endblock %}
 
+
 {% block content %}
 <div class="min-h-screen px-4 py-10 transition-colors duration-300"
      :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'">
@@ -63,4 +64,53 @@
 
   </div>
 </div>
+{% endblock %}
+{% block end_script %}
+
+<script>
+document.addEventListener('alpine:init', () => {
+  Alpine.data('paginate', ({ perPage = 10 }) => ({
+    page: 1,
+    perPage,
+
+    get total() {
+      return this.$refs.items.children.length
+    },
+
+    get pages() {
+      return Math.ceil(this.total / this.perPage)
+    },
+
+    visibleItems() {
+      let start = (this.page - 1) * this.perPage
+      let end = start + this.perPage
+      return Array.from(this.$refs.items.children).slice(start, end)
+    },
+
+    update() {
+      Array.from(this.$refs.items.children).forEach(el => el.style.display = 'none')
+      this.visibleItems().forEach(el => el.style.display = '')
+    },
+
+    next() {
+      if (this.page < this.pages) {
+        this.page++
+        this.update()
+      }
+    },
+
+    prev() {
+      if (this.page > 1) {
+        this.page--
+        this.update()
+      }
+    },
+
+    init() {
+      this.update()
+    }
+  }))
+})
+</script>
+
 {% endblock %}
