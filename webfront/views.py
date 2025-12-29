@@ -159,8 +159,9 @@ def gateway_upload(request, slug):
     helper = FileHelper(bucket_name=workflow.bucket.name)
 
     result = FileLambdaHelper.apply_user_lambda(workflow.code, uploaded_file)
+    if result is None:
+        return JsonResponse({"result": "nothing saved"})
     vault_file = helper.save_file(result)
-
     if not vault_file:
         return JsonResponse({"error": "File could not be saved"}, status=500)
 

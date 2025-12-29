@@ -14,9 +14,12 @@ class FileLambdaHelper:
         """
         Strict validation:
         Lambda MUST return:
-            { "name": <str>, "content": <bytes|BytesIO> }
-        """
+            { "name": <str>, "content": <bytes|BytesIO|None> }
 
+        If content is None → return None (caller decides not to save).
+        """
+        if result is None:
+            return None
         if not isinstance(result, dict):
             raise FileLambdaHelper.Error(
                 f"Lambda must return dict with 'name' and 'content', got: {type(result).__name__}"
@@ -26,19 +29,20 @@ class FileLambdaHelper:
             raise FileLambdaHelper.Error(
                 "Lambda must return dict with keys: 'name' and 'content'"
             )
-
         name = result["name"]
         content = result["content"]
 
         if not isinstance(name, str):
             raise FileLambdaHelper.Error("Returned 'name' must be a string")
 
-        # Accept bytes or BytesIO
+        # BytesIO → extract bytes
         if isinstance(content, io.BytesIO):
             content = content.getvalue()
-        elif not isinstance(content, (bytes, bytearray)):
+
+        # Must be bytes now
+        if not isinstance(content, (bytes, bytearray)):
             raise FileLambdaHelper.Error(
-                "Returned 'content' must be bytes or BytesIO"
+                "Returned 'content' must be bytes, BytesIO, or None"
             )
 
         return ContentFile(content, name=name)
