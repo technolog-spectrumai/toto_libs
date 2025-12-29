@@ -1,7 +1,7 @@
 from datetime import timedelta
 from django.utils.timezone import now
 from django.views.generic import ListView, DetailView
-from .models import Account, Currency
+from toto.finance.models import Account, Currency
 from oya.page import PageProcessor
 from django.db.models import Sum
 from datetime import timedelta

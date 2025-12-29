@@ -78,7 +78,7 @@ INSTALLED_APPS = [
     "library",
     "webfront",
     "locations",
-    "assets",
+    #"assets",
     "mandragora",
     "portfolio"
 ]
@@ -287,7 +287,7 @@ INGRESS_ALLOWED_APPS = [
     "library",
     "webfront",
     "locations",
-    "assets",
+    #"assets",
     "mandragora",
     "portfolio"
 ]
@@ -304,7 +304,7 @@ GRAPH_ALLOWED_APPS = [
     "library",
     "locations",
     "community",
-    "assets",
+    #"assets",
     "finance",
     "portfolio",
     "federal"

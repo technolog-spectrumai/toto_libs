@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Currency, Account, Transaction, ExchangeRate
+from finance.models import Currency, Account, Transaction, ExchangeRate
 from toto.batch import BatchAction
 from toto.admin import BaseSerializableAdmin
 
@@ -53,3 +53,5 @@ class TransactionAdmin(BaseSerializableAdmin):
 
         result = BatchAction(queryset).run(execute_one)
         BatchAction.display_messages(result, self.message_user, request, verb="execute")
+
+

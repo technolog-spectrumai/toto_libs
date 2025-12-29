@@ -26,7 +26,7 @@ urlpatterns = [
     path("gate/", include("gate.urls", namespace="gate")),
     path("ravioli/", include("ravioli.urls", namespace="ravioli")),
     path("webfront/", include("webfront.urls", namespace="webfront")),
-    path("assets/", include("assets.urls", namespace="assets")),
+    #path("assets/", include("assets.urls", namespace="assets")),
     path("portfolio/", include("portfolio.urls", namespace="portfolio")),
     path("locations/", include("locations.urls", namespace="locations")),
 ]
