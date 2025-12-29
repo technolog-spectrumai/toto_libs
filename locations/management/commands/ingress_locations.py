@@ -1,11 +1,18 @@
 from django.contrib.gis.geos import Point, Polygon, MultiLineString
 from django.urls import reverse
-from locations.models import PointFeature, ZoneFeature, PathFeature, Address
+
+from locations.models import (
+    Territory,
+    Route,
+    Address,
+    Province
+)
+
 from oya.ingress import IngressCommand
 
 
 class Command(IngressCommand):
-    help = "Creates demo geospatial features (points, zones, paths) for testing"
+    help = "Creates demo geospatial features (points, territories, routes, and addresses) for testing"
 
     def create_address(self):
         return Address.objects.create(
@@ -22,7 +29,7 @@ class Command(IngressCommand):
         self.create_dashboard_item(
             title="Locations",
             icon="fa-solid fa-map-location-dot",
-            description="Interactive map with points, zones, paths, and addresses.",
+            description="Interactive map with points, territories, routes, and addresses.",
             link=reverse("locations:locations_all"),
             public=False,
         )
@@ -30,19 +37,16 @@ class Command(IngressCommand):
         if not self.full:
             return
 
-        # Create sample points
-        p1 = PointFeature.objects.create(
-            name="Central Park",
-            geometry=Point(-73.9654, 40.7829),
-        )
-        p2 = PointFeature.objects.create(
-            name="Eiffel Tower",
-            geometry=Point(2.2945, 48.8584),
+        # Create a sample province
+        province = Province.objects.create(
+            name="Sample Province",
+            capital=self.create_address(),
         )
 
-        # Create sample zones (polygons)
-        zone = ZoneFeature.objects.create(
-            name="Sample Zone",
+        # Create sample territory (polygon)
+        Territory.objects.create(
+            name="Sample Territory",
+            province=province,
             geometry=Polygon((
                 (2.29, 48.85),
                 (2.30, 48.85),
@@ -50,22 +54,7 @@ class Command(IngressCommand):
                 (2.29, 48.86),
                 (2.29, 48.85),
             )),
+            capital=self.create_address(),
         )
-
-        # # Create sample paths (multi-line strings)
-        # path = PathFeature.objects.create(
-        #     name="River Path",
-        #     geometry=MultiLineString(
-        #         [
-        #             [(2.29, 48.85), (2.295, 48.852), (2.30, 48.855)],
-        #             [(2.30, 48.855), (2.305, 48.857), (2.31, 48.86)],
-        #         ],
-        #     ),
-        # )
-
-        address = self.create_address()
-        if not address:
-            self.stderr.write(self.style.ERROR("❌ Address creation failed."))
-            return
 
         print("[Ingress] Demo geospatial features created successfully.")

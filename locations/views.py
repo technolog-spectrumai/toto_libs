@@ -2,38 +2,35 @@ import json
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from oya.page import PageProcessor
-from .models import PointFeature, ZoneFeature, PathFeature, Address
+
+from .models import (
+    Territory,
+    Route,
+    Address,
+    Province,   # optional, only if you want to show provinces
+)
 
 
 @login_required
 def locations_all(request):
     locations = []
 
-    # Points
-    for p in PointFeature.objects.all():
+    # Territories (polygons)
+    for t in Territory.objects.all():
         locations.append({
-            "type": "Point",
-            "name": p.name or f"Point {p.pk}",
-            "geometry": json.loads(p.geometry.geojson) if p.geometry else None,
-            "geometry_json": json.loads(p.geometry.geojson if p.geometry else None),
+            "type": "Territory",
+            "name": t.name or f"Territory {t.pk}",
+            "geometry": json.loads(t.geometry.geojson) if t.geometry else None,
+            "geometry_json": json.loads(t.geometry.geojson) if t.geometry else None,
         })
 
-    # Zones (polygons)
-    for z in ZoneFeature.objects.all():
+    # Routes (multiline)
+    for r in Route.objects.all():
         locations.append({
-            "type": "Zone",
-            "name": z.name or f"Zone {z.pk}",
-            "geometry": json.loads(z.geometry.geojson) if z.geometry else None,
-            "geometry_json": json.loads(z.geometry.geojson if z.geometry else None),
-        })
-
-    # Paths (multiline)
-    for path in PathFeature.objects.all():
-        locations.append({
-            "type": "Path",
-            "name": path.name or f"Path {path.pk}",
-            "geometry": json.loads(path.geometry.geojson) if path.geometry else None,
-            "geometry_json": json.loads(path.geometry.geojson if path.geometry else None),
+            "type": "Route",
+            "name": r.name or f"Route {r.pk}",
+            "geometry": json.loads(r.geometry.geojson) if r.geometry else None,
+            "geometry_json": json.loads(r.geometry.geojson) if r.geometry else None,
         })
 
     # Addresses (points)
@@ -42,12 +39,21 @@ def locations_all(request):
             "type": "Address",
             "name": str(addr),
             "geometry": json.loads(addr.geometry.geojson) if addr.geometry else None,
-            "geometry_json": json.dumps(addr.geometry.geojson if addr.geometry else None),
+            "geometry_json": json.loads(addr.geometry.geojson) if addr.geometry else None,
+        })
+
+    # Optional: Provinces (no geometry)
+    for prov in Province.objects.all():
+        locations.append({
+            "type": "Province",
+            "name": prov.name,
+            "geometry": None,
+            "geometry_json": None,
         })
 
     context = {
         "locations": locations,
-        "locations_json": json.dumps(locations),  # for Leaflet
+        "locations_json": json.dumps(locations),
     }
 
     return render(
