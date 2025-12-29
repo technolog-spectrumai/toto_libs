@@ -22,7 +22,7 @@ def assets_list(request):
     }
     return render(
         request,
-        "assets/asset_list.html",
+        "finance/asset_list.html",
         PageProcessor().decorate(context, request)
     )
 
@@ -48,7 +48,7 @@ def asset_detail(request, pk):
             "serial_number": asset.serial_number,
             "purchase_date": asset.purchase_date,
             "purchase_price": asset.purchase_price,
-            "assigned_to": asset.assigned_to.username if asset.assigned_to else None,
+            "assigned_to": asset.assigned_to.display_name if asset.assigned_to else None,
             "location": str(asset.location) if asset.location else None,
             "metadata": asset.metadata or {},
             "created_at": asset.created_at,
@@ -56,6 +56,6 @@ def asset_detail(request, pk):
     }
     return render(
         request,
-        "assets/asset_detail.html",
+        "finance/asset_detail.html",
         PageProcessor().decorate(context, request))
 
