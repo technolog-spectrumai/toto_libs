@@ -1,8 +1,8 @@
 # file_lambda_helper.py
 import io
+import json
 import numpy as np
 from django.core.files.base import ContentFile
-from django.core.files.uploadedfile import InMemoryUploadedFile, TemporaryUploadedFile
 from toto.executor import RestrictedPythonExecutor
 
 
@@ -10,26 +10,38 @@ class FileLambdaHelper:
     Error = RestrictedPythonExecutor.ExecutionError
 
     @staticmethod
-    def _normalize_file(result, original_file):
+    def _normalize_file(result):
         """
         Strict validation:
-        Only accept real file-like objects.
-        If BytesIO is returned, wrap it into ContentFile with a proper name.
+        Lambda MUST return:
+            { "name": <str>, "content": <bytes|BytesIO> }
         """
 
-        # Already a valid Django uploaded file
-        if isinstance(result, (InMemoryUploadedFile, TemporaryUploadedFile, ContentFile)):
-            return result
+        if not isinstance(result, dict):
+            raise FileLambdaHelper.Error(
+                f"Lambda must return dict with 'name' and 'content', got: {type(result).__name__}"
+            )
 
-        # BytesIO → wrap into ContentFile
-        if isinstance(result, io.BytesIO):
-            data = result.getvalue()
-            return ContentFile(data, name=original_file.name)
+        if "name" not in result or "content" not in result:
+            raise FileLambdaHelper.Error(
+                "Lambda must return dict with keys: 'name' and 'content'"
+            )
 
-        # Anything else → throw
-        raise FileLambdaHelper.Error(
-            f"Lambda must return a file-like object (BytesIO or Django file), got: {type(result).__name__}"
-        )
+        name = result["name"]
+        content = result["content"]
+
+        if not isinstance(name, str):
+            raise FileLambdaHelper.Error("Returned 'name' must be a string")
+
+        # Accept bytes or BytesIO
+        if isinstance(content, io.BytesIO):
+            content = content.getvalue()
+        elif not isinstance(content, (bytes, bytearray)):
+            raise FileLambdaHelper.Error(
+                "Returned 'content' must be bytes or BytesIO"
+            )
+
+        return ContentFile(content, name=name)
 
     @staticmethod
     def apply_user_lambda(code: str, file, name: str = "file_lambda"):
@@ -46,8 +58,8 @@ class FileLambdaHelper:
 
         result = executor.execute(extra_globals={
             "np": np,
-            "io": io,  # allow BytesIO creation
+            "io": io,
+            "json": json,
         })
 
-        # Normalize + validate
-        return FileLambdaHelper._normalize_file(result, file)
+        return FileLambdaHelper._normalize_file(result)
