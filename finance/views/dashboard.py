@@ -1,6 +1,6 @@
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
-from finance.models import Account, Asset, Currency
+from finance.models import Account, Asset, Currency, Company, FractionalOwnership
 from oya.page import PageProcessor
 
 
@@ -9,19 +9,26 @@ def dashboard(request):
     accounts = (
         Account.objects
         .select_related("owner", "currency", "manager")
-        .all()[:20]  # or paginate if you want
+        .all()
     )
 
     assets = (
         Asset.objects
         .filter(is_active=True)
         .select_related("asset_type", "assigned_to")
-        .order_by("-created_at")[:20]
+        .order_by("-created_at")
+    )
+
+    companies = (
+        Company.objects
+        .select_related("headquarters")
+        .order_by("name")
     )
 
     context = {
         "accounts": accounts,
         "assets": assets,
+        "companies": companies,
         "currencies": Currency.objects.filter(active=True),
     }
 

@@ -1,0 +1,80 @@
+<section x-data="paginate({ perPage: 8 })" x-init="init()">
+
+  {% include "finance/partials/table_head.html" with title="Companies" %}
+
+  <!-- Desktop Table -->
+  <div class="hidden md:block overflow-x-auto">
+    <table class="min-w-full text-sm border rounded">
+      <thead>
+        <tr class="text-left border-b">
+          <th class="px-4 py-2">Name</th>
+          <th class="px-4 py-2">Industry</th>
+          <th class="px-4 py-2">Country</th>
+          <th class="px-4 py-2">Website</th>
+          <th class="px-4 py-2">Action</th>
+        </tr>
+      </thead>
+
+      <tbody x-ref="items">
+        {% for company in companies %}
+        <tr class="border-b">
+          <td class="px-4 py-2 font-medium">{{ company.name }}</td>
+          <td class="px-4 py-2">{{ company.industry|default:"—" }}</td>
+          <td class="px-4 py-2">{{ company.country|default:"—" }}</td>
+          <td class="px-4 py-2">
+            {% if company.website %}
+              <a href="{{ company.website }}" target="_blank"
+                 class="underline text-blue-600 dark:text-blue-400">
+                {{ company.website }}
+              </a>
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td class="px-4 py-2">
+            <a href="{% url 'finance:company-detail' company.pk %}"
+               class="underline text-blue-600 dark:text-blue-400">
+              View
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Mobile Cards -->
+  <div class="md:hidden space-y-4" x-ref="items">
+    {% for company in companies %}
+    <div class="border rounded-lg p-4">
+      <p class="font-semibold text-base">{{ company.name }}</p>
+
+      <div class="mt-2 space-y-1 text-sm">
+        <p><strong>Industry:</strong> {{ company.industry|default:"—" }}</p>
+        <p><strong>Country:</strong> {{ company.country|default:"—" }}</p>
+        <p><strong>Website:</strong>
+          {% if company.website %}
+            <a href="{{ company.website }}" target="_blank"
+               class="underline text-blue-600 dark:text-blue-400">
+              {{ company.website }}
+            </a>
+          {% else %}
+            —
+          {% endif %}
+        </p>
+      </div>
+
+      <a href="{% url 'finance:company-detail' company.pk %}"
+         class="mt-3 inline-block underline text-blue-600 dark:text-blue-400">
+        View Details
+      </a>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Pagination Controls -->
+  <div>
+    {% include "finance/partials/pagination.html" %}
+  </div>
+
+</section>

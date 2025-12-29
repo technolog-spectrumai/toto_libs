@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Company, FractionalOwnership
+from finance.models import Company, FractionalOwnership
 
 
 @admin.register(Company)
@@ -28,7 +28,7 @@ class CompanyAdmin(admin.ModelAdmin):
 
 @admin.register(FractionalOwnership)
 class FractionalOwnershipAdmin(admin.ModelAdmin):
-    list_display = ("owner_entity", "company", "percentage", "created_at")
+    list_display = ("owner_entity", "percentage", "created_at")
     search_fields = (
         "owner_entity__id",
         "owner_entity__polymorphic_ctype__model",

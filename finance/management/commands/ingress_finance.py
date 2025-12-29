@@ -1,5 +1,5 @@
 from oya.ingress import IngressCommand
-from finance.models import Currency, Account, Transaction, ExchangeRate, Asset, AssetType
+from finance.models import Currency, Account, Transaction, ExchangeRate, Asset, AssetType, Company, FractionalOwnership
 from community.models import CommunityMember
 from django.contrib.auth.models import User
 from django.utils.timezone import now
@@ -7,6 +7,7 @@ from datetime import timedelta
 import random
 from faker import Faker
 from locations.models import Address
+from community.models import Persona
 
 fake = Faker()
 
@@ -143,6 +144,86 @@ class Command(IngressCommand):
             assets.append(asset)
         return assets
 
+    def create_companies(self):
+        base_companies = [
+            "Acme Corporation",
+            "Globex Industries",
+            "Umbrella Holdings",
+            "Wayne Enterprises",
+            "Stark Innovations",
+        ]
+
+        if self.full:
+            base_companies.extend([
+                "Initech",
+                "Hooli",
+                "Massive Dynamic",
+                "Wonka Industries",
+            ])
+
+        companies = []
+        addresses = list(Address.objects.all())
+        if not addresses:
+            raise RuntimeError("No addresses found. Please seed addresses before seeding companies.")
+
+        for name in base_companies:
+            company, _ = Company.objects.get_or_create(
+                name=name,
+                defaults={
+                    "registration_number": fake.bothify(text="REG-####-????"),
+                    "founded_date": fake.date_between(start_date="-50y", end_date="-1y"),
+                    "website": fake.url(),
+                    "email": fake.company_email(),
+                    "headquarters": random.choice(addresses),
+                    "metadata": {
+                        "industry": fake.word(),
+                        "employees": random.randint(10, 5000),
+                        "valuation": f"{random.randint(10, 500)}M USD",
+                    },
+                }
+            )
+            companies.append(company)
+
+        return companies
+
+    # ---------------------------------------------------------
+    # Create Fractional Ownerships
+    # ---------------------------------------------------------
+    def create_ownerships(self, companies):
+        """
+        Any SocialEntity can be an owner, but only Company can be owned.
+        """
+        owners = list(Persona.objects.all())
+
+        if not owners:
+            raise RuntimeError("No Persona records found. Seed communities/members first.")
+
+        for company in companies:
+            # Each company gets 1–3 random owners
+            num_owners = random.randint(1, 3)
+            selected_owners = random.sample(owners, num_owners)
+
+            remaining = 100.0
+            for owner in selected_owners:
+                if remaining <= 0:
+                    break
+
+                pct = round(random.uniform(5, remaining), 2)
+                remaining -= pct
+
+                FractionalOwnership.objects.get_or_create(
+                    owner_entity=owner,
+                    defaults={
+                        "company": company,
+                        "percentage": pct,
+                        "metadata": {
+                            "notes": fake.sentence(),
+                            "agreement_id": fake.uuid4(),
+                        }
+                    }
+                )
+
+
     def process(self):
         # 📊 Dashboard block
         self.create_dashboard_item(
@@ -183,5 +264,8 @@ class Command(IngressCommand):
 
         # Step 2: assets
         self.create_assets(members, asset_types)
+        companies = self.create_companies()
+
+        self.create_ownerships(companies)
 
         self.stdout.write(self.style.SUCCESS("✅ Assets data seeded successfully with CommunityMember asset holders."))

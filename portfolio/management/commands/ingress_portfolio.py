@@ -86,6 +86,7 @@ class Command(IngressCommand):
 
                 FractionalOwnership.objects.get_or_create(
                     owner_entity=owner,
+                    company=company,
                     defaults={
                         "percentage": pct,
                         "metadata": {

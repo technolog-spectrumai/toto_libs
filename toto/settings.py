@@ -80,7 +80,7 @@ INSTALLED_APPS = [
     "locations",
     #"assets",
     "mandragora",
-    "portfolio"
+    #"portfolio"
 ]
 
 
@@ -289,7 +289,7 @@ INGRESS_ALLOWED_APPS = [
     "locations",
     #"assets",
     "mandragora",
-    "portfolio"
+    #"portfolio"
 ]
 
 BACKUP_ALLOWED_APPS = [
@@ -306,7 +306,7 @@ GRAPH_ALLOWED_APPS = [
     "community",
     #"assets",
     "finance",
-    "portfolio",
+    #"portfolio",
     "federal"
 ]
 

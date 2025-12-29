@@ -3,7 +3,6 @@
 
 {% block title %}Finance Dashboard – {{ platform.site_name }}{% endblock %}
 
-
 {% block content %}
 <div class="min-h-screen px-4 py-10 transition-colors duration-300"
      :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'">
@@ -45,6 +44,17 @@
             Assets
           </a>
         </li>
+
+        <li class="-mb-px">
+          <a href="#"
+             class="inline-block py-2 px-4 border-b-2"
+             :class="activeTab === 'companies'
+                      ? 'border-blue-600 text-blue-600'
+                      : 'border-transparent'"
+             @click.prevent="setTab('companies')">
+            Companies
+          </a>
+        </li>
       </ul>
 
       <!-- Content -->
@@ -57,7 +67,9 @@
         <div x-show="activeTab === 'assets'">
           {% include "finance/partials/assets_table.html" %}
         </div>
-
+        <div x-show="activeTab === 'companies'">
+            {% include "finance/partials/companies_table.html" %}
+        </div>
       </div>
 
     </div>
@@ -65,11 +77,13 @@
   </div>
 </div>
 {% endblock %}
+
 {% block end_script %}
 
 <script>
 document.addEventListener('alpine:init', () => {
   Alpine.data('paginate', ({ perPage = 10 }) => ({
+
     page: 1,
     perPage,
 
@@ -82,13 +96,16 @@ document.addEventListener('alpine:init', () => {
     },
 
     visibleItems() {
-      let start = (this.page - 1) * this.perPage
-      let end = start + this.perPage
+      const start = (this.page - 1) * this.perPage
+      const end = start + this.perPage
       return Array.from(this.$refs.items.children).slice(start, end)
     },
 
     update() {
+      // hide all
       Array.from(this.$refs.items.children).forEach(el => el.style.display = 'none')
+
+      // show only visible
       this.visibleItems().forEach(el => el.style.display = '')
     },
 
@@ -115,6 +132,7 @@ document.addEventListener('alpine:init', () => {
     init() {
       this.update()
     }
+
   }))
 })
 </script>
