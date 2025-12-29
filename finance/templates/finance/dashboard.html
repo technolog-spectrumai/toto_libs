@@ -106,6 +106,12 @@ document.addEventListener('alpine:init', () => {
       }
     },
 
+    setPerPage(value) {
+      this.perPage = Number(value)
+      this.page = 1
+      this.update()
+    },
+
     init() {
       this.update()
     }
