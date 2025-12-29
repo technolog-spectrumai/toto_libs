@@ -35,12 +35,10 @@ class AccountListView(ListView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         decorated = PageProcessor().decorate(context, self.request)
-        theme = decorated.get("theme", {}).get("colors", {})
-        context["chart_colors"] = get_chart_colors(theme)
 
-        context["currencies"] = Currency.objects.filter(active=True)
-        context["selected_currency"] = self.request.GET.get("currency", "")
-        return context
+        decorated["currencies"] = Currency.objects.filter(active=True)
+        decorated["selected_currency"] = self.request.GET.get("currency", "")
+        return decorated
 
 
 
