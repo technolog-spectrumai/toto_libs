@@ -1,6 +1,6 @@
 from django.utils.text import slugify
 from oya.page import PageProcessor
-from toto.vault.file_helper import FileHelper
+from vault.file_helper import FileHelper
 from .models import CypherQuery, DynamicPage, Gateway
 from .graph_lambda import GraphLambdaHelper
 from .style import GraphStyleResolver
@@ -17,6 +17,7 @@ from vault.client import VaultClient
 from vault.models import VaultFile
 import random
 import string
+from .file_lambda import FileLambdaHelper
 
 
 def short_hash(length=3):
@@ -157,8 +158,8 @@ def gateway_upload(request, slug):
     # Use FileHelper instead of VaultClient
     helper = FileHelper(bucket_name=workflow.bucket.name)
 
-    # Save file (returns VaultFile instance)
-    vault_file = helper.save_file(uploaded_file)
+    result = FileLambdaHelper.apply_user_lambda(workflow.code, uploaded_file)
+    vault_file = helper.save_file(result)
 
     if not vault_file:
         return JsonResponse({"error": "File could not be saved"}, status=500)
@@ -171,7 +172,6 @@ def gateway_upload(request, slug):
     }
 
     return JsonResponse({"result": result})
-
 
 
 
