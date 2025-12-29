@@ -33,23 +33,30 @@
 
     <!-- 🏢 Company Header -->
     <section class="p-6 rounded-lg border transition-colors duration-300"
-      :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
-                       : 'bg-primary-bg-light text-text-main-light border-accent-2'">
+      :class="darkMode
+        ? 'bg-bubble-bg-dark text-text-main-dark border-accent-dark'
+        : 'bg-bubble-bg-light text-text-main-light border-accent-light'">
 
       <h1 class="text-2xl font-bold mb-2">{{ company.name }}</h1>
 
       <p class="text-sm"
-         :class="darkMode ? 'text-text-main-dark' : 'text-gray-500'">
-        Founded: {% if company.founded_date %}{{ company.founded_date|date:"Y" }}{% else %}—{% endif %} ·
-        Created: {{ company.created_at|date:"F j, Y, H:i" }} ·
-        Registration #: {{ company.registration_number|default:"—" }}
+         :class="darkMode ? 'text-text-main-dark' : 'text-text-main-light'">
+        Founded:
+        {% if company.founded_date %}
+          {{ company.founded_date|date:"Y" }}
+        {% else %}
+          —
+        {% endif %}
+        · Created: {{ company.created_at|date:"F j, Y, H:i" }}
+        · Registration #: {{ company.registration_number|default:"—" }}
       </p>
     </section>
 
     <!-- 🌐 Contact Info -->
     <section class="p-6 rounded-lg border space-y-2 transition-colors duration-300"
-      :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
-                       : 'bg-primary-bg-light text-text-main-light border-accent-2'">
+      :class="darkMode
+        ? 'bg-bubble-bg-dark text-text-main-dark border-accent-dark'
+        : 'bg-bubble-bg-light text-text-main-light border-accent-light'">
 
       <h2 class="text-lg font-semibold">Contact</h2>
 
@@ -69,12 +76,12 @@
       <p><strong>Headquarters:</strong> {{ company.headquarters|default:"—" }}</p>
     </section>
 
-    <!-- 📊 Ownership Received (Cap Table) -->
-    <!-- 📊 Ownership Pie Chart -->
+    <!-- 📊 Ownership Structure -->
     {% if ownership_received %}
     <section class="p-6 rounded-lg border space-y-4 transition-colors duration-300"
-      :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
-                       : 'bg-primary-bg-light text-text-main-light border-accent-2'">
+      :class="darkMode
+        ? 'bg-bubble-bg-dark text-text-main-dark border-accent-dark'
+        : 'bg-bubble-bg-light text-text-main-light border-accent-light'">
 
       <h2 class="text-lg font-semibold">Ownership Structure</h2>
 
@@ -101,7 +108,6 @@
         });
       </script>
 
-      <!-- Ownership list -->
       <div class="space-y-2 mt-6">
         {% for o in ownership_received %}
         <div class="border rounded p-3 text-sm">
@@ -119,8 +125,9 @@
     <!-- 🧾 Metadata -->
     {% if company.metadata %}
     <section class="p-6 rounded-lg border space-y-2 transition-colors duration-300"
-      :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
-                       : 'bg-primary-bg-light text-text-main-light border-accent-2'">
+      :class="darkMode
+        ? 'bg-bubble-bg-dark text-text-main-dark border-accent-dark'
+        : 'bg-bubble-bg-light text-text-main-light border-accent-light'">
 
       <h2 class="text-lg font-semibold">Metadata</h2>
 
@@ -132,10 +139,10 @@
 
     <!-- 🔗 Back Link -->
     <div class="text-center">
-        <a href="{% url 'finance:dashboard' %}"
-           class="text-blue-600 underline">
-          ← Back to Finance
-        </a>
+      <a href="{% url 'finance:dashboard' %}"
+         class="text-blue-600 underline">
+        ← Back to Finance
+      </a>
     </div>
 
   </div>
