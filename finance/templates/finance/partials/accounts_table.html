@@ -1,22 +1,6 @@
 <section>
   <h2 class="text-2xl font-bold mb-4">Accounts</h2>
 
-  <!-- Currency Filter -->
-  <form method="get" class="mb-4 flex items-center gap-3 text-sm">
-    <label for="currency">Currency:</label>
-    <select name="currency" id="currency"
-            class="border rounded px-2 py-1 bg-white dark:bg-gray-800"
-            onchange="this.form.submit()">
-      <option value="">All</option>
-      {% for c in currencies %}
-        <option value="{{ c.symbol }}"
-                {% if selected_currency == c.symbol %}selected{% endif %}>
-          {{ c.symbol }}
-        </option>
-      {% endfor %}
-    </select>
-  </form>
-
   <!-- Desktop Table -->
   <div class="hidden md:block overflow-x-auto">
     <table class="min-w-full text-sm border rounded">
