@@ -59,16 +59,16 @@
 
       <!-- Content -->
       <div class="mt-6">
-
         <div x-show="activeTab === 'accounts'">
-          {% include "finance/partials/accounts_table.html" %}
+          {% include "finance/partials/table.html" with title="Accounts" columns=accounts_columns rows=accounts_rows %}
         </div>
 
         <div x-show="activeTab === 'assets'">
-          {% include "finance/partials/assets_table.html" %}
+          {% include "finance/partials/table.html" with title="Assets" columns=assets_columns rows=assets_rows %}
         </div>
+
         <div x-show="activeTab === 'companies'">
-            {% include "finance/partials/companies_table.html" %}
+          {% include "finance/partials/table.html" with title="Companies"  columns=companies_columns rows=companies_rows %}
         </div>
       </div>
 
