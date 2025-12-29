@@ -287,9 +287,7 @@ INGRESS_ALLOWED_APPS = [
     "library",
     "webfront",
     "locations",
-    #"assets",
-    "mandragora",
-    #"portfolio"
+    "mandragora"
 ]
 
 BACKUP_ALLOWED_APPS = [
@@ -304,9 +302,7 @@ GRAPH_ALLOWED_APPS = [
     "library",
     "locations",
     "community",
-    #"assets",
     "finance",
-    #"portfolio",
     "federal"
 ]
 
