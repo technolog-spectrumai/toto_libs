@@ -16,7 +16,7 @@
       </thead>
 
       <tbody>
-        {% for account in accounts_page %}
+        {% for account in accounts %}
         <tr class="border-b">
           <td class="px-4 py-2">{{ account.owner.username }}</td>
           <td class="px-4 py-2 font-medium">{{ account.name }}</td>
@@ -49,7 +49,7 @@
 
   <!-- Mobile Cards -->
   <div class="md:hidden space-y-4">
-    {% for account in accounts_page %}
+    {% for account in accounts %}
     <div class="border rounded-lg p-4">
       <p class="font-semibold text-base">{{ account.name }}</p>
       <p class="text-sm text-gray-500">
@@ -79,23 +79,4 @@
     </div>
     {% endfor %}
   </div>
-
-  <!-- Pagination -->
-  {% if accounts_page.has_other_pages %}
-  <div class="mt-8 flex flex-wrap justify-center items-center gap-2 text-sm">
-    {% if accounts_page.has_previous %}
-      <a href="?acc_page=1&currency={{ selected_currency }}">First</a>
-      <a href="?acc_page={{ accounts_page.previous_page_number }}&currency={{ selected_currency }}">Previous</a>
-    {% endif %}
-
-    <span>
-      Page {{ accounts_page.number }} of {{ accounts_page.paginator.num_pages }}
-    </span>
-
-    {% if accounts_page.has_next %}
-      <a href="?acc_page={{ accounts_page.next_page_number }}&currency={{ selected_currency }}">Next</a>
-      <a href="?acc_page={{ accounts_page.paginator.num_pages }}&currency={{ selected_currency }}">Last</a>
-    {% endif %}
-  </div>
-  {% endif %}
 </section>

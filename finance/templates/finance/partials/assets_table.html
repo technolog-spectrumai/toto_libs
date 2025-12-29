@@ -16,7 +16,7 @@
       </thead>
 
       <tbody>
-        {% for asset in assets_page %}
+        {% for asset in assets %}
         <tr class="border-b">
           <td class="px-4 py-2 font-medium">{{ asset.name }}</td>
           <td class="px-4 py-2">{{ asset.asset_type.name }}</td>
@@ -49,7 +49,7 @@
 
   <!-- Mobile Cards -->
   <div class="md:hidden space-y-4">
-    {% for asset in assets_page %}
+    {% for asset in assets %}
     <div class="border rounded-lg p-4">
       <p class="font-semibold text-base">{{ asset.name }}</p>
       <p class="text-sm text-gray-500">
@@ -67,6 +67,11 @@
         </p>
         <p><strong>Location:</strong> {{ asset.location|default:"—" }}</p>
       </div>
+
+      <a href="{% url 'finance:asset-detail' asset.pk %}"
+         class="mt-3 inline-block underline text-blue-600 dark:text-blue-400">
+        View Details
+      </a>
     </div>
     {% empty %}
     <div class="p-4 rounded border text-sm text-center">
@@ -74,23 +79,4 @@
     </div>
     {% endfor %}
   </div>
-
-  <!-- Pagination -->
-  {% if assets_page.has_other_pages %}
-  <div class="mt-8 flex flex-wrap justify-center items-center gap-2 text-sm">
-    {% if assets_page.has_previous %}
-      <a href="?asset_page=1">First</a>
-      <a href="?asset_page={{ assets_page.previous_page_number }}">Previous</a>
-    {% endif %}
-
-    <span>
-      Page {{ assets_page.number }} of {{ assets_page.paginator.num_pages }}
-    </span>
-
-    {% if assets_page.has_next %}
-      <a href="?asset_page={{ assets_page.next_page_number }}">Next</a>
-      <a href="?asset_page={{ assets_page.paginator.num_pages }}">Last</a>
-    {% endif %}
-  </div>
-  {% endif %}
 </section>

@@ -11,7 +11,6 @@
 
     <h1 class="text-3xl font-bold mb-6">Finance Dashboard</h1>
 
-    <!-- Alpine Component -->
     <div
       x-data="{
         activeTab: localStorage.getItem('financeActiveTab') || 'accounts',
@@ -47,15 +46,13 @@
         </li>
       </ul>
 
-      <!-- Tab Content -->
+      <!-- Content -->
       <div class="mt-6">
 
-        <!-- Accounts Tab -->
         <div x-show="activeTab === 'accounts'">
           {% include "finance/partials/accounts_table.html" %}
         </div>
 
-        <!-- Assets Tab -->
         <div x-show="activeTab === 'assets'">
           {% include "finance/partials/assets_table.html" %}
         </div>
