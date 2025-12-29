@@ -1,2 +1,2 @@
 from .assets import *
-from .finance import *
+from .accounts import *
