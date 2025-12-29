@@ -1,9 +1,10 @@
 import os
 from django.conf import settings
 from rest_framework.reverse import reverse_lazy
-
 from oya.ingress import IngressCommand
-from webfront.models import CypherQuery, DynamicPage
+from webfront.models import CypherQuery, DynamicPage, FileWorkflow, Gateway
+from vault.models import Bucket
+
 
 
 def load_lambda(path):
@@ -55,4 +56,22 @@ class Command(IngressCommand):
                     os.path.join(base_path, "kanban.py")
                 ),
             },
+        )
+        bucket = Bucket.objects.first()  # or create a default bucket
+
+        workflow, _ = FileWorkflow.objects.update_or_create(
+            name="File Processor",
+            defaults={
+                "description": "Processes uploaded files and returns JSON output.",
+                "bucket": bucket,
+                "code": load_lambda(os.path.join(base_path, "json.py")),
+                "is_active": True,
+            },
+        )
+
+        Gateway.objects.update_or_create(
+            name="summarize file",
+            defaults={
+                "workflow": workflow
+            }
         )
