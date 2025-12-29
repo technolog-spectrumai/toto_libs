@@ -37,11 +37,10 @@ def dashboard(request):
         {"label": "Balance"},
         {"label": "Action"},
     ]
-
     accounts_rows = [
         [
             {"text": a.name, "type": "text"},
-            {"text": str(a.owner), "type": "text"},
+            {"text": str(a.owner.get_real_instance()), "type": "text"},
             {"text": str(a.currency), "type": "text"},
             {"text": a.balance, "type": "text"},
             {
