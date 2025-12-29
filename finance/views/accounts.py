@@ -6,19 +6,6 @@ from django.db.models import Sum
 from datetime import timedelta
 
 
-def get_chart_colors(theme):
-    return {
-        "background_light": theme.get("accent-light", "#36A2EB"),
-        "border_light": theme.get("text-main-light", "#000000"),
-        "text_light": theme.get("text-main-light", "#000000"),
-        "grid_light": "#444444",
-        "background_dark": theme.get("accent-dark", "#FFCE56"),
-        "border_dark": theme.get("text-main-dark", "#FFFFFF"),
-        "text_dark": theme.get("text-main-dark", "#FFFFFF"),
-        "grid_dark": "#aaaaaa"
-    }
-
-
 class AccountListView(ListView):
     model = Account
     template_name = "finance/account_list.html"
@@ -39,7 +26,6 @@ class AccountListView(ListView):
         decorated["currencies"] = Currency.objects.filter(active=True)
         decorated["selected_currency"] = self.request.GET.get("currency", "")
         return decorated
-
 
 
 class AccountDetailView(DetailView):
