@@ -1,0 +1,56 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}Finance Dashboard – {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<div class="min-h-screen px-4 py-10 transition-colors duration-300"
+     :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'">
+
+  <div class="max-w-6xl mx-auto space-y-10">
+
+    <h1 class="text-3xl font-bold mb-6">Finance Dashboard</h1>
+
+    <div x-data="{ activeTab: 'accounts' }">
+
+      <!-- Tabs -->
+      <ul class="flex border-b text-sm font-medium">
+        <li class="-mb-px mr-4">
+          <a href="#tab-accounts"
+             class="inline-block py-2 px-4 border-b-2"
+             :class="activeTab === 'accounts'
+                      ? 'border-blue-600 text-blue-600'
+                      : 'border-transparent'"
+             @click.prevent="activeTab = 'accounts'">
+            Accounts
+          </a>
+        </li>
+
+        <li class="-mb-px">
+          <a href="#tab-assets"
+             class="inline-block py-2 px-4 border-b-2"
+             :class="activeTab === 'assets'
+                      ? 'border-blue-600 text-blue-600'
+                      : 'border-transparent'"
+             @click.prevent="activeTab = 'assets'">
+            Assets
+          </a>
+        </li>
+      </ul>
+
+      <!-- Tab Content -->
+      <div class="mt-6">
+        <div x-show="activeTab === 'accounts'">
+          {% include "finance/partials/accounts_table.html" %}
+        </div>
+
+        <div x-show="activeTab === 'assets'">
+          {% include "finance/partials/assets_table.html" %}
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+</div>
+{% endblock %}

@@ -1,31 +1,10 @@
 from django.utils.timezone import now
-from django.views.generic import ListView, DetailView
+from django.views.generic import DetailView
 from finance.models import Account, Currency
 from oya.page import PageProcessor
 from django.db.models import Sum
 from datetime import timedelta
 
-
-class AccountListView(ListView):
-    model = Account
-    template_name = "finance/account_list.html"
-    context_object_name = "accounts"
-    paginate_by = 20
-
-    def get_queryset(self):
-        queryset = super().get_queryset().select_related("owner", "currency", "manager")
-        currency_symbol = self.request.GET.get("currency")
-        if currency_symbol:
-            queryset = queryset.filter(currency__symbol=currency_symbol)
-        return queryset
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        decorated = PageProcessor().decorate(context, self.request)
-
-        decorated["currencies"] = Currency.objects.filter(active=True)
-        decorated["selected_currency"] = self.request.GET.get("currency", "")
-        return decorated
 
 
 class AccountDetailView(DetailView):
