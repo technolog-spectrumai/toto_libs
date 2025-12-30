@@ -33,7 +33,7 @@ function dim(hex, alpha = 0.25) {
       {% if page.description %}
       <p class="opacity-80 mb-4">{{ page.description }}</p>
       {% endif %}
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div class="flex flex-wrap gap-6">
           {% for widget in result %}
             {% if widget.error %}
             <div
@@ -55,7 +55,7 @@ function dim(hex, alpha = 0.25) {
             </div>
             {% else %}
             <div x-data="{ openChart: false, openYamlModal: false }"
-              class="p-4 rounded border relative"
+              class="w-full md:w-[48%] p-4 rounded border relative"
               :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
 
               <!-- Show Data button (top-right, above chart) -->
