@@ -148,7 +148,6 @@ function createOrgChart(containerElement, data, colors, darkMode) {
     cy.on('tap', 'node', function(evt){
       const node = evt.target;
       const url = node.data('profile_url');
-      alert(url); // <--- undefined FIXME
       if (url) {
         window.open(url, '_blank'); // open profile in new tab
       }
