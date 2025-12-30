@@ -1,10 +1,12 @@
-from copy import deepcopy
-from django.utils.translation import gettext_lazy as _
 import cv2
 from toto.executor import RestrictedPythonExecutor
 from django.db import models
 from django.utils import timezone
 from django.core.exceptions import ValidationError
+import numpy as np
+import networkx as nx
+import io
+import json
 
 
 class LambdaLayer(models.Model):
@@ -12,11 +14,15 @@ class LambdaLayer(models.Model):
     Layer definition: declares which external dependencies are required.
     Standalone, reusable across workflows.
     """
+
     name = models.CharField(max_length=100, unique=True)
 
-    # Boolean flags for important dependencies
+    # Dependency flags
     use_opencv = models.BooleanField(default=False)
-
+    use_numpy = models.BooleanField(default=False)
+    use_networkx = models.BooleanField(default=False)
+    use_io = models.BooleanField(default=False)
+    use_json = models.BooleanField(default=False)
 
     def __str__(self):
         return self.name
@@ -26,10 +32,24 @@ class LambdaLayer(models.Model):
         Return a dict of allowed globals based on enabled flags.
         """
         deps = {}
-        if self.use_opencv:
 
+        if self.use_opencv:
             deps["cv2"] = cv2
+
+        if self.use_numpy:
+            deps["np"] = np
+
+        if self.use_networkx:
+            deps["nx"] = nx
+
+        if self.use_io:
+            deps["io"] = io
+
+        if self.use_json:
+            deps["json"] = json
+
         return deps
+
 
 
 class LambdaNode(models.Model):

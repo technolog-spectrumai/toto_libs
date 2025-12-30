@@ -8,18 +8,18 @@ from toto.executor import RestrictedPythonExecutor
 #  Django Models
 # =====================================================================
 
-class BaseExecutableModel(models.Model):
-    """
-    Abstract base model for any node that executes restricted Python code.
-    Provides `code` and `test_context` fields plus an `execute` method.
-    Delegates allowed_globals construction to child classes.
-    """
-
-    code = models.TextField(help_text="Restricted Python code snippet")
-    test_context = models.JSONField(blank=True, null=True, help_text="Optional JSON context for testing")
-
-    class Meta:
-        abstract = True
+# class BaseExecutableModel(models.Model):
+#     """
+#     Abstract base model for any node that executes restricted Python code.
+#     Provides `code` and `test_context` fields plus an `execute` method.
+#     Delegates allowed_globals construction to child classes.
+#     """
+#
+#     code = models.TextField(help_text="Restricted Python code snippet")
+#     test_context = models.JSONField(blank=True, null=True, help_text="Optional JSON context for testing")
+#
+#     class Meta:
+#         abstract = True
 
     # def get_context(self, context: dict = None) -> dict:
     #     return context or self.test_context or {}

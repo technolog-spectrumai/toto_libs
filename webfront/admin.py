@@ -1,42 +1,17 @@
 from django.contrib import admin, messages
-from django import forms
-from django_ace import AceWidget
-from django_json_widget.widgets import JSONEditorWidget
+from django.utils.html import format_html
+from django.urls import reverse
+
 from .models import (
     CypherQuery,
     NodeStyle,
     EdgeStyle,
     DynamicPage,
     FileWorkflow,
-    Gateway
+    GraphWorkflow,
 )
 
-from ravioli.models import CollectionType, RelationType
-from toto.colors import ColorGenerator
-from django.utils.html import format_html
-from django.urls import reverse
 from .style_factory import StyleFactory
-
-
-class CypherQueryForm(forms.ModelForm):
-    class Meta:
-        model = CypherQuery
-        fields = "__all__"
-        widgets = {
-            "code": AceWidget(mode="python", theme="chrome", width="100%", height="400px"),
-            "test_context": JSONEditorWidget(),
-        }
-
-
-
-class DynamicPageForm(forms.ModelForm):
-    class Meta:
-        model = DynamicPage
-        fields = "__all__"
-        widgets = {
-            "code": AceWidget(mode="python", theme="chrome", width="100%", height="400px"),
-            "test_context": JSONEditorWidget(),
-        }
 
 
 # ---------------------------------------------------------
@@ -61,15 +36,12 @@ class EdgeStyleInline(admin.TabularInline):
 
 @admin.register(CypherQuery)
 class CypherQueryAdmin(admin.ModelAdmin):
-    form = CypherQueryForm
-    list_display = ("name", "created_by", "created_at", "is_active")
-    list_filter = ("is_active", "created_by")
+    list_display = ("name",)
     search_fields = ("name", "description", "query")
-    readonly_fields = ("created_at",)
     ordering = ("name",)
+
     inlines = [NodeStyleInline, EdgeStyleInline]
     actions = ["create_missing_styles"]
-
 
     @admin.action(description="Create missing styles")
     def create_missing_styles(modeladmin, request, queryset):
@@ -82,77 +54,54 @@ class CypherQueryAdmin(admin.ModelAdmin):
         messages.success(request, f"Created {total_created} missing styles.")
 
 
+# ---------------------------------------------------------
+# GraphWorkflow Admin
+# ---------------------------------------------------------
+
+@admin.register(GraphWorkflow)
+class GraphWorkflowAdmin(admin.ModelAdmin):
+    list_display = ("name", "slug", "cypher_query", "lambda_node", "is_active")
+    list_filter = ("is_active", "cypher_query")
+    search_fields = ("name", "slug", "description")
+    ordering = ("name",)
+
+
+# ---------------------------------------------------------
+# DynamicPage Admin
+# ---------------------------------------------------------
+
 @admin.register(DynamicPage)
 class DynamicPageAdmin(admin.ModelAdmin):
-    form = DynamicPageForm  # optional, remove if not needed
-
-    list_display = ("name", "slug", "owner", "open_link")
-    list_filter = ("owner",)
-    search_fields = ("name", "slug", "query")
+    list_display = ("name", "slug", "is_active", "open_link")
+    list_filter = ("is_active", )
+    search_fields = ("name", "slug")
     ordering = ("name",)
 
     def open_link(self, obj):
-        """Clickable link to view the dynamic page."""
         url = reverse("webfront:dynamic_page", args=[obj.slug])
         return format_html('<a href="{}" target="_blank">Open</a>', url)
 
     open_link.short_description = "View"
 
-    def save_model(self, request, obj, form, change):
-        """Automatically assign owner if not set."""
-        if not obj.owner:
-            obj.owner = request.user
-        super().save_model(request, obj, form, change)
+    # def save_model(self, request, obj, form, change):
+    #     if not obj.owner:
+    #         obj.owner = request.user
+    #     super().save_model(request, obj, form, change)
 
 
-class FileWorkflowForm(forms.ModelForm):
-    class Meta:
-        model = FileWorkflow
-        fields = "__all__"
-        widgets = {
-            "code": AceWidget(
-                mode="python",
-                theme="chrome",
-                width="100%",
-                height="400px"
-            ),
-            "test_context": JSONEditorWidget(),
-        }
-
+# ---------------------------------------------------------
+# FileWorkflow Admin
+# ---------------------------------------------------------
 
 @admin.register(FileWorkflow)
 class FileWorkflowAdmin(admin.ModelAdmin):
-    form = FileWorkflowForm
-
-    list_display = ("name", "bucket", "owner", "is_active")
-    list_filter = ("bucket", "owner", "is_active")
+    list_display = ("name", "slug", "bucket", "is_active", "open_link")
+    list_filter = ("bucket", "is_active")
     search_fields = ("name", "description")
     ordering = ("name",)
 
-    def save_model(self, request, obj, form, change):
-        if not obj.owner:
-            obj.owner = request.user
-        super().save_model(request, obj, form, change)
-
-
-# ---------------------------------------------------------
-# Gateway Admin
-# ---------------------------------------------------------
-
-@admin.register(Gateway)
-class GatewayAdmin(admin.ModelAdmin):
-    list_display = ("name", "slug", "workflow", "open_link")
-    list_filter = ("workflow",)
-    search_fields = ("name", "slug")
-    ordering = ("name",)
-
     def open_link(self, obj):
-        """Optional: link to a future gateway endpoint."""
-        url = reverse("webfront:gateway", args=[obj.slug])
+        url = reverse("webfront:workflow_upload", args=[obj.slug])
         return format_html('<a href="{}" target="_blank">Open</a>', url)
 
     open_link.short_description = "View"
-
-    def save_model(self, request, obj, form, change):
-        # No owner field here, but slug auto-generation is handled in model
-        super().save_model(request, obj, form, change)

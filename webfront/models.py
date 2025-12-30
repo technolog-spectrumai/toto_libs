@@ -1,76 +1,58 @@
 from django.db import models
-from django.contrib.auth.models import User
-from toto.models import SerializableModel, BaseExecutableModel
+from django.utils.text import slugify
 from colorfield.fields import ColorField
 from ravioli.models import CollectionType, RelationType
-from django.utils.text import slugify
 from vault.models import Bucket
+from mandragora.models import LambdaNode
 
 
-class BaseQuery(SerializableModel):
-    """
-    Abstract base class for reusable query definitions.
-    Contains only a name and a query string.
-    """
+# ------------------------------------------------------------
+# Base Page (abstract)
+# ------------------------------------------------------------
 
-    name = models.CharField(
-        max_length=200,
-        unique=True,
-        help_text="Human-readable name."
-    )
-
-    query = models.TextField(
-        help_text="The query string to run (Cypher, SQL, API, etc.)."
-    )
+class Page(models.Model):
+    name = models.CharField(max_length=200)
+    slug = models.SlugField(unique=True)
+    description = models.TextField(blank=True)
 
     class Meta:
         abstract = True
-        ordering = ["name"]
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            base = slugify(self.name)
+            slug = base
+            counter = 1
+            Model = self.__class__
+
+            while Model.objects.filter(slug=slug).exists():
+                counter += 1
+                slug = f"{base}-{counter}"
+
+            self.slug = slug
+
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.name
 
 
-class BaseExecutableQuery(BaseExecutableModel, BaseQuery):
-    """
-    Combines query + executable code.
-    Shared by CypherQuery and DynamicPage.
-    """
+# ------------------------------------------------------------
+# CypherQuery (pure query)
+# ------------------------------------------------------------
 
-    class Meta:
-        abstract = True
-        ordering = ["name"]
-
-
-# ---------------------------------------------------------
-# Cypher Query
-# ---------------------------------------------------------
-
-class CypherQuery(BaseExecutableQuery):
-    """
-    Represents a predefined Cypher query that can be reused in the graph explorer.
-    """
-
+class CypherQuery(models.Model):
+    name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
+    query = models.TextField()
 
-    created_by = models.ForeignKey(
-        User,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="cypher_queries"
-    )
-
-    created_at = models.DateTimeField(auto_now_add=True)
-    is_active = models.BooleanField(default=True)
-
-    class Meta:
-        ordering = ["name"]
+    def __str__(self):
+        return self.name
 
 
-# ---------------------------------------------------------
-# Styles
-# ---------------------------------------------------------
+# ------------------------------------------------------------
+# Node & Edge Styles (per CypherQuery)
+# ------------------------------------------------------------
 
 class NodeStyle(models.Model):
     cypher_query = models.ForeignKey(
@@ -88,6 +70,9 @@ class NodeStyle(models.Model):
 
     class Meta:
         unique_together = ("cypher_query", "collection_type")
+
+    def __str__(self):
+        return f"NodeStyle({self.collection_type})"
 
 
 class EdgeStyle(models.Model):
@@ -107,114 +92,67 @@ class EdgeStyle(models.Model):
     class Meta:
         unique_together = ("cypher_query", "relation_type")
 
-
-
-class DynamicPage(BaseExecutableQuery):
-    name = models.CharField(max_length=200, unique=True)
-
-    slug = models.SlugField(
-        max_length=200,
-        unique=True,
-        blank=True,
-        help_text="URL-friendly identifier for this page."
-    )
-
-    owner = models.ForeignKey(
-        User,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="dynamic_pages",
-        help_text="Owner of this page."
-    )
-
-    class Meta:
-        ordering = ["name"]
-
-    def save(self, *args, **kwargs):
-        # Auto-generate slug if missing
-        if not self.slug:
-            base = slugify(self.name)
-            slug = base
-            counter = 1
-
-            while DynamicPage.objects.filter(slug=slug).exclude(pk=self.pk).exists():
-                slug = f"{base}-{counter}"
-                counter += 1
-
-            self.slug = slug
-
-        super().save(*args, **kwargs)
-
     def __str__(self):
-        return self.name
+        return f"EdgeStyle({self.relation_type})"
 
 
-class FileWorkflow(BaseExecutableModel, SerializableModel):
-    """
-    A reusable, executable workflow that processes VaultFiles.
-    """
+# ------------------------------------------------------------
+# GraphWorkflow (inherits Page)
+# ------------------------------------------------------------
 
-    name = models.CharField(max_length=200, unique=True)
-    description = models.TextField(blank=True)
-    owner = models.ForeignKey(
-        User,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="file_workflows"
+class GraphWorkflow(Page):
+    cypher_query = models.ForeignKey(
+        CypherQuery,
+        on_delete=models.CASCADE,
+        related_name="graph_workflows"
     )
 
-    bucket = models.ForeignKey(
-        Bucket,
-        on_delete=models.CASCADE,
-        related_name="workflows",
-        help_text="Workflow is restricted to files inside this bucket."
+    lambda_node = models.ForeignKey(
+        LambdaNode,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
     )
 
     is_active = models.BooleanField(default=True)
 
-    class Meta:
-        ordering = ["name"]
 
-    def __str__(self):
-        return self.name
+# ------------------------------------------------------------
+# DynamicPage (inherits Page)
+# ------------------------------------------------------------
 
-
-class Gateway(models.Model):
-    name = models.CharField(max_length=200, unique=True)
-
-    slug = models.SlugField(
-        max_length=200,
-        unique=True,
+class DynamicPage(Page):
+    cypher_query = models.ForeignKey(
+        CypherQuery,
+        on_delete=models.SET_NULL,
+        null=True,
         blank=True,
-        help_text="URL-friendly identifier for this gateway."
+        help_text="Optional Cypher query powering this page."
     )
 
-    workflow = models.ForeignKey(
-        FileWorkflow,
-        on_delete=models.CASCADE,
-        related_name="gateways",
-        help_text="The workflow this gateway triggers."
+    lambda_node = models.ForeignKey(
+        LambdaNode,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        help_text="Optional lambda that renders widgets for this page."
     )
 
-    class Meta:
-        ordering = ["name"]
+    is_active = models.BooleanField(default=True)
 
-    def __str__(self):
-        return self.name
 
-    def save(self, *args, **kwargs):
-        if not self.slug:
-            base = slugify(self.name)
-            slug = base
-            counter = 1
+# ------------------------------------------------------------
+# FileWorkflow (inherits Page)
+# ------------------------------------------------------------
 
-            while Gateway.objects.filter(slug=slug).exclude(pk=self.pk).exists():
-                slug = f"{base}-{counter}"
-                counter += 1
+class FileWorkflow(Page):
+    bucket = models.ForeignKey(Bucket, on_delete=models.CASCADE)
 
-            self.slug = slug
+    lambda_node = models.ForeignKey(
+        LambdaNode,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
 
-        super().save(*args, **kwargs)
-
+    is_active = models.BooleanField(default=True)

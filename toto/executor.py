@@ -22,10 +22,10 @@ class RestrictedPythonExecutor:
     class ExecutionError(Exception):
         pass
 
-    def __init__(self, code: str, context: dict = None, name: str = "snippet"):
+    def __init__(self, code: str, name: str = "snippet", dependencies: dict = None):
         self.code = code
-        self.context = context or {}
         self.name = name
+        self.dependencies = dependencies # extra globals
 
     # ------------------------------------------------------------------
     # Allowed globals
@@ -55,10 +55,13 @@ class RestrictedPythonExecutor:
             "min": min,
         }
 
-    # ------------------------------------------------------------------
-    # Execution
-    # ------------------------------------------------------------------
-    def execute(self, extra_globals: dict = None):
+    def build_globals(self):
+        allowed_globals = self.default_allowed_globals()
+        if self.dependencies:
+            allowed_globals.update(self.dependencies)
+        return allowed_globals
+
+    def execute(self, context):
         """
         Execute restricted Python code.
         The code must define a main(context) function.
@@ -70,17 +73,13 @@ class RestrictedPythonExecutor:
                 mode="exec"
             )
 
-            allowed_globals = self.default_allowed_globals()
-            if extra_globals:
-                allowed_globals.update(extra_globals)
-
             local_vars = {}
-            exec(byte_code, allowed_globals, local_vars)
+            exec(byte_code, self.build_globals(), local_vars)
 
             if "main" not in local_vars or not callable(local_vars["main"]):
                 return {"error": "No main(context) function defined"}
 
-            return local_vars["main"](self.context)
+            return local_vars["main"](context)
 
         except Exception as e:
             raise self.ExecutionError(f"Execution failed: {e}" ) from e
