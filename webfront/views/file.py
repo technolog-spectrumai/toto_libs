@@ -1,17 +1,60 @@
+import io
+
 from django.views import View
 from django.shortcuts import render, get_object_or_404
 from django.http import JsonResponse, Http404
 from django.contrib.auth.decorators import login_required
 from django.utils.decorators import method_decorator
-
 from vault.file_helper import FileHelper
 from webfront.models import FileWorkflow
 from oya.page import PageProcessor
+from django.core.files.base import ContentFile
 
 
 @method_decorator(login_required, name="dispatch")
 class FileWorkflowView(View):
     template_name = "webfront/gateway.html"
+
+    class NormalizationError(Exception):
+        pass
+
+    @staticmethod
+    def _normalize_file(result):
+        """
+        Strict validation:
+        Lambda MUST return:
+            { "name": <str>, "content": <bytes|BytesIO|None> }
+
+        If content is None → return None (caller decides not to save).
+        """
+        if result is None:
+            return None
+        if not isinstance(result, dict):
+            raise FileWorkflowView.NormalizationError(
+                f"Lambda must return dict with 'name' and 'content', got: {type(result).__name__}"
+            )
+
+        if "name" not in result or "content" not in result:
+            raise FileWorkflowView.NormalizationError(
+                "Lambda must return dict with keys: 'name' and 'content'"
+            )
+        name = result["name"]
+        content = result["content"]
+
+        if not isinstance(name, str):
+            raise FileWorkflowView.NormalizationError("Returned 'name' must be a string")
+
+        # BytesIO → extract bytes
+        if isinstance(content, io.BytesIO):
+            content = content.getvalue()
+
+        # Must be bytes now
+        if not isinstance(content, (bytes, bytearray)):
+            raise FileWorkflowView.NormalizationError(
+                "Returned 'content' must be bytes, BytesIO, or None"
+            )
+
+        return ContentFile(content, name=name)
 
     def get(self, request, slug):
         workflow = get_object_or_404(FileWorkflow, slug=slug)
@@ -47,7 +90,8 @@ class FileWorkflowView(View):
 
         # Save output file
         helper = FileHelper(bucket_name=workflow.bucket.name)
-        vault_file = helper.save_file(result)
+        file_content = self._normalize_file(result)
+        vault_file = helper.save_file(file_content)
 
         if not vault_file:
             return JsonResponse({"error": "File could not be saved"}, status=500)
