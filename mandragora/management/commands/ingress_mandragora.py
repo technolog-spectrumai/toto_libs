@@ -1,80 +1,77 @@
 from django.contrib.auth.models import User
-from mandragora.models import Workflow, LambdaNode, Edge, LambdaLayer
-from oya.models import Platform, Theme
+from django.core.management.base import CommandError
+
+from mandragora.models import LambdaNode, LambdaLayer, LambdaUnitTest
 from oya.ingress import IngressCommand
 
 
-
 class Command(IngressCommand):
-    help = "Creates a demo Mandragora workflow setup with sample nodes and edges"
+    help = "Creates a demo Mandragora setup with sample LambdaNodes and tests"
 
     def process(self):
         if not self.full:
             return
 
-        # Use existing user or create demo
+        # Ensure admin user exists
         user, _ = User.objects.get_or_create(
             username="admin",
             defaults={"email": "demo@example.com"}
         )
 
-        # Create demo workflow
-        workflow, created = Workflow.objects.get_or_create(
-            name="Demo Workflow",
-            defaults={
-                "description": "A sample workflow for Mandragora demo",
-                "timeout": 60,
-                "metadata": {"demo": True, "owner": user.username},
-            }
+        # Create a demo layer
+        layer, _ = LambdaLayer.objects.get_or_create(
+            name="DemoLayer",
+            defaults={"use_opencv": False}
         )
 
-        if not created:
-            # Avoid duplicating nodes/edges if workflow already exists
-            return
-
-        kanban_layer, created = LambdaLayer.objects.get_or_create(
-            name="KanbanLayer",
-        )
-
-        # Create nodes with enforced main() function
+        # Create demo nodes
         start_node = LambdaNode.objects.create(
-            workflow=workflow,
             name="Start",
-            is_initial=True,
-            layer=kanban_layer,
+            layer=layer,
             code="""
 def main(context):
     return {"message": "Workflow started"}
 """
         )
+
         process_node = LambdaNode.objects.create(
-            workflow=workflow,
             name="Process",
+            layer=layer,
             code="""
 def main(context):
     return {"message": "Processing data..."}
 """
         )
+
         end_node = LambdaNode.objects.create(
-            workflow=workflow,
             name="End",
-            is_final=True,
+            layer=layer,
             code="""
 def main(context):
     return {"message": "Workflow finished"}
 """
         )
 
-        # Create edges (transitions)
-        Edge.objects.create(
-            workflow=workflow,
-            source=start_node,
-            target=process_node,
-            action="next"
+        # Create unit tests for each node
+        LambdaUnitTest.objects.create(
+            node=start_node,
+            name="StartTest",
+            input_context={},
+            expected_output={"message": "Workflow started"},
         )
-        Edge.objects.create(
-            workflow=workflow,
-            source=process_node,
-            target=end_node,
-            action="complete"
+
+        LambdaUnitTest.objects.create(
+            node=process_node,
+            name="ProcessTest",
+            input_context={},
+            expected_output={"message": "Processing data..."},
         )
+
+        LambdaUnitTest.objects.create(
+            node=end_node,
+            name="EndTest",
+            input_context={},
+            expected_output={"message": "Workflow finished"},
+        )
+
+        self.stdout.write(self.style.SUCCESS("Demo LambdaNodes and tests created."))

@@ -7,6 +7,42 @@ from django.utils import timezone
 from django.core.exceptions import ValidationError
 
 
+class Workflow(models.Model):
+    """
+    Workflow definition: a chain of Lambda nodes.
+    Identified only by primary key or name.
+    """
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True)
+    timeout = models.PositiveIntegerField(
+        default=30,
+        help_text=_("Timeout in seconds for workflow execution")
+    )
+
+    def __str__(self):
+        return self.name
+
+    def run(self, context=None):
+        result = {}
+        node = self.nodes.filter(is_initial=True).first()
+        context = context or {}
+
+        while node:
+            result = node.execute(context)
+            context = deepcopy(result)
+
+            if node.is_final:
+                break
+
+            next_edge = node.outgoing_edges.first()
+            if next_edge:
+                node = next_edge.target
+            else:
+                break
+
+        return result
+
+
 class LambdaLayer(models.Model):
     """
     Layer definition: declares which external dependencies are required.
@@ -33,12 +69,13 @@ class LambdaLayer(models.Model):
 
 
 class LambdaNode(models.Model):
+    workflow = models.ForeignKey("Workflow", on_delete=models.CASCADE, related_name="nodes")
     layer = models.ForeignKey("LambdaLayer", on_delete=models.SET_NULL, null=True, blank=True, related_name="nodes")
     name = models.CharField(max_length=100)
     code = models.TextField(help_text="Restricted Python code snippet")
 
     def __str__(self):
-        return f"Lambda: {self.name}"
+        return f"{self.workflow.name}: {self.name}"
 
     def execute(self, context: dict = None):
         """
@@ -52,6 +89,22 @@ class LambdaNode(models.Model):
         )
 
         return executor.execute(context)
+
+
+class Edge(models.Model):
+    """
+    Transition between Lambda nodes.
+    """
+    workflow = models.ForeignKey(Workflow, on_delete=models.CASCADE, related_name="edges")
+    source = models.ForeignKey(LambdaNode, on_delete=models.CASCADE, related_name="outgoing_edges")
+    target = models.ForeignKey(LambdaNode, on_delete=models.CASCADE, related_name="incoming_edges")
+    action = models.CharField(max_length=100, help_text=_("Trigger name for this transition"))
+
+    class Meta:
+        unique_together = ("workflow", "source", "target", "action")
+
+    def __str__(self):
+        return f"{self.source.name} --[{self.action}]--> {self.target.name}"
 
 
 class LambdaUnitTest(models.Model):
