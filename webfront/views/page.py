@@ -1,7 +1,7 @@
 from django.views import View
 from django.shortcuts import render, get_object_or_404
 from django.http import JsonResponse
-
+from ravioli.builder import GraphBuilder
 from oya.page import PageProcessor
 from webfront.models import DynamicPage
 
@@ -34,20 +34,19 @@ class DynamicPageView(View):
 
         result = []
         lambda_result = []
+        graph = None
+        if not page.cypher_query:
+            result.append(make_error_widget(page, "Query Error", "No Cypher"))
+        else:
+            graph = GraphBuilder.build_graph(page.cypher_query.query)
 
-        # -----------------------------------------------------
-        # Execute lambda if present
-        # -----------------------------------------------------
-        if page.lambda_node:
+        if page.lambda_node and graph:
             try:
-                lambda_result = page.lambda_node.execute({"request": request}) or []
+                lambda_result = page.lambda_node.execute({"request": request, "G": graph}) or []
             except Exception as e:
                 result.append(make_error_widget(page, "Lambda Error", e))
                 lambda_result = []
 
-        # -----------------------------------------------------
-        # Validate lambda output
-        # -----------------------------------------------------
         if not isinstance(lambda_result, list):
             result.append(make_error_widget(page, "Invalid Lambda Output",
                                             "Page lambda must return a list of widgets"))
