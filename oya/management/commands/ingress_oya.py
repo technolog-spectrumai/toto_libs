@@ -21,6 +21,7 @@ class Command(IngressCommand):
             f for f in os.listdir(themes_dir)
             if f.endswith('.json') and os.path.isfile(os.path.join(themes_dir, f))
         ]
+        #raise RuntimeError(str(theme_files))
 
         if not theme_files:
             raise CommandError("No JSON files found in the specified directory.")

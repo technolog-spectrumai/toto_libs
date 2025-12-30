@@ -15,6 +15,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         font = self.get_font(options['font'])
         if font is None:
+            raise RuntimeError(font)
             self.stdout.write(self.style.ERROR(f"Font '{options['font']}' not found."))
             return
 
