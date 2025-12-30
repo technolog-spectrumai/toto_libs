@@ -1,6 +1,5 @@
 from django.views import View
 from django.shortcuts import render, get_object_or_404
-from django.http import JsonResponse
 from ravioli.builder import GraphBuilder
 from oya.page import PageProcessor
 from webfront.models import DynamicPage

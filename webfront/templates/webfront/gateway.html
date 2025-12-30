@@ -89,7 +89,7 @@ function gatewayPage() {
       formData.append("file", file);
 
       try {
-        const response = await fetch("{% url 'webfront:gateway_upload' gateway.slug %}", {
+        const response = await fetch("{% url 'webfront:workflow_upload' gateway.slug %}", {
           method: "POST",
           headers: { "X-CSRFToken": "{{ csrf_token }}" },
           body: formData

@@ -11,5 +11,5 @@ urlpatterns = [
     path("page/<slug:slug>/", views.DynamicPageView.as_view(), name="dynamic_page"),
 
     # NEW: workflow upload endpoint
-    path("workflow/<slug:slug>/upload/", views.workflow_upload, name="workflow_upload"),
+    path("workflow/<slug:slug>/upload/", views.FileWorkflowView.as_view(), name="workflow_upload"),
 ]
