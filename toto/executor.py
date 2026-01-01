@@ -83,3 +83,34 @@ class RestrictedPythonExecutor:
 
         except Exception as e:
             raise self.ExecutionError(f"Execution failed: {e}" ) from e
+
+
+    def compile(self):
+        """
+        Compile restricted Python code and return exported symbols.
+        Does NOT require a main() function.
+        """
+        try:
+            byte_code = compile_restricted(
+                self.code,
+                filename=f"<restricted:{self.name}>",
+                mode="exec"
+            )
+
+            local_vars = {}
+            exec(byte_code, self.build_globals(), local_vars)
+
+            # If __all__ is defined, export only those names
+            if "__all__" in local_vars:
+                return {name: local_vars[name] for name in local_vars["__all__"]}
+
+            # Otherwise export all non-private names
+            return {
+                name: value
+                for name, value in local_vars.items()
+                if not name.startswith("_")
+            }
+
+        except Exception as e:
+            raise self.ExecutionError(f"Compilation failed: {e}") from e
+

@@ -23,9 +23,9 @@
 
   <!-- Collapsible content -->
   <div x-show="open" x-collapse class="mt-3">
-    {% if widget.type == "table" %}
+    {% if widget.template == "table" %}
        {% include "webfront/partials/table.html" with title=widget.title columns=widget.columns rows=widget.rows %}
-    {% elif widget.type == "bar" or widget.type == "chart" %}
+    {% elif widget.template == "chart" %}
        {% include "webfront/partials/chart.html" with data=widget.data chart_id=widget.id %}
     {% else %}
       <p class="opacity-70 text-sm"> Unknown widget type: {{ widget.type }} </p>

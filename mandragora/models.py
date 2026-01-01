@@ -81,6 +81,14 @@ class LambdaNode(models.Model):
 
         return executor.execute(context)
 
+    def compile(self):
+        executor = RestrictedPythonExecutor(
+            code=self.code,
+            name=self.name,
+            dependencies=self.layer.render_dependencies() if self.layer else {}
+        )
+        return executor.compile()
+
 
 class LambdaUnitTest(models.Model):
     """
