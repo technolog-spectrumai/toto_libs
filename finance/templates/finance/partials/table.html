@@ -1,6 +1,6 @@
 <section x-data="paginate({ perPage: 8 })" x-init="init()">
 
-  {% include "finance/partials/table_head.html" with title=title %}
+  {% include "finance/partials/page_size.html" %}
 
   <div class="hidden md:block overflow-x-auto">
     <table class="min-w-full text-sm border rounded">

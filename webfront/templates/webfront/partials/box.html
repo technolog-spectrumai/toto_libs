@@ -1,6 +1,7 @@
 <div x-data="{ open: false, openYamlModal: false, widgetId: '{{ widget.id }}' }"
      class="w-full p-4 rounded border relative"
-     :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+     :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark border-text-main-dark'
+     : 'bg-primary-bg-light text-text-main-light border-text-main-light'">
 
   <!-- Show Data button -->
   <button
@@ -22,9 +23,11 @@
 
   <!-- Collapsible content -->
   <div x-show="open" x-collapse class="mt-3">
-
-      <p>  {{ widget.type}} | {{ widget.id}} </p>
-
+    {% if widget.type == "table" %}
+       {% include "webfront/partials/table.html" with title=widget.title columns=widget.columns rows=widget.rows %}
+    {% else %}
+      <p class="opacity-70 text-sm"> Unknown widget type: {{ widget.type }} </p>
+    {% endif %}
   </div>
 
   <!-- YAML Modal -->

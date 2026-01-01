@@ -43,13 +43,14 @@ def build_widget(item):
         "title": item.get("title", "Widget"),
         "type": widget_type,
         "template": template_name,
-        "data": json.dumps(item),  # for YAML modal
+        "data": json.dumps(item)
     }
+    widget.update(item)
 
     # Flatten fields (columns, rows, labels, datasets, options, etc.)
-    for key, value in item.items():
-        if key not in ("id", "title", "type"):
-            widget[key] = value
+    # for key, value in item.items():
+    #     if key not in ("id", "title", "type"):
+    #         widget[key] = value
 
     return widget
 
@@ -113,7 +114,7 @@ class DynamicPageView(View):
                     ))
                 else:
                     result.append(build_widget(item))
-
+        p =0
         # -----------------------------------------------------
         # Render page
         # -----------------------------------------------------
