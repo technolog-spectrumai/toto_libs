@@ -3,9 +3,12 @@
   {% include "webfront/partials/page_size.html" with title=title %}
 
   <div class="hidden md:block overflow-x-auto">
-    <table class="min-w-full text-sm border rounded">
+    <table class="min-w-full text-sm border rounded"
+           :class="darkMode ? 'border-text-main-dark bg-primary-bg-dark' : 'border-text-main-light bg-primary-bg-light'">
+
       <thead>
-        <tr class="text-left border-b">
+        <tr class="text-left border-b"
+            :class="darkMode ? 'border-text-main-dark' : 'border-text-main-light'">
           {% for col in columns %}
             <th class="px-4 py-2">{{ col.label }}</th>
           {% endfor %}
@@ -14,10 +17,13 @@
 
       <tbody x-ref="items">
         {% for row in rows %}
-        <tr class="border-b">
+        <tr class="border-b"
+            :class="darkMode ? 'border-text-main-dark' : 'border-text-main-light'">
 
           {% for cell in row %}
-            <td class="px-4 py-2">
+            <td class="px-4 py-2 border-b"
+                :class="darkMode ? 'border-text-main-dark' : 'border-text-main-light'">
+
               {% if cell.type == "link" %}
                 {% if cell.url %}
                   <a href="{{ cell.url }}"
@@ -30,12 +36,14 @@
               {% else %}
                 {{ cell.text|default:"—" }}
               {% endif %}
+
             </td>
           {% endfor %}
 
         </tr>
         {% endfor %}
       </tbody>
+
     </table>
   </div>
 
