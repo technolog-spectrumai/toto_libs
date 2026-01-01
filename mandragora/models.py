@@ -60,14 +60,22 @@ class LambdaNode(models.Model):
     def __str__(self):
         return f"Lambda: {self.name}"
 
-    def execute(self, context: dict = None):
+    def execute(self, context: dict = None, extra_dependencies: dict = None):
         """
         Execute restricted Python code using the helper executor.
+        Allows injecting extra dependencies (e.g., widget classes).
         """
+
+        # Base deps from layer
+        deps = self.layer.render_dependencies() if self.layer else {}
+
+        # Merge extra dependencies
+        if extra_dependencies:
+            deps.update(extra_dependencies)
 
         executor = RestrictedPythonExecutor(
             code=self.code,
-            dependencies=self.layer.render_dependencies(),
+            dependencies=deps,
             name=getattr(self, "name", "unnamed")
         )
 

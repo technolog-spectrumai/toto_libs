@@ -37,7 +37,24 @@ function dim(hex, alpha = 0.25) {
 
         {% for widget in result %}
 
-           {% include "webfront/partials/box.html" with widget=widget %}
+          {% if widget.type == "error" %}
+            {% include "webfront/partials/error.html" with widget=widget %}
+
+          {% elif widget.type == "table" %}
+            {% include "webfront/partials/table.html"
+                 with title=widget.title
+                      columns=widget.columns
+                      rows=widget.rows %}
+
+          {% elif widget.type == "bar" or widget.type == "chart" %}
+            {% include "webfront/partials/chart.html"
+                 with data=widget.data chart_id=widget.id %}
+
+          {% else %}
+            <p class="opacity-70 text-sm">
+              Unknown widget type: {{ widget.type }}
+            </p>
+          {% endif %}
 
         {% endfor %}
 
