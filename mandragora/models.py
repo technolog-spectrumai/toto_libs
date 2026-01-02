@@ -136,13 +136,16 @@ class LambdaUnitTest(models.Model):
         if not self.node:
             raise ValidationError("Unit test must be attached to a LambdaNode.")
 
-        # Run the node
-        output = self.node.execute(self.input_context)
-
-        # Store results
-        self.actual_output = output
-        self.passed = (output == self.expected_output)
-        self.executed_at = timezone.now()
+        try:
+            output = self.node.execute(self.input_context)
+        except RestrictedPythonExecutor.ExecutionError as e:
+            self.passed = False
+            self.actual_output = {"error": str(e)}
+        else:
+            # Store results
+            self.actual_output = output
+            self.passed = (output == self.expected_output)
+            self.executed_at = timezone.now()
         self.save()
 
         return {
