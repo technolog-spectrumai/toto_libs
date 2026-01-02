@@ -83,11 +83,31 @@ function mapWidget_{{ widget.id }}() {
     },
 
     zoomTo(name) {
-      if (this.layers[name]) {
-        const bounds = this.layers[name].getBounds();
-        if (bounds.isValid()) {
-          this.map.fitBounds(bounds, { padding: [20, 20] });
-        }
+      const layer = this.layers[name];
+      if (!layer) return;
+
+      const feature = this.features[name];   // 👈 we will store features by name
+      const customZoom = feature?.zoom;
+
+      const bounds = layer.getBounds();
+
+      if (customZoom && layer.getLatLng) {
+        // Point feature → use flyTo
+        const latlng = layer.getLatLng();
+        this.map.flyTo(latlng, customZoom, { duration: 1.2 });
+        return;
+      }
+
+      if (customZoom && bounds.isValid()) {
+        // Polygon or line → zoom to bounds, then set zoom
+        this.map.fitBounds(bounds, { padding: [20, 20] });
+        this.map.setZoom(customZoom);
+        return;
+      }
+
+      // Default behavior
+      if (bounds.isValid()) {
+        this.map.fitBounds(bounds, { padding: [20, 20] });
       }
     },
 
@@ -112,7 +132,6 @@ function mapWidget_{{ widget.id }}() {
       (isDark ? darkTiles : lightTiles).addTo(this.map);
 
       const layerList = [];
-
       features.forEach(item => {
         if (!item.geometry) return;
 
@@ -136,6 +155,9 @@ function mapWidget_{{ widget.id }}() {
         this.layers[item.name] = layer;
         layerList.push(layer);
       });
+
+      this.features = {};
+      features.forEach(item => { this.features[item.name] = item; });
 
       if (layerList.length > 0) {
         const group = L.featureGroup(layerList);
