@@ -31,6 +31,8 @@
         {% include "webfront/partials/calendar.html" with id=widget.id data=widget.data title=widget.title %}
     {% elif widget.template == "timeline" %}
         {% include "webfront/partials/timeline.html" with id=widget.id data=widget.data title=widget.title %}
+    {% elif widget.template == "map" %}
+        {% include "webfront/partials/map.html" with widget=widget %}
     {% elif widget.template == "error" %}
         {% include "webfront/partials/error.html" with text=widget.text %}
     {% else %}

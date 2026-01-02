@@ -1,0 +1,91 @@
+{% load static %}
+
+<div
+  class="p-4 rounded-lg border mb-4 transition-colors duration-300"
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
+    : 'bg-primary-bg-light text-text-main-light border-accent-2'">
+
+  <!-- Title -->
+  <h3 class="text-lg font-semibold mb-3">
+    {{ widget.title }}
+  </h3>
+
+  <!-- Map container -->
+  <div
+    id="map_{{ widget.id }}"
+    class="w-full h-80 rounded border transition-colors duration-300"
+    :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+  </div>
+</div>
+
+<!-- Leaflet (only include once globally if possible) -->
+<link rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+  (function() {
+    document.addEventListener("DOMContentLoaded", function () {
+      const containerId = "map_{{ widget.id }}";
+      const container = document.getElementById(containerId);
+      if (!container) return;
+
+      // Center + zoom
+      const center = {{ widget.center|safe }};
+      const zoom = {{ widget.zoom|default:6 }};
+
+      const map = L.map(containerId).setView(center, zoom);
+
+      // Dark/light tiles
+      const isDark = localStorage.getItem("darkMode") === "true";
+
+      const lightTiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+      });
+
+      const darkTiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+        maxZoom: 19,
+      });
+
+      (isDark ? darkTiles : lightTiles).addTo(map);
+
+      // GeoJSON features
+      const features = {{ widget.features|safe }};
+      const layers = [];
+
+      features.forEach(item => {
+        if (!item.geometry) return;
+
+        const layer = L.geoJSON(item.geometry, {
+          style: {
+            color: isDark ? "#FFCE56" : "#2563EB",
+            weight: 2
+          },
+          pointToLayer: function (feature, latlng) {
+            return L.circleMarker(latlng, {
+              radius: 6,
+              fillColor: isDark ? "#FFCE56" : "#2563EB",
+              color: "#000",
+              weight: 1,
+              fillOpacity: 0.9
+            });
+          }
+        });
+
+        layer.bindPopup(`<strong>${item.type}</strong><br>${item.name}`);
+        layer.addTo(map);
+        layers.push(layer);
+      });
+
+      // Fit bounds if possible
+      if (layers.length > 0) {
+        const group = L.featureGroup(layers);
+        const bounds = group.getBounds();
+        if (bounds.isValid()) {
+          map.fitBounds(bounds, { padding: [20, 20] });
+        }
+      }
+    });
+  })();
+</script>

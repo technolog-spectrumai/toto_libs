@@ -154,3 +154,11 @@ class Command(IngressCommand):
                 "code": load_lambda(os.path.join(base_path, "calendar.py")),
             },
         )[0]
+
+        map_lambda = LambdaNode.objects.update_or_create(
+            name="MapRenderer",
+            defaults={
+                "layer": calendar_layer,
+                "code": load_lambda(os.path.join(base_path, "map.py")),
+            },
+        )[0]

@@ -133,7 +133,7 @@ class ErrorWidget(BaseWidget):
             "type": self.widget_type,
             "id": self.id,
             "title": self.title,
-            "error": self.error,
+            "text": self.error,
             "template": self.template,
         }
 
@@ -166,6 +166,41 @@ class CalendarWidget(BaseWidget):
         d.update({
             "events": self.events,
             "view": self.view,
+        })
+        return d
+
+
+class MapWidget(BaseWidget):
+    """
+    A map widget that displays GeoJSON features on a Leaflet map.
+    Expected structure:
+      - features: list of dicts, each containing:
+            {
+                "name": "Location Name",
+                "type": "Point" or "Polygon" or custom label,
+                "geometry": { ... valid GeoJSON ... }
+            }
+      - center: [lat, lng]
+      - zoom: integer
+      - options: extra map config (tile style, dark mode, etc.)
+    """
+    widget_type = "map"
+    template = "map"
+
+    def __init__(self, title, features=None, center=None, zoom=6, options=None):
+        super().__init__(title)
+        self.features = features or []
+        self.center = center or [52.0, 19.0]  # default: center of Poland
+        self.zoom = zoom
+        self.options = options or {}
+
+    def to_dict(self):
+        d = self.base_dict()
+        d.update({
+            "features": self.features,
+            "center": self.center,
+            "zoom": self.zoom,
+            "options": self.options,
         })
         return d
 
