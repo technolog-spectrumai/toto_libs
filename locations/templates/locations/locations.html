@@ -19,15 +19,45 @@
 
     <h2 class="text-2xl font-bold mb-4">All Locations</h2>
 
-    <!-- 🌍 MAP -->
-    <section>
-      <div id="map" class="w-full h-96 rounded border"
-           :class="darkMode ? 'border-accent-1' : 'border-accent-2'"></div>
+    <!-- 🌍 SIDEBAR + MAP (Always Open) -->
+    <section class="flex flex-row gap-6 h-[80vh] md:h-[85vh]">
+
+      <!-- 📌 SIDEBAR (Always Visible) -->
+      <aside
+        class="w-64 h-full overflow-y-auto rounded border p-4 space-y-2"
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'
+                         : 'border-accent-2 bg-bubble-bg-light text-text-main-light'">
+
+        <h3 class="text-lg font-semibold mb-2">Locations</h3>
+
+        <div class="space-y-2">
+          {% for loc in locations %}
+            <button
+              onclick="zoomToFeature('{{ loc.name }}')"
+              class="w-full text-left px-3 py-2 rounded transition
+                     hover:bg-blue-100 dark:hover:bg-blue-900">
+              <div class="font-medium">{{ loc.type }}</div>
+              <div class="text-sm opacity-80">{{ loc.name }}</div>
+            </button>
+          {% empty %}
+            <p class="text-sm opacity-70">No locations available.</p>
+          {% endfor %}
+        </div>
+      </aside>
+
+      <!-- 🗺️ MAP -->
+      <div class="flex-1 h-full">
+        <div id="map" class="w-full h-full rounded border"
+             :class="darkMode ? 'border-accent-1' : 'border-accent-2'"></div>
+      </div>
+
     </section>
 
+    <!-- 🧠 MAP SCRIPT -->
     <script>
       let map = null;
       let featuresDict = {};
+
       document.addEventListener("DOMContentLoaded", function () {
         const isDark = localStorage.getItem("darkMode") === "true";
 
@@ -39,7 +69,6 @@
         (isDark ? darkTiles : lightTiles).addTo(map);
 
         const features = JSON.parse(`{{ locations_json|escapejs }}`);
-
 
         features.forEach(item => {
           const type = item.type;
@@ -65,9 +94,9 @@
           }).addTo(map);
 
           layer.bindPopup(`<strong>${type}</strong><br>${name}`);
-
         });
       });
+
       function zoomToFeature(name) {
         const item = featuresDict[name];
         if (!item || !item.geometry) return;
@@ -80,54 +109,6 @@
         }
       }
     </script>
-
-    <!-- 📋 TABLE OF LOCATIONS -->
-    <section>
-      <h3 class="text-xl font-semibold mb-3">Location Table</h3>
-
-      <div class="overflow-x-auto rounded border"
-           :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
-
-        <table class="min-w-full text-sm">
-          <thead
-            :class="darkMode ? 'bg-bubble-bg-dark text-text-main-dark' : 'bg-bubble-bg-light text-text-main-light'">
-            <tr class="border-b"
-                :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
-              <th class="px-4 py-2 text-left">Type</th>
-              <th class="px-4 py-2 text-left">Name</th>
-            </tr>
-          </thead>
-
-            <tbody>
-              {% for loc in locations %}
-              <tr class="border-b"
-                  :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
-
-                <td class="px-4 py-2 font-medium">{{ loc.type }}</td>
-                <td class="px-4 py-2">{{ loc.name }}</td>
-
-                <td class="px-4 py-2">
-                  <button
-                    onclick="zoomToFeature('{{ loc.name }}')"
-                    class="underline text-blue-600 dark:text-blue-400">
-                    Zoom
-                  </button>
-                </td>
-
-              </tr>
-              {% empty %}
-              <tr>
-                <td colspan="3" class="px-4 py-4 text-center text-sm"
-                    :class="darkMode ? 'text-text-main-dark' : 'text-gray-500'">
-                  No locations available.
-                </td>
-              </tr>
-              {% endfor %}
-            </tbody>
-        </table>
-
-      </div>
-    </section>
 
   </div>
 </div>
