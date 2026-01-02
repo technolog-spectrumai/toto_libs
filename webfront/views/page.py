@@ -4,7 +4,7 @@ from ravioli.builder import GraphBuilder
 from oya.page import PageProcessor
 from webfront.models import DynamicPage
 from webfront.widgets import (TableWidget, ErrorWidget, BarChartWidget, LineChartWidget,
-                              PieChartWidget, DoughnutChartWidget, CalendarWidget)
+                              PieChartWidget, DoughnutChartWidget, CalendarWidget, TimelineViewWidget)
 import json
 
 
@@ -41,7 +41,7 @@ class DynamicPageView(View):
         # Build graph
         # -----------------------------------------------------
         if not page.cypher_query:
-            result.append(ErrorWidget("Query Error", "No Cypher"))
+            result.append(ErrorWidget("Query Error", "No Cypher").to_dict())
         else:
             graph = GraphBuilder.build_graph(page.cypher_query.query)
 
@@ -59,11 +59,12 @@ class DynamicPageView(View):
                         "LineChartWidget": LineChartWidget,
                         "PieChartWidget": PieChartWidget,
                         "DoughnutChartWidget": DoughnutChartWidget,
-                        "CalendarWidget": CalendarWidget
+                        "CalendarWidget": CalendarWidget,
+                        "TimelineViewWidget": TimelineViewWidget
                     }
                 ) or []
             except Exception as e:
-                result.append(ErrorWidget(page, "Lambda Error: " + str(e)))
+                result.append(ErrorWidget(page, "Lambda Error: " + str(e)).to_dict())
                 lambda_result = []
 
         # -----------------------------------------------------
