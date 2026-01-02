@@ -10,6 +10,7 @@
 
 {% block content %}
 <div
+  x-data="{ search: '' }"
   :class="darkMode
     ? 'bg-primary-bg-dark text-text-main-dark'
     : 'bg-primary-bg-light text-text-main-light'"
@@ -19,30 +20,44 @@
 
     <h2 class="text-2xl font-bold mb-4">All Locations</h2>
 
-    <!-- 🌍 SIDEBAR + MAP (Always Open) -->
+    <!-- 🌍 SIDEBAR + MAP -->
     <section class="flex flex-row gap-6 h-[80vh] md:h-[85vh]">
 
-      <!-- 📌 SIDEBAR (Always Visible) -->
+      <!-- 📌 SIDEBAR WITH SEARCH -->
       <aside
-        class="w-64 h-full overflow-y-auto rounded border p-4 space-y-2"
+        class="w-64 h-full overflow-y-auto rounded border p-4 space-y-4"
         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'
                          : 'border-accent-2 bg-bubble-bg-light text-text-main-light'">
 
-        <h3 class="text-lg font-semibold mb-2">Locations</h3>
+        <h3 class="text-lg font-semibold">Locations</h3>
 
+        <!-- 🔍 SEARCH BAR -->
+        <input
+          x-model="search"
+          type="text"
+          placeholder="Search..."
+          class="w-full px-3 py-2 rounded text-sm transition-colors duration-300 border"
+          :class="darkMode
+            ? 'bg-primary-bg-dark text-text-main-dark border-accent-dark'
+            : 'bg-primary-bg-light text-text-main-light border-accent-light'
+          "
+          />
+
+        <!-- 📋 FILTERED LIST -->
         <div class="space-y-2">
           {% for loc in locations %}
-            <button
-              onclick="zoomToFeature('{{ loc.name }}')"
-              class="w-full text-left px-3 py-2 rounded transition
-                     hover:bg-blue-100 dark:hover:bg-blue-900">
-              <div class="font-medium">{{ loc.type }}</div>
-              <div class="text-sm opacity-80">{{ loc.name }}</div>
-            </button>
-          {% empty %}
-            <p class="text-sm opacity-70">No locations available.</p>
+            <template x-if="'{{ loc.name|lower }}'.includes(search.toLowerCase()) || '{{ loc.type|lower }}'.includes(search.toLowerCase())">
+              <button
+                onclick="zoomToFeature('{{ loc.name }}')"
+                class="w-full text-left px-3 py-2 rounded transition
+                       hover:bg-blue-100 dark:hover:bg-blue-900">
+                <div class="font-medium">{{ loc.type }}</div>
+                <div class="text-sm opacity-80">{{ loc.name }}</div>
+              </button>
+            </template>
           {% endfor %}
         </div>
+
       </aside>
 
       <!-- 🗺️ MAP -->
