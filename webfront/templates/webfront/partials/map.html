@@ -100,7 +100,10 @@ function mapWidget_{{ widget.id }}() {
       const zoom = {{ widget.zoom|default:6 }};
       const features = {{ widget.features|safe }};
       const isDark = localStorage.getItem("darkMode") === "true";
-
+      const existing = L.DomUtil.get(id);
+      if (existing && existing._leaflet_id) {
+          existing._leaflet_id = null;
+      }
       this.map = L.map(id).setView(center, zoom);
 
       const lightTiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png");
