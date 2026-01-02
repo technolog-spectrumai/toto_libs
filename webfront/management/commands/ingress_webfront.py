@@ -137,3 +137,20 @@ class Command(IngressCommand):
                 "is_active": True,
             },
         )
+
+        calendar_layer, _ = LambdaLayer.objects.get_or_create(
+            name="GraphLayer",
+            defaults={
+                "use_numpy": True,
+                "use_networkx": True,
+                "use_random": True
+            }
+        )
+
+        calendar_lambda = LambdaNode.objects.update_or_create(
+            name="CalendarRenderer",
+            defaults={
+                "layer": calendar_layer,
+                "code": load_lambda(os.path.join(base_path, "calendar.py")),
+            },
+        )[0]

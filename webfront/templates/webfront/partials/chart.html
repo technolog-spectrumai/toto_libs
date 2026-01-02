@@ -19,7 +19,6 @@
     const tooltipBg = isDark ? themeColors["bubble-bg-dark"] : "#ffffff";
     const tooltipText = textColor;
     const accentColor = isDark ? themeColors["accent-dark"] : themeColors["accent-light"];
-    console.log("-=-->", chart.options);
     // Build final options
     const options = Object.assign({}, chart.options || {}, {
         responsive: true,
@@ -54,7 +53,6 @@
             }
             : {}
     });
-    console.log("--->", options);
     new Chart(ctx, {
         type: chart.type,
         data: {

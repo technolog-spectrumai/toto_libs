@@ -27,6 +27,8 @@
        {% include "webfront/partials/table.html" with title=widget.title columns=widget.columns rows=widget.rows %}
     {% elif widget.template == "chart" %}
        {% include "webfront/partials/chart.html" with data=widget.data chart_id=widget.id %}
+    {% elif widget.template == "calendar" %}
+        {% include "webfront/partials/calendar.html" with id=widget.id data=widget.data title=widget.title %}
     {% else %}
       <p class="opacity-70 text-sm"> Unknown widget type: {{ widget.type }} </p>
     {% endif %}

@@ -1,3 +1,5 @@
+import random
+
 import cv2
 from toto.executor import RestrictedPythonExecutor
 from django.db import models
@@ -23,6 +25,7 @@ class LambdaLayer(models.Model):
     use_networkx = models.BooleanField(default=False)
     use_io = models.BooleanField(default=False)
     use_json = models.BooleanField(default=False)
+    use_random = models.BooleanField(default=False)
 
     def __str__(self):
         return self.name
@@ -47,6 +50,9 @@ class LambdaLayer(models.Model):
 
         if self.use_json:
             deps["json"] = json
+
+        if self.use_random:
+            deps["random"] = random
 
         return deps
 

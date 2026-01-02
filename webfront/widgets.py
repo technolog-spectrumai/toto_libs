@@ -136,3 +136,36 @@ class ErrorWidget(BaseWidget):
             "error": self.error,
             "template": self.template,
         }
+
+class CalendarWidget(BaseWidget):
+    """
+    A calendar widget that displays events on specific dates.
+    Expected structure:
+      - events: list of dicts like:
+            {
+                "date": "2025-01-15",
+                "title": "Meeting with team",
+                "description": "Discuss Q1 roadmap"
+            }
+    """
+    widget_type = "calendar"
+    template = "calendar"
+
+    def __init__(self, title, events=None, view="month"):
+        """
+        :param title: Widget title
+        :param events: List of event dicts
+        :param view: "month", "week", or "day"
+        """
+        super().__init__(title)
+        self.events = events or []
+        self.view = view
+
+    def to_dict(self):
+        d = self.base_dict()
+        d.update({
+            "events": self.events,
+            "view": self.view,
+        })
+        return d
+
