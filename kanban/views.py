@@ -48,7 +48,7 @@ class ProjectListView(LoginRequiredMixin, ListView):
             return Project.objects.none()
 
         return Project.objects.filter(
-            Q(owner=user) |
+            Q(owner__user=user) |
             Q(collaborators=user)
         ).distinct()
 
