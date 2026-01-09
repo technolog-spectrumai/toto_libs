@@ -84,7 +84,6 @@ class DynamicPageView(View):
                     ))
                 else:
                     result.append(flatten_widget_data(item))
-        p =0
         # -----------------------------------------------------
         # Render page
         # -----------------------------------------------------

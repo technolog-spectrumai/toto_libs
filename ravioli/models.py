@@ -50,7 +50,7 @@ class DataNode(models.Model):
     """
     Represents a node in a graph, linked to a CollectionType.
     """
-    name = models.CharField(max_length=100, unique=True)
+    name = models.CharField(max_length=100)
     data = models.JSONField(blank=True, null=True)  # node-specific data
     collection_type = models.ForeignKey(
         CollectionType,

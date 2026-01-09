@@ -2,7 +2,7 @@ from django.core.exceptions import ValidationError
 import jsonschema
 from .models import DataNode, CollectionType, Graph
 from django import forms
-from django.apps import apps
+from .merge import MergeStrategy
 
 
 class FieldFactory:
@@ -194,3 +194,26 @@ class RunCollectorsForm(forms.Form):
     #             )
     #
     #     self.fields["models"].choices = model_choices
+
+
+class MergeGraphsForm(forms.Form):
+    new_graph_name = forms.CharField(label="Name of new merged graph")
+
+    graph_b = forms.ModelChoiceField(
+        queryset=Graph.objects.all(),
+        label="Graph B (merge with selected Graph A)"
+    )
+
+    strategy = forms.ChoiceField(
+        choices=[
+            (MergeStrategy.INNER_JOIN, "Inner Join"),
+            (MergeStrategy.LEFT_JOIN, "Left Join"),
+            (MergeStrategy.RIGHT_JOIN, "Right Join"),
+            (MergeStrategy.FULL_OUTER_JOIN, "Full Outer Join"),
+            (MergeStrategy.UNION, "Union"),
+            (MergeStrategy.INTERSECTION, "Intersection"),
+            (MergeStrategy.A_MINUS_B, "A minus B"),
+            (MergeStrategy.B_MINUS_A, "B minus A"),
+        ],
+        label="Merge Strategy",
+    )
