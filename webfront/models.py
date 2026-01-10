@@ -141,10 +141,6 @@ class DynamicPage(Page):
     is_active = models.BooleanField(default=True)
 
 
-# ------------------------------------------------------------
-# FileWorkflow (inherits Page)
-# ------------------------------------------------------------
-
 class FileWorkflow(Page):
     bucket = models.ForeignKey(Bucket, on_delete=models.CASCADE)
 
@@ -156,3 +152,39 @@ class FileWorkflow(Page):
     )
 
     is_active = models.BooleanField(default=True)
+
+
+class Widget(models.Model):
+    WIDGET_TYPES = [
+        ("table", "Table"),
+        ("bar", "Bar Chart"),
+        ("line", "Line Chart"),
+        ("pie", "Pie Chart"),
+        ("doughnut", "Doughnut Chart"),
+        ("calendar", "Calendar"),
+        ("map", "Map")
+    ]
+
+    page = models.ForeignKey(
+        DynamicPage,
+        on_delete=models.CASCADE,
+        related_name="widgets"
+    )
+
+    lambda_node = models.ForeignKey(
+        LambdaNode,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        help_text="Lambda that generates widget data."
+    )
+
+    type = models.CharField(max_length=50, choices=WIDGET_TYPES)
+
+    title = models.CharField(max_length=200)
+
+    order = models.PositiveIntegerField(default=0)
+
+    def __str__(self):
+        return f"{self.page.name} → {self.title} ({self.type})"
+

@@ -9,6 +9,7 @@ from .models import (
     DynamicPage,
     FileWorkflow,
     GraphWorkflow,
+    Widget
 )
 
 from .style_factory import StyleFactory
@@ -70,6 +71,13 @@ class GraphWorkflowAdmin(admin.ModelAdmin):
 # DynamicPage Admin
 # ---------------------------------------------------------
 
+class WidgetInline(admin.TabularInline):
+    model = Widget
+    extra = 0
+    fields = ("order", "title", "type", "lambda_node")
+    ordering = ("order",)
+
+
 @admin.register(DynamicPage)
 class DynamicPageAdmin(admin.ModelAdmin):
     list_display = ("name", "slug", "is_active", "open_link")
@@ -77,16 +85,14 @@ class DynamicPageAdmin(admin.ModelAdmin):
     search_fields = ("name", "slug")
     ordering = ("name",)
 
+    inlines = [WidgetInline]
+
     def open_link(self, obj):
         url = reverse("webfront:dynamic_page", args=[obj.slug])
         return format_html('<a href="{}" target="_blank">Open</a>', url)
 
     open_link.short_description = "View"
 
-    # def save_model(self, request, obj, form, change):
-    #     if not obj.owner:
-    #         obj.owner = request.user
-    #     super().save_model(request, obj, form, change)
 
 
 # ---------------------------------------------------------
