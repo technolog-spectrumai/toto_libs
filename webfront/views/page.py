@@ -1,91 +1,117 @@
+# webfront/views.py
+
+import json
 from django.views import View
 from django.shortcuts import render, get_object_or_404
+
 from ravioli.builder import GraphBuilder
 from oya.page import PageProcessor
+
 from webfront.models import DynamicPage
-from webfront.widgets import (TableWidget, ErrorWidget, BarChartWidget, LineChartWidget,
-                              PieChartWidget, DoughnutChartWidget, CalendarWidget, MapWidget)
-import json
+from webfront.widgets import ErrorWidget
+from webfront.factory import WidgetFactory
 
-
-def flatten_widget_data(item):
-    widget_type = item.get("type")
-    widget = {
-        "id": item.get("id", "widget"),
-        "title": item.get("title", "Widget"),
-        "type": widget_type,
-        "data": json.dumps(item),
-        "template": item.get("template", "webfront/partials/error.html")
-    }
-    widget.update(item)
-
-    return widget
-
-
-# ---------------------------------------------------------
-# DynamicPage View
-# ---------------------------------------------------------
 
 class DynamicPageView(View):
     template_name = "webfront/page.html"
+
+    # -----------------------------------------------------
+    # Page lambda
+    # -----------------------------------------------------
+
+    def run_page_lambda(self, page, request, graph, result):
+        """
+        Executes the page-level lambda.
+        It MUST return a dict (context) for widget lambdas.
+        """
+        if not page.lambda_node:
+            return {}
+
+        try:
+            output = page.lambda_node.execute(
+                {"request": request, "G": graph}
+            ) or {}
+
+            if not isinstance(output, dict):
+                raise ValueError("Page lambda must return a dict")
+
+            return output
+
+        except Exception as e:
+            result.append(
+                ErrorWidget("Page Lambda Error", str(e)).to_dict()
+            )
+            return {}
+
+    # -----------------------------------------------------
+    # Widget lambda
+    # -----------------------------------------------------
+
+    def run_widget_lambda(self, widget, request, graph, result):
+        """
+        Execute widget lambda and return dict.
+        """
+        if not widget.lambda_node:
+            return {}
+
+        try:
+            data = widget.lambda_node.execute(
+                {"request": request, "G": graph}
+            ) or {}
+
+            if not isinstance(data, dict):
+                raise ValueError("Widget lambda must return a dict")
+
+            return data
+
+        except Exception as e:
+            result.append(
+                ErrorWidget(widget.title, f"Widget Error: {str(e)}").to_dict()
+            )
+            return {}
+
+    # -----------------------------------------------------
+    # Main view
+    # -----------------------------------------------------
 
     def get(self, request, slug):
         page = get_object_or_404(DynamicPage, slug=slug)
         processor = PageProcessor()
 
         result = []
-        lambda_result = []
         graph = None
 
-        # -----------------------------------------------------
+        # -------------------------------------------------
         # Build graph
-        # -----------------------------------------------------
+        # -------------------------------------------------
         if not page.cypher_query:
             result.append(ErrorWidget("Query Error", "No Cypher").to_dict())
         else:
             graph = GraphBuilder.build_graph(page.cypher_query.query)
 
-        # -----------------------------------------------------
-        # Execute lambda with widget classes injected
-        # -----------------------------------------------------
-        if page.lambda_node and graph:
-            try:
-                lambda_result = page.lambda_node.execute(
-                    {"request": request, "G": graph},
-                    extra_dependencies={
-                        "TableWidget": TableWidget,
-                        "ErrorWidget": ErrorWidget,
-                        "BarChartWidget": BarChartWidget,
-                        "LineChartWidget": LineChartWidget,
-                        "PieChartWidget": PieChartWidget,
-                        "DoughnutChartWidget": DoughnutChartWidget,
-                        "CalendarWidget": CalendarWidget,
-                        "MapWidget": MapWidget
-                    }
-                ) or []
-            except Exception as e:
-                result.append(ErrorWidget(page, "Lambda Error: " + str(e)).to_dict())
-                lambda_result = []
+        # -------------------------------------------------
+        # Page-level lambda (fan-out ETL)
+        # -------------------------------------------------
+        if graph is not None:
+            graph = self.run_page_lambda(page, request, graph, result)
 
-        # -----------------------------------------------------
-        # Validate lambda output
-        # -----------------------------------------------------
-        if not isinstance(lambda_result, list):
-            result.append(ErrorWidget(
-                "Invalid Lambda Output",
-                "Page lambda must return a list of widgets"
-            ))
-        else:
-            for item in lambda_result:
-                if "error" in item:
-                    result.append(ErrorWidget(
-                        item.get("title", "Error"),
-                        item["error"]
-                    ))
-                else:
-                    result.append(flatten_widget_data(item))
-        # -----------------------------------------------------
+        # -------------------------------------------------
+        # Render widgets from DB
+        # -------------------------------------------------
+        for widget in page.widgets.order_by("order"):
+            data = self.run_widget_lambda(widget, request, graph, result)
+
+            # Convert dict → proper widget object
+            widget_obj = WidgetFactory.from_dict(data)
+
+            # Convert widget object → final dict for frontend
+            result.append(widget_obj.to_dict())
+
+        # -------------------------------------------------
         # Render page
-        # -----------------------------------------------------
-        context = processor.decorate({"page": page, "result": result}, request)
+        # -------------------------------------------------
+        context = processor.decorate(
+            {"page": page, "result": result},
+            request,
+        )
         return render(request, self.template_name, context)

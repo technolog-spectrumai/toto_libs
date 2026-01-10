@@ -8,6 +8,7 @@ from webfront.models import (
     DynamicPage,
     FileWorkflow,
     GraphWorkflow,
+    Widget
 )
 
 from mandragora.models import LambdaNode, LambdaLayer
@@ -97,20 +98,69 @@ class Command(IngressCommand):
         # 3. DynamicPage: Kanban
         # ---------------------------------------------------------
 
-        kanban_lambda = LambdaNode.objects.update_or_create(
-            name="KanbanPageRenderer",
+        # ---------------------------------------------------------
+        # 3. DynamicPage: Story Points Dashboard (ETL + Widgets)
+        # ---------------------------------------------------------
+
+        # 3a. Page-level ETL lambda
+        page_etl_lambda = LambdaNode.objects.update_or_create(
+            name="StoryPointsETL",
             defaults={
                 "layer": graph_layer,
                 "code": load_lambda(os.path.join(base_path, "kanban.py")),
             },
         )[0]
 
-        DynamicPage.objects.update_or_create(
-            name="Story Points Kanban",
+        page, _ = DynamicPage.objects.update_or_create(
+            name="Story Points Dashboard",
             defaults={
-                "slug": "kanban",
-                "lambda_node": kanban_lambda,
+                "slug": "story-points",
+                "lambda_node": page_etl_lambda,  # PAGE LAMBDA
                 "is_active": True,
+            },
+        )
+
+        # ---------------------------------------------------------
+        # 3b. Widget-level lambdas
+        # ---------------------------------------------------------
+
+        table_lambda = LambdaNode.objects.update_or_create(
+            name="StoryPointsTableWidget",
+            defaults={
+                "layer": graph_layer,
+                "code": load_lambda(os.path.join(base_path, "table.py")),
+            },
+        )[0]
+
+        bar_chart_lambda = LambdaNode.objects.update_or_create(
+            name="StoryPointsBarChartWidget",
+            defaults={
+                "layer": graph_layer,
+                "code": load_lambda(os.path.join(base_path, "bars.py")),
+            },
+        )[0]
+
+        # ---------------------------------------------------------
+        # 3c. Create widgets in DB
+        # ---------------------------------------------------------
+
+        Widget.objects.update_or_create(
+            page=page,
+            order=1,
+            defaults={
+                "title": "Story Points Table",
+                "type": "table",
+                "lambda_node": table_lambda,
+            },
+        )
+
+        Widget.objects.update_or_create(
+            page=page,
+            order=2,
+            defaults={
+                "title": "Completed vs In‑Progress",
+                "type": "chart",
+                "lambda_node": bar_chart_lambda,
             },
         )
 
