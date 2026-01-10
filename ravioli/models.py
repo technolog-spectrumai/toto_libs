@@ -63,6 +63,9 @@ class DataNode(models.Model):
         on_delete=models.CASCADE
     )
 
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["name", "graph"], name="unique_node_name_per_graph")]
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
