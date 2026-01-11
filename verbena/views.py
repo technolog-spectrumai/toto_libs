@@ -32,7 +32,6 @@ class VerbenaPageListByTagView(ListView):
         return PageProcessor().decorate(context, self.request)
 
 
-
 class VerbenaPageDetailView(DetailView):
     model = Page
     template_name = "verbena/page_detail.html"
@@ -47,13 +46,17 @@ class VerbenaPageDetailView(DetailView):
         for section in self.object.sections.all():
             rendered_sections.append({
                 "title": section.title,
-                "images": section.images.all(),
+                "image": section.image,  # updated: one image per section
                 "html": mark_safe(markdownify(section.content)),
             })
+
+        context["sections"] = rendered_sections
+
+        # remember tag slug for "Back to Page List"
         context["tag_slug"] = (
             self.object.tags.first().slug
             if self.object.tags.exists()
             else None
         )
-        context["sections"] = rendered_sections
+
         return PageProcessor().decorate(context, self.request)

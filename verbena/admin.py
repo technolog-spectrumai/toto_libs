@@ -37,7 +37,7 @@ class SectionInline(admin.StackedInline):
     model = Section
     form = SectionInlineForm
     extra = 1
-    fields = ["title", "content", "order"]
+    fields = ["title", "content", "order", "image"]
     ordering = ["order"]
     show_change_link = True
 
@@ -65,16 +65,25 @@ class PageAdmin(admin.ModelAdmin):
 @admin.register(Section)
 class SectionAdmin(admin.ModelAdmin):
     form = SectionAdminForm
-    list_display = ["title", "page", "order"]
+    list_display = ["title", "page", "order", "image"]
     list_filter = ["page"]
     ordering = ["page", "order"]
 
 
 @admin.register(Image)
 class ImageAdmin(admin.ModelAdmin):
-    list_display = ["title", "section", "order"]
-    list_filter = ["section"]
-    ordering = ["section", "order"]
+    list_display = ["title", "preview"]
+    search_fields = ["title"]
+
+    def preview(self, obj):
+        if obj.file:
+            return format_html(
+                '<img src="{}" style="height:40px;border-radius:4px;" />',
+                obj.file.url
+            )
+        return "—"
+
+    preview.short_description = "Preview"
 
 
 @admin.register(Tag)

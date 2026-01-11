@@ -4,68 +4,67 @@
 {% block title %}{{ page.title }} | {{ platform.site_name }}{% endblock %}
 
 {% block start_script %}
-
 <style>
   /* Improve spacing inside prose blocks */
-.prose p {
-  margin-top: 0.75rem;
-  margin-bottom: 0.75rem;
-}
+  .prose p {
+    margin-top: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
 
-/* Better code blocks */
-.prose pre {
-  background-color: #1e293b; /* slate-800 */
-  color: #f8fafc; /* slate-50 */
-  padding: 1rem;
-  border-radius: 0.5rem;
-  overflow-x: auto;
-}
+  /* Better code blocks */
+  .prose pre {
+    background-color: #1e293b; /* slate-800 */
+    color: #f8fafc; /* slate-50 */
+    padding: 1rem;
+    border-radius: 0.5rem;
+    overflow-x: auto;
+  }
 
-/* Inline code */
-.prose code {
-  background-color: rgba(0,0,0,0.05);
-  padding: 0.2rem 0.4rem;
-  border-radius: 0.25rem;
-}
+  /* Inline code */
+  .prose code {
+    background-color: rgba(0,0,0,0.05);
+    padding: 0.2rem 0.4rem;
+    border-radius: 0.25rem;
+  }
 
-/* Headings */
-.prose h2 {
-  margin-top: 2rem;
-  margin-bottom: 1rem;
-  font-weight: 700;
-}
+  /* Headings */
+  .prose h2 {
+    margin-top: 2rem;
+    margin-bottom: 1rem;
+    font-weight: 700;
+  }
 
-.prose h3 {
-  margin-top: 1.5rem;
-  margin-bottom: 0.75rem;
-  font-weight: 600;
-}
+  .prose h3 {
+    margin-top: 1.5rem;
+    margin-bottom: 0.75rem;
+    font-weight: 600;
+  }
 
-/* Images */
-.prose img {
-  border-radius: 0.5rem;
-  margin: 1rem auto;
-}
+  /* Images */
+  .prose img {
+    border-radius: 0.5rem;
+    margin: 1rem auto;
+  }
 
-/* Tables */
-.prose table {
-  width: 100%;
-  border-collapse: collapse;
-}
+  /* Tables */
+  .prose table {
+    width: 100%;
+    border-collapse: collapse;
+  }
 
-.prose th,
-.prose td {
-  border: 1px solid #e5e7eb;
-  padding: 0.5rem;
-}
+  .prose th,
+  .prose td {
+    border: 1px solid #e5e7eb;
+    padding: 0.5rem;
+  }
 
-.dark .prose-invert th,
-.dark .prose-invert td {
-  border-color: #475569;
-}
-
+  .dark .prose-invert th,
+  .dark .prose-invert td {
+    border-color: #475569;
+  }
 </style>
 {% endblock %}
+
 {% block content %}
 <section
   :class="darkMode
@@ -109,26 +108,23 @@
           {% endif %}
 
           <div class="prose dark:prose-invert max-w-none">
-            {{  section.html | safe }}
+            {{ section.html | safe }}
           </div>
 
-          <!-- Images -->
-          {% if section.images.all %}
-            <div class="mt-4 space-y-4">
-              {% for img in section.images.all %}
-                <figure class="text-center">
-                  <img src="{{ img.file.url }}"
-                       alt="{{ img.title }}"
-                       class="rounded shadow max-w-full mx-auto" />
-                  {% if img.title %}
-                    <figcaption class="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                      {{ img.title }}
-                    </figcaption>
-                  {% endif %}
-                </figure>
-              {% endfor %}
-            </div>
+          <!-- Single Image -->
+          {% if section.image %}
+            <figure class="mt-4 text-center">
+              <img src="{{ section.image.file.url }}"
+                   alt="{{ section.image.title }}"
+                   class="rounded shadow max-w-full mx-auto" />
+              {% if section.image.title %}
+                <figcaption class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  {{ section.image.title }}
+                </figcaption>
+              {% endif %}
+            </figure>
           {% endif %}
+
         </article>
       {% endfor %}
     </div>

@@ -45,6 +45,14 @@ class Page(models.Model):
         return self.title
 
 
+class Image(models.Model):
+    title = models.CharField(max_length=255, blank=True)
+    file = models.ImageField(upload_to="verbena_images/")
+
+    def __str__(self):
+        return self.title or f"Image {self.id}"
+
+
 class Section(models.Model):
     page = models.ForeignKey(
         Page,
@@ -55,6 +63,15 @@ class Section(models.Model):
     title = models.CharField(max_length=255, blank=True)
     content = models.TextField(blank=True)
 
+    # One image per section, but image can be reused
+    image = models.ForeignKey(
+        Image,
+        related_name="sections",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+
     order = models.PositiveIntegerField(default=0)
 
     class Meta:
@@ -64,20 +81,3 @@ class Section(models.Model):
         return f"{self.page.title} – {self.title or 'Section'}"
 
 
-class Image(models.Model):
-    section = models.ForeignKey(
-        Section,
-        related_name="images",
-        on_delete=models.CASCADE
-    )
-
-    title = models.CharField(max_length=255, blank=True)
-    file = models.ImageField(upload_to="verbena_images/")
-
-    order = models.PositiveIntegerField(default=0)
-
-    class Meta:
-        ordering = ["order"]
-
-    def __str__(self):
-        return self.title or f"Image {self.id}"

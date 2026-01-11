@@ -101,26 +101,43 @@ class Command(IngressCommand):
 
     def create_sections(self, page, sections):
         for i, (title, content) in enumerate(sections, start=1):
+
+            # Add markdown lorem ipsum
+            markdown_lorem = (
+                f"{content}\n\n"
+                "## Lorem Ipsum\n"
+                "Lorem ipsum dolor sit amet, **consectetur adipiscing elit**. "
+                "Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.\n\n"
+                "> This is a blockquote example.\n\n"
+                "### Code Example\n"
+                "```python\n"
+                "def example():\n"
+                "    return 'Hello, Markdown!'\n"
+                "```\n"
+            )
+
             section = Section.objects.create(
                 page=page,
                 title=title,
-                content=content,
+                content=markdown_lorem,
                 order=i
             )
 
             # Randomly attach an image to ~40% of sections
             if random.random() < 0.4:
-                self.create_image(section)
+                self.attach_image(section)
 
         self.stdout.write(self.style.SUCCESS(
             f"📚 Added {len(sections)} sections to page: {page.title}"
         ))
 
-    def create_image(self, section):
-        Image.objects.create(
-            section=section,
+    def attach_image(self, section):
+        image = Image.objects.create(
             title=f"Image for {section.title}",
             file="verbena_images/sample.jpg",
-            order=1
         )
+
+        section.image = image
+        section.save()
+
         self.stdout.write(self.style.SUCCESS(f"🖼️ Added image to section: {section.title}"))
