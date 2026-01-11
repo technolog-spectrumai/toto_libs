@@ -157,10 +157,7 @@ class FileWorkflow(Page):
 class Widget(models.Model):
     WIDGET_TYPES = [
         ("table", "Table"),
-        ("bar", "Bar Chart"),
-        ("line", "Line Chart"),
-        ("pie", "Pie Chart"),
-        ("doughnut", "Doughnut Chart"),
+        ("chart", "Chart"),
         ("calendar", "Calendar"),
         ("map", "Map")
     ]

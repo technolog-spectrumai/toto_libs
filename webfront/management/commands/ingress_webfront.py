@@ -2,7 +2,6 @@ import os
 from django.conf import settings
 from rest_framework.reverse import reverse_lazy
 from oya.ingress import IngressCommand
-
 from webfront.models import (
     CypherQuery,
     DynamicPage,
@@ -10,7 +9,6 @@ from webfront.models import (
     GraphWorkflow,
     Widget
 )
-
 from mandragora.models import LambdaNode, LambdaLayer
 from vault.models import Bucket
 
@@ -68,7 +66,7 @@ class Command(IngressCommand):
             defaults={
                 "description": "Fetch all nodes and relationships (limit 500).",
                 "query": "MATCH (n)-[r]->(m) RETURN n,r,m LIMIT 500",
-            },
+            }
         )[0]
 
         # ---------------------------------------------------------
@@ -80,7 +78,7 @@ class Command(IngressCommand):
             defaults={
                 "layer": graph_layer,
                 "code": load_lambda(os.path.join(base_path, "cypher.py")),
-            },
+            }
         )[0]
 
         GraphWorkflow.objects.update_or_create(
@@ -91,7 +89,7 @@ class Command(IngressCommand):
                 "lambda_node": cypher_lambda,
                 "description": "Runs a Cypher query and transforms the graph.",
                 "is_active": True,
-            },
+            }
         )
 
         # ---------------------------------------------------------
@@ -103,21 +101,22 @@ class Command(IngressCommand):
         # ---------------------------------------------------------
 
         # 3a. Page-level ETL lambda
-        page_etl_lambda = LambdaNode.objects.update_or_create(
-            name="StoryPointsETL",
+        page_lambda = LambdaNode.objects.update_or_create(
+            name="StoryPointsExtractor",
             defaults={
                 "layer": graph_layer,
                 "code": load_lambda(os.path.join(base_path, "kanban.py")),
-            },
+            }
         )[0]
 
         page, _ = DynamicPage.objects.update_or_create(
             name="Story Points Dashboard",
             defaults={
                 "slug": "story-points",
-                "lambda_node": page_etl_lambda,  # PAGE LAMBDA
+                "lambda_node": page_lambda,
                 "is_active": True,
-            },
+                "cypher_query": cypher_query
+            }
         )
 
         # ---------------------------------------------------------
@@ -129,7 +128,7 @@ class Command(IngressCommand):
             defaults={
                 "layer": graph_layer,
                 "code": load_lambda(os.path.join(base_path, "table.py")),
-            },
+            }
         )[0]
 
         bar_chart_lambda = LambdaNode.objects.update_or_create(
@@ -137,7 +136,7 @@ class Command(IngressCommand):
             defaults={
                 "layer": graph_layer,
                 "code": load_lambda(os.path.join(base_path, "bars.py")),
-            },
+            }
         )[0]
 
         # ---------------------------------------------------------
@@ -151,7 +150,7 @@ class Command(IngressCommand):
                 "title": "Story Points Table",
                 "type": "table",
                 "lambda_node": table_lambda,
-            },
+            }
         )
 
         Widget.objects.update_or_create(
@@ -161,7 +160,7 @@ class Command(IngressCommand):
                 "title": "Completed vs In‑Progress",
                 "type": "chart",
                 "lambda_node": bar_chart_lambda,
-            },
+            }
         )
 
         # ---------------------------------------------------------
@@ -175,7 +174,7 @@ class Command(IngressCommand):
             defaults={
                 "layer": file_layer,
                 "code": load_lambda(os.path.join(base_path, "json.py")),
-            },
+            }
         )[0]
 
         FileWorkflow.objects.update_or_create(
@@ -185,7 +184,7 @@ class Command(IngressCommand):
                 "bucket": bucket,
                 "lambda_node": file_lambda,
                 "is_active": True,
-            },
+            }
         )
 
         calendar_layer, _ = LambdaLayer.objects.get_or_create(
@@ -202,13 +201,13 @@ class Command(IngressCommand):
             defaults={
                 "layer": calendar_layer,
                 "code": load_lambda(os.path.join(base_path, "calendar.py")),
-            },
+            }
         )[0]
 
-        map_lambda = LambdaNode.objects.update_or_create(
-            name="MapRenderer",
-            defaults={
-                "layer": calendar_layer,
-                "code": load_lambda(os.path.join(base_path, "map.py")),
-            },
-        )[0]
+        # map_lambda = LambdaNode.objects.update_or_create(
+        #     name="MapRenderer",
+        #     defaults={
+        #         "layer": calendar_layer,
+        #         "code": load_lambda(os.path.join(base_path, "map.py")),
+        #     },
+        # )[0]

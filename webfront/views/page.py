@@ -47,7 +47,7 @@ class DynamicPageView(View):
     # Widget lambda
     # -----------------------------------------------------
 
-    def run_widget_lambda(self, widget, request, graph, result):
+    def run_widget_lambda(self, widget, request, input_data, result):
         """
         Execute widget lambda and return dict.
         """
@@ -56,7 +56,7 @@ class DynamicPageView(View):
 
         try:
             data = widget.lambda_node.execute(
-                {"request": request, "G": graph}
+                {"request": request, "data": input_data}
             ) or {}
 
             if not isinstance(data, dict):
@@ -92,20 +92,22 @@ class DynamicPageView(View):
         # -------------------------------------------------
         # Page-level lambda (fan-out ETL)
         # -------------------------------------------------
+        page_data = {}
         if graph is not None:
-            graph = self.run_page_lambda(page, request, graph, result)
+            page_data = self.run_page_lambda(page, request, graph, result)
 
         # -------------------------------------------------
         # Render widgets from DB
         # -------------------------------------------------
         for widget in page.widgets.order_by("order"):
-            data = self.run_widget_lambda(widget, request, graph, result)
+            widget_data = self.run_widget_lambda(widget, request, page_data, result)
 
             # Convert dict → proper widget object
-            widget_obj = WidgetFactory.from_dict(data)
-
+            widget_obj = WidgetFactory.from_dict(widget_data)
+            widget_data = widget_obj.to_dict()
+            widget_data["data"] = json.dumps(widget_data)
             # Convert widget object → final dict for frontend
-            result.append(widget_obj.to_dict())
+            result.append(widget_data)
 
         # -------------------------------------------------
         # Render page
