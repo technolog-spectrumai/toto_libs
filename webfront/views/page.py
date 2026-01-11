@@ -103,7 +103,7 @@ class DynamicPageView(View):
             widget_data = self.run_widget_lambda(widget, request, page_data, result)
 
             # Convert dict → proper widget object
-            widget_obj = WidgetFactory.from_dict(widget_data)
+            widget_obj = WidgetFactory.from_dict(widget, widget_data)
             widget_data = widget_obj.to_dict()
             widget_data["data"] = json.dumps(widget_data)
             # Convert widget object → final dict for frontend
