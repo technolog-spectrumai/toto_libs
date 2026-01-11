@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     'colorfield',
     'polymorphic',
     'django_ace',
+    'markdownx',
     'reversion',
     "gervazy",
     "oya",
