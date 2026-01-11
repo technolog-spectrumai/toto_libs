@@ -80,7 +80,7 @@ INSTALLED_APPS = [
     "locations",
     #"assets",
     "mandragora",
-    #"portfolio"
+    "verbena"
 ]
 
 
@@ -287,7 +287,8 @@ INGRESS_ALLOWED_APPS = [
     "library",
     "webfront",
     "locations",
-    "mandragora"
+    "mandragora",
+    "verbena"
 ]
 
 BACKUP_ALLOWED_APPS = [
