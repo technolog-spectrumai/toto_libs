@@ -29,6 +29,7 @@ urlpatterns = [
     #path("assets/", include("assets.urls", namespace="assets")),
     #path("portfolio/", include("portfolio.urls", namespace="portfolio")),
     path("locations/", include("locations.urls", namespace="locations")),
+    path("verbena/", include("verbena.urls", namespace="verbena")),
     path('markdownx/', include('markdownx.urls')),
 ]
 

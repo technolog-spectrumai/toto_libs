@@ -1,0 +1,147 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}{{ page.title }} | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+
+<style>
+  /* Improve spacing inside prose blocks */
+.prose p {
+  margin-top: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+/* Better code blocks */
+.prose pre {
+  background-color: #1e293b; /* slate-800 */
+  color: #f8fafc; /* slate-50 */
+  padding: 1rem;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+}
+
+/* Inline code */
+.prose code {
+  background-color: rgba(0,0,0,0.05);
+  padding: 0.2rem 0.4rem;
+  border-radius: 0.25rem;
+}
+
+/* Headings */
+.prose h2 {
+  margin-top: 2rem;
+  margin-bottom: 1rem;
+  font-weight: 700;
+}
+
+.prose h3 {
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+  font-weight: 600;
+}
+
+/* Images */
+.prose img {
+  border-radius: 0.5rem;
+  margin: 1rem auto;
+}
+
+/* Tables */
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.prose th,
+.prose td {
+  border: 1px solid #e5e7eb;
+  padding: 0.5rem;
+}
+
+.dark .prose-invert th,
+.dark .prose-invert td {
+  border-color: #475569;
+}
+
+</style>
+{% endblock %}
+{% block content %}
+<section
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="flex items-center justify-center px-6 py-16 min-h-screen transition-colors duration-300">
+
+  <div
+    :class="darkMode
+      ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
+      : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+    class="w-full max-w-3xl p-6 rounded-lg shadow-md border space-y-8 transition-colors duration-300">
+
+    <!-- Page Title -->
+    <h1 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+        class="text-3xl font-bold text-center">
+      {{ page.title }}
+    </h1>
+
+    <!-- Page Description -->
+    {% if page.description %}
+      <p class="text-center text-gray-600 dark:text-gray-400 text-sm">
+        {{ page.description }}
+      </p>
+    {% endif %}
+
+    <!-- Sections -->
+    <div class="space-y-10">
+      {% for section in sections %}
+        <article
+          :class="darkMode
+            ? 'bg-primary-bg-dark border border-accent-1'
+            : 'bg-primary-bg-light border border-accent-2'"
+          class="p-5 rounded-lg transition-colors duration-300">
+
+          {% if section.title %}
+            <h2 class="text-xl font-semibold mb-3"
+                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+              {{ section.title }}
+            </h2>
+          {% endif %}
+
+          <div class="prose dark:prose-invert max-w-none">
+            {{  section.html | safe }}
+          </div>
+
+          <!-- Images -->
+          {% if section.images.all %}
+            <div class="mt-4 space-y-4">
+              {% for img in section.images.all %}
+                <figure class="text-center">
+                  <img src="{{ img.file.url }}"
+                       alt="{{ img.title }}"
+                       class="rounded shadow max-w-full mx-auto" />
+                  {% if img.title %}
+                    <figcaption class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                      {{ img.title }}
+                    </figcaption>
+                  {% endif %}
+                </figure>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </article>
+      {% endfor %}
+    </div>
+
+    <!-- Back Button -->
+    <a href="{% url 'nest:dashboard' %}"
+       :class="darkMode
+         ? 'bg-accent-dark text-primary-bg-dark'
+         : 'bg-accent-light text-primary-bg-light'"
+       class="inline-block px-4 py-2 mt-6 rounded font-semibold hover:opacity-90 transition text-sm text-center">
+      Back to Dashboard
+    </a>
+
+  </div>
+</section>
+{% endblock %}
