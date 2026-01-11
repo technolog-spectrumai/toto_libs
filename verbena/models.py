@@ -3,11 +3,25 @@ from django.contrib.auth.models import User
 from django.utils.text import slugify
 
 
+class Tag(models.Model):
+    name = models.CharField(max_length=50, unique=True)
+    slug = models.SlugField(unique=True, blank=True)
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slugify(self.name)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.name
+
+
 class Page(models.Model):
     title = models.CharField(max_length=255)
     slug = models.SlugField(unique=True, blank=True)
     description = models.TextField(blank=True)
-    tags = models.CharField(max_length=255, blank=True)  # comma-separated tags
+
+    tags = models.ManyToManyField(Tag, related_name="pages", blank=True)
 
     author = models.ForeignKey(
         User,
@@ -25,7 +39,7 @@ class Page(models.Model):
         super().save(*args, **kwargs)
 
     def tag_list(self):
-        return [t.strip() for t in self.tags.split(",") if t.strip()]
+        return self.tags.all()
 
     def __str__(self):
         return self.title
@@ -67,6 +81,3 @@ class Image(models.Model):
 
     def __str__(self):
         return self.title or f"Image {self.id}"
-from django.db import models
-
-# Create your models here.

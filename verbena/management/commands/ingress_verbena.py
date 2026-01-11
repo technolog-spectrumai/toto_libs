@@ -1,5 +1,5 @@
 from django.contrib.auth.models import User
-from verbena.models import Page, Section, Image
+from verbena.models import Page, Section, Image, Tag
 from oya.ingress import IngressCommand
 import random
 
@@ -25,7 +25,8 @@ class Command(IngressCommand):
                 self.stdout.write(self.style.WARNING(f"⚠️ Skipped existing page: {page_title}"))
                 continue
 
-            page = self.create_page(page_title, page_data["description"], user, page_data["tags"])
+            page = self.create_page(page_title, page_data["description"], user)
+            self.assign_tags(page, page_data["tags"])
             self.create_sections(page, page_data["sections"])
 
         self.stdout.write(self.style.SUCCESS("✅ Verbena ingress complete."))
@@ -49,7 +50,7 @@ class Command(IngressCommand):
         return {
             "Django Overview": {
                 "description": "A high-level overview of Django concepts.",
-                "tags": "django,python,web",
+                "tags": ["django", "python", "web"],
                 "sections": [
                     ("What is Django?", "Django is a high-level Python web framework."),
                     ("MTV Pattern", "Django uses the Model-Template-View architecture."),
@@ -58,7 +59,7 @@ class Command(IngressCommand):
             },
             "Python Essentials": {
                 "description": "Core Python concepts for beginners.",
-                "tags": "python,basics,study",
+                "tags": ["python", "basics", "study"],
                 "sections": [
                     ("Variables", "Python variables are dynamically typed."),
                     ("Functions", "Functions are defined using the def keyword."),
@@ -67,7 +68,7 @@ class Command(IngressCommand):
             },
             "Backend Concepts": {
                 "description": "Important backend engineering principles.",
-                "tags": "backend,architecture,dev",
+                "tags": ["backend", "architecture", "dev"],
                 "sections": [
                     ("APIs", "APIs allow communication between systems."),
                     ("Databases", "Data persistence is handled by databases."),
@@ -80,15 +81,23 @@ class Command(IngressCommand):
     # CREATION HELPERS
     # ────────────────────────────────────────────────
 
-    def create_page(self, title, description, user, tags):
+    def create_page(self, title, description, user):
         page = Page.objects.create(
             title=title,
             description=description,
             author=user,
-            tags=tags
         )
         self.stdout.write(self.style.SUCCESS(f"📄 Created page: {title}"))
         return page
+
+    def assign_tags(self, page, tag_names):
+        tag_objects = []
+        for name in tag_names:
+            tag, _ = Tag.objects.get_or_create(name=name)
+            tag_objects.append(tag)
+
+        page.tags.set(tag_objects)
+        self.stdout.write(self.style.SUCCESS(f"🏷️ Added tags to page: {page.title}"))
 
     def create_sections(self, page, sections):
         for i, (title, content) in enumerate(sections, start=1):
@@ -108,7 +117,6 @@ class Command(IngressCommand):
         ))
 
     def create_image(self, section):
-        # Placeholder image file path — replace with a real file if needed
         Image.objects.create(
             section=section,
             title=f"Image for {section.title}",

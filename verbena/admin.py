@@ -2,7 +2,7 @@ from django.contrib import admin
 from django import forms
 from markdownx.widgets import MarkdownxWidget
 
-from .models import Page, Section, Image
+from .models import Page, Section, Image, Tag
 
 
 # ────────────────────────────────────────────────
@@ -47,9 +47,10 @@ class SectionInline(admin.StackedInline):
 @admin.register(Page)
 class PageAdmin(admin.ModelAdmin):
     list_display = ["title", "author", "created_at"]
-    search_fields = ["title", "description", "tags"]
-    list_filter = ["author"]
+    search_fields = ["title", "description"]
+    list_filter = ["author", "tags"]
     prepopulated_fields = {"slug": ("title",)}
+    filter_horizontal = ["tags"]
     inlines = [SectionInline]
 
 
@@ -66,3 +67,10 @@ class ImageAdmin(admin.ModelAdmin):
     list_display = ["title", "section", "order"]
     list_filter = ["section"]
     ordering = ["section", "order"]
+
+
+@admin.register(Tag)
+class TagAdmin(admin.ModelAdmin):
+    list_display = ["name", "slug"]
+    search_fields = ["name"]
+    prepopulated_fields = {"slug": ("name",)}
