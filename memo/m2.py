@@ -4,12 +4,20 @@ from django_jsonform.models.fields import JSONField
 from django.forms.models import model_to_dict
 
 
+# ---------------------------------------------------------
+# TAGS
+# ---------------------------------------------------------
+
 class Tag(models.Model):
     name = models.CharField(max_length=50, unique=True)
 
     def __str__(self):
         return self.name
 
+
+# ---------------------------------------------------------
+# MERMAID CHART
+# ---------------------------------------------------------
 
 class MermaidChart(models.Model):
     title = models.CharField(max_length=200, blank=True)
@@ -28,13 +36,43 @@ class MermaidChart(models.Model):
         }
 
 
+# ---------------------------------------------------------
+# LATEX FORMULA (NEW)
+# ---------------------------------------------------------
+
+class MemoFormula(models.Model):
+    """
+    Stores a LaTeX-style mathematical formula.
+    Example: r"\int_0^\infty e^{-x^2} dx = \frac{\sqrt{\pi}}{2}"
+    """
+    title = models.CharField(max_length=200, blank=True)
+    description = models.TextField(blank=True)
+    latex = models.TextField(help_text="LaTeX expression for the formula")
+    metadata = JSONField(blank=True, default=dict)
+
+    def __str__(self):
+        return self.title or "Formula"
+
+    def to_json(self):
+        return {
+            "id": self.id,
+            "title": self.title,
+            "description": self.description,
+            "latex": self.latex,
+            "metadata": self.metadata,
+        }
+
+
+# ---------------------------------------------------------
+# DECK
+# ---------------------------------------------------------
+
 class MemoDeck(models.Model):
     title = models.CharField(max_length=200, unique=True)
     description = models.TextField(blank=True)
     author = models.ForeignKey(User, on_delete=models.CASCADE, related_name='decks')
     created_at = models.DateTimeField(auto_now_add=True)
     tags = models.ManyToManyField(Tag, related_name='decks', blank=True)
-
 
     def __str__(self):
         return self.title
@@ -50,26 +88,9 @@ class MemoDeck(models.Model):
         }
 
 
-class MemoFormula(models.Model):
-    """
-    Stores a LaTeX-style mathematical formula.
-    Example: r"\int_0^\infty e^{-x^2} dx = \frac{\sqrt{\pi}}{2}"
-    """
-    title = models.CharField(max_length=200, blank=True)
-    description = models.TextField(blank=True)
-    latex = models.TextField(help_text="LaTeX expression for the formula")
-
-    def __str__(self):
-        return self.title or "Formula"
-
-    def to_json(self):
-        return {
-            "id": self.id,
-            "title": self.title,
-            "description": self.description,
-            "latex": self.latex
-        }
-
+# ---------------------------------------------------------
+# CARD
+# ---------------------------------------------------------
 
 class MemoCard(models.Model):
     deck = models.ForeignKey(MemoDeck, on_delete=models.CASCADE, related_name='cards')

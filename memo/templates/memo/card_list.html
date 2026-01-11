@@ -10,6 +10,15 @@
   <!-- Mermaid.js -->
   <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 
+  <!-- MathJax for LaTeX formulas -->
+  <script>
+    window.MathJax = {
+      tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] },
+      svg: { fontCache: 'global' }
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+
   <script>
     let lastDarkMode = localStorage.getItem('darkMode');
 
@@ -31,7 +40,6 @@
       }
     }, 500);
 
-    // Mermaid initialization
     mermaid.initialize({ startOnLoad: false });
   </script>
 {% endblock %}
@@ -67,6 +75,12 @@
               {{ card.chart.code|safe }}
             </div>
           {% endif %}
+
+          {% if card.formula %}
+            <div class="formula-block" style="margin-top: 20px; font-size: 1.4em;">
+              {{ card.formula.latex|safe }}
+            </div>
+          {% endif %}
         </section>
       {% endfor %}
     {% else %}
@@ -93,14 +107,16 @@
     hash: true
   });
 
-  // Render Mermaid after Reveal initializes
+  // Render Mermaid + MathJax after Reveal initializes
   Reveal.on('ready', () => {
     mermaid.run();
+    if (window.MathJax) MathJax.typeset();
   });
 
   // Re-render when navigating slides
   Reveal.on('slidechanged', () => {
     mermaid.run();
+    if (window.MathJax) MathJax.typeset();
   });
 </script>
 {% endblock %}

@@ -3,12 +3,19 @@ import io
 import json
 import zipfile
 from django.contrib import admin
-from adminsortable2.admin import SortableAdminMixin
 from django.http import HttpResponse
 from django.template.defaultfilters import slugify
-from .models import MemoDeck, MemoCard, Tag, MermaidChart
+
+from .models import (
+    MemoDeck,
+    MemoCard,
+    Tag,
+    MermaidChart,
+    MemoFormula,
+)
 from vault.models import VaultFile
 from toto.batch import BatchAction
+
 
 # ────────────────────────────────────────────────
 # 🔖 Tag Admin
@@ -16,9 +23,32 @@ from toto.batch import BatchAction
 
 @admin.register(Tag)
 class TagAdmin(admin.ModelAdmin):
-    list_display = ('name',)
-    search_fields = ('name',)
-    ordering = ('name',)
+    list_display = ("name",)
+    search_fields = ("name",)
+    ordering = ("name",)
+
+
+# ────────────────────────────────────────────────
+# 📊 MermaidChart Admin
+# ────────────────────────────────────────────────
+
+@admin.register(MermaidChart)
+class MermaidChartAdmin(admin.ModelAdmin):
+    list_display = ("title",)
+    search_fields = ("title", "description", "code")
+    ordering = ("title",)
+
+
+# ────────────────────────────────────────────────
+# 🧮 MemoFormula Admin
+# ────────────────────────────────────────────────
+
+@admin.register(MemoFormula)
+class MemoFormulaAdmin(admin.ModelAdmin):
+    list_display = ("title",)
+    search_fields = ("title", "latex", "description")
+    ordering = ("title",)
+
 
 # ────────────────────────────────────────────────
 # 🧩 MemoCard Inline
@@ -27,8 +57,10 @@ class TagAdmin(admin.ModelAdmin):
 class MemoCardInline(admin.TabularInline):
     model = MemoCard
     extra = 1
-    ordering = ['order']
-    fields = ('title', 'content', 'order', 'image', 'chart')
+    ordering = ["order"]
+    fields = ("title", "content", "order", "image", "chart", "formula")
+    autocomplete_fields = ("chart", "formula")
+
 
 # ────────────────────────────────────────────────
 # 📦 MemoDeck Admin
@@ -36,14 +68,14 @@ class MemoCardInline(admin.TabularInline):
 
 @admin.register(MemoDeck)
 class MemoDeckAdmin(admin.ModelAdmin):
-    list_display = ('title', 'author', 'created_at', 'tag_list')
-    search_fields = ('title', 'description', 'author__username', 'tags__name')
-    list_filter = ('created_at', 'tags')
-    ordering = ('-created_at',)
-    autocomplete_fields = ('author', 'tags')
-    readonly_fields = ('created_at',)
+    list_display = ("title", "author", "created_at", "tag_list")
+    search_fields = ("title", "description", "author__username", "tags__name")
+    list_filter = ("created_at", "tags")
+    ordering = ("-created_at",)
+    autocomplete_fields = ("author", "tags")
+    readonly_fields = ("created_at",)
     inlines = [MemoCardInline]
-    actions = ['export_to_zip']
+    actions = ["export_to_zip"]
 
     def tag_list(self, obj):
         return ", ".join(tag.name for tag in obj.tags.all())
@@ -52,7 +84,6 @@ class MemoDeckAdmin(admin.ModelAdmin):
     @admin.action(description="Export selected decks as ZIP (JSON + images)")
     def export_to_zip(self, request, queryset):
 
-        # Create in-memory ZIP
         buffer = io.BytesIO()
         zip_file = zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED)
 
@@ -75,7 +106,6 @@ class MemoDeckAdmin(admin.ModelAdmin):
 
         zip_file.close()
 
-        # Prepare ZIP response
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M")
         filename = f"decks_{timestamp}.zip"
 
@@ -89,12 +119,12 @@ class MemoDeckAdmin(admin.ModelAdmin):
 # ────────────────────────────────────────────────
 
 @admin.register(MemoCard)
-class MemoCardAdmin(SortableAdminMixin, admin.ModelAdmin):
-    list_display = ('title', 'deck', 'deck_author', 'order')
-    list_editable = ('order',)
-    search_fields = ('title', 'content', 'deck__title', 'deck__author__username')
-    list_filter = ('deck__title',)
-    autocomplete_fields = ('deck',)
+class MemoCardAdmin(admin.ModelAdmin):
+    list_display = ("title", "deck", "deck_author", "order")
+    list_editable = ("order",)
+    search_fields = ("title", "content", "deck__title", "deck__author__username")
+    list_filter = ("deck__title",)
+    autocomplete_fields = ("deck", "chart", "formula")
 
     def deck_author(self, obj):
         return obj.deck.author.username
