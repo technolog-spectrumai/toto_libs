@@ -1,7 +1,7 @@
 {% extends "oya/base.html" %}
 {% load static %}
 
-{% block title %}Pages | {{ platform.site_name }}{% endblock %}
+{% block title %}Tags | {{ platform.site_name }}{% endblock %}
 
 {% block content %}
 <section
@@ -18,43 +18,35 @@
 
     <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
         class="text-2xl font-bold text-center">
-      Pages tagged: {{ tag.name }}
+      Tags
     </h2>
 
-    {% if pages %}
-      <ul class="space-y-4">
-        {% for page in pages %}
-          <li
-            :class="darkMode
-              ? 'bg-primary-bg-dark border border-accent-1 hover:bg-bubble-bg-dark'
-              : 'bg-primary-bg-light border border-accent-2 hover:bg-bubble-bg-light'"
-            class="p-4 rounded transition-colors duration-300">
+    {% if tags %}
+      <div class="flex flex-wrap gap-3 justify-center">
 
-            <a href="{% url 'verbena:page_detail' slug=page.slug %}"
-               class="block font-semibold text-lg underline hover:opacity-80">
-              {{ page.title }}
-            </a>
-
-            {% if page.description %}
-              <p class="text-sm mt-1 text-gray-500 dark:text-gray-400">
-                {{ page.description }}
-              </p>
-            {% endif %}
-          </li>
+        {% for tag in tags %}
+          <a href="{% url 'verbena:page_list_by_tag' tag.slug %}"
+             :class="darkMode
+               ? 'bg-primary-bg-dark border border-accent-1 hover:bg-bubble-bg-dark text-accent-dark'
+               : 'bg-primary-bg-light border border-accent-2 hover:bg-bubble-bg-light text-accent-light'"
+             class="px-3 py-2 rounded-md text-sm font-semibold transition-colors duration-300 shadow-sm cursor-pointer">
+            #{{ tag.name }}
+          </a>
         {% endfor %}
-      </ul>
+
+      </div>
     {% else %}
       <p class="text-center text-sm text-gray-500 dark:text-gray-400">
-        No pages found for this tag.
+        No tags available yet.
       </p>
     {% endif %}
 
-    <a href="{% url 'verbena:tag_list' %}"
+    <a href="{% url 'nest:dashboard' %}"
        :class="darkMode
          ? 'bg-accent-dark text-primary-bg-dark'
          : 'bg-accent-light text-primary-bg-light'"
        class="inline-block px-4 py-2 mt-6 rounded font-semibold hover:opacity-90 transition text-sm text-center">
-      Back to Tag List
+      Back to Dashboard
     </a>
 
   </div>

@@ -1,9 +1,19 @@
 from django.views.generic import ListView, DetailView
 from django.utils.safestring import mark_safe
 from markdownx.utils import markdownify
-
 from .models import Page, Tag
 from oya.page import PageProcessor
+
+
+class VerbenaTagListView(ListView):
+    model = Tag
+    template_name = "verbena/tag_list.html"
+    context_object_name = "tags"
+    ordering = ["name"]
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        return PageProcessor().decorate(context, self.request)
 
 
 class VerbenaPageListByTagView(ListView):
@@ -20,6 +30,7 @@ class VerbenaPageListByTagView(ListView):
         context = super().get_context_data(**kwargs)
         context["tag"] = self.tag
         return PageProcessor().decorate(context, self.request)
+
 
 
 class VerbenaPageDetailView(DetailView):
@@ -39,6 +50,10 @@ class VerbenaPageDetailView(DetailView):
                 "images": section.images.all(),
                 "html": mark_safe(markdownify(section.content)),
             })
-
+        context["tag_slug"] = (
+            self.object.tags.first().slug
+            if self.object.tags.exists()
+            else None
+        )
         context["sections"] = rendered_sections
         return PageProcessor().decorate(context, self.request)

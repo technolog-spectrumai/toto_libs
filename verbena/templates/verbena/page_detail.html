@@ -134,13 +134,15 @@
     </div>
 
     <!-- Back Button -->
-    <a href="{% url 'nest:dashboard' %}"
-       :class="darkMode
-         ? 'bg-accent-dark text-primary-bg-dark'
-         : 'bg-accent-light text-primary-bg-light'"
-       class="inline-block px-4 py-2 mt-6 rounded font-semibold hover:opacity-90 transition text-sm text-center">
-      Back to Dashboard
-    </a>
+    {% if tag_slug %}
+      <a href="{% url 'verbena:page_list_by_tag' tag_slug %}"
+         :class="darkMode
+           ? 'bg-accent-dark text-primary-bg-dark'
+           : 'bg-accent-light text-primary-bg-light'"
+         class="inline-block px-4 py-2 mt-6 rounded font-semibold hover:opacity-90 transition text-sm text-center">
+        Back to Page List
+      </a>
+    {% endif %}
 
   </div>
 </section>
