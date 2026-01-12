@@ -6,7 +6,9 @@ from webfront.widgets import (
     CalendarWidget,
     MapWidget,
     ErrorWidget,
+    FormWidget
 )
+
 
 
 class WidgetFactory:
@@ -20,6 +22,7 @@ class WidgetFactory:
         "chart": "_build_chart",
         "calendar": "_build_calendar",
         "map": "_build_map",
+        "form": "_build_form",  # ← add this
     }
 
     @staticmethod
@@ -100,3 +103,16 @@ class WidgetFactory:
             zoom=data.get("zoom", 6),
             options=data.get("options", {}),
         )
+
+    @staticmethod
+    def _build_form(widget_model, data):
+        # Validate required fields
+        if "fields" not in data:
+            return ErrorWidget(widget_model.title, "Form widget missing fields")
+
+        return FormWidget(
+            title=widget_model.title,
+            fields=data["fields"],
+            submit_label=data.get("submit_label", "Submit"),
+        )
+

@@ -138,6 +138,13 @@ class Command(IngressCommand):
                 "code": load_lambda(os.path.join(base_path, "bars.py")),
             }
         )[0]
+        form_lambda = LambdaNode.objects.update_or_create(
+            name="UserFormWidget",
+            defaults={
+                "layer": graph_layer,
+                "code": load_lambda(os.path.join(base_path, "form.py")),
+            }
+        )[0]
 
         # ---------------------------------------------------------
         # 3c. Create widgets in DB
@@ -162,7 +169,15 @@ class Command(IngressCommand):
                 "lambda_node": bar_chart_lambda,
             }
         )
-
+        Widget.objects.update_or_create(
+            page=page,
+            order=3,
+            defaults={
+                "title": "User Form",
+                "type": "form",
+                "lambda_node": form_lambda,
+            }
+        )
         # ---------------------------------------------------------
         # 4. FileWorkflow: File Processor
         # ---------------------------------------------------------

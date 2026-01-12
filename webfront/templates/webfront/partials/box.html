@@ -35,6 +35,8 @@
         {% include "webfront/partials/map.html" with widget=widget %}
     {% elif widget.template == "error" %}
         {% include "webfront/partials/error.html" with text=widget.text %}
+    {% elif widget.template == "form" %}
+      {% include "webfront/partials/form.html" with widget=widget %}
     {% else %}
       <p class="opacity-70 text-sm"> [...] Unknown widget type: {{ widget.type }} </p>
     {% endif %}

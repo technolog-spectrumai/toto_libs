@@ -159,7 +159,8 @@ class Widget(models.Model):
         ("table", "Table"),
         ("chart", "Chart"),
         ("calendar", "Calendar"),
-        ("map", "Map")
+        ("map", "Map"),
+        ("form", "Form")
     ]
 
     page = models.ForeignKey(

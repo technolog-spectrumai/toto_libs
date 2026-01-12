@@ -152,3 +152,32 @@ class MapWidget(BaseWidget):
             "options": self.options,
         })
         return d
+
+    # ---------------------------------------------------------
+    # FORM WIDGET
+    # ---------------------------------------------------------
+
+class FormWidget(BaseWidget):
+    widget_type = "form"
+    template = "form"
+
+    def __init__(self, title, fields=None, submit_label="Submit"):
+        """
+        fields = [
+            {"name": "email", "label": "Email", "type": "text"},
+            {"name": "age", "label": "Age", "type": "number"},
+            {"name": "subscribe", "label": "Subscribe", "type": "checkbox"},
+        ]
+        """
+        super().__init__(title)
+        self.fields = fields or []
+        self.submit_label = submit_label
+
+    def to_dict(self):
+        d = self.base_dict()
+        d.update({
+            "fields": self.fields,
+            "submit_label": self.submit_label,
+        })
+        return d
+
