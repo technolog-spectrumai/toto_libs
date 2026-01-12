@@ -1,14 +1,9 @@
-<div class="mt-4 p-4 rounded border"
+<div class="mt-4 p-4"
      :class="darkMode
-        ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'
-        : 'border-accent-2 bg-bubble-bg-light text-text-main-light'
+        ? 'bg-bubble-bg-dark text-text-main-dark'
+        : 'bg-bubble-bg-light text-text-main-light'
      "
      x-data="{ formData: {} }">
-
-  <!-- Title -->
-  <h4 class="text-lg font-semibold mb-3">
-    {{ widget.title }}
-  </h4>
 
   <!-- Form -->
   <form @submit.prevent="console.log('Form submitted:', formData)">
