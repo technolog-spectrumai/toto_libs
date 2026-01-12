@@ -3,7 +3,7 @@
         ? 'bg-bubble-bg-dark text-text-main-dark'
         : 'bg-bubble-bg-light text-text-main-light'
      "
-     x-data="{ formData: {} }">
+     x-data="formWidget()">
 
   <!-- Form -->
   <form @submit.prevent="console.log('Form submitted:', formData)">
@@ -38,11 +38,11 @@
             <span>{{ field.label }}</span>
 
           </label>
-
         <!-- Standard input -->
         {% else %}
           <input type="{{ field.type }}"
                  x-model="formData['{{ field.name }}']"
+                 x-ref="field_{{ field.name }}"
                  placeholder="{{ field.placeholder }}"
                  {% if field.required %}required{% endif %}
                  class="w-full px-3 py-2 rounded border"

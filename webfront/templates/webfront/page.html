@@ -15,6 +15,84 @@ function dim(hex, alpha = 0.25) {
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 </script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script>
+function formWidget() {
+  return {
+    formData: {},
+
+    init() {
+      const isDark = localStorage.getItem('darkMode') === 'true';
+
+      this.$root.querySelectorAll('input[type="date"], input[type="datetime-local"]').forEach(el => {
+        flatpickr(el, {
+          enableTime: el.type === "datetime-local",
+          dateFormat: el.type === "datetime-local" ? "Y-m-d H:i" : "Y-m-d",
+          time_24hr: true,
+
+          // Apply dark mode on open + ready
+          onReady(_, __, instance) {
+            if (isDark) instance.calendarContainer.classList.add('flatpickr-dark');
+          },
+          onOpen(_, __, instance) {
+            if (isDark) {
+              instance.calendarContainer.classList.add('flatpickr-dark');
+            } else {
+              instance.calendarContainer.classList.remove('flatpickr-dark');
+            }
+          }
+        });
+      });
+    }
+  }
+}
+</script>
+<style>
+  .flatpickr-dark {
+    background: var(--primary-bg-dark);
+    color: var(--text-main-dark);
+    border: 1px solid var(--text-main-dark);
+    border-radius: 0.5rem;
+  }
+
+  .flatpickr-dark .flatpickr-day {
+    color: var(--text-main-dark);
+  }
+
+  .flatpickr-dark .flatpickr-day:hover {
+    background: var(--accent-1);
+    color: black;
+  }
+
+  .flatpickr-dark .flatpickr-months,
+  .flatpickr-dark .flatpickr-weekday {
+    color: var(--text-main-dark);
+  }
+  /* Month dropdown container */
+  .flatpickr-dark .flatpickr-monthDropdown-months {
+    background: var(--primary-bg-dark);
+    color: var(--text-main-dark);
+    border: 1px solid var(--text-main-dark);
+    border-radius: 0.25rem;
+  }
+
+  /* Individual month options */
+  .flatpickr-dark .flatpickr-monthDropdown-month {
+    background: var(--primary-bg-dark);
+    color: var(--text-main-dark);
+  }
+
+  /* Hover / focus */
+  .flatpickr-dark .flatpickr-monthDropdown-month:hover,
+  .flatpickr-dark .flatpickr-monthDropdown-month:focus {
+    background: var(--accent-1);
+    color: black;
+  }
+</style>
+
+
+
 {% endblock %}
 
 {% block content %}
