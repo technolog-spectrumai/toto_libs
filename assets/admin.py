@@ -1,10 +1,33 @@
 from django.contrib import admin
+from django import forms
+from django_json_widget.widgets import JSONEditorWidget
+
 from .models import (
     AssetType,
     Asset,
     IdentityProfile,
     FractionalOwnership
 )
+
+
+# ---------------------------------------------------------
+#  CUSTOM FORMS FOR JSON FIELDS
+# ---------------------------------------------------------
+
+class AssetAdminForm(forms.ModelForm):
+    metadata = forms.JSONField(widget=JSONEditorWidget, required=False)
+
+    class Meta:
+        model = Asset
+        fields = "__all__"
+
+
+class IdentityProfileAdminForm(forms.ModelForm):
+    metadata = forms.JSONField(widget=JSONEditorWidget, required=False)
+
+    class Meta:
+        model = IdentityProfile
+        fields = "__all__"
 
 
 # ---------------------------------------------------------
@@ -15,7 +38,7 @@ class FractionalOwnershipInline(admin.TabularInline):
     model = FractionalOwnership
     extra = 1
     autocomplete_fields = ["owner"]
-    fields = ["owner", "percentage", "metadata"]
+    fields = ["owner", "percentage"]
     show_change_link = True
 
 
@@ -25,6 +48,8 @@ class FractionalOwnershipInline(admin.TabularInline):
 
 @admin.register(Asset)
 class AssetAdmin(admin.ModelAdmin):
+    form = AssetAdminForm
+
     list_display = [
         "name",
         "asset_type",
@@ -67,6 +92,8 @@ class AssetTypeAdmin(admin.ModelAdmin):
 
 @admin.register(IdentityProfile)
 class IdentityProfileAdmin(admin.ModelAdmin):
+    form = IdentityProfileAdminForm
+
     list_display = [
         "name",
         "profile_type",
@@ -85,7 +112,7 @@ class IdentityProfileAdmin(admin.ModelAdmin):
         "name",
         "email",
         "phone",
-        "registration_number",
+        "registration_number"
     ]
 
     autocomplete_fields = ["member", "community", "address", "verified_by"]

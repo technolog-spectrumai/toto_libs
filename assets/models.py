@@ -1,7 +1,6 @@
 from django.db import models
 from django.core.exceptions import ValidationError
 from locations.models import Address
-from django_jsonform.models.fields import JSONField
 from community.models import CommunityMember, Community
 
 
@@ -70,7 +69,7 @@ class Asset(models.Model):
     )
 
     is_active = models.BooleanField(default=True)
-    metadata = JSONField(blank=True, null=True)
+    metadata = models.JSONField(blank=True, null=True, default={})
 
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -122,6 +121,12 @@ class IdentityProfile(models.Model):
         null=True,
         help_text="National ID or registration number"
     )
+    registration_type = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text="Type of registration number (e.g., National ID, Passport, Tax ID, etc.)"
+    )
 
     # Contact details
     email = models.EmailField(blank=True, null=True)
@@ -144,7 +149,7 @@ class IdentityProfile(models.Model):
         related_name="verified_identity_profiles"
     )
 
-    metadata = JSONField(blank=True, null=True)
+    metadata = models.JSONField(blank=True, null=True, default={})
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -182,7 +187,6 @@ class FractionalOwnership(models.Model):
         help_text="Ownership percentage (e.g., 12.50)"
     )
 
-    metadata = JSONField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
