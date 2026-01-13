@@ -9,6 +9,14 @@ from oya.page import PageProcessor
 #  ASSET DETAIL VIEW
 # ---------------------------------------------------------
 
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import render, get_object_or_404
+from django.urls import reverse
+from .models import Asset
+from oya.page import PageProcessor
+import json
+
+
 @login_required
 def asset_detail(request, pk):
     """
@@ -50,10 +58,31 @@ def asset_detail(request, pk):
         {
             "owner_name": fo.owner.name,
             "owner_type": fo.owner.profile_type,
-            "percentage": fo.percentage,
+            "percentage": float(fo.percentage),
         }
         for fo in asset.fractional_owners.all().select_related("owner")
     ]
+
+    # Build chart config for the partial
+    ownership_chart = None
+    if ownership:
+        ownership_chart = {
+            "chart_type": "pie",
+            "labels": [o["owner_name"] for o in ownership],
+            "datasets": [{
+                "data": [o["percentage"] for o in ownership],
+                "backgroundColor": [
+                    "#4F46E5",  # Indigo
+                    "#10B981",  # Emerald
+                    "#F59E0B",  # Amber
+                    "#EF4444",  # Red
+                    "#3B82F6",  # Blue
+                    "#8B5CF6",  # Violet
+                ],
+                "borderWidth": 1,
+            }],
+            "options": {}  # You can add more options if needed
+        }
 
     context = {
         "asset": asset,
@@ -72,6 +101,7 @@ def asset_detail(request, pk):
             "images": images,
             "ownership": ownership,
         },
+        "ownership_chart_json": json.dumps(ownership_chart) if ownership_chart else None,
     }
 
     return render(
