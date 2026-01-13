@@ -19,7 +19,7 @@ def asset_detail(request, pk):
             "asset_type",
             "assigned_to",
             "location"
-        ).prefetch_related("images"),
+        ).prefetch_related("images", "fractional_owners__owner"),
         pk=pk,
         is_active=True,
     )
@@ -45,6 +45,16 @@ def asset_detail(request, pk):
             }
         ]
 
+    # Fractional ownership data
+    ownership = [
+        {
+            "owner_name": fo.owner.name,
+            "owner_type": fo.owner.profile_type,
+            "percentage": fo.percentage,
+        }
+        for fo in asset.fractional_owners.all().select_related("owner")
+    ]
+
     context = {
         "asset": asset,
         "asset_data": {
@@ -60,6 +70,7 @@ def asset_detail(request, pk):
             "metadata": asset.metadata or {},
             "created_at": asset.created_at,
             "images": images,
+            "ownership": ownership,
         },
     }
 

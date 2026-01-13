@@ -108,7 +108,26 @@
 
     </section>
     {% endif %}
+    {% if asset_data.ownership %}
+      <section class="p-6 rounded-lg border space-y-4 transition-colors duration-300"
+        :class="darkMode
+          ? 'bg-bubble-bg-dark text-text-main-dark border-accent-dark'
+          : 'bg-bubble-bg-light text-text-main-light border-accent-light'">
 
+        <h2 class="text-lg font-semibold">Fractional Ownership</h2>
+
+        <ul class="space-y-2">
+          {% for o in asset_data.ownership %}
+            <li class="flex justify-between">
+              <span>{{ o.owner_name }} ({{ o.owner_type }})</span>
+              <span class="font-semibold">{{ o.percentage }}%</span>
+            </li>
+          {% endfor %}
+        </ul>
+
+      </section>
+    {% endif %}
+    
     <!-- 🔗 Back Link -->
     <div class="text-center">
       <a href="{% url 'assets:asset_list' %}"
