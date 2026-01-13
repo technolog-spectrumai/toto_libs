@@ -72,7 +72,7 @@ INSTALLED_APPS = [
     "events",
     "audit",
     "kanban",
-    "finance",
+    #"finance",
     "federal",
     "gate",
     "ravioli",
@@ -281,7 +281,7 @@ INGRESS_ALLOWED_APPS = [
     "vault",
     "federal",
     "community",
-    "finance",
+    #"finance",
     "events",
     "kanban",
     "ravioli",
@@ -294,7 +294,7 @@ INGRESS_ALLOWED_APPS = [
 
 BACKUP_ALLOWED_APPS = [
     "community",
-    "finance",
+    #"finance",
     "events"
 ]
 
@@ -304,7 +304,7 @@ GRAPH_ALLOWED_APPS = [
     "library",
     "locations",
     "community",
-    "finance",
+    #"finance",
     "federal"
 ]
 

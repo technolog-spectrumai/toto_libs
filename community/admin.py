@@ -16,7 +16,6 @@ class CommunityAdmin(BaseSerializableAdmin):
         'location',
         'established_year',
         'head_display',
-        'created_at',
         'id', 'email'
     )
     search_fields = ('name', 'slug', 'head__display_name')

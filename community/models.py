@@ -1,26 +1,15 @@
 import random
-import uuid
-
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
 from django.utils.text import slugify
-from django.utils.timezone import now
-from polymorphic.models import PolymorphicModel
 from toto.models import SerializableModel
 from federal.models import Federation
 from locations.models import Address
 
 
-class Persona(PolymorphicModel):
-    created_at = models.DateTimeField(default=now)
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
-    def __str__(self):
-        return f"Persona id={str(self.id)}"
-
-
-class Community(Persona):
+class Community(SerializableModel):
     name = models.CharField(max_length=255, help_text="Name of the community or organization")
     slug = models.SlugField(unique=True, blank=True, help_text="URL-friendly identifier")
     location = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True, blank=True, db_comment="located_at")
@@ -59,7 +48,7 @@ class Community(Persona):
         super().save(*args, **kwargs)
 
 
-class CommunityMember(Persona):
+class CommunityMember(SerializableModel):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='community_profile')
     communities = models.ManyToManyField(Community, related_name='members', db_comment="member_of")
     patron = models.ForeignKey(
