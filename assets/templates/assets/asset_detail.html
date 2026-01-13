@@ -91,9 +91,9 @@
 
       <h2 class="text-lg font-semibold">Images</h2>
 
-      <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+      <div class="flex flex-wrap gap-4">
         {% for img in asset.images.all %}
-          <div class="space-y-2">
+          <div class="flex flex-col w-[48%] md:w-[30%] lg:w-[22%] space-y-2">
             <img
               src="{{ img.image.url }}"
               alt="{{ img.caption|default:asset.name }}"
