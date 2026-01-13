@@ -40,7 +40,7 @@
         },
 
         // Only apply axes if chart type supports them
-        scales: (chart.type !== 'pie' && chart.type !== 'doughnut')
+        scales: (chart.chart_type !== 'pie' && chart.chart_type !== 'doughnut')
             ? {
                 x: Object.assign({}, chart.options?.scales?.x || {}, {
                     ticks: { color: textColor },

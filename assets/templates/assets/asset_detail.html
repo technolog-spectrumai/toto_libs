@@ -122,7 +122,6 @@
         : 'bg-bubble-bg-light text-text-main-light border-accent-light'">
 
       <h2 class="text-lg font-semibold">Ownership Distribution</h2>
-    <p>{{ownership_chart_json}}</p>
       {% include "webfront/partials/chart.html" with chart_id="ownershipChart" data=ownership_chart_json %}
     </section>
     {% endif %}
