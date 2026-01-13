@@ -38,7 +38,7 @@
             :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
           {{ project.name }}
         </h2>
-        <p class="text-sm opacity-70">Owner: {{ project.owner.get_full_name|default:project.owner.username }}</p>
+        <p class="text-sm opacity-70">Owner: {{ project.owner }}</p>
 
         <!-- Sprint Filter -->
         <form method="get" class="mt-4 inline-block">
@@ -118,7 +118,7 @@
                   {% endif %}
 
                   {% if task.assignee %}
-                    <p><strong>Assignee:</strong> {{ task.assignee.get_full_name|default:task.assignee.username }}</p>
+                    <p><strong>Assignee:</strong> {{ task.assignee }}</p>
                   {% else %}
                     <p><strong>Assignee:</strong> Unassigned</p>
                   {% endif %}
