@@ -108,26 +108,69 @@
 
     </section>
     {% endif %}
-    {% if asset_data.ownership %}
-      <section class="p-6 rounded-lg border space-y-4 transition-colors duration-300"
-        :class="darkMode
-          ? 'bg-bubble-bg-dark text-text-main-dark border-accent-dark'
-          : 'bg-bubble-bg-light text-text-main-light border-accent-light'">
+{% if asset_data.ownership %}
+<section class="p-6 rounded-lg border space-y-4 transition-colors duration-300"
+  :class="darkMode
+    ? 'bg-bubble-bg-dark text-text-main-dark border-accent-dark'
+    : 'bg-bubble-bg-light text-text-main-light border-accent-light'">
 
-        <h2 class="text-lg font-semibold">Fractional Ownership</h2>
+  <h2 class="text-lg font-semibold">Ownership Distribution</h2>
 
-        <ul class="space-y-2">
-          {% for o in asset_data.ownership %}
-            <li class="flex justify-between">
-              <span>{{ o.owner_name }} ({{ o.owner_type }})</span>
-              <span class="font-semibold">{{ o.percentage }}%</span>
-            </li>
-          {% endfor %}
-        </ul>
+  <canvas id="ownershipChart" class="w-full max-w-md mx-auto"></canvas>
 
-      </section>
-    {% endif %}
-    
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const ctx = document.getElementById("ownershipChart");
+
+    const data = {
+        labels: [
+            {% for o in asset_data.ownership %}
+                "{{ o.owner_name }}",
+            {% endfor %}
+        ],
+        datasets: [{
+            data: [
+                {% for o in asset_data.ownership %}
+                    {{ o.percentage }},
+                {% endfor %}
+            ],
+            backgroundColor: [
+                "#4F46E5",
+                "#10B981",
+                "#F59E0B",
+                "#EF4444",
+                "#3B82F6",
+                "#8B5CF6",
+            ],
+            borderWidth: 1,
+        }]
+    };
+
+    new Chart(ctx, {
+        type: "pie",
+        data: data,
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    position: "bottom",
+                    labels: {
+                        color: document.documentElement.classList.contains("dark")
+                            ? "#e5e7eb"
+                            : "#374151"
+                    }
+                }
+            }
+        }
+    });
+});
+</script>
+{% endif %}
+
     <!-- 🔗 Back Link -->
     <div class="text-center">
       <a href="{% url 'assets:asset_list' %}"
