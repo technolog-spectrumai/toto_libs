@@ -6,7 +6,8 @@ from .models import (
     AssetType,
     Asset,
     IdentityProfile,
-    FractionalOwnership
+    FractionalOwnership,
+    AssetImage
 )
 
 
@@ -46,10 +47,16 @@ class FractionalOwnershipInline(admin.TabularInline):
 #  ASSET ADMIN
 # ---------------------------------------------------------
 
+class AssetImageInline(admin.TabularInline):
+    model = AssetImage
+    extra = 1
+    fields = ["image", "caption", "order"]
+    ordering = ["order"]
+
+
 @admin.register(Asset)
 class AssetAdmin(admin.ModelAdmin):
     form = AssetAdminForm
-
     list_display = [
         "name",
         "asset_type",
@@ -59,21 +66,11 @@ class AssetAdmin(admin.ModelAdmin):
         "amount",
         "is_active",
     ]
-
-    list_filter = [
-        "asset_type",
-        "is_active",
-        "purchase_date",
-    ]
-
-    search_fields = [
-        "name",
-        "serial_number",
-        "description",
-    ]
-
+    list_filter = ["asset_type", "is_active", "purchase_date"]
+    search_fields = ["name", "serial_number", "description"]
     autocomplete_fields = ["asset_type", "assigned_to", "location"]
-    inlines = [FractionalOwnershipInline]
+    inlines = [AssetImageInline, FractionalOwnershipInline]
+
 
 
 # ---------------------------------------------------------

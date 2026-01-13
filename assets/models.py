@@ -29,48 +29,21 @@ class AssetType(models.Model):
 
 class Asset(models.Model):
     name = models.CharField(max_length=255)
-
     asset_type = models.ForeignKey(
         AssetType,
         on_delete=models.CASCADE,
         related_name="assets",
         db_comment="is_type_of"
     )
-
     description = models.TextField(blank=True, null=True)
     serial_number = models.CharField(max_length=100, unique=True, blank=True, null=True)
-
     purchase_date = models.DateField(blank=True, null=True)
     purchase_price = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
-
-    # ➕ Optional amount field
-    amount = models.DecimalField(
-        max_digits=12,
-        decimal_places=2,
-        blank=True,
-        null=True,
-        help_text="Optional amount associated with this asset"
-    )
-
-    assigned_to = models.ForeignKey(
-        CommunityMember,
-        on_delete=models.SET_NULL,
-        blank=True,
-        null=True,
-        db_comment="assigned_to"
-    )
-
-    location = models.ForeignKey(
-        Address,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        db_comment="located_at"
-    )
-
+    amount = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
+    assigned_to = models.ForeignKey(CommunityMember, on_delete=models.SET_NULL, blank=True, null=True)
+    location = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True, blank=True)
     is_active = models.BooleanField(default=True)
-    metadata = models.JSONField(blank=True, null=True, default={})
-
+    metadata = models.JSONField(blank=True, null=True, default=dict)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -78,6 +51,28 @@ class Asset(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.asset_type})"
+
+
+# ---------------------------------------------------------
+#  ASSET IMAGES
+# ---------------------------------------------------------
+
+class AssetImage(models.Model):
+    asset = models.ForeignKey(
+        Asset,
+        on_delete=models.CASCADE,
+        related_name="images"
+    )
+    image = models.ImageField(upload_to="assets/images/")
+    caption = models.CharField(max_length=255, blank=True, null=True)
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["order"]
+
+    def __str__(self):
+        return f"Image for {self.asset.name}"
+
 
 
 class IdentityProfile(models.Model):
