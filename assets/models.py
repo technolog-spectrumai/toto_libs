@@ -2,6 +2,7 @@ from django.db import models
 from django.core.exceptions import ValidationError
 from locations.models import Address
 from community.models import CommunityMember, Community
+from federal.models import IdentityProfile
 
 
 # ---------------------------------------------------------
@@ -72,91 +73,6 @@ class AssetImage(models.Model):
 
     def __str__(self):
         return f"Image for {self.asset.name}"
-
-
-
-class IdentityProfile(models.Model):
-    INDIVIDUAL = "individual"
-    ORGANIZATION = "organization"
-
-    PROFILE_TYPES = [
-        (INDIVIDUAL, "Individual"),
-        (ORGANIZATION, "Organization"),
-    ]
-
-    profile_type = models.CharField(
-        max_length=20,
-        choices=PROFILE_TYPES,
-        default=INDIVIDUAL
-    )
-
-    # Optional links to existing system entities
-    member = models.ForeignKey(
-        CommunityMember,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="identity_profiles"
-    )
-
-    community = models.ForeignKey(
-        Community,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="identity_profiles"
-    )
-
-    # Core identity attributes
-    name = models.CharField(max_length=255)
-    date_of_birth = models.DateField(null=True, blank=True)
-    registration_number = models.CharField(
-        max_length=100,
-        blank=True,
-        null=True,
-        help_text="National ID or registration number"
-    )
-    registration_type = models.CharField(
-        max_length=100,
-        blank=True,
-        null=True,
-        help_text="Type of registration number (e.g., National ID, Passport, Tax ID, etc.)"
-    )
-
-    # Contact details
-    email = models.EmailField(blank=True, null=True)
-    phone = models.CharField(max_length=50, blank=True, null=True)
-    address = models.ForeignKey(
-        Address,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True
-    )
-
-    # Verification status (neutral wording)
-    is_verified = models.BooleanField(default=False)
-    verified_at = models.DateTimeField(null=True, blank=True)
-    verified_by = models.ForeignKey(
-        CommunityMember,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="verified_identity_profiles"
-    )
-
-    metadata = models.JSONField(blank=True, null=True, default={})
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        verbose_name = "Identity Profile"
-        verbose_name_plural = "Identity Profiles"
-
-    def clean(self):
-        if self.member and self.community:
-            raise ValidationError("IdentityProfile cannot reference both a member and a community.")
-
-    def __str__(self):
-        return f"{self.name} ({self.profile_type})"
 
 
 # ---------------------------------------------------------

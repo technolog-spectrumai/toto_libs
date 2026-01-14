@@ -5,26 +5,18 @@ from django.conf import settings
 from django.core.files import File
 from django.core.management.base import CommandError
 from django.contrib.auth.models import User
-from django.urls import reverse
 from django.utils import timezone
-from federal.models import Federation, FederatedIdentity
+
+from federal.models import Federation, FederatedIdentity, IdentityProfile
 from gervazy.models import RSAKeyPair
 from oya.models import Platform
 from oya.ingress import IngressCommand
 
 
 class Command(IngressCommand):
-    help = "Populate the platform with fake federal data: federations and federated identities"
+    help = "Populate the platform with fake federal data: federations, federated identities, and identity profiles"
 
     def process(self):
-        # 📊 Dashboard block
-        # self.create_dashboard_item(
-        #     title="Federation",
-        #     icon="fa-solid fa-landmark",
-        #     description="Federation and federated identities.",
-        #     link=reverse("federal:current_federation"),
-        #     public=False
-        # )
         if not self.full:
             return
 
@@ -38,14 +30,20 @@ class Command(IngressCommand):
         self.stdout.write(self.style.NOTICE("🧑‍🤝‍🧑 Creating federated identities..."))
         identities = self.create_fake_identities(federation, count=5)
 
+        self.stdout.write(self.style.NOTICE("🪪 Creating identity profiles..."))
+        profiles = self.create_identity_profiles(identities)
+
         self.stdout.write(self.style.NOTICE("👑 Assigning head identity..."))
         federation.head_identity = identities[0]
         federation.save()
 
         self.stdout.write(self.style.SUCCESS("✅ Federal ingress complete."))
 
+    # ---------------------------------------------------------
+    # Federation creation
+    # ---------------------------------------------------------
+
     def create_federation(self, name: str) -> Federation:
-        # 🔎 Find an active platform
         platform = Platform.objects.filter(active=True).first()
         if not platform:
             raise CommandError("No active Platform found. Cannot create Federation.")
@@ -60,13 +58,14 @@ class Command(IngressCommand):
             }
         )
 
-        if not federation.platform_id:
+        if federation.platform_id is None:
             federation.platform = platform
             federation.save()
 
-        # 📷 Upload logo from data/img/logo.png
-        logo_path = os.path.join(settings.BASE_DIR, "..", "data", "img", "logo.png")
-        logo_path = os.path.abspath(logo_path)
+        logo_path = os.path.abspath(
+            os.path.join(settings.BASE_DIR, "..", "data", "img", "logo.png")
+        )
+
         if not os.path.exists(logo_path):
             raise CommandError(f"Logo file not found at {logo_path}")
 
@@ -76,19 +75,21 @@ class Command(IngressCommand):
 
         return federation
 
+    # ---------------------------------------------------------
+    # Federated Identity creation
+    # ---------------------------------------------------------
+
     def create_fake_identities(self, federation: Federation, count=5):
         identities = []
-        users = []
 
-        for i in range(count):
-            username = f"federal_user{i}"
-            user, _ = User.objects.get_or_create(
-                username=username,
-                defaults={"email": f"{username}@example.com"}
-            )
-            users.append(user)
+        users = [
+            User.objects.get_or_create(
+                username=f"federal_user{i}",
+                defaults={"email": f"federal_user{i}@example.com"}
+            )[0]
+            for i in range(count)
+        ]
 
-        # Head identity
         head_identity = self._create_identity_with_rsa(
             federation=federation,
             name="Head Identity",
@@ -96,7 +97,6 @@ class Command(IngressCommand):
         )
         identities.append(head_identity)
 
-        # Other identities
         for i in range(1, count):
             identity = self._create_identity_with_rsa(
                 federation=federation,
@@ -111,16 +111,39 @@ class Command(IngressCommand):
         identity = FederatedIdentity.objects.create(
             id=uuid.uuid4(),
             name=name,
-            created_at=timezone.now(),
             federation=federation,
-            user=user
+            user=user,
+            created_at=timezone.now(),
         )
 
-        # 🔐 Generate and attach RSA keypair
         key_id = f"{identity.id}-key"
         rsa_pair = RSAKeyPair.generate(key_id=key_id, issuer=identity.issuer)
         rsa_pair.save()
+
         identity.rsa_keypair = rsa_pair
         identity.save()
 
         return identity
+
+    # ---------------------------------------------------------
+    # IdentityProfile creation
+    # ---------------------------------------------------------
+
+    def create_identity_profiles(self, identities):
+        profiles = []
+
+        for identity in identities:
+            profile = IdentityProfile.objects.create(
+                legal_name=identity.name or f"Identity {identity.id}",
+                profile_type=IdentityProfile.INDIVIDUAL,
+                registration_number=str(uuid.uuid4())[:12],
+                registration_type="Auto-generated",
+                is_verified=False,
+                metadata={
+                    "federated_identity": str(identity.id),
+                    "federation": identity.federation.name,
+                }
+            )
+            profiles.append(profile)
+
+        return profiles

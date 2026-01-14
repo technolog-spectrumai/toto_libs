@@ -1,14 +1,16 @@
-from django.urls import reverse
-from oya.models import Platform
-from gervazy.models import RSAKeyPair, SecretKey
 import uuid
-from django.db import models
-import qrcode
 import base64
+import qrcode
 from io import BytesIO
+from django.db import models
+from django.urls import reverse
 from django.utils.html import mark_safe
 from django.contrib.auth.models import User
+from oya.models import Platform
+from gervazy.models import RSAKeyPair
 from locations.models import Address
+
+
 
 
 class Federation(models.Model):
@@ -106,6 +108,62 @@ class FederatedIdentity(models.Model):
         img_str = base64.b64encode(buffer.getvalue()).decode()
 
         return mark_safe(f'<img src="data:image/png;base64,{img_str}" />')
+
+
+from django.core.exceptions import ValidationError
+class IdentityProfile(models.Model):
+    INDIVIDUAL = "individual"
+    ORGANIZATION = "organization"
+
+    PROFILE_TYPES = [
+        (INDIVIDUAL, "Individual"),
+        (ORGANIZATION, "Organization"),
+    ]
+
+    profile_type = models.CharField(
+        max_length=20,
+        choices=PROFILE_TYPES,
+        default=INDIVIDUAL
+    )
+
+    legal_name = models.CharField(max_length=255)
+    registration_number = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text="National ID or registration number"
+    )
+    registration_type = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text="Type of registration number (e.g., National ID, Passport, Tax ID, etc.)"
+    )
+
+    # Verification status (neutral wording)
+    is_verified = models.BooleanField(default=False)
+    verified_at = models.DateTimeField(null=True, blank=True)
+    verified_by = models.ForeignKey(
+        "community.CommunityMember",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="verified_identity_profiles"
+    )
+
+    metadata = models.JSONField(blank=True, null=True, default={})
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Identity Profile"
+        verbose_name_plural = "Identity Profiles"
+
+    def clean(self):
+        if self.member and self.community:
+            raise ValidationError("IdentityProfile cannot reference both a member and a community.")
+
+    def __str__(self):
+        return f"{self.legal_name} ({self.profile_type})"
 
 
 

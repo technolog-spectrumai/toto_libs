@@ -39,15 +39,16 @@ class CommunityMemberAdmin(BaseSerializableAdmin):
         'user',
         'patron_display',
         'joined_date',
-        'avatar_preview',
         'slug',
         'id',
-        'address_display',   # show linked address
+        'address_display',
+        'email'
     )
     search_fields = (
         'display_name',
         'user__username',
         'user__email',
+        'email',
         'patron__display_name',
         'address__street',
         'address__locality_name',
@@ -57,12 +58,6 @@ class CommunityMemberAdmin(BaseSerializableAdmin):
     list_filter = ('joined_date', 'address__country_name', 'address__state_or_province_name')
     ordering = ('-joined_date',)
     filter_horizontal = ('communities',)
-
-    def avatar_preview(self, obj):
-        if obj.avatar:
-            return format_html('<img src="{}" style="height: 40px; border-radius: 4px;" />', obj.avatar.url)
-        return "-"
-    avatar_preview.short_description = "Avatar"
 
     def patron_display(self, obj):
         return obj.patron.display_name if obj.patron else "-"

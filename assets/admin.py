@@ -5,7 +5,6 @@ from django_json_widget.widgets import JSONEditorWidget
 from .models import (
     AssetType,
     Asset,
-    IdentityProfile,
     FractionalOwnership,
     AssetImage
 )
@@ -23,12 +22,7 @@ class AssetAdminForm(forms.ModelForm):
         fields = "__all__"
 
 
-class IdentityProfileAdminForm(forms.ModelForm):
-    metadata = forms.JSONField(widget=JSONEditorWidget, required=False)
 
-    class Meta:
-        model = IdentityProfile
-        fields = "__all__"
 
 
 # ---------------------------------------------------------
@@ -82,37 +76,6 @@ class AssetTypeAdmin(admin.ModelAdmin):
     list_display = ["name", "description"]
     search_fields = ["name"]
 
-
-# ---------------------------------------------------------
-#  IDENTITY PROFILE ADMIN
-# ---------------------------------------------------------
-
-@admin.register(IdentityProfile)
-class IdentityProfileAdmin(admin.ModelAdmin):
-    form = IdentityProfileAdminForm
-
-    list_display = [
-        "name",
-        "profile_type",
-        "email",
-        "phone",
-        "is_verified",
-        "verified_at",
-    ]
-
-    list_filter = [
-        "profile_type",
-        "is_verified",
-    ]
-
-    search_fields = [
-        "name",
-        "email",
-        "phone",
-        "registration_number"
-    ]
-
-    autocomplete_fields = ["member", "community", "address", "verified_by"]
 
 
 # ---------------------------------------------------------

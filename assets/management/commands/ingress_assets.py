@@ -1,14 +1,14 @@
 from django.utils import timezone
 from django.core.files.base import ContentFile
 from oya.ingress import IngressCommand
-from assets.models import AssetType, Asset, AssetImage, IdentityProfile, FractionalOwnership
+from assets.models import AssetType, Asset, AssetImage, FractionalOwnership
+from federal.models import IdentityProfile
 from community.models import CommunityMember, Community
 from locations.models import Address
 import random
 import base64
 from faker import Faker
 from django.urls import reverse
-
 
 fake = Faker()
 
@@ -18,7 +18,6 @@ class Command(IngressCommand):
 
     def process(self):
 
-        # Dashboard entry
         self.create_dashboard_item(
             title="Assets",
             icon="fa-solid fa-boxes-stacked",
@@ -63,33 +62,38 @@ class Command(IngressCommand):
         real_estate = AssetType.objects.create(name="Real Estate", description="Buildings and land")
 
         # ---------------------------------------------------------
-        # IDENTITY PROFILES
+        # FIND EXISTING IDENTITY PROFILES
         # ---------------------------------------------------------
+        existing_profiles = list(IdentityProfile.objects.all())
 
-        owner_individual = IdentityProfile.objects.create(
-            profile_type=IdentityProfile.INDIVIDUAL,
-            member=member,
-            name=str(member),
-            email=fake.email(),
-            phone=fake.phone_number(),
-            date_of_birth=fake.date_of_birth(minimum_age=18, maximum_age=70),
-            address=address,
-            is_verified=True,
-            verified_at=timezone.now(),
-            verified_by=member,
-        )
+        if len(existing_profiles) >= 2:
+            owner_individual = existing_profiles[0]
+            owner_org = existing_profiles[1]
+        else:
+            # ---------------------------------------------------------
+            # FALLBACK: Create minimal valid profiles
+            # ---------------------------------------------------------
+            owner_individual = IdentityProfile.objects.create(
+                profile_type=IdentityProfile.INDIVIDUAL,
+                legal_name=str(member),
+                registration_number=fake.ssn(),
+                registration_type="National ID",
+                is_verified=True,
+                verified_at=timezone.now(),
+                verified_by=member,
+                metadata={"source": "auto-ingress"},
+            )
 
-        owner_org = IdentityProfile.objects.create(
-            profile_type=IdentityProfile.ORGANIZATION,
-            community=community,
-            name=f"{community.name} Holdings",
-            registration_number="REG-998877",
-            registration_type="Tax ID",
-            address=address,
-            is_verified=True,
-            verified_at=timezone.now(),
-            verified_by=member,
-        )
+            owner_org = IdentityProfile.objects.create(
+                profile_type=IdentityProfile.ORGANIZATION,
+                legal_name=f"{community.name} Holdings",
+                registration_number="REG-998877",
+                registration_type="Tax ID",
+                is_verified=True,
+                verified_at=timezone.now(),
+                verified_by=member,
+                metadata={"source": "auto-ingress"},
+            )
 
         # ---------------------------------------------------------
         # ASSETS
@@ -142,7 +146,7 @@ class Command(IngressCommand):
         )
 
         # ---------------------------------------------------------
-        # OPTIONAL DEMO IMAGES (tiny placeholder)
+        # OPTIONAL DEMO IMAGES
         # ---------------------------------------------------------
         placeholder_png = base64.b64decode(
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII="

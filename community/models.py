@@ -49,7 +49,7 @@ class Community(SerializableModel):
 
 
 class CommunityMember(SerializableModel):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='community_profile')
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='community_profile', null=True, blank=True)
     communities = models.ManyToManyField(Community, related_name='members', db_comment="member_of")
     patron = models.ForeignKey(
         'self',
@@ -65,6 +65,7 @@ class CommunityMember(SerializableModel):
     joined_date = models.DateTimeField(default=timezone.now)
     slug = models.SlugField(unique=True, blank=True)
     # ➕ Add address field
+    date_of_birth = models.DateField(null=True, blank=True)
     address = models.ForeignKey(
         Address,
         on_delete=models.SET_NULL,
@@ -74,6 +75,8 @@ class CommunityMember(SerializableModel):
         help_text="Optional address for this community member",
         db_comment="resides_at"
     )
+    email = models.EmailField(blank=True, null=True)
+    phone = models.CharField(max_length=50, blank=True, null=True)
 
     def __str__(self):
         return self.display_name
@@ -92,6 +95,7 @@ class CommunityMember(SerializableModel):
 
 def generate_code(k=6):
     return ''.join(random.choices('0123456789', k=k))
+
 
 
 class MembershipApplication(models.Model):
