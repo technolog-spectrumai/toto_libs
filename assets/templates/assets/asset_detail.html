@@ -6,6 +6,8 @@
 
 {% block start_script %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+
 {% include "webfront/partials/dim.html" %}
 {% endblock %}
 
@@ -113,6 +115,19 @@
 
     </section>
     {% endif %}
+    {% if asset.metadata %}
+    <section class="p-6 rounded-lg border space-y-2 transition-colors duration-300"
+      :class="darkMode
+        ? 'bg-bubble-bg-dark text-text-main-dark border-accent-dark'
+        : 'bg-bubble-bg-light text-text-main-light border-accent-light'">
+
+      <h2 class="text-lg font-semibold">Metadata</h2>
+
+      <div id="metadata-yaml"
+           class="text-xs p-2 rounded overflow-x-auto font-mono whitespace-pre"></div>
+
+    </section>
+    {% endif %}
 
     <!-- 🥧 Ownership Chart -->
     {% if ownership_chart_json %}
@@ -136,4 +151,18 @@
 
   </div>
 </div>
+{% endblock %}
+
+{% block end_script %}
+
+  {% if asset.metadata %}
+  <script>
+  document.addEventListener("DOMContentLoaded", function () {
+      const metadata = {{ asset.metadata|safe }};
+      const yamlText = jsyaml.dump(metadata);
+      document.getElementById("metadata-yaml").textContent = yamlText;
+  });
+  </script>
+  {% endif %}
+
 {% endblock %}
