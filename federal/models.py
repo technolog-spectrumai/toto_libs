@@ -35,12 +35,16 @@ class Federation(models.Model):
         help_text="Platform associated with this federation"
     )
     location = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True, blank=True)
+    is_foreign = models.BooleanField(default=False,
+                                     help_text="Indicates whether this federation originates outside the local jurisdiction")
 
     def __str__(self):
         return self.name
 
     @property
     def url(self):
+        if not self.slug:
+            return None
         return reverse("federal:federation_detail_json", kwargs={"slug": self.slug})
 
 

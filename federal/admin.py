@@ -19,6 +19,7 @@ class FederationAdmin(admin.ModelAdmin):
         "created_at",
         "platform",
         "location",
+        "is_foreign"
     )
     list_filter = ("active", "platform", "location")
     search_fields = (
@@ -45,7 +46,7 @@ class FederatedIdentityAdmin(admin.ModelAdmin):
         "user",
         "rsa_keypair",
         "created_at",
-        "qr_preview",
+        "qr_preview"
     )
     list_filter = ("federation", "user", "created_at")
     search_fields = ("name", "id", "user__username", "user__email")
@@ -87,7 +88,7 @@ class IdentityProfileAdmin(admin.ModelAdmin):
         "is_verified",
         "verified_at",
         "member",
-        "community",
+        "community"
     ]
 
     list_filter = [
