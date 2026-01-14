@@ -1,4 +1,5 @@
-from django.contrib import admin
+from django.contrib import admin, messages
+from toto.batch import BatchAction
 from .models import Currency, Account, Transaction
 
 
@@ -51,8 +52,32 @@ class TransactionAdmin(admin.ModelAdmin):
     autocomplete_fields = ("source", "destination")
     readonly_fields = ("timestamp",)
 
+    actions = ["execute_transactions"]
+
     # Optional: prevent editing after creation
     def has_change_permission(self, request, obj=None):
         if obj:
             return False  # transactions are immutable
         return True
+
+    # ---------------------------------------------------------
+    #  ADMIN ACTION: EXECUTE TRANSACTIONS
+    # ---------------------------------------------------------
+    @admin.action(description="Execute selected transactions")
+    def execute_transactions(self, request, queryset):
+
+        def execute_one(tx: Transaction):
+            try:
+                tx.execute()
+                return tx
+            except Exception as e:
+                raise ValueError(f"Transaction '{tx.name}' failed: {e}")
+
+        result = BatchAction(queryset).run(execute_one)
+
+        BatchAction.display_messages(
+            result,
+            self.message_user,
+            request,
+            verb="executed"
+        )
