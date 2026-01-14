@@ -54,7 +54,10 @@ class Community(SerializableModel):
         related_name='communities',
         db_comment="part_of_federation"
     )
-
+    is_autonomous = models.BooleanField(
+        default=False,
+        help_text="Marks this community as self-governing, with its own internal leadership and rules."
+    )
     updated_at = models.DateTimeField(auto_now=True)
     email = models.EmailField(unique=True, blank=True, null=True)
 
@@ -71,6 +74,12 @@ class Community(SerializableModel):
                 counter += 1
             self.slug = slug
         super().save(*args, **kwargs)
+
+    @property
+    def is_foreign(self):
+        if not self.federation:
+            return True
+        return self.federation.is_foreign
 
 
 class CommunityMember(SerializableModel):

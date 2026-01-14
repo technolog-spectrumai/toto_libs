@@ -15,11 +15,11 @@ class CommunityAdmin(BaseSerializableAdmin):
         'name',
         'slug',
         'org_type',
-        'location',
         'established_year',
         'head_display',
-        'id',
         'email',
+        'is_autonomous',
+        'is_foreign_display',
     )
 
     search_fields = (
@@ -41,6 +41,13 @@ class CommunityAdmin(BaseSerializableAdmin):
     def head_display(self, obj):
         return obj.head.display_name if obj.head else "-"
     head_display.short_description = "Head of Community"
+
+    # --- FIX: expose property cleanly in admin ---
+    def is_foreign_display(self, obj):
+        return obj.is_foreign
+    is_foreign_display.boolean = True
+    is_foreign_display.short_description = "Foreign"
+
 
 
 
