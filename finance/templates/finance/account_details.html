@@ -50,7 +50,6 @@
     });
   });
 </script>
-
 {% endblock %}
 
 {% block content %}
@@ -61,13 +60,14 @@
   class="min-h-screen px-4 py-10 transition-colors duration-300">
 
   <div class="max-w-6xl mx-auto space-y-12">
+
     <!-- 🏦 Account Identity -->
     <section>
       <h2 class="text-2xl font-bold mb-4">Account Details</h2>
       <div class="p-4 rounded border"
            :class="darkMode ? 'bg-bubble-bg-dark border-accent-dark' : 'bg-bubble-bg-light border-accent-light'">
         <p><strong>Name:</strong> {{ account.name }}</p>
-        <p><strong>Owner:</strong> {{ account.owner.name }}</p>
+        <p><strong>Owner:</strong> {{ account.owner.legal_name }}</p>
         <p><strong>Currency:</strong> {{ account.currency.symbol }}</p>
         <p><strong>Balance:</strong> {{ account.balance|floatformat:2 }}</p>
         <p><strong>Manager:</strong> {{ account.manager.username }}</p>
@@ -75,28 +75,32 @@
         <p><strong>Created:</strong> {{ account.created_at|date:"F j, Y" }}</p>
       </div>
     </section>
-      <section>
-          <form method="get" class="mb-6 text-sm text-center">
-              <label for="period" class="font-medium mr-2">Show history for:</label>
-              <select name="period" id="period" onchange="this.form.submit()"
-                      class="px-2 py-1 rounded border"
-                      :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark border-gray-600' : 'bg-white text-text-main-light border-gray-300'">
-                {% for days in available_periods %}
-                  <option value="{{ days }}" {% if days == selected_period %}selected{% endif %}>
-                    Last {{ days }} days
-                  </option>
-                {% endfor %}
-              </select>
-            </form>
-      </section>
+
+    <!-- Period Selector -->
+    <section>
+      <form method="get" class="mb-6 text-sm text-center">
+        <label for="period" class="font-medium mr-2">Show history for:</label>
+        <select name="period" id="period" onchange="this.form.submit()"
+                class="px-2 py-1 rounded border"
+                :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark border-gray-600' : 'bg-white text-text-main-light border-gray-300'">
+          {% for days in available_periods %}
+            <option value="{{ days }}" {% if days == selected_period %}selected{% endif %}>
+              Last {{ days }} days
+            </option>
+          {% endfor %}
+        </select>
+      </form>
+    </section>
+
     <!-- 💸 Transactions -->
     <section>
       <h2 class="text-2xl font-bold mb-4">Transactions</h2>
       <div class="space-y-4">
+
         {% for tx in transactions_outgoing %}
           <div class="p-4 rounded border"
                :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
-            <p><strong>Outgoing:</strong> {{ tx.amount|floatformat:2 }} {{ tx.currency.symbol }} → {{ tx.destination.name }}</p>
+            <p><strong>Outgoing:</strong> {{ tx.amount|floatformat:2 }} {{ account.currency.symbol }} → {{ tx.destination.name }}</p>
             <p>Date: {{ tx.timestamp|date:"F j, Y H:i" }}</p>
           </div>
         {% endfor %}
@@ -104,10 +108,11 @@
         {% for tx in transactions_incoming %}
           <div class="p-4 rounded border"
                :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
-            <p><strong>Incoming:</strong> {{ tx.amount|floatformat:2 }} {{ tx.currency.symbol }} ← {{ tx.source.name }}</p>
+            <p><strong>Incoming:</strong> {{ tx.amount|floatformat:2 }} {{ account.currency.symbol }} ← {{ tx.source.name }}</p>
             <p>Date: {{ tx.timestamp|date:"F j, Y H:i" }}</p>
           </div>
         {% endfor %}
+
         {% if not transactions_incoming and not transactions_outgoing %}
         <div class="p-4 rounded border text-sm text-center"
              :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
@@ -117,17 +122,18 @@
       </div>
     </section>
 
+    <!-- Balance Summary -->
     <section>
       <h2 class="text-2xl font-bold mb-4">Balance Summary</h2>
       <div class="p-4 rounded border text-lg"
            :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
-
         <p><strong>Balance:</strong> {{ account.balance|floatformat:2 }} {{ account.currency.symbol }}</p>
         <p><strong>Incoming transactions:</strong> {{ transactions_incoming|length }}</p>
         <p><strong>Outgoing transactions:</strong> {{ transactions_outgoing|length }}</p>
-
       </div>
     </section>
+
+    <!-- Balance History Line Chart -->
     <section>
       <h2 class="text-2xl font-bold mb-4">Balance History</h2>
       <div class="p-4 rounded border h-72"
@@ -135,12 +141,13 @@
         <canvas id="balanceHistoryChart"></canvas>
       </div>
     </section>
+
     <div class="text-center">
-        <a href="{% url 'finance:dashboard' %}"
-           class="text-blue-600 underline">
-          ← Back to Finance
-        </a>
+      <a href="{% url 'finance:account_list' %}" class="text-blue-600 underline">
+        ← Back to Accounts
+      </a>
     </div>
+
   </div>
 </div>
 {% endblock %}
