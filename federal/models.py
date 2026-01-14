@@ -9,8 +9,7 @@ from django.contrib.auth.models import User
 from oya.models import Platform
 from gervazy.models import RSAKeyPair
 from locations.models import Address
-
-
+from django.core.exceptions import ValidationError
 
 
 class Federation(models.Model):
@@ -110,7 +109,6 @@ class FederatedIdentity(models.Model):
         return mark_safe(f'<img src="data:image/png;base64,{img_str}" />')
 
 
-from django.core.exceptions import ValidationError
 class IdentityProfile(models.Model):
     INDIVIDUAL = "individual"
     ORGANIZATION = "organization"
@@ -157,10 +155,6 @@ class IdentityProfile(models.Model):
     class Meta:
         verbose_name = "Identity Profile"
         verbose_name_plural = "Identity Profiles"
-
-    def clean(self):
-        if self.member and self.community:
-            raise ValidationError("IdentityProfile cannot reference both a member and a community.")
 
     def __str__(self):
         return f"{self.legal_name} ({self.profile_type})"
