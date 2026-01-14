@@ -124,21 +124,27 @@ class IdentityProfile(models.Model):
         default=INDIVIDUAL
     )
 
-    legal_name = models.CharField(max_length=255)
-    registration_number = models.CharField(
-        max_length=100,
-        blank=True,
+    # Optional links to system entities
+    member = models.ForeignKey(
+        "community.CommunityMember",
+        on_delete=models.SET_NULL,
         null=True,
-        help_text="National ID or registration number"
-    )
-    registration_type = models.CharField(
-        max_length=100,
         blank=True,
-        null=True,
-        help_text="Type of registration number (e.g., National ID, Passport, Tax ID, etc.)"
+        related_name="identity_profiles"
     )
 
-    # Verification status (neutral wording)
+    community = models.ForeignKey(
+        "community.Community",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="identity_profiles"
+    )
+
+    legal_name = models.CharField(max_length=255)
+    registration_number = models.CharField(max_length=100, blank=True, null=True)
+    registration_type = models.CharField(max_length=100, blank=True, null=True)
+
     is_verified = models.BooleanField(default=False)
     verified_at = models.DateTimeField(null=True, blank=True)
     verified_by = models.ForeignKey(
@@ -149,15 +155,21 @@ class IdentityProfile(models.Model):
         related_name="verified_identity_profiles"
     )
 
-    metadata = models.JSONField(blank=True, null=True, default={})
+    metadata = models.JSONField(blank=True, null=True, default=dict)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         verbose_name = "Identity Profile"
         verbose_name_plural = "Identity Profiles"
 
+    def clean(self):
+        # Prevent linking to both at once
+        if self.member and self.community:
+            raise ValidationError("IdentityProfile cannot reference both a member and a community.")
+
     def __str__(self):
         return f"{self.legal_name} ({self.profile_type})"
+
 
 
 

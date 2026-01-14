@@ -86,6 +86,8 @@ class IdentityProfileAdmin(admin.ModelAdmin):
         "registration_number",
         "is_verified",
         "verified_at",
+        "member",
+        "community",
     ]
 
     list_filter = [
@@ -96,9 +98,13 @@ class IdentityProfileAdmin(admin.ModelAdmin):
     search_fields = [
         "legal_name",
         "registration_number",
+        "member__display_name",
+        "community__name",
     ]
 
     autocomplete_fields = [
+        "member",
+        "community",
         "verified_by",
     ]
 
@@ -106,3 +112,33 @@ class IdentityProfileAdmin(admin.ModelAdmin):
         "created_at",
         "verified_at",
     ]
+
+    fieldsets = (
+        ("Identity", {
+            "fields": (
+                "profile_type",
+                "legal_name",
+                "registration_number",
+                "registration_type",
+            )
+        }),
+        ("Links", {
+            "fields": (
+                "member",
+                "community",
+            )
+        }),
+        ("Verification", {
+            "fields": (
+                "is_verified",
+                "verified_at",
+                "verified_by",
+            )
+        }),
+        ("Metadata", {
+            "fields": ("metadata",)
+        }),
+        ("System", {
+            "fields": ("created_at",),
+        }),
+    )

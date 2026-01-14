@@ -30,6 +30,7 @@ class Community(SerializableModel):
         related_name='communities',
         db_comment="part_of_federation"
     )
+
     updated_at = models.DateTimeField(auto_now=True)
     email = models.EmailField(unique=True, blank=True, null=True)
 

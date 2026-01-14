@@ -42,7 +42,7 @@ class CommunityMemberAdmin(BaseSerializableAdmin):
         'slug',
         'id',
         'address_display',
-        'email'
+        'email',
     )
     search_fields = (
         'display_name',
