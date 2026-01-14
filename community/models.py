@@ -10,18 +10,42 @@ from locations.models import Address
 
 
 class Community(SerializableModel):
+    GUILD = "guild"
+    COMPANY = "company"
+    NON_PROFIT = "non_profit"
+    FAMILY = "family"
+    OTHER = "other"
+
+    ORG_TYPES = [
+        (GUILD, "Guild"),
+        (COMPANY, "Company"),
+        (NON_PROFIT, "Non-Profit"),
+        (FAMILY, "Family"),
+        (OTHER, "Other"),
+    ]
+
     name = models.CharField(max_length=255, help_text="Name of the community or organization")
     slug = models.SlugField(unique=True, blank=True, help_text="URL-friendly identifier")
+
+    org_type = models.CharField(
+        max_length=20,
+        choices=ORG_TYPES,
+        default=OTHER,
+        help_text="Type of organization"
+    )
+
     location = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True, blank=True, db_comment="located_at")
     established_year = models.IntegerField(null=True, blank=True)
+
     head = models.ForeignKey(
         'CommunityMember',
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name='headed_communities',
-        db_comment = "headed_by"
+        db_comment="headed_by"
     )
+
     federation = models.ForeignKey(
         Federation,
         on_delete=models.SET_NULL,

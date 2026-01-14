@@ -1,10 +1,11 @@
 import random
 from django.contrib.auth.models import User
 from django.utils import timezone
-from community.models import Community, CommunityMember
-from oya.ingress import IngressCommand
-from federal.models import Federation
 from django.core.exceptions import ObjectDoesNotExist
+
+from oya.ingress import IngressCommand
+from community.models import Community, CommunityMember
+from federal.models import Federation
 from locations.models import Address
 
 
@@ -20,6 +21,7 @@ class Command(IngressCommand):
             link="/community/org-chart/",
             public=False
         )
+
         if not self.full:
             return
 
@@ -30,7 +32,11 @@ class Command(IngressCommand):
             return
 
         self.stdout.write(self.style.NOTICE("🏢 Creating community..."))
-        community = self.create_community("Our Thing Inc.", address, established_year=2024)
+        community = self.create_community(
+            name="Our Thing Inc.",
+            address=address,
+            established_year=2024
+        )
         if not community:
             self.stderr.write(self.style.ERROR("❌ Community creation failed."))
             return
@@ -38,11 +44,16 @@ class Command(IngressCommand):
         self.stdout.write(self.style.NOTICE("🧑‍🤝‍🧑 Creating community members..."))
         members = self.create_fake_members(community, count=6)
 
-        self.stdout.write(self.style.NOTICE("👑 Assigning head of community..."))
-        community.head = members[0]
-        community.save()
+        if members:
+            self.stdout.write(self.style.NOTICE("👑 Assigning head of community..."))
+            community.head = members[0]
+            community.save()
 
         self.stdout.write(self.style.SUCCESS("✅ Community ingress complete."))
+
+    # ---------------------------------------------------------
+    # Address creation
+    # ---------------------------------------------------------
 
     def create_address(self):
         return Address.objects.create(
@@ -54,6 +65,10 @@ class Command(IngressCommand):
             apartment="5A"
         )
 
+    # ---------------------------------------------------------
+    # Federation lookup
+    # ---------------------------------------------------------
+
     @staticmethod
     def get_active_federation() -> Federation:
         try:
@@ -61,8 +76,13 @@ class Command(IngressCommand):
         except ObjectDoesNotExist:
             raise RuntimeError("❌ No active federation found. Please create one before proceeding.")
 
+    # ---------------------------------------------------------
+    # Community creation
+    # ---------------------------------------------------------
+
     def create_community(self, name: str, address: Address, established_year: int = None) -> Community | None:
         federation = self.get_active_federation()
+
         community, created = Community.objects.get_or_create(
             name=name,
             defaults={
@@ -73,25 +93,19 @@ class Command(IngressCommand):
         )
         return community
 
-    import random
-    from django.utils import timezone
-    from django.contrib.auth.models import User
-    from community.models import CommunityMember
+    # ---------------------------------------------------------
+    # Member creation
+    # ---------------------------------------------------------
 
     def create_fake_members(self, community, count=6):
         members = []
 
-        # 🎲 fetch all existing users
         users = list(User.objects.all())
-
         if not users:
             self.stderr.write(self.style.ERROR("❌ No users found in the database. Please create some first."))
             return members
 
-        # cap at 12 members max
         max_members = min(count, 12, len(users))
-
-        # randomly select up to max_members users
         selected_users = random.sample(users, max_members)
 
         # Founder
@@ -104,7 +118,7 @@ class Command(IngressCommand):
         founder.communities.add(community)
         members.append(founder)
 
-        # Managers (next two if available)
+        # Managers
         for i, user in enumerate(selected_users[1:3], start=1):
             manager = CommunityMember.objects.create(
                 user=user,
@@ -116,7 +130,7 @@ class Command(IngressCommand):
             manager.communities.add(community)
             members.append(manager)
 
-        # Staff (remaining users)
+        # Staff
         for idx, user in enumerate(selected_users[3:], start=3):
             patron = random.choice(members[1:3]) if len(members) > 2 else founder
             staff = CommunityMember.objects.create(
@@ -130,4 +144,3 @@ class Command(IngressCommand):
             members.append(staff)
 
         return members
-

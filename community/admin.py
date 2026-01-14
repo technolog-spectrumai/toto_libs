@@ -6,6 +6,7 @@ from .models import (
     ReferenceRequest
 )
 from toto.admin import BaseSerializableAdmin
+from django.contrib import admin
 
 
 @admin.register(Community)
@@ -13,12 +14,27 @@ class CommunityAdmin(BaseSerializableAdmin):
     list_display = (
         'name',
         'slug',
+        'org_type',
         'location',
         'established_year',
         'head_display',
-        'id', 'email'
+        'id',
+        'email',
     )
-    search_fields = ('name', 'slug', 'head__display_name')
+
+    search_fields = (
+        'name',
+        'slug',
+        'head__display_name',
+        'org_type',
+    )
+
+    list_filter = (
+        'org_type',
+        'established_year',
+        'location',
+    )
+
     ordering = ('name',)
     prepopulated_fields = {'slug': ('name',)}
 
@@ -27,9 +43,6 @@ class CommunityAdmin(BaseSerializableAdmin):
     head_display.short_description = "Head of Community"
 
 
-from django.contrib import admin
-from django.utils.html import format_html
-from .models import CommunityMember
 
 
 @admin.register(CommunityMember)
