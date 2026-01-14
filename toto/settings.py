@@ -79,7 +79,6 @@ INSTALLED_APPS = [
     "library",
     "webfront",
     "locations",
-    #"assets",
     "mandragora",
     "verbena",
     "assets"
