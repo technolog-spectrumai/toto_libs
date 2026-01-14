@@ -174,6 +174,16 @@ class IdentityProfile(models.Model):
     def __str__(self):
         return f"{self.legal_name} ({self.profile_type})"
 
+    @property
+    def name(self):
+        parts = [self.legal_name]
+        if self.community:
+            parts.append(f"Community: {self.community}")
+        if self.member:
+            parts.append(f"Member: {self.member}")
+        return " | ".join(parts)
+
+
 
 
 

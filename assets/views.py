@@ -56,7 +56,7 @@ def asset_detail(request, pk):
     # Fractional ownership data
     ownership = [
         {
-            "owner_name": fo.owner.legal_name,
+            "owner_name": fo.owner.name,
             "owner_type": fo.owner.profile_type,
             "percentage": float(fo.percentage),
         }
