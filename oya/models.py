@@ -204,6 +204,23 @@ class Platform(models.Model):
     def __str__(self):
         return f"{self.site_name} Platform"
 
+    @property
+    def issuer_url(self):
+        """
+        Returns a canonical issuer URL for signing keys.
+        """
+        if self.domain:
+            # Normalize domain
+            domain = self.domain.strip().lower()
+
+            # Add scheme if missing
+            if not domain.startswith("http://") and not domain.startswith("https://"):
+                domain = "https://" + domain
+
+            return domain.rstrip("/")
+
+        # Fallback if domain is missing
+        return f"https://{self.site_name.lower().replace(' ', '')}.local"
 
 class DashboardBlock(models.Model):
     title = models.CharField(max_length=100)

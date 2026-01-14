@@ -28,14 +28,10 @@ class Command(IngressCommand):
             return
 
         self.stdout.write(self.style.NOTICE("🧑‍🤝‍🧑 Creating federated identities..."))
-        identities = self.create_fake_identities(federation, count=5)
+        identities = self.create_fake_identities(count=5)
 
         self.stdout.write(self.style.NOTICE("🪪 Creating identity profiles..."))
         profiles = self.create_identity_profiles(identities)
-
-        self.stdout.write(self.style.NOTICE("👑 Assigning head identity..."))
-        federation.head_identity = identities[0]
-        federation.save()
 
         self.stdout.write(self.style.SUCCESS("✅ Federal ingress complete."))
 
@@ -76,10 +72,10 @@ class Command(IngressCommand):
         return federation
 
     # ---------------------------------------------------------
-    # Federated Identity creation
+    # Federated Identity creation (minimal model)
     # ---------------------------------------------------------
 
-    def create_fake_identities(self, federation: Federation, count=5):
+    def create_fake_identities(self, count=5):
         identities = []
 
         users = [
@@ -90,16 +86,8 @@ class Command(IngressCommand):
             for i in range(count)
         ]
 
-        head_identity = self._create_identity_with_rsa(
-            federation=federation,
-            name="Head Identity",
-            user=random.choice(users)
-        )
-        identities.append(head_identity)
-
-        for i in range(1, count):
+        for i in range(count):
             identity = self._create_identity_with_rsa(
-                federation=federation,
                 name=f"Identity {i}",
                 user=random.choice(users)
             )
@@ -107,17 +95,18 @@ class Command(IngressCommand):
 
         return identities
 
-    def _create_identity_with_rsa(self, federation: Federation, name: str, user: User) -> FederatedIdentity:
+    def _create_identity_with_rsa(self, name: str, user: User) -> FederatedIdentity:
         identity = FederatedIdentity.objects.create(
             id=uuid.uuid4(),
             name=name,
-            federation=federation,
             user=user,
             created_at=timezone.now(),
         )
 
         key_id = f"{identity.id}-key"
-        rsa_pair = RSAKeyPair.generate(key_id=key_id, issuer=identity.issuer)
+        platform = Platform.objects.filter(active=True).first()
+        issuer = platform.issuer_url
+        rsa_pair = RSAKeyPair.generate(key_id=key_id, issuer=issuer)
         rsa_pair.save()
 
         identity.rsa_keypair = rsa_pair
@@ -126,7 +115,7 @@ class Command(IngressCommand):
         return identity
 
     # ---------------------------------------------------------
-    # IdentityProfile creation
+    # IdentityProfile creation + linking to FederatedIdentity
     # ---------------------------------------------------------
 
     def create_identity_profiles(self, identities):
@@ -141,9 +130,13 @@ class Command(IngressCommand):
                 is_verified=False,
                 metadata={
                     "federated_identity": str(identity.id),
-                    "federation": identity.federation.name,
                 }
             )
+
+            # Link FederatedIdentity → IdentityProfile
+            identity.profile = profile
+            identity.save()
+
             profiles.append(profile)
 
         return profiles

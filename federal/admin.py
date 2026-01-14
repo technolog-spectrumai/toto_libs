@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django import forms
-from django.utils.html import mark_safe
+from django.forms import JSONField
 from django_json_widget.widgets import JSONEditorWidget
 
 from .models import Federation, FederatedIdentity, IdentityProfile
@@ -19,9 +19,11 @@ class FederationAdmin(admin.ModelAdmin):
         "created_at",
         "platform",
         "location",
-        "is_foreign"
+        "is_foreign",
     )
+
     list_filter = ("active", "platform", "location")
+
     search_fields = (
         "name",
         "slug",
@@ -29,36 +31,9 @@ class FederationAdmin(admin.ModelAdmin):
         "platform__name",
         "location__locality_name",
     )
+
     prepopulated_fields = {"slug": ("name",)}
     readonly_fields = ("created_at",)
-
-
-# ---------------------------
-# FederatedIdentity Admin
-# ---------------------------
-
-@admin.register(FederatedIdentity)
-class FederatedIdentityAdmin(admin.ModelAdmin):
-    list_display = (
-        "id",
-        "name",
-        "federation",
-        "user",
-        "rsa_keypair",
-        "created_at",
-        "qr_preview"
-    )
-    list_filter = ("federation", "user", "created_at")
-    search_fields = ("name", "id", "user__username", "user__email")
-    readonly_fields = ("created_at", "qr_code")
-
-    autocomplete_fields = ["federation", "user", "rsa_keypair"]
-
-    def qr_preview(self, obj):
-        return obj.qr_code()
-
-    qr_preview.short_description = "QR Code"
-    qr_preview.allow_tags = True
 
 
 # ---------------------------
@@ -66,11 +41,23 @@ class FederatedIdentityAdmin(admin.ModelAdmin):
 # ---------------------------
 
 class IdentityProfileAdminForm(forms.ModelForm):
-    metadata = forms.JSONField(widget=JSONEditorWidget, required=False)
+    metadata = JSONField(widget=JSONEditorWidget, required=False)
 
     class Meta:
         model = IdentityProfile
         fields = "__all__"
+
+
+# ---------------------------
+# FederatedIdentity Inline
+# ---------------------------
+
+class FederatedIdentityInline(admin.StackedInline):
+    model = FederatedIdentity
+    extra = 0
+    can_delete = False
+    readonly_fields = ("id", "created_at")
+    fields = ("id", "name", "user", "rsa_keypair", "created_at")
 
 
 # ---------------------------
@@ -80,21 +67,19 @@ class IdentityProfileAdminForm(forms.ModelForm):
 @admin.register(IdentityProfile)
 class IdentityProfileAdmin(admin.ModelAdmin):
     form = IdentityProfileAdminForm
+    inlines = [FederatedIdentityInline]
 
     list_display = [
         "legal_name",
         "profile_type",
         "registration_number",
         "is_verified",
-        "verified_at",
         "member",
-        "community"
+        "community",
+        "federated_identity_display",
     ]
 
-    list_filter = [
-        "profile_type",
-        "is_verified",
-    ]
+    list_filter = ["profile_type", "is_verified"]
 
     search_fields = [
         "legal_name",
@@ -103,16 +88,9 @@ class IdentityProfileAdmin(admin.ModelAdmin):
         "community__name",
     ]
 
-    autocomplete_fields = [
-        "member",
-        "community",
-        "verified_by",
-    ]
+    autocomplete_fields = ["member", "community", "verified_by"]
 
-    readonly_fields = [
-        "created_at",
-        "verified_at",
-    ]
+    readonly_fields = ["created_at", "verified_at"]
 
     fieldsets = (
         ("Identity", {
@@ -124,22 +102,50 @@ class IdentityProfileAdmin(admin.ModelAdmin):
             )
         }),
         ("Links", {
-            "fields": (
-                "member",
-                "community",
-            )
+            "fields": ("member", "community")
         }),
         ("Verification", {
-            "fields": (
-                "is_verified",
-                "verified_at",
-                "verified_by",
-            )
+            "fields": ("is_verified", "verified_at", "verified_by")
         }),
         ("Metadata", {
             "fields": ("metadata",)
         }),
         ("System", {
-            "fields": ("created_at",),
+            "fields": ("created_at",)
         }),
     )
+
+    def federated_identity_display(self, obj):
+        fi = getattr(obj, "federated_identity", None)
+        if not fi:
+            return "-"
+        return f"{fi.id} ({fi.name or 'no name'})"
+
+    federated_identity_display.short_description = "Federated Identity"
+
+
+# ---------------------------
+# FederatedIdentity Admin
+# ---------------------------
+
+@admin.register(FederatedIdentity)
+class FederatedIdentityAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "name",
+        "profile",
+        "user",
+        "rsa_keypair",
+        "created_at",
+    )
+
+    search_fields = (
+        "id",
+        "name",
+        "profile__legal_name",
+        "user__username",
+    )
+
+    readonly_fields = ("id", "created_at")
+
+    ordering = ("-created_at",)
