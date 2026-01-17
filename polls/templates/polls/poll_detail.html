@@ -1,0 +1,88 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}Poll – {{ poll.name }}{% endblock %}
+
+{% block start_script %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% include "webfront/partials/dim.html" %}
+{% endblock %}
+
+{% block content %}
+<div
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300">
+
+  <div class="max-w-4xl mx-auto space-y-8">
+
+    <!-- 🗳️ Poll Header -->
+    <section class="p-6 rounded-lg border transition-colors duration-300"
+      :class="darkMode
+        ? 'bg-bubble-bg-dark text-text-main-dark border-accent-dark'
+        : 'bg-bubble-bg-light text-text-main-light border-accent-light'">
+
+      <h1 class="text-2xl font-bold mb-2">{{ poll.question_text }}</h1>
+
+      <p class="text-sm opacity-80">
+        Name: {{ poll.name }} ·
+        Published: {{ poll.pub_date|date:"F j, Y" }}
+      </p>
+    </section>
+
+    <!-- 📝 Answer Form -->
+    <section class="p-6 rounded-lg border space-y-4 transition-colors duration-300"
+      :class="darkMode
+        ? 'bg-bubble-bg-dark text-text-main-dark border-accent-dark'
+        : 'bg-bubble-bg-light text-text-main-light border-accent-light'">
+
+      <h2 class="text-lg font-semibold">Your Answer</h2>
+
+      {% if user_answer %}
+        <p class="text-green-600 font-semibold">
+          You answered: {{ user_answer.choice.label }} – {{ user_answer.choice.choice_text }}
+        </p>
+      {% endif %}
+
+      <form method="post" class="space-y-4">
+        {% csrf_token %}
+
+        <div class="space-y-2">
+          {% for choice in choices %}
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="radio"
+                     name="choice"
+                     value="{{ choice.id }}"
+                     {% if user_answer and user_answer.choice.id == choice.id %}checked{% endif %}
+                     class="h-4 w-4">
+              <span>{{ choice.label }} – {{ choice.choice_text }}</span>
+            </label>
+          {% endfor %}
+        </div>
+
+        <button type="submit"
+                class="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700">
+          Submit Answer
+        </button>
+      </form>
+    </section>
+
+    <!-- 🔗 Back + Results Links -->
+    <div class="text-center space-y-2">
+
+      <a href="{% url 'polls:poll_results' poll.pk %}"
+         class="text-blue-600 underline block">
+        📊 View Results
+      </a>
+
+      <a href="{% url 'polls:poll_list' %}"
+         class="text-blue-600 underline block">
+        ← Back to Poll List
+      </a>
+
+    </div>
+
+  </div>
+</div>
+{% endblock %}

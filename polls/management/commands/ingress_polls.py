@@ -23,7 +23,7 @@ class Command(IngressCommand):
             title="Polls",
             icon="fa-solid fa-square-poll-vertical",
             description="Interactive polls with questions, choices, and user answers.",
-            link="",#reverse("polls:question_list"),
+            link=reverse("polls:poll_list"),
             public=False,
         )
 

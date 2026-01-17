@@ -1,0 +1,65 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}Polls | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="flex items-center justify-center px-6 py-16 min-h-screen transition-colors duration-300">
+
+  <div
+    :class="darkMode
+      ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
+      : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+    class="w-full max-w-2xl p-6 rounded-lg shadow-md border space-y-6 transition-colors duration-300">
+
+    <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+        class="text-2xl font-bold text-center">
+      Active Polls
+    </h2>
+
+    {% if polls %}
+      <ul class="space-y-4">
+        {% for poll in polls %}
+          <li
+            :class="darkMode
+              ? 'bg-primary-bg-dark border border-accent-1 hover:bg-bubble-bg-dark'
+              : 'bg-primary-bg-light border border-accent-2 hover:bg-bubble-bg-light'"
+            class="p-4 rounded transition-colors duration-300">
+
+            <a href="{{ poll.url }}"
+               class="block font-semibold text-lg underline hover:opacity-80">
+              {{ poll.title }}
+            </a>
+
+            <p class="text-sm mt-1 opacity-75">
+              {{ poll.question }}
+            </p>
+
+            <p class="text-xs mt-1 opacity-50">
+              Published: {{ poll.published }}
+            </p>
+
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="text-center text-sm opacity-60">
+        No polls available at the moment.
+      </p>
+    {% endif %}
+
+    <a href="{% url 'nest:dashboard' %}"
+       :class="darkMode
+         ? 'bg-accent-dark text-primary-bg-dark'
+         : 'bg-accent-light text-primary-bg-light'"
+       class="inline-block px-4 py-2 mt-6 rounded font-semibold hover:opacity-90 transition text-sm text-center">
+      Back to Dashboard
+    </a>
+
+  </div>
+</section>
+{% endblock %}
