@@ -81,7 +81,8 @@ INSTALLED_APPS = [
     "locations",
     "mandragora",
     "verbena",
-    "assets"
+    "assets",
+    "polls"
 ]
 
 
@@ -290,7 +291,8 @@ INGRESS_ALLOWED_APPS = [
     "mandragora",
     "verbena",
     "assets",
-    "finance"
+    "finance",
+    "polls"
 ]
 
 BACKUP_ALLOWED_APPS = [

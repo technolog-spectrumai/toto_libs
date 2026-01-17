@@ -31,6 +31,7 @@ urlpatterns = [
     path("locations/", include("locations.urls", namespace="locations")),
     path("verbena/", include("verbena.urls", namespace="verbena")),
     path('markdownx/', include('markdownx.urls')),
+    path('polls/', include('polls.urls')),
 ]
 
 
