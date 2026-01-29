@@ -6,6 +6,8 @@
 {% block start_script %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://unpkg.com/html5-qrcode"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr/dist/jsQR.js"></script>
+
 {% endblock %}
 
 {% block content %}
@@ -98,6 +100,19 @@
             @click="startKeyScan()">
           Scan encryption key
         </button>
+        <button
+            class="px-3 py-1 text-sm rounded border hover:opacity-80"
+            :class="darkMode
+              ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
+              : 'bg-primary-bg-light text-text-main-light border-accent-2'"
+            @click="$refs.qrImageInput.click()">
+          Upload QR image
+        </button>
+
+        <input type="file" accept="image/*"
+               class="hidden"
+               x-ref="qrImageInput"
+               @change="loadKeyFromQRImage($event)">
 
         <div id="qr-scan-wrapper" class="hidden mt-4">
             <p class="text-sm mb-2">Scan the QR code from the other participant:</p>
@@ -154,6 +169,8 @@
 
 {% block end_script %}
 <script>
+let sharedKeyBytes = null;
+
 function chatComponent(roomName, initialMessages) {
     return {
         messages: initialMessages,
@@ -177,13 +194,22 @@ function chatComponent(roomName, initialMessages) {
                 document.getElementById("ws-text").textContent = "Disconnected";
             };
 
-            this.socket.onmessage = (e) => {
+            this.socket.onmessage = async (e) => {
                 const data = JSON.parse(e.data);
-                console.log(data);
+
+                let content;
+
+                if (data.ciphertext && data.iv) {
+                    // encrypted message
+                    content = await this.decryptMessage(data);
+                } else {
+                    // plaintext fallback
+                    content = data.message;
+                }
 
                 this.messages.push({
                     user: data.user || "Anonymous",
-                    content: data.message,
+                    content: content,
                     timestamp: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
                 });
 
@@ -194,22 +220,83 @@ function chatComponent(roomName, initialMessages) {
             };
         },
 
-        sendMessage() {
+        async sendMessage() {
             const input = document.getElementById("chat-message-input");
             const text = input.value.trim();
             if (!text) return;
 
-            this.socket.send(JSON.stringify({ message: text }));
+            const encrypted = await this.encryptMessage(text);
+
+            this.socket.send(JSON.stringify(encrypted));
             input.value = "";
-        }
+        },
+
+        async encryptMessage(text) {
+          if (!sharedKeyBytes) {
+              console.warn("No E2E key set — message will not be encrypted");
+              return { message: text };
+          }
+
+          const key = await crypto.subtle.importKey(
+              "raw",
+              sharedKeyBytes,
+              "AES-GCM",
+              false,
+              ["encrypt"]
+          );
+
+          const iv = crypto.getRandomValues(new Uint8Array(12));
+          const encoded = new TextEncoder().encode(text);
+
+          const ciphertext = await crypto.subtle.encrypt(
+              { name: "AES-GCM", iv },
+              key,
+              encoded
+          );
+
+          return {
+              iv: Array.from(iv),
+              ciphertext: Array.from(new Uint8Array(ciphertext))
+          };
+      },
+
+      async decryptMessage(payload) {
+          if (!this.sharedKeyBytes) {
+              console.warn("No E2E key set — cannot decrypt");
+              return "[Encrypted message — no key]";
+          }
+
+          try {
+              const key = await crypto.subtle.importKey(
+                  "raw",
+                  this.sharedKeyBytes,
+                  "AES-GCM",
+                  false,
+                  ["decrypt"]
+              );
+
+              const iv = new Uint8Array(payload.iv);
+              const ciphertext = new Uint8Array(payload.ciphertext);
+
+              const decrypted = await crypto.subtle.decrypt(
+                  { name: "AES-GCM", iv },
+                  key,
+                  ciphertext
+              );
+
+              return new TextDecoder().decode(decrypted);
+
+          } catch (err) {
+              console.error("Decryption failed:", err);
+              return "[Unable to decrypt message — wrong key]";
+          }
+      }
+
     }
 }
 
-let sharedKeyBytes = null;
-
 // Generate a random 256-bit key and show as QR
 function generateAndShowKeyQR() {
-    alert("clicked!");
     // 1) generate key bytes
     sharedKeyBytes = crypto.getRandomValues(new Uint8Array(32));
 
@@ -239,7 +326,7 @@ function startKeyScan() {
     const onScanSuccess = (decodedText) => {
         // decodedText is the base64 key
         const keyBytes = Uint8Array.from(atob(decodedText), c => c.charCodeAt(0));
-        this.sharedKeyBytes = keyBytes;
+        sharedKeyBytes = keyBytes;
 
         console.log("Scanned E2E key:", decodedText);
 
@@ -256,6 +343,39 @@ function startKeyScan() {
         { fps: 10, qrbox: 200 },
         onScanSuccess
     );
+}
+
+async function loadKeyFromQRImage(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const img = new Image();
+    img.src = URL.createObjectURL(file);
+
+    img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width;
+        canvas.height = img.height;
+
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0);
+
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+        const qr = jsQR(imageData.data, canvas.width, canvas.height);
+
+        if (qr) {
+            const keyBase64 = qr.data.trim();
+            const keyBytes = Uint8Array.from(atob(keyBase64), c => c.charCodeAt(0));
+
+            sharedKeyBytes = keyBytes;
+
+            console.log("Loaded E2E key from QR image:", keyBase64);
+            alert("Encryption key loaded from QR image");
+        } else {
+            alert("No QR code detected in the image");
+        }
+    };
 }
 
 

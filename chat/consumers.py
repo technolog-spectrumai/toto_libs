@@ -23,7 +23,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     async def receive(self, text_data=None, bytes_data=None):
         data = json.loads(text_data)
-        message = data["message"]
+
+        # If encrypted message
+        if "ciphertext" in data and "iv" in data:
+            message_payload = data  # keep encrypted payload as-is
+            message_text = "[encrypted]"  # optional placeholder for logs
+        else:
+            # Plaintext fallback
+            message_payload = {"message": data["message"]}
+            message_text = data["message"]
 
         user = self.scope["user"]
         username = user.username if user.is_authenticated else "Anonymous"
@@ -32,13 +40,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
             self.room_group_name,
             {
                 "type": "chat_message",
-                "message": message,
+                "payload": message_payload,
                 "user": username,
             }
         )
 
     async def chat_message(self, event):
         await self.send(text_data=json.dumps({
-            "message": event["message"],
             "user": event["user"],
+            **event["payload"]
         }))
+
