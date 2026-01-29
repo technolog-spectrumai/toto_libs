@@ -5,6 +5,7 @@
 
 {% block start_script %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://unpkg.com/html5-qrcode"></script>
 {% endblock %}
 
 {% block content %}
@@ -89,6 +90,19 @@
                 @click="generateAndShowKeyQR()">
           Show encryption key QR
         </button>
+        <button
+            class="px-3 py-1 text-sm rounded border hover:opacity-80"
+            :class="darkMode
+              ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
+              : 'bg-primary-bg-light text-text-main-light border-accent-2'"
+            @click="startKeyScan()">
+          Scan encryption key
+        </button>
+
+        <div id="qr-scan-wrapper" class="hidden mt-4">
+            <p class="text-sm mb-2">Scan the QR code from the other participant:</p>
+            <div id="qr-reader" style="width: 250px;"></div>
+        </div>
 
         <!-- MESSAGE HISTORY -->
         <div id="messages" class="space-y-4 mb-6 max-h-[60vh] overflow-y-auto pr-2">
@@ -217,6 +231,33 @@ function generateAndShowKeyQR() {
 
     console.log("Generated E2E key (base64):", keyBase64);
 }
+
+function startKeyScan() {
+    const wrapper = document.getElementById("qr-scan-wrapper");
+    wrapper.classList.remove("hidden");
+
+    const onScanSuccess = (decodedText) => {
+        // decodedText is the base64 key
+        const keyBytes = Uint8Array.from(atob(decodedText), c => c.charCodeAt(0));
+        this.sharedKeyBytes = keyBytes;
+
+        console.log("Scanned E2E key:", decodedText);
+
+        // Stop scanning
+        html5QrCode.stop().then(() => {
+            wrapper.classList.add("hidden");
+        });
+    };
+
+    const html5QrCode = new Html5Qrcode("qr-reader");
+
+    html5QrCode.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: 200 },
+        onScanSuccess
+    );
+}
+
 
 </script>
 {% endblock %}
