@@ -25,12 +25,20 @@ def chat_view(request, room_name=None):
 
     # Messages
     messages = room.messages.select_related("user").all() if room else []
+    messages_json = [
+        {
+            "user": m.user.username if m.user else "Anonymous",
+            "content": m.content,
+            "timestamp": m.timestamp.strftime("%H:%M"),
+        }
+        for m in messages
+    ]
 
     context = {
         "rooms": rooms,
         "room": room,
         "participants": participants,
-        "messages": messages,
+        "messages_json": messages_json,
     }
 
     return render(

@@ -58,6 +58,8 @@
 
     <!-- MAIN CHAT PANEL -->
     <main
+      x-data="chatComponent('{{ room.name }}', {{ messages_json|safe }})"
+      x-init="connect()"
       :class="darkMode
         ? 'bg-bubble-bg-dark border-accent-1'
         : 'bg-bubble-bg-light border-accent-2'"
@@ -76,25 +78,26 @@
         </h2>
 
         <!-- MESSAGE HISTORY -->
-        <div x-ignore id="messages" class="space-y-4 mb-6 max-h-[60vh] overflow-y-auto pr-2">
-          {% for msg in messages %}
-            <div>
-              <p class="text-sm text-gray-500 dark:text-gray-400">
-                {{ msg.timestamp }} — <strong>{{ msg.user }}</strong>
-              </p>
-              <p>{{ msg.content }}</p>
-            </div>
-          {% endfor %}
+        <div id="messages" class="space-y-4 mb-6 max-h-[60vh] overflow-y-auto pr-2">
+            <template x-for="msg in messages">
+                <div class="p-2 rounded border border-gray-300 dark:border-gray-700">
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                        <span x-text="msg.timestamp"></span> —
+                        <strong x-text="msg.user"></strong>
+                    </p>
+                    <p x-text="msg.content"></p>
+                </div>
+            </template>
         </div>
 
         <!-- CHAT INPUT -->
         <div class="flex gap-2">
-          <input id="chat-message-input"
+          <input id="chat-message-input" @keydown.enter="sendMessage()"
                  type="text"
                  placeholder="Type a message..."
                  class="flex-1 p-2 rounded border" />
 
-          <button id="chat-message-submit"
+          <button @click="sendMessage()"
                   :class="darkMode
                     ? 'bg-accent-dark text-primary-bg-dark'
                     : 'bg-accent-light text-primary-bg-light'"
@@ -113,51 +116,55 @@
 
 {% block end_script %}
 <script>
-    const roomName = "{{ room.name }}";
-    const chatSocket = new WebSocket(
-        "ws://" + window.location.host + "/ws/chat/" + roomName + "/"
-    );
+function chatComponent(roomName, initialMessages) {
+    return {
+        messages: initialMessages,
+        connected: false,
+        socket: null,
 
-    const wsDot = document.getElementById("ws-dot");
-    const wsText = document.getElementById("ws-text");
+        connect() {
+            this.socket = new WebSocket(
+                "ws://" + window.location.host + "/ws/chat/" + roomName + "/"
+            );
 
-    // When connected
-    chatSocket.onopen = function() {
-        wsDot.classList.remove("bg-red-500");
-        wsDot.classList.add("bg-green-500");
-        wsText.textContent = "Connected";
-    };
+            this.socket.onopen = () => {
+                this.connected = true;
+                document.getElementById("ws-dot").classList.replace("bg-red-500", "bg-green-500");
+                document.getElementById("ws-text").textContent = "Connected";
+            };
 
-    // When receiving messages
-    chatSocket.onmessage = function(e) {
-        const data = JSON.parse(e.data);
-        const message = data.message;
-        console.log("incoming", message);
+            this.socket.onclose = () => {
+                this.connected = false;
+                document.getElementById("ws-dot").classList.replace("bg-green-500", "bg-red-500");
+                document.getElementById("ws-text").textContent = "Disconnected";
+            };
 
-        const messagesDiv = document.getElementById("messages");
-        messagesDiv.innerHTML += "<div>" + message + "</div>";
-    };
+            this.socket.onmessage = (e) => {
+                const data = JSON.parse(e.data);
+                console.log(data);
 
-    // When disconnected
-    chatSocket.onclose = function(e) {
-        wsDot.classList.remove("bg-green-500");
-        wsDot.classList.add("bg-red-500");
-        wsText.textContent = "Disconnected";
+                this.messages.push({
+                    user: data.user || "Anonymous",
+                    content: data.message,
+                    timestamp: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
+                });
 
-        console.error("Chat socket closed unexpectedly");
-    };
+                this.$nextTick(() => {
+                    const box = document.getElementById("messages");
+                    box.scrollTop = box.scrollHeight;
+                });
+            };
+        },
 
-    // Send message
-    document.querySelector("#chat-message-submit").onclick = function(e) {
-        const input = document.querySelector("#chat-message-input");
-        chatSocket.send(JSON.stringify({
-            "message": input.value
-        }));
-        input.value = "";
-        const messagesDiv = document.getElementById("messages");
-        messagesDiv.innerHTML += "<div>TEST</div>";
-        alert("!!!");
-    };
+        sendMessage() {
+            const input = document.getElementById("chat-message-input");
+            const text = input.value.trim();
+            if (!text) return;
 
+            this.socket.send(JSON.stringify({ message: text }));
+            input.value = "";
+        }
+    }
+}
 </script>
 {% endblock %}
