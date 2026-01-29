@@ -67,6 +67,12 @@
         <h2 class="text-2xl font-bold mb-4 flex items-center gap-2"
             :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
           <i class="fa-solid fa-comment-dots"></i> {{ room.name }}
+
+          <!-- Connection indicator -->
+          <span id="ws-status" class="flex items-center gap-2 ml-4">
+              <span id="ws-dot" class="w-3 h-3 rounded-full bg-red-500"></span>
+              <span id="ws-text" class="text-sm">Disconnected</span>
+          </span>
         </h2>
 
         <!-- MESSAGE HISTORY -->
@@ -112,6 +118,17 @@
         "ws://" + window.location.host + "/ws/chat/" + roomName + "/"
     );
 
+    const wsDot = document.getElementById("ws-dot");
+    const wsText = document.getElementById("ws-text");
+
+    // When connected
+    chatSocket.onopen = function() {
+        wsDot.classList.remove("bg-red-500");
+        wsDot.classList.add("bg-green-500");
+        wsText.textContent = "Connected";
+    };
+
+    // When receiving messages
     chatSocket.onmessage = function(e) {
         const data = JSON.parse(e.data);
         const message = data.message;
@@ -120,10 +137,16 @@
         messagesDiv.innerHTML += "<div>" + message + "</div>";
     };
 
+    // When disconnected
     chatSocket.onclose = function(e) {
+        wsDot.classList.remove("bg-green-500");
+        wsDot.classList.add("bg-red-500");
+        wsText.textContent = "Disconnected";
+
         console.error("Chat socket closed unexpectedly");
     };
 
+    // Send message
     document.querySelector("#chat-message-submit").onclick = function(e) {
         const input = document.querySelector("#chat-message-input");
         chatSocket.send(JSON.stringify({
