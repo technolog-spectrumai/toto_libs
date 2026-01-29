@@ -92,10 +92,16 @@
 
         <!-- CHAT INPUT -->
         <div class="flex gap-2">
-          <input id="chat-message-input" @keydown.enter="sendMessage()"
-                 type="text"
-                 placeholder="Type a message..."
-                 class="flex-1 p-2 rounded border" />
+          <input
+              id="chat-message-input"
+              @keydown.enter="sendMessage()"
+              type="text"
+              placeholder="Type a message..."
+              class="flex-1 p-2 rounded border transition-colors duration-300"
+              :class="darkMode
+                  ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
+                  : 'bg-primary-bg-light text-text-main-light border-accent-2'"
+          />
 
           <button @click="sendMessage()"
                   :class="darkMode
