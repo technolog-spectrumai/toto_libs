@@ -261,7 +261,7 @@ function chatComponent(roomName, initialMessages) {
       },
 
       async decryptMessage(payload) {
-          if (!this.sharedKeyBytes) {
+          if (!sharedKeyBytes) {
               console.warn("No E2E key set — cannot decrypt");
               return "[Encrypted message — no key]";
           }
@@ -269,7 +269,7 @@ function chatComponent(roomName, initialMessages) {
           try {
               const key = await crypto.subtle.importKey(
                   "raw",
-                  this.sharedKeyBytes,
+                  sharedKeyBytes,
                   "AES-GCM",
                   false,
                   ["decrypt"]
