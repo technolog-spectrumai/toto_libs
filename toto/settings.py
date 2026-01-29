@@ -45,6 +45,7 @@ ACME_CHALLENGE_ROOT = os.path.join(BASE_DIR, 'acme-challenges')
 # Application definition
 
 INSTALLED_APPS = [
+    "channels",
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -82,7 +83,8 @@ INSTALLED_APPS = [
     "mandragora",
     "verbena",
     "assets",
-    "polls"
+    "polls",
+    "chat"
 ]
 
 
@@ -132,8 +134,12 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'toto.wsgi.application'
+#WSGI_APPLICATION = 'toto.wsgi.application'
+ASGI_APPLICATION = "toto.asgi.application"
 
+CHANNEL_LAYERS = {
+    "default": { "BACKEND": "channels.layers.InMemoryChannelLayer", },
+}
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
@@ -292,7 +298,8 @@ INGRESS_ALLOWED_APPS = [
     "verbena",
     "assets",
     "finance",
-    "polls"
+    "polls",
+    "chat"
 ]
 
 BACKUP_ALLOWED_APPS = [

@@ -32,6 +32,7 @@ urlpatterns = [
     path("verbena/", include("verbena.urls", namespace="verbena")),
     path('markdownx/', include('markdownx.urls')),
     path('polls/', include('polls.urls')),
+    path('chat/', include('chat.urls'))
 ]
 
 

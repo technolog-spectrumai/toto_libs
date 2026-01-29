@@ -1,0 +1,135 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}Chat | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="px-6 py-10 min-h-screen transition-colors duration-300">
+
+  <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+
+    <!-- SIDEBAR -->
+    <aside
+      :class="darkMode
+        ? 'bg-bubble-bg-dark border-accent-1'
+        : 'bg-bubble-bg-light border-accent-2'"
+      class="p-4 rounded-lg shadow-md border space-y-6 transition-colors duration-300">
+
+      <h3 class="text-xl font-bold flex items-center gap-2"
+          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+        <i class="fa-solid fa-comments"></i> Rooms
+      </h3>
+
+      <ul class="space-y-2">
+        {% for r in rooms %}
+          <li>
+            <a href="{% url 'chat:chat_room' r.name %}"
+               class="flex items-center gap-2 underline hover:opacity-80
+                      {% if room and r.name == room.name %}font-bold{% endif %}">
+              <i class="fa-solid fa-door-open"></i> {{ r.name }}
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+
+      <h3 class="text-xl font-bold mt-6 flex items-center gap-2"
+          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+        <i class="fa-solid fa-users"></i> Participants
+      </h3>
+
+      {% if participants %}
+        <ul class="space-y-1">
+          {% for user in participants %}
+            <li class="text-sm flex items-center gap-2">
+              <i class="fa-solid fa-user"></i> {{ user.username }}
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="text-sm text-gray-500 dark:text-gray-400">
+          <i class="fa-solid fa-globe"></i> Public room — anyone can join.
+        </p>
+      {% endif %}
+    </aside>
+
+    <!-- MAIN CHAT PANEL -->
+    <main
+      :class="darkMode
+        ? 'bg-bubble-bg-dark border-accent-1'
+        : 'bg-bubble-bg-light border-accent-2'"
+      class="md:col-span-3 p-6 rounded-lg shadow-md border transition-colors duration-300">
+
+      {% if room %}
+        <h2 class="text-2xl font-bold mb-4 flex items-center gap-2"
+            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+          <i class="fa-solid fa-comment-dots"></i> {{ room.name }}
+        </h2>
+
+        <!-- MESSAGE HISTORY -->
+        <div id="messages" class="space-y-4 mb-6 max-h-[60vh] overflow-y-auto pr-2">
+          {% for msg in messages %}
+            <div>
+              <p class="text-sm text-gray-500 dark:text-gray-400">
+                {{ msg.timestamp }} — <strong>{{ msg.user }}</strong>
+              </p>
+              <p>{{ msg.content }}</p>
+            </div>
+          {% endfor %}
+        </div>
+
+        <!-- CHAT INPUT -->
+        <div class="flex gap-2">
+          <input id="chat-message-input"
+                 type="text"
+                 placeholder="Type a message..."
+                 class="flex-1 p-2 rounded border" />
+
+          <button id="chat-message-submit"
+                  :class="darkMode
+                    ? 'bg-accent-dark text-primary-bg-dark'
+                    : 'bg-accent-light text-primary-bg-light'"
+                  class="px-4 py-2 rounded font-semibold hover:opacity-90 transition">
+            Send
+          </button>
+        </div>
+      {% else %}
+        <p>No rooms available.</p>
+      {% endif %}
+    </main>
+
+  </div>
+</section>
+{% endblock %}
+
+{% block end_script %}
+<script>
+    const roomName = "{{ room.name }}";
+    const chatSocket = new WebSocket(
+        "ws://" + window.location.host + "/ws/chat/" + roomName + "/"
+    );
+
+    chatSocket.onmessage = function(e) {
+        const data = JSON.parse(e.data);
+        const message = data.message;
+
+        const messagesDiv = document.getElementById("messages");
+        messagesDiv.innerHTML += "<div>" + message + "</div>";
+    };
+
+    chatSocket.onclose = function(e) {
+        console.error("Chat socket closed unexpectedly");
+    };
+
+    document.querySelector("#chat-message-submit").onclick = function(e) {
+        const input = document.querySelector("#chat-message-input");
+        chatSocket.send(JSON.stringify({
+            "message": input.value
+        }));
+        input.value = "";
+    };
+</script>
+{% endblock %}
