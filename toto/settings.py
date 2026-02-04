@@ -78,7 +78,6 @@ INSTALLED_APPS = [
     "gate",
     "library",
     "locations",
-    "mandragora",
     "verbena",
     "assets",
     "polls",
@@ -290,7 +289,6 @@ INGRESS_ALLOWED_APPS = [
     "kanban",
     "library",
     "locations",
-    "mandragora",
     "verbena",
     "assets",
     "finance",
@@ -366,21 +364,6 @@ AUDITED_APPS = [
     "community",
     "events",
     "finance",
-    "mandragora",
     "kanban"
 ]
-
-
-NEO4J_HOST = os.getenv("NEO4J_HOST", "localhost" if DEBUG else "neo4j")
-NEO4J_PORT = os.getenv("NEO4J_PORT", "7687")
-NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
-NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "strongpassword123")
-
-# Homogenized DATABASE_URL
-NEOMODEL_NEO4J_BOLT_URL = f"bolt://{NEO4J_USER}:{NEO4J_PASSWORD}@{NEO4J_HOST}:{NEO4J_PORT}"
-config.DATABASE_URL = NEOMODEL_NEO4J_BOLT_URL
-
-# Optional signals
-NEOMODEL_SIGNALS = True
-NEO4J_CHECK_ALIVE = DEBUG
 
