@@ -76,7 +76,6 @@ INSTALLED_APPS = [
     "finance",
     "federal",
     "gate",
-    "ravioli",
     "library",
     "locations",
     "mandragora",
@@ -289,7 +288,6 @@ INGRESS_ALLOWED_APPS = [
     "community",
     "events",
     "kanban",
-    "ravioli",
     "library",
     "locations",
     "mandragora",
@@ -368,7 +366,6 @@ AUDITED_APPS = [
     "community",
     "events",
     "finance",
-    "ravioli",
     "mandragora",
     "kanban"
 ]
