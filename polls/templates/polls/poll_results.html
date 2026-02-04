@@ -5,7 +5,7 @@
 
 {% block start_script %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-{% include "webfront/partials/dim.html" %}
+{% include "oya/partials/dim.html" %}
 {% endblock %}
 
 {% block content %}
@@ -65,7 +65,7 @@
 
       <h2 class="text-lg font-semibold">Results Overview (Pie)</h2>
 
-      {% include "webfront/partials/chart.html" with chart_id="pollPieChart" data=pie_chart_json %}
+      {% include "oya/partials/chart.html" with chart_id="pollPieChart" data=pie_chart_json %}
     </section>
 
     <!-- 📊 Bar Chart -->
@@ -77,7 +77,7 @@
 
       <h2 class="text-lg font-semibold">Results Breakdown (Bar)</h2>
 
-      {% include "webfront/partials/chart.html" with chart_id="pollBarChart" data=bar_chart_json %}
+      {% include "oya/partials/chart.html" with chart_id="pollBarChart" data=bar_chart_json %}
     </section>
 
     <!-- 📋 Detailed Results -->

@@ -8,7 +8,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
 
-{% include "webfront/partials/dim.html" %}
+{% include "oya/partials/dim.html" %}
 {% endblock %}
 
 {% block content %}
@@ -124,7 +124,7 @@
         : 'bg-bubble-bg-light text-text-main-light border-accent-light'">
 
       <h2 class="text-lg font-semibold">Ownership Distribution</h2>
-      {% include "webfront/partials/chart.html" with chart_id="ownershipChart" data=ownership_chart_json %}
+      {% include "oya/partials/chart.html" with chart_id="ownershipChart" data=ownership_chart_json %}
     </section>
     {% endif %}
 
