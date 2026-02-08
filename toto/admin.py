@@ -3,10 +3,8 @@ from django.urls import path, reverse
 from django.shortcuts import render, redirect
 from django import forms
 from vault.models import VaultFile, Bucket
-from toto.serialize import ModelSerializer
-from .batch import BatchAction
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
-
+from .serialize import ModelSerializer
 
 class VaultFilePickerForm(forms.Form):
     vault_file = forms.ModelChoiceField(
