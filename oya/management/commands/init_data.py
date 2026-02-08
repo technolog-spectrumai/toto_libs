@@ -24,19 +24,33 @@ class Command(BaseCommand):
             self.stderr.write(self.style.ERROR(f"Error initializing platform: {e}"))
 
     def create_fonts(self):
-        font_data = {
-            "Roboto": "https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap",
-            "Playfair Display": "https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&display=swap",
-            "Orbitron": "https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap",
-            "Cormorant Garamond": "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;700&display=swap",
-            "Exo": "https://fonts.googleapis.com/css2?family=Exo:wght@400;700&display=swap",
-            "Cinzel": "https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700&display=swap",
-            "Merriweather": "https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700&display=swap"
-        }
+        from oya.models import Font
+
+        FONTS_FILE = os.path.join(os.path.dirname(__file__), '../../../../data/fonts.json')
+
+        if not os.path.isfile(FONTS_FILE):
+            self.stderr.write(self.style.ERROR(f"Fonts file not found: {FONTS_FILE}"))
+            return
+
+        try:
+            with open(FONTS_FILE, 'r', encoding='utf-8') as f:
+                font_data = json.load(f)
+        except json.JSONDecodeError as e:
+            self.stderr.write(self.style.ERROR(f"Invalid JSON in fonts file: {e}"))
+            return
 
         for name, cdn in font_data.items():
             self.stdout.write(self.style.NOTICE(f"Creating font: {name}"))
-            call_command("create_font", "--name", name, "--cdn", cdn)
+
+            font, created = Font.objects.get_or_create(
+                name=name,
+                defaults={"cdn_link": cdn}
+            )
+
+            if created:
+                self.stdout.write(self.style.SUCCESS(f"Created Font: {name}"))
+            else:
+                self.stdout.write(self.style.WARNING(f"Font already exists: {name}"))
 
     def create_theme_from_file(self, file_path):
         if not os.path.isfile(file_path):
