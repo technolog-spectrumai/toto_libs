@@ -168,7 +168,7 @@ class Theme(models.Model):
 class Platform(models.Model):
     domain = models.CharField(max_length=255, null=True, blank=True)
     site_name = models.CharField(max_length=255)
-
+    author = models.CharField(max_length=255)
     publication_year = models.IntegerField()
     active = models.BooleanField(default=True)
 

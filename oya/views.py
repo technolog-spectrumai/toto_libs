@@ -1,8 +1,7 @@
 from oya.models import DashboardBlock
 from .page import PageProcessor
 import os
-from django.shortcuts import render, get_object_or_404
-from federal.models import Federation
+from django.shortcuts import render
 
 template_dir = "oya"
 
@@ -13,13 +12,7 @@ def _get_template(name):
 
 def home_view(request):
     processor = PageProcessor()
-    federation = get_object_or_404(
-        Federation,
-        active=True,
-        platform__active=True
-    )
-    context = {"federation": federation}
-    return render(request, _get_template("home.html"), processor.decorate(context, request))
+    return render(request, _get_template("home.html"), processor.decorate({}, request))
 
 
 def dashboard_view(request):

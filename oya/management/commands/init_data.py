@@ -107,9 +107,11 @@ class Command(BaseCommand):
         if theme is None:
             self.stderr.write(self.style.ERROR("Theme not found. Initialization aborted."))
             return
+        author = "www.spectrumAi.pl"
         create_platform_args = [
             site_name,
             domain,
+            author,
             "--active=True",
             f"--theme_id={theme.id}",  # pass theme id
             "--secret_size=64",  # let create_platform handle SecretKey

@@ -13,24 +13,9 @@ admin.site.site_title = 'Administracja'
 urlpatterns = [
     path('admin/', admin.site.urls),
     path("nest/", include("oya.urls", namespace='nest')),
-    path('captcha/', include('captcha.urls')),
     path('', lambda request: redirect('nest:home')),
-    path("memo/", include("memo.urls", namespace="memo")),
     path("vault/", include("vault.urls", namespace="vault")),
-    path("community/", include("community.urls", namespace="community")),
-    path("events/", include("events.urls", namespace="events")),
     path("audit/", include("audit.urls", namespace="audit")),
-    path("kanban/", include("kanban.urls", namespace="kanban")),
-    path("finance/", include("finance.urls", namespace="finance")),
-    path("federal/", include("federal.urls", namespace="federal")),
-    path("gate/", include("gate.urls", namespace="gate")),
-    path("assets/", include("assets.urls", namespace="assets")),
-    #path("portfolio/", include("portfolio.urls", namespace="portfolio")),
-    path("locations/", include("locations.urls", namespace="locations")),
-    path("verbena/", include("verbena.urls", namespace="verbena")),
-    path('markdownx/', include('markdownx.urls')),
-    path('polls/', include('polls.urls')),
-    path('chat/', include('chat.urls'))
 ]
 
 

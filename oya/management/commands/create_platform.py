@@ -16,6 +16,7 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('site_name', type=str, help='Platform site name')
         parser.add_argument('domain', type=str, help='Domain name for the platform')
+        parser.add_argument('author', type=str, help='Platform Author')
         parser.add_argument('--active', type=bool, default=True, help='Is the platform active?')
         parser.add_argument('--theme_id', type=int, help='Optional Theme ID for visual configuration')
         parser.add_argument('--secret_size', type=int, choices=[64, 128, 256], default=64,
@@ -31,6 +32,7 @@ class Command(BaseCommand):
         theme_id = options.get('theme_id')
         secret_size = options['secret_size']
         passphrase = options['passphrase']
+        author = options['author']
 
         # Fetch Theme (optional)
         theme = None
@@ -54,7 +56,8 @@ class Command(BaseCommand):
             secret=secret,
             publication_year=publication_year,
             active=active,
-            theme = theme
+            theme = theme,
+            author = author
         )
         # 📷 Upload logo from data/img/logo.png
         logo_path = os.path.join(settings.BASE_DIR, "..", "data", "img", "logo.png")
