@@ -1,4 +1,4 @@
-from .models import Platform, DashboardBlock, Font, Theme, ColorMix, AppBackup
+from .models import Platform, DashboardBlock, Font, Theme, ColorMix
 from django.contrib import admin, messages
 from django.utils.html import format_html
 from toto.admin import BaseSerializableAdmin
@@ -125,32 +125,3 @@ class DashboardBlockAdmin(admin.ModelAdmin):
     list_display = ('title', 'icon', 'description', 'link', 'public')
     search_fields = ('title', 'description', 'icon', 'link')
     ordering = ('title',)
-
-
-@admin.register(AppBackup)
-class AppBackupAdmin(admin.ModelAdmin):
-    list_display = ("app_name", "bucket", "filename", "scheduled_at")
-    actions = ["run_backup"]
-
-    @admin.action(description="Run backup command for selected entries")
-    def run_backup(self, request, queryset):
-        for backup in queryset:
-            try:
-                backup.run_backup_command()
-                self.message_user(
-                    request,
-                    f"✅ Success: Ran backup for {backup.app_name} → {backup.bucket.name}/{backup.filename}",
-                    level=messages.SUCCESS
-                )
-            except AppBackup.BackupCommandExecutionFailed as ef:
-                self.message_user(
-                    request,
-                    f"💥 Execution Failed: {ef}",
-                    level=messages.ERROR
-                )
-            except AppBackup.BackupCommandError as e:
-                self.message_user(
-                    request,
-                    f"⚠️ Error: {e}",
-                    level=messages.WARNING
-                )
