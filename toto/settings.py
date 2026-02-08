@@ -58,30 +58,12 @@ INSTALLED_APPS = [
     'django_jsonform',
     'django_json_widget',
     'rest_framework',
-    'nested_admin',
     'colorfield',
-    'polymorphic',
-    'django_ace',
-    'markdownx',
     'reversion',
     "gervazy",
     "oya",
-    "captcha",
-    "memo",
     "vault",
-    "community",
-    "events",
-    "audit",
-    "kanban",
-    "finance",
-    "federal",
-    "gate",
-    "library",
-    "locations",
-    "verbena",
-    "assets",
-    "polls",
-    "chat"
+    "audit"
 ]
 
 
@@ -131,8 +113,8 @@ TEMPLATES = [
     },
 ]
 
-#WSGI_APPLICATION = 'toto.wsgi.application'
-ASGI_APPLICATION = "toto.asgi.application"
+WSGI_APPLICATION = 'toto.wsgi.application'
+#ASGI_APPLICATION = "toto.asgi.application"
 
 CHANNEL_LAYERS = {
     "default": { "BACKEND": "channels.layers.InMemoryChannelLayer", },
@@ -280,36 +262,8 @@ FIELD_ENCRYPTION_KEY = 'GYVe39sJIvujld8u5NlnFStQXEkZnLDAXxtD6p2UfWs='
 INGRESS_ALLOWED_APPS = [
     'oya',
     'audit',
-    "memo",
     "gervazy",
-    "vault",
-    "federal",
-    "community",
-    "events",
-    "kanban",
-    "library",
-    "locations",
-    "verbena",
-    "assets",
-    "finance",
-    "polls",
-    "chat"
-]
-
-BACKUP_ALLOWED_APPS = [
-    "community",
-    #"finance",
-    "events"
-]
-
-GRAPH_ALLOWED_APPS = [
-    "kanban",
-    "events",
-    "library",
-    "locations",
-    "community",
-    #"finance",
-    "federal"
+    "vault"
 ]
 
 FULL_INGRESS = DEBUG
@@ -359,11 +313,6 @@ LOGGING = {
 AUDITED_APPS = [
     "gervazy",
     "oya",
-    "memo",
-    "vault",
-    "community",
-    "events",
-    "finance",
-    "kanban"
+    "vault"
 ]
 
