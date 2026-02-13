@@ -9,7 +9,3 @@ class OyaConfig(AppConfig):
     verbose_name = _("Root")
     url_name = "nest"
 
-    def ready(self):
-        logging.getLogger("neo4j").setLevel(logging.WARNING)
-        logging.getLogger("neo4j.io").setLevel(logging.WARNING)
-
