@@ -250,13 +250,6 @@ LOGIN_URL = reverse_lazy('gate:login')
 
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost") if DJANGO_ENV != "PROD" else "redis_toto"
 
-CELERY_BROKER_URL = f'redis://{REDIS_HOST}:6379/0'
-CELERY_RESULT_BACKEND = f'redis://{REDIS_HOST}:6379/0'
-CELERY_ACCEPT_CONTENT = ['json']
-CELERY_TASK_SERIALIZER = 'json'
-CELERY_TIMEZONE = TIME_ZONE
-
-
 FIELD_ENCRYPTION_KEY = 'GYVe39sJIvujld8u5NlnFStQXEkZnLDAXxtD6p2UfWs='
 
 INGRESS_ALLOWED_APPS = [
@@ -267,8 +260,6 @@ INGRESS_ALLOWED_APPS = [
 ]
 
 FULL_INGRESS = DEBUG
-
-GIT_REPO_BASE_DIR = BASE_DIR / 'git_repos'
 
 LOG_DIR = Path(BASE_DIR) / 'logs'
 LOG_DIR.mkdir(exist_ok=True)
