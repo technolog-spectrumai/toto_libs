@@ -1,0 +1,20 @@
+[project]
+name = "toto"
+version = "0.1.0"
+description = "Shared Django apps"
+requires-python = ">=3.10"
+dependencies = [
+    "Django>=4.2"
+]
+
+[tool.setuptools]
+packages = [
+    "toto",
+    "toto.vault",
+    "toto.oya",
+    "toto.core"
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
