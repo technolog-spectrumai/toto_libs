@@ -12,7 +12,7 @@ class Command(IngressCommand):
     def process(self):
         if not self.full:
             return
-        themes_dir = os.path.join(os.path.dirname(__file__), '../../../../data/themes')
+        themes_dir = os.path.join(os.path.dirname(__file__), '../../../../../data/themes')
 
         if not os.path.isdir(themes_dir):
             raise CommandError(f"Provided path is not a directory: {themes_dir}")

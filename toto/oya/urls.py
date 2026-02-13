@@ -3,7 +3,6 @@ from django.views.generic import RedirectView
 from django.urls import reverse_lazy
 from django.conf import settings
 from . import views
-from .apps import OyaConfig
 
 app_name = "nest"
 

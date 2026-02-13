@@ -26,7 +26,7 @@ class Command(BaseCommand):
     def create_fonts(self):
         from oya.models import Font
 
-        FONTS_FILE = os.path.join(os.path.dirname(__file__), '../../../../data/fonts.json')
+        FONTS_FILE = os.path.join(os.path.dirname(__file__), '../../../../../data/fonts.json')
 
         if not os.path.isfile(FONTS_FILE):
             self.stderr.write(self.style.ERROR(f"Fonts file not found: {FONTS_FILE}"))
@@ -100,7 +100,7 @@ class Command(BaseCommand):
         self.stdout.write(self.style.NOTICE("Creating platform..."))
 
         self.stdout.write(self.style.NOTICE("Creating fonts and theme..."))
-        THEMES_DIR = os.path.join(os.path.dirname(__file__), '../../../../data/themes')
+        THEMES_DIR = os.path.join(os.path.dirname(__file__), '../../../../../data/themes')
         self.create_theme_from_file(os.path.join(THEMES_DIR, "spectre.json"))
         self.stdout.write(self.style.SUCCESS("Fonts and theme created."))
         theme = self.get_theme("Elegant Spectrum")

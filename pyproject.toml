@@ -12,7 +12,8 @@ packages = [
     "toto",
     "toto.vault",
     "toto.oya",
-    "toto.core"
+    "toto.core",
+    "toto.gervazy"
 ]
 
 [build-system]

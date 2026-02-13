@@ -9,7 +9,7 @@ class IngressCommand(BaseCommand):
     help = "Base command that optionally accepts a JSON string"
 
     # 📂 Data root: parent of project root
-    DATA_ROOT = os.path.join(settings.BASE_DIR, "..", "data")
+    DATA_ROOT = os.path.join(settings.BASE_DIR, "../..", "data")
 
     @staticmethod
     def read_text(*parts):
