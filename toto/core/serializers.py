@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from oya.models import Platform, Font, Theme
+from toto.core.models import Platform, Font, Theme
 
 
 class FontSerializer(serializers.ModelSerializer):

@@ -1,6 +1,6 @@
 from .models import KeyRing
 from .models import RSAKeyPair
-from toto.batch import BatchAction
+from toto.core.batch import BatchAction
 from django.contrib import admin, messages
 from django.urls import path, reverse
 from django.shortcuts import redirect, render

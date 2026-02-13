@@ -3,7 +3,7 @@
 import os
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
-from vault.models import VaultFile
+from toto.vault.models import VaultFile
 
 @receiver(post_delete, sender=VaultFile)
 def delete_file_on_disk(sender, instance, **kwargs):

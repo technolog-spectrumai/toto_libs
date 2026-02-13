@@ -1,6 +1,8 @@
 from django.apps import AppConfig
 
 
-class AuditConfig(AppConfig):
+class CoreConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
-    name = 'toto.audit'
+    name = 'toto.core'
+    url_name = "toto.core"
+

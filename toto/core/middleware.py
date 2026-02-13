@@ -1,9 +1,8 @@
 import time
 from django.core.cache import cache
-from django.http import HttpResponse
 from django.shortcuts import redirect
 from django.urls import reverse
-from oya.models import Platform
+from toto.core.models import Platform
 
 
 class PlatformMiddleware:

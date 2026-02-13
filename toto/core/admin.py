@@ -1,117 +1,126 @@
+from .models import Platform, DashboardBlock, Font, Theme, ColorMix
 from django.contrib import admin, messages
-from django.urls import path, reverse
-from django.shortcuts import render, redirect
-from django import forms
-from vault.models import VaultFile, Bucket
-from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
-from .serialize import ModelSerializer
+from django.utils.html import format_html
 
-class VaultFilePickerForm(forms.Form):
-    vault_file = forms.ModelChoiceField(
-        queryset=VaultFile.objects.filter(file_type='json'),
-        label="Select Vault File",
-        required=True
+
+@admin.register(Font)
+class FontAdmin(admin.ModelAdmin):
+    list_display = ('name', 'style_family', 'cdn_link')
+    list_filter = ('style_family',)
+    search_fields = ('name', 'cdn_link')
+    ordering = ('name',)
+
+
+@admin.register(ColorMix)
+class ColorMixAdmin(admin.ModelAdmin):
+    list_display = ('name', 'preview_light', 'preview_dark')
+    readonly_fields = ('preview_light', 'preview_dark')
+
+    fieldsets = (
+        (None, {
+            'fields': ('name',)
+        }),
+        ('Light Mode Colors', {
+            'fields': (
+                'primary_bg_light', 'text_main_light',
+                'header_bg_light', 'bubble_bg_light',
+                'appbar_bg_light', 'appbar_text_light',
+                'footer_bg_light', 'footer_text_light',
+                'accent_light', 'warn_light',
+                'preview_light'
+            )
+        }),
+        ('Dark Mode Colors', {
+            'fields': (
+                'primary_bg_dark', 'text_main_dark',
+                'header_bg_dark', 'bubble_bg_dark',
+                'appbar_bg_dark', 'appbar_text_dark',
+                'footer_bg_dark', 'footer_text_dark',
+                'accent_dark', 'warn_dark',
+                'preview_dark'
+            )
+        }),
+        ('Accent Colors', {
+            'fields': ('accent_1', 'accent_2')
+        }),
     )
 
-class DumpToVaultForm(forms.Form):
-    bucket = forms.ModelChoiceField(
-        queryset=Bucket.objects.all(),
-        label="Select Bucket",
-        required=True
+    def preview_light(self, obj):
+        return self._render_preview_set(
+            bg=obj.primary_bg_light,
+            bubble=obj.bubble_bg_light,
+            text=obj.text_main_light,
+            accent_mode=obj.accent_light,
+            footer_bg=obj.footer_bg_light,
+            footer_text=obj.footer_text_light,
+            label="Light"
+        )
+
+    preview_light.short_description = "Light Preview"
+
+    def preview_dark(self, obj):
+        return self._render_preview_set(
+            bg=obj.primary_bg_dark,
+            bubble=obj.bubble_bg_dark,
+            text=obj.text_main_dark,
+            accent_mode=obj.accent_dark,
+            footer_bg=obj.footer_bg_dark,
+            footer_text=obj.footer_text_dark,
+            label="Dark"
+        )
+
+    preview_dark.short_description = "Dark Preview"
+
+    def _render_preview_set(self, bg, bubble, text, accent_mode, footer_bg, footer_text, label):
+        return format_html(
+            '''
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <div style="background-color:{bg}; color:{text}; padding:8px; border-radius:4px; width:120px; text-align:center;">
+                    {label} BG
+                </div>
+                <div style="background-color:{bubble}; color:{text}; padding:8px; border-radius:4px; width:120px; text-align:center;">
+                    Bubble
+                </div>
+                <div style="background-color:{accent}; color:{text}; padding:8px; border-radius:4px; width:120px; text-align:center;">
+                    Accent {label}
+                </div>
+            </div>
+            ''',
+            bg=bg,
+            bubble=bubble,
+            text=text,
+            accent=accent_mode,
+            label=label
+        )
+
+@admin.register(Theme)
+class ThemeAdmin(admin.ModelAdmin):
+    list_display = ('name', 'font')
+    search_fields = ('name', 'font__name')
+    ordering = ('name',)
+
+@admin.register(Platform)
+class PlatformAdmin(admin.ModelAdmin):
+    list_display = (
+        'site_name',
+        'domain',
+        'publication_year',
+        'active',
+        'get_theme_name',
+        'rate_limit_window',
+        'rate_limit_max_requests',
     )
-    filename = forms.CharField(
-        label="Filename",
-        required=True,
-    )
+    search_fields = ('site_name', 'domain', 'theme__name')
+    list_filter = ('active', 'publication_year', 'theme')
+    ordering = ['publication_year']
 
-    def __init__(self, *args, model_class=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        if model_class:
-            default_name = f"{model_class.__name__.lower()}_dump.json"
-            self.fields['filename'].initial = default_name
+    def get_theme_name(self, obj):
+        return obj.theme.name if obj.theme else '-'
+    get_theme_name.short_description = 'Theme'
 
-class BaseSerializableAdmin(admin.ModelAdmin):
-    actions = ['dump_selected_objects_action', 'load_from_vault_action']
 
-    def get_serializer(self):
-        return ModelSerializer(self.model)
-
-    # 📤 Dump via action → redirect to form
-    def dump_selected_objects_action(self, request, queryset):
-        selected = request.POST.getlist(ACTION_CHECKBOX_NAME)
-        url = reverse(f"admin:{self.model._meta.model_name}_dump_to_vault") + f"?ids={','.join(selected)}"
-        return redirect(url)
-
-    dump_selected_objects_action.short_description = "Dump selected objects to Vault"
-
-    # 📥 Load via action → redirect to form
-    def load_from_vault_action(self, request, queryset):
-        url = reverse(f"admin:{self.model._meta.model_name}_load_from_vault")
-        return redirect(url)
-
-    load_from_vault_action.short_description = "Load objects from Vault file"
-
-    # 🔗 Custom URLs
-    def get_urls(self):
-        model_name = self.model._meta.model_name
-        custom_urls = [
-            path(f"{model_name}/load-from-vault/", self.admin_site.admin_view(self.load_from_vault_view), name=f"{model_name}_load_from_vault"),
-            path(f"{model_name}/dump-to-vault/", self.admin_site.admin_view(self.dump_to_vault_view), name=f"{model_name}_dump_to_vault"),
-        ]
-        return custom_urls + super().get_urls()
-
-    # 📥 Load from Vault
-    def load_from_vault_view(self, request):
-        model_class = self.model
-        form = VaultFilePickerForm(request.POST or None)
-        if request.method == "POST" and form.is_valid():
-            vault_file = form.cleaned_data["vault_file"]
-            serializer = ModelSerializer(model_class)
-            try:
-                serializer.load_from_bucket(vault_file)
-                self.message_user(request, "Data loaded successfully.")
-            except ValueError as e:
-                self.message_user(request, f"Error: {str(e)}", level=messages.ERROR)
-            opts = model_class._meta
-            return redirect(reverse(f"admin:{opts.app_label}_{opts.model_name}_changelist"))
-
-        return render(request, "admin/load_from_vault_form.html", {
-            "form": form,
-            "title": f"Load {model_class.__name__} from Vault"
-        })
-
-    # 📤 Dump to Vault
-    def dump_to_vault_view(self, request):
-        model_class = self.model
-        ids = request.GET.get("ids", "").split(",")
-        queryset = model_class.objects.filter(pk__in=ids)
-
-        form = DumpToVaultForm(request.POST or None, model_class=model_class)
-
-        if request.method == "POST" and form.is_valid():
-            bucket = form.cleaned_data["bucket"]
-            filename = form.cleaned_data["filename"]
-            owner = request.user
-
-            serializer = ModelSerializer(model_class)
-            try:
-                # Dump the entire queryset in one go
-                serializer.dump_queryset_to_bucket(
-                    queryset=queryset,
-                    owner=owner,
-                    bucket=bucket,
-                    filename=filename
-                )
-                self.message_user(request, f"{queryset.count()} objects dumped to {filename}.")
-            except ValueError as e:
-                self.message_user(request, f"Error: {str(e)}", level=messages.ERROR)
-
-            opts = model_class._meta
-            return redirect(reverse(f"admin:{opts.app_label}_{opts.model_name}_changelist"))
-
-        return render(request, "admin/dump_to_vault_form.html", {
-            "form": form,
-            "queryset": queryset,
-            "title": f"Dump {model_class.__name__} to Vault"
-        })
-
+@admin.register(DashboardBlock)
+class DashboardBlockAdmin(admin.ModelAdmin):
+    list_display = ('title', 'icon', 'description', 'link', 'public')
+    search_fields = ('title', 'description', 'icon', 'link')
+    ordering = ('title',)

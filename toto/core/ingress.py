@@ -1,6 +1,6 @@
 import json
 from django.core.management.base import BaseCommand, CommandError
-from oya.models import DashboardBlock
+from toto.core.models import DashboardBlock
 import os
 from django.conf import settings
 

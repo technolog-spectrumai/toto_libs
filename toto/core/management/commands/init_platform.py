@@ -43,21 +43,38 @@ class Command(BaseCommand):
 
         if options.get('reset'):
             self.clear_db()
-            #call_command("clean_graphs")
 
-        self.stdout.write(self.style.NOTICE("Running migrations..."))
+        self.stdout.write(self.style.NOTICE("Running initial migrations..."))
+
+        # First pass: detect and apply migrations for all apps
         call_command("makemigrations")
         call_command("migrate")
 
-        self.auto_create_migrations()
+        self.stdout.write(self.style.SUCCESS("Initial migrations complete."))
 
-        call_command("makemigrations")
+        # Second pass: explicitly create migrations for each installed app
+        # using app labels, not full dotted paths
+        for app in settings.INSTALLED_APPS:
+            try:
+                # Skip Django contrib apps except auth
+                if app.startswith("django.contrib"):
+                    if app.endswith("auth"):
+                        call_command("makemigrations", "auth")
+                    continue
+
+                # Convert "toto.core" → "core"
+                label = app.split(".")[-1]
+                call_command("makemigrations", label)
+
+            except Exception as e:
+                self.stdout.write(self.style.WARNING(f"Skipping {app}: {e}"))
+
+        # Final pass: apply all migrations
         call_command("migrate")
-        self.stdout.write(self.style.SUCCESS("Migrations completed."))
+        self.stdout.write(self.style.SUCCESS("All migrations completed."))
 
         admin_password = options['password']
-        call_command("init_data", password=admin_password)
-        self.stdout.write(self.style.SUCCESS(f"Installation completed."))
+        self.stdout.write(self.style.SUCCESS("Installation completed."))
 
     def clear_db(self):
         """Deletes the SQLite database file if it exists, otherwise flushes the DB"""

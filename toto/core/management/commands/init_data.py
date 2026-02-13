@@ -2,7 +2,6 @@ from django.core.management.base import BaseCommand, CommandError
 from django.core.management import call_command
 import os
 import json
-#from oya.neo4j import Neo4jHelper
 
 
 class Command(BaseCommand):
@@ -24,7 +23,7 @@ class Command(BaseCommand):
             self.stderr.write(self.style.ERROR(f"Error initializing platform: {e}"))
 
     def create_fonts(self):
-        from oya.models import Font
+        from toto.core.models import Font
 
         FONTS_FILE = os.path.join(os.path.dirname(__file__), '../../../../../data/fonts.json')
 
@@ -125,7 +124,7 @@ class Command(BaseCommand):
 
     def get_theme(self, name):
         """Fetches the latest Theme ID to be used in platform creation"""
-        from oya.models import Theme  # Import locally to avoid circular imports
+        from toto.core.models import Theme  # Import locally to avoid circular imports
         try:
             return Theme.objects.get(name=name)
         except Theme.DoesNotExist:
@@ -133,7 +132,7 @@ class Command(BaseCommand):
 
     def get_font(self, name):
         """Fetches a Font object by name"""
-        from oya.models import Font  # Local import to avoid circular imports
+        from toto.core.models import Font  # Local import to avoid circular imports
         try:
             return Font.objects.get(name=name)
         except Font.DoesNotExist:

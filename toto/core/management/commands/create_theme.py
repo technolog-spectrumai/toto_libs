@@ -1,6 +1,6 @@
 import json
 from django.core.management.base import BaseCommand
-from oya.models import Font, Theme, ColorMix
+from toto.core.models import Font, Theme, ColorMix
 
 
 class Command(BaseCommand):

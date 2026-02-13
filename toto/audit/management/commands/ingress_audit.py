@@ -2,7 +2,7 @@ from django.core.management.base import BaseCommand
 from django.conf import settings
 from pathlib import Path
 from audit.models import AuditLog
-from oya.ingress import IngressCommand
+from toto.core.ingress import IngressCommand
 
 
 class Command(IngressCommand):

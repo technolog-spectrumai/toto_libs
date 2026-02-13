@@ -1,5 +1,5 @@
 from django.core.management.base import BaseCommand
-from oya.models import DashboardBlock
+from toto.core.models import DashboardBlock
 
 
 class Command(BaseCommand):

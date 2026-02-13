@@ -4,7 +4,7 @@ from django.conf import settings
 from django.core.files import File
 from django.core.management import CommandError
 from django.core.management.base import BaseCommand
-from oya.models import Platform, Theme
+from toto.core.models import Platform, Theme
 from gervazy.models import SecretKey   # import SecretKey from gervazy app
 from datetime import datetime
 import secrets

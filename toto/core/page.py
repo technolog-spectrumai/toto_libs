@@ -1,6 +1,6 @@
-from oya.models import Platform
+from toto.core.models import Platform
 from django.http import Http404
-from oya.serializers import PlatformSerializer
+from toto.core.serializers import PlatformSerializer
 
 
 class PageProcessor:

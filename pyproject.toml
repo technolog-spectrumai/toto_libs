@@ -10,9 +10,8 @@ dependencies = [
 [tool.setuptools]
 packages = [
     "toto",
-    "toto.vault",
-    "toto.oya",
     "toto.core",
+    "toto.vault",
     "toto.gervazy"
 ]
 

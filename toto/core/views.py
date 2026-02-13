@@ -1,5 +1,5 @@
-from oya.models import DashboardBlock
-from .page import PageProcessor
+from toto.core.models import DashboardBlock
+from toto.core.page import PageProcessor
 import os
 from django.shortcuts import render
 

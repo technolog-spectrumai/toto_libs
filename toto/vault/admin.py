@@ -3,9 +3,8 @@ from django.urls import path, reverse
 from django.shortcuts import render, redirect
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from .models import VaultFile, Bucket
-from toto.batch import BatchAction
+from toto.core.batch import BatchAction
 from django.utils.html import format_html
-from django import forms
 
 
 @admin.register(Bucket)

@@ -2,7 +2,7 @@ import os
 import json
 from django.core.management.base import BaseCommand, CommandError
 from django.core.management import call_command
-from oya.ingress import IngressCommand
+from toto.core.ingress import IngressCommand
 
 
 class Command(IngressCommand):

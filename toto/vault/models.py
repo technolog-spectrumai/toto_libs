@@ -3,9 +3,9 @@ import os
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils.text import slugify
-from vault.strategy.pdf import PdfStrategy
-from vault.strategy.image import ImageStrategy
-from vault.strategy.text import TextStrategy
+from toto.vault.strategy.pdf import PdfStrategy
+from toto.vault.strategy.image import ImageStrategy
+from toto.vault.strategy.text import TextStrategy
 from django.urls import reverse
 
 
