@@ -74,6 +74,7 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS("All migrations completed."))
 
         admin_password = options['password']
+        call_command("init_data", password=admin_password)
         self.stdout.write(self.style.SUCCESS("Installation completed."))
 
     def clear_db(self):

@@ -4,7 +4,7 @@ from django.urls import reverse
 from .models import Platform, Font, Theme, ColorMix
 from django.contrib.auth.models import User
 from datetime import datetime
-from gervazy.models import SecretKey
+from toto.gervazy.models import SecretKey
 from django.core.cache import cache
 
 
