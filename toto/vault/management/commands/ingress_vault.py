@@ -1,7 +1,7 @@
 from django.contrib.auth.models import User
-from vault.models import VaultFile, Bucket
-from gervazy.models import KeyRing
-from oya.ingress import IngressCommand
+from toto.vault.models import VaultFile, Bucket
+from toto.gervazy.models import KeyRing
+from toto.core.ingress import IngressCommand
 import os
 
 
@@ -25,7 +25,7 @@ class Command(IngressCommand):
             user = User.objects.get(username=username)
             self.stdout.write(f"Found demo user: {user.username}")
         except User.DoesNotExist:
-            self.stdout.write(self.style.ERROR("Demo user 'vaultuser' not found. Please create the user first."))
+            self.stdout.write(self.style.ERROR("Demo user 'vault.user' not found. Please create the user first."))
             return
 
         # Create KeyRing

@@ -1,6 +1,6 @@
 from django.contrib.auth.models import User
-from gervazy.models import KeyRing, RSAKeyPair
-from oya.ingress import IngressCommand
+from toto.gervazy.models import KeyRing, RSAKeyPair
+from toto.core.ingress import IngressCommand
 import os
 
 

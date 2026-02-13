@@ -1,7 +1,7 @@
 from django.core.management.base import BaseCommand
 from django.conf import settings
 from pathlib import Path
-from audit.models import AuditLog
+from toto.audit.models import AuditLog
 from toto.core.ingress import IngressCommand
 
 
