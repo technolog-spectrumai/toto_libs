@@ -23,8 +23,8 @@ class PlatformMiddleware:
             if platform and not platform.active:
                 # Skip redirect for admin URLs
                 if not request.path.startswith("/admin/"):
-                    if request.path != reverse("nest:maintenance"):
-                        return redirect(reverse("nest:maintenance"))
+                    if request.path != reverse("core:maintenance"):
+                        return redirect(reverse("core:maintenance"))
 
             # 2. Rate limiting check
             if platform:
