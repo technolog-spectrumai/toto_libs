@@ -36,5 +36,6 @@ class PlatformSerializer(serializers.ModelSerializer):
             "site_name",
             "publication_year",
             "active",
-            "theme"
+            "theme",
+            "author"
         ]
