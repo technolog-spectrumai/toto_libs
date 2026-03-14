@@ -25,7 +25,6 @@ class Command(BaseCommand):
         Convert dotted path to Django app label.
         Example:
             'toto.core' -> 'core'
-            'audit'     -> 'audit'
         """
         return app_name.split(".")[-1]
 
