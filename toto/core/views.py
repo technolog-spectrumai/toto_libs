@@ -15,11 +15,9 @@ def home_view(request):
     processor = PageProcessor()
 
     platform = Platform.objects.filter(active=True).first()
-    #federation = Federation.objects.filter(active=True).first()
 
     context = {
-        "platform": platform,
-        "federation": {},
+        "platform": platform
     }
 
     return render(request, _get_template("home.html"), processor.decorate(context, request))
