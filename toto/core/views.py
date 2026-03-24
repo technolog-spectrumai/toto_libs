@@ -1,7 +1,8 @@
-from toto.core.models import DashboardBlock
+from toto.core.models import DashboardBlock, Platform
 from toto.core.page import PageProcessor
 import os
 from django.shortcuts import render
+
 
 template_dir = "oya"
 
@@ -12,7 +13,17 @@ def _get_template(name):
 
 def home_view(request):
     processor = PageProcessor()
-    return render(request, _get_template("home.html"), processor.decorate({}, request))
+
+    platform = Platform.objects.filter(active=True).first()
+    #federation = Federation.objects.filter(active=True).first()
+
+    context = {
+        "platform": platform,
+        "federation": {},
+    }
+
+    return render(request, _get_template("home.html"), processor.decorate(context, request))
+
 
 
 def dashboard_view(request):
