@@ -18,9 +18,13 @@ class PageProcessor:
         else:
             self.config = self._get_config()
 
-    def _resolve_nav_items(self):
+    def _resolve_nav_items(self, request):
         items = []
         for item in getattr(settings, "HEADER_NAV_ITEMS", []):
+            # Skip items requiring auth if user is anonymous
+            if item.get("requires_auth") and not request.user.is_authenticated:
+                continue
+
             url_name = item.get("url_name")
             try:
                 url = reverse(url_name)
@@ -41,30 +45,39 @@ class PageProcessor:
         return platform
 
     def decorate(self, context, request):
-        # If maintenance mode, just inject minimal context
+        """
+        Injects platform configuration, theme, user info, and navigation items
+        into the template context.
+        """
+
+        # Base context shared in both modes
+        base_context = {
+            "user": request.user,
+            "is_authenticated": request.user.is_authenticated,
+            "header_nav_items": self._resolve_nav_items(request),
+        }
+
+        # Maintenance mode → minimal context
         if self.config is None:
             context.update({
+                **base_context,
                 "platform": None,
-                "user": request.user,
                 "font": {},
                 "theme": {},
-                "is_authenticated": request.user.is_authenticated,
                 "logo": None,
-                "header_nav_items": self._resolve_nav_items()
             })
             return context
 
-        # Normal mode: inject full platform data
-        platform = PlatformSerializer(self.config).data
-        theme_data = platform.get("theme") or {}
+        # Normal mode → full platform data
+        platform_data = PlatformSerializer(self.config).data
+        theme_data = platform_data.get("theme") or {}
 
         context.update({
-            "platform": platform,
-            "user": request.user,
+            **base_context,
+            "platform": platform_data,
             "font": theme_data.get("font", {}),
             "theme": theme_data,
-            "is_authenticated": request.user.is_authenticated,
             "logo": self.config.logo.url,
-            "header_nav_items": self._resolve_nav_items()
         })
+
         return context
