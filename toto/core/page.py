@@ -1,6 +1,8 @@
 from toto.core.models import Platform
 from django.http import Http404
 from toto.core.serializers import PlatformSerializer
+from django.conf import settings
+from django.urls import reverse, NoReverseMatch
 
 
 class PageProcessor:
@@ -15,6 +17,22 @@ class PageProcessor:
             self.config = None
         else:
             self.config = self._get_config()
+
+    def _resolve_nav_items(self):
+        items = []
+        for item in getattr(settings, "HEADER_NAV_ITEMS", []):
+            url_name = item.get("url_name")
+            try:
+                url = reverse(url_name)
+            except NoReverseMatch:
+                url = url_name  # fallback: literal URL
+
+            items.append({
+                "label": item["label"],
+                "icon": item.get("icon", ""),
+                "url": url,
+            })
+        return items
 
     def _get_config(self):
         platform = Platform.objects.filter(active=True).first()
@@ -32,6 +50,7 @@ class PageProcessor:
                 "theme": {},
                 "is_authenticated": request.user.is_authenticated,
                 "logo": None,
+                "header_nav_items": self._resolve_nav_items()
             })
             return context
 
@@ -45,6 +64,7 @@ class PageProcessor:
             "font": theme_data.get("font", {}),
             "theme": theme_data,
             "is_authenticated": request.user.is_authenticated,
-            "logo": self.config.logo.url
+            "logo": self.config.logo.url,
+            "header_nav_items": self._resolve_nav_items()
         })
         return context

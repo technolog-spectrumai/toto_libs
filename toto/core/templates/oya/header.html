@@ -17,6 +17,7 @@
 
     <!-- Desktop Nav -->
     <div class="hidden sm:flex items-center gap-3">
+
       {% if user.is_authenticated %}
       <!-- Logout Button -->
       <a href="{% url 'gate:logout' %}"
@@ -33,14 +34,19 @@
       </a>
       {% endif %}
 
-      <a href="{% url 'core:dashboard' %}"
-           class="flex items-center gap-2 px-3 py-1 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
-          <i class="fas fa-tachometer-alt text-base"></i>
-          <span>Dashboard</span>
+      <!-- Dynamic Nav Items -->
+      {% for item in header_nav_items %}
+      <a href="{{ item.url }}"
+         class="flex items-center gap-2 px-3 py-1 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
+        {% if item.icon %}
+          <i class="{{ item.icon }} text-base"></i>
+        {% endif %}
+        <span>{{ item.label }}</span>
       </a>
+      {% endfor %}
 
       <!-- Theme Toggle -->
-        <button @click="darkMode = !darkMode; localStorage.setItem('darkMode', darkMode); location.reload();"
+      <button @click="darkMode = !darkMode; localStorage.setItem('darkMode', darkMode); location.reload();"
               class="site-theme-toggle-button flex items-center gap-2 px-3 py-1 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
         <i :class="darkMode ? 'fas fa-moon' : 'fas fa-sun'" class="text-base"></i>
         <span x-text="!darkMode ? 'Light Mode' : 'Dark Mode'"></span>
@@ -77,11 +83,16 @@
       </a>
       {% endif %}
 
-        <a href="{% url 'core:dashboard' %}"
-           class="flex items-center gap-2 px-3 py-2 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
-          <i class="fas fa-tachometer-alt text-base"></i>
-          <span>Dashboard</span>
-        </a>
+      <!-- Dynamic Nav Items (Mobile) -->
+      {% for item in header_nav_items %}
+      <a href="{{ item.url }}"
+         class="flex items-center gap-2 px-3 py-2 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
+        {% if item.icon %}
+          <i class="{{ item.icon }} text-base"></i>
+        {% endif %}
+        <span>{{ item.label }}</span>
+      </a>
+      {% endfor %}
 
       <!-- Theme Toggle (Mobile) -->
       <button @click="darkMode = !darkMode; localStorage.setItem('darkMode', darkMode); location.reload();"
