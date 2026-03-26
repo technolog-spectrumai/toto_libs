@@ -17,10 +17,12 @@ def home_view(request):
     platform = Platform.objects.filter(active=True).first()
 
     context = {
-        "platform": platform
+        "platform": platform,
+        "federation": platform.federation if platform else None
     }
 
     return render(request, _get_template("home.html"), processor.decorate(context, request))
+
 
 
 

@@ -32,7 +32,7 @@ class Command(IngressCommand):
             self.stdout.write(self.style.NOTICE(f"Federation already exists: {federation.name}"))
 
         # --- Logo ingestion ---
-        logo_path = os.path.join(settings.BASE_DIR, "..", "data", "img", "logo.png")
+        logo_path = os.path.join(settings.BASE_DIR, "..", "data", "img", "federation_logo.png")
         logo_path = os.path.abspath(logo_path)
 
         if not os.path.exists(logo_path):

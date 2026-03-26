@@ -52,9 +52,28 @@
         class="rounded-xl border p-6 space-y-8 transition-colors duration-300"
       >
         <div class="text-center space-y-4">
-          <div class="mt-6 space-y-2">
-            <p><strong>Platform:</strong> {{ platform.site_name }}</p>
-            <p><strong>Domain:</strong> {{ platform.domain }}</p>
+          <div class="mt-6 space-y-4">
+              <div>
+                  <p><strong>Platform:</strong> {{ platform.site_name }}</p>
+                  <p><strong>Domain:</strong> {{ platform.domain }}</p>
+              </div>
+              <hr :class="darkMode ? 'border-accent-dark' : 'border-accent-light'" class="my-8">
+              <div>
+                  {% if federation %}
+                      <p><strong>Federation:</strong> {{ federation.name }}</p>
+                      <p><strong>Description:</strong> {{ federation.description }}</p>
+
+                      {% if federation.logo %}
+                        <p><strong>Logo:</strong>
+                          <img src="{{ federation.logo.url }}"
+                               alt="{{ federation.name }} logo"
+                               class="mx-auto mt-4 h-20 w-auto rounded" />
+                        </p>
+                      {% endif %}
+                  {% else %}
+                      <p class="opacity-70"><em>No federation assigned</em></p>
+                  {% endif %}
+              </div>
           </div>
         </div>
       </div>
