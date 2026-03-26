@@ -7,9 +7,11 @@
   <div class="max-w-6xl mx-auto flex justify-between items-center">
     <!-- Site Name -->
     <div class="flex items-center gap-3">
-      {% if logo %}
-        <img src="{{ logo }}" alt="Federation Logo" class="h-8 w-auto">
-      {% endif %}
+        {% if logo %}
+          <a href="{% url 'core:home' %}" class="flex items-center">
+            <img src="{{ logo }}" alt="Federation Logo" class="h-8 w-auto hover:opacity-80 transition">
+          </a>
+        {% endif %}
       <h1 class="text-2xl font-bold tracking-tight">
         {{ platform.site_name }}
       </h1>
