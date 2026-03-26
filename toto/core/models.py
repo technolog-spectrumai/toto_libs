@@ -2,7 +2,6 @@ from django_jsonform.models.fields import JSONField
 from django.db import models
 from colorfield.fields import ColorField
 from toto.gervazy.models import SecretKey
-from toto.vault.models import Bucket
 
 
 class Font(models.Model):
