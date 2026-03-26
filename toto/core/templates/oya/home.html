@@ -60,18 +60,17 @@
               <hr :class="darkMode ? 'border-accent-dark' : 'border-accent-light'" class="my-8">
               <div>
                   {% if federation %}
-                      <p><strong>Federation:</strong> {{ federation.name }}</p>
-                      <p><strong>Description:</strong> {{ federation.description }}</p>
+                      <p><strong>Owner:</strong> {{ federation.name }}</p>
 
                       {% if federation.logo %}
-                        <p><strong>Logo:</strong>
+                        <p>
                           <img src="{{ federation.logo.url }}"
                                alt="{{ federation.name }} logo"
                                class="mx-auto mt-4 h-20 w-auto rounded" />
                         </p>
                       {% endif %}
                   {% else %}
-                      <p class="opacity-70"><em>No federation assigned</em></p>
+                      <p class="opacity-70"><em>No Owner assigned</em></p>
                   {% endif %}
               </div>
           </div>
