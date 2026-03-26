@@ -156,6 +156,22 @@ class Theme(models.Model):
         }
 
 
+class Federation(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True)
+    logo = models.ImageField(
+        upload_to='federation_logos/',
+        null=True,
+        blank=True,
+        help_text="Optional logo for this federation"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return self.name
+
+
 class Platform(models.Model):
     domain = models.CharField(max_length=255, null=True, blank=True)
     site_name = models.CharField(max_length=255)
@@ -191,27 +207,36 @@ class Platform(models.Model):
         blank=True,
         help_text="Optional logo for this federation"
     )
+    federation = models.ForeignKey(
+        Federation,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="platform_federations",
+        help_text="Federation this platform belongs to"
+    )
 
     def __str__(self):
         return f"{self.site_name} Platform"
 
-    @property
-    def issuer_url(self):
-        """
-        Returns a canonical issuer URL for signing keys.
-        """
-        if self.domain:
-            # Normalize domain
-            domain = self.domain.strip().lower()
+    # @property
+    # def issuer_url(self):
+    #     """
+    #     Returns a canonical issuer URL for signing keys.
+    #     """
+    #     if self.domain:
+    #         # Normalize domain
+    #         domain = self.domain.strip().lower()
+    #
+    #         # Add scheme if missing
+    #         if not domain.startswith("http://") and not domain.startswith("https://"):
+    #             domain = "https://" + domain
+    #
+    #         return domain.rstrip("/")
+    #
+    #     # Fallback if domain is missing
+    #     return f"https://{self.site_name.lower().replace(' ', '')}.local"
 
-            # Add scheme if missing
-            if not domain.startswith("http://") and not domain.startswith("https://"):
-                domain = "https://" + domain
-
-            return domain.rstrip("/")
-
-        # Fallback if domain is missing
-        return f"https://{self.site_name.lower().replace(' ', '')}.local"
 
 class DashboardBlock(models.Model):
     title = models.CharField(max_length=100)

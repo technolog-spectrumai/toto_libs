@@ -1,4 +1,4 @@
-from .models import Platform, DashboardBlock, Font, Theme, ColorMix
+from .models import Platform, DashboardBlock, Font, Theme, ColorMix, Federation
 from django.contrib import admin, messages
 from django.utils.html import format_html
 
@@ -93,11 +93,20 @@ class ColorMixAdmin(admin.ModelAdmin):
             label=label
         )
 
+
 @admin.register(Theme)
 class ThemeAdmin(admin.ModelAdmin):
     list_display = ('name', 'font')
     search_fields = ('name', 'font__name')
     ordering = ('name',)
+
+
+@admin.register(Federation)
+class FederationAdmin(admin.ModelAdmin):
+    list_display = ("name", "active", "created_at")
+    search_fields = ("name",)
+    list_filter = ("active", "created_at")
+
 
 @admin.register(Platform)
 class PlatformAdmin(admin.ModelAdmin):
