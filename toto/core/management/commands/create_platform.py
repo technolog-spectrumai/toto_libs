@@ -60,7 +60,7 @@ class Command(BaseCommand):
             author = author
         )
 
-        logo_path = os.path.join(settings.BASE_DIR, "..", "data", "img", "platform_logo.png")
+        logo_path = os.path.join(settings.BASE_DIR, settings.PLATFORM_LOGO_FILENAME)
         logo_path = os.path.abspath(logo_path)
         if not os.path.exists(logo_path):
             raise CommandError(f"Logo file not found at {logo_path}")
