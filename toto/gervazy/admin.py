@@ -181,7 +181,7 @@ class SecretKeyAdmin(admin.ModelAdmin):
 
 @admin.register(SecretPassword)
 class SecretPasswordAdmin(admin.ModelAdmin):
-    list_display = ("id", "keyring", "active", "created_at", "expires_at", "status_display")
+    list_display = ("id", "name", "keyring", "active", "created_at", "expires_at", "status_display")
     list_filter = ("active", "created_at", "expires_at", "keyring")
     search_fields = ("id",)
     readonly_fields = ("created_at", "masked_password")

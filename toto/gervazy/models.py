@@ -210,7 +210,20 @@ class SecretPassword(models.Model):
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    keyring = models.ForeignKey(KeyRing, on_delete=models.CASCADE, related_name="passwords")
+
+    # Human-friendly identifier (unique)
+    name = models.CharField(
+        max_length=128,
+        unique=True,
+        blank=True,
+        help_text="Optional name for this password. Auto-generated if omitted."
+    )
+
+    keyring = models.ForeignKey(
+        KeyRing,
+        on_delete=models.CASCADE,
+        related_name="passwords"
+    )
 
     password_encrypted = models.TextField(help_text="Encrypted password material")
 
@@ -250,10 +263,17 @@ class SecretPassword(models.Model):
         return self.expires_at and timezone.now() >= self.expires_at
 
     def save(self, *args, **kwargs):
+        # Ensure password is set
         if not self.password_encrypted:
             raise ValueError("Call set_password(raw_password, passphrase) before saving.")
+
+        # Auto-generate unique name if missing
+        if not self.name:
+            self.name = f"password-{uuid.uuid4()}"
+
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"SecretPassword {self.id}"
+        return f"SecretPassword {self.name}"
+
 
