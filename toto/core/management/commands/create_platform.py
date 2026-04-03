@@ -60,14 +60,14 @@ class Command(BaseCommand):
         # -----------------------------
         keyring, created = KeyRing.objects.get_or_create(
             owner=owner,
-            label=f"{site_name} Platform KeyRing",
+            name=f"Platform-KeyRing",
             defaults={"salt": os.urandom(16)},
         )
 
         if created:
-            self.stdout.write(self.style.SUCCESS(f"Created KeyRing: {keyring.label}"))
+            self.stdout.write(self.style.SUCCESS(f"Created KeyRing: {keyring.name}"))
         else:
-            self.stdout.write(f"Using existing KeyRing: {keyring.label}")
+            self.stdout.write(f"Using existing KeyRing: {keyring.name}")
 
         # -----------------------------
         # Create encrypted SecretKey

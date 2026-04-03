@@ -24,14 +24,14 @@ class Command(IngressCommand):
         # -----------------------------
         keyring, created = KeyRing.objects.get_or_create(
             owner=user,
-            label="Gervazy Demo Key",
+            name="Gervazy Demo Key",
             defaults={"salt": os.urandom(16)},
         )
 
         if created:
-            self.stdout.write(self.style.SUCCESS(f"Created KeyRing: {keyring.label}"))
+            self.stdout.write(self.style.SUCCESS(f"Created KeyRing: {keyring.name}"))
         else:
-            self.stdout.write(f"KeyRing already exists: {keyring.label}")
+            self.stdout.write(f"KeyRing already exists: {keyring.name}")
 
         # -----------------------------
         # Create or fetch RSA Key Pair
@@ -64,7 +64,7 @@ class Command(IngressCommand):
             keyring.save()
             self.stdout.write(
                 self.style.SUCCESS(
-                    f"Linked RSAKeyPair '{rsa_pair.key_id}' to KeyRing '{keyring.label}'"
+                    f"Linked RSAKeyPair '{rsa_pair.key_id}' to KeyRing '{keyring.name}'"
                 )
             )
 
