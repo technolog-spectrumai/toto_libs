@@ -1,3 +1,5 @@
+from django import forms
+
 from .models import KeyRing
 from .models import RSAKeyPair
 from toto.core.batch import BatchAction
@@ -179,14 +181,50 @@ class SecretKeyAdmin(admin.ModelAdmin):
         )
 
 
+class SecretPasswordAdminForm(forms.ModelForm):
+    raw_password = forms.CharField(
+        required=False,
+        widget=forms.PasswordInput,
+        help_text="Enter the password to encrypt (leave blank to keep existing)."
+    )
+
+    passphrase = forms.CharField(
+        required=False,
+        widget=forms.PasswordInput,
+        help_text="Passphrase required to encrypt the password."
+    )
+
+    class Meta:
+        model = SecretPassword
+        fields = ["name", "keyring", "active", "expires_at"]
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+
+        raw_password = self.cleaned_data.get("raw_password")
+        passphrase = self.cleaned_data.get("passphrase")
+
+        # If user typed a new password → require passphrase
+        if raw_password:
+            if not passphrase:
+                raise forms.ValidationError("Passphrase is required to encrypt the password.")
+            instance.set_password(raw_password, passphrase)
+
+        if commit:
+            instance.save()
+
+        return instance
+
+
+
 @admin.register(SecretPassword)
 class SecretPasswordAdmin(admin.ModelAdmin):
+    form = SecretPasswordAdminForm
     list_display = ("id", "name", "keyring", "active", "created_at", "expires_at", "status_display")
     list_filter = ("active", "created_at", "expires_at", "keyring")
     search_fields = ("id",)
     readonly_fields = ("created_at", "masked_password")
     exclude = ("password_encrypted",)
-
     actions = ["reveal_selected_passwords", "rotate_selected_passwords"]
 
     # -------------------------
