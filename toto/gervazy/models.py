@@ -1,15 +1,17 @@
 import os
 from django.contrib.auth.models import User
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-import base64
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.asymmetric import padding
 import uuid
+import base64
 import secrets
 from django.db import models
 from django.utils import timezone
+from cryptography.fernet import Fernet
+
 
 
 class KeyRing(models.Model):
@@ -151,10 +153,6 @@ class RSAKeyPair(models.Model):
 
 
 class SecretKey(models.Model):
-    """
-    Secure storage for cryptographic secrets used in federation authentication.
-    """
-
     SIZE_CHOICES = [
         (64, "64 bytes (~86 chars)"),
         (128, "128 bytes (~172 chars)"),
@@ -162,45 +160,46 @@ class SecretKey(models.Model):
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    key = models.CharField(
-        max_length=512,
-        help_text="Secret key material (e.g., JWT signing secret)"
-    )
-    size = models.PositiveIntegerField(
-        choices=SIZE_CHOICES,
-        default=64,
-        help_text="Entropy size used when generating the secret"
-    )
+    keyring = models.ForeignKey(KeyRing, on_delete=models.CASCADE, related_name="secrets")
+
+    key_encrypted = models.CharField(max_length=512)
+    size = models.PositiveIntegerField(choices=SIZE_CHOICES, default=64)
+
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField(null=True, blank=True)
     active = models.BooleanField(default=True)
-    passphrase = models.CharField(
-        max_length=128,
-        help_text="Passphrase required to reveal or rotate this secret in admin"
-    )
+
+    # --- Key Derivation ---
+    def _derive_key(self, passphrase: str) -> bytes:
+        return self.keyring.derive_key(passphrase)
+
+    def _get_fernet(self, passphrase: str) -> Fernet:
+        return Fernet(self._derive_key(passphrase))
+
+    # --- Public API ---
+    def set_key(self, raw_key: str, passphrase: str):
+        f = self._get_fernet(passphrase)
+        self.key_encrypted = f.encrypt(raw_key.encode()).decode()
+
+    def get_key(self, passphrase: str) -> str:
+        f = self._get_fernet(passphrase)
+        return f.decrypt(self.key_encrypted.encode()).decode()
+
+    def rotate(self, passphrase: str):
+        new_key = secrets.token_urlsafe(self.size)
+        self.set_key(new_key, passphrase)
+        self.created_at = timezone.now()
+        self.save(update_fields=["key_encrypted", "created_at"])
+
+    def is_expired(self):
+        return self.expires_at and timezone.now() >= self.expires_at
+
+    def save(self, *args, **kwargs):
+        if not self.key_encrypted:
+            raise ValueError("Call set_key(raw_key, passphrase) before saving.")
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"SecretKey {self.id} (size={self.size})"
 
-    def rotate(self):
-        """
-        Rotate the secret key using the stored size.
-        """
-        self.key = secrets.token_urlsafe(self.size)
-        self.created_at = timezone.now()
-        self.save(update_fields=["key", "created_at"])
-
-    def is_expired(self) -> bool:
-        """
-        Check if the secret has expired.
-        """
-        return self.expires_at and timezone.now() >= self.expires_at
-
-    def save(self, *args, **kwargs):
-        """
-        Ensure a key is generated when creating a new SecretKey.
-        """
-        if not self.key:  # if empty, generate automatically
-            self.key = secrets.token_urlsafe(self.size)
-        super().save(*args, **kwargs)
 
