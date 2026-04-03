@@ -1,11 +1,12 @@
 from django.contrib.auth.models import User
-from toto.gervazy.models import KeyRing, RSAKeyPair
+from toto.gervazy.models import KeyRing, RSAKeyPair, SecretPassword
 from toto.core.ingress import IngressCommand
 import os
+import secrets
 
 
 class Command(IngressCommand):
-    help = "Seed Gervazy app with a demo KeyRing and RSA keypair"
+    help = "Seed Gervazy app with a demo KeyRing, RSA keypair, and example SecretPassword"
 
     def process(self):
 
@@ -41,7 +42,6 @@ class Command(IngressCommand):
         )
 
         if rsa_created:
-            # Generate fresh key material
             new_pair = RSAKeyPair.generate(
                 key_id="demo-keypair",
                 issuer="https://gervazy.local",
@@ -67,5 +67,25 @@ class Command(IngressCommand):
                     f"Linked RSAKeyPair '{rsa_pair.key_id}' to KeyRing '{keyring.label}'"
                 )
             )
+
+        # -----------------------------
+        # Create Example SecretPassword
+        # -----------------------------
+        demo_passphrase = "demo-passphrase"
+        demo_password = "SuperSecret123!"
+
+        secret_password = SecretPassword(
+            keyring=keyring,
+            active=True,
+        )
+        secret_password.set_password(demo_password, demo_passphrase)
+        secret_password.save()
+
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"Created example SecretPassword {secret_password.id} "
+                f"(encrypted with passphrase '{demo_passphrase}')"
+            )
+        )
 
         self.stdout.write(self.style.SUCCESS("Gervazy demo data seeded successfully."))

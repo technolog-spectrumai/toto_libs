@@ -1,12 +1,12 @@
 from .models import KeyRing
 from .models import RSAKeyPair
 from toto.core.batch import BatchAction
+from .models import SecretKey, SecretPassword
 from django.contrib import admin, messages
+from django.shortcuts import render, redirect
 from django.urls import path, reverse
-from django.shortcuts import redirect, render
-from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.utils.html import format_html
-from .models import SecretKey
+from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 
 
 @admin.register(KeyRing)
@@ -175,6 +175,132 @@ class SecretKeyAdmin(admin.ModelAdmin):
         return render(
             request,
             "admin/secretkey_rotate.html",
+            {"ids": ids, "count": queryset.count()},
+        )
+
+
+@admin.register(SecretPassword)
+class SecretPasswordAdmin(admin.ModelAdmin):
+    list_display = ("id", "keyring", "active", "created_at", "expires_at", "status_display")
+    list_filter = ("active", "created_at", "expires_at", "keyring")
+    search_fields = ("id",)
+    readonly_fields = ("created_at", "masked_password")
+    exclude = ("password_encrypted",)
+
+    actions = ["reveal_selected_passwords", "rotate_selected_passwords"]
+
+    # -------------------------
+    # Display helpers
+    # -------------------------
+    def status_display(self, obj):
+        if obj.is_expired():
+            return format_html('<span style="color:red;">Expired ❌</span>')
+        return format_html('<span style="color:green;">Active ✅</span>')
+    status_display.short_description = "Status"
+
+    def masked_password(self, obj):
+        """Mask password length with stars."""
+        try:
+            # Try to get length without decrypting
+            return "********"
+        except Exception:
+            return "********"
+    masked_password.short_description = "Password (masked)"
+
+    # -------------------------
+    # Custom URLs
+    # -------------------------
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path("reveal/", self.admin_site.admin_view(self.reveal_view), name="secretpassword_reveal"),
+            path("rotate/", self.admin_site.admin_view(self.rotate_view), name="secretpassword_rotate"),
+        ]
+        return custom_urls + urls
+
+    # -------------------------
+    # Admin actions
+    # -------------------------
+    def reveal_selected_passwords(self, request, queryset):
+        selected = request.POST.getlist(ACTION_CHECKBOX_NAME)
+        url = reverse("admin:secretpassword_reveal") + f"?ids={','.join(selected)}"
+        return redirect(url)
+    reveal_selected_passwords.short_description = "Reveal selected passwords (requires passphrase)"
+
+    def rotate_selected_passwords(self, request, queryset):
+        selected = request.POST.getlist(ACTION_CHECKBOX_NAME)
+        url = reverse("admin:secretpassword_rotate") + f"?ids={','.join(selected)}"
+        return redirect(url)
+    rotate_selected_passwords.short_description = "Re-encrypt selected passwords (requires passphrase)"
+
+    # -------------------------
+    # Reveal view
+    # -------------------------
+    def reveal_view(self, request):
+        ids = request.GET.get("ids", "").split(",")
+        queryset = SecretPassword.objects.filter(pk__in=ids)
+
+        if request.method == "POST":
+            passphrase = request.POST.get("passphrase")
+
+            for secret in queryset:
+                try:
+                    decrypted = secret.get_password(passphrase)
+                    self.message_user(
+                        request,
+                        f"Password {secret.id}: {decrypted}",
+                        messages.SUCCESS,
+                    )
+                except Exception:
+                    self.message_user(
+                        request,
+                        f"Invalid passphrase for password {secret.id}",
+                        messages.ERROR,
+                    )
+
+            return redirect("..")
+
+        return render(
+            request,
+            "admin/secretpassword_reveal.html",
+            {"ids": ids, "count": queryset.count()},
+        )
+
+    # -------------------------
+    # Rotate view
+    # -------------------------
+    def rotate_view(self, request):
+        ids = request.GET.get("ids", "").split(",")
+        queryset = SecretPassword.objects.filter(pk__in=ids)
+
+        if request.method == "POST":
+            passphrase = request.POST.get("passphrase")
+
+            for secret in queryset:
+                try:
+                    # Validate passphrase
+                    secret.get_password(passphrase)
+
+                    # Re-encrypt with same passphrase
+                    secret.rotate(passphrase)
+
+                    self.message_user(
+                        request,
+                        f"Re-encrypted password {secret.id}",
+                        messages.SUCCESS,
+                    )
+                except Exception:
+                    self.message_user(
+                        request,
+                        f"Invalid passphrase for password {secret.id}",
+                        messages.ERROR,
+                    )
+
+            return redirect("..")
+
+        return render(
+            request,
+            "admin/secretpassword_rotate.html",
             {"ids": ids, "count": queryset.count()},
         )
 

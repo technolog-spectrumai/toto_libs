@@ -203,3 +203,57 @@ class SecretKey(models.Model):
         return f"SecretKey {self.id} (size={self.size})"
 
 
+class SecretPassword(models.Model):
+    """
+    Secure storage for user-provided passwords of arbitrary length.
+    Encrypted using a passphrase + KeyRing salt.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    keyring = models.ForeignKey(KeyRing, on_delete=models.CASCADE, related_name="passwords")
+
+    password_encrypted = models.TextField(help_text="Encrypted password material")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    active = models.BooleanField(default=True)
+
+    # --- Key Derivation ---
+    def _derive_key(self, passphrase: str) -> bytes:
+        return self.keyring.derive_key(passphrase)
+
+    def _get_fernet(self, passphrase: str) -> Fernet:
+        return Fernet(self._derive_key(passphrase))
+
+    # --- Public API ---
+    def set_password(self, raw_password: str, passphrase: str):
+        """Encrypt and store the password."""
+        f = self._get_fernet(passphrase)
+        self.password_encrypted = f.encrypt(raw_password.encode()).decode()
+
+    def get_password(self, passphrase: str) -> str:
+        """Decrypt and return the password."""
+        f = self._get_fernet(passphrase)
+        return f.decrypt(self.password_encrypted.encode()).decode()
+
+    def rotate(self, passphrase: str):
+        """
+        Re-encrypt the password with a new key derived from the same passphrase.
+        Useful after KeyRing salt rotation.
+        """
+        raw = self.get_password(passphrase)
+        self.set_password(raw, passphrase)
+        self.created_at = timezone.now()
+        self.save(update_fields=["password_encrypted", "created_at"])
+
+    def is_expired(self):
+        return self.expires_at and timezone.now() >= self.expires_at
+
+    def save(self, *args, **kwargs):
+        if not self.password_encrypted:
+            raise ValueError("Call set_password(raw_password, passphrase) before saving.")
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"SecretPassword {self.id}"
+
