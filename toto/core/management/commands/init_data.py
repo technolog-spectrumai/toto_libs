@@ -107,20 +107,23 @@ class Command(BaseCommand):
             self.stderr.write(self.style.ERROR("Theme not found. Initialization aborted."))
             return
         author = "www.spectrumAi.pl"
+        app_secret = os.environ.get("APP_SECRET_PASSPHRASE", "qwerty")
+        if not app_secret:
+            raise RuntimeError("Environment variable APP_SECRET is not set")
+
         create_platform_args = [
             site_name,
             domain,
             author,
             "--active=True",
-            f"--theme_id={theme.id}",  # pass theme id
-            "--secret_size=64",  # let create_platform handle SecretKey
-            "--passphrase=qwerty"
+            f"--theme_id={theme.id}",
+            "--secret_size=64",
+            f"--passphrase={app_secret}",
         ]
 
         self.stdout.write(self.style.NOTICE("Creating platform..."))
         call_command("create_platform", *create_platform_args)
         self.stdout.write(self.style.SUCCESS("Platform created."))
-        #self.stdout.write(self.style.NOTICE("Cleaning Neo4j..."))
 
     def get_theme(self, name):
         """Fetches the latest Theme ID to be used in platform creation"""
