@@ -1,5 +1,5 @@
-from .models import Platform, DashboardBlock, Font, Theme, ColorMix, Federation
-from django.contrib import admin, messages
+from .models import Platform, Font, Theme, ColorMix, Federation
+from django.contrib import admin
 from django.utils.html import format_html
 
 
@@ -126,10 +126,3 @@ class PlatformAdmin(admin.ModelAdmin):
     def get_theme_name(self, obj):
         return obj.theme.name if obj.theme else '-'
     get_theme_name.short_description = 'Theme'
-
-
-@admin.register(DashboardBlock)
-class DashboardBlockAdmin(admin.ModelAdmin):
-    list_display = ('title', 'icon', 'description', 'link', 'public')
-    search_fields = ('title', 'description', 'icon', 'link')
-    ordering = ('title',)

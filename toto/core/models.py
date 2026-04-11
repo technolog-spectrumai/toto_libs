@@ -219,14 +219,3 @@ class Platform(models.Model):
     def __str__(self):
         return f"{self.site_name} Platform"
 
-
-class DashboardBlock(models.Model):
-    title = models.CharField(max_length=100)
-    description = models.TextField()
-    icon = models.CharField(max_length=50)
-    link = models.CharField(blank=True, null=True, max_length=64)
-    public = models.BooleanField(default=True)
-
-    def __str__(self):
-        return self.title
-

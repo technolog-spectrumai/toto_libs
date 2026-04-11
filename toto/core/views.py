@@ -7,6 +7,8 @@ from django.contrib.auth import authenticate, login, logout
 import logging
 from toto.core.forms import LoginForm
 import os
+from django.conf import settings
+from django.urls import reverse, NoReverseMatch
 
 
 logger = logging.getLogger(__name__)
@@ -36,17 +38,38 @@ def home_view(request):
 def dashboard_view(request):
     processor = PageProcessor()
 
-    if request.user.is_authenticated:
-        dashboard_blocks = DashboardBlock.objects.all()
-    else:
-        dashboard_blocks = DashboardBlock.objects.filter(public=True)
+    items = []
+
+    for item in settings.DASHBOARD_ITEMS:
+        # Skip non-public items for anonymous users
+        if not request.user.is_authenticated and not item.get("public", True):
+            continue
+
+        # Resolve named URLs like "events:event_list"
+        link = item.get("link")
+        if link and ":" in link:
+            try:
+                link = reverse(link)
+            except NoReverseMatch:
+                pass  # allow raw URLs
+
+        items.append({
+            "title": item["title"],
+            "description": item["description"],
+            "icon": item["icon"],
+            "link": link,
+            "public": item.get("public", True),
+        })
 
     context = {
         "page_title": "Dashboard",
-        "blocks": dashboard_blocks
+        "blocks": items,
     }
 
-    return render(request, _get_template("dashboard.html"), processor.decorate(context, request))
+    context = processor.decorate(context, request)
+
+    return render(request, _get_template("dashboard.html"), context)
+
 
 
 def not_implemented(request):
