@@ -22,14 +22,14 @@
 
       {% if user.is_authenticated %}
       <!-- Logout Button -->
-      <a href="{% url 'gate:logout' %}"
+      <a href="{% url 'core:logout' %}"
          class="flex items-center gap-2 px-3 py-1 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
         <i class="fas fa-sign-out-alt text-base"></i>
         <span>Logout</span>
       </a>
       {% else %}
       <!-- Login Button -->
-      <a href="{% url 'gate:login' %}"
+      <a href="{% url 'core:login' %}"
          class="flex items-center gap-2 px-3 py-1 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
         <i class="fas fa-sign-in-alt text-base"></i>
         <span>Login</span>
@@ -71,14 +71,14 @@
 
       {% if user.is_authenticated %}
       <!-- Logout Button (Mobile) -->
-      <a href="{% url 'gate:logout' %}"
+      <a href="{% url 'core:logout' %}"
          class="flex items-center gap-2 px-3 py-2 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
         <i class="fas fa-sign-out-alt text-base"></i>
         <span>Logout</span>
       </a>
       {% else %}
       <!-- Login Button (Mobile) -->
-      <a href="{% url 'gate:login' %}"
+      <a href="{% url 'core:login' %}"
          class="flex items-center gap-2 px-3 py-2 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
         <i class="fas fa-sign-in-alt text-base"></i>
         <span>Login</span>

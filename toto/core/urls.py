@@ -15,5 +15,6 @@ urlpatterns = [
         url=reverse_lazy('core:home'),
         permanent=not settings.DEBUG
     )),
-
+    path("login/", views.login_view, name="login"),
+    path("logout/", views.logout_view, name="logout")
 ]

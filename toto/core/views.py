@@ -1,7 +1,16 @@
 from toto.core.models import DashboardBlock, Platform
 from toto.core.page import PageProcessor
+from django.contrib.auth import get_user_model
+from toto.core.models import Platform
+from django.shortcuts import render, redirect
+from django.contrib.auth import authenticate, login, logout
+import logging
+from toto.core.forms import LoginForm
 import os
-from django.shortcuts import render
+
+
+logger = logging.getLogger(__name__)
+User = get_user_model()
 
 
 template_dir = "oya"
@@ -22,8 +31,6 @@ def home_view(request):
     }
 
     return render(request, _get_template("home.html"), processor.decorate(context, request))
-
-
 
 
 def dashboard_view(request):
@@ -54,6 +61,40 @@ def maintenance_view(request):
     processor = PageProcessor(maintenance_mode=True)
     context = {"page_title": "Under Maintenance"}
     return render(request, _get_template("maintenance.html"), processor.decorate(context, request))
+
+
+def _get_next(request):
+    return request.GET.get('next') or 'core:dashboard'
+
+
+def login_view(request):
+    processor = PageProcessor()
+    form = LoginForm(request.POST or None)
+    context = {"form": form, "page_title": "Login"}
+
+    if request.method == "POST" and form.is_valid():
+        user = authenticate(
+            request,
+            username=form.cleaned_data["username"],
+            password=form.cleaned_data["password"]
+        )
+        if user:
+            login(request, user)
+            logger.info(f"User '{user.username}' logged in successfully.")
+            return redirect(_get_next(request))
+        else:
+            logger.warning(f"Failed login attempt for username '{form.cleaned_data['username']}'.")
+            context["error"] = "Invalid credentials."
+
+    return render(request,"oya/login.html", processor.decorate(context, request))
+
+
+def logout_view(request):
+    logger.info(f"User '{request.user.username}' logged out.")
+    logout(request)
+    return redirect(_get_next(request))
+
+
 
 
 
