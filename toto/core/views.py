@@ -1,4 +1,4 @@
-from toto.core.models import DashboardBlock, Platform
+from toto.core.models import Platform
 from toto.core.page import PageProcessor
 from django.contrib.auth import get_user_model
 from toto.core.models import Platform
