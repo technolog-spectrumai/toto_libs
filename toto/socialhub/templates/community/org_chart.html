@@ -1,0 +1,29 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}Org Chart | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+<style>
+:root {
+  --bg-color: #ffffff;
+  --text-color: #333333;
+}
+[data-theme="dark"] {
+  --bg-color: #1a1a1a;
+  --text-color: #eaeaea;
+}
+body {
+  background-color: var(--bg-color);
+  color: var(--text-color);
+}
+</style>
+{% endblock %}
+
+{% block content %}
+  {% include "socialhub/org_chart_canvas.html" with companies=companies selected_company_slug=selected_company_slug theme=theme %}
+{% endblock %}
+
+{% block end_script %}
+     {% include "socialhub/org_chart_scripts.html" %}
+{% endblock %}

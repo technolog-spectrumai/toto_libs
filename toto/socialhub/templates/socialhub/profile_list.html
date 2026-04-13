@@ -1,0 +1,186 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}Community Members – {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<div
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300">
+
+  <div class="max-w-6xl mx-auto space-y-12">
+
+    <!-- Header -->
+    <section
+      :class="darkMode
+        ? 'bg-primary-bg-dark text-text-main-dark border border-accent-1'
+        : 'bg-primary-bg-light text-text-main-light border border-accent-2'"
+      class="p-4 sm:p-6 rounded-lg space-y-3 text-center">
+
+      <h1 class="text-xl sm:text-2xl font-extrabold">Community Members</h1>
+      <p class="text-sm opacity-80">Browse all public profiles</p>
+    </section>
+
+    <!-- Desktop Table -->
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Profiles</h2>
+
+      <div class="hidden md:block overflow-x-auto">
+        <table class="min-w-full text-sm border rounded"
+               :class="darkMode ? 'bg-bubble-bg-dark text-text-main-dark border-accent-1' : 'bg-white text-text-main-light border-accent-2'">
+          <thead>
+            <tr class="text-left border-b"
+                :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+              <th class="px-4 py-2">Avatar</th>
+              <th class="px-4 py-2">Name</th>
+              <th class="px-4 py-2">Bio</th>
+              <th class="px-4 py-2">Joined</th>
+              <th class="px-4 py-2">Patron</th>
+              <th class="px-4 py-2">Communities</th>
+              <th class="px-4 py-2">Action</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {% for member in profiles %}
+            <tr class="border-b"
+                :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+
+              <td class="px-4 py-2">
+                {% if member.avatar %}
+                  <img src="{{ member.avatar.url }}" class="w-10 h-10 rounded-full object-cover">
+                {% else %}
+                  <div class="w-10 h-10 rounded-full bg-gray-300 dark:bg-gray-700"></div>
+                {% endif %}
+              </td>
+
+              <td class="px-4 py-2 font-medium">{{ member.display_name }}</td>
+              <td class="px-4 py-2 truncate max-w-xs">{{ member.bio|default:"—" }}</td>
+              <td class="px-4 py-2">{{ member.joined_date|date:"F j, Y" }}</td>
+              <td class="px-4 py-2">{{ member.patron.display_name|default:"—" }}</td>
+              <td class="px-4 py-2">
+                {% if member.communities.all %}
+                  <ul class="space-y-1">
+                    {% for community in member.communities.all %}
+                      <li>
+                        <a href="{% url 'socialhub:community_detail' community.slug %}"
+                           class="underline text-blue-600 dark:text-blue-400">
+                          {{ community.name }}
+                        </a>
+                      </li>
+                    {% endfor %}
+                  </ul>
+                {% else %}
+                  <span class="text-gray-500 dark:text-gray-400">—</span>
+                {% endif %}
+              </td>
+
+              <td class="px-4 py-2">
+                <a href="{% url 'socialhub:profile_details' member.slug %}"
+                   class="underline text-blue-600 dark:text-blue-400">
+                  View Profile
+                </a>
+              </td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="6" class="px-4 py-4 text-center text-gray-500">
+                No members found.
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Mobile Cards -->
+      <div class="md:hidden space-y-4">
+        {% for member in profiles %}
+        <div class="border rounded-lg p-4"
+             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-white border-accent-2 text-text-main-light'">
+
+          <div class="flex items-center space-x-3">
+            {% if member.avatar %}
+              <img src="{{ member.avatar.url }}" class="w-12 h-12 rounded-full object-cover">
+            {% else %}
+              <div class="w-12 h-12 rounded-full bg-gray-300 dark:bg-gray-700"></div>
+            {% endif %}
+
+            <div>
+              <p class="font-semibold text-base">{{ member.display_name }}</p>
+              <p class="text-xs text-gray-500">Joined {{ member.joined_date|date:"F j, Y" }}</p>
+            </div>
+          </div>
+
+          <div class="mt-3 text-sm space-y-1">
+            <p><strong>Bio:</strong> {{ member.bio|default:"—" }}</p>
+            <p><strong>Patron:</strong> {{ member.patron.display_name|default:"—" }}</p>
+            <p><strong>Communities:</strong></p>
+            <ul class="ml-4 list-disc space-y-1">
+              {% for community in member.communities.all %}
+                <li>
+                  <a href="{% url 'socialhub:community_detail' community.slug %}"
+                     class="underline text-blue-600 dark:text-blue-400">
+                    {{ community.name }}
+                  </a>
+                </li>
+              {% empty %}
+                <li class="text-gray-500 dark:text-gray-400">None</li>
+              {% endfor %}
+            </ul>
+            <a href="{% url 'socialhub:profile_details' member.slug %}"
+               class="block mt-2 underline text-blue-600 dark:text-blue-400">
+              View Profile
+            </a>
+          </div>
+        </div>
+        {% empty %}
+        <div class="p-4 rounded border text-sm text-center"
+             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+          No members found.
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <!-- Pagination -->
+    {% if is_paginated %}
+      <div class="mt-8 flex flex-wrap justify-center items-center gap-2 text-sm">
+        {% if page_obj.has_previous %}
+          <a href="?page=1"
+             class="px-3 py-1 rounded border transition-colors duration-200"
+             :class="darkMode ? 'border-gray-600 hover:bg-gray-700' : 'border-gray-300 hover:bg-gray-100'">
+            First
+          </a>
+          <a href="?page={{ page_obj.previous_page_number }}"
+             class="px-3 py-1 rounded border transition-colors duration-200"
+             :class="darkMode ? 'border-gray-600 hover:bg-gray-700' : 'border-gray-300 hover:bg-gray-100'">
+            Previous
+          </a>
+        {% endif %}
+
+        <span class="px-3 py-1 rounded border font-medium"
+              :class="darkMode ? 'bg-gray-800 border-gray-600' : 'bg-gray-200 border-gray-300'">
+          Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+        </span>
+
+        {% if page_obj.has_next %}
+          <a href="?page={{ page_obj.next_page_number }}"
+             class="px-3 py-1 rounded border transition-colors duration-200"
+             :class="darkMode ? 'border-gray-600 hover:bg-gray-700' : 'border-gray-300 hover:bg-gray-100'">
+            Next
+          </a>
+          <a href="?page={{ page_obj.paginator.num_pages }}"
+             class="px-3 py-1 rounded border transition-colors duration-200"
+             :class="darkMode ? 'border-gray-600 hover:bg-gray-700' : 'border-gray-300 hover:bg-gray-100'">
+            Last
+          </a>
+        {% endif %}
+      </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,148 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}{{ community.name }} – {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="flex items-center justify-center px-6 py-16 min-h-screen transition-colors duration-300">
+
+  <div
+    :class="darkMode
+      ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
+      : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+    class="w-full max-w-3xl p-6 rounded-lg shadow-md border space-y-8 transition-colors duration-300"
+    x-data="{ showChart: false }">
+
+    <!-- Header -->
+    <div class="text-center space-y-4">
+
+      {% if community.logo %}
+        <img src="{{ community.logo.url }}"
+             alt="{{ community.name }}"
+             class="w-32 h-32 rounded-lg mx-auto object-cover border">
+      {% else %}
+        <div class="w-32 h-32 rounded-lg mx-auto bg-gray-300 dark:bg-gray-700"></div>
+      {% endif %}
+
+      <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+          class="text-3xl font-extrabold">
+        {{ community.name }}
+      </h2>
+
+      <p class="text-sm opacity-80">
+        {{ community.get_org_type_display }}
+      </p>
+    </div>
+
+    <!-- Details -->
+    <div class="space-y-3 text-sm">
+
+      <p><strong>Established:</strong> {{ community.established_year|default:"—" }}</p>
+
+      <p><strong>Email:</strong> {{ community.email|default:"—" }}</p>
+
+      <p><strong>Location:</strong>
+        {% if community.location %}
+          {{ community.location }}
+        {% else %}
+          —
+        {% endif %}
+      </p>
+
+      <p><strong>Autonomous:</strong> {{ community.is_autonomous|yesno:"Yes,No" }}</p>
+
+      <p><strong>Foreign:</strong> {{ community.is_foreign|yesno:"Yes,No" }}</p>
+
+      <p><strong>Head of Community:</strong>
+        {% if community.head %}
+          <a href="{% url 'socialhub:profile_details' community.head.slug %}"
+             class="underline text-blue-600 dark:text-blue-400">
+            {{ community.head.display_name }}
+          </a>
+        {% else %}
+          —
+        {% endif %}
+      </p>
+    </div>
+
+   <!-- ORG CHART BUTTON -->
+    <button
+      @click="showChart = true"
+      :class="darkMode
+        ? 'bg-accent-dark text-primary-bg-dark'
+        : 'bg-accent-light text-primary-bg-light'"
+      class="w-full py-2 px-4 rounded font-semibold transition-colors duration-300">
+      View Org Chart
+    </button>
+
+    <!-- ORG CHART MODAL -->
+    <div
+      x-show="showChart"
+      x-cloak
+      class="fixed inset-0 flex items-center justify-center p-4 z-50 transition">
+
+      <div
+        :class="darkMode
+          ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
+          : 'bg-primary-bg-light text-text-main-light border-accent-2'"
+        class="rounded-lg w-full max-w-3xl p-4 relative border shadow-xl transition-colors duration-300">
+
+        <!-- Close button -->
+        <button
+          @click="showChart = false"
+          :class="darkMode ? 'text-text-main-dark' : 'text-text-main-light'"
+          class="absolute top-2 right-2 text-xl font-bold transition-colors duration-300">
+          &times;
+        </button>
+
+        <h3 class="text-lg font-semibold mb-3 text-center">Org Chart</h3>
+
+        <div id="orgchart-container"
+             style="height: 600px; overflow: hidden;">
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Members -->
+    <div class="pt-6 border-t">
+      <h3 class="text-xl font-semibold mb-3">Members</h3>
+
+      {% if community.members.all %}
+        <ul class="space-y-2 text-sm">
+          {% for member in community.members.all %}
+            <li>
+              <a href="{% url 'socialhub:profile_details' member.slug %}"
+                 class="underline text-blue-600 dark:text-blue-400">
+                {{ member.display_name }}
+              </a>
+            </li>
+          {% empty %}
+            <li class="text-gray-500 dark:text-gray-400">No members found.</li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="text-gray-500 dark:text-gray-400">No members found.</p>
+      {% endif %}
+    </div>
+
+    <!-- Back Button -->
+    <a href="{% url 'socialhub:profile_list' %}"
+       :class="darkMode
+         ? 'bg-accent-dark text-primary-bg-dark'
+         : 'bg-accent-light text-primary-bg-light'"
+       class="inline-block px-4 py-2 mt-6 rounded font-semibold hover:opacity-90 transition text-sm text-center">
+      Back to Profiles
+    </a>
+
+  </div>
+</section>
+{% endblock %}
+
+{% block end_script %}
+  {% include "socialhub/org_chart_scripts.html" %}
+{% endblock %}
