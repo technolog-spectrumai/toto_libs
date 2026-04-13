@@ -1,5 +1,4 @@
 from django import forms
-
 from .models import KeyRing
 from .models import RSAKeyPair
 from toto.core.batch import BatchAction
@@ -9,10 +8,11 @@ from django.shortcuts import render, redirect
 from django.urls import path, reverse
 from django.utils.html import format_html
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
+from toto.core.base_admin import TotoModelAdmin
 
 
 @admin.register(KeyRing)
-class KeyRingAdmin(admin.ModelAdmin):
+class KeyRingAdmin(TotoModelAdmin):
     list_display = ('name', 'owner', 'created_at')
     search_fields = ('name', 'owner__username')
     readonly_fields = ('salt', 'created_at')
@@ -20,7 +20,7 @@ class KeyRingAdmin(admin.ModelAdmin):
 
 
 @admin.register(RSAKeyPair)
-class RSAKeyPairAdmin(admin.ModelAdmin):
+class RSAKeyPairAdmin(TotoModelAdmin):
     list_display = ("key_id", "issuer", "created_at")
     search_fields = ("key_id", "issuer")
     readonly_fields = ("public_key_pem", "private_key_pem", "created_at")
@@ -40,7 +40,7 @@ class RSAKeyPairAdmin(admin.ModelAdmin):
 
 
 @admin.register(SecretKey)
-class SecretKeyAdmin(admin.ModelAdmin):
+class SecretKeyAdmin(TotoModelAdmin):
     list_display = (
         "id",
         "keyring",
@@ -218,7 +218,7 @@ class SecretPasswordAdminForm(forms.ModelForm):
 
 
 @admin.register(SecretPassword)
-class SecretPasswordAdmin(admin.ModelAdmin):
+class SecretPasswordAdmin(TotoModelAdmin):
     form = SecretPasswordAdminForm
     list_display = ("id", "name", "keyring", "active", "created_at", "expires_at", "status_display")
     list_filter = ("active", "created_at", "expires_at", "keyring")

@@ -1,10 +1,11 @@
 from .models import Platform, Font, Theme, ColorMix, Federation
 from django.contrib import admin
 from django.utils.html import format_html
+from toto.core.base_admin import TotoModelAdmin
 
 
 @admin.register(Font)
-class FontAdmin(admin.ModelAdmin):
+class FontAdmin(TotoModelAdmin):
     list_display = ('name', 'style_family', 'cdn_link')
     list_filter = ('style_family',)
     search_fields = ('name', 'cdn_link')
@@ -12,7 +13,7 @@ class FontAdmin(admin.ModelAdmin):
 
 
 @admin.register(ColorMix)
-class ColorMixAdmin(admin.ModelAdmin):
+class ColorMixAdmin(TotoModelAdmin):
     list_display = ('name', 'preview_light', 'preview_dark')
     readonly_fields = ('preview_light', 'preview_dark')
 
@@ -95,21 +96,21 @@ class ColorMixAdmin(admin.ModelAdmin):
 
 
 @admin.register(Theme)
-class ThemeAdmin(admin.ModelAdmin):
+class ThemeAdmin(TotoModelAdmin):
     list_display = ('name', 'font')
     search_fields = ('name', 'font__name')
     ordering = ('name',)
 
 
 @admin.register(Federation)
-class FederationAdmin(admin.ModelAdmin):
+class FederationAdmin(TotoModelAdmin):
     list_display = ("name", "active", "created_at")
     search_fields = ("name",)
     list_filter = ("active", "created_at")
 
 
 @admin.register(Platform)
-class PlatformAdmin(admin.ModelAdmin):
+class PlatformAdmin(TotoModelAdmin):
     list_display = (
         'site_name',
         'domain',

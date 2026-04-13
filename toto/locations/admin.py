@@ -1,5 +1,5 @@
 from django.contrib import admin
-from django.contrib.gis.admin import OSMGeoAdmin
+from toto.core.base_admin import TotoGeoAdmin
 
 from .models import (
     Address,
@@ -9,14 +9,14 @@ from .models import (
 
 
 @admin.register(Territory)
-class TerritoryAdmin(OSMGeoAdmin):
+class TerritoryAdmin(TotoGeoAdmin):
     list_display = ("id", "name", "capital")
     list_display_links = ("id", "name")
     search_fields = ("name",)
 
 
 @admin.register(Route)
-class RouteAdmin(OSMGeoAdmin):
+class RouteAdmin(TotoGeoAdmin):
     list_display = ("id", "name", "start_address", "end_address")
     list_display_links = ("id", "name")
     search_fields = ("name", "start_address__street", "end_address__street")
@@ -24,7 +24,7 @@ class RouteAdmin(OSMGeoAdmin):
 
 
 @admin.register(Address)
-class AddressAdmin(OSMGeoAdmin):
+class AddressAdmin(TotoGeoAdmin):
     list_display = (
         "street",
         "building",

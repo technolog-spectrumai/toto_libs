@@ -3,10 +3,11 @@ from .models import (
     Community,
     CommunityMember, MembershipApplication, ReferenceRequest, EmailService
 )
+from toto.core.base_admin import TotoModelAdmin
 
 
 @admin.register(Community)
-class CommunityAdmin(admin.ModelAdmin):
+class CommunityAdmin(TotoModelAdmin):
     list_display = (
         'name',
         'slug',
@@ -46,7 +47,7 @@ class CommunityAdmin(admin.ModelAdmin):
 
 
 @admin.register(CommunityMember)
-class CommunityMemberAdmin(admin.ModelAdmin):
+class CommunityMemberAdmin(TotoModelAdmin):
     list_display = (
         'display_name',
         'user',
@@ -82,7 +83,7 @@ class CommunityMemberAdmin(admin.ModelAdmin):
 
 
 @admin.register(MembershipApplication)
-class MembershipApplicationAdmin(admin.ModelAdmin):
+class MembershipApplicationAdmin(TotoModelAdmin):
     list_display = ('email', 'code', 'community', 'status', 'is_verified_display', 'expires_at')
     list_filter = ('community', 'status', 'expires_at')
     search_fields = ('email', 'code', 'community__name')
@@ -95,7 +96,7 @@ class MembershipApplicationAdmin(admin.ModelAdmin):
 
 
 @admin.register(ReferenceRequest)
-class ReferenceRequestAdmin(admin.ModelAdmin):
+class ReferenceRequestAdmin(TotoModelAdmin):
     list_display = (
         'application',
         'referrer',
@@ -115,7 +116,7 @@ class ReferenceRequestAdmin(admin.ModelAdmin):
 
 
 @admin.register(EmailService)
-class EmailServiceAdmin(admin.ModelAdmin):
+class EmailServiceAdmin(TotoModelAdmin):
 
     list_display = (
         "name",
