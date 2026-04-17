@@ -123,7 +123,18 @@ class VaultFile(models.Model):
         strategy.decrypt(self, password=password)
 
     def get_public_url(self):
-        return reverse('vault:public_file', args=[self.bucket.slug, self.key])
+        # If key is missing or empty, no public URL can be generated
+        if not self.key:
+            return None
+
+        # If bucket is missing (shouldn't happen, but safe)
+        if not self.bucket:
+            return None
+
+        try:
+            return reverse('vault:public_file', args=[self.bucket.slug, self.key])
+        except Exception:
+            return None
 
 
 class FileGateway(models.Model):
