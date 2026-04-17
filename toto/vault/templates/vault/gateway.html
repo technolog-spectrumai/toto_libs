@@ -1,0 +1,152 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}Upload | {{ gateway.name }}{% endblock %}
+
+{% block start_script %}
+<script>
+  document.addEventListener('alpine:init', () => {
+    Alpine.data('gatewayUpload', () => ({
+      dragging: false,
+      uploading: false,
+      error: null,
+      results: null,
+
+      async handleDrop(event) {
+        this.dragging = false;
+        const file = event.dataTransfer.files[0];
+        if (file) await this.uploadFile(file);
+      },
+
+      async handleFileSelect(event) {
+        const file = event.target.files[0];
+        if (file) await this.uploadFile(file);
+      },
+
+      async uploadFile(file) {
+        this.uploading = true;
+        this.error = null;
+        this.results = null;
+
+        const formData = new FormData();
+        formData.append("file", file);
+
+        try {
+          const response = await fetch("{% url 'vault:gateway_upload' gateway.bucket.slug %}", {
+            method: "POST",
+            headers: { "X-CSRFToken": "{{ csrf_token }}" },
+            body: formData
+          });
+          console.log("RAW RESPONSE:", response);
+
+          const data = await response.json();
+
+          if (!response.ok) {
+            this.error = data.error || "Upload failed";
+          } else {
+            this.results = data.result;
+          }
+        } catch (err) {
+          this.error = err.message;
+        }
+
+        this.uploading = false;
+      }
+    }));
+  });
+</script>
+{% endblock %}
+
+{% block content %}
+<div
+  x-data="gatewayUpload"
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-6 py-10 transition-colors duration-300"
+>
+
+  <div class="max-w-4xl mx-auto space-y-12">
+
+    <!-- 🏷️ Gateway Header -->
+    <section>
+      <div class="p-6 rounded-lg shadow-md border text-center"
+           :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+
+        <h2 class="text-3xl font-bold mb-2"
+            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+          {{ gateway.name }}
+        </h2>
+
+        {% if gateway.description %}
+          <p class="text-sm opacity-70">{{ gateway.description }}</p>
+        {% endif %}
+      </div>
+    </section>
+
+    <!-- 📤 Upload Zone -->
+    <section>
+      <div
+        class="border-2 border-dashed rounded-lg p-12 text-center cursor-pointer transition"
+        @dragover.prevent="dragging = true"
+        @dragleave="dragging = false"
+        @drop.prevent="handleDrop($event)"
+        @click="$refs.fileInput.click()"
+        :class="dragging
+          ? (darkMode ? 'bg-bubble-bg-dark border-accent-dark' : 'bg-bubble-bg-light border-accent-light')
+          : (darkMode ? 'border-accent-1' : 'border-accent-2')">
+
+        <p class="text-lg font-semibold mb-2">Drop a file here</p>
+        <p class="text-sm opacity-70">or click to select</p>
+
+        <input type="file" class="hidden" x-ref="fileInput" @change="handleFileSelect">
+      </div>
+
+      {% widthratio gateway.max_file_size 1024 1 as max_mb %}
+      <p class="text-sm opacity-70 mt-2">
+        Max file size: {{ max_mb }} MB
+      </p>
+
+      <!-- Uploading -->
+      <template x-if="uploading">
+        <p class="mt-4 text-center opacity-70">Uploading…</p>
+      </template>
+
+      <!-- Error -->
+      <template x-if="error">
+        <p class="mt-4 text-center text-red-600" x-text="error"></p>
+      </template>
+    </section>
+
+    <!-- 📄 Results -->
+    <section x-show="results" x-transition>
+      <div class="p-6 rounded-lg shadow-md border"
+           :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+
+        <h3 class="text-xl font-semibold mb-4">Upload Result</h3>
+
+        <pre class="p-4 rounded text-sm whitespace-pre-wrap"
+             :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+             x-text="JSON.stringify(results, null, 2)">
+        </pre>
+      </div>
+    </section>
+
+    <!-- 🔙 Back -->
+    <section class="text-center space-x-3">
+
+      <a href="{% url 'vault:public_list' %}?bucket={{ gateway.bucket.slug }}"
+         class="inline-block px-5 py-2 rounded-lg font-semibold text-sm hover:opacity-90 transition"
+         :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'">
+        View Files in {{ gateway.bucket.name }}
+      </a>
+
+      <a href="/"
+         class="inline-block px-5 py-2 rounded-lg font-semibold text-sm hover:opacity-90 transition"
+         :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'">
+        Back to Home
+      </a>
+
+    </section>
+
+  </div>
+</div>
+{% endblock %}
