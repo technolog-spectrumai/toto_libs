@@ -220,6 +220,14 @@ class Platform(models.Model):
         blank=True,
         help_text="Base API endpoint for this platform (e.g. https://example.com/api/)"
     )
+    api_secret = models.OneToOneField(
+        SecretKey,
+        on_delete=models.CASCADE,
+        related_name="platform_api_key",
+        help_text="Encrypted API key for remote sync",
+        null=True,
+        blank=True
+    )
 
     def __str__(self):
         return f"{self.site_name} Platform"

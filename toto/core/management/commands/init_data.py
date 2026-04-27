@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.core.management import call_command
 import os
@@ -107,9 +108,9 @@ class Command(BaseCommand):
             self.stderr.write(self.style.ERROR("Theme not found. Initialization aborted."))
             return
         author = "www.spectrumAi.pl"
-        app_secret = os.environ.get("APP_SECRET_PASSPHRASE", "qwerty")
+        app_secret = settings.PLATFORM_PASSPHRASE #os.environ.get("APP_SECRET_PASSPHRASE", "qwerty")
         if not app_secret:
-            raise RuntimeError("Environment variable APP_SECRET is not set")
+            raise RuntimeError("Settings variable PLATFORM_PASSPHRASE is not set")
 
         create_platform_args = [
             site_name,

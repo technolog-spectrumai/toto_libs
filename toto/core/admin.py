@@ -1,7 +1,13 @@
+from django.conf import settings
+
 from .models import Platform, Font, Theme, ColorMix, Federation
-from django.contrib import admin
 from django.utils.html import format_html
 from toto.core.base_admin import TotoModelAdmin
+from django.contrib import admin, messages
+from django.shortcuts import render, redirect
+from django.urls import path
+from .forms import SyncAppsForm
+from toto.core.sync.service import SyncService
 
 
 @admin.register(Font)
@@ -120,10 +126,97 @@ class PlatformAdmin(TotoModelAdmin):
         'rate_limit_window',
         'rate_limit_max_requests',
     )
+
     search_fields = ('site_name', 'domain', 'theme__name')
     list_filter = ('active', 'publication_year', 'theme')
     ordering = ['publication_year']
 
+    actions = ["sync_action"]
+
+    # -------------------------
+    # Helpers
+    # -------------------------
     def get_theme_name(self, obj):
         return obj.theme.name if obj.theme else '-'
     get_theme_name.short_description = 'Theme'
+
+    # -------------------------
+    # Custom admin URLs
+    # -------------------------
+    def get_urls(self):
+        urls = super().get_urls()
+        custom = [
+            path(
+                "sync/<int:platform_id>/",
+                self.admin_site.admin_view(self.sync_view),
+                name="platform_sync",
+            ),
+        ]
+        return custom + urls
+
+    # -------------------------
+    # Action entry point
+    # -------------------------
+    def sync_action(self, request, queryset):
+        if queryset.count() != 1:
+            self.message_user(request, "Select exactly one platform.", level=messages.ERROR)
+            return
+
+        platform = queryset.first()
+        return redirect(f"sync/{platform.id}/")
+
+    sync_action.short_description = "Sync selected platform"
+
+    # -------------------------
+    # Custom sync form view
+    # -------------------------
+    def sync_view(self, request, platform_id):
+        platform = Platform.objects.get(id=platform_id)
+
+        apps_choices = getattr(settings, "APPS_TO_SYNC", [])
+
+        if request.method == "POST":
+            form = SyncAppsForm(
+                request.POST,
+                apps_choices=apps_choices,
+                initial_api_url=platform.api_url
+            )
+            if form.is_valid():
+                apps = form.cleaned_data["apps"]
+                passphrase = form.cleaned_data["passphrase"]
+                api_url = form.cleaned_data["api_url"]
+
+                # decrypt API key
+                try:
+                    api_key = platform.api_secret.get_key(passphrase)
+                except Exception as e:
+                    messages.error(request, f"Failed to decrypt API key: {e}")
+                    return redirect("..")
+
+                # run sync
+                try:
+                    service = SyncService(
+                        api_url=api_url,
+                        api_key=api_key,
+                        apps_to_sync=apps
+                    )
+                    service.sync_all()
+                except Exception as e:
+                    messages.error(request, f"Sync failed: {e}")
+                    return redirect("..")
+
+                messages.success(request, "Sync completed successfully.")
+                return redirect("..")
+
+        else:
+            form = SyncAppsForm(
+                apps_choices=apps_choices,
+                initial_api_url=platform.api_url
+            )
+
+        context = {
+            "form": form,
+            "platform": platform,
+            "title": f"Sync Platform: {platform.site_name}",
+        }
+        return render(request, "admin/platform_sync_form.html", context)

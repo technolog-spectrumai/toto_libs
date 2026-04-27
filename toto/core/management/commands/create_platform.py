@@ -95,6 +95,8 @@ class Command(BaseCommand):
                 "active": active,
                 "theme": theme,
                 "author": author,
+                "api_url": "http://127.0.0.1:8000/sync/",
+                "api_secret": secret
             },
         )
 
