@@ -10,7 +10,7 @@ from datetime import timedelta
 
 class PlatformSyncAuthentication(BaseAuthentication):
     """
-    Authenticates sync requests using RSA signatures.
+    Authenticates incoming sync requests using the platform's IN keypair.
     """
 
     def authenticate(self, request):
@@ -34,14 +34,16 @@ class PlatformSyncAuthentication(BaseAuthentication):
 
         signature = base64.b64decode(signature_header.split(" ", 1)[1])
 
+        # Identify platform by IN keypair
         try:
-            platform = Platform.objects.get(api_keypair__key_id=platform_id, active=True)
+            platform = Platform.objects.get(
+                api_keypair_in__key_id=platform_id,
+                active=True
+            )
         except Platform.DoesNotExist:
             raise AuthenticationFailed("Unknown platform")
 
-        keypair = platform.api_keypair
-        public_key = keypair.get_public_key()
-
+        public_key = platform.api_keypair_in.get_public_key()
         data = timestamp.encode()
 
         try:
@@ -57,8 +59,8 @@ class PlatformSyncAuthentication(BaseAuthentication):
         except Exception:
             raise AuthenticationFailed("Invalid RSA signature")
 
-        # Return the platform's API owner as the authenticated user
         if not platform.api_owner:
             raise AuthenticationFailed("Platform has no API owner assigned")
 
         return (platform.api_owner, platform)
+

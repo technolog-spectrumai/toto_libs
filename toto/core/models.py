@@ -231,13 +231,25 @@ class Platform(models.Model):
         related_name="platform_api_accounts",
         help_text="User account used for API authentication"
     )
-    api_keypair = models.OneToOneField(
+
+
+    api_keypair_out = models.OneToOneField(
         RSAKeyPair,
         on_delete=models.CASCADE,
         null=True,
         blank=True,
-        related_name="platform_api_keypair",
-        help_text="RSA keypair used for signing sync requests"
+        related_name="platform_send_keypair",
+        help_text="RSA keypair used when this platform SENDS sync requests"
+    )
+
+    # RSA keypair used to VERIFY incoming sync requests
+    api_keypair_in = models.OneToOneField(
+        RSAKeyPair,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="platform_receive_keypair",
+        help_text="RSA keypair used to VERIFY incoming sync requests"
     )
 
     def __str__(self):

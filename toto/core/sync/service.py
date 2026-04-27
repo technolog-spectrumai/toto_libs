@@ -9,12 +9,6 @@ from cryptography.hazmat.primitives.asymmetric import padding
 
 class SyncService:
     def __init__(self, api_url: str, platform, apps_to_sync=None):
-        """
-        api_url      → base sync URL (e.g. https://x.com/sync/)
-        platform     → Platform instance (must have api_keypair)
-        apps_to_sync → list of apps to sync
-        """
-
         self.api_url = api_url.rstrip("/") + "/"
         self.platform = platform
         self.apps_to_sync = apps_to_sync
@@ -22,16 +16,13 @@ class SyncService:
         if not self.apps_to_sync:
             raise ImproperlyConfigured("APPS_TO_SYNC must be provided.")
 
-        if not self.platform.api_keypair:
-            raise ImproperlyConfigured("Platform has no RSA keypair assigned.")
+        if not platform.api_keypair_out:
+            raise ImproperlyConfigured("Platform missing OUT RSA keypair.")
 
-    # ---------------------------------------------------------
-    # INTERNAL: Build RSA headers
-    # ---------------------------------------------------------
     def _headers(self):
         timestamp = datetime.now(timezone.utc).isoformat()
 
-        private_key = self.platform.api_keypair.get_private_key()
+        private_key = self.platform.api_keypair_out.get_private_key()
 
         signature = private_key.sign(
             timestamp.encode(),
@@ -44,7 +35,7 @@ class SyncService:
 
         return {
             "Authorization": "Signature " + base64.b64encode(signature).decode(),
-            "X-Platform-ID": self.platform.api_keypair.key_id,
+            "X-Platform-ID": self.platform.api_keypair_out.key_id,
             "X-Timestamp": timestamp,
         }
 

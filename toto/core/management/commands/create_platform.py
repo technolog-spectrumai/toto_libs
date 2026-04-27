@@ -123,7 +123,8 @@ class Command(BaseCommand):
                 "theme": theme,
                 "author": author,
                 "api_url": "http://127.0.0.1:8000/core/sync/",
-                "api_keypair": keypair,
+                "api_keypair_in": keypair,
+                "api_keypair_out": keypair,
                 "api_owner": owner,
                 "secret": secret
             },
