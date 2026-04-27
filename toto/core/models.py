@@ -215,6 +215,11 @@ class Platform(models.Model):
         related_name="platform_federations",
         help_text="Federation this platform belongs to"
     )
+    api_url = models.URLField(
+        null=True,
+        blank=True,
+        help_text="Base API endpoint for this platform (e.g. https://example.com/api/)"
+    )
 
     def __str__(self):
         return f"{self.site_name} Platform"
