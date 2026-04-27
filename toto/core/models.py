@@ -2,6 +2,9 @@ from django_jsonform.models.fields import JSONField
 from django.db import models
 from colorfield.fields import ColorField
 from toto.gervazy.models import SecretKey
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
 
 
 class Font(models.Model):
@@ -227,6 +230,14 @@ class Platform(models.Model):
         help_text="Encrypted API key for remote sync",
         null=True,
         blank=True
+    )
+    api_owner = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="platform_api_accounts",
+        help_text="User account used for API authentication"
     )
 
     def __str__(self):

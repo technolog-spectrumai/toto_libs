@@ -9,12 +9,6 @@ class PlatformSyncAuthentication(BaseAuthentication):
     Authenticates sync requests using Platform.api_secret.
     """
 
-    class SyncUser:
-        """Minimal user-like object for DRF permission checks."""
-        @property
-        def is_authenticated(self):
-            return True
-
     def authenticate(self, request):
         auth = request.headers.get("Authorization")
 
@@ -27,7 +21,6 @@ class PlatformSyncAuthentication(BaseAuthentication):
         if not passphrase:
             raise AuthenticationFailed("Server misconfigured: PLATFORM_PASSPHRASE missing")
 
-        # Check all active platforms
         for platform in Platform.objects.filter(active=True):
             try:
                 decrypted = platform.api_secret.get_key(passphrase)
@@ -35,7 +28,10 @@ class PlatformSyncAuthentication(BaseAuthentication):
                 continue
 
             if decrypted == token:
-                # Return a minimal authenticated user + platform as auth
-                return (self.SyncUser(), platform)
+                if not platform.api_owner:
+                    raise AuthenticationFailed("Platform has no API owner assigned")
+
+                # DRF expects (user, auth)
+                return (platform.api_owner, platform)
 
         raise AuthenticationFailed("Invalid API token")
