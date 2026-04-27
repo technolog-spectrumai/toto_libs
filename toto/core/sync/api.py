@@ -15,10 +15,10 @@ class SyncApiManager:
         self.apps_to_sync = apps_to_sync
         self.urlpatterns = []
         self.build_routes()
-        print("=== SYNC ROUTES ===")
-        for p in self.urlpatterns:
-            print(" /sync/" + p.pattern._route)
-        print("====================")
+        # print("=== SYNC ROUTES ===")
+        # for p in self.urlpatterns:
+        #     print(" /sync/" + p.pattern._route)
+        # print("====================")
 
     # -------------------------------------------------------
     # STATIC ENDPOINT FACTORY
