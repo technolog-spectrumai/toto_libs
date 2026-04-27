@@ -1,28 +1,52 @@
+import base64
+import requests
+from datetime import datetime, timezone
 from django.apps import apps
 from django.core.exceptions import ImproperlyConfigured
-import requests
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import padding
 
 
 class SyncService:
-    def __init__(self, api_url: str, api_key: str, apps_to_sync=None):
+    def __init__(self, api_url: str, platform, apps_to_sync=None):
         """
-        api_url      → full base URL of remote sync endpoint (e.g. https://x.com/sync/)
-        api_key      → decrypted API key (string)
-        apps_to_sync → optional override; otherwise read from settings
+        api_url      → base sync URL (e.g. https://x.com/sync/)
+        platform     → Platform instance (must have api_keypair)
+        apps_to_sync → list of apps to sync
         """
 
-        self.api_url = api_url.rstrip("/") + "/"   # normalize
-        self.api_key = api_key
+        self.api_url = api_url.rstrip("/") + "/"
+        self.platform = platform
         self.apps_to_sync = apps_to_sync
 
         if not self.apps_to_sync:
-            raise ImproperlyConfigured("APPS_TO_SYNC must be provided or defined in settings.")
+            raise ImproperlyConfigured("APPS_TO_SYNC must be provided.")
 
-        if not self.api_url:
-            raise ImproperlyConfigured("SyncService requires an API URL.")
+        if not self.platform.api_keypair:
+            raise ImproperlyConfigured("Platform has no RSA keypair assigned.")
 
-        if not self.api_key:
-            raise ImproperlyConfigured("SyncService requires an API key.")
+    # ---------------------------------------------------------
+    # INTERNAL: Build RSA headers
+    # ---------------------------------------------------------
+    def _headers(self):
+        timestamp = datetime.now(timezone.utc).isoformat()
+
+        private_key = self.platform.api_keypair.get_private_key()
+
+        signature = private_key.sign(
+            timestamp.encode(),
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.MAX_LENGTH
+            ),
+            hashes.SHA256()
+        )
+
+        return {
+            "Authorization": "Signature " + base64.b64encode(signature).decode(),
+            "X-Platform-ID": self.platform.api_keypair.key_id,
+            "X-Timestamp": timestamp,
+        }
 
     # ---------------------------------------------------------
     # PUBLIC API
@@ -47,9 +71,7 @@ class SyncService:
 
     def pull_remote(self, model):
         url = f"{self.api_url}{model._meta.app_label}/{model._meta.model_name}/"
-        headers = {"Authorization": f"Token {self.api_key}"}
-
-        response = requests.get(url, headers=headers)
+        response = requests.get(url, headers=self._headers())
         response.raise_for_status()
         return response.json()
 

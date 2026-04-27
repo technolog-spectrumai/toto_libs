@@ -1,8 +1,8 @@
-from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.core.management import call_command
 import os
 import json
+from toto.gervazy.models import RSAKeyPair
 
 
 class Command(BaseCommand):
@@ -108,9 +108,11 @@ class Command(BaseCommand):
             self.stderr.write(self.style.ERROR("Theme not found. Initialization aborted."))
             return
         author = "www.spectrumAi.pl"
-        app_secret = settings.PLATFORM_PASSPHRASE #os.environ.get("APP_SECRET_PASSPHRASE", "qwerty")
-        if not app_secret:
-            raise RuntimeError("Settings variable PLATFORM_PASSPHRASE is not set")
+        keypair = RSAKeyPair.generate(
+            key_id=f"platform-api-key",
+            issuer=domain
+        )
+        keypair.save()
 
         create_platform_args = [
             site_name,
@@ -119,7 +121,7 @@ class Command(BaseCommand):
             "--active=True",
             f"--theme_id={theme.id}",
             "--secret_size=64",
-            f"--passphrase={app_secret}",
+            f"--rsa_keypair_id={keypair.key_id}",
         ]
 
         self.stdout.write(self.style.NOTICE("Creating platform..."))

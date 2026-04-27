@@ -1,37 +1,64 @@
-from django.conf import settings
+import base64
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import padding
 from rest_framework.authentication import BaseAuthentication
 from rest_framework.exceptions import AuthenticationFailed
 from toto.core.models import Platform
+from django.utils import timezone
+from datetime import timedelta
 
 
 class PlatformSyncAuthentication(BaseAuthentication):
     """
-    Authenticates sync requests using Platform.api_secret.
+    Authenticates sync requests using RSA signatures.
     """
 
     def authenticate(self, request):
-        auth = request.headers.get("Authorization")
+        signature_header = request.headers.get("Authorization")
+        platform_id = request.headers.get("X-Platform-ID")
+        timestamp = request.headers.get("X-Timestamp")
 
-        if not auth or not auth.startswith("Token "):
-            raise AuthenticationFailed("Missing Authorization: Token <key>")
+        if not signature_header or not signature_header.startswith("Signature "):
+            raise AuthenticationFailed("Missing Authorization: Signature <sig>")
 
-        token = auth.split(" ", 1)[1].strip()
+        if not platform_id:
+            raise AuthenticationFailed("Missing X-Platform-ID")
 
-        passphrase = getattr(settings, "PLATFORM_PASSPHRASE", None)
-        if not passphrase:
-            raise AuthenticationFailed("Server misconfigured: PLATFORM_PASSPHRASE missing")
+        if not timestamp:
+            raise AuthenticationFailed("Missing X-Timestamp")
 
-        for platform in Platform.objects.filter(active=True):
-            try:
-                decrypted = platform.api_secret.get_key(passphrase)
-            except Exception:
-                continue
+        # Prevent replay attacks
+        ts = timezone.datetime.fromisoformat(timestamp)
+        if timezone.now() - ts > timedelta(minutes=5):
+            raise AuthenticationFailed("Timestamp too old")
 
-            if decrypted == token:
-                if not platform.api_owner:
-                    raise AuthenticationFailed("Platform has no API owner assigned")
+        signature = base64.b64decode(signature_header.split(" ", 1)[1])
 
-                # DRF expects (user, auth)
-                return (platform.api_owner, platform)
+        try:
+            platform = Platform.objects.get(api_keypair__key_id=platform_id, active=True)
+        except Platform.DoesNotExist:
+            raise AuthenticationFailed("Unknown platform")
 
-        raise AuthenticationFailed("Invalid API token")
+        keypair = platform.api_keypair
+        public_key = keypair.get_public_key()
+
+        data = timestamp.encode()
+
+        try:
+            public_key.verify(
+                signature,
+                data,
+                padding.PSS(
+                    mgf=padding.MGF1(hashes.SHA256()),
+                    salt_length=padding.PSS.MAX_LENGTH
+                ),
+                hashes.SHA256()
+            )
+        except Exception:
+            raise AuthenticationFailed("Invalid RSA signature")
+
+        # Return the platform's API owner as the authenticated user
+        if not platform.api_owner:
+            raise AuthenticationFailed("Platform has no API owner assigned")
+
+        return (platform.api_owner, platform)

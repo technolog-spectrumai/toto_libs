@@ -33,12 +33,6 @@ class SyncAppsForm(forms.Form):
         help_text="Address of the remote sync endpoint"
     )
 
-    passphrase = forms.CharField(
-        widget=forms.PasswordInput,
-        required=True,
-        label="Passphrase to decrypt API key"
-    )
-
     def __init__(self, *args, **kwargs):
         apps_choices = kwargs.pop("apps_choices", [])
         initial_api_url = kwargs.pop("initial_api_url", "")

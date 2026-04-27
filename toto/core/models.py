@@ -1,7 +1,7 @@
 from django_jsonform.models.fields import JSONField
 from django.db import models
 from colorfield.fields import ColorField
-from toto.gervazy.models import SecretKey
+from toto.gervazy.models import SecretKey, RSAKeyPair
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
@@ -223,14 +223,6 @@ class Platform(models.Model):
         blank=True,
         help_text="Base API endpoint for this platform (e.g. https://example.com/api/)"
     )
-    api_secret = models.OneToOneField(
-        SecretKey,
-        on_delete=models.CASCADE,
-        related_name="platform_api_key",
-        help_text="Encrypted API key for remote sync",
-        null=True,
-        blank=True
-    )
     api_owner = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
@@ -238,6 +230,14 @@ class Platform(models.Model):
         blank=True,
         related_name="platform_api_accounts",
         help_text="User account used for API authentication"
+    )
+    api_keypair = models.OneToOneField(
+        RSAKeyPair,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="platform_api_keypair",
+        help_text="RSA keypair used for signing sync requests"
     )
 
     def __str__(self):

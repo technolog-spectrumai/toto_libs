@@ -183,21 +183,13 @@ class PlatformAdmin(TotoModelAdmin):
             )
             if form.is_valid():
                 apps = form.cleaned_data["apps"]
-                passphrase = form.cleaned_data["passphrase"]
                 api_url = form.cleaned_data["api_url"]
 
-                # decrypt API key
-                try:
-                    api_key = platform.api_secret.get_key(passphrase)
-                except Exception as e:
-                    messages.error(request, f"Failed to decrypt API key: {e}")
-                    return redirect("..")
-
-                # run sync
+                # run sync (RSA-based)
                 try:
                     service = SyncService(
                         api_url=api_url,
-                        api_key=api_key,
+                        platform=platform,
                         apps_to_sync=apps
                     )
                     service.sync_all()
@@ -220,3 +212,4 @@ class PlatformAdmin(TotoModelAdmin):
             "title": f"Sync Platform: {platform.site_name}",
         }
         return render(request, "admin/platform_sync_form.html", context)
+
