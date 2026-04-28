@@ -19,7 +19,14 @@
       <p class="text-sm text-warn-light dark:text-warn-dark font-medium text-center">{{ error }}</p>
     {% endif %}
     {% if message %}
-      <p class="text-sm text-green-500 font-medium text-center">{{ message }}</p>
+      <p
+        :class="darkMode
+          ? 'text-success-dark'
+          : 'text-success-light'"
+        class="text-sm font-medium text-center"
+      >
+        {{ message }}
+      </p>
     {% endif %}
 
     <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-xl font-bold text-center">
