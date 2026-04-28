@@ -137,37 +137,18 @@ class Theme(models.Model):
 
     @property
     def theme(self):
-        return {
-            "colors": {
-                # Light mode
-                "primary-bg-light": self.color_mix.primary_bg_light,
-                "header-bg-light": self.color_mix.header_bg_light,
-                "appbar-bg-light": self.color_mix.appbar_bg_light,
-                "appbar-text-light": self.color_mix.appbar_text_light,
-                "bubble-bg-light": self.color_mix.bubble_bg_light,
-                "footer-bg-light": self.color_mix.footer_bg_light,
-                "footer-text-light": self.color_mix.footer_text_light,
-                "text-main-light": self.color_mix.text_main_light,
-                "accent-light": self.color_mix.accent_light,
-                "warn-light": self.color_mix.warn_light,
+        colors = {}
 
-                # Dark mode
-                "primary-bg-dark": self.color_mix.primary_bg_dark,
-                "header-bg-dark": self.color_mix.header_bg_dark,
-                "appbar-bg-dark": self.color_mix.appbar_bg_dark,
-                "appbar-text-dark": self.color_mix.appbar_text_dark,
-                "bubble-bg-dark": self.color_mix.bubble_bg_dark,
-                "footer-bg-dark": self.color_mix.footer_bg_dark,
-                "footer-text-dark": self.color_mix.footer_text_dark,
-                "text-main-dark": self.color_mix.text_main_dark,
-                "accent-dark": self.color_mix.accent_dark,
-                "warn-dark": self.color_mix.warn_dark,
+        # Loop through all fields in ColorMix
+        for field in self.color_mix._meta.get_fields():
+            if hasattr(self.color_mix, field.name):
+                value = getattr(self.color_mix, field.name)
 
-                # Accent colors
-                "accent-1": self.color_mix.accent_1,
-                "accent-2": self.color_mix.accent_2
-            }
-        }
+                # Only include ColorField values (hex colors)
+                if isinstance(value, str) and value.startswith("#"):
+                    colors[field.name.replace("_", "-")] = value
+
+        return {"colors": colors}
 
 
 class Federation(models.Model):
