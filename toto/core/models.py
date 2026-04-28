@@ -65,6 +65,11 @@ class ColorMix(models.Model):
     accent_light = ColorField(default="#FF4081")
     warn_light = ColorField(default="#FFC107")
 
+    # NEW
+    success_light = ColorField(default="#4CAF50")   # green
+    sunken_light = ColorField(default="#F5F5F5")    # subtle grey
+    link_light = ColorField(default="#1E88E5")      # blue
+
     # Dark mode colors
     primary_bg_dark = ColorField(default="#121212")
     header_bg_dark = ColorField(default="#1F1F1F")
@@ -77,12 +82,18 @@ class ColorMix(models.Model):
     accent_dark = ColorField(default="#FF4081")
     warn_dark = ColorField(default="#FF5722")
 
+    # NEW
+    success_dark = ColorField(default="#66BB6A")    # lighter green for dark mode
+    sunken_dark = ColorField(default="#1A1A1A")     # deeper grey
+    link_dark = ColorField(default="#64B5F6")       # lighter blue
+
     # Accent colors
     accent_1 = ColorField(default="#03A9F4")
     accent_2 = ColorField(default="#4CAF50")
 
     def __str__(self):
         return self.name
+
 
 
 class Theme(models.Model):

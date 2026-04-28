@@ -27,6 +27,10 @@ class ColorMixAdmin(TotoModelAdmin):
         (None, {
             'fields': ('name',)
         }),
+
+        # -------------------------
+        # LIGHT MODE
+        # -------------------------
         ('Light Mode Colors', {
             'fields': (
                 'primary_bg_light', 'text_main_light',
@@ -34,9 +38,14 @@ class ColorMixAdmin(TotoModelAdmin):
                 'appbar_bg_light', 'appbar_text_light',
                 'footer_bg_light', 'footer_text_light',
                 'accent_light', 'warn_light',
+                'success_light', 'sunken_light', 'link_light',
                 'preview_light'
             )
         }),
+
+        # -------------------------
+        # DARK MODE
+        # -------------------------
         ('Dark Mode Colors', {
             'fields': (
                 'primary_bg_dark', 'text_main_dark',
@@ -44,14 +53,19 @@ class ColorMixAdmin(TotoModelAdmin):
                 'appbar_bg_dark', 'appbar_text_dark',
                 'footer_bg_dark', 'footer_text_dark',
                 'accent_dark', 'warn_dark',
+                'success_dark', 'sunken_dark', 'link_dark',
                 'preview_dark'
             )
         }),
+
         ('Accent Colors', {
             'fields': ('accent_1', 'accent_2')
         }),
     )
 
+    # -------------------------
+    # PREVIEW RENDERING
+    # -------------------------
     def preview_light(self, obj):
         return self._render_preview_set(
             bg=obj.primary_bg_light,
@@ -62,7 +76,6 @@ class ColorMixAdmin(TotoModelAdmin):
             footer_text=obj.footer_text_light,
             label="Light"
         )
-
     preview_light.short_description = "Light Preview"
 
     def preview_dark(self, obj):
@@ -75,7 +88,6 @@ class ColorMixAdmin(TotoModelAdmin):
             footer_text=obj.footer_text_dark,
             label="Dark"
         )
-
     preview_dark.short_description = "Dark Preview"
 
     def _render_preview_set(self, bg, bubble, text, accent_mode, footer_bg, footer_text, label):
