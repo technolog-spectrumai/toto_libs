@@ -19,6 +19,9 @@ class Bucket(models.Model):
         verbose_name_plural = "Buckets"
         unique_together = ('name', 'owner')
 
+    def __str__(self):
+        return f"Bucket {self.name}"
+
 
 class VaultFile(models.Model):
     FILE_TYPES = [
