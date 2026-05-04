@@ -4,6 +4,8 @@ from neomodel import (
 )
 from toto.core.domain import DomainNode
 from toto.core.graph.models import Federation
+from toto.locations.graph.models import Address as AddressNode
+from toto.locations.graph.models import Territory as TerritoryNode
 
 
 class Community(DomainNode):
@@ -22,6 +24,8 @@ class Community(DomainNode):
     # NEW
     federation = RelationshipTo(Federation, "BELONGS_TO")
 
+    location = RelationshipTo(AddressNode, "LOCATED_AT")
+    territory = RelationshipTo(TerritoryNode, "IN_TERRITORY")
 
 
 class CommunityMember(DomainNode):
@@ -33,3 +37,5 @@ class CommunityMember(DomainNode):
 
     communities = RelationshipFrom("Community", "HAS_MEMBER")
     patron = RelationshipTo("CommunityMember", "MENTORED_BY")
+
+    address = RelationshipTo(AddressNode, "RESIDES_AT")

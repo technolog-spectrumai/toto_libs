@@ -1,11 +1,12 @@
 from toto.socialhub.models import Community as CommunitySql
-from toto.socialhub.models import CommunityMember as MemberSql
 from toto.socialhub.graph.models import Community as CommunityNode
 from toto.socialhub.graph.models import CommunityMember as MemberNode
 from toto.core.graph.models import Federation as FederationNode
+from toto.locations.graph.models import Address as AddressNode
+from toto.locations.graph.models import Territory as TerritoryNode
 from toto.socialhub.models import CommunityMember as MemberSql
 from toto.socialhub.graph.models import CommunityMember as MemberNode
-
+from toto.locations.graph.models import Address as AddressNode
 
 
 class CommunityProjection:
@@ -45,9 +46,12 @@ class CommunityProjection:
         for c in CommunitySql.objects.all():
             gc = CommunityNode.nodes.get(uuid=str(c.uid))
 
+            # Clear all relations
             gc.members.disconnect_all()
             gc.head.disconnect_all()
             gc.federation.disconnect_all()
+            gc.location.disconnect_all()
+            gc.territory.disconnect_all()
 
             # Members
             for m in c.members.all():
@@ -66,6 +70,18 @@ class CommunityProjection:
                 gf = FederationNode.nodes.get_or_none(uuid=str(c.federation.uid))
                 if gf:
                     gc.federation.connect(gf)
+
+            # Location (Address)
+            if c.location_id:
+                addr = AddressNode.nodes.get_or_none(uuid=str(c.location.uid))
+                if addr:
+                    gc.location.connect(addr)
+
+            # Territory
+            if c.territory_id:
+                terr = TerritoryNode.nodes.get_or_none(uuid=str(c.territory.uid))
+                if terr:
+                    gc.territory.connect(terr)
 
 
 class MemberProjection:
@@ -104,8 +120,16 @@ class MemberProjection:
                 continue
 
             gm.patron.disconnect_all()
+            gm.address.disconnect_all()
 
+            # Patron
             if m.patron_id:
                 patron = MemberNode.nodes.get_or_none(uuid=str(m.patron.uid))
                 if patron:
                     gm.patron.connect(patron)
+
+            # Address
+            if m.address_id:
+                addr = AddressNode.nodes.get_or_none(uuid=str(m.address.uid))
+                if addr:
+                    gm.address.connect(addr)

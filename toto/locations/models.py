@@ -1,9 +1,11 @@
 from django.contrib.gis.db import models
 
+from toto.core.domain import DomainEntity
+
 SRID = 4326  # WGS84 (OpenStreetMap)
 
 
-class Address(models.Model):
+class Address(DomainEntity):
     country_name = models.CharField(max_length=2, verbose_name="Country")
     state_or_province_name = models.CharField(max_length=128, verbose_name="State/Province")
     locality_name = models.CharField(max_length=128, verbose_name="Locality")
@@ -19,7 +21,7 @@ class Address(models.Model):
         return f"{base}, {self.locality_name}, {self.state_or_province_name}, {self.country_name}"
 
 
-class Territory(models.Model):
+class Territory(DomainEntity):
     name = models.CharField(max_length=200)
     geometry = models.PolygonField(srid=SRID)
     capital = models.ForeignKey(
@@ -34,7 +36,7 @@ class Territory(models.Model):
         return self.name
 
 
-class Route(models.Model):
+class Route(DomainEntity):
     name = models.CharField(max_length=200, blank=True)
     geometry = models.MultiLineStringField(srid=SRID)
 
