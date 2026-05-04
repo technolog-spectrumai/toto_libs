@@ -2,10 +2,10 @@ from neomodel import (
     StructuredNode, StringProperty, IntegerProperty,
     BooleanProperty, DateProperty, RelationshipTo, RelationshipFrom
 )
-import uuid
 
 
 class DomainNode(StructuredNode):
+    __abstract_node__ = True
     uuid = StringProperty(
         unique_index=True,
         required=True
@@ -13,6 +13,7 @@ class DomainNode(StructuredNode):
 
 
 class Community(DomainNode):
+    __label__ = "Community"
     name = StringProperty(required=True)
     slug = StringProperty(index=True)
     org_type = StringProperty()
@@ -25,6 +26,7 @@ class Community(DomainNode):
 
 
 class CommunityMember(DomainNode):
+    __label__ = "CommunityMember"
     display_name = StringProperty(required=True)
     email = StringProperty()
     phone = StringProperty()
