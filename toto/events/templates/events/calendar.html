@@ -1,0 +1,84 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}Event Calendar{% endblock %}
+
+{% block start_script %}
+<!-- FullCalendar Scripts -->
+<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.9/index.global.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.9/index.global.min.js"></script>
+
+<style>
+  /* Make FullCalendar fully responsive */
+  .fc .fc-toolbar {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .fc .fc-toolbar-title {
+    font-size: 1.25rem;
+  }
+
+  @media (max-width: 480px) {
+    .fc .fc-toolbar-title {
+      font-size: 1rem;
+    }
+  }
+
+  /* Prevent overflow on small screens */
+  #eventCalendar {
+    width: 100%;
+    overflow-x: auto;
+  }
+</style>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    const calendarEl = document.getElementById('eventCalendar');
+    const calendar = new FullCalendar.Calendar(calendarEl, {
+      initialView: 'dayGridMonth',
+      themeSystem: 'standard',
+      headerToolbar: {
+        left: 'prev,next today',
+        center: 'title',
+        right: 'dayGridMonth,timeGridWeek,listWeek'
+      },
+      events: {{ calendar_events|safe }},
+      eventColor: '{{ chart_colors.background_light }}',
+      eventTextColor: '{{ chart_colors.text_light }}',
+      height: 'auto',
+      handleWindowResize: true,
+      expandRows: true
+    });
+    calendar.render();
+  });
+</script>
+{% endblock %}
+
+{% block content %}
+<div
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300">
+
+  <div class="w-full max-w-6xl mx-auto space-y-12">
+
+    <!-- 📅 Event Calendar -->
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Event Calendar</h2>
+
+      <div class="p-4 rounded border w-full overflow-hidden"
+           :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+
+        <!-- Responsive wrapper -->
+        <div class="w-full overflow-x-auto">
+          <div id="eventCalendar" class="min-w-[320px]"></div>
+        </div>
+
+      </div>
+    </section>
+
+  </div>
+</div>
+{% endblock %}
