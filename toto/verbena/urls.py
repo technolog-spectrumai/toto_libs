@@ -1,0 +1,11 @@
+from django.urls import path
+from .views import VerbenaPageListByTagView, VerbenaPageDetailView, ArticleListView, VerbenaBookDetailView
+
+app_name = 'verbena'
+
+urlpatterns = [
+    path("", ArticleListView.as_view(), name="article_list"),
+    path("tag/<slug:tag_slug>/", VerbenaPageListByTagView.as_view(), name="page_list_by_tag"),
+    path("<slug:slug>/", VerbenaPageDetailView.as_view(), name="page_detail"),
+    path("books/<slug:slug>/", VerbenaBookDetailView.as_view(), name="book_detail")
+]
