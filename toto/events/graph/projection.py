@@ -1,7 +1,7 @@
 from toto.events.models import Event, EventCategory
-from toto.socialhub.models import CommunityMember
+from toto.socialhub.models import Person
 from toto.events.graph.models import EventNode, EventCategoryNode
-from toto.socialhub.graph.models import CommunityMember as MemberNode
+from toto.socialhub.graph.models import Person as MemberNode
 
 
 # ---------------------------------------------------------

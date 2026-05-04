@@ -18,8 +18,8 @@ class Community(DomainNode):
     is_autonomous = BooleanProperty(default=False)
     is_foreign = BooleanProperty(default=False)
 
-    members = RelationshipTo("CommunityMember", "HAS_MEMBER")
-    head = RelationshipTo("CommunityMember", "HEAD")
+    members = RelationshipTo("Person", "HAS_MEMBER")
+    head = RelationshipTo("Person", "HEAD")
 
     # NEW
     federation = RelationshipTo(Federation, "BELONGS_TO")
@@ -28,14 +28,14 @@ class Community(DomainNode):
     territory = RelationshipTo(TerritoryNode, "IN_TERRITORY")
 
 
-class CommunityMember(DomainNode):
-    __label__ = "CommunityMember"
+class Person(DomainNode):
+    __label__ = "Person"
     display_name = StringProperty(required=True)
     email = StringProperty()
     phone = StringProperty()
     date_of_birth = DateProperty()
 
     communities = RelationshipFrom("Community", "HAS_MEMBER")
-    patron = RelationshipTo("CommunityMember", "MENTORED_BY")
+    patron = RelationshipTo("Person", "MENTORED_BY")
 
     address = RelationshipTo(AddressNode, "RESIDES_AT")

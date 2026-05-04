@@ -1,7 +1,7 @@
 from django.contrib import admin
 from .models import (
     Community,
-    CommunityMember, MembershipApplication, ReferenceRequest, EmailService
+    Person, MembershipApplication, ReferenceRequest, EmailService
 )
 from toto.core.base_admin import TotoModelAdmin
 
@@ -46,8 +46,8 @@ class CommunityAdmin(TotoModelAdmin):
     is_foreign_display.short_description = "Foreign"
 
 
-@admin.register(CommunityMember)
-class CommunityMemberAdmin(TotoModelAdmin):
+@admin.register(Person)
+class PersonAdmin(TotoModelAdmin):
     list_display = (
         'display_name',
         'user',

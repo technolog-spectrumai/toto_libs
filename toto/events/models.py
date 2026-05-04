@@ -1,6 +1,6 @@
 from uuid import uuid4
 from django.db import models
-from toto.socialhub.models import CommunityMember
+from toto.socialhub.models import Person
 
 
 # 📁 Event Category
@@ -22,7 +22,7 @@ class Event(models.Model):
     location = models.CharField(max_length=200)
 
     organizer = models.ForeignKey(
-        CommunityMember,
+        Person,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

@@ -1,6 +1,6 @@
 from django.views.generic import ListView, DetailView
 from django.contrib.auth.mixins import LoginRequiredMixin
-from toto.socialhub.models import CommunityMember, Community
+from toto.socialhub.models import Person, Community
 from toto.core.page import PageProcessor
 from django.shortcuts import redirect
 from django.contrib.auth.decorators import login_required
@@ -8,7 +8,7 @@ from django.core.exceptions import PermissionDenied
 
 
 class ProfileListView(ListView):
-    model = CommunityMember
+    model = Person
     template_name = "socialhub/profile_list.html"
     context_object_name = "profiles"
     paginate_by = 10
@@ -19,7 +19,7 @@ class ProfileListView(ListView):
 
 
 class ProfileDetailView(LoginRequiredMixin, DetailView):
-    model = CommunityMember
+    model = Person
     template_name = "socialhub/profile_details.html"
     context_object_name = "profile"
 

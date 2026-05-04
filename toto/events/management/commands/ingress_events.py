@@ -1,6 +1,6 @@
 from toto.core.ingress import IngressCommand
 from toto.events.models import EventCategory, Event
-from toto.socialhub.models import CommunityMember
+from toto.socialhub.models import Person
 from django.utils.timezone import now
 from faker import Faker
 import random
@@ -35,7 +35,7 @@ class Command(IngressCommand):
             categories.append(cat)
 
         # 👥 Get community members (NOT Users anymore)
-        members = list(CommunityMember.objects.all())
+        members = list(Person.objects.all())
         if not members:
             raise Exception("❌ No community members found. Please create some first.")
 

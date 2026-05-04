@@ -1,11 +1,10 @@
 from toto.socialhub.models import Community as CommunitySql
 from toto.socialhub.graph.models import Community as CommunityNode
-from toto.socialhub.graph.models import CommunityMember as MemberNode
+from toto.socialhub.graph.models import Person as MemberNode
 from toto.core.graph.models import Federation as FederationNode
 from toto.locations.graph.models import Address as AddressNode
 from toto.locations.graph.models import Territory as TerritoryNode
-from toto.socialhub.models import CommunityMember as MemberSql
-from toto.socialhub.graph.models import CommunityMember as MemberNode
+from toto.socialhub.models import Person as MemberSql
 from toto.locations.graph.models import Address as AddressNode
 
 
@@ -86,7 +85,7 @@ class CommunityProjection:
 
 class MemberProjection:
 
-    model = "CommunityMember"
+    model = "Person"
     app = "socialhub"
 
     def sync_nodes(self):

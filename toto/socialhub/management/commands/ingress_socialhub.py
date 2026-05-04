@@ -2,7 +2,7 @@ import random
 from django.contrib.auth.models import User
 from django.utils import timezone
 from toto.core.ingress import IngressCommand
-from toto.socialhub.models import Community, CommunityMember, EmailService
+from toto.socialhub.models import Community, Person, EmailService
 from toto.locations.models import Address
 from toto.gervazy.models import SecretPassword, KeyRing
 from django.core.management.base import CommandError
@@ -92,7 +92,7 @@ class Command(IngressCommand):
     def create_members(self, community, count=6):
         """
         Creates a founder (admin if available), managers, and staff members.
-        Ensures no duplicate CommunityMember is created for a user.
+        Ensures no duplicate Person is created for a user.
         """
         members = []
 
@@ -101,8 +101,8 @@ class Command(IngressCommand):
             self.stderr.write(self.style.ERROR("❌ No users found. Create some users first."))
             return members
 
-        # Avoid selecting users already linked to a CommunityMember
-        used_user_ids = set(CommunityMember.objects.values_list("user_id", flat=True))
+        # Avoid selecting users already linked to a Person
+        used_user_ids = set(Person.objects.values_list("user_id", flat=True))
         available_users = [u for u in all_users if u.id not in used_user_ids]
 
         if not available_users:
@@ -159,7 +159,7 @@ class Command(IngressCommand):
     # ---------------------------------------------------------
 
     def create_member(self, user, display_name, bio, community, patron=None):
-        member = CommunityMember.objects.create(
+        member = Person.objects.create(
             user=user,
             display_name=display_name,
             bio=bio,

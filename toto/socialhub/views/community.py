@@ -1,7 +1,7 @@
 from django.shortcuts import get_object_or_404
 from django.urls import reverse
 from django.views.generic import ListView, DetailView
-from toto.socialhub.models import CommunityMember, Community
+from toto.socialhub.models import Person, Community
 from toto.core.page import PageProcessor
 from django.http import JsonResponse
 
@@ -39,7 +39,7 @@ def community_org_chart_data_by_slug(request, company_slug):
     community = get_object_or_404(Community, slug=company_slug)
 
     # Members belonging to this community
-    members = CommunityMember.objects.filter(
+    members = Person.objects.filter(
         communities=community
     ).select_related("user", "patron")
 

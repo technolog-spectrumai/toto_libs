@@ -6,7 +6,7 @@ from neomodel import (
     RelationshipTo,
     RelationshipFrom,
 )
-from toto.socialhub.graph.models import CommunityMember as MemberNode
+from toto.socialhub.graph.models import Person as MemberNode
 
 
 class EventCategoryNode(StructuredNode):

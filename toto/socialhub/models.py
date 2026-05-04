@@ -43,7 +43,7 @@ class Community(DomainEntity):
     established_year = models.IntegerField(null=True, blank=True)
 
     head = models.ForeignKey(
-        'CommunityMember',
+        'Person',
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -97,7 +97,7 @@ class Community(DomainEntity):
     )
 
 
-class CommunityMember(DomainEntity):
+class Person(DomainEntity):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='community_profile', null=True, blank=True)
     communities = models.ManyToManyField(Community, related_name='members', db_comment="member_of")
     patron = models.ForeignKey(
@@ -135,7 +135,7 @@ class CommunityMember(DomainEntity):
             base_slug = slugify(self.display_name)
             slug = base_slug
             counter = 1
-            while CommunityMember.objects.filter(slug=slug).exists():
+            while Person.objects.filter(slug=slug).exists():
                 slug = f"{base_slug}-{counter}"
                 counter += 1
             self.slug = slug
@@ -187,7 +187,7 @@ class MembershipApplication(models.Model):
 
 class ReferenceRequest(models.Model):
     application = models.ForeignKey(MembershipApplication, on_delete=models.CASCADE, related_name='reference_requests')
-    referrer = models.ForeignKey(CommunityMember, on_delete=models.CASCADE, related_name='sent_references')
+    referrer = models.ForeignKey(Person, on_delete=models.CASCADE, related_name='sent_references')
     message = models.TextField(blank=True)
     STATUS_CHOICES = [
         ('pending', 'Pending'),
@@ -226,9 +226,9 @@ class ReferenceRequest(models.Model):
             except User.DoesNotExist:
                 user = None
 
-            # 2. Create CommunityMember if missing
+            # 2. Create Person if missing
             if user:
-                member, created = CommunityMember.objects.get_or_create(
+                member, created = Person.objects.get_or_create(
                     user=user,
                     defaults={
                         "display_name": user.username,
