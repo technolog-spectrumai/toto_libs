@@ -1,11 +1,11 @@
 from toto.socialhub.models import Community as CommunitySql
 from toto.socialhub.models import CommunityMember as MemberSql
-
 from toto.socialhub.graph.models import Community as CommunityNode
 from toto.socialhub.graph.models import CommunityMember as MemberNode
+from toto.core.graph.models import Federation as FederationNode
 
 
-class GraphProjection:
+class SocialGraphProjection:
     """
     Sync SQL → Neo4j using UUID as the only identity.
     """
@@ -98,6 +98,13 @@ class GraphProjection:
                 if head:
                     gc.head.connect(head)
 
+            # NEW: Community → Federation
+            gc.federation.disconnect_all()
+            if c.federation_id:
+                gf = FederationNode.nodes.get_or_none(uuid=str(c.federation.uid))
+                if gf:
+                    gc.federation.connect(gf)
+
         # Member → Patron
         for m in MemberSql.objects.all():
             gm = MemberNode.nodes.get_or_none(uuid=str(m.uid))
@@ -110,3 +117,4 @@ class GraphProjection:
                 patron = MemberNode.nodes.get_or_none(uuid=str(m.patron.uid))
                 if patron:
                     gm.patron.connect(patron)
+

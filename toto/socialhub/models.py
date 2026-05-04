@@ -10,6 +10,7 @@ import uuid
 from django.db import models
 import os
 from toto.core.domain import DomainEntity
+from toto.core.models import Federation
 
 
 class Community(DomainEntity):
@@ -86,6 +87,14 @@ class Community(DomainEntity):
                 counter += 1
             self.slug = slug
         super().save(*args, **kwargs)
+
+    federation = models.ForeignKey(
+        Federation,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="communities"
+    )
 
 
 class CommunityMember(DomainEntity):

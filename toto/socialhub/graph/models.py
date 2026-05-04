@@ -2,18 +2,13 @@ from neomodel import (
     StructuredNode, StringProperty, IntegerProperty,
     BooleanProperty, DateProperty, RelationshipTo, RelationshipFrom
 )
-
-
-class DomainNode(StructuredNode):
-    __abstract_node__ = True
-    uuid = StringProperty(
-        unique_index=True,
-        required=True
-    )
+from toto.core.domain import DomainNode
+from toto.core.graph.models import Federation
 
 
 class Community(DomainNode):
     __label__ = "Community"
+
     name = StringProperty(required=True)
     slug = StringProperty(index=True)
     org_type = StringProperty()
@@ -23,6 +18,10 @@ class Community(DomainNode):
 
     members = RelationshipTo("CommunityMember", "HAS_MEMBER")
     head = RelationshipTo("CommunityMember", "HEAD")
+
+    # NEW
+    federation = RelationshipTo(Federation, "BELONGS_TO")
+
 
 
 class CommunityMember(DomainNode):

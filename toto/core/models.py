@@ -3,6 +3,7 @@ from django.db import models
 from colorfield.fields import ColorField
 from toto.gervazy.models import SecretKey, RSAKeyPair
 from django.contrib.auth import get_user_model
+from toto.core.domain import DomainEntity
 
 User = get_user_model()
 
@@ -151,7 +152,7 @@ class Theme(models.Model):
         return {"colors": colors}
 
 
-class Federation(models.Model):
+class Federation(DomainEntity):
     name = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True)
     logo = models.ImageField(

@@ -1,5 +1,8 @@
 import uuid
 from django.db import models
+from neomodel import (
+    StructuredNode, StringProperty
+)
 
 
 class DomainEntity(models.Model):
@@ -11,3 +14,11 @@ class DomainEntity(models.Model):
 
     class Meta:
         abstract = True
+
+
+class DomainNode(StructuredNode):
+    __abstract_node__ = True
+    uuid = StringProperty(
+        unique_index=True,
+        required=True
+    )
