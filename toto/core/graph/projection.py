@@ -3,11 +3,9 @@ from toto.core.graph.models import Federation as FederationNode
 
 
 class FederationProjection:
-    """
-    Sync ONLY Federation nodes.
-    No communities.
-    No edges.
-    """
+
+    model = "Federation"
+    app = "core"
 
     # ---------------------------------------------------------
     # NODE SYNC

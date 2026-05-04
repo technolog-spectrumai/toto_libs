@@ -3,88 +3,51 @@ from toto.socialhub.models import CommunityMember as MemberSql
 from toto.socialhub.graph.models import Community as CommunityNode
 from toto.socialhub.graph.models import CommunityMember as MemberNode
 from toto.core.graph.models import Federation as FederationNode
+from toto.socialhub.models import CommunityMember as MemberSql
+from toto.socialhub.graph.models import CommunityMember as MemberNode
 
 
-class SocialGraphProjection:
-    """
-    Sync SQL → Neo4j using UUID as the only identity.
-    """
 
-    # ---------------------------------------------------------
-    # HELPERS
-    # ---------------------------------------------------------
-    def _sync_community(self, c: CommunitySql):
-        node = CommunityNode.nodes.get_or_none(uuid=str(c.uid))
+class CommunityProjection:
 
-        if node and type(node) is not CommunityNode:
-            node.delete()
-            node = None
+    model = "Community"
+    app = "socialhub"
 
-        if not node:
-            node = CommunityNode(
-                uuid=str(c.uid),
-                name=c.name,
-                slug=c.slug,
-                org_type=c.org_type,
-                established_year=c.established_year,
-                is_autonomous=c.is_autonomous,
-                is_foreign=c.is_foreign,
-            )
-        else:
-            node.name = c.name
-            node.slug = c.slug
-            node.org_type = c.org_type
-            node.established_year = c.established_year
-            node.is_autonomous = c.is_autonomous
-            node.is_foreign = c.is_foreign
-
-        node.save()
-        return node
-
-    def _sync_member(self, m: MemberSql):
-        node = MemberNode.nodes.get_or_none(uuid=str(m.uid))
-
-        if node and type(node) is not MemberNode:
-            node.delete()
-            node = None
-
-        if not node:
-            node = MemberNode(
-                uuid=str(m.uid),
-                display_name=m.display_name,
-                email=m.email,
-                phone=m.phone,
-                date_of_birth=m.date_of_birth,
-            )
-        else:
-            node.display_name = m.display_name
-            node.email = m.email
-            node.phone = m.phone
-            node.date_of_birth = m.date_of_birth
-
-        node.save()
-        return node
-
-    # ---------------------------------------------------------
-    # PUBLIC: SYNC ALL NODES
-    # ---------------------------------------------------------
     def sync_nodes(self):
         for c in CommunitySql.objects.all():
-            self._sync_community(c)
+            node = CommunityNode.nodes.get_or_none(uuid=str(c.uid))
 
-        for m in MemberSql.objects.all():
-            self._sync_member(m)
+            if node and type(node) is not CommunityNode:
+                node.delete()
+                node = None
 
-    # ---------------------------------------------------------
-    # PUBLIC: SYNC ALL EDGES
-    # ---------------------------------------------------------
+            if not node:
+                node = CommunityNode(
+                    uuid=str(c.uid),
+                    name=c.name,
+                    slug=c.slug,
+                    org_type=c.org_type,
+                    established_year=c.established_year,
+                    is_autonomous=c.is_autonomous,
+                    is_foreign=c.is_foreign,
+                )
+            else:
+                node.name = c.name
+                node.slug = c.slug
+                node.org_type = c.org_type
+                node.established_year = c.established_year
+                node.is_autonomous = c.is_autonomous
+                node.is_foreign = c.is_foreign
+
+            node.save()
+
     def sync_edges(self):
-        # Community → Members + Head
         for c in CommunitySql.objects.all():
             gc = CommunityNode.nodes.get(uuid=str(c.uid))
 
             gc.members.disconnect_all()
             gc.head.disconnect_all()
+            gc.federation.disconnect_all()
 
             # Members
             for m in c.members.all():
@@ -98,14 +61,43 @@ class SocialGraphProjection:
                 if head:
                     gc.head.connect(head)
 
-            # NEW: Community → Federation
-            gc.federation.disconnect_all()
+            # Federation
             if c.federation_id:
                 gf = FederationNode.nodes.get_or_none(uuid=str(c.federation.uid))
                 if gf:
                     gc.federation.connect(gf)
 
-        # Member → Patron
+
+class MemberProjection:
+
+    model = "CommunityMember"
+    app = "socialhub"
+
+    def sync_nodes(self):
+        for m in MemberSql.objects.all():
+            node = MemberNode.nodes.get_or_none(uuid=str(m.uid))
+
+            if node and type(node) is not MemberNode:
+                node.delete()
+                node = None
+
+            if not node:
+                node = MemberNode(
+                    uuid=str(m.uid),
+                    display_name=m.display_name,
+                    email=m.email,
+                    phone=m.phone,
+                    date_of_birth=m.date_of_birth,
+                )
+            else:
+                node.display_name = m.display_name
+                node.email = m.email
+                node.phone = m.phone
+                node.date_of_birth = m.date_of_birth
+
+            node.save()
+
+    def sync_edges(self):
         for m in MemberSql.objects.all():
             gm = MemberNode.nodes.get_or_none(uuid=str(m.uid))
             if not gm:
@@ -117,4 +109,3 @@ class SocialGraphProjection:
                 patron = MemberNode.nodes.get_or_none(uuid=str(m.patron.uid))
                 if patron:
                     gm.patron.connect(patron)
-
