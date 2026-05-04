@@ -1,26 +1,27 @@
 from neomodel import (
-    StructuredNode,
     StringProperty,
     DateTimeProperty,
     BooleanProperty,
     RelationshipTo,
     RelationshipFrom,
 )
+from toto.core.domain import DomainNode
 from toto.socialhub.graph.models import Person as MemberNode
 
 
-class EventCategoryNode(StructuredNode):
-    uuid = StringProperty(unique=True)
-    name = StringProperty()
+class EventCategoryNode(DomainNode):
+    __label__ = "EventCategory"
+
+    name = StringProperty(required=True)
     # description intentionally NOT stored
 
     events = RelationshipFrom("EventNode", "HAS_CATEGORY")
 
 
-class EventNode(StructuredNode):
-    uuid = StringProperty(unique=True)
+class EventNode(DomainNode):
+    __label__ = "Event"
 
-    title = StringProperty()
+    title = StringProperty(required=True)
     location = StringProperty()
 
     start_time = DateTimeProperty()

@@ -1,10 +1,11 @@
 from uuid import uuid4
 from django.db import models
 from toto.socialhub.models import Person
+from toto.core.domain import DomainEntity
 
 
 # 📁 Event Category
-class EventCategory(models.Model):
+class EventCategory(DomainEntity):
     name = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True)
 
@@ -13,7 +14,7 @@ class EventCategory(models.Model):
 
 
 # 📅 Event Model
-class Event(models.Model):
+class Event(DomainEntity):
     id = models.UUIDField(primary_key=True, default=uuid4, editable=False)
     start_time = models.DateTimeField()
     end_time = models.DateTimeField()

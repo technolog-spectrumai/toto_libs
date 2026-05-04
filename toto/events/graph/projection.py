@@ -1,12 +1,9 @@
-from toto.events.models import Event, EventCategory
-from toto.socialhub.models import Person
+from toto.events.models import EventCategory
+from toto.events.graph.models import EventCategoryNode
+from toto.events.models import Event
 from toto.events.graph.models import EventNode, EventCategoryNode
 from toto.socialhub.graph.models import Person as MemberNode
 
-
-# ---------------------------------------------------------
-# CATEGORY PROJECTION
-# ---------------------------------------------------------
 
 class EventCategoryProjection:
     model = "EventCategory"
@@ -14,11 +11,11 @@ class EventCategoryProjection:
 
     def sync_nodes(self):
         for c in EventCategory.objects.all():
-            node = EventCategoryNode.nodes.get_or_none(uuid=str(c.id))
+            node = EventCategoryNode.nodes.get_or_none(uuid=str(c.uid))
 
             if not node:
                 node = EventCategoryNode(
-                    uuid=str(c.id),
+                    uuid=str(c.uid),
                     name=c.name,
                 )
             else:
@@ -30,21 +27,17 @@ class EventCategoryProjection:
         pass  # Categories only connect from Event side
 
 
-# ---------------------------------------------------------
-# EVENT PROJECTION
-# ---------------------------------------------------------
-
 class EventProjection:
     model = "Event"
     app = "events"
 
     def sync_nodes(self):
         for e in Event.objects.all():
-            node = EventNode.nodes.get_or_none(uuid=str(e.id))
+            node = EventNode.nodes.get_or_none(uuid=str(e.uid))
 
             if not node:
                 node = EventNode(
-                    uuid=str(e.id),
+                    uuid=str(e.uid),
                     title=e.title,
                     location=e.location,
                     start_time=e.start_time,
@@ -62,7 +55,7 @@ class EventProjection:
 
     def sync_edges(self):
         for e in Event.objects.all():
-            ge = EventNode.nodes.get(uuid=str(e.id))
+            ge = EventNode.nodes.get(uuid=str(e.uid))
 
             ge.organizer.disconnect_all()
             ge.category.disconnect_all()
@@ -75,6 +68,6 @@ class EventProjection:
 
             # Category
             if e.category_id:
-                cat = EventCategoryNode.nodes.get_or_none(uuid=str(e.category.id))
+                cat = EventCategoryNode.nodes.get_or_none(uuid=str(e.category.uid))
                 if cat:
                     ge.category.connect(cat)
