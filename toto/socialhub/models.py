@@ -9,9 +9,10 @@ from django.conf import settings
 import uuid
 from django.db import models
 import os
+from toto.core.domain import DomainEntity
 
 
-class Community(models.Model):
+class Community(DomainEntity):
     GUILD = "guild"
     COMPANY = "company"
     NON_PROFIT = "non_profit"
@@ -87,7 +88,7 @@ class Community(models.Model):
         super().save(*args, **kwargs)
 
 
-class CommunityMember(models.Model):
+class CommunityMember(DomainEntity):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='community_profile', null=True, blank=True)
     communities = models.ManyToManyField(Community, related_name='members', db_comment="member_of")
     patron = models.ForeignKey(

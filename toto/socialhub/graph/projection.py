@@ -1,97 +1,112 @@
-from toto.socialhub.models import Community, CommunityMember
+from toto.socialhub.models import Community as CommunitySql
+from toto.socialhub.models import CommunityMember as MemberSql
+
 from toto.socialhub.graph.models import Community as CommunityNode
 from toto.socialhub.graph.models import CommunityMember as MemberNode
 
 
 class GraphProjection:
     """
-    projection layer:
-    - sync_nodes(): create/update all nodes
-    - sync_edges(): create/update all relationships
-    - _sync_community(): helper for community node
-    - _sync_member(): helper for member node
+    Sync SQL → Neo4j using UUID as the only identity.
     """
 
     # ---------------------------------------------------------
     # HELPERS
     # ---------------------------------------------------------
-    def _sync_community(self, c: Community):
-        """Create or update a CommunityNode from SQL Community."""
-        node, _ = CommunityNode.nodes.get_or_create(
-            sql_id=c.id,
-            defaults={
-                "name": c.name,
-                "slug": c.slug,
-                "org_type": c.org_type,
-                "established_year": c.established_year,
-                "is_autonomous": c.is_autonomous,
-                "is_foreign": c.is_foreign,
-            }
-        )
+    def _sync_community(self, c: CommunitySql):
+        node = CommunityNode.nodes.get_or_none(uuid=str(c.uid))
 
-        node.name = c.name
-        node.slug = c.slug
-        node.org_type = c.org_type
-        node.established_year = c.established_year
-        node.is_autonomous = c.is_autonomous
-        node.is_foreign = c.is_foreign
+        if node and type(node) is not CommunityNode:
+            node.delete()
+            node = None
+
+        if not node:
+            node = CommunityNode(
+                uuid=str(c.uid),
+                name=c.name,
+                slug=c.slug,
+                org_type=c.org_type,
+                established_year=c.established_year,
+                is_autonomous=c.is_autonomous,
+                is_foreign=c.is_foreign,
+            )
+        else:
+            node.name = c.name
+            node.slug = c.slug
+            node.org_type = c.org_type
+            node.established_year = c.established_year
+            node.is_autonomous = c.is_autonomous
+            node.is_foreign = c.is_foreign
+
         node.save()
-
         return node
 
-    def _sync_member(self, m: CommunityMember):
-        """Create or update a MemberNode from SQL CommunityMember."""
-        node, _ = MemberNode.nodes.get_or_create(
-            sql_id=m.id,
-            defaults={
-                "display_name": m.display_name,
-                "email": m.email,
-                "phone": m.phone,
-                "date_of_birth": m.date_of_birth,
-            }
-        )
+    def _sync_member(self, m: MemberSql):
+        node = MemberNode.nodes.get_or_none(uuid=str(m.uid))
 
-        node.display_name = m.display_name
-        node.email = m.email
-        node.phone = m.phone
-        node.date_of_birth = m.date_of_birth
+        if node and type(node) is not MemberNode:
+            node.delete()
+            node = None
+
+        if not node:
+            node = MemberNode(
+                uuid=str(m.uid),
+                display_name=m.display_name,
+                email=m.email,
+                phone=m.phone,
+                date_of_birth=m.date_of_birth,
+            )
+        else:
+            node.display_name = m.display_name
+            node.email = m.email
+            node.phone = m.phone
+            node.date_of_birth = m.date_of_birth
+
         node.save()
-
         return node
 
     # ---------------------------------------------------------
     # PUBLIC: SYNC ALL NODES
     # ---------------------------------------------------------
     def sync_nodes(self):
-        """Sync all Community and Member nodes."""
-        for c in Community.objects.all():
+        for c in CommunitySql.objects.all():
             self._sync_community(c)
 
-        for m in CommunityMember.objects.all():
+        for m in MemberSql.objects.all():
             self._sync_member(m)
 
     # ---------------------------------------------------------
     # PUBLIC: SYNC ALL EDGES
     # ---------------------------------------------------------
     def sync_edges(self):
-        """Sync all relationships between nodes."""
         # Community → Members + Head
-        for c in Community.objects.all():
-            gc = CommunityNode.nodes.get(sql_id=c.id)
+        for c in CommunitySql.objects.all():
+            gc = CommunityNode.nodes.get(uuid=str(c.uid))
+
+            gc.members.disconnect_all()
+            gc.head.disconnect_all()
 
             # Members
             for m in c.members.all():
-                gm = MemberNode.nodes.get(sql_id=m.id)
-                gc.members.connect(gm)
+                gm = MemberNode.nodes.get_or_none(uuid=str(m.uid))
+                if gm:
+                    gc.members.connect(gm)
 
             # Head
             if c.head_id:
-                head = MemberNode.nodes.get(sql_id=c.head_id)
-                gc.head.connect(head)
+                head = MemberNode.nodes.get_or_none(uuid=str(c.head.uid))
+                if head:
+                    gc.head.connect(head)
 
         # Member → Patron
-        for m in CommunityMember.objects.all():
+        for m in MemberSql.objects.all():
+            gm = MemberNode.nodes.get_or_none(uuid=str(m.uid))
+            if not gm:
+                continue
+
+            gm.patron.disconnect_all()
+
             if m.patron_id:
-                gm = MemberNode.nodes.get(sql_id=m.id)
-                patron = MemberNode.nodes.get(sql_id=m.patron_id)
-                gm.patron.connect(patron)
+                patron = MemberNode.nodes.get_or_none(uuid=str(m.patron.uid))
+                if patron:
+                    gm.patron.connect(patron)
