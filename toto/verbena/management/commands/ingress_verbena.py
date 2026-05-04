@@ -1,4 +1,3 @@
-from django.contrib.auth.models import User
 from toto.verbena.models import (
     Page, Section, Subsection,
     Image, Tag, Topic,
@@ -15,17 +14,42 @@ from django.utils.text import slugify
 class Command(IngressCommand):
     help = "Populate the database with sample Verbena Pages, Sections, Subsections, and Books"
 
+    # ────────────────────────────────────────────────
+    # TOPIC CREATION
+    # ────────────────────────────────────────────────
+
+    def get_or_create_topic(self, *, slug_base, name, **filters):
+        existing = Topic.objects.filter(**filters).first()
+        if existing:
+            return existing
+
+        base_slug = slugify(slug_base)
+        slug = base_slug
+        counter = 1
+        while Topic.objects.filter(slug=slug).exists():
+            slug = f"{base_slug}-{counter}"
+            counter += 1
+
+        return Topic.objects.create(
+            slug=slug,
+            name=name,
+            **filters
+        )
+
+    # ────────────────────────────────────────────────
+    # PROCESS
+    # ────────────────────────────────────────────────
+
     def process(self):
 
         if not self.full:
             return
 
-        user = self.get_or_create_demo_user()
+        author = self.get_or_create_demo_person()
         pages = self.get_sample_pages()
 
         created_pages = []
 
-        # Create Pages
         for page_title, page_data in pages.items():
             if Page.objects.filter(title=page_title).exists():
                 self.stdout.write(self.style.WARNING(f"⚠️ Skipped existing page: {page_title}"))
@@ -33,25 +57,24 @@ class Command(IngressCommand):
 
             page = self.create_page(page_title, page_data["description"])
             self.assign_tags(page, page_data["tags"])
-            self.create_sections(page, page_data["sections"], user)
+            self.create_sections(page, page_data["sections"], author)
 
             created_pages.append(page)
 
-        # Create Books using the created pages
         self.create_sample_books(created_pages)
 
         self.stdout.write(self.style.SUCCESS("✅ Verbena ingress complete."))
 
     # ────────────────────────────────────────────────
-    # USERS
+    # PERSON (instead of User)
     # ────────────────────────────────────────────────
 
-    def get_or_create_demo_user(self):
-        user, _ = User.objects.get_or_create(
-            username="demo_user",
-            defaults={"email": "demo@example.com"}
+    def get_or_create_demo_person(self):
+        person, _ = Person.objects.get_or_create(
+            display_name="Demo Author",
+            defaults={"bio": "Automatically generated demo author."}
         )
-        return user
+        return person
 
     # ────────────────────────────────────────────────
     # SAMPLE DATA
@@ -109,7 +132,7 @@ class Command(IngressCommand):
         page.tags.set(tag_objects)
         self.stdout.write(self.style.SUCCESS(f"🏷️ Added tags to page: {page.title}"))
 
-    def create_sections(self, page, sections, user):
+    def create_sections(self, page, sections, author):
         for i, (title, content) in enumerate(sections, start=1):
 
             markdown_lorem = (
@@ -129,7 +152,7 @@ class Command(IngressCommand):
                 page=page,
                 title=title,
                 content=markdown_lorem,
-                author=user,
+                author=author,   # ← FIXED
                 order=i
             )
 
@@ -139,6 +162,10 @@ class Command(IngressCommand):
             f"📚 Added {len(sections)} sections to page: {page.title}"
         ))
 
+    # ────────────────────────────────────────────────
+    # SUBSECTION CREATION
+    # ────────────────────────────────────────────────
+
     def create_subsection(self, section):
         subsection = Subsection.objects.create(
             section=section,
@@ -147,62 +174,27 @@ class Command(IngressCommand):
             order=1
         )
 
-        # Optional image
         if random.random() < 0.4:
-            image = Image.objects.create(
+            subsection.image = Image.objects.create(
                 title=f"Image for {section.title}",
                 file="verbena_images/sample.jpg",
             )
-            subsection.image = image
             subsection.save()
 
-        # ────────────────────────────────────────────────
-        # OPTIONAL TOPICS (Address, Person, Event)
-        # ────────────────────────────────────────────────
+        topic_sources = [
+            ("address", Address.objects.order_by("?").first(), "address"),
+            ("person",  Person.objects.order_by("?").first(),  "person"),
+            ("event",   Event.objects.order_by("?").first(),   "event"),
+        ]
 
-        # Address → Topic
-        if random.random() < 0.3:
-            address = Address.objects.order_by("?").first()
-            if address:
-                slug = slugify(f"address-{address.pk}")
-                topic, _ = Topic.objects.get_or_create(
-                    slug=slug,
-                    defaults={
-                        "name": f"Address {address}",
-                        "address": address
-                    }
+        for prefix, obj, field in topic_sources:
+            if obj and random.random() < 0.3:
+                topic = self.get_or_create_topic(
+                    slug_base=f"{prefix}-{obj.pk}",
+                    name=f"{obj}",
+                    **{field: obj}
                 )
                 subsection.topics.add(topic)
-
-        # Person → Topic
-        if random.random() < 0.3:
-            person = Person.objects.order_by("?").first()
-            if person:
-                slug = slugify(f"person-{person.pk}")
-                topic, _ = Topic.objects.get_or_create(
-                    slug=slug,
-                    defaults={
-                        "name": f"Person {person.display_name}",
-                        "person": person
-                    }
-                )
-                subsection.topics.add(topic)
-
-        # Event → Topic
-        if random.random() < 0.3:
-            event = Event.objects.order_by("?").first()
-            if event:
-                slug = slugify(f"event-{event.pk}")
-                topic, _ = Topic.objects.get_or_create(
-                    slug=slug,
-                    defaults={
-                        "name": f"Event {event.title}",
-                        "event": event
-                    }
-                )
-                subsection.topics.add(topic)
-
-        subsection.save()
 
         self.stdout.write(self.style.SUCCESS(
             f"📝 Created subsection: {subsection.title}"
@@ -213,14 +205,10 @@ class Command(IngressCommand):
     # ────────────────────────────────────────────────
 
     def create_sample_books(self, pages):
-        """
-        Creates sample Books and assigns Pages as ordered Chapters.
-        """
 
         if not pages:
             return
 
-        # Example books
         books = {
             "Python Handbook": {
                 "description": "A structured guide to Python fundamentals.",
@@ -245,14 +233,12 @@ class Command(IngressCommand):
                 description=data["description"]
             )
 
-            # Assign tags
             tag_objects = []
             for name in data["tags"]:
                 tag, _ = Tag.objects.get_or_create(name=name)
                 tag_objects.append(tag)
             book.tags.set(tag_objects)
 
-            # Add chapters
             for order, page_title in enumerate(data["pages"], start=1):
                 page = Page.objects.filter(title=page_title).first()
                 if page:
