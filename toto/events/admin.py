@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Event, EventCategory
+from toto.events.models import Event, EventCategory
 
 
 @admin.register(EventCategory)
