@@ -1,7 +1,7 @@
 from django.contrib import admin
 from .models import (
     Community,
-    Person, MembershipApplication, ReferenceRequest, EmailService
+    Experience, Person, MembershipApplication, ReferenceRequest, EmailService
 )
 from toto.core.base_admin import TotoModelAdmin
 
@@ -46,6 +46,24 @@ class CommunityAdmin(TotoModelAdmin):
     is_foreign_display.short_description = "Foreign"
 
 
+class ExperienceInline(admin.TabularInline):
+    model = Experience
+    extra = 0
+    fields = (
+        "title",
+        "institution",
+        "place",
+        "started_at",
+        "ended_at",
+        "is_current",
+        "order",
+    )
+    ordering = (
+        "order",
+        "-started_at",
+    )
+
+
 @admin.register(Person)
 class PersonAdmin(TotoModelAdmin):
     list_display = (
@@ -72,6 +90,9 @@ class PersonAdmin(TotoModelAdmin):
     list_filter = ('joined_date', 'address__country_name', 'address__state_or_province_name')
     ordering = ('-joined_date',)
     filter_horizontal = ('communities',)
+    inlines = [
+        ExperienceInline,
+    ]
 
     def patron_display(self, obj):
         return obj.patron.display_name if obj.patron else "-"
@@ -80,6 +101,35 @@ class PersonAdmin(TotoModelAdmin):
     def address_display(self, obj):
         return str(obj.address) if obj.address else "-"
     address_display.short_description = "Address"
+
+
+@admin.register(Experience)
+class ExperienceAdmin(TotoModelAdmin):
+    list_display = (
+        "title",
+        "person",
+        "institution",
+        "place",
+        "started_at",
+        "ended_at",
+        "is_current",
+        "order",
+    )
+    list_filter = (
+        "is_current",
+        "institution",
+        "started_at",
+    )
+    search_fields = (
+        "title",
+        "institution",
+        "place",
+        "description",
+        "person__display_name",
+    )
+    autocomplete_fields = (
+        "person",
+    )
 
 
 @admin.register(MembershipApplication)
