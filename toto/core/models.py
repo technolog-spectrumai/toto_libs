@@ -54,6 +54,10 @@ class EnvironmentVariable(models.Model):
 
         os.environ.pop(self.name, None)
 
+    def delete(self, *args, **kwargs):
+        os.environ.pop(self.name, None)
+        return super().delete(*args, **kwargs)
+
     @property
     def masked_value(self):
         if not self.value:
