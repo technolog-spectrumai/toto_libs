@@ -1,6 +1,7 @@
+from django import forms
 from django.conf import settings
 
-from .models import Platform, Font, Theme, ColorMix, Federation
+from .models import EnvironmentVariable, Platform, Font, Theme, ColorMix, Federation
 from django.utils.html import format_html
 from toto.core.base_admin import TotoModelAdmin
 from django.contrib import admin, messages
@@ -8,6 +9,35 @@ from django.shortcuts import render, redirect
 from django.urls import path
 from .forms import SyncAppsForm
 from toto.core.sync.service import SyncService
+
+
+class EnvironmentVariableAdminForm(forms.ModelForm):
+    class Meta:
+        model = EnvironmentVariable
+        fields = "__all__"
+        widgets = {
+            "value": forms.PasswordInput(render_value=True),
+        }
+
+
+@admin.register(EnvironmentVariable)
+class EnvironmentVariableAdmin(TotoModelAdmin):
+    form = EnvironmentVariableAdminForm
+    list_display = ("name", "active", "masked_value", "updated_at")
+    list_filter = ("active", "created_at", "updated_at")
+    search_fields = ("name", "notes")
+    readonly_fields = ("created_at", "updated_at", "masked_value")
+    fieldsets = (
+        (None, {
+            "fields": ("name", "active", "value", "masked_value"),
+        }),
+        ("Notes", {
+            "fields": ("notes",),
+        }),
+        ("Timestamps", {
+            "fields": ("created_at", "updated_at"),
+        }),
+    )
 
 
 @admin.register(Font)
@@ -224,4 +254,3 @@ class PlatformAdmin(TotoModelAdmin):
             "title": f"Sync Platform: {platform.site_name}",
         }
         return render(request, "admin/platform_sync_form.html", context)
-
