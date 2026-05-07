@@ -101,9 +101,9 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.NOTICE("Creating fonts and theme..."))
         THEMES_DIR = os.path.join(os.path.dirname(__file__), '../../../../../data/themes')
-        self.create_theme_from_file(os.path.join(THEMES_DIR, "spectre.json"))
+        self.create_theme_from_file(os.path.join(THEMES_DIR, "amazing.json"))
         self.stdout.write(self.style.SUCCESS("Fonts and theme created."))
-        theme = self.get_theme("Elegant Spectrum")
+        theme = self.get_theme("Amazing Moon")
         if theme is None:
             self.stderr.write(self.style.ERROR("Theme not found. Initialization aborted."))
             return
@@ -143,5 +143,4 @@ class Command(BaseCommand):
             return Font.objects.get(name=name)
         except Font.DoesNotExist:
             return None
-
 
