@@ -153,6 +153,32 @@ class Person(DomainEntity):
 
         return "Unnamed Member"
 
+
+class Experience(models.Model):
+    person = models.ForeignKey(
+        Person,
+        on_delete=models.CASCADE,
+        related_name="experiences",
+    )
+    title = models.CharField(max_length=200)
+    institution = models.CharField(max_length=200, blank=True)
+    place = models.CharField(max_length=200, blank=True)
+    started_at = models.DateField(null=True, blank=True)
+    ended_at = models.DateField(null=True, blank=True)
+    is_current = models.BooleanField(default=False)
+    description = models.TextField(blank=True)
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["order", "-started_at", "title"]
+
+    def __str__(self):
+        if self.institution:
+            return f"{self.title} at {self.institution}"
+
+        return self.title
+
+
 def generate_code(k=6):
     return ''.join(random.choices('0123456789', k=k))
 
@@ -334,5 +360,4 @@ class EmailService(models.Model):
             msg.body = html
 
         return msg.send()
-
 
