@@ -1,6 +1,5 @@
 from django.contrib.auth.models import User
-from toto.core.models import EnvironmentVariable
-from toto.gervazy.models import KeyRing, RSAKeyPair, SecretKey, SecretPassword
+from toto.gervazy.models import EnvironmentVariable, KeyRing, RSAKeyPair, SecretKey, SecretPassword
 from toto.core.ingress import IngressCommand
 import os
 import secrets

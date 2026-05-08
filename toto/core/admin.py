@@ -1,7 +1,6 @@
-from django import forms
 from django.conf import settings
 
-from .models import EnvironmentVariable, Platform, Font, Theme, ColorMix, Federation
+from .models import Platform, Font, Theme, ColorMix, Federation
 from django.utils.html import format_html
 from toto.core.base_admin import TotoModelAdmin
 from django.contrib import admin, messages
@@ -9,49 +8,6 @@ from django.shortcuts import render, redirect
 from django.urls import path
 from .forms import SyncAppsForm
 from toto.core.sync.service import SyncService
-
-
-class EnvironmentVariableAdminForm(forms.ModelForm):
-    value = forms.CharField(
-        required=False,
-        widget=forms.PasswordInput(render_value=False),
-        help_text="Set the value in the current server process. Leave blank to keep the current environment unchanged.",
-    )
-
-    class Meta:
-        model = EnvironmentVariable
-        fields = "__all__"
-
-    def save(self, commit=True):
-        instance = super().save(commit=commit)
-        value = self.cleaned_data.get("value")
-
-        if value:
-            instance.set_value(value)
-        elif not instance.active:
-            instance.apply_to_environment()
-
-        return instance
-
-
-@admin.register(EnvironmentVariable)
-class EnvironmentVariableAdmin(TotoModelAdmin):
-    form = EnvironmentVariableAdminForm
-    list_display = ("name", "active", "masked_value", "updated_at")
-    list_filter = ("active", "created_at", "updated_at")
-    search_fields = ("name", "notes")
-    readonly_fields = ("created_at", "updated_at", "masked_value")
-    fieldsets = (
-        (None, {
-            "fields": ("name", "active", "value", "masked_value"),
-        }),
-        ("Notes", {
-            "fields": ("notes",),
-        }),
-        ("Timestamps", {
-            "fields": ("created_at", "updated_at"),
-        }),
-    )
 
 
 @admin.register(Font)

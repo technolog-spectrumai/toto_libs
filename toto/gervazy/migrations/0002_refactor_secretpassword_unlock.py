@@ -7,11 +7,37 @@ import django.db.models.deletion
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("core", "0002_environmentvariable"),
         ("gervazy", "0001_initial"),
     ]
 
     operations = [
+        migrations.CreateModel(
+            name="EnvironmentVariable",
+            fields=[
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                (
+                    "name",
+                    models.CharField(
+                        help_text="Environment variable name, for example OPENAI_API_KEY.",
+                        max_length=120,
+                        unique=True,
+                    ),
+                ),
+                (
+                    "active",
+                    models.BooleanField(
+                        default=True,
+                        help_text="When active, admin can set the value into os.environ for this process.",
+                    ),
+                ),
+                ("notes", models.TextField(blank=True)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+            ],
+            options={
+                "ordering": ["name"],
+            },
+        ),
         migrations.AddField(
             model_name="secretpassword",
             name="environment_variable",
@@ -21,7 +47,7 @@ class Migration(migrations.Migration):
                 null=True,
                 on_delete=django.db.models.deletion.PROTECT,
                 related_name="secret_passwords",
-                to="core.environmentvariable",
+                to="gervazy.environmentvariable",
             ),
         ),
         migrations.AddField(

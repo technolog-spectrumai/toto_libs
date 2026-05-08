@@ -1,8 +1,4 @@
-import os
-import re
-
 from django_jsonform.models.fields import JSONField
-from django.core.exceptions import ValidationError
 from django.db import models
 from colorfield.fields import ColorField
 from toto.gervazy.models import SecretKey, RSAKeyPair
@@ -10,73 +6,6 @@ from django.contrib.auth import get_user_model
 from toto.core.domain import DomainEntity
 
 User = get_user_model()
-
-
-class EnvironmentVariable(models.Model):
-    """Admin-managed environment variable for the current Django process."""
-
-    name = models.CharField(
-        max_length=120,
-        unique=True,
-        help_text="Environment variable name, for example OPENAI_API_KEY.",
-    )
-    active = models.BooleanField(
-        default=True,
-        help_text="When active, saving this object writes the value into os.environ for this process.",
-    )
-    notes = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ["name"]
-
-    def __str__(self):
-        return self.name
-
-    def clean(self):
-        super().clean()
-        if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", self.name or ""):
-            raise ValidationError({
-                "name": "Use a shell-safe environment variable name, like OPENAI_API_KEY."
-            })
-
-    def save(self, *args, **kwargs):
-        self.full_clean()
-        super().save(*args, **kwargs)
-
-    def apply_to_environment(self):
-        if not self.active:
-            os.environ.pop(self.name, None)
-
-    def delete(self, *args, **kwargs):
-        os.environ.pop(self.name, None)
-        return super().delete(*args, **kwargs)
-
-    def set_value(self, value):
-        if self.active:
-            os.environ[self.name] = value
-            return
-
-        os.environ.pop(self.name, None)
-
-    @property
-    def value(self):
-        if not self.active:
-            return ""
-
-        return os.environ.get(self.name, "")
-
-    @property
-    def masked_value(self):
-        value = self.value
-        if not value:
-            return ""
-
-        if len(value) <= 8:
-            return "*" * len(value)
-
-        return f"{value[:4]}{'*' * 8}{value[-4:]}"
 
 
 class Font(models.Model):
