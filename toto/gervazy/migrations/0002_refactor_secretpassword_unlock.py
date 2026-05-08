@@ -40,4 +40,8 @@ class Migration(migrations.Migration):
             model_name="secretpassword",
             name="keyring",
         ),
+        migrations.RemoveField(
+            model_name="secretpassword",
+            name="password_encrypted",
+        ),
     ]

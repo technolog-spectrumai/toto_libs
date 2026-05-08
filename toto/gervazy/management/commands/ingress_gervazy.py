@@ -70,7 +70,6 @@ class Command(IngressCommand):
             )
 
         demo_passphrase = "demo-passphrase"
-        demo_password = "SuperSecret123!"
 
         env_var, env_created = EnvironmentVariable.objects.get_or_create(
             name="GERVAZY_DEMO_PASSPHRASE",
@@ -100,13 +99,11 @@ class Command(IngressCommand):
                 environment_variable=env_var,
                 active=True,
             )
-            secret_password.set_password(demo_password)
             secret_password.save()
         else:
             secret_password.secret_key = secret_key
             secret_password.environment_variable = env_var
             secret_password.active = True
-            secret_password.set_password(demo_password)
             secret_password.save()
 
         self.stdout.write(

@@ -1,5 +1,4 @@
 import os
-import hashlib
 from django.contrib.auth.models import User
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.backends import default_backend
@@ -213,8 +212,11 @@ class SecretKey(models.Model):
 
 class SecretPassword(models.Model):
     """
-    Secure storage for user-provided passwords of arbitrary length.
-    Encrypted using a SecretKey unlocked by a configured EnvironmentVariable.
+    Binds a SecretKey to the EnvironmentVariable that unlocks it.
+
+    Despite the historical name, this model does not store a password payload.
+    It is an automation box for resolving a SecretKey without retyping the
+    passphrase in admin or service code.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -224,7 +226,7 @@ class SecretPassword(models.Model):
         max_length=128,
         unique=True,
         blank=True,
-        help_text="Optional name for this password. Auto-generated if omitted."
+        help_text="Optional name for this secret access box. Auto-generated if omitted."
     )
 
     secret_key = models.ForeignKey(
@@ -244,8 +246,6 @@ class SecretPassword(models.Model):
         blank=True,
         help_text="Environment variable that contains the passphrase for unlocking the SecretKey."
     )
-
-    encrypted_value = models.TextField(help_text="Encrypted password material")
 
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField(null=True, blank=True)
@@ -270,45 +270,26 @@ class SecretPassword(models.Model):
 
         raise RuntimeError(f"Environment variable {env_name} must be set to unlock {self.name}.")
 
-    def _derive_key(self, passphrase: str | None = None) -> bytes:
+    def get_passphrase(self, passphrase: str | None = None) -> str:
+        return self._get_unlock_passphrase(passphrase)
+
+    def get_secret_key(self, passphrase: str | None = None) -> str:
+        """Return the decrypted SecretKey value using the configured env var."""
         if not self.secret_key_id:
             raise RuntimeError(f"SecretPassword {self.name} has no SecretKey configured.")
 
-        unlock_passphrase = self._get_unlock_passphrase(passphrase)
-        raw_key = self.secret_key.get_key(unlock_passphrase)
-        return base64.urlsafe_b64encode(hashlib.sha256(raw_key.encode()).digest())
+        return self.secret_key.get_key(self._get_unlock_passphrase(passphrase))
 
-    def _get_fernet(self, passphrase: str | None = None) -> Fernet:
-        return Fernet(self._derive_key(passphrase))
+    def rotate_secret_key(self, passphrase: str | None = None):
+        if not self.secret_key_id:
+            raise RuntimeError(f"SecretPassword {self.name} has no SecretKey configured.")
 
-    # --- Public API ---
-    def set_password(self, raw_password: str, passphrase: str | None = None):
-        """Encrypt and store the password."""
-        f = self._get_fernet(passphrase)
-        self.encrypted_value = f.encrypt(raw_password.encode()).decode()
-
-    def get_password(self, passphrase: str | None = None) -> str:
-        """Decrypt and return the password."""
-        f = self._get_fernet(passphrase)
-        return f.decrypt(self.encrypted_value.encode()).decode()
-
-    def rotate(self, passphrase: str | None = None):
-        """
-        Re-encrypt the password with the currently configured SecretKey unlock path.
-        """
-        raw = self.get_password(passphrase)
-        self.set_password(raw, passphrase)
-        self.created_at = timezone.now()
-        self.save(update_fields=["encrypted_value", "created_at"])
+        self.secret_key.rotate(self._get_unlock_passphrase(passphrase))
 
     def is_expired(self):
         return self.expires_at and timezone.now() >= self.expires_at
 
     def save(self, *args, **kwargs):
-        # Ensure password is set
-        if not self.encrypted_value:
-            raise ValueError("Call set_password(raw_password, passphrase) before saving.")
-
         if not self.secret_key_id:
             raise ValueError("SecretPassword requires a SecretKey.")
 

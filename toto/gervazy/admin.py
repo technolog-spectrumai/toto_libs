@@ -1,4 +1,3 @@
-from django import forms
 from .models import KeyRing
 from .models import RSAKeyPair
 from toto.core.batch import BatchAction
@@ -181,61 +180,14 @@ class SecretKeyAdmin(TotoModelAdmin):
         )
 
 
-class SecretPasswordAdminForm(forms.ModelForm):
-    password = forms.CharField(
-        label="Password",
-        required=False,
-        widget=forms.PasswordInput,
-        help_text="Enter the password to encrypt. Leave blank to keep the existing encrypted value."
-    )
-
-    class Meta:
-        model = SecretPassword
-        fields = ["name", "secret_key", "environment_variable", "active", "expires_at"]
-
-    def clean(self):
-        cleaned_data = super().clean()
-        password = cleaned_data.get("password")
-
-        if not self.instance.pk and not password:
-            raise forms.ValidationError("Enter the password to encrypt.")
-
-        if self.instance.pk and not password:
-            old = SecretPassword.objects.get(pk=self.instance.pk)
-            secret_key = cleaned_data.get("secret_key")
-            environment_variable = cleaned_data.get("environment_variable")
-            if old.secret_key_id != getattr(secret_key, "pk", None):
-                raise forms.ValidationError("Enter the password again when changing the SecretKey.")
-            if old.environment_variable_id != getattr(environment_variable, "pk", None):
-                raise forms.ValidationError("Enter the password again when changing the unlock environment variable.")
-
-        return cleaned_data
-
-    def save(self, commit=True):
-        instance = super().save(commit=False)
-
-        password = self.cleaned_data.get("password")
-
-        if password:
-            instance.set_password(password)
-
-        if commit:
-            instance.save()
-
-        return instance
-
-
-
 @admin.register(SecretPassword)
 class SecretPasswordAdmin(TotoModelAdmin):
-    form = SecretPasswordAdminForm
     list_display = ("id", "name", "secret_key", "environment_variable", "active", "created_at", "expires_at", "status_display")
     list_filter = ("active", "created_at", "expires_at", "secret_key", "environment_variable")
     search_fields = ("id", "name", "environment_variable__name")
-    readonly_fields = ("created_at", "masked_password")
-    exclude = ("encrypted_value",)
+    readonly_fields = ("created_at",)
     autocomplete_fields = ("secret_key", "environment_variable")
-    actions = ["reveal_selected_passwords", "rotate_selected_passwords"]
+    actions = ["reveal_linked_secret_keys", "rotate_linked_secret_keys"]
 
     # -------------------------
     # Display helpers
@@ -246,104 +198,36 @@ class SecretPasswordAdmin(TotoModelAdmin):
         return format_html('<span style="color:green;">Active ✅</span>')
     status_display.short_description = "Status"
 
-    def masked_password(self, obj):
-        """Mask password length with stars."""
-        try:
-            # Try to get length without decrypting
-            return "********"
-        except Exception:
-            return "********"
-    masked_password.short_description = "Password (masked)"
+    @admin.action(description="Reveal linked SecretKey using environment variable")
+    def reveal_linked_secret_keys(self, request, queryset):
+        for secret_box in queryset.select_related("secret_key", "environment_variable"):
+            try:
+                decrypted = secret_box.get_secret_key()
+                self.message_user(
+                    request,
+                    f"SecretKey {secret_box.secret_key_id}: {decrypted}",
+                    messages.SUCCESS,
+                )
+            except Exception as exc:
+                self.message_user(
+                    request,
+                    f"Could not unlock SecretPassword {secret_box.id}: {exc}",
+                    messages.ERROR,
+                )
 
-    # -------------------------
-    # Custom URLs
-    # -------------------------
-    def get_urls(self):
-        urls = super().get_urls()
-        custom_urls = [
-            path("reveal/", self.admin_site.admin_view(self.reveal_view), name="secretpassword_reveal"),
-            path("rotate/", self.admin_site.admin_view(self.rotate_view), name="secretpassword_rotate"),
-        ]
-        return custom_urls + urls
-
-    # -------------------------
-    # Admin actions
-    # -------------------------
-    def reveal_selected_passwords(self, request, queryset):
-        selected = request.POST.getlist(ACTION_CHECKBOX_NAME)
-        url = reverse("admin:secretpassword_reveal") + f"?ids={','.join(selected)}"
-        return redirect(url)
-    reveal_selected_passwords.short_description = "Reveal selected passwords"
-
-    def rotate_selected_passwords(self, request, queryset):
-        selected = request.POST.getlist(ACTION_CHECKBOX_NAME)
-        url = reverse("admin:secretpassword_rotate") + f"?ids={','.join(selected)}"
-        return redirect(url)
-    rotate_selected_passwords.short_description = "Re-encrypt selected passwords"
-
-    # -------------------------
-    # Reveal view
-    # -------------------------
-    def reveal_view(self, request):
-        ids = request.GET.get("ids", "").split(",")
-        queryset = SecretPassword.objects.filter(pk__in=ids)
-
-        if request.method == "POST":
-            for secret in queryset:
-                try:
-                    decrypted = secret.get_password()
-                    self.message_user(
-                        request,
-                        f"Password {secret.id}: {decrypted}",
-                        messages.SUCCESS,
-                    )
-                except Exception:
-                    self.message_user(
-                        request,
-                        f"Could not unlock password {secret.id}",
-                        messages.ERROR,
-                    )
-
-            return redirect("..")
-
-        return render(
-            request,
-            "admin/secretpassword_reveal.html",
-            {"ids": ids, "count": queryset.count()},
-        )
-
-    # -------------------------
-    # Rotate view
-    # -------------------------
-    def rotate_view(self, request):
-        ids = request.GET.get("ids", "").split(",")
-        queryset = SecretPassword.objects.filter(pk__in=ids)
-
-        if request.method == "POST":
-            for secret in queryset:
-                try:
-                    # Validate unlock path
-                    secret.get_password()
-
-                    # Re-encrypt with configured SecretKey + EnvironmentVariable
-                    secret.rotate()
-
-                    self.message_user(
-                        request,
-                        f"Re-encrypted password {secret.id}",
-                        messages.SUCCESS,
-                    )
-                except Exception:
-                    self.message_user(
-                        request,
-                        f"Could not unlock password {secret.id}",
-                        messages.ERROR,
-                    )
-
-            return redirect("..")
-
-        return render(
-            request,
-            "admin/secretpassword_rotate.html",
-            {"ids": ids, "count": queryset.count()},
-        )
+    @admin.action(description="Rotate linked SecretKey using environment variable")
+    def rotate_linked_secret_keys(self, request, queryset):
+        for secret_box in queryset.select_related("secret_key", "environment_variable"):
+            try:
+                secret_box.rotate_secret_key()
+                self.message_user(
+                    request,
+                    f"Rotated SecretKey {secret_box.secret_key_id}",
+                    messages.SUCCESS,
+                )
+            except Exception as exc:
+                self.message_user(
+                    request,
+                    f"Could not rotate SecretPassword {secret_box.id}: {exc}",
+                    messages.ERROR,
+                )

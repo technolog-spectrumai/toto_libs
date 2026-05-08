@@ -269,7 +269,7 @@ class ReferenceRequest(models.Model):
 class EmailService(models.Model):
     """
     Stores SMTP configuration for a system component.
-    The SMTP password is stored encrypted inside a SecretPassword instance.
+    The SMTP password can be resolved through a SecretPassword unlock box.
     This model does NOT modify or manage the password itself.
     """
 
@@ -286,12 +286,12 @@ class EmailService(models.Model):
         help_text="SMTP login email address"
     )
 
-    # Encrypted SMTP password (managed by SecretPassword)
+    # SecretKey unlock box for the SMTP password
     secret_password = models.OneToOneField(
         SecretPassword,
         on_delete=models.CASCADE,
         related_name="email_service_for",
-        help_text="Encrypted SMTP password stored in SecretPassword"
+        help_text="SecretPassword unlock box for the SMTP password SecretKey"
     )
 
     host = models.CharField(max_length=255, help_text="SMTP server hostname")
@@ -320,9 +320,9 @@ class EmailService(models.Model):
     def send_email(self, subject, body, to, html=None):
         """
         Sends an email using this EmailService's SMTP configuration.
-        SMTP password is unlocked by the linked SecretPassword.
+        SMTP password is resolved from the linked SecretPassword unlock box.
         """
-        password = self.secret_password.get_password()
+        password = self.secret_password.get_secret_key()
 
         connection = get_connection(
             backend=settings.EMAIL_BACKEND,
