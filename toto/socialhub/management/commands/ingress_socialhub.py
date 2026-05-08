@@ -54,6 +54,8 @@ class Command(IngressCommand):
             address=address,
             established_year=2024,
         )
+        tester_user, tester_person = self.ensure_tester_person(community=community)
+        self.stdout.write(self.style.NOTICE(f"Created tester: {tester_person}"))
 
         self.stdout.write(self.style.NOTICE("🧑‍🤝‍🧑 Creating members..."))
         members = self.create_members(community, count=6)
@@ -82,6 +84,56 @@ class Command(IngressCommand):
     # ---------------------------------------------------------
     # Member creation (with admin as founder)
     # ---------------------------------------------------------
+
+    def ensure_tester_person(self, community=None):
+        """
+        Creates or reuses a special Django user named `tester`
+        and ensures they have a Person profile.
+        """
+        tester_user, user_created = User.objects.get_or_create(
+            username="tester",
+            defaults={
+                "email": "tester@example.com",
+                "is_staff": False,
+                "is_superuser": False,
+            }
+        )
+
+        if user_created:
+            tester_user.set_password("tester")
+            tester_user.save()
+
+            self.stdout.write(
+                self.style.SUCCESS("✔ Created special tester user.")
+            )
+        else:
+            self.stdout.write(
+                self.style.WARNING("⚠ Tester user already exists.")
+            )
+
+        tester_person, person_created = Person.objects.get_or_create(
+            user=tester_user,
+            defaults={
+                "display_name": "Tester",
+                "bio": "Special testing user for the platform.",
+                "joined_date": timezone.now(),
+                "patron": None,
+            }
+        )
+
+        if community:
+            tester_person.communities.add(community)
+
+        if person_created:
+            self.stdout.write(
+                self.style.SUCCESS("✔ Created Person profile for tester.")
+            )
+        else:
+            self.stdout.write(
+                self.style.WARNING("⚠ Tester Person profile already exists.")
+            )
+
+        return tester_user, tester_person
 
     def create_members(self, community, count=6):
         """
