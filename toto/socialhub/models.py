@@ -98,7 +98,7 @@ class Community(DomainEntity):
 
 class Person(DomainEntity):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='community_profile', null=True, blank=True)
-    communities = models.ManyToManyField(Community, related_name='members', db_comment="member_of")
+    communities = models.ManyToManyField(Community, related_name='members')
     patron = models.ForeignKey(
         'self',
         on_delete=models.SET_NULL,
