@@ -82,8 +82,55 @@ class RSAKeyPairAdmin(TotoModelAdmin):
         BatchAction.display_messages(result, self.message_user, request, verb="regenerate")
 
 
+class SecretKeyAdminForm(forms.ModelForm):
+    passphrase = forms.CharField(
+        required=False,
+        widget=forms.PasswordInput(render_value=False),
+        help_text="Required when creating a secret key or changing its encrypted value.",
+    )
+    secret_value = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={"rows": 3}),
+        help_text="Optional raw secret value. Leave blank with a passphrase to generate the longest key for the selected size.",
+    )
+
+    class Meta:
+        model = SecretKey
+        fields = "__all__"
+
+    def clean(self):
+        cleaned_data = super().clean()
+        passphrase = cleaned_data.get("passphrase")
+        secret_value = cleaned_data.get("secret_value")
+
+        if not self.instance.pk and not passphrase:
+            raise forms.ValidationError("Passphrase is required to create and encrypt a SecretKey.")
+
+        if secret_value and not passphrase:
+            raise forms.ValidationError("Passphrase is required to encrypt a new SecretKey value.")
+
+        if self.instance.pk and "size" in self.changed_data and not passphrase:
+            raise forms.ValidationError("Passphrase is required when changing size so a new value can be generated.")
+
+        return cleaned_data
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        passphrase = self.cleaned_data.get("passphrase")
+
+        if passphrase:
+            instance.set_key(self.cleaned_data.get("secret_value"), passphrase)
+
+        if commit:
+            instance.save()
+            self.save_m2m()
+
+        return instance
+
+
 @admin.register(SecretKey)
 class SecretKeyAdmin(TotoModelAdmin):
+    form = SecretKeyAdminForm
     list_display = (
         "id",
         "keyring",
@@ -97,6 +144,17 @@ class SecretKeyAdmin(TotoModelAdmin):
     search_fields = ("id",)
     readonly_fields = ("created_at", "masked_key")
     exclude = ("key_encrypted",)
+    fieldsets = (
+        (None, {
+            "fields": ("keyring", "size", "active", "expires_at"),
+        }),
+        ("Secret value", {
+            "fields": ("passphrase", "secret_value", "masked_key"),
+        }),
+        ("Timestamps", {
+            "fields": ("created_at",),
+        }),
+    )
 
     actions = ["reveal_selected_secrets", "rotate_selected_secrets"]
 

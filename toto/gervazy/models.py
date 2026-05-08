@@ -171,7 +171,7 @@ class SecretKey(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     keyring = models.ForeignKey(KeyRing, on_delete=models.CASCADE, related_name="secrets")
 
-    key_encrypted = models.CharField(max_length=512)
+    key_encrypted = models.CharField(max_length=1024)
     size = models.PositiveIntegerField(choices=SIZE_CHOICES, default=64)
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -186,7 +186,14 @@ class SecretKey(models.Model):
         return Fernet(self._derive_key(passphrase))
 
     # --- Public API ---
+    def generate_key_value(self) -> str:
+        """Generate the longest URL-safe key value for the configured byte size."""
+        return secrets.token_urlsafe(self.size)
+
     def set_key(self, raw_key: str, passphrase: str):
+        if not raw_key:
+            raw_key = self.generate_key_value()
+
         f = self._get_fernet(passphrase)
         self.key_encrypted = f.encrypt(raw_key.encode()).decode()
 
@@ -195,8 +202,7 @@ class SecretKey(models.Model):
         return f.decrypt(self.key_encrypted.encode()).decode()
 
     def rotate(self, passphrase: str):
-        new_key = secrets.token_urlsafe(self.size)
-        self.set_key(new_key, passphrase)
+        self.set_key("", passphrase)
         self.created_at = timezone.now()
         self.save(update_fields=["key_encrypted", "created_at"])
 
