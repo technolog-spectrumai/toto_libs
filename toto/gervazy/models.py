@@ -1,4 +1,5 @@
 import os
+import hashlib
 from django.contrib.auth.models import User
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.backends import default_backend
@@ -213,7 +214,7 @@ class SecretKey(models.Model):
 class SecretPassword(models.Model):
     """
     Secure storage for user-provided passwords of arbitrary length.
-    Encrypted using a passphrase + KeyRing salt.
+    Encrypted using a SecretKey unlocked by a configured EnvironmentVariable.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -226,53 +227,93 @@ class SecretPassword(models.Model):
         help_text="Optional name for this password. Auto-generated if omitted."
     )
 
-    keyring = models.ForeignKey(
-        KeyRing,
+    secret_key = models.ForeignKey(
+        SecretKey,
         on_delete=models.CASCADE,
-        related_name="passwords"
+        related_name="passwords",
+        null=True,
+        blank=True,
+        help_text="SecretKey used to encrypt and decrypt this password."
     )
 
-    password_encrypted = models.TextField(help_text="Encrypted password material")
+    environment_variable = models.ForeignKey(
+        "core.EnvironmentVariable",
+        on_delete=models.PROTECT,
+        related_name="secret_passwords",
+        null=True,
+        blank=True,
+        help_text="Environment variable that contains the passphrase for unlocking the SecretKey."
+    )
+
+    encrypted_value = models.TextField(help_text="Encrypted password material")
 
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField(null=True, blank=True)
     active = models.BooleanField(default=True)
 
-    # --- Key Derivation ---
-    def _derive_key(self, passphrase: str) -> bytes:
-        return self.keyring.derive_key(passphrase)
+    # --- Unlock / encryption helpers ---
+    def _get_unlock_passphrase(self, passphrase: str | None = None) -> str:
+        if passphrase:
+            return passphrase
 
-    def _get_fernet(self, passphrase: str) -> Fernet:
+        if not self.environment_variable_id:
+            raise RuntimeError(f"SecretPassword {self.name} has no unlock environment variable configured.")
+
+        env_name = self.environment_variable.name
+        resolved = os.environ.get(env_name)
+        if resolved:
+            return resolved
+
+        if self.environment_variable.active and self.environment_variable.value:
+            self.environment_variable.apply_to_environment()
+            return self.environment_variable.value
+
+        raise RuntimeError(f"Environment variable {env_name} must be set to unlock {self.name}.")
+
+    def _derive_key(self, passphrase: str | None = None) -> bytes:
+        if not self.secret_key_id:
+            raise RuntimeError(f"SecretPassword {self.name} has no SecretKey configured.")
+
+        unlock_passphrase = self._get_unlock_passphrase(passphrase)
+        raw_key = self.secret_key.get_key(unlock_passphrase)
+        return base64.urlsafe_b64encode(hashlib.sha256(raw_key.encode()).digest())
+
+    def _get_fernet(self, passphrase: str | None = None) -> Fernet:
         return Fernet(self._derive_key(passphrase))
 
     # --- Public API ---
-    def set_password(self, raw_password: str, passphrase: str):
+    def set_password(self, raw_password: str, passphrase: str | None = None):
         """Encrypt and store the password."""
         f = self._get_fernet(passphrase)
-        self.password_encrypted = f.encrypt(raw_password.encode()).decode()
+        self.encrypted_value = f.encrypt(raw_password.encode()).decode()
 
-    def get_password(self, passphrase: str) -> str:
+    def get_password(self, passphrase: str | None = None) -> str:
         """Decrypt and return the password."""
         f = self._get_fernet(passphrase)
-        return f.decrypt(self.password_encrypted.encode()).decode()
+        return f.decrypt(self.encrypted_value.encode()).decode()
 
-    def rotate(self, passphrase: str):
+    def rotate(self, passphrase: str | None = None):
         """
-        Re-encrypt the password with a new key derived from the same passphrase.
-        Useful after KeyRing salt rotation.
+        Re-encrypt the password with the currently configured SecretKey unlock path.
         """
         raw = self.get_password(passphrase)
         self.set_password(raw, passphrase)
         self.created_at = timezone.now()
-        self.save(update_fields=["password_encrypted", "created_at"])
+        self.save(update_fields=["encrypted_value", "created_at"])
 
     def is_expired(self):
         return self.expires_at and timezone.now() >= self.expires_at
 
     def save(self, *args, **kwargs):
         # Ensure password is set
-        if not self.password_encrypted:
+        if not self.encrypted_value:
             raise ValueError("Call set_password(raw_password, passphrase) before saving.")
+
+        if not self.secret_key_id:
+            raise ValueError("SecretPassword requires a SecretKey.")
+
+        if not self.environment_variable_id:
+            raise ValueError("SecretPassword requires an EnvironmentVariable.")
 
         # Auto-generate unique name if missing
         if not self.name:
@@ -282,5 +323,3 @@ class SecretPassword(models.Model):
 
     def __str__(self):
         return f"SecretPassword {self.name}"
-
-

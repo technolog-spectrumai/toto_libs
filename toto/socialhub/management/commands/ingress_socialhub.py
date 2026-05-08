@@ -2,11 +2,8 @@ import random
 from django.contrib.auth.models import User
 from django.utils import timezone
 from toto.core.ingress import IngressCommand
-from toto.socialhub.models import Community, Person, EmailService
+from toto.socialhub.models import Community, Person
 from toto.locations.models import Address
-from toto.gervazy.models import SecretPassword, KeyRing
-from django.core.management.base import CommandError
-import os
 
 
 class Command(IngressCommand):
@@ -50,14 +47,12 @@ class Command(IngressCommand):
 
         self.stdout.write(self.style.NOTICE("📍 Creating address..."))
         address = Address.objects.first()
-        email_service = self.create_email_service()
 
         self.stdout.write(self.style.NOTICE("🏢 Creating community..."))
         community = self.create_community(
             name="Our Thing Inc.",
             address=address,
             established_year=2024,
-            email_service=email_service
         )
 
         self.stdout.write(self.style.NOTICE("🧑‍🤝‍🧑 Creating members..."))
@@ -74,13 +69,12 @@ class Command(IngressCommand):
     # Community creation
     # ---------------------------------------------------------
 
-    def create_community(self, name, address, established_year=None, email_service=None):
+    def create_community(self, name, address, established_year=None):
         community, created = Community.objects.get_or_create(
             name=name,
             defaults={
                 "location": address,
                 "established_year": established_year,
-                "email_service": email_service
             }
         )
         return community
@@ -168,66 +162,3 @@ class Command(IngressCommand):
         )
         member.communities.add(community)
         return member
-
-    def create_email_service(self):
-        """
-        Creates:
-        - SecretPassword (encrypted SMTP password)
-        - EmailService (SMTP configuration)
-        Using the KeyRing named 'Platform-KeyRing'.
-        """
-
-        # -----------------------------------------------------
-        # Load SMTP configuration from Django settings
-        # -----------------------------------------------------
-        email_addr = "noreply@example.com"
-        smtp_password = "changeme123"
-        smtp_host = "smtp.example.com"
-        smtp_port = 587
-        smtp_tls = True
-        smtp_ssl = False
-        pass_phrase_env_var = "EMAIL_PASSPHRASE"
-        passphrase = os.environ.get(pass_phrase_env_var, "qwerty")
-
-        if not passphrase:
-            raise CommandError("Environment variable EMAIL_PASSPHRASE must be set.")
-
-        # -----------------------------------------------------
-        # Find the KeyRing named 'Platform-KeyRing'
-        # -----------------------------------------------------
-        keyring = KeyRing.objects.filter(name="Platform-KeyRing").first()
-        if not keyring:
-            raise CommandError(
-                "KeyRing named 'Platform-KeyRing' not found. "
-                "Create it before running ingress."
-            )
-
-        # -----------------------------------------------------
-        # Create SecretPassword
-        # -----------------------------------------------------
-        sp = SecretPassword(
-            keyring=keyring,
-            name="email-password"
-        )
-        sp.set_password(smtp_password, passphrase)
-        sp.save()
-
-        # -----------------------------------------------------
-        # Create EmailService
-        # -----------------------------------------------------
-        svc = EmailService.objects.create(
-            name="default-email-service",
-            email_address=email_addr,
-            secret_password=sp,
-            host=smtp_host,
-            port=smtp_port,
-            use_tls=smtp_tls,
-            use_ssl=smtp_ssl,
-            pass_phrase_env_var=pass_phrase_env_var
-        )
-
-        self.stdout.write(self.style.SUCCESS(
-            f"📨 EmailService created for {email_addr} using encrypted password."
-        ))
-
-        return svc

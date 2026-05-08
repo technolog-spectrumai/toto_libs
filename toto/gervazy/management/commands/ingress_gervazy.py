@@ -1,5 +1,6 @@
 from django.contrib.auth.models import User
-from toto.gervazy.models import KeyRing, RSAKeyPair, SecretPassword
+from toto.core.models import EnvironmentVariable
+from toto.gervazy.models import KeyRing, RSAKeyPair, SecretKey, SecretPassword
 from toto.core.ingress import IngressCommand
 import os
 import secrets
@@ -68,23 +69,50 @@ class Command(IngressCommand):
                 )
             )
 
-        # -----------------------------
-        # Create Example SecretPassword
-        # -----------------------------
         demo_passphrase = "demo-passphrase"
         demo_password = "SuperSecret123!"
 
-        secret_password = SecretPassword(
-            keyring=keyring,
-            active=True,
+        env_var, env_created = EnvironmentVariable.objects.get_or_create(
+            name="GERVAZY_DEMO_PASSPHRASE",
+            defaults={
+                "value": demo_passphrase,
+                "active": True,
+                "notes": "Demo passphrase used to unlock the Gervazy demo SecretKey.",
+            },
         )
-        secret_password.set_password(demo_password, demo_passphrase)
-        secret_password.save()
+        if not env_created:
+            env_var.value = demo_passphrase
+            env_var.active = True
+            env_var.save(update_fields=["value", "active", "updated_at"])
+        env_var.apply_to_environment()
+
+        secret_key = SecretKey.objects.filter(keyring=keyring, active=True).first()
+        if not secret_key:
+            secret_key = SecretKey(keyring=keyring, size=64, active=True)
+            secret_key.set_key(secrets.token_urlsafe(64), demo_passphrase)
+            secret_key.save()
+
+        secret_password = SecretPassword.objects.filter(name="gervazy-demo-password").first()
+        if not secret_password:
+            secret_password = SecretPassword(
+                name="gervazy-demo-password",
+                secret_key=secret_key,
+                environment_variable=env_var,
+                active=True,
+            )
+            secret_password.set_password(demo_password)
+            secret_password.save()
+        else:
+            secret_password.secret_key = secret_key
+            secret_password.environment_variable = env_var
+            secret_password.active = True
+            secret_password.set_password(demo_password)
+            secret_password.save()
 
         self.stdout.write(
             self.style.SUCCESS(
                 f"Created example SecretPassword {secret_password.id} "
-                f"(encrypted with passphrase '{demo_passphrase}')"
+                f"(unlocked via {env_var.name})"
             )
         )
 

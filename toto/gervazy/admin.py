@@ -182,33 +182,42 @@ class SecretKeyAdmin(TotoModelAdmin):
 
 
 class SecretPasswordAdminForm(forms.ModelForm):
-    raw_password = forms.CharField(
+    password = forms.CharField(
+        label="Password",
         required=False,
         widget=forms.PasswordInput,
-        help_text="Enter the password to encrypt (leave blank to keep existing)."
-    )
-
-    passphrase = forms.CharField(
-        required=False,
-        widget=forms.PasswordInput,
-        help_text="Passphrase required to encrypt the password."
+        help_text="Enter the password to encrypt. Leave blank to keep the existing encrypted value."
     )
 
     class Meta:
         model = SecretPassword
-        fields = ["name", "keyring", "active", "expires_at"]
+        fields = ["name", "secret_key", "environment_variable", "active", "expires_at"]
+
+    def clean(self):
+        cleaned_data = super().clean()
+        password = cleaned_data.get("password")
+
+        if not self.instance.pk and not password:
+            raise forms.ValidationError("Enter the password to encrypt.")
+
+        if self.instance.pk and not password:
+            old = SecretPassword.objects.get(pk=self.instance.pk)
+            secret_key = cleaned_data.get("secret_key")
+            environment_variable = cleaned_data.get("environment_variable")
+            if old.secret_key_id != getattr(secret_key, "pk", None):
+                raise forms.ValidationError("Enter the password again when changing the SecretKey.")
+            if old.environment_variable_id != getattr(environment_variable, "pk", None):
+                raise forms.ValidationError("Enter the password again when changing the unlock environment variable.")
+
+        return cleaned_data
 
     def save(self, commit=True):
         instance = super().save(commit=False)
 
-        raw_password = self.cleaned_data.get("raw_password")
-        passphrase = self.cleaned_data.get("passphrase")
+        password = self.cleaned_data.get("password")
 
-        # If user typed a new password → require passphrase
-        if raw_password:
-            if not passphrase:
-                raise forms.ValidationError("Passphrase is required to encrypt the password.")
-            instance.set_password(raw_password, passphrase)
+        if password:
+            instance.set_password(password)
 
         if commit:
             instance.save()
@@ -220,11 +229,12 @@ class SecretPasswordAdminForm(forms.ModelForm):
 @admin.register(SecretPassword)
 class SecretPasswordAdmin(TotoModelAdmin):
     form = SecretPasswordAdminForm
-    list_display = ("id", "name", "keyring", "active", "created_at", "expires_at", "status_display")
-    list_filter = ("active", "created_at", "expires_at", "keyring")
-    search_fields = ("id",)
+    list_display = ("id", "name", "secret_key", "environment_variable", "active", "created_at", "expires_at", "status_display")
+    list_filter = ("active", "created_at", "expires_at", "secret_key", "environment_variable")
+    search_fields = ("id", "name", "environment_variable__name")
     readonly_fields = ("created_at", "masked_password")
-    exclude = ("password_encrypted",)
+    exclude = ("encrypted_value",)
+    autocomplete_fields = ("secret_key", "environment_variable")
     actions = ["reveal_selected_passwords", "rotate_selected_passwords"]
 
     # -------------------------
@@ -263,13 +273,13 @@ class SecretPasswordAdmin(TotoModelAdmin):
         selected = request.POST.getlist(ACTION_CHECKBOX_NAME)
         url = reverse("admin:secretpassword_reveal") + f"?ids={','.join(selected)}"
         return redirect(url)
-    reveal_selected_passwords.short_description = "Reveal selected passwords (requires passphrase)"
+    reveal_selected_passwords.short_description = "Reveal selected passwords"
 
     def rotate_selected_passwords(self, request, queryset):
         selected = request.POST.getlist(ACTION_CHECKBOX_NAME)
         url = reverse("admin:secretpassword_rotate") + f"?ids={','.join(selected)}"
         return redirect(url)
-    rotate_selected_passwords.short_description = "Re-encrypt selected passwords (requires passphrase)"
+    rotate_selected_passwords.short_description = "Re-encrypt selected passwords"
 
     # -------------------------
     # Reveal view
@@ -279,11 +289,9 @@ class SecretPasswordAdmin(TotoModelAdmin):
         queryset = SecretPassword.objects.filter(pk__in=ids)
 
         if request.method == "POST":
-            passphrase = request.POST.get("passphrase")
-
             for secret in queryset:
                 try:
-                    decrypted = secret.get_password(passphrase)
+                    decrypted = secret.get_password()
                     self.message_user(
                         request,
                         f"Password {secret.id}: {decrypted}",
@@ -292,7 +300,7 @@ class SecretPasswordAdmin(TotoModelAdmin):
                 except Exception:
                     self.message_user(
                         request,
-                        f"Invalid passphrase for password {secret.id}",
+                        f"Could not unlock password {secret.id}",
                         messages.ERROR,
                     )
 
@@ -312,15 +320,13 @@ class SecretPasswordAdmin(TotoModelAdmin):
         queryset = SecretPassword.objects.filter(pk__in=ids)
 
         if request.method == "POST":
-            passphrase = request.POST.get("passphrase")
-
             for secret in queryset:
                 try:
-                    # Validate passphrase
-                    secret.get_password(passphrase)
+                    # Validate unlock path
+                    secret.get_password()
 
-                    # Re-encrypt with same passphrase
-                    secret.rotate(passphrase)
+                    # Re-encrypt with configured SecretKey + EnvironmentVariable
+                    secret.rotate()
 
                     self.message_user(
                         request,
@@ -330,7 +336,7 @@ class SecretPasswordAdmin(TotoModelAdmin):
                 except Exception:
                     self.message_user(
                         request,
-                        f"Invalid passphrase for password {secret.id}",
+                        f"Could not unlock password {secret.id}",
                         messages.ERROR,
                     )
 
@@ -341,5 +347,3 @@ class SecretPasswordAdmin(TotoModelAdmin):
             "admin/secretpassword_rotate.html",
             {"ids": ids, "count": queryset.count()},
         )
-
-

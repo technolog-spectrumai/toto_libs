@@ -174,7 +174,6 @@ class EmailServiceAdmin(TotoModelAdmin):
         "host",
         "port",
         "created_at",
-        "pass_phrase_env_var",
     )
 
     readonly_fields = ("created_at",)

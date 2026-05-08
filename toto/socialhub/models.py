@@ -8,7 +8,6 @@ from toto.gervazy.models import SecretPassword
 from django.conf import settings
 import uuid
 from django.db import models
-import os
 from toto.core.domain import DomainEntity
 from toto.core.models import Federation
 
@@ -283,13 +282,6 @@ class EmailService(models.Model):
         blank=True,
         help_text="Optional name for this email service. Auto-generated if omitted."
     )
-    pass_phrase_env_var = models.CharField(
-        max_length=128,
-        unique=True,
-        blank=True,
-        help_text="Environment variable to query for passphrase"
-    )
-
     email_address = models.EmailField(
         help_text="SMTP login email address"
     )
@@ -328,14 +320,9 @@ class EmailService(models.Model):
     def send_email(self, subject, body, to, html=None):
         """
         Sends an email using this EmailService's SMTP configuration.
-        Passphrase is taken from Django settings.
+        SMTP password is unlocked by the linked SecretPassword.
         """
-
-        passphrase = os.environ.get(self.pass_phrase_env_var, "qwerty")
-        if not passphrase:
-            raise RuntimeError(f"Environment variable {self.pass_phrase_env_var} must be set.")
-
-        password = self.secret_password.get_password(passphrase)
+        password = self.secret_password.get_password()
 
         connection = get_connection(
             backend=settings.EMAIL_BACKEND,
@@ -360,4 +347,3 @@ class EmailService(models.Model):
             msg.body = html
 
         return msg.send()
-
