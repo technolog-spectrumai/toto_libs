@@ -74,16 +74,14 @@ class Command(IngressCommand):
         env_var, env_created = EnvironmentVariable.objects.get_or_create(
             name="GERVAZY_DEMO_PASSPHRASE",
             defaults={
-                "value": demo_passphrase,
                 "active": True,
                 "notes": "Demo passphrase used to unlock the Gervazy demo SecretKey.",
             },
         )
         if not env_created:
-            env_var.value = demo_passphrase
             env_var.active = True
-            env_var.save(update_fields=["value", "active", "updated_at"])
-        env_var.apply_to_environment()
+            env_var.save(update_fields=["active", "updated_at"])
+        env_var.set_value(demo_passphrase)
 
         secret_key = SecretKey.objects.filter(keyring=keyring, active=True).first()
         if not secret_key:

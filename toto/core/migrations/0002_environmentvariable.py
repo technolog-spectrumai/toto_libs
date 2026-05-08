@@ -22,7 +22,6 @@ class Migration(migrations.Migration):
                         unique=True,
                     ),
                 ),
-                ("value", models.TextField(blank=True)),
                 (
                     "active",
                     models.BooleanField(

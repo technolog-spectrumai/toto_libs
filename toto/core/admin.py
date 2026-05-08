@@ -12,12 +12,26 @@ from toto.core.sync.service import SyncService
 
 
 class EnvironmentVariableAdminForm(forms.ModelForm):
+    value = forms.CharField(
+        required=False,
+        widget=forms.PasswordInput(render_value=False),
+        help_text="Set the value in the current server process. Leave blank to keep the current environment unchanged.",
+    )
+
     class Meta:
         model = EnvironmentVariable
         fields = "__all__"
-        widgets = {
-            "value": forms.PasswordInput(render_value=True),
-        }
+
+    def save(self, commit=True):
+        instance = super().save(commit=commit)
+        value = self.cleaned_data.get("value")
+
+        if value:
+            instance.set_value(value)
+        elif not instance.active:
+            instance.apply_to_environment()
+
+        return instance
 
 
 @admin.register(EnvironmentVariable)

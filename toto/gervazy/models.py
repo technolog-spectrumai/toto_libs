@@ -264,8 +264,7 @@ class SecretPassword(models.Model):
         if resolved:
             return resolved
 
-        if self.environment_variable.active and self.environment_variable.value:
-            self.environment_variable.apply_to_environment()
+        if self.environment_variable.value:
             return self.environment_variable.value
 
         raise RuntimeError(f"Environment variable {env_name} must be set to unlock {self.name}.")

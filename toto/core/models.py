@@ -20,7 +20,6 @@ class EnvironmentVariable(models.Model):
         unique=True,
         help_text="Environment variable name, for example OPENAI_API_KEY.",
     )
-    value = models.TextField(blank=True)
     active = models.BooleanField(
         default=True,
         help_text="When active, saving this object writes the value into os.environ for this process.",
@@ -45,28 +44,39 @@ class EnvironmentVariable(models.Model):
     def save(self, *args, **kwargs):
         self.full_clean()
         super().save(*args, **kwargs)
-        self.apply_to_environment()
 
     def apply_to_environment(self):
-        if self.active:
-            os.environ[self.name] = self.value
-            return
-
-        os.environ.pop(self.name, None)
+        if not self.active:
+            os.environ.pop(self.name, None)
 
     def delete(self, *args, **kwargs):
         os.environ.pop(self.name, None)
         return super().delete(*args, **kwargs)
 
+    def set_value(self, value):
+        if self.active:
+            os.environ[self.name] = value
+            return
+
+        os.environ.pop(self.name, None)
+
     @property
-    def masked_value(self):
-        if not self.value:
+    def value(self):
+        if not self.active:
             return ""
 
-        if len(self.value) <= 8:
-            return "*" * len(self.value)
+        return os.environ.get(self.name, "")
 
-        return f"{self.value[:4]}{'*' * 8}{self.value[-4:]}"
+    @property
+    def masked_value(self):
+        value = self.value
+        if not value:
+            return ""
+
+        if len(value) <= 8:
+            return "*" * len(value)
+
+        return f"{value[:4]}{'*' * 8}{value[-4:]}"
 
 
 class Font(models.Model):
