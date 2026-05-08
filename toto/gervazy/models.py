@@ -321,38 +321,31 @@ class SecretPassword(models.Model):
     active = models.BooleanField(default=True)
 
     # --- Unlock / encryption helpers ---
-    def _get_unlock_passphrase(self, passphrase: str | None = None) -> str:
-        if passphrase:
-            return passphrase
-
+    def _get_unlock_passphrase(self) -> str:
         if not self.environment_variable_id:
             raise RuntimeError(f"SecretPassword {self.name} has no unlock environment variable configured.")
 
-        env_name = self.environment_variable.name
-        resolved = os.environ.get(env_name)
+        resolved = self.environment_variable.value
         if resolved:
             return resolved
 
         if self.environment_variable.value:
             return self.environment_variable.value
 
-        raise RuntimeError(f"Environment variable {env_name} must be set to unlock {self.name}.")
+        raise RuntimeError(f"Environment variable {self.environment_variable.name} must be set to unlock {self.name}.")
 
-    def get_passphrase(self, passphrase: str | None = None) -> str:
-        return self._get_unlock_passphrase(passphrase)
-
-    def get_secret_key(self, passphrase: str | None = None) -> str:
+    def get_secret_key(self) -> str:
         """Return the decrypted SecretKey value using the configured env var."""
         if not self.secret_key_id:
             raise RuntimeError(f"SecretPassword {self.name} has no SecretKey configured.")
 
-        return self.secret_key.get_key(self._get_unlock_passphrase(passphrase))
+        return self.secret_key.get_key(self._get_unlock_passphrase())
 
-    def rotate_secret_key(self, passphrase: str | None = None):
+    def rotate_secret_key(self):
         if not self.secret_key_id:
             raise RuntimeError(f"SecretPassword {self.name} has no SecretKey configured.")
 
-        self.secret_key.rotate(self._get_unlock_passphrase(passphrase))
+        self.secret_key.rotate(self._get_unlock_passphrase())
 
     def is_expired(self):
         return self.expires_at and timezone.now() >= self.expires_at
