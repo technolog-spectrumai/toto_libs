@@ -68,7 +68,7 @@ class Command(IngressCommand):
                 )
             )
 
-        demo_passphrase = "demo-passphrase"
+        demo_passphrase = "qwerty"
 
         env_var, env_created = EnvironmentVariable.objects.get_or_create(
             name="GERVAZY_DEMO_PASSPHRASE",
