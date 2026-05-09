@@ -1,6 +1,6 @@
 from django.contrib.gis.db import models
-
 from toto.core.domain import DomainEntity
+
 
 SRID = 4326  # WGS84 (OpenStreetMap)
 
@@ -127,6 +127,15 @@ class MapLayer(DomainEntity):
         help_text="Use only the low-to-mid half of the color scale.",
     )
     is_active = models.BooleanField(default=True)
+    owner = models.ForeignKey(
+        "socialhub.Person",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="owned_map_layers",
+        help_text="Person who owns or manages this map layer"
+    )
+
 
     def __str__(self):
         return self.name

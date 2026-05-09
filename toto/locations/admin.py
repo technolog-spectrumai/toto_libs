@@ -63,6 +63,7 @@ class MapLayerAdmin(TotoModelAdmin):
         "id",
         "name",
         "slug",
+        "owner",
         "unit",
         "min_value",
         "max_value",
@@ -72,15 +73,30 @@ class MapLayerAdmin(TotoModelAdmin):
         "polygon_count",
     )
     list_display_links = ("id", "name")
-    list_filter = ("is_active", "inverted_importance", "half_range")
+
+    list_filter = (
+        "is_active",
+        "inverted_importance",
+        "half_range",
+        "owner",
+    )
+
+    search_fields = (
+        "name",
+        "slug",
+        "description",
+        "owner__first_name",
+        "owner__last_name",
+    )
+
     prepopulated_fields = {"slug": ("name",)}
-    search_fields = ("name", "slug", "description")
     inlines = (MapLayerPolygonInline,)
 
     def polygon_count(self, obj):
         return obj.polygons.count()
 
     polygon_count.short_description = "Polygons"
+
 
 
 @admin.register(MapLayerPolygon)

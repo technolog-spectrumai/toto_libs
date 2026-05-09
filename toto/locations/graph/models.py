@@ -10,7 +10,6 @@ from neomodel import (
 
 from toto.core.domain import DomainNode
 
-
 # ---------------------------------------------------------
 # ADDRESS
 # ---------------------------------------------------------
@@ -111,7 +110,7 @@ class Travel(DomainNode):
     ends_at = DateTimeProperty(required=True)
 
     route = RelationshipTo("Route", "USES_ROUTE")
-    participants = RelationshipTo("Person", "HAS_PARTICIPANT")
+    participants = RelationshipTo("toto.socialhub.graph.models.Person", "HAS_PARTICIPANT")
 
 
 # ---------------------------------------------------------
@@ -124,7 +123,7 @@ class Visit(DomainNode):
     review = StringProperty()
     score = IntegerProperty()
 
-    participant = RelationshipTo("Person", "HAS_PARTICIPANT")
+    participant = RelationshipTo("toto.socialhub.graph.models.Person", "HAS_PARTICIPANT")
     location = RelationshipTo("Address", "VISITED_LOCATION")
 
 
@@ -148,8 +147,11 @@ class MapLayer(DomainNode):
 
     polygons = RelationshipFrom("MapLayerPolygon", "IN_LAYER")
 
-
-# ---------------------------------------------------------
+    owner = RelationshipTo(
+        "toto.socialhub.graph.models.Person",
+        "OWNS_LAYER"
+    )
+    # ---------------------------------------------------------
 # MAP LAYER POLYGON
 # ---------------------------------------------------------
 

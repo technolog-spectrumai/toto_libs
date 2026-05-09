@@ -4,12 +4,22 @@ from django.contrib.gis.geos import LineString, MultiLineString, MultiPolygon, P
 from django.utils import timezone
 
 from toto.core.ingress import IngressCommand
-from toto.locations.models import Address, MapLayer, MapLayerPolygon, Route, RouteChain, Territory, Zone, Travel, Visit
+from toto.locations.models import (
+    Address,
+    MapLayer,
+    MapLayerPolygon,
+    Route,
+    RouteChain,
+    Territory,
+    Travel,
+    Visit,
+    Zone,
+)
 from toto.socialhub.models import Person
 
 
 class Command(IngressCommand):
-    help = "Creates demo geospatial features, travels, and visits for France, England, and Poland."
+    help = "Creates demo geospatial features, map layers with owners, travels, and visits for France, England, and Poland."
 
     def point(self, longitude, latitude):
         geometry = Point(longitude, latitude)
@@ -31,6 +41,45 @@ class Command(IngressCommand):
         geometry = MultiLineString(line)
         geometry.srid = 4326
         return geometry
+
+    def upsert_person(self, key, display_name, email=None, phone=None):
+        person = (
+                Person.objects.filter(slug=key).first()
+                or (Person.objects.filter(email=email).first() if email else None)
+                or Person.objects.filter(display_name=display_name).first()
+        )
+
+        if not person:
+            person = Person.objects.create(
+                slug=key,
+                display_name=display_name,
+                email=email,
+                phone=phone,
+            )
+        else:
+            changed_fields = []
+
+            if not person.slug:
+                person.slug = key
+                changed_fields.append("slug")
+
+            if not person.display_name:
+                person.display_name = display_name
+                changed_fields.append("display_name")
+
+            if email and not person.email:
+                person.email = email
+                changed_fields.append("email")
+
+            if phone and not person.phone:
+                person.phone = phone
+                changed_fields.append("phone")
+
+            if changed_fields:
+                person.save(update_fields=changed_fields)
+
+        self.people[key] = person
+        return person
 
     def upsert_address(self, key, country, region, locality, place, longitude, latitude, building="Landmark"):
         address, _ = Address.objects.update_or_create(
@@ -95,18 +144,6 @@ class Command(IngressCommand):
 
         return route_chain
 
-    def upsert_person(self, key, display_name, email=None, phone=None):
-        person, _ = Person.objects.update_or_create(
-            slug=key,
-            defaults={
-                "display_name": display_name,
-                "email": email,
-                "phone": phone,
-            },
-        )
-        self.people[key] = person
-        return person
-
     def upsert_travel(self, route_name, participant_keys, starts_at, ends_at, info=""):
         travel, _ = Travel.objects.update_or_create(
             route=self.routes[route_name],
@@ -146,6 +183,7 @@ class Command(IngressCommand):
         half_range=False,
         min_value=None,
         max_value=None,
+        owner_key=None,
     ):
         layer, _ = MapLayer.objects.update_or_create(
             slug=slug,
@@ -159,6 +197,7 @@ class Command(IngressCommand):
                 "inverted_importance": inverted_importance,
                 "half_range": half_range,
                 "is_active": True,
+                "owner": self.people.get(owner_key) if owner_key else None,
             },
         )
         self.map_layers[slug] = layer
@@ -183,6 +222,39 @@ class Command(IngressCommand):
                 "properties": properties or {},
             },
         )
+
+    def create_people(self):
+        owner_keys = [
+            "alice-martin",
+            "jan-kowalski",
+            "emma-smith",
+            "marie-dubois",
+        ]
+
+        fallback_people = [
+            ("alice-martin", "Alice Martin", "alice@example.com", "+33111111111"),
+            ("jan-kowalski", "Jan Kowalski", "jan@example.com", "+48222222222"),
+            ("emma-smith", "Emma Smith", "emma@example.com", "+44333333333"),
+            ("marie-dubois", "Marie Dubois", "marie@example.com", "+33444444444"),
+        ]
+
+        existing_people = list(
+            Person.objects
+            .exclude(display_name__isnull=True)
+            .exclude(display_name="")
+            .order_by("id")[:len(owner_keys)]
+        )
+
+        for key, person in zip(owner_keys, existing_people):
+            self.people[key] = person
+
+        missing_count = len(owner_keys) - len(existing_people)
+
+        if missing_count <= 0:
+            return
+
+        for fallback in fallback_people[len(existing_people):]:
+            self.upsert_person(*fallback)
 
     def create_addresses(self):
         address_data = [
@@ -374,17 +446,6 @@ class Command(IngressCommand):
             ),
         )
 
-    def create_people(self):
-        people_data = [
-            ("alice-martin", "Alice Martin", "alice@example.com", "+33111111111"),
-            ("jan-kowalski", "Jan Kowalski", "jan@example.com", "+48222222222"),
-            ("emma-smith", "Emma Smith", "emma@example.com", "+44333333333"),
-            ("marie-dubois", "Marie Dubois", "marie@example.com", "+33444444444"),
-        ]
-
-        for person in people_data:
-            self.upsert_person(*person)
-
     def create_travels(self):
         now = timezone.now()
 
@@ -395,7 +456,6 @@ class Command(IngressCommand):
             now + timedelta(days=3, hours=14),
             "A guided walk through major Paris landmarks.",
         )
-
         self.upsert_travel(
             "Normandy Heritage Line",
             ("alice-martin", "emma-smith"),
@@ -403,7 +463,6 @@ class Command(IngressCommand):
             now + timedelta(days=7, hours=18),
             "A heritage route from Mont Saint-Michel toward Omaha Beach.",
         )
-
         self.upsert_travel(
             "Arthurian South England",
             ("emma-smith",),
@@ -411,7 +470,6 @@ class Command(IngressCommand):
             now + timedelta(days=12, hours=17),
             "A mythic route from Tintagel Castle toward Stonehenge.",
         )
-
         self.upsert_travel(
             "Polish Royal Trail",
             ("jan-kowalski", "alice-martin"),
@@ -419,7 +477,6 @@ class Command(IngressCommand):
             now + timedelta(days=15, hours=20),
             "A royal landmark route between Warsaw and Krakow.",
         )
-
         self.upsert_travel(
             "Gdansk Long Market Walk",
             ("jan-kowalski",),
@@ -430,54 +487,14 @@ class Command(IngressCommand):
 
     def create_visits(self):
         visit_data = [
-            (
-                "alice-martin",
-                "eiffel_tower",
-                5,
-                "Iconic landmark with an excellent view over Paris.",
-            ),
-            (
-                "alice-martin",
-                "notre_dame",
-                4,
-                "Beautiful historic site with strong cultural significance.",
-            ),
-            (
-                "marie-dubois",
-                "louvre",
-                5,
-                "Outstanding museum visit with world-class collections.",
-            ),
-            (
-                "emma-smith",
-                "tintagel_castle",
-                4,
-                "Dramatic coastal ruins with Arthurian atmosphere.",
-            ),
-            (
-                "emma-smith",
-                "stonehenge",
-                5,
-                "Memorable prehistoric monument visit.",
-            ),
-            (
-                "jan-kowalski",
-                "warsaw_royal_castle",
-                5,
-                "Excellent historic location in Warsaw Old Town.",
-            ),
-            (
-                "jan-kowalski",
-                "wawel_castle",
-                5,
-                "One of the most important royal sites in Poland.",
-            ),
-            (
-                "jan-kowalski",
-                "long_market",
-                4,
-                "Great urban landmark in central Gdansk.",
-            ),
+            ("alice-martin", "eiffel_tower", 5, "Iconic landmark with an excellent view over Paris."),
+            ("alice-martin", "notre_dame", 4, "Beautiful historic site with strong cultural significance."),
+            ("marie-dubois", "louvre", 5, "Outstanding museum visit with world-class collections."),
+            ("emma-smith", "tintagel_castle", 4, "Dramatic coastal ruins with Arthurian atmosphere."),
+            ("emma-smith", "stonehenge", 5, "Memorable prehistoric monument visit."),
+            ("jan-kowalski", "warsaw_royal_castle", 5, "Excellent historic location in Warsaw Old Town."),
+            ("jan-kowalski", "wawel_castle", 5, "One of the most important royal sites in Poland."),
+            ("jan-kowalski", "long_market", 4, "Great urban landmark in central Gdansk."),
         ]
 
         for visit in visit_data:
@@ -497,6 +514,7 @@ class Command(IngressCommand):
             },
             min_value=20,
             max_value=95,
+            owner_key="alice-martin",
         )
         self.upsert_map_layer(
             "Summer Heat",
@@ -509,6 +527,7 @@ class Command(IngressCommand):
                 "opacity": 0.28,
                 "show_labels": True,
             },
+            owner_key="marie-dubois",
         )
         self.upsert_map_layer(
             "Precipitation",
@@ -523,6 +542,7 @@ class Command(IngressCommand):
             half_range=True,
             min_value=20,
             max_value=95,
+            owner_key="jan-kowalski",
         )
 
         regions = [
@@ -571,6 +591,8 @@ class Command(IngressCommand):
         self.people = {}
         self.travels = {}
 
+        self.create_people()
+
         self.create_addresses()
         self.create_territories()
         self.create_zones()
@@ -578,8 +600,7 @@ class Command(IngressCommand):
         self.create_route_chains()
         self.create_map_layers()
 
-        self.create_people()
         self.create_travels()
         self.create_visits()
 
-        print("[Ingress] Demo European geospatial features, travels, and visits created successfully.")
+        print("[Ingress] Demo European geospatial features, map layer owners, travels, and visits created successfully.")

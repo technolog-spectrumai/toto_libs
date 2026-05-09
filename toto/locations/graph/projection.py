@@ -12,10 +12,6 @@ from toto.locations.models import (
     Territory as TerritorySql,
     Zone as ZoneSql,
     Route as RouteSql,
-)
-
-from toto.socialhub.models import (
-    Person as PersonSql,
     Travel as TravelSql,
     Visit as VisitSql,
 )
@@ -65,7 +61,6 @@ class BaseGeoProjection:
 
     def to_json(self, value):
         import json
-
         return json.dumps(value or {})
 
     def item_count(self):
@@ -83,6 +78,15 @@ class BaseGeoProjection:
             "links": self.link_count(),
             "node_data_size": self.node_data_size(),
         }
+
+    def format_value(self, neo_field, value):
+        if neo_field in ("geometry", "center"):
+            return self.to_wkt(value)
+
+        if neo_field in ("style", "properties"):
+            return self.to_json(value)
+
+        return value
 
     # -----------------------------
     # NODE SYNC shared
@@ -103,12 +107,7 @@ class BaseGeoProjection:
             # Apply field mapping
             for neo_field, sql_field in self.field_map.items():
                 value = getattr(obj, sql_field)
-
-                if neo_field in ("geometry", "center"):
-                    value = self.to_wkt(value)
-                elif neo_field in ("style", "properties"):
-                    value = self.to_json(value)
-
+                value = self.format_value(neo_field, value)
                 setattr(node, neo_field, value)
 
             node.save()
@@ -125,7 +124,6 @@ class BaseGeoProjection:
 # =========================================================
 
 class AddressProjection(BaseGeoProjection):
-
     model = "Address"
     app = "locations"
 
@@ -143,7 +141,6 @@ class AddressProjection(BaseGeoProjection):
     }
 
     def sync_edges(self):
-        # Address has no outgoing edges
         pass
 
 
@@ -152,7 +149,6 @@ class AddressProjection(BaseGeoProjection):
 # =========================================================
 
 class TerritoryProjection(BaseGeoProjection):
-
     model = "Territory"
     app = "locations"
 
@@ -165,14 +161,14 @@ class TerritoryProjection(BaseGeoProjection):
     }
 
     def sync_edges(self):
-        for t in TerritorySql.objects.select_related("capital").all():
-            gt = TerritoryNode.nodes.get(uuid=str(t.uid))
-            gt.capital.disconnect_all()
+        for territory in TerritorySql.objects.select_related("capital").all():
+            territory_node = TerritoryNode.nodes.get(uuid=str(territory.uid))
+            territory_node.capital.disconnect_all()
 
-            if t.capital_id:
-                ga = AddressNode.nodes.get_or_none(uuid=str(t.capital.uid))
-                if ga:
-                    gt.capital.connect(ga)
+            if territory.capital_id:
+                address_node = AddressNode.nodes.get_or_none(uuid=str(territory.capital.uid))
+                if address_node:
+                    territory_node.capital.connect(address_node)
 
     def link_count(self):
         return TerritorySql.objects.filter(capital__isnull=False).count()
@@ -183,7 +179,6 @@ class TerritoryProjection(BaseGeoProjection):
 # =========================================================
 
 class ZoneProjection(BaseGeoProjection):
-
     model = "Zone"
     app = "locations"
 
@@ -196,14 +191,14 @@ class ZoneProjection(BaseGeoProjection):
     }
 
     def sync_edges(self):
-        for z in ZoneSql.objects.select_related("territory").all():
-            gz = ZoneNode.nodes.get(uuid=str(z.uid))
-            gz.territory.disconnect_all()
+        for zone in ZoneSql.objects.select_related("territory").all():
+            zone_node = ZoneNode.nodes.get(uuid=str(zone.uid))
+            zone_node.territory.disconnect_all()
 
-            if z.territory_id:
-                gt = TerritoryNode.nodes.get_or_none(uuid=str(z.territory.uid))
-                if gt:
-                    gz.territory.connect(gt)
+            if zone.territory_id:
+                territory_node = TerritoryNode.nodes.get_or_none(uuid=str(zone.territory.uid))
+                if territory_node:
+                    zone_node.territory.connect(territory_node)
 
     def link_count(self):
         return ZoneSql.objects.filter(territory__isnull=False).count()
@@ -214,7 +209,6 @@ class ZoneProjection(BaseGeoProjection):
 # =========================================================
 
 class RouteChainProjection(BaseGeoProjection):
-
     model = "RouteChain"
     app = "locations"
 
@@ -236,7 +230,6 @@ class RouteChainProjection(BaseGeoProjection):
 # =========================================================
 
 class RouteProjection(BaseGeoProjection):
-
     model = "Route"
     app = "locations"
 
@@ -250,31 +243,31 @@ class RouteProjection(BaseGeoProjection):
     }
 
     def sync_edges(self):
-        for r in RouteSql.objects.select_related(
+        for route in RouteSql.objects.select_related(
             "route_chain",
             "start_address",
             "end_address",
         ).all():
-            gr = RouteNode.nodes.get(uuid=str(r.uid))
+            route_node = RouteNode.nodes.get(uuid=str(route.uid))
 
-            gr.start_address.disconnect_all()
-            gr.end_address.disconnect_all()
-            gr.route_chain.disconnect_all()
+            route_node.start_address.disconnect_all()
+            route_node.end_address.disconnect_all()
+            route_node.route_chain.disconnect_all()
 
-            if r.route_chain_id:
-                gc = RouteChainNode.nodes.get_or_none(uuid=str(r.route_chain.uid))
-                if gc:
-                    gr.route_chain.connect(gc)
+            if route.route_chain_id:
+                chain_node = RouteChainNode.nodes.get_or_none(uuid=str(route.route_chain.uid))
+                if chain_node:
+                    route_node.route_chain.connect(chain_node)
 
-            if r.start_address_id:
-                ga = AddressNode.nodes.get_or_none(uuid=str(r.start_address.uid))
-                if ga:
-                    gr.start_address.connect(ga)
+            if route.start_address_id:
+                address_node = AddressNode.nodes.get_or_none(uuid=str(route.start_address.uid))
+                if address_node:
+                    route_node.start_address.connect(address_node)
 
-            if r.end_address_id:
-                ga = AddressNode.nodes.get_or_none(uuid=str(r.end_address.uid))
-                if ga:
-                    gr.end_address.connect(ga)
+            if route.end_address_id:
+                address_node = AddressNode.nodes.get_or_none(uuid=str(route.end_address.uid))
+                if address_node:
+                    route_node.end_address.connect(address_node)
 
     def link_count(self):
         return (
@@ -286,12 +279,12 @@ class RouteProjection(BaseGeoProjection):
 
 # =========================================================
 # TRAVEL PROJECTION
+# Travel = review / experience of a Route
 # =========================================================
 
 class TravelProjection(BaseGeoProjection):
-
     model = "Travel"
-    app = "socialhub"
+    app = "locations"
 
     sql_model = TravelSql
     neo_model = TravelNode
@@ -303,21 +296,21 @@ class TravelProjection(BaseGeoProjection):
     }
 
     def sync_edges(self):
-        for travel in TravelSql.objects.prefetch_related("participants").select_related("route").all():
-            gt = TravelNode.nodes.get(uuid=str(travel.uid))
+        for travel in TravelSql.objects.select_related("route").prefetch_related("participants").all():
+            travel_node = TravelNode.nodes.get(uuid=str(travel.uid))
 
-            gt.route.disconnect_all()
-            gt.participants.disconnect_all()
+            travel_node.route.disconnect_all()
+            travel_node.participants.disconnect_all()
 
             if travel.route_id:
-                gr = RouteNode.nodes.get_or_none(uuid=str(travel.route.uid))
-                if gr:
-                    gt.route.connect(gr)
+                route_node = RouteNode.nodes.get_or_none(uuid=str(travel.route.uid))
+                if route_node:
+                    travel_node.route.connect(route_node)
 
             for participant in travel.participants.all():
-                gp = PersonNode.nodes.get_or_none(uuid=str(participant.uid))
-                if gp:
-                    gt.participants.connect(gp)
+                person_node = PersonNode.nodes.get_or_none(uuid=str(participant.uid))
+                if person_node:
+                    travel_node.participants.connect(person_node)
 
     def link_count(self):
         route_links = TravelSql.objects.filter(route__isnull=False).count()
@@ -330,12 +323,12 @@ class TravelProjection(BaseGeoProjection):
 
 # =========================================================
 # VISIT PROJECTION
+# Visit = review / experience of a place Address
 # =========================================================
 
 class VisitProjection(BaseGeoProjection):
-
     model = "Visit"
-    app = "socialhub"
+    app = "locations"
 
     sql_model = VisitSql
     neo_model = VisitNode
@@ -347,20 +340,20 @@ class VisitProjection(BaseGeoProjection):
 
     def sync_edges(self):
         for visit in VisitSql.objects.select_related("participant", "location").all():
-            gv = VisitNode.nodes.get(uuid=str(visit.uid))
+            visit_node = VisitNode.nodes.get(uuid=str(visit.uid))
 
-            gv.participant.disconnect_all()
-            gv.location.disconnect_all()
+            visit_node.participant.disconnect_all()
+            visit_node.location.disconnect_all()
 
             if visit.participant_id:
-                gp = PersonNode.nodes.get_or_none(uuid=str(visit.participant.uid))
-                if gp:
-                    gv.participant.connect(gp)
+                person_node = PersonNode.nodes.get_or_none(uuid=str(visit.participant.uid))
+                if person_node:
+                    visit_node.participant.connect(person_node)
 
             if visit.location_id:
-                ga = AddressNode.nodes.get_or_none(uuid=str(visit.location.uid))
-                if ga:
-                    gv.location.connect(ga)
+                address_node = AddressNode.nodes.get_or_none(uuid=str(visit.location.uid))
+                if address_node:
+                    visit_node.location.connect(address_node)
 
     def link_count(self):
         return (
@@ -374,7 +367,6 @@ class VisitProjection(BaseGeoProjection):
 # =========================================================
 
 class MapLayerProjection(BaseGeoProjection):
-
     model = "MapLayer"
     app = "locations"
 
@@ -395,8 +387,17 @@ class MapLayerProjection(BaseGeoProjection):
     }
 
     def sync_edges(self):
-        # MapLayerPolygon owns the outgoing IN_LAYER edge.
-        pass
+        for layer in MapLayerSql.objects.select_related("owner").all():
+            layer_node = MapLayerNode.nodes.get(uuid=str(layer.uid))
+            layer_node.owner.disconnect_all()
+
+            if layer.owner_id:
+                person_node = PersonNode.nodes.get_or_none(uuid=str(layer.owner.uid))
+                if person_node:
+                    layer_node.owner.connect(person_node)
+
+    def link_count(self):
+        return MapLayerSql.objects.filter(owner__isnull=False).count()
 
 
 # =========================================================
@@ -404,7 +405,6 @@ class MapLayerProjection(BaseGeoProjection):
 # =========================================================
 
 class MapLayerPolygonProjection(BaseGeoProjection):
-
     model = "MapLayerPolygon"
     app = "locations"
 
@@ -421,12 +421,13 @@ class MapLayerPolygonProjection(BaseGeoProjection):
 
     def sync_edges(self):
         for polygon in MapLayerPolygonSql.objects.select_related("layer").all():
-            gp = MapLayerPolygonNode.nodes.get(uuid=str(polygon.uid))
-            gp.layer.disconnect_all()
+            polygon_node = MapLayerPolygonNode.nodes.get(uuid=str(polygon.uid))
+            polygon_node.layer.disconnect_all()
 
-            gl = MapLayerNode.nodes.get_or_none(uuid=str(polygon.layer.uid))
-            if gl:
-                gp.layer.connect(gl)
+            if polygon.layer_id:
+                layer_node = MapLayerNode.nodes.get_or_none(uuid=str(polygon.layer.uid))
+                if layer_node:
+                    polygon_node.layer.connect(layer_node)
 
     def link_count(self):
         return MapLayerPolygonSql.objects.filter(layer__isnull=False).count()
