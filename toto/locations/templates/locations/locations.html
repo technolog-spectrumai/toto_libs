@@ -38,6 +38,8 @@
       visibilityOpen: false,
       layersOpen: false,
       layerSettingsOpen: false,
+      visitReviewOpen: false,
+      visitReviewLocation: null,
       activeType: "All",
       selectedName: "",
       selectedLayerSlug: "",
@@ -46,6 +48,7 @@
       visibleTypes: {},
       locations: window.locationsPayload || [],
       mapLayers: window.mapLayersPayload || [],
+
       init() {
         this.availableTypes
           .filter((type) => type !== "All")
@@ -67,12 +70,15 @@
           updateMapLayerOverlay(this.selectedLayer, this.overlayOpacity, this.showOverlayLabels);
         });
       },
+
       get availableTypes() {
         return ["All", ...new Set(this.locations.map((location) => location.type).filter(Boolean))];
       },
+
       get mappedLocations() {
         return this.locations.filter((location) => location.geometry);
       },
+
       get visibleLocations() {
         const query = this.search.trim().toLowerCase();
 
@@ -84,18 +90,23 @@
           return typeIsVisible && matchesType && (!query || haystack.includes(query));
         });
       },
+
       get selectedLocation() {
         return this.locations.find((location) => location.name === this.selectedName);
       },
+
       get selectedLayer() {
         return this.mapLayers.find((layer) => layer.slug === this.selectedLayerSlug) || null;
       },
+
       selectType(type) {
         this.activeType = type;
       },
+
       isTypeVisible(type) {
         return this.visibleTypes[type] !== false;
       },
+
       toggleType(type) {
         this.visibleTypes[type] = !this.isTypeVisible(type);
         if (this.activeType === type && !this.visibleTypes[type]) {
@@ -103,12 +114,14 @@
         }
         applyLocationTypeVisibility(this.visibleTypes);
       },
+
       showAllTypes() {
         Object.keys(this.visibleTypes).forEach((type) => {
           this.visibleTypes[type] = true;
         });
         applyLocationTypeVisibility(this.visibleTypes);
       },
+
       hideAllTypes() {
         Object.keys(this.visibleTypes).forEach((type) => {
           this.visibleTypes[type] = false;
@@ -116,6 +129,7 @@
         this.activeType = "All";
         applyLocationTypeVisibility(this.visibleTypes);
       },
+
       selectLayer(slug) {
         this.selectedLayerSlug = slug;
         const layer = this.selectedLayer;
@@ -125,28 +139,39 @@
         }
         updateMapLayerOverlay(layer, this.overlayOpacity, this.showOverlayLabels);
       },
+
       clearLayer() {
         this.selectedLayerSlug = "";
         updateMapLayerOverlay(null, this.overlayOpacity, this.showOverlayLabels);
       },
+
       refreshLayerDisplay() {
         updateMapLayerOverlay(this.selectedLayer, this.overlayOpacity, this.showOverlayLabels);
       },
+
       selectLocation(location) {
         this.selectedName = location.name;
         zoomToFeature(location.name);
         this.sidebarOpen = false;
       },
+
+      openVisitReview(location) {
+        this.visitReviewLocation = location;
+        this.visitReviewOpen = true;
+      },
+
       fitAll() {
         fitAllLocations();
         this.sidebarOpen = false;
       },
+
       typeStyle(type) {
         return {
           backgroundColor: locationTypeColor(type, this.darkMode),
           boxShadow: `0 0 0 3px ${locationTypeColor(type, this.darkMode)}26`
         };
       },
+
       geometryLabel(location) {
         if (!location.geometry) return "No geometry";
         return location.geometry.type || "Geometry";
@@ -212,6 +237,7 @@
             <div class="text-xs opacity-65">Types</div>
           </div>
         </div>
+
         <a
           href="{% url 'locations:route_search' %}"
           :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
@@ -439,29 +465,54 @@
 
           <div class="space-y-2">
             <template x-for="location in visibleLocations" :key="`${location.type}-${location.name}`">
-              <button
-                type="button"
-                @click="selectLocation(location)"
-                :disabled="!location.geometry"
+              <div
                 :class="[
                   selectedName === location.name
                     ? (darkMode ? 'border-accent-dark bg-primary-bg-dark' : 'border-accent-light bg-primary-bg-light')
                     : 'border-current/10',
-                  !location.geometry ? 'cursor-not-allowed opacity-45' : 'hover:-translate-y-0.5 hover:shadow-md'
+                  !location.geometry ? 'opacity-45' : 'hover:-translate-y-0.5 hover:shadow-md'
                 ]"
-                class="group w-full rounded-lg border p-3 text-left transition">
-                <div class="flex items-start gap-3">
-                  <span :style="typeStyle(location.type)" class="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"></span>
-                  <span class="min-w-0 flex-1">
-                    <span class="flex items-center justify-between gap-2">
-                      <span class="text-xs font-semibold uppercase opacity-65" x-text="location.type"></span>
-                      <span class="text-[11px] opacity-55" x-text="geometryLabel(location)"></span>
+                class="group rounded-lg border p-3 transition">
+
+                <button
+                  type="button"
+                  @click="selectLocation(location)"
+                  :disabled="!location.geometry"
+                  class="w-full text-left disabled:cursor-not-allowed">
+                  <div class="flex items-start gap-3">
+                    <span :style="typeStyle(location.type)" class="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"></span>
+                    <span class="min-w-0 flex-1">
+                      <span class="flex items-center justify-between gap-2">
+                        <span class="text-xs font-semibold uppercase opacity-65" x-text="location.type"></span>
+                        <span class="text-[11px] opacity-55" x-text="geometryLabel(location)"></span>
+                      </span>
+                      <span class="mt-1 block break-words text-sm font-semibold" x-text="location.name"></span>
+                      <span class="mt-1 block break-words text-xs opacity-60" x-show="location.detail" x-text="location.detail"></span>
                     </span>
-                    <span class="mt-1 block break-words text-sm font-semibold" x-text="location.name"></span>
-                    <span class="mt-1 block break-words text-xs opacity-60" x-show="location.detail" x-text="location.detail"></span>
-                  </span>
+                  </div>
+                </button>
+
+                <div class="mt-3 flex flex-wrap gap-2">
+                  <a
+                    x-show="location.type === 'Route' && location.review_url"
+                    :href="location.review_url"
+                    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                    class="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition hover:opacity-80">
+                    <i class="fa-solid fa-star-half-stroke"></i>
+                    Review route
+                  </a>
+
+                  <button
+                    x-show="location.type === 'Address' && location.visit_review_url"
+                    type="button"
+                    @click="openVisitReview(location)"
+                    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                    class="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition hover:opacity-80">
+                    <i class="fa-solid fa-pen-to-square"></i>
+                    Review visit
+                  </button>
                 </div>
-              </button>
+              </div>
             </template>
           </div>
         </div>
@@ -564,6 +615,96 @@
         </div>
       </div>
     </div>
+
+    <div
+      class="fixed inset-0 z-[70] flex items-center justify-center bg-black/55 p-4"
+      x-show="visitReviewOpen"
+      x-transition.opacity
+      x-cloak>
+      <div
+        @click.outside="visitReviewOpen = false"
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark' : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+        class="w-full max-w-lg rounded-lg border p-5 shadow-xl">
+
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <p
+              :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+              class="text-xs font-semibold uppercase tracking-wide">
+              Visit review
+            </p>
+            <h2 class="mt-1 text-xl font-bold" x-text="visitReviewLocation ? visitReviewLocation.name : 'Review visit'"></h2>
+            <p class="mt-1 text-sm opacity-70" x-text="visitReviewLocation ? visitReviewLocation.detail : ''"></p>
+          </div>
+
+          <button
+            type="button"
+            @click="visitReviewOpen = false"
+            class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-current/15 transition hover:opacity-75"
+            aria-label="Close visit review">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+
+        <form
+          method="post"
+          :action="visitReviewLocation ? visitReviewLocation.visit_review_url : '#'"
+          class="mt-5 space-y-4">
+          {% csrf_token %}
+          <input type="hidden" name="next" value="{{ request.get_full_path }}">
+
+          <label class="block">
+            <span class="mb-1 block text-sm font-semibold">Score</span>
+            <select
+              name="score"
+              :class="darkMode
+                ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark'
+                : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+              class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+              <option value="">No score</option>
+              <option value="1">1 - Poor</option>
+              <option value="2">2 - Fair</option>
+              <option value="3">3 - Good</option>
+              <option value="4">4 - Very good</option>
+              <option value="5">5 - Excellent</option>
+            </select>
+          </label>
+
+          <label class="block">
+            <span class="mb-1 block text-sm font-semibold">Review</span>
+            <textarea
+              name="review"
+              rows="5"
+              placeholder="Write your visit notes..."
+              :class="darkMode
+                ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder:text-text-main-dark/50'
+                : 'border-accent-2 bg-primary-bg-light text-text-main-light placeholder:text-text-main-light/50'"
+              class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20"></textarea>
+          </label>
+
+          <div class="flex justify-end gap-2">
+            <button
+              type="button"
+              @click="visitReviewOpen = false"
+              :class="darkMode
+                ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark'
+                : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+              class="inline-flex items-center justify-center rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+              Cancel
+            </button>
+
+            <button
+              type="submit"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+              <i class="fa-solid fa-check"></i>
+              Save review
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -706,7 +847,6 @@
     }
 
     const isDark = localStorage.getItem("darkMode") === "true";
-    const palette = layerPalette(isDark);
     const { min, max } = layerValueRange(layer);
     const unit = layer.unit ? ` ${escapeHtml(layer.unit)}` : "";
     const lowColor = layerHeatColor(layer, min, isDark);
@@ -837,29 +977,70 @@
     return escapeHtml(value).replaceAll('"', "&quot;").replaceAll("'", "&#39;");
   }
 
-  function popupContent(type, name) {
+  function popupContent(item) {
+    const type = item.type;
+    const name = item.name;
     const title = `<strong>${escapeHtml(type)}</strong><br>${escapeHtml(name)}`;
-    if (type !== "Address") return title;
 
-    return `
-      ${title}
-      <div style="margin-top: 8px;">
-        <button
-          type="button"
-          data-location-name="${escapeAttribute(name)}"
-          onclick="zoomToAddressFromPopup(this)"
-          style="display: inline-flex; align-items: center; gap: 6px; border: 1px solid currentColor; border-radius: 6px; padding: 4px 8px; font-size: 12px; font-weight: 700; background: transparent; cursor: pointer;">
-          <i class="fa-solid fa-location-crosshairs"></i>
-          Zoom to address
-        </button>
-      </div>
-    `;
+    if (type === "Route" && item.review_url) {
+      return `
+        ${title}
+        <div style="margin-top: 8px;">
+          <a
+            href="${escapeAttribute(item.review_url)}"
+            style="display: inline-flex; align-items: center; gap: 6px; border: 1px solid currentColor; border-radius: 6px; padding: 4px 8px; font-size: 12px; font-weight: 700; background: transparent; cursor: pointer; text-decoration: none; color: inherit;">
+            <i class="fa-solid fa-star-half-stroke"></i>
+            Review route
+          </a>
+        </div>
+      `;
+    }
+
+    if (type === "Address" && item.visit_review_url) {
+      return `
+        ${title}
+        <div style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px;">
+          <button
+            type="button"
+            data-location-name="${escapeAttribute(name)}"
+            onclick="zoomToAddressFromPopup(this)"
+            style="display: inline-flex; align-items: center; gap: 6px; border: 1px solid currentColor; border-radius: 6px; padding: 4px 8px; font-size: 12px; font-weight: 700; background: transparent; cursor: pointer;">
+            <i class="fa-solid fa-location-crosshairs"></i>
+            Zoom
+          </button>
+
+          <button
+            type="button"
+            data-location-name="${escapeAttribute(name)}"
+            onclick="openVisitReviewFromPopup(this)"
+            style="display: inline-flex; align-items: center; gap: 6px; border: 1px solid currentColor; border-radius: 6px; padding: 4px 8px; font-size: 12px; font-weight: 700; background: transparent; cursor: pointer;">
+            <i class="fa-solid fa-pen-to-square"></i>
+            Review visit
+          </button>
+        </div>
+      `;
+    }
+
+    return title;
   }
 
   function zoomToAddressFromPopup(button) {
     const name = button?.dataset?.locationName;
     if (!name) return;
     zoomToFeature(name);
+  }
+
+  function openVisitReviewFromPopup(button) {
+    const name = button?.dataset?.locationName;
+    if (!name) return;
+
+    const alpineRoot = document.querySelector("[x-data='locationsExplorer()']");
+    const location = (window.locationsPayload || []).find((item) => item.name === name);
+
+    if (!location || !alpineRoot || !alpineRoot._x_dataStack?.length) return;
+
+    alpineRoot._x_dataStack[0].visitReviewLocation = location;
+    alpineRoot._x_dataStack[0].visitReviewOpen = true;
   }
 
   document.addEventListener("DOMContentLoaded", function () {
@@ -906,6 +1087,7 @@
         layer: layer,
         type: type
       };
+
       featureLayers.push({
         type: type,
         name: name,
@@ -918,16 +1100,18 @@
         allBounds = layer.getBounds();
       }
 
-      layer.bindPopup(popupContent(type, name));
+      layer.bindPopup(popupContent(item));
     });
 
     fitAllLocations();
+
     if (window.mapLayersPayload?.length) {
       const defaultLayer = window.mapLayersPayload[0];
       updateMapLayerOverlay(defaultLayer, Number(defaultLayer.style?.opacity ?? 0.35), defaultLayer.style?.show_labels !== false);
     } else {
       updateOverlayLegend(null);
     }
+
     setTimeout(refreshMapSize, 100);
   });
 

@@ -4,16 +4,22 @@ from urllib.parse import urlencode
 from urllib.request import urlopen
 
 from django.conf import settings
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.shortcuts import render
+from django.shortcuts import get_object_or_404, redirect, render
+from django.views.decorators.http import require_POST
+
 from toto.core.page import PageProcessor
+from toto.socialhub.models import Person
+
 from .models import (
     MapLayer,
     Territory,
     Zone,
     RouteChain,
     Route,
-    Address
+    Address,
+    Travel, Visit
 )
 
 
@@ -57,6 +63,36 @@ def route_chain_geometry(route_chain):
     }
 
 
+def route_payload(route):
+    return {
+        "id": route.pk,
+        "name": route.name or f"Route {route.pk}",
+        "geometry": geometry_json(route.geometry),
+        "start_address": {
+            "id": route.start_address.pk,
+            "label": str(route.start_address),
+            "geometry": geometry_json(route.start_address.geometry),
+        } if route.start_address else None,
+        "end_address": {
+            "id": route.end_address.pk,
+            "label": str(route.end_address),
+            "geometry": geometry_json(route.end_address.geometry),
+        } if route.end_address else None,
+    }
+
+
+def travel_payload(travel):
+    route = travel.route
+
+    return {
+        "id": travel.pk,
+        "info": travel.info,
+        "starts_at": travel.starts_at.isoformat() if travel.starts_at else None,
+        "ends_at": travel.ends_at.isoformat() if travel.ends_at else None,
+        "route": route_payload(route) if route else None,
+    }
+
+
 def map_layer_payload(layer):
     return {
         "id": layer.pk,
@@ -84,11 +120,32 @@ def map_layer_payload(layer):
     }
 
 
+def current_person(request):
+    if not request.user.is_authenticated:
+        return None
+
+    person = getattr(request.user, "community_profile", None)
+    if person:
+        return person
+
+    return Person.objects.filter(user=request.user).first()
+
+
+def location_reviews_queryset(addresses):
+    address_ids = [address.pk for address in addresses if address]
+
+    return (
+        Visit.objects
+        .filter(location_id__in=address_ids)
+        .select_related("participant", "location")
+        .order_by("-id")
+    )
+
+
 @login_required
 def locations_all(request):
     locations = []
 
-    # Territories (polygons)
     for t in Territory.objects.all():
         locations.append({
             "type": "Territory",
@@ -98,7 +155,6 @@ def locations_all(request):
             "geometry_json": geometry_json(t.geometry),
         })
 
-    # Zones (multipolygons)
     for z in Zone.objects.all():
         locations.append({
             "type": "Zone",
@@ -108,7 +164,6 @@ def locations_all(request):
             "geometry_json": geometry_json(z.geometry),
         })
 
-    # Route chains (combined multilines)
     for chain in RouteChain.objects.prefetch_related("routes").all():
         geometry = route_chain_geometry(chain)
         locations.append({
@@ -119,7 +174,6 @@ def locations_all(request):
             "geometry_json": geometry,
         })
 
-    # Routes (multiline)
     for r in Route.objects.select_related("route_chain").all():
         locations.append({
             "type": "Route",
@@ -127,9 +181,11 @@ def locations_all(request):
             "detail": f"In {r.route_chain.name}" if r.route_chain else "Route",
             "geometry": geometry_json(r.geometry),
             "geometry_json": geometry_json(r.geometry),
+            "review_url": request.build_absolute_uri(
+                f"/locations/routes/{r.pk}/review/"
+            ),
         })
 
-    # Addresses (points)
     for addr in Address.objects.all():
         locations.append({
             "type": "Address",
@@ -151,7 +207,7 @@ def locations_all(request):
     return render(
         request,
         "locations/locations.html",
-        PageProcessor().decorate(context, request)
+        PageProcessor().decorate(context, request),
     )
 
 
@@ -314,3 +370,115 @@ def route_search(request):
         "locations/route_search.html",
         PageProcessor().decorate(context, request),
     )
+
+
+@login_required
+def route_review(request, pk):
+    route = get_object_or_404(
+        Route.objects.select_related(
+            "route_chain",
+            "start_address",
+            "end_address",
+        ),
+        pk=pk,
+    )
+
+    review_locations = [
+        location
+        for location in (route.start_address, route.end_address)
+        if location
+    ]
+
+    context = {
+        "route": route,
+        "route_payload_json": json.dumps(route_payload(route)),
+        "travels": (
+            Travel.objects
+            .filter(route=route)
+            .prefetch_related("participants")
+            .order_by("-starts_at")
+        ),
+        "review_locations": review_locations,
+        "reviews": location_reviews_queryset(review_locations),
+        "person": current_person(request),
+    }
+
+    return render(
+        request,
+        "locations/route_review.html",
+        PageProcessor().decorate(context, request),
+    )
+
+
+@login_required
+def travel_review(request, pk):
+    travel = get_object_or_404(
+        Travel.objects
+        .select_related("route", "route__start_address", "route__end_address", "route__route_chain")
+        .prefetch_related("participants"),
+        pk=pk,
+    )
+
+    route = travel.route
+    review_locations = []
+
+    if route:
+        review_locations = [
+            location
+            for location in (route.start_address, route.end_address)
+            if location
+        ]
+
+    context = {
+        "travel": travel,
+        "route": route,
+        "travel_payload_json": json.dumps(travel_payload(travel)),
+        "review_locations": review_locations,
+        "reviews": location_reviews_queryset(review_locations),
+        "person": current_person(request),
+    }
+
+    return render(
+        request,
+        "locations/travel_review.html",
+        PageProcessor().decorate(context, request),
+    )
+
+
+@require_POST
+@login_required
+def submit_visit_review(request, address_id):
+    person = current_person(request)
+    if not person:
+        messages.error(request, "You need a community profile before you can submit a visit review.")
+        return redirect(request.POST.get("next") or "locations:locations_all")
+
+    location = get_object_or_404(Address, pk=address_id)
+
+    review = request.POST.get("review", "").strip()
+    raw_score = request.POST.get("score")
+    next_url = request.POST.get("next") or "locations:locations_all"
+
+    score = None
+    if raw_score not in (None, ""):
+        try:
+            score = int(raw_score)
+        except ValueError:
+            messages.error(request, "Score must be a number from 1 to 5.")
+            return redirect(next_url)
+
+        if score < 1 or score > 5:
+            messages.error(request, "Score must be from 1 to 5.")
+            return redirect(next_url)
+
+    Visit.objects.update_or_create(
+        participant=person,
+        location=location,
+        defaults={
+            "review": review,
+            "score": score,
+        },
+    )
+
+    messages.success(request, "Visit review saved.")
+    return redirect(next_url)
