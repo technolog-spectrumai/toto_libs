@@ -7,19 +7,21 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from toto.core.page import PageProcessor
 from toto.socialhub.models import Person
 
 from .models import (
-    MapLayer,
-    Territory,
-    Zone,
-    RouteChain,
-    Route,
     Address,
-    Travel, Visit
+    MapLayer,
+    Route,
+    RouteChain,
+    Territory,
+    Travel,
+    Visit,
+    Zone,
 )
 
 
@@ -146,22 +148,22 @@ def location_reviews_queryset(addresses):
 def locations_all(request):
     locations = []
 
-    for t in Territory.objects.all():
+    for territory in Territory.objects.select_related("capital").all():
         locations.append({
             "type": "Territory",
-            "name": t.name or f"Territory {t.pk}",
-            "detail": f"Capital: {t.capital}" if t.capital else "Territory",
-            "geometry": geometry_json(t.geometry),
-            "geometry_json": geometry_json(t.geometry),
+            "name": territory.name or f"Territory {territory.pk}",
+            "detail": f"Capital: {territory.capital}" if territory.capital else "Territory",
+            "geometry": geometry_json(territory.geometry),
+            "geometry_json": geometry_json(territory.geometry),
         })
 
-    for z in Zone.objects.all():
+    for zone in Zone.objects.select_related("territory").all():
         locations.append({
             "type": "Zone",
-            "name": z.name or f"Zone {z.pk}",
-            "detail": f"Inside {z.territory.name}" if z.territory else "Standalone zone",
-            "geometry": geometry_json(z.geometry),
-            "geometry_json": geometry_json(z.geometry),
+            "name": zone.name or f"Zone {zone.pk}",
+            "detail": f"Inside {zone.territory.name}" if zone.territory else "Standalone zone",
+            "geometry": geometry_json(zone.geometry),
+            "geometry_json": geometry_json(zone.geometry),
         })
 
     for chain in RouteChain.objects.prefetch_related("routes").all():
@@ -174,25 +176,38 @@ def locations_all(request):
             "geometry_json": geometry,
         })
 
-    for r in Route.objects.select_related("route_chain").all():
+    for route in Route.objects.select_related("route_chain").all():
         locations.append({
             "type": "Route",
-            "name": r.name or f"Route {r.pk}",
-            "detail": f"In {r.route_chain.name}" if r.route_chain else "Route",
-            "geometry": geometry_json(r.geometry),
-            "geometry_json": geometry_json(r.geometry),
-            "review_url": request.build_absolute_uri(
-                f"/locations/routes/{r.pk}/review/"
-            ),
+            "name": route.name or f"Route {route.pk}",
+            "detail": f"In {route.route_chain.name}" if route.route_chain else "Route",
+            "geometry": geometry_json(route.geometry),
+            "geometry_json": geometry_json(route.geometry),
+            "review_url": reverse("locations:route_review", args=[route.pk]),
         })
 
-    for addr in Address.objects.all():
+    for travel in Travel.objects.select_related("route", "route__route_chain").all():
+        route = travel.route
+        if not route:
+            continue
+
+        locations.append({
+            "type": "Travel",
+            "name": str(travel),
+            "detail": travel.info or f"{travel.starts_at} → {travel.ends_at}",
+            "geometry": geometry_json(route.geometry),
+            "geometry_json": geometry_json(route.geometry),
+            "review_url": reverse("locations:travel_review", args=[travel.pk]),
+        })
+
+    for address in Address.objects.all():
         locations.append({
             "type": "Address",
-            "name": str(addr),
-            "detail": addr.locality_name,
-            "geometry": geometry_json(addr.geometry),
-            "geometry_json": geometry_json(addr.geometry),
+            "name": str(address),
+            "detail": address.locality_name,
+            "geometry": geometry_json(address.geometry),
+            "geometry_json": geometry_json(address.geometry),
+            "review_url": reverse("locations:visit_review", args=[address.pk]),
         })
 
     context = {
@@ -200,7 +215,10 @@ def locations_all(request):
         "locations_json": json.dumps(locations),
         "map_layers_json": json.dumps([
             map_layer_payload(layer)
-            for layer in MapLayer.objects.filter(is_active=True).prefetch_related("polygons").order_by("name")
+            for layer in MapLayer.objects
+            .filter(is_active=True)
+            .prefetch_related("polygons")
+            .order_by("name")
         ]),
     }
 
@@ -228,6 +246,7 @@ def parse_coordinate(value, label, minimum, maximum):
 
 def fetch_traversable_route(start_lng, start_lat, end_lng, end_lat, mode):
     endpoint = ROAD_ROUTING_ENDPOINTS.get(mode)
+
     if mode == "public_transport":
         endpoint = getattr(settings, "LOCATIONS_PUBLIC_TRANSPORT_ROUTING_URL", "")
         if not endpoint:
@@ -260,6 +279,7 @@ def fetch_traversable_route(start_lng, start_lat, end_lng, end_lat, mode):
         raise ValueError(message)
 
     route = payload["routes"][0]
+
     return {
         "type": "Feature",
         "properties": {
@@ -278,6 +298,7 @@ def address_coordinates(address):
 def selected_address_coordinates(address_id, label):
     if not address_id:
         return None
+
     if str(address_id).startswith("temporary:"):
         return None
 
@@ -296,6 +317,7 @@ def route_search(request):
         .filter(geometry__isnull=False)
         .order_by("country_name", "locality_name", "street", "building")
     )
+
     default_start = addresses[0] if addresses else None
     default_end = addresses[1] if len(addresses) > 1 else default_start
 
@@ -308,6 +330,7 @@ def route_search(request):
         "end_lat": request.GET.get("end_lat", str(default_end.geometry.y) if default_end else "54.4067"),
         "end_lng": request.GET.get("end_lng", str(default_end.geometry.x) if default_end else "18.6717"),
     }
+
     route = None
     error = ""
 
@@ -335,7 +358,13 @@ def route_search(request):
                 end_lat = parse_coordinate(form["end_lat"], "End latitude", -90, 90)
                 end_lng = parse_coordinate(form["end_lng"], "End longitude", -180, 180)
 
-            route = fetch_traversable_route(start_lng, start_lat, end_lng, end_lat, form["mode"])
+            route = fetch_traversable_route(
+                start_lng,
+                start_lat,
+                end_lng,
+                end_lat,
+                form["mode"],
+            )
         except ValueError as exc:
             error = str(exc)
 
@@ -350,6 +379,7 @@ def route_search(request):
         }
         for address in addresses
     ]
+
     selected_mode = next(
         mode for mode in ROUTING_MODE_OPTIONS
         if mode["value"] == form["mode"]
@@ -414,7 +444,12 @@ def route_review(request, pk):
 def travel_review(request, pk):
     travel = get_object_or_404(
         Travel.objects
-        .select_related("route", "route__start_address", "route__end_address", "route__route_chain")
+        .select_related(
+            "route",
+            "route__start_address",
+            "route__end_address",
+            "route__route_chain",
+        )
         .prefetch_related("participants"),
         pk=pk,
     )
@@ -449,15 +484,20 @@ def travel_review(request, pk):
 @login_required
 def submit_visit_review(request, address_id):
     person = current_person(request)
+    fallback_url = reverse("locations:locations_all")
+    next_url = request.POST.get("next") or fallback_url
+
     if not person:
-        messages.error(request, "You need a community profile before you can submit a visit review.")
-        return redirect(request.POST.get("next") or "locations:locations_all")
+        messages.error(
+            request,
+            "You need a community profile before you can submit a visit review.",
+        )
+        return redirect(next_url)
 
     location = get_object_or_404(Address, pk=address_id)
 
     review = request.POST.get("review", "").strip()
     raw_score = request.POST.get("score")
-    next_url = request.POST.get("next") or "locations:locations_all"
 
     score = None
     if raw_score not in (None, ""):
@@ -482,3 +522,41 @@ def submit_visit_review(request, address_id):
 
     messages.success(request, "Visit review saved.")
     return redirect(next_url)
+
+@login_required
+def visit_review(request, address_id):
+    location = get_object_or_404(Address, pk=address_id)
+
+    context = {
+        "location": location,
+        "location_payload_json": json.dumps({
+            "id": location.pk,
+            "name": str(location),
+            "detail": location.locality_name,
+            "geometry": geometry_json(location.geometry),
+        }),
+        "reviews": (
+            Visit.objects
+            .filter(location=location)
+            .select_related("participant", "location")
+            .order_by("-id")
+        ),
+        "person": current_person(request),
+    }
+
+    return render(
+        request,
+        "locations/visit_review.html",
+        PageProcessor().decorate(context, request),
+    )
+
+@require_POST
+@login_required
+def update_travel_info(request, pk):
+    travel = get_object_or_404(Travel, pk=pk)
+
+    travel.info = request.POST.get("info", "").strip()
+    travel.save(update_fields=["info"])
+
+    messages.success(request, "Travel info saved.")
+    return redirect("locations:travel_review", pk=travel.pk)

@@ -74,6 +74,35 @@
     <section class="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
       <div
         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-lg border p-5 shadow-sm">
+        <h2 class="text-lg font-bold">Travel info</h2>
+        <p class="mt-1 text-sm opacity-70">
+          Add notes or context for this travel.
+        </p>
+
+        <form method="post" action="{% url 'locations:update_travel_info' travel.pk %}" class="mt-4 space-y-3">
+          {% csrf_token %}
+
+          <textarea
+            name="info"
+            rows="5"
+            placeholder="Add travel notes, purpose, instructions, or route context..."
+            :class="darkMode
+              ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder:text-text-main-dark/50'
+              : 'border-accent-2 bg-primary-bg-light text-text-main-light placeholder:text-text-main-light/50'"
+            class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">{{ travel.info }}</textarea>
+
+          <button
+            type="submit"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+            <i class="fa-solid fa-floppy-disk"></i>
+            Save travel info
+          </button>
+        </form>
+      </div>
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
         class="overflow-hidden rounded-lg border shadow-sm">
         <div id="travel-review-map" class="h-[560px] w-full"></div>
       </div>

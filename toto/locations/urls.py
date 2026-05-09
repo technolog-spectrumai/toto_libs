@@ -11,8 +11,15 @@ urlpatterns = [
     path("routes/<int:pk>/review/", views.route_review, name="route_review"),
     path("travels/<int:pk>/review/", views.travel_review, name="travel_review"),
     path(
-        "addresses/<int:address_id>/visit-review/",
+        "visit/addresses/<int:address_id>/visit-review/",
         views.submit_visit_review,
         name="submit_visit_review",
+    ),
+    path("addresses/<int:address_id>/visit-review/", views.visit_review, name="visit_review"),
+    path("addresses/<int:address_id>/visit-review/submit/", views.submit_visit_review, name="submit_visit_review"),
+    path(
+        "travels/<int:pk>/info/",
+        views.update_travel_info,
+        name="update_travel_info",
     ),
 ]
