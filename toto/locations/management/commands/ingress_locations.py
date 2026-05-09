@@ -1,7 +1,7 @@
 from django.contrib.gis.geos import LineString, MultiLineString, MultiPolygon, Point, Polygon
 
 from toto.core.ingress import IngressCommand
-from toto.locations.models import Address, Route, Territory, Zone
+from toto.locations.models import Address, Route, RouteChain, Territory, Zone
 
 
 class Command(IngressCommand):
@@ -64,7 +64,7 @@ class Command(IngressCommand):
         )
 
     def upsert_route(self, name, start_key, end_key, coordinates):
-        Route.objects.update_or_create(
+        route, _ = Route.objects.update_or_create(
             name=name,
             defaults={
                 "geometry": self.route_geometry(coordinates),
@@ -72,6 +72,24 @@ class Command(IngressCommand):
                 "end_address": self.addresses[end_key],
             },
         )
+        self.routes[name] = route
+        return route
+
+    def upsert_route_chain(self, name, description, route_names):
+        route_chain, _ = RouteChain.objects.update_or_create(
+            name=name,
+            defaults={
+                "description": description,
+            },
+        )
+
+        for sequence, route_name in enumerate(route_names, start=1):
+            Route.objects.filter(name=route_name).update(
+                route_chain=route_chain,
+                sequence=sequence,
+            )
+
+        return route_chain
 
     def create_addresses(self):
         address_data = [
@@ -230,16 +248,51 @@ class Command(IngressCommand):
             ((18.6538, 54.3487), (18.6539, 54.3486), (18.6600, 54.3700), (18.6717, 54.4067)),
         )
 
+    def create_route_chains(self):
+        self.upsert_route_chain(
+            "Northern France Heritage Chain",
+            "Paris, Normandy, and Brittany landmarks connected as a broad northern France route chain.",
+            (
+                "Paris Monument Walk",
+                "Normandy Heritage Line",
+                "Brittany Coast and Stones",
+            ),
+        )
+        self.upsert_route_chain(
+            "Southern France Sun Chain",
+            "A Provence and Cote d'Azur chain from papal Avignon through Cannes to Nice.",
+            (
+                "Provence to Riviera",
+            ),
+        )
+        self.upsert_route_chain(
+            "Arthurian England Chain",
+            "A south England route from Tintagel Castle toward Stonehenge.",
+            (
+                "Arthurian South England",
+            ),
+        )
+        self.upsert_route_chain(
+            "Polish Landmark Chain",
+            "A Polish route chain covering Warsaw, Krakow, and the Gdansk Long Market area.",
+            (
+                "Polish Royal Trail",
+                "Gdansk Long Market Walk",
+            ),
+        )
+
     def process(self):
         if not self.full:
             return
 
         self.addresses = {}
         self.territories = {}
+        self.routes = {}
 
         self.create_addresses()
         self.create_territories()
         self.create_zones()
         self.create_routes()
+        self.create_route_chains()
 
         print("[Ingress] Demo European geospatial features created successfully.")

@@ -51,9 +51,25 @@ class Zone(DomainEntity):
         return self.name
 
 
+class RouteChain(DomainEntity):
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+
+    def __str__(self):
+        return self.name
+
+
 class Route(DomainEntity):
     name = models.CharField(max_length=200, blank=True)
     geometry = models.MultiLineStringField(srid=SRID)
+    route_chain = models.ForeignKey(
+        RouteChain,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="routes",
+    )
+    sequence = models.PositiveIntegerField(default=0)
 
     start_address = models.ForeignKey(
         Address,
