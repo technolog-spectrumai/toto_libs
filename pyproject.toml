@@ -11,7 +11,20 @@ dependencies = [
 packages = [
     "toto",
     "toto.core",
-    "toto.gervazy"
+    "toto.events",
+    "toto.gervazy",
+    "toto.kanban",
+    "toto.kanban.graph",
+    "toto.kanban.management",
+    "toto.kanban.management.commands",
+    "toto.kanban.migrations",
+    "toto.locations",
+    "toto.locations.graph",
+    "toto.socialhub",
+    "toto.socialhub.graph",
+    "toto.vault",
+    "toto.verbena",
+    "toto.verbena.graph"
 ]
 
 [build-system]

@@ -5,4 +5,4 @@ from django.utils.translation import gettext_lazy as _
 
 class KanbanConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
-    name = 'portal.kanban'
+    name = 'toto.kanban'

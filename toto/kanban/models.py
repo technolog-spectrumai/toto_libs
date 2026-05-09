@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
+from toto.core.domain import DomainEntity
 from toto.socialhub.models import Person
 
 
@@ -21,7 +22,7 @@ FIB_SCALE = [
 
 
 # 📁 Project
-class Project(models.Model):
+class Project(DomainEntity):
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     owner = models.ForeignKey(Person, on_delete=models.CASCADE, db_comment="owned_by")
@@ -32,7 +33,7 @@ class Project(models.Model):
 
 
 # 📦 Column
-class Column(models.Model):
+class Column(DomainEntity):
     graph_node_type = "TaskStatus"
     project = models.ForeignKey(Project, on_delete=models.CASCADE, db_column="belongs_to_project", db_comment="belongs_to")
     name = models.CharField(max_length=100)
@@ -50,7 +51,7 @@ class Column(models.Model):
 
 
 # 📣 Campaign
-class Campaign(models.Model):
+class Campaign(DomainEntity):
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="campaigns", db_comment="belongs_to_project")
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
@@ -65,7 +66,7 @@ class Campaign(models.Model):
 
 
 # 🎯 Mission
-class Mission(models.Model):
+class Mission(DomainEntity):
     campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name="missions", db_comment="belongs_to_campaign")
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
@@ -96,7 +97,7 @@ class Mission(models.Model):
 
 
 # 🚀 Sprint
-class Sprint(models.Model):
+class Sprint(DomainEntity):
     name = models.CharField(max_length=100)
     project = models.ForeignKey(Project, on_delete=models.CASCADE, db_comment="belongs_to")
     start_time = models.DateTimeField()
@@ -107,7 +108,7 @@ class Sprint(models.Model):
 
 
 # 📝 Task
-class Task(models.Model):
+class Task(DomainEntity):
     mission = models.ForeignKey(Mission, on_delete=models.CASCADE, related_name="tasks", db_comment="belongs_to")
     column = models.ForeignKey(Column, on_delete=models.CASCADE, related_name='tasks', db_comment="has_status")
     sprint = models.ForeignKey(Sprint, on_delete=models.SET_NULL, null=True, blank=True, related_name='tasks', db_comment="belongs_to")
