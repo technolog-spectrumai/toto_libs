@@ -35,7 +35,10 @@
           class="text-xs font-semibold uppercase tracking-wide">
           Traversable path
         </p>
-        <h1 class="mt-2 text-2xl font-bold">Route Search</h1>
+        <h1 class="mt-2 flex items-center gap-2 text-2xl font-bold">
+          <i class="fa-solid fa-route"></i>
+          Route Search
+        </h1>
         <p class="mt-2 text-sm opacity-70">
           Search a real route between two WGS84 points by car, bicycle, foot, or a configured public transport backend.
         </p>
@@ -200,7 +203,7 @@
           type="submit"
           :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
           class="inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-          <i class="fa-solid fa-route"></i>
+          <i class="fa-solid fa-magnifying-glass-location"></i>
           Search route
         </button>
       </form>
