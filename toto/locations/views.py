@@ -71,6 +71,7 @@ def map_layer_payload(layer):
                 "name": polygon.name or f"{layer.name} polygon {polygon.pk}",
                 "value": polygon.value,
                 "properties": polygon.properties or {},
+                "center": geometry_json(polygon.center),
                 "geometry": geometry_json(polygon.geometry),
             }
             for polygon in layer.polygons.all()

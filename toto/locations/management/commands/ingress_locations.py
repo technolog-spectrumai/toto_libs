@@ -105,12 +105,21 @@ class Command(IngressCommand):
         self.map_layers[slug] = layer
         return layer
 
+    def polygon_center(self, coordinates):
+        longitudes = [longitude for longitude, latitude in coordinates[:-1]]
+        latitudes = [latitude for longitude, latitude in coordinates[:-1]]
+        return self.point(
+            sum(longitudes) / len(longitudes),
+            sum(latitudes) / len(latitudes),
+        )
+
     def upsert_map_layer_polygon(self, layer_slug, name, value, coordinates, properties=None):
         MapLayerPolygon.objects.update_or_create(
             layer=self.map_layers[layer_slug],
             name=name,
             defaults={
                 "geometry": self.polygon(coordinates),
+                "center": self.polygon_center(coordinates),
                 "value": value,
                 "properties": properties or {},
             },
@@ -314,6 +323,7 @@ class Command(IngressCommand):
             "%",
             {
                 "colors": ["#4a8f7a", "#d94a4a"],
+                "palette": "heat",
                 "opacity": 0.32,
                 "show_labels": True,
                 "min": 20,
@@ -327,6 +337,7 @@ class Command(IngressCommand):
             "°C",
             {
                 "colors": ["#5f7fc9", "#ff4455"],
+                "palette": "cool",
                 "opacity": 0.28,
                 "show_labels": True,
                 "min": 16,

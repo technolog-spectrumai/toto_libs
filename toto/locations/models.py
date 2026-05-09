@@ -129,6 +129,12 @@ class MapLayerPolygon(DomainEntity):
         srid=SRID,
         help_text="Must be one continuous polygon.",
     )
+    center = models.PointField(
+        srid=SRID,
+        null=True,
+        blank=True,
+        help_text="Stored center point used for layer labels and markers.",
+    )
     value = models.FloatField()
     properties = models.JSONField(
         default=dict,

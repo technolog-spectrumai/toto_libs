@@ -35,22 +35,37 @@
     return {
       search: "",
       sidebarOpen: false,
+      visibilityOpen: false,
+      layersOpen: false,
       layerSettingsOpen: false,
       activeType: "All",
       selectedName: "",
       selectedLayerSlug: "",
       overlayOpacity: 0.35,
       showOverlayLabels: true,
+      visibleTypes: {},
       locations: window.locationsPayload || [],
       mapLayers: window.mapLayersPayload || [],
       init() {
+        this.availableTypes
+          .filter((type) => type !== "All")
+          .forEach((type) => {
+            this.visibleTypes[type] = true;
+          });
+
         const defaultLayer = this.mapLayers[0];
-        if (!defaultLayer) return;
+        if (!defaultLayer) {
+          this.$nextTick(() => applyLocationTypeVisibility(this.visibleTypes));
+          return;
+        }
 
         this.selectedLayerSlug = defaultLayer.slug;
         this.overlayOpacity = Number(defaultLayer.style?.opacity ?? 0.35);
         this.showOverlayLabels = defaultLayer.style?.show_labels !== false;
-        this.$nextTick(() => updateMapLayerOverlay(this.selectedLayer, this.overlayOpacity, this.showOverlayLabels));
+        this.$nextTick(() => {
+          applyLocationTypeVisibility(this.visibleTypes);
+          updateMapLayerOverlay(this.selectedLayer, this.overlayOpacity, this.showOverlayLabels);
+        });
       },
       get availableTypes() {
         return ["All", ...new Set(this.locations.map((location) => location.type).filter(Boolean))];
@@ -63,9 +78,10 @@
 
         return this.locations.filter((location) => {
           const matchesType = this.activeType === "All" || location.type === this.activeType;
+          const typeIsVisible = this.isTypeVisible(location.type);
           const haystack = `${location.name || ""} ${location.type || ""} ${location.detail || ""}`.toLowerCase();
 
-          return matchesType && (!query || haystack.includes(query));
+          return typeIsVisible && matchesType && (!query || haystack.includes(query));
         });
       },
       get selectedLocation() {
@@ -76,6 +92,29 @@
       },
       selectType(type) {
         this.activeType = type;
+      },
+      isTypeVisible(type) {
+        return this.visibleTypes[type] !== false;
+      },
+      toggleType(type) {
+        this.visibleTypes[type] = !this.isTypeVisible(type);
+        if (this.activeType === type && !this.visibleTypes[type]) {
+          this.activeType = "All";
+        }
+        applyLocationTypeVisibility(this.visibleTypes);
+      },
+      showAllTypes() {
+        Object.keys(this.visibleTypes).forEach((type) => {
+          this.visibleTypes[type] = true;
+        });
+        applyLocationTypeVisibility(this.visibleTypes);
+      },
+      hideAllTypes() {
+        Object.keys(this.visibleTypes).forEach((type) => {
+          this.visibleTypes[type] = false;
+        });
+        this.activeType = "All";
+        applyLocationTypeVisibility(this.visibleTypes);
       },
       selectLayer(slug) {
         this.selectedLayerSlug = slug;
@@ -248,6 +287,7 @@
             <button
               type="button"
               @click="selectType(type)"
+              x-show="type === 'All' || isTypeVisible(type)"
               :class="activeType === type
                 ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light')
                 : (darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light')"
@@ -280,21 +320,84 @@
           :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
           class="mt-4 rounded-lg border p-3">
           <div class="flex items-center justify-between gap-3">
-            <div>
-              <h3 class="text-sm font-bold">Overlay layers</h3>
-              <p class="text-xs opacity-65" x-text="selectedLayer ? selectedLayer.name : 'No layer selected'"></p>
+            <button
+              type="button"
+              @click="visibilityOpen = !visibilityOpen"
+              class="flex min-w-0 flex-1 items-center gap-2 text-left">
+              <i class="fa-solid fa-eye"></i>
+              <span class="min-w-0">
+                <span class="block text-sm font-bold">Visible on map</span>
+                <span class="block truncate text-xs opacity-65">Hide zones, addresses, routes, or other feature types.</span>
+              </span>
+              <i class="fa-solid fa-chevron-down ml-auto text-xs transition" :class="visibilityOpen ? 'rotate-180' : ''"></i>
+            </button>
+            <div class="flex gap-1">
+              <button
+                type="button"
+                @click="showAllTypes"
+                class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-current/15 transition hover:opacity-75"
+                aria-label="Show all feature types">
+                <i class="fa-solid fa-eye"></i>
+              </button>
+              <button
+                type="button"
+                @click="hideAllTypes"
+                class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-current/15 transition hover:opacity-75"
+                aria-label="Hide all feature types">
+                <i class="fa-solid fa-eye-slash"></i>
+              </button>
             </div>
+          </div>
+
+          <div class="mt-3 grid gap-2" x-show="visibilityOpen" x-cloak>
+            <template x-for="type in availableTypes.filter((item) => item !== 'All')" :key="type">
+              <button
+                type="button"
+                @click="toggleType(type)"
+                :class="isTypeVisible(type)
+                  ? (darkMode ? 'border-accent-dark bg-bubble-bg-dark' : 'border-accent-light bg-bubble-bg-light')
+                  : 'border-current/10 opacity-55'"
+                class="flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm transition hover:opacity-85">
+                <span class="flex min-w-0 items-center gap-2">
+                  <span :style="typeStyle(type)" class="h-2.5 w-2.5 shrink-0 rounded-full"></span>
+                  <span class="truncate font-semibold" x-text="type"></span>
+                </span>
+                <i class="fa-solid" :class="isTypeVisible(type) ? 'fa-eye' : 'fa-eye-slash'"></i>
+              </button>
+            </template>
+          </div>
+        </div>
+
+        <div
+          :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+          class="mt-4 rounded-lg border p-3">
+          <div class="flex items-center justify-between gap-3">
+            <button
+              type="button"
+              @click="layersOpen = !layersOpen"
+              class="flex min-w-0 flex-1 items-center gap-2 text-left">
+              <i class="fa-solid fa-layer-group"></i>
+              <span class="min-w-0">
+                <span class="block text-sm font-bold">Layers</span>
+                <span class="block truncate text-xs opacity-65" x-text="selectedLayer ? selectedLayer.name : 'No layer selected'"></span>
+              </span>
+              <i class="fa-solid fa-chevron-down ml-auto text-xs transition" :class="layersOpen ? 'rotate-180' : ''"></i>
+            </button>
             <button
               type="button"
               @click="layerSettingsOpen = true"
               :disabled="!selectedLayer"
               class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-current/15 transition hover:opacity-75 disabled:cursor-not-allowed disabled:opacity-40"
-              aria-label="Configure overlay layer">
+              aria-label="Configure layer">
               <i class="fa-solid fa-sliders"></i>
             </button>
           </div>
 
-          <div class="mt-3 space-y-2">
+          <div class="mt-3 space-y-2" x-show="layersOpen" x-cloak>
+            <div>
+              <h4 class="sr-only">Available layers</h4>
+              <p class="text-xs opacity-65" x-text="selectedLayer ? selectedLayer.name : 'No layer selected'"></p>
+            </div>
             <button
               type="button"
               @click="clearLayer"
@@ -467,9 +570,10 @@
 <script>
   let map = null;
   let featuresDict = {};
+  let featureLayers = [];
   let allBounds = null;
   let mapLayerOverlay = null;
-  let mapLayerLabelOverlay = null;
+  let mapLayerCenterOverlay = null;
 
   function refreshMapSize() {
     if (map) map.invalidateSize();
@@ -509,37 +613,21 @@
     };
   }
 
-  function interpolateColor(start, end, ratio) {
-    const normalized = Math.max(0, Math.min(1, ratio));
-    const startValue = parseInt(start.replace("#", ""), 16);
-    const endValue = parseInt(end.replace("#", ""), 16);
-    const sr = (startValue >> 16) & 255;
-    const sg = (startValue >> 8) & 255;
-    const sb = startValue & 255;
-    const er = (endValue >> 16) & 255;
-    const eg = (endValue >> 8) & 255;
-    const eb = endValue & 255;
-    const r = Math.round(sr + (er - sr) * normalized);
-    const g = Math.round(sg + (eg - sg) * normalized);
-    const b = Math.round(sb + (eb - sb) * normalized);
+  function layerZoneStyle(layer, opacity, isDark) {
+    const zoneStyle = featureStyle("Zone", isDark);
+    const color = layer?.style?.color || zoneStyle.color;
 
-    return `#${[r, g, b].map((part) => part.toString(16).padStart(2, "0")).join("")}`;
+    return {
+      ...zoneStyle,
+      color: color,
+      fillColor: color,
+      fillOpacity: opacity,
+      opacity: Math.min(0.95, opacity + 0.25),
+      weight: 2
+    };
   }
 
-  function layerColor(layer, value) {
-    const style = layer?.style || {};
-    const colors = style.colors || [themeColor("success-light", "#4a8f7a"), themeColor("warn-light", "#d94a4a")];
-    const values = (layer?.polygons || []).map((polygon) => polygon.value);
-    if (!values.length) return colors[0];
-
-    const min = Number(style.min ?? Math.min(...values));
-    const max = Number(style.max ?? Math.max(...values));
-    const ratio = max === min ? 0.5 : (value - min) / (max - min);
-
-    return interpolateColor(colors[0], colors[colors.length - 1], ratio);
-  }
-
-  function updateOverlayLegend(layer) {
+  function updateOverlayLegend(layer, opacity = 0.35) {
     const legend = document.getElementById("overlay-legend");
     if (!legend) return;
 
@@ -548,26 +636,31 @@
       return;
     }
 
-    const values = layer.polygons.map((polygon) => polygon.value);
-    if (!values.length) {
+    if (!layer.polygons.length) {
       legend.innerHTML = '<div class="text-xs opacity-65">This layer has no polygons yet.</div>';
       return;
     }
 
-    const style = layer.style || {};
-    const min = Number(style.min ?? Math.min(...values));
-    const max = Number(style.max ?? Math.max(...values));
     const unit = layer.unit ? ` ${escapeHtml(layer.unit)}` : "";
-    const low = layerColor(layer, min);
-    const high = layerColor(layer, max);
+    const style = layerZoneStyle(layer, opacity, localStorage.getItem("darkMode") === "true");
 
     legend.innerHTML = `
-      <div class="h-3 rounded" style="background: linear-gradient(90deg, ${low}, ${high})"></div>
-      <div class="flex justify-between text-xs opacity-70">
-        <span>${min}${unit}</span>
-        <span>${max}${unit}</span>
+      <div class="flex items-center gap-2">
+        <span class="h-3 w-3 rounded-full" style="background: ${style.fillColor}; box-shadow: 0 0 0 3px ${style.fillColor}33;"></span>
+        <span class="text-xs opacity-75">${escapeHtml(layer.polygons.length)} zone-like polygons</span>
+      </div>
+      <div class="text-xs opacity-65">
+        Values shown at polygon centers${unit ? ` (${unit.trim()})` : ""}.
       </div>
     `;
+  }
+
+  function centerLatLng(polygon, leafletLayer) {
+    if (polygon.center?.coordinates) {
+      return [polygon.center.coordinates[1], polygon.center.coordinates[0]];
+    }
+
+    return leafletLayer.getBounds().getCenter();
   }
 
   function updateMapLayerOverlay(layer, opacity, showLabels) {
@@ -578,16 +671,16 @@
       mapLayerOverlay = null;
     }
 
-    if (mapLayerLabelOverlay) {
-      map.removeLayer(mapLayerLabelOverlay);
-      mapLayerLabelOverlay = null;
+    if (mapLayerCenterOverlay) {
+      map.removeLayer(mapLayerCenterOverlay);
+      mapLayerCenterOverlay = null;
     }
 
-    updateOverlayLegend(layer);
+    updateOverlayLegend(layer, opacity);
 
     if (!layer) return;
 
-    const labels = [];
+    const centers = [];
     const features = layer.polygons.map((polygon) => ({
       type: "Feature",
       properties: {
@@ -596,40 +689,72 @@
         value: polygon.value,
         metadata: polygon.properties || {}
       },
+      center: polygon.center,
       geometry: polygon.geometry
     }));
 
     mapLayerOverlay = L.geoJSON(features, {
       style: function (feature) {
-        const color = layerColor(layer, feature.properties.value);
-        return {
-          color: color,
-          fillColor: color,
-          fillOpacity: opacity,
-          opacity: Math.min(0.95, opacity + 0.25),
-          weight: 1.5
-        };
+        return layerZoneStyle(layer, opacity, localStorage.getItem("darkMode") === "true");
       },
       onEachFeature: function (feature, leafletLayer) {
         const unit = layer.unit ? ` ${layer.unit}` : "";
         leafletLayer.bindPopup(`<strong>${escapeHtml(layer.name)}</strong><br>${escapeHtml(feature.properties.name)}<br>${feature.properties.value}${escapeHtml(unit)}`);
+        const center = centerLatLng(feature, leafletLayer);
 
         if (!showLabels) return;
 
-        const center = leafletLayer.getBounds().getCenter();
-        labels.push(L.marker(center, {
-          interactive: false,
+        centers.push(L.marker(center, {
+          interactive: true,
           icon: L.divIcon({
-            className: "map-layer-label",
-            html: `<span style="background: rgba(0,0,0,0.62); color: white; border-radius: 6px; padding: 2px 6px; font-size: 11px; font-weight: 700;">${feature.properties.value}${escapeHtml(unit)}</span>`
+            className: "map-layer-value-marker",
+            html: `
+              <span style="display: inline-flex; align-items: center; gap: 4px; background: rgba(0,0,0,0.72); color: white; border: 2px solid white; border-radius: 999px; padding: 3px 8px; font-size: 11px; font-weight: 800; box-shadow: 0 8px 18px rgba(0,0,0,0.2);">
+                <i class="fa-solid fa-location-dot"></i>
+                ${feature.properties.value}${escapeHtml(unit)}
+              </span>
+            `
           })
-        }));
+        }).bindPopup(`<strong>${escapeHtml(feature.properties.name)}</strong><br>Center marker<br>${feature.properties.value}${escapeHtml(unit)}`));
       }
     }).addTo(map);
 
-    if (showLabels && labels.length) {
-      mapLayerLabelOverlay = L.layerGroup(labels).addTo(map);
+    if (centers.length) {
+      mapLayerCenterOverlay = L.layerGroup(centers).addTo(map);
     }
+  }
+
+  function applyLocationTypeVisibility(visibleTypes) {
+    if (!map) return;
+
+    featureLayers.forEach((item) => {
+      const shouldShow = visibleTypes[item.type] !== false;
+      const isShown = map.hasLayer(item.layer);
+
+      if (shouldShow && !isShown) {
+        item.layer.addTo(map);
+      }
+
+      if (!shouldShow && isShown) {
+        map.removeLayer(item.layer);
+      }
+    });
+  }
+
+  function visibleLocationBounds() {
+    let bounds = null;
+
+    featureLayers.forEach((item) => {
+      if (!map.hasLayer(item.layer)) return;
+
+      if (bounds) {
+        bounds.extend(item.layer.getBounds());
+      } else {
+        bounds = item.layer.getBounds();
+      }
+    });
+
+    return bounds;
   }
 
   function escapeHtml(value) {
@@ -682,6 +807,11 @@
         layer: layer,
         type: type
       };
+      featureLayers.push({
+        type: type,
+        name: name,
+        layer: layer
+      });
 
       if (allBounds) {
         allBounds.extend(layer.getBounds());
@@ -703,13 +833,15 @@
   });
 
   function fitAllLocations() {
-    if (!map || !allBounds || !allBounds.isValid()) return;
-    map.fitBounds(allBounds, { padding: [28, 28], maxZoom: 14 });
+    if (!map) return;
+    const bounds = visibleLocationBounds() || allBounds;
+    if (!bounds || !bounds.isValid()) return;
+    map.fitBounds(bounds, { padding: [28, 28], maxZoom: 14 });
   }
 
   function zoomToFeature(name) {
     const item = featuresDict[name];
-    if (!item || !map) return;
+    if (!item || !map || !map.hasLayer(item.layer)) return;
 
     const layer = L.geoJSON(item.zoomGeom);
     const bounds = layer.getBounds();

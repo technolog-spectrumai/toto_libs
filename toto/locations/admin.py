@@ -23,7 +23,7 @@ class RouteInline(admin.TabularInline):
 class MapLayerPolygonInline(admin.TabularInline):
     model = MapLayerPolygon
     extra = 0
-    fields = ("name", "value", "geometry", "properties")
+    fields = ("name", "value", "center", "geometry", "properties")
     ordering = ("name", "id")
 
 
@@ -72,7 +72,7 @@ class MapLayerAdmin(TotoModelAdmin):
 
 @admin.register(MapLayerPolygon)
 class MapLayerPolygonAdmin(TotoGeoAdmin):
-    list_display = ("id", "name", "layer", "value")
+    list_display = ("id", "name", "layer", "value", "center")
     list_display_links = ("id", "name")
     list_filter = ("layer",)
     search_fields = ("name", "layer__name", "layer__slug")
