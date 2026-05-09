@@ -613,9 +613,65 @@
     };
   }
 
-  function layerZoneStyle(layer, opacity, isDark) {
+  function hexToRgb(color) {
+    const normalized = color.replace("#", "");
+    const value = parseInt(normalized.length === 3
+      ? normalized.split("").map((part) => part + part).join("")
+      : normalized, 16);
+
+    return {
+      r: (value >> 16) & 255,
+      g: (value >> 8) & 255,
+      b: value & 255
+    };
+  }
+
+  function rgbToHex({ r, g, b }) {
+    return `#${[r, g, b].map((part) => Math.round(part).toString(16).padStart(2, "0")).join("")}`;
+  }
+
+  function mixColors(start, end, ratio) {
+    const normalized = Math.max(0, Math.min(1, ratio));
+    const from = hexToRgb(start);
+    const to = hexToRgb(end);
+
+    return rgbToHex({
+      r: from.r + (to.r - from.r) * normalized,
+      g: from.g + (to.g - from.g) * normalized,
+      b: from.b + (to.b - from.b) * normalized
+    });
+  }
+
+  function layerPalette(isDark) {
+    return [
+      themeColor(isDark ? "link-dark" : "link-light", isDark ? "#5f7fc9" : "#2a4b8f"),
+      themeColor(isDark ? "success-dark" : "success-light", isDark ? "#5fa38c" : "#4a8f7a"),
+      themeColor(isDark ? "warn-dark" : "warn-light", isDark ? "#ff4455" : "#d94a4a")
+    ];
+  }
+
+  function layerValueRange(layer) {
+    const values = (layer?.polygons || []).map((polygon) => Number(polygon.value));
+    const style = layer?.style || {};
+
+    return {
+      min: Number(style.min ?? Math.min(...values)),
+      max: Number(style.max ?? Math.max(...values))
+    };
+  }
+
+  function layerHeatColor(layer, value, isDark) {
+    const palette = layerPalette(isDark);
+    const { min, max } = layerValueRange(layer);
+    const ratio = max === min ? 0.5 : (Number(value) - min) / (max - min);
+
+    if (ratio <= 0.5) return mixColors(palette[0], palette[1], ratio * 2);
+    return mixColors(palette[1], palette[2], (ratio - 0.5) * 2);
+  }
+
+  function layerZoneStyle(layer, value, opacity, isDark) {
     const zoneStyle = featureStyle("Zone", isDark);
-    const color = layer?.style?.color || zoneStyle.color;
+    const color = layerHeatColor(layer, value, isDark);
 
     return {
       ...zoneStyle,
@@ -627,7 +683,7 @@
     };
   }
 
-  function updateOverlayLegend(layer, opacity = 0.35) {
+  function updateOverlayLegend(layer) {
     const legend = document.getElementById("overlay-legend");
     if (!legend) return;
 
@@ -641,16 +697,19 @@
       return;
     }
 
+    const isDark = localStorage.getItem("darkMode") === "true";
+    const palette = layerPalette(isDark);
+    const { min, max } = layerValueRange(layer);
     const unit = layer.unit ? ` ${escapeHtml(layer.unit)}` : "";
-    const style = layerZoneStyle(layer, opacity, localStorage.getItem("darkMode") === "true");
 
     legend.innerHTML = `
-      <div class="flex items-center gap-2">
-        <span class="h-3 w-3 rounded-full" style="background: ${style.fillColor}; box-shadow: 0 0 0 3px ${style.fillColor}33;"></span>
-        <span class="text-xs opacity-75">${escapeHtml(layer.polygons.length)} zone-like polygons</span>
+      <div class="h-3 rounded" style="background: linear-gradient(90deg, ${palette[0]}, ${palette[1]}, ${palette[2]});"></div>
+      <div class="flex justify-between gap-3 text-xs opacity-70">
+        <span>${min}${unit}</span>
+        <span>${max}${unit}</span>
       </div>
       <div class="text-xs opacity-65">
-        Values shown at polygon centers${unit ? ` (${unit.trim()})` : ""}.
+        ${escapeHtml(layer.polygons.length)} zone-like polygons, colored by value.
       </div>
     `;
   }
@@ -676,7 +735,7 @@
       mapLayerCenterOverlay = null;
     }
 
-    updateOverlayLegend(layer, opacity);
+    updateOverlayLegend(layer);
 
     if (!layer) return;
 
@@ -695,12 +754,13 @@
 
     mapLayerOverlay = L.geoJSON(features, {
       style: function (feature) {
-        return layerZoneStyle(layer, opacity, localStorage.getItem("darkMode") === "true");
+        return layerZoneStyle(layer, feature.properties.value, opacity, localStorage.getItem("darkMode") === "true");
       },
       onEachFeature: function (feature, leafletLayer) {
         const unit = layer.unit ? ` ${layer.unit}` : "";
         leafletLayer.bindPopup(`<strong>${escapeHtml(layer.name)}</strong><br>${escapeHtml(feature.properties.name)}<br>${feature.properties.value}${escapeHtml(unit)}`);
         const center = centerLatLng(feature, leafletLayer);
+        const markerColor = layerHeatColor(layer, feature.properties.value, localStorage.getItem("darkMode") === "true");
 
         if (!showLabels) return;
 
@@ -709,7 +769,7 @@
           icon: L.divIcon({
             className: "map-layer-value-marker",
             html: `
-              <span style="display: inline-flex; align-items: center; gap: 4px; background: rgba(0,0,0,0.72); color: white; border: 2px solid white; border-radius: 999px; padding: 3px 8px; font-size: 11px; font-weight: 800; box-shadow: 0 8px 18px rgba(0,0,0,0.2);">
+              <span style="display: inline-flex; align-items: center; gap: 4px; background: ${markerColor}; color: white; border: 2px solid white; border-radius: 999px; padding: 3px 8px; font-size: 11px; font-weight: 800; box-shadow: 0 8px 18px rgba(0,0,0,0.2);">
                 <i class="fa-solid fa-location-dot"></i>
                 ${feature.properties.value}${escapeHtml(unit)}
               </span>
