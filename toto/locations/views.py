@@ -186,20 +186,6 @@ def locations_all(request):
             "review_url": reverse("locations:route_review", args=[route.pk]),
         })
 
-    for travel in Travel.objects.select_related("route", "route__route_chain").all():
-        route = travel.route
-        if not route:
-            continue
-
-        locations.append({
-            "type": "Travel",
-            "name": str(travel),
-            "detail": travel.info or f"{travel.starts_at} → {travel.ends_at}",
-            "geometry": geometry_json(route.geometry),
-            "geometry_json": geometry_json(route.geometry),
-            "review_url": reverse("locations:travel_review", args=[travel.pk]),
-        })
-
     for address in Address.objects.all():
         locations.append({
             "type": "Address",
