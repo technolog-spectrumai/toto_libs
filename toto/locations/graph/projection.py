@@ -14,6 +14,12 @@ from toto.locations.models import (
     Route as RouteSql,
 )
 
+from toto.socialhub.models import (
+    Person as PersonSql,
+    Travel as TravelSql,
+    Visit as VisitSql,
+)
+
 from toto.locations.graph.models import (
     Address as AddressNode,
     MapLayer as MapLayerNode,
@@ -22,6 +28,12 @@ from toto.locations.graph.models import (
     Territory as TerritoryNode,
     Zone as ZoneNode,
     Route as RouteNode,
+    Travel as TravelNode,
+    Visit as VisitNode,
+)
+
+from toto.socialhub.graph.models import (
+    Person as PersonNode,
 )
 
 
@@ -34,6 +46,7 @@ class BaseGeoProjection:
     Base class for GIS projections.
     Handles:
     - WKT conversion
+    - JSON conversion
     - Node creation/update boilerplate
     - Field mapping
     """
@@ -72,7 +85,7 @@ class BaseGeoProjection:
         }
 
     # -----------------------------
-    # NODE SYNC (shared)
+    # NODE SYNC shared
     # -----------------------------
     def sync_nodes(self):
         for obj in self.sql_model.objects.all():
@@ -90,16 +103,18 @@ class BaseGeoProjection:
             # Apply field mapping
             for neo_field, sql_field in self.field_map.items():
                 value = getattr(obj, sql_field)
+
                 if neo_field in ("geometry", "center"):
                     value = self.to_wkt(value)
                 elif neo_field in ("style", "properties"):
                     value = self.to_json(value)
+
                 setattr(node, neo_field, value)
 
             node.save()
 
     # -----------------------------
-    # EDGE SYNC (override in subclasses)
+    # EDGE SYNC override in subclasses
     # -----------------------------
     def sync_edges(self):
         pass
@@ -150,7 +165,7 @@ class TerritoryProjection(BaseGeoProjection):
     }
 
     def sync_edges(self):
-        for t in TerritorySql.objects.all():
+        for t in TerritorySql.objects.select_related("capital").all():
             gt = TerritoryNode.nodes.get(uuid=str(t.uid))
             gt.capital.disconnect_all()
 
@@ -235,7 +250,11 @@ class RouteProjection(BaseGeoProjection):
     }
 
     def sync_edges(self):
-        for r in RouteSql.objects.all():
+        for r in RouteSql.objects.select_related(
+            "route_chain",
+            "start_address",
+            "end_address",
+        ).all():
             gr = RouteNode.nodes.get(uuid=str(r.uid))
 
             gr.start_address.disconnect_all()
@@ -262,6 +281,91 @@ class RouteProjection(BaseGeoProjection):
             RouteSql.objects.filter(route_chain__isnull=False).count()
             + RouteSql.objects.filter(start_address__isnull=False).count()
             + RouteSql.objects.filter(end_address__isnull=False).count()
+        )
+
+
+# =========================================================
+# TRAVEL PROJECTION
+# =========================================================
+
+class TravelProjection(BaseGeoProjection):
+
+    model = "Travel"
+    app = "socialhub"
+
+    sql_model = TravelSql
+    neo_model = TravelNode
+
+    field_map = {
+        "info": "info",
+        "starts_at": "starts_at",
+        "ends_at": "ends_at",
+    }
+
+    def sync_edges(self):
+        for travel in TravelSql.objects.prefetch_related("participants").select_related("route").all():
+            gt = TravelNode.nodes.get(uuid=str(travel.uid))
+
+            gt.route.disconnect_all()
+            gt.participants.disconnect_all()
+
+            if travel.route_id:
+                gr = RouteNode.nodes.get_or_none(uuid=str(travel.route.uid))
+                if gr:
+                    gt.route.connect(gr)
+
+            for participant in travel.participants.all():
+                gp = PersonNode.nodes.get_or_none(uuid=str(participant.uid))
+                if gp:
+                    gt.participants.connect(gp)
+
+    def link_count(self):
+        route_links = TravelSql.objects.filter(route__isnull=False).count()
+        participant_links = sum(
+            travel.participants.count()
+            for travel in TravelSql.objects.prefetch_related("participants").all()
+        )
+        return route_links + participant_links
+
+
+# =========================================================
+# VISIT PROJECTION
+# =========================================================
+
+class VisitProjection(BaseGeoProjection):
+
+    model = "Visit"
+    app = "socialhub"
+
+    sql_model = VisitSql
+    neo_model = VisitNode
+
+    field_map = {
+        "review": "review",
+        "score": "score",
+    }
+
+    def sync_edges(self):
+        for visit in VisitSql.objects.select_related("participant", "location").all():
+            gv = VisitNode.nodes.get(uuid=str(visit.uid))
+
+            gv.participant.disconnect_all()
+            gv.location.disconnect_all()
+
+            if visit.participant_id:
+                gp = PersonNode.nodes.get_or_none(uuid=str(visit.participant.uid))
+                if gp:
+                    gv.participant.connect(gp)
+
+            if visit.location_id:
+                ga = AddressNode.nodes.get_or_none(uuid=str(visit.location.uid))
+                if ga:
+                    gv.location.connect(ga)
+
+    def link_count(self):
+        return (
+            VisitSql.objects.filter(participant__isnull=False).count()
+            + VisitSql.objects.filter(location__isnull=False).count()
         )
 
 

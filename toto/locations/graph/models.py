@@ -1,4 +1,13 @@
-from neomodel import BooleanProperty, FloatProperty, IntegerProperty, StringProperty, RelationshipTo, RelationshipFrom
+from neomodel import (
+    BooleanProperty,
+    DateTimeProperty,
+    FloatProperty,
+    IntegerProperty,
+    StringProperty,
+    RelationshipTo,
+    RelationshipFrom,
+)
+
 from toto.core.domain import DomainNode
 
 
@@ -23,6 +32,7 @@ class Address(DomainNode):
     territory_capitals = RelationshipFrom("Territory", "HAS_CAPITAL")
     route_starts = RelationshipFrom("Route", "STARTS_AT")
     route_ends = RelationshipFrom("Route", "ENDS_AT")
+    visits = RelationshipFrom("Visit", "VISITED_LOCATION")
 
 
 # ---------------------------------------------------------
@@ -58,6 +68,8 @@ class Route(DomainNode):
     start_address = RelationshipTo("Address", "STARTS_AT")
     end_address = RelationshipTo("Address", "ENDS_AT")
 
+    travels = RelationshipFrom("Travel", "USES_ROUTE")
+
 
 # ---------------------------------------------------------
 # ZONE
@@ -85,6 +97,35 @@ class RouteChain(DomainNode):
     description = StringProperty()
 
     routes = RelationshipFrom("Route", "PART_OF_CHAIN")
+
+
+# ---------------------------------------------------------
+# TRAVEL
+# ---------------------------------------------------------
+
+class Travel(DomainNode):
+    __label__ = "Travel"
+
+    info = StringProperty()
+    starts_at = DateTimeProperty(required=True)
+    ends_at = DateTimeProperty(required=True)
+
+    route = RelationshipTo("Route", "USES_ROUTE")
+    participants = RelationshipTo("Person", "HAS_PARTICIPANT")
+
+
+# ---------------------------------------------------------
+# VISIT
+# ---------------------------------------------------------
+
+class Visit(DomainNode):
+    __label__ = "Visit"
+
+    review = StringProperty()
+    score = IntegerProperty()
+
+    participant = RelationshipTo("Person", "HAS_PARTICIPANT")
+    location = RelationshipTo("Address", "VISITED_LOCATION")
 
 
 # ---------------------------------------------------------
