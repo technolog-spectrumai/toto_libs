@@ -57,9 +57,9 @@ class RouteChainAdmin(admin.ModelAdmin):
 
 @admin.register(MapLayer)
 class MapLayerAdmin(TotoModelAdmin):
-    list_display = ("id", "name", "slug", "unit", "is_active", "polygon_count")
+    list_display = ("id", "name", "slug", "unit", "inverted_importance", "half_range", "is_active", "polygon_count")
     list_display_links = ("id", "name")
-    list_filter = ("is_active",)
+    list_filter = ("is_active", "inverted_importance", "half_range")
     prepopulated_fields = {"slug": ("name",)}
     search_fields = ("name", "slug", "description")
     inlines = (MapLayerPolygonInline,)

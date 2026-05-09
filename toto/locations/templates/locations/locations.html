@@ -663,7 +663,15 @@
   function layerHeatColor(layer, value, isDark) {
     const palette = layerPalette(isDark);
     const { min, max } = layerValueRange(layer);
-    const ratio = max === min ? 0.5 : (Number(value) - min) / (max - min);
+    let ratio = max === min ? 0.5 : (Number(value) - min) / (max - min);
+
+    if (layer?.inverted_importance) {
+      ratio = 1 - ratio;
+    }
+
+    if (layer?.half_range) {
+      ratio = ratio * 0.5;
+    }
 
     if (ratio <= 0.5) return mixColors(palette[0], palette[1], ratio * 2);
     return mixColors(palette[1], palette[2], (ratio - 0.5) * 2);
@@ -701,9 +709,11 @@
     const palette = layerPalette(isDark);
     const { min, max } = layerValueRange(layer);
     const unit = layer.unit ? ` ${escapeHtml(layer.unit)}` : "";
+    const lowColor = layerHeatColor(layer, min, isDark);
+    const highColor = layerHeatColor(layer, max, isDark);
 
     legend.innerHTML = `
-      <div class="h-3 rounded" style="background: linear-gradient(90deg, ${palette[0]}, ${palette[1]}, ${palette[2]});"></div>
+      <div class="h-3 rounded" style="background: linear-gradient(90deg, ${lowColor}, ${highColor});"></div>
       <div class="flex justify-between gap-3 text-xs opacity-70">
         <span>${min}${unit}</span>
         <span>${max}${unit}</span>

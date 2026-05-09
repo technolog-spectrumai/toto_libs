@@ -108,6 +108,14 @@ class MapLayer(DomainEntity):
         blank=True,
         help_text="Frontend style config: color scale, opacity, legend, etc.",
     )
+    inverted_importance = models.BooleanField(
+        default=False,
+        help_text="Invert value importance before color scaling.",
+    )
+    half_range = models.BooleanField(
+        default=False,
+        help_text="Use only the low-to-mid half of the color scale.",
+    )
     is_active = models.BooleanField(default=True)
 
     def __str__(self):

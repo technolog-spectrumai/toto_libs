@@ -65,6 +65,8 @@ def map_layer_payload(layer):
         "description": layer.description,
         "unit": layer.unit,
         "style": layer.style or {},
+        "inverted_importance": layer.inverted_importance,
+        "half_range": layer.half_range,
         "polygons": [
             {
                 "id": polygon.pk,
