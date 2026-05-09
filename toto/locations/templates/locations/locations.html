@@ -655,8 +655,8 @@
     const style = layer?.style || {};
 
     return {
-      min: Number(style.min ?? Math.min(...values)),
-      max: Number(style.max ?? Math.max(...values))
+      min: Number(layer?.min_value ?? style.min ?? Math.min(...values)),
+      max: Number(layer?.max_value ?? style.max ?? Math.max(...values))
     };
   }
 

@@ -103,6 +103,16 @@ class MapLayer(DomainEntity):
         blank=True,
         help_text="Examples: °C, %, mm, ppm, people/km²",
     )
+    min_value = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Optional display minimum for color scaling.",
+    )
+    max_value = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Optional display maximum for color scaling.",
+    )
     style = models.JSONField(
         default=dict,
         blank=True,

@@ -91,13 +91,26 @@ class Command(IngressCommand):
 
         return route_chain
 
-    def upsert_map_layer(self, name, slug, description, unit, style, inverted_importance=False, half_range=False):
+    def upsert_map_layer(
+        self,
+        name,
+        slug,
+        description,
+        unit,
+        style,
+        inverted_importance=False,
+        half_range=False,
+        min_value=None,
+        max_value=None,
+    ):
         layer, _ = MapLayer.objects.update_or_create(
             slug=slug,
             defaults={
                 "name": name,
                 "description": description,
                 "unit": unit,
+                "min_value": min_value,
+                "max_value": max_value,
                 "style": style,
                 "inverted_importance": inverted_importance,
                 "half_range": half_range,
@@ -328,9 +341,9 @@ class Command(IngressCommand):
                 "palette": "heat",
                 "opacity": 0.32,
                 "show_labels": True,
-                "min": 20,
-                "max": 95,
             },
+            min_value=20,
+            max_value=95,
         )
         self.upsert_map_layer(
             "Summer Heat",
@@ -342,8 +355,6 @@ class Command(IngressCommand):
                 "palette": "cool",
                 "opacity": 0.28,
                 "show_labels": True,
-                "min": 16,
-                "max": 33,
             },
         )
         self.upsert_map_layer(
@@ -354,11 +365,11 @@ class Command(IngressCommand):
             {
                 "opacity": 0.34,
                 "show_labels": True,
-                "min": 20,
-                "max": 95,
             },
             inverted_importance=True,
             half_range=True,
+            min_value=20,
+            max_value=95,
         )
 
         regions = [

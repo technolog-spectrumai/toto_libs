@@ -64,6 +64,8 @@ def map_layer_payload(layer):
         "slug": layer.slug,
         "description": layer.description,
         "unit": layer.unit,
+        "min_value": layer.min_value,
+        "max_value": layer.max_value,
         "style": layer.style or {},
         "inverted_importance": layer.inverted_importance,
         "half_range": layer.half_range,
