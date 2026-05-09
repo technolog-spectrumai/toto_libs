@@ -222,6 +222,8 @@ def address_coordinates(address):
 def selected_address_coordinates(address_id, label):
     if not address_id:
         return None
+    if str(address_id).startswith("temporary:"):
+        return None
 
     try:
         address = Address.objects.get(pk=address_id, geometry__isnull=False)
