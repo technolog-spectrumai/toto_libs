@@ -1,11 +1,15 @@
+from datetime import timedelta
+
 from django.contrib.gis.geos import LineString, MultiLineString, MultiPolygon, Point, Polygon
+from django.utils import timezone
 
 from toto.core.ingress import IngressCommand
-from toto.locations.models import Address, MapLayer, MapLayerPolygon, Route, RouteChain, Territory, Zone
+from toto.locations.models import Address, MapLayer, MapLayerPolygon, Route, RouteChain, Territory, Zone, Travel, Visit
+from toto.socialhub.models import Person
 
 
 class Command(IngressCommand):
-    help = "Creates demo geospatial features for France, England, and Poland."
+    help = "Creates demo geospatial features, travels, and visits for France, England, and Poland."
 
     def point(self, longitude, latitude):
         geometry = Point(longitude, latitude)
@@ -90,6 +94,46 @@ class Command(IngressCommand):
             )
 
         return route_chain
+
+    def upsert_person(self, key, display_name, email=None, phone=None):
+        person, _ = Person.objects.update_or_create(
+            slug=key,
+            defaults={
+                "display_name": display_name,
+                "email": email,
+                "phone": phone,
+            },
+        )
+        self.people[key] = person
+        return person
+
+    def upsert_travel(self, route_name, participant_keys, starts_at, ends_at, info=""):
+        travel, _ = Travel.objects.update_or_create(
+            route=self.routes[route_name],
+            starts_at=starts_at,
+            defaults={
+                "ends_at": ends_at,
+                "info": info,
+            },
+        )
+
+        travel.participants.set(
+            [self.people[key] for key in participant_keys]
+        )
+
+        self.travels[route_name] = travel
+        return travel
+
+    def upsert_visit(self, participant_key, location_key, score=None, review=""):
+        visit, _ = Visit.objects.update_or_create(
+            participant=self.people[participant_key],
+            location=self.addresses[location_key],
+            defaults={
+                "score": score,
+                "review": review,
+            },
+        )
+        return visit
 
     def upsert_map_layer(
         self,
@@ -330,6 +374,115 @@ class Command(IngressCommand):
             ),
         )
 
+    def create_people(self):
+        people_data = [
+            ("alice-martin", "Alice Martin", "alice@example.com", "+33111111111"),
+            ("jan-kowalski", "Jan Kowalski", "jan@example.com", "+48222222222"),
+            ("emma-smith", "Emma Smith", "emma@example.com", "+44333333333"),
+            ("marie-dubois", "Marie Dubois", "marie@example.com", "+33444444444"),
+        ]
+
+        for person in people_data:
+            self.upsert_person(*person)
+
+    def create_travels(self):
+        now = timezone.now()
+
+        self.upsert_travel(
+            "Paris Monument Walk",
+            ("alice-martin", "marie-dubois"),
+            now + timedelta(days=3, hours=10),
+            now + timedelta(days=3, hours=14),
+            "A guided walk through major Paris landmarks.",
+        )
+
+        self.upsert_travel(
+            "Normandy Heritage Line",
+            ("alice-martin", "emma-smith"),
+            now + timedelta(days=7, hours=9),
+            now + timedelta(days=7, hours=18),
+            "A heritage route from Mont Saint-Michel toward Omaha Beach.",
+        )
+
+        self.upsert_travel(
+            "Arthurian South England",
+            ("emma-smith",),
+            now + timedelta(days=12, hours=8),
+            now + timedelta(days=12, hours=17),
+            "A mythic route from Tintagel Castle toward Stonehenge.",
+        )
+
+        self.upsert_travel(
+            "Polish Royal Trail",
+            ("jan-kowalski", "alice-martin"),
+            now + timedelta(days=15, hours=9),
+            now + timedelta(days=15, hours=20),
+            "A royal landmark route between Warsaw and Krakow.",
+        )
+
+        self.upsert_travel(
+            "Gdansk Long Market Walk",
+            ("jan-kowalski",),
+            now + timedelta(days=18, hours=11),
+            now + timedelta(days=18, hours=15),
+            "A city walk from Long Market toward Westerplatte.",
+        )
+
+    def create_visits(self):
+        visit_data = [
+            (
+                "alice-martin",
+                "eiffel_tower",
+                5,
+                "Iconic landmark with an excellent view over Paris.",
+            ),
+            (
+                "alice-martin",
+                "notre_dame",
+                4,
+                "Beautiful historic site with strong cultural significance.",
+            ),
+            (
+                "marie-dubois",
+                "louvre",
+                5,
+                "Outstanding museum visit with world-class collections.",
+            ),
+            (
+                "emma-smith",
+                "tintagel_castle",
+                4,
+                "Dramatic coastal ruins with Arthurian atmosphere.",
+            ),
+            (
+                "emma-smith",
+                "stonehenge",
+                5,
+                "Memorable prehistoric monument visit.",
+            ),
+            (
+                "jan-kowalski",
+                "warsaw_royal_castle",
+                5,
+                "Excellent historic location in Warsaw Old Town.",
+            ),
+            (
+                "jan-kowalski",
+                "wawel_castle",
+                5,
+                "One of the most important royal sites in Poland.",
+            ),
+            (
+                "jan-kowalski",
+                "long_market",
+                4,
+                "Great urban landmark in central Gdansk.",
+            ),
+        ]
+
+        for visit in visit_data:
+            self.upsert_visit(*visit)
+
     def create_map_layers(self):
         self.upsert_map_layer(
             "Tourist Intensity",
@@ -415,6 +568,8 @@ class Command(IngressCommand):
         self.territories = {}
         self.routes = {}
         self.map_layers = {}
+        self.people = {}
+        self.travels = {}
 
         self.create_addresses()
         self.create_territories()
@@ -423,4 +578,8 @@ class Command(IngressCommand):
         self.create_route_chains()
         self.create_map_layers()
 
-        print("[Ingress] Demo European geospatial features created successfully.")
+        self.create_people()
+        self.create_travels()
+        self.create_visits()
+
+        print("[Ingress] Demo European geospatial features, travels, and visits created successfully.")
