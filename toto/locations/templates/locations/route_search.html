@@ -37,23 +37,49 @@
         </p>
         <h1 class="mt-2 text-2xl font-bold">Route Search</h1>
         <p class="mt-2 text-sm opacity-70">
-          Search a real route between two WGS84 points by car or by foot.
+          Search a real route between two WGS84 points by car, bicycle, foot, or a configured public transport backend.
         </p>
       </div>
 
       <form method="get" class="mt-5 space-y-4">
         <div>
           <label for="mode" class="mb-1 block text-sm font-semibold">Mode</label>
-          <select
-            id="mode"
-            name="mode"
-            :class="darkMode
-              ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark'
-              : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
-            class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
-            <option value="car" {% if form.mode == "car" %}selected{% endif %}>Car</option>
-            <option value="foot" {% if form.mode == "foot" %}selected{% endif %}>Foot</option>
-          </select>
+          <div class="relative">
+            <i
+              id="mode_icon"
+              class="fa-solid {{ selected_mode.icon }} pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm opacity-70"></i>
+            <select
+              id="mode"
+              name="mode"
+              :class="darkMode
+                ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark'
+                : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+              class="w-full appearance-none rounded-lg border py-2 pl-10 pr-10 text-sm font-semibold outline-none focus:ring-2 focus:ring-current/20">
+              {% for mode in mode_options %}
+                <option
+                  value="{{ mode.value }}"
+                  data-icon="{{ mode.icon }}"
+                  {% if form.mode == mode.value %}selected{% endif %}>
+                  {{ mode.label }}
+                </option>
+              {% endfor %}
+            </select>
+            <i class="fa-solid fa-chevron-down pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs opacity-60"></i>
+          </div>
+
+          <div
+            :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+            class="mt-3 flex items-center gap-3 rounded-lg border p-3 text-sm">
+            <span
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg">
+              <i id="selected_mode_icon" class="fa-solid {{ selected_mode.icon }}"></i>
+            </span>
+            <span>
+              <span class="block text-xs opacity-60">Selected mode</span>
+              <strong id="selected_mode_label">{{ selected_mode.label }}</strong>
+            </span>
+          </div>
         </div>
 
         <div
@@ -191,6 +217,10 @@
             <div class="text-lg font-bold">{{ route.properties.duration_min }}</div>
             <div class="text-xs opacity-65">min</div>
           </div>
+          <div class="col-span-2 flex items-center gap-2 border-t border-current/10 pt-2 text-xs font-semibold">
+            <i class="fa-solid {{ selected_mode.icon }}"></i>
+            {{ selected_mode.label }}
+          </div>
         </div>
       {% endif %}
     </aside>
@@ -209,12 +239,39 @@
     start: [Number("{{ form.start_lat }}"), Number("{{ form.start_lng }}")],
     end: [Number("{{ form.end_lat }}"), Number("{{ form.end_lng }}")]
   };
+  const currentMode = "{{ form.mode }}";
 
-  function routeThemeColor(isDark) {
+  function routeThemeColor(isDark, mode = currentMode) {
     const colors = window.tailwind?.config?.theme?.extend?.colors || {};
-    return isDark
+    const modeColors = {
+      car: isDark ? "accent-dark" : "accent-light",
+      bicycle: isDark ? "success-dark" : "success-light",
+      foot: isDark ? "link-dark" : "link-light",
+      public_transport: isDark ? "warn-dark" : "warn-light"
+    };
+    const fallback = isDark
       ? (colors["accent-dark"] || colors["accent-1"] || "#4f5fa1")
       : (colors["accent-light"] || colors["accent-2"] || "#2f3d63");
+
+    return colors[modeColors[mode]] || fallback;
+  }
+
+  function bindModeSelect() {
+    const select = document.getElementById("mode");
+    const selectIcon = document.getElementById("mode_icon");
+    const selectedIcon = document.getElementById("selected_mode_icon");
+    const selectedLabel = document.getElementById("selected_mode_label");
+
+    if (!select || !selectIcon || !selectedIcon || !selectedLabel) return;
+
+    select.addEventListener("change", function () {
+      const option = select.options[select.selectedIndex];
+      const icon = option.dataset.icon || "fa-route";
+
+      selectIcon.className = `fa-solid ${icon} pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm opacity-70`;
+      selectedIcon.className = `fa-solid ${icon}`;
+      selectedLabel.textContent = option.textContent.trim();
+    });
   }
 
   function bindAddressSelect(selectId, latInputId, lngInputId) {
@@ -234,6 +291,7 @@
   }
 
   document.addEventListener("DOMContentLoaded", function () {
+    bindModeSelect();
     bindAddressSelect("start_address", "start_lat", "start_lng");
     bindAddressSelect("end_address", "end_lat", "end_lng");
 

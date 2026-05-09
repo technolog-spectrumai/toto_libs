@@ -3,6 +3,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import urlopen
 
+from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from toto.core.page import PageProcessor
@@ -15,8 +16,16 @@ from .models import (
 )
 
 
-ROUTING_MODES = {
+ROUTING_MODE_OPTIONS = (
+    {"value": "car", "label": "Car", "icon": "fa-car-side"},
+    {"value": "bicycle", "label": "Bicycle", "icon": "fa-bicycle"},
+    {"value": "foot", "label": "Foot", "icon": "fa-person-walking"},
+    {"value": "public_transport", "label": "Public transport", "icon": "fa-train-subway"},
+)
+
+ROAD_ROUTING_ENDPOINTS = {
     "car": "https://routing.openstreetmap.de/routed-car/route/v1/driving",
+    "bicycle": "https://routing.openstreetmap.de/routed-bike/route/v1/driving",
     "foot": "https://routing.openstreetmap.de/routed-foot/route/v1/driving",
 }
 
@@ -130,7 +139,15 @@ def parse_coordinate(value, label, minimum, maximum):
 
 
 def fetch_traversable_route(start_lng, start_lat, end_lng, end_lat, mode):
-    endpoint = ROUTING_MODES[mode]
+    endpoint = ROAD_ROUTING_ENDPOINTS.get(mode)
+    if mode == "public_transport":
+        endpoint = getattr(settings, "LOCATIONS_PUBLIC_TRANSPORT_ROUTING_URL", "")
+        if not endpoint:
+            raise ValueError(
+                "Public transport routing needs a transit backend. "
+                "Configure LOCATIONS_PUBLIC_TRANSPORT_ROUTING_URL with a compatible routing endpoint."
+            )
+
     coordinates = f"{start_lng},{start_lat};{end_lng},{end_lat}"
     query = urlencode({
         "overview": "full",
@@ -206,8 +223,8 @@ def route_search(request):
 
     if request.GET:
         try:
-            if form["mode"] not in ROUTING_MODES:
-                raise ValueError("Mode must be car or foot.")
+            if form["mode"] not in {mode["value"] for mode in ROUTING_MODE_OPTIONS}:
+                raise ValueError("Mode must be car, bicycle, foot, or public transport.")
 
             start_selected = selected_address_coordinates(form["start_address"], "Start")
             end_selected = selected_address_coordinates(form["end_address"], "End")
@@ -243,10 +260,16 @@ def route_search(request):
         }
         for address in addresses
     ]
+    selected_mode = next(
+        mode for mode in ROUTING_MODE_OPTIONS
+        if mode["value"] == form["mode"]
+    )
 
     context = {
         "form": form,
         "address_options": address_options,
+        "mode_options": ROUTING_MODE_OPTIONS,
+        "selected_mode": selected_mode,
         "route": route,
         "route_json": json.dumps(route),
         "error": error,
