@@ -546,3 +546,42 @@ def update_travel_info(request, pk):
 
     messages.success(request, "Travel info saved.")
     return redirect("locations:travel_review", pk=travel.pk)
+
+@login_required
+def travel_summary(request, pk):
+    travel = get_object_or_404(
+        Travel.objects
+        .select_related(
+            "route",
+            "route__start_address",
+            "route__end_address",
+            "route__route_chain",
+        )
+        .prefetch_related("participants"),
+        pk=pk,
+    )
+
+    route = travel.route
+    review_locations = []
+
+    if route:
+        review_locations = [
+            location
+            for location in (route.start_address, route.end_address)
+            if location
+        ]
+
+    context = {
+        "travel": travel,
+        "route": route,
+        "travel_payload_json": json.dumps(travel_payload(travel)),
+        "review_locations": review_locations,
+        "reviews": location_reviews_queryset(review_locations),
+        "person": current_person(request),
+    }
+
+    return render(
+        request,
+        "locations/travel_summary.html",
+        PageProcessor().decorate(context, request),
+    )

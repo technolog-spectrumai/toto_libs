@@ -87,16 +87,6 @@
           <div class="mt-4 space-y-4">
             {% for travel in travels %}
               <article class="rounded-lg border border-current/10 p-4">
-                <a
-                  href="{% url 'locations:travel_review' travel.pk %}"
-                  class="block transition hover:opacity-80">
-                  <div class="text-sm font-semibold">
-                    {{ travel.starts_at }} → {{ travel.ends_at }}
-                  </div>
-                  <div class="mt-1 text-xs opacity-70">
-                    {{ travel.participants.count }} participant{{ travel.participants.count|pluralize }}
-                  </div>
-                </a>
 
                 <form method="post" action="{% url 'locations:update_travel_info' travel.pk %}" class="mt-4 space-y-3">
                   {% csrf_token %}
@@ -124,13 +114,13 @@
                       Save travel info
                     </button>
 
-                    <a
-                      href="{% url 'locations:travel_review' travel.pk %}"
-                      :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
-                      class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
-                      <i class="fa-solid fa-up-right-from-square"></i>
-                      Open travel
-                    </a>
+                  <a
+                    href="{% url 'locations:travel_summary' travel.pk %}"
+                    :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                    class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+                    <i class="fa-solid fa-up-right-from-square"></i>
+                    Open travel summary
+                  </a>
                   </div>
                 </form>
               </article>

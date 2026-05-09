@@ -22,4 +22,9 @@ urlpatterns = [
         views.update_travel_info,
         name="update_travel_info",
     ),
+    path(
+        "travels/<int:pk>/summary/",
+        views.travel_summary,
+        name="travel_summary",
+    ),
 ]
