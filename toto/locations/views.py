@@ -1,4 +1,8 @@
 import json
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
+from urllib.request import urlopen
+
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from toto.core.page import PageProcessor
@@ -9,6 +13,12 @@ from .models import (
     Route,
     Address
 )
+
+
+ROUTING_MODES = {
+    "car": "https://routing.openstreetmap.de/routed-car/route/v1/driving",
+    "foot": "https://routing.openstreetmap.de/routed-foot/route/v1/driving",
+}
 
 
 def geometry_json(geometry):
@@ -101,4 +111,95 @@ def locations_all(request):
         request,
         "locations/locations.html",
         PageProcessor().decorate(context, request)
+    )
+
+
+def parse_coordinate(value, label, minimum, maximum):
+    if value in (None, ""):
+        raise ValueError(f"{label} is required.")
+
+    try:
+        coordinate = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{label} must be a number.") from exc
+
+    if coordinate < minimum or coordinate > maximum:
+        raise ValueError(f"{label} must be between {minimum} and {maximum}.")
+
+    return coordinate
+
+
+def fetch_traversable_route(start_lng, start_lat, end_lng, end_lat, mode):
+    endpoint = ROUTING_MODES[mode]
+    coordinates = f"{start_lng},{start_lat};{end_lng},{end_lat}"
+    query = urlencode({
+        "overview": "full",
+        "geometries": "geojson",
+        "steps": "false",
+        "alternatives": "false",
+    })
+    url = f"{endpoint}/{coordinates}?{query}"
+
+    try:
+        with urlopen(url, timeout=12) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        raise ValueError(f"Routing service returned HTTP {exc.code}.") from exc
+    except URLError as exc:
+        raise ValueError("Routing service is unavailable right now.") from exc
+    except TimeoutError as exc:
+        raise ValueError("Routing service timed out.") from exc
+
+    if payload.get("code") != "Ok" or not payload.get("routes"):
+        message = payload.get("message") or "No traversable route found."
+        raise ValueError(message)
+
+    route = payload["routes"][0]
+    return {
+        "type": "Feature",
+        "properties": {
+            "mode": mode,
+            "distance_km": round(route.get("distance", 0) / 1000, 2),
+            "duration_min": round(route.get("duration", 0) / 60, 1),
+        },
+        "geometry": route["geometry"],
+    }
+
+
+@login_required
+def route_search(request):
+    form = {
+        "mode": request.GET.get("mode", "car"),
+        "start_lat": request.GET.get("start_lat", "54.3487"),
+        "start_lng": request.GET.get("start_lng", "18.6538"),
+        "end_lat": request.GET.get("end_lat", "54.4067"),
+        "end_lng": request.GET.get("end_lng", "18.6717"),
+    }
+    route = None
+    error = ""
+
+    if request.GET:
+        try:
+            if form["mode"] not in ROUTING_MODES:
+                raise ValueError("Mode must be car or foot.")
+
+            start_lat = parse_coordinate(form["start_lat"], "Start latitude", -90, 90)
+            start_lng = parse_coordinate(form["start_lng"], "Start longitude", -180, 180)
+            end_lat = parse_coordinate(form["end_lat"], "End latitude", -90, 90)
+            end_lng = parse_coordinate(form["end_lng"], "End longitude", -180, 180)
+            route = fetch_traversable_route(start_lng, start_lat, end_lng, end_lat, form["mode"])
+        except ValueError as exc:
+            error = str(exc)
+
+    context = {
+        "form": form,
+        "route": route,
+        "route_json": json.dumps(route),
+        "error": error,
+    }
+
+    return render(
+        request,
+        "locations/route_search.html",
+        PageProcessor().decorate(context, request),
     )
