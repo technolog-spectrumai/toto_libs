@@ -55,6 +55,22 @@ class BaseGeoProjection:
 
         return json.dumps(value or {})
 
+    def item_count(self):
+        return self.sql_model.objects.count()
+
+    def link_count(self):
+        return 0
+
+    def node_data_size(self):
+        return len(self.field_map)
+
+    def projection_stats(self):
+        return {
+            "items": self.item_count(),
+            "links": self.link_count(),
+            "node_data_size": self.node_data_size(),
+        }
+
     # -----------------------------
     # NODE SYNC (shared)
     # -----------------------------
@@ -143,6 +159,9 @@ class TerritoryProjection(BaseGeoProjection):
                 if ga:
                     gt.capital.connect(ga)
 
+    def link_count(self):
+        return TerritorySql.objects.filter(capital__isnull=False).count()
+
 
 # =========================================================
 # ZONE PROJECTION
@@ -170,6 +189,9 @@ class ZoneProjection(BaseGeoProjection):
                 gt = TerritoryNode.nodes.get_or_none(uuid=str(z.territory.uid))
                 if gt:
                     gz.territory.connect(gt)
+
+    def link_count(self):
+        return ZoneSql.objects.filter(territory__isnull=False).count()
 
 
 # =========================================================
@@ -235,6 +257,13 @@ class RouteProjection(BaseGeoProjection):
                 if ga:
                     gr.end_address.connect(ga)
 
+    def link_count(self):
+        return (
+            RouteSql.objects.filter(route_chain__isnull=False).count()
+            + RouteSql.objects.filter(start_address__isnull=False).count()
+            + RouteSql.objects.filter(end_address__isnull=False).count()
+        )
+
 
 # =========================================================
 # MAP LAYER PROJECTION
@@ -294,3 +323,6 @@ class MapLayerPolygonProjection(BaseGeoProjection):
             gl = MapLayerNode.nodes.get_or_none(uuid=str(polygon.layer.uid))
             if gl:
                 gp.layer.connect(gl)
+
+    def link_count(self):
+        return MapLayerPolygonSql.objects.filter(layer__isnull=False).count()

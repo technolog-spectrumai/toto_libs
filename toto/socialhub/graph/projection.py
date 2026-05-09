@@ -13,6 +13,19 @@ class CommunityProjection:
     model = "Community"
     app = "socialhub"
 
+    def projection_stats(self):
+        return {
+            "items": CommunitySql.objects.count(),
+            "links": (
+                sum(c.members.count() for c in CommunitySql.objects.prefetch_related("members"))
+                + CommunitySql.objects.filter(head__isnull=False).count()
+                + CommunitySql.objects.filter(federation__isnull=False).count()
+                + CommunitySql.objects.filter(location__isnull=False).count()
+                + CommunitySql.objects.filter(territory__isnull=False).count()
+            ),
+            "node_data_size": 6,
+        }
+
     def sync_nodes(self):
         for c in CommunitySql.objects.all():
             node = CommunityNode.nodes.get_or_none(uuid=str(c.uid))
@@ -87,6 +100,16 @@ class MemberProjection:
 
     model = "Person"
     app = "socialhub"
+
+    def projection_stats(self):
+        return {
+            "items": MemberSql.objects.count(),
+            "links": (
+                MemberSql.objects.filter(patron__isnull=False).count()
+                + MemberSql.objects.filter(address__isnull=False).count()
+            ),
+            "node_data_size": 4,
+        }
 
     def sync_nodes(self):
         for m in MemberSql.objects.all():

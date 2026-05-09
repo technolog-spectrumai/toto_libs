@@ -9,6 +9,13 @@ class EventCategoryProjection:
     model = "EventCategory"
     app = "events"
 
+    def projection_stats(self):
+        return {
+            "items": EventCategory.objects.count(),
+            "links": 0,
+            "node_data_size": 1,
+        }
+
     def sync_nodes(self):
         for c in EventCategory.objects.all():
             node = EventCategoryNode.nodes.get_or_none(uuid=str(c.uid))
@@ -30,6 +37,16 @@ class EventCategoryProjection:
 class EventProjection:
     model = "Event"
     app = "events"
+
+    def projection_stats(self):
+        return {
+            "items": Event.objects.count(),
+            "links": (
+                Event.objects.filter(organizer__isnull=False).count()
+                + Event.objects.filter(category__isnull=False).count()
+            ),
+            "node_data_size": 5,
+        }
 
     def sync_nodes(self):
         for e in Event.objects.all():

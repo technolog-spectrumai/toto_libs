@@ -42,6 +42,22 @@ class BaseVerbenaProjection:
 
     field_map = {}
 
+    def item_count(self):
+        return self.sql_model.objects.count()
+
+    def link_count(self):
+        return 0
+
+    def node_data_size(self):
+        return len(self.field_map)
+
+    def projection_stats(self):
+        return {
+            "items": self.item_count(),
+            "links": self.link_count(),
+            "node_data_size": self.node_data_size(),
+        }
+
     def sync_nodes(self):
         for obj in self.sql_model.objects.all():
             node = self.neo_model.nodes.get_or_none(uuid=str(obj.uid))
@@ -102,6 +118,9 @@ class PageProjection(BaseVerbenaProjection):
                 gt = TagNode.nodes.get_or_none(uuid=str(tag.uid))
                 if gt:
                     gp.tags.connect(gt)
+
+    def link_count(self):
+        return sum(page.tags.count() for page in PageSql.objects.prefetch_related("tags"))
 
 
 # =========================================================
@@ -166,6 +185,17 @@ class TopicProjection(BaseVerbenaProjection):
                 if gf:
                     gt.federation.connect(gf)
 
+    def link_count(self):
+        return (
+            TopicSql.objects.filter(community__isnull=False).count()
+            + TopicSql.objects.filter(person__isnull=False).count()
+            + TopicSql.objects.filter(event__isnull=False).count()
+            + TopicSql.objects.filter(route__isnull=False).count()
+            + TopicSql.objects.filter(territory__isnull=False).count()
+            + TopicSql.objects.filter(address__isnull=False).count()
+            + TopicSql.objects.filter(federation__isnull=False).count()
+        )
+
 
 # =========================================================
 # SECTION PROJECTION
@@ -209,6 +239,14 @@ class SectionProjection(BaseVerbenaProjection):
                 if gt:
                     gs.topics.connect(gt)
 
+    def link_count(self):
+        return (
+            SectionSql.objects.count()
+            + SectionSql.objects.filter(author__isnull=False).count()
+            + sum(section.tags.count() for section in SectionSql.objects.prefetch_related("tags"))
+            + sum(section.topics.count() for section in SectionSql.objects.prefetch_related("topics"))
+        )
+
 
 # =========================================================
 # SUBSECTION PROJECTION
@@ -240,6 +278,12 @@ class SubsectionProjection(BaseVerbenaProjection):
                 if gt:
                     gss.topics.connect(gt)
 
+    def link_count(self):
+        return (
+            SubsectionSql.objects.count()
+            + sum(subsection.topics.count() for subsection in SubsectionSql.objects.prefetch_related("topics"))
+        )
+
 
 # =========================================================
 # BOOK PROJECTION
@@ -266,6 +310,9 @@ class BookProjection(BaseVerbenaProjection):
                 gt = TagNode.nodes.get_or_none(uuid=str(tag.uid))
                 if gt:
                     gb.tags.connect(gt)
+
+    def link_count(self):
+        return sum(book.tags.count() for book in BookSql.objects.prefetch_related("tags"))
 
 
 # =========================================================
@@ -294,3 +341,6 @@ class ChapterProjection(BaseVerbenaProjection):
             gp = PageNode.nodes.get_or_none(uuid=str(c.page.uid))
             if gp:
                 gc.page.connect(gp)
+
+    def link_count(self):
+        return ChapterSql.objects.count() * 2

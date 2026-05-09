@@ -7,6 +7,13 @@ class FederationProjection:
     model = "Federation"
     app = "core"
 
+    def projection_stats(self):
+        return {
+            "items": FederationSql.objects.count(),
+            "links": 0,
+            "node_data_size": 5,
+        }
+
     # ---------------------------------------------------------
     # NODE SYNC
     # ---------------------------------------------------------
