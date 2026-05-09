@@ -60,10 +60,32 @@
           :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
           class="rounded-lg border p-3">
           <h2 class="text-sm font-semibold">Start point</h2>
+          <label class="mt-3 block">
+            <span class="mb-1 block text-xs opacity-70">Saved address</span>
+            <select
+              id="start_address"
+              name="start_address"
+              :class="darkMode
+                ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'
+                : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+              class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+              <option value="">Manual coordinates</option>
+              {% for address in address_options %}
+                <option
+                  value="{{ address.id }}"
+                  data-lat="{{ address.latitude }}"
+                  data-lng="{{ address.longitude }}"
+                  {% if address.selected_start %}selected{% endif %}>
+                  {{ address.label }}
+                </option>
+              {% endfor %}
+            </select>
+          </label>
           <div class="mt-3 grid grid-cols-2 gap-3">
             <label class="block">
               <span class="mb-1 block text-xs opacity-70">Latitude</span>
               <input
+                id="start_lat"
                 name="start_lat"
                 value="{{ form.start_lat }}"
                 inputmode="decimal"
@@ -75,6 +97,7 @@
             <label class="block">
               <span class="mb-1 block text-xs opacity-70">Longitude</span>
               <input
+                id="start_lng"
                 name="start_lng"
                 value="{{ form.start_lng }}"
                 inputmode="decimal"
@@ -90,10 +113,32 @@
           :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
           class="rounded-lg border p-3">
           <h2 class="text-sm font-semibold">End point</h2>
+          <label class="mt-3 block">
+            <span class="mb-1 block text-xs opacity-70">Saved address</span>
+            <select
+              id="end_address"
+              name="end_address"
+              :class="darkMode
+                ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'
+                : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+              class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+              <option value="">Manual coordinates</option>
+              {% for address in address_options %}
+                <option
+                  value="{{ address.id }}"
+                  data-lat="{{ address.latitude }}"
+                  data-lng="{{ address.longitude }}"
+                  {% if address.selected_end %}selected{% endif %}>
+                  {{ address.label }}
+                </option>
+              {% endfor %}
+            </select>
+          </label>
           <div class="mt-3 grid grid-cols-2 gap-3">
             <label class="block">
               <span class="mb-1 block text-xs opacity-70">Latitude</span>
               <input
+                id="end_lat"
                 name="end_lat"
                 value="{{ form.end_lat }}"
                 inputmode="decimal"
@@ -105,6 +150,7 @@
             <label class="block">
               <span class="mb-1 block text-xs opacity-70">Longitude</span>
               <input
+                id="end_lng"
                 name="end_lng"
                 value="{{ form.end_lng }}"
                 inputmode="decimal"
@@ -171,7 +217,26 @@
       : (colors["accent-light"] || colors["accent-2"] || "#2f3d63");
   }
 
+  function bindAddressSelect(selectId, latInputId, lngInputId) {
+    const select = document.getElementById(selectId);
+    const latInput = document.getElementById(latInputId);
+    const lngInput = document.getElementById(lngInputId);
+
+    if (!select || !latInput || !lngInput) return;
+
+    select.addEventListener("change", function () {
+      const option = select.options[select.selectedIndex];
+      if (!option || !option.dataset.lat || !option.dataset.lng) return;
+
+      latInput.value = option.dataset.lat;
+      lngInput.value = option.dataset.lng;
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
+    bindAddressSelect("start_address", "start_lat", "start_lng");
+    bindAddressSelect("end_address", "end_lat", "end_lng");
+
     const isDark = localStorage.getItem("darkMode") === "true";
     const map = L.map("route-map", { zoomControl: false }).setView([52.0, 19.0], 5);
     const lightTiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {

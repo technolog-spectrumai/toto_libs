@@ -166,14 +166,40 @@ def fetch_traversable_route(start_lng, start_lat, end_lng, end_lat, mode):
     }
 
 
+def address_coordinates(address):
+    return address.geometry.x, address.geometry.y
+
+
+def selected_address_coordinates(address_id, label):
+    if not address_id:
+        return None
+
+    try:
+        address = Address.objects.get(pk=address_id, geometry__isnull=False)
+    except (Address.DoesNotExist, ValueError):
+        raise ValueError(f"{label} address is not available.")
+
+    return address_coordinates(address)
+
+
 @login_required
 def route_search(request):
+    addresses = list(
+        Address.objects
+        .filter(geometry__isnull=False)
+        .order_by("country_name", "locality_name", "street", "building")
+    )
+    default_start = addresses[0] if addresses else None
+    default_end = addresses[1] if len(addresses) > 1 else default_start
+
     form = {
         "mode": request.GET.get("mode", "car"),
-        "start_lat": request.GET.get("start_lat", "54.3487"),
-        "start_lng": request.GET.get("start_lng", "18.6538"),
-        "end_lat": request.GET.get("end_lat", "54.4067"),
-        "end_lng": request.GET.get("end_lng", "18.6717"),
+        "start_address": request.GET.get("start_address", str(default_start.pk) if default_start else ""),
+        "end_address": request.GET.get("end_address", str(default_end.pk) if default_end else ""),
+        "start_lat": request.GET.get("start_lat", str(default_start.geometry.y) if default_start else "54.3487"),
+        "start_lng": request.GET.get("start_lng", str(default_start.geometry.x) if default_start else "18.6538"),
+        "end_lat": request.GET.get("end_lat", str(default_end.geometry.y) if default_end else "54.4067"),
+        "end_lng": request.GET.get("end_lng", str(default_end.geometry.x) if default_end else "18.6717"),
     }
     route = None
     error = ""
@@ -183,16 +209,44 @@ def route_search(request):
             if form["mode"] not in ROUTING_MODES:
                 raise ValueError("Mode must be car or foot.")
 
-            start_lat = parse_coordinate(form["start_lat"], "Start latitude", -90, 90)
-            start_lng = parse_coordinate(form["start_lng"], "Start longitude", -180, 180)
-            end_lat = parse_coordinate(form["end_lat"], "End latitude", -90, 90)
-            end_lng = parse_coordinate(form["end_lng"], "End longitude", -180, 180)
+            start_selected = selected_address_coordinates(form["start_address"], "Start")
+            end_selected = selected_address_coordinates(form["end_address"], "End")
+
+            if start_selected:
+                start_lng, start_lat = start_selected
+                form["start_lng"] = str(start_lng)
+                form["start_lat"] = str(start_lat)
+            else:
+                start_lat = parse_coordinate(form["start_lat"], "Start latitude", -90, 90)
+                start_lng = parse_coordinate(form["start_lng"], "Start longitude", -180, 180)
+
+            if end_selected:
+                end_lng, end_lat = end_selected
+                form["end_lng"] = str(end_lng)
+                form["end_lat"] = str(end_lat)
+            else:
+                end_lat = parse_coordinate(form["end_lat"], "End latitude", -90, 90)
+                end_lng = parse_coordinate(form["end_lng"], "End longitude", -180, 180)
+
             route = fetch_traversable_route(start_lng, start_lat, end_lng, end_lat, form["mode"])
         except ValueError as exc:
             error = str(exc)
 
+    address_options = [
+        {
+            "id": str(address.pk),
+            "label": str(address),
+            "latitude": address.geometry.y,
+            "longitude": address.geometry.x,
+            "selected_start": str(address.pk) == form["start_address"],
+            "selected_end": str(address.pk) == form["end_address"],
+        }
+        for address in addresses
+    ]
+
     context = {
         "form": form,
+        "address_options": address_options,
         "route": route,
         "route_json": json.dumps(route),
         "error": error,
