@@ -36,6 +36,21 @@ class Territory(DomainEntity):
         return self.name
 
 
+class Zone(DomainEntity):
+    name = models.CharField(max_length=200)
+    geometry = models.MultiPolygonField(srid=SRID)
+    territory = models.ForeignKey(
+        Territory,
+        on_delete=models.CASCADE,
+        related_name="zones",
+        null=True,
+        blank=True,
+    )
+
+    def __str__(self):
+        return self.name
+
+
 class Route(DomainEntity):
     name = models.CharField(max_length=200, blank=True)
     geometry = models.MultiLineStringField(srid=SRID)

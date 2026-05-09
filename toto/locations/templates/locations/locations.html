@@ -48,7 +48,7 @@
 
         return this.locations.filter((location) => {
           const matchesType = this.activeType === "All" || location.type === this.activeType;
-          const haystack = `${location.name || ""} ${location.type || ""}`.toLowerCase();
+          const haystack = `${location.name || ""} ${location.type || ""} ${location.detail || ""}`.toLowerCase();
 
           return matchesType && (!query || haystack.includes(query));
         });
@@ -68,12 +68,11 @@
         fitAllLocations();
         this.sidebarOpen = false;
       },
-      typeColor(type) {
+      typeStyle(type) {
         return {
-          Territory: "bg-amber-500",
-          Route: "bg-sky-500",
-          Address: "bg-emerald-500"
-        }[type] || "bg-violet-500";
+          backgroundColor: locationTypeColor(type, this.darkMode),
+          boxShadow: `0 0 0 3px ${locationTypeColor(type, this.darkMode)}26`
+        };
       },
       geometryLabel(location) {
         if (!location.geometry) return "No geometry";
@@ -257,13 +256,14 @@
                 ]"
                 class="group w-full rounded-lg border p-3 text-left transition">
                 <div class="flex items-start gap-3">
-                  <span :class="typeColor(location.type)" class="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"></span>
+                  <span :style="typeStyle(location.type)" class="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"></span>
                   <span class="min-w-0 flex-1">
                     <span class="flex items-center justify-between gap-2">
                       <span class="text-xs font-semibold uppercase opacity-65" x-text="location.type"></span>
                       <span class="text-[11px] opacity-55" x-text="geometryLabel(location)"></span>
                     </span>
                     <span class="mt-1 block break-words text-sm font-semibold" x-text="location.name"></span>
+                    <span class="mt-1 block break-words text-xs opacity-60" x-show="location.detail" x-text="location.detail"></span>
                   </span>
                 </div>
               </button>
@@ -299,9 +299,10 @@
           class="absolute bottom-4 left-4 hidden rounded-lg border border-current/10 p-3 text-xs shadow-sm backdrop-blur sm:block">
           <div class="mb-2 font-semibold">Legend</div>
           <div class="grid gap-1.5">
-            <div class="flex items-center gap-2"><span class="h-2.5 w-2.5 rounded-full bg-amber-500"></span>Territory</div>
-            <div class="flex items-center gap-2"><span class="h-2.5 w-2.5 rounded-full bg-sky-500"></span>Route</div>
-            <div class="flex items-center gap-2"><span class="h-2.5 w-2.5 rounded-full bg-emerald-500"></span>Address</div>
+            <div class="flex items-center gap-2"><span :style="typeStyle('Territory')" class="h-2.5 w-2.5 rounded-full"></span>Territory</div>
+            <div class="flex items-center gap-2"><span :style="typeStyle('Zone')" class="h-2.5 w-2.5 rounded-full"></span>Zone</div>
+            <div class="flex items-center gap-2"><span :style="typeStyle('Route')" class="h-2.5 w-2.5 rounded-full"></span>Route</div>
+            <div class="flex items-center gap-2"><span :style="typeStyle('Address')" class="h-2.5 w-2.5 rounded-full"></span>Address</div>
           </div>
         </div>
       </div>
@@ -318,17 +319,33 @@
     if (map) map.invalidateSize();
   }
 
-  function featureStyle(type, isDark) {
-    const palette = {
-      Territory: isDark ? "#F59E0B" : "#D97706",
-      Route: isDark ? "#38BDF8" : "#0284C7",
-      Address: isDark ? "#34D399" : "#059669"
-    };
+  function themeColors() {
+    return window.tailwind?.config?.theme?.extend?.colors || {};
+  }
 
+  function themeColor(name, fallback) {
+    return themeColors()[name] || fallback;
+  }
+
+  function locationTypeColor(type, isDark) {
+    const mode = isDark ? "dark" : "light";
+    const palette = {
+      Territory: `accent-${mode}`,
+      Zone: isDark ? "accent-1" : "accent-2",
+      Route: `link-${mode}`,
+      Address: `success-${mode}`
+    };
+    const fallback = isDark ? themeColor("accent-dark", "#4f5fa1") : themeColor("accent-light", "#2f3d63");
+
+    return themeColor(palette[type], fallback);
+  }
+
+  function featureStyle(type, isDark) {
+    const color = locationTypeColor(type, isDark);
     return {
-      color: palette[type] || (isDark ? "#A78BFA" : "#7C3AED"),
-      fillColor: palette[type] || (isDark ? "#A78BFA" : "#7C3AED"),
-      fillOpacity: type === "Territory" ? 0.16 : 0.7,
+      color: color,
+      fillColor: color,
+      fillOpacity: ["Territory", "Zone"].includes(type) ? 0.16 : 0.7,
       opacity: 0.95,
       radius: 7,
       weight: type === "Route" ? 4 : 2
