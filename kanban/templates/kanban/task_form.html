@@ -1,0 +1,88 @@
+{% extends "oya/base.html" %}
+{% block title %}Create Task{% endblock %}
+
+{% block content %}
+<div class="max-w-xl mx-auto mt-10 p-6 rounded-xl border shadow"
+     :class="darkMode
+       ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
+       : 'bg-bubble-bg-light border-accent-2 text-text-main-light'">
+
+  <h2 class="text-2xl font-bold mb-6 text-center"
+      :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+    Create Task
+  </h2>
+
+  <form method="post">
+    {% csrf_token %}
+
+    <div class="space-y-4">
+
+      <!-- Mission -->
+      <div>
+        <label class="font-semibold block mb-1">Mission</label>
+        {{ form.mission }}
+      </div>
+
+      <!-- Column -->
+      <div>
+        <label class="font-semibold block mb-1">Column</label>
+        {{ form.column }}
+      </div>
+
+      <!-- Sprint -->
+      <div>
+        <label class="font-semibold block mb-1">Sprint</label>
+        {{ form.sprint }}
+      </div>
+
+      <!-- Title -->
+      <div>
+        <label class="font-semibold block mb-1">Title</label>
+        {{ form.title }}
+      </div>
+
+      <!-- Description -->
+      <div>
+        <label class="font-semibold block mb-1">Description</label>
+        {{ form.description }}
+      </div>
+
+      <!-- Assignee -->
+      <div>
+        <label class="font-semibold block mb-1">Assignee</label>
+        {{ form.assignee }}
+      </div>
+
+      <!-- Due Date -->
+      <div>
+        <label class="font-semibold block mb-1">Due Date</label>
+        {{ form.due_date }}
+      </div>
+
+      <!-- Weight -->
+      <div>
+        <label class="font-semibold block mb-1">Weight</label>
+        {{ form.weight }}
+      </div>
+
+      <!-- Metadata -->
+      <div>
+        <label class="font-semibold block mb-1">Metadata (JSON)</label>
+        {{ form.metadata }}
+      </div>
+
+    </div>
+
+    <div class="mt-6 text-center">
+      <button type="submit"
+              class="px-5 py-2 rounded-lg font-semibold hover:opacity-90 transition"
+              :class="darkMode
+                ? 'bg-accent-dark text-primary-bg-dark'
+                : 'bg-accent-light text-primary-bg-light'">
+        Create Task
+      </button>
+    </div>
+
+  </form>
+</div>
+{% endblock %}

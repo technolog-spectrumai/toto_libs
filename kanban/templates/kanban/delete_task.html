@@ -1,0 +1,58 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}Delete Task | {{ project.name }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="flex items-center justify-center px-6 py-16 min-h-screen transition-colors duration-300"
+>
+
+  <form method="POST"
+        :class="darkMode
+          ? 'bg-bubble-bg-dark border-warn-dark text-text-main-dark'
+          : 'bg-bubble-bg-light border-warn-light text-text-main-light'"
+        class="w-full max-w-lg p-8 rounded-xl shadow-md border space-y-6 transition-colors duration-300">
+
+    {% csrf_token %}
+
+    <!-- Title (warn style) -->
+    <h2 class="text-2xl font-bold text-center mb-2"
+        :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">
+      Delete Task
+    </h2>
+
+    <!-- Neutral text -->
+    <p class="text-center text-sm opacity-80 mb-4">
+      Are you sure you want to delete:
+      <br>
+      <span class="font-semibold text-lg">{{ task.title }}</span>?
+    </p>
+
+    <p class="text-center text-sm opacity-70">
+      This action cannot be undone.
+    </p>
+
+    <!-- Delete Button (warn style) -->
+    <button type="submit"
+            class="w-full py-2 font-semibold rounded transition text-sm"
+            :class="darkMode
+              ? 'bg-warn-dark text-primary-bg-dark hover:opacity-90'
+              : 'bg-warn-light text-primary-bg-light hover:opacity-90'">
+      Yes, Delete Task
+    </button>
+
+    <!-- Cancel -->
+    <div class="text-center mt-4">
+      <a href="{% url 'kanban:project_detail' project.pk %}"
+         class="text-sm font-medium underline hover:opacity-80"
+         :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+        Cancel
+      </a>
+    </div>
+
+  </form>
+
+</section>
+{% endblock %}

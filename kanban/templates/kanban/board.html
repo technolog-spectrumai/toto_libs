@@ -1,0 +1,119 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load static yaml_filters %}
+
+{% block title %}Kanban Project | {{ project.name }}{% endblock %}
+
+{% block start_script %}
+<script>
+  document.addEventListener('alpine:init', () => {
+    Alpine.data('kanbanBoard', () => ({
+      openModal: false,
+      action: '',
+      formHtml: '',
+      async openEdit(url) {
+        const res = await fetch(url);
+        this.formHtml = await res.text();
+        this.action = url;
+        this.openModal = true;
+      }
+    }));
+  });
+</script>
+{% endblock %}
+
+{% block content %}
+<div
+  x-data="kanbanBoard"
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-6 py-10 transition-colors duration-300"
+>
+  <div class="max-w-7xl mx-auto space-y-12 mb-6">
+
+    <!-- 🗂️ Project Header -->
+    <section>
+      <div
+        class="p-8 rounded-2xl shadow-xl border text-center sticky top-0 z-10 backdrop-blur-md"
+        :class="darkMode
+          ? 'bg-bubble-bg-dark border-accent-1'
+          : 'bg-bubble-bg-light border-accent-2'"
+      >
+
+        <h2
+          class="text-4xl font-extrabold tracking-tight mb-2"
+          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+        >
+          {{ project.name }}
+        </h2>
+
+        <p class="text-sm opacity-70 mb-4">Owner: {{ project.owner }}</p>
+
+        <!-- Sprint Filter -->
+          <form method="get" class="inline-flex items-center gap-3 w-full max-w-xs sm:max-w-none">
+            <label for="sprint" class="text-sm font-medium whitespace-nowrap">Sprint:</label>
+
+            <select
+              name="sprint"
+              id="sprint"
+              class="text-sm border rounded-lg px-3 py-2 focus:ring-2 focus:ring-accent-light shadow-sm w-full max-w-[160px] sm:max-w-none"
+              :class="darkMode
+                ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
+                : 'bg-primary-bg-light text-text-main-light border-accent-2'"
+              onchange="this.form.submit()"
+            >
+              <option value="">All</option>
+              {% for sprint in sprints %}
+                <option value="{{ sprint.id }}" {% if selected_sprint and sprint.id == selected_sprint.id %}selected{% endif %}>
+                  {{ sprint.name }} ({{ sprint.start_time|date:"M j" }} – {{ sprint.end_time|date:"M j" }})
+                </option>
+              {% endfor %}
+            </select>
+          </form>
+      </div>
+    </section>
+
+    <!-- 📌 Columns -->
+    <section>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+        {% for column in columns %}
+          {% include "kanban/column.html" with column=column selected_sprint=selected_sprint %}
+        {% endfor %}
+      </div>
+    </section>
+
+    <!-- 🔙 Navigation -->
+    <section class="text-center space-x-4">
+      <a
+        href="{% url 'kanban:project_list' %}"
+        class="inline-block px-5 py-2 rounded-lg font-semibold text-sm hover:opacity-90 transition"
+        :class="darkMode
+          ? 'bg-accent-dark text-primary-bg-dark'
+          : 'bg-accent-light text-primary-bg-light'"
+      >
+        Back to Project List
+      </a>
+
+      <a
+        href="{% url 'kanban:eisenhower_matrix' project.pk %}"
+        class="inline-block px-5 py-2 rounded-lg font-semibold text-sm hover:opacity-90 transition"
+        :class="darkMode
+          ? 'bg-accent-dark text-primary-bg-dark'
+          : 'bg-accent-light text-primary-bg-light'"
+      >
+        View Eisenhower Matrix
+      </a>
+
+      <a
+        href="{% url 'kanban:backlog' project.pk %}"
+        class="inline-block px-5 py-2 rounded-lg font-semibold text-sm hover:opacity-90 transition"
+        :class="darkMode
+          ? 'bg-accent-dark text-primary-bg-dark'
+          : 'bg-accent-light text-primary-bg-light'"
+      >
+        View Backlog
+      </a>
+    </section>
+
+  </div>
+</div>
+{% endblock %}

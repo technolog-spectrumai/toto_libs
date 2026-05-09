@@ -1,0 +1,67 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}Create Task | {{ project.name }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="flex items-center justify-center px-6 py-16 min-h-screen transition-colors duration-300"
+>
+
+  <form method="POST"
+        :class="darkMode
+          ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
+          : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+        class="w-full max-w-lg p-8 rounded-xl shadow-md border space-y-6 transition-colors duration-300">
+
+    {% csrf_token %}
+
+    <h2 class="text-2xl font-bold text-center mb-2"
+        :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+      Create Task
+    </h2>
+
+    <p class="text-center text-sm opacity-70 mb-4">
+      Project: <span class="font-semibold">{{ project.name }}</span>
+    </p>
+
+    {% if form.non_field_errors %}
+      <p class="text-sm text-red-500 font-medium text-center">
+        {{ form.non_field_errors }}
+      </p>
+    {% endif %}
+
+    <!-- Render each field with spacing -->
+    {% for field in form %}
+      <div class="space-y-1">
+        <label class="text-sm font-medium">{{ field.label }}</label>
+        {{ field }}
+        {% if field.errors %}
+          <p class="text-xs text-red-500">{{ field.errors|striptags }}</p>
+        {% endif %}
+      </div>
+    {% endfor %}
+
+    <!-- Submit Button -->
+    <button type="submit"
+            :class="darkMode
+              ? 'bg-accent-dark text-primary-bg-dark'
+              : 'bg-accent-light text-primary-bg-light'"
+            class="w-full py-2 font-semibold rounded hover:opacity-90 transition text-sm">
+      Create Task
+    </button>
+
+    <!-- Back Button -->
+    <div class="text-center mt-4">
+      <a href="{% url 'kanban:project_detail' project.pk %}"
+         class="text-sm font-medium underline hover:opacity-80"
+         :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+        ← Back to Project
+      </a>
+    </div>
+
+  </form>
+
+</section>
+{% endblock %}

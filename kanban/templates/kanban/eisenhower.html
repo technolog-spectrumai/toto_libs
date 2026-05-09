@@ -1,0 +1,83 @@
+{% extends "oya/base.html" %}
+{% block title %}Eisenhower Matrix | {{ project.name }}{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10">
+
+  <h2 class="text-xl sm:text-2xl font-bold mb-6 text-center">
+    3×3 Eisenhower Matrix for {{ project.name }}
+  </h2>
+
+  <!-- DESKTOP TABLE (hidden on mobile) -->
+  <div class="hidden sm:block overflow-x-auto mb-8">
+    <table class="min-w-full border-collapse border text-sm rounded-lg">
+      <thead>
+        <tr>
+          <th class="border px-6 py-3 text-left">Urgency \ Impact</th>
+          {% for i_label in impact_levels %}
+            <th class="border px-6 py-3 text-center">{{ i_label }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in matrix %}
+          <tr>
+            <td class="border px-6 py-4 font-semibold">{{ row.urgency }}</td>
+            {% for cell in row.cells %}
+              <td class="border px-6 py-4 align-top">
+                <ul class="space-y-1">
+                  {% for mission in cell.missions %}
+                    <li class="p-1 rounded break-words">{{ mission.title }}</li>
+                  {% empty %}
+                    <li class="opacity-50 italic">None</li>
+                  {% endfor %}
+                </ul>
+              </td>
+            {% endfor %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- MOBILE CARDS (hidden on desktop) -->
+  <div class="sm:hidden space-y-6">
+
+    {% for row in matrix %}
+      {% for cell in row.cells %}
+        <div
+          class="p-4 rounded-xl border shadow-sm"
+          :class="darkMode
+            ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
+            : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+        >
+          <p class="font-semibold text-sm mb-2">
+            Urgency: {{ row.urgency }}
+            <br>
+            Impact: {{ cell.impact_label }}
+          </p>
+
+          <ul class="space-y-1 text-sm">
+            {% for mission in cell.missions %}
+              <li class="p-1 rounded break-words">{{ mission.title }}</li>
+            {% empty %}
+              <li class="opacity-50 italic">None</li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endfor %}
+    {% endfor %}
+
+  </div>
+
+  <!-- 🔙 Back to Project button -->
+  <div class="text-center mt-8">
+    <a href="{% url 'kanban:project_detail' project.pk %}"
+       class="inline-block px-5 py-2 rounded-lg font-semibold text-sm hover:opacity-90 transition"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'">
+      Back to Project
+    </a>
+  </div>
+
+</div>
+{% endblock %}
