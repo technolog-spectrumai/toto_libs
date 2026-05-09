@@ -8,6 +8,7 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from toto.core.page import PageProcessor
 from .models import (
+    MapLayer,
     Territory,
     Zone,
     RouteChain,
@@ -53,6 +54,28 @@ def route_chain_geometry(route_chain):
     return {
         "type": "MultiLineString",
         "coordinates": coordinates,
+    }
+
+
+def map_layer_payload(layer):
+    return {
+        "id": layer.pk,
+        "name": layer.name,
+        "slug": layer.slug,
+        "description": layer.description,
+        "unit": layer.unit,
+        "style": layer.style or {},
+        "polygons": [
+            {
+                "id": polygon.pk,
+                "name": polygon.name or f"{layer.name} polygon {polygon.pk}",
+                "value": polygon.value,
+                "properties": polygon.properties or {},
+                "geometry": geometry_json(polygon.geometry),
+            }
+            for polygon in layer.polygons.all()
+            if polygon.geometry
+        ],
     }
 
 
@@ -114,6 +137,10 @@ def locations_all(request):
     context = {
         "locations": locations,
         "locations_json": json.dumps(locations),
+        "map_layers_json": json.dumps([
+            map_layer_payload(layer)
+            for layer in MapLayer.objects.filter(is_active=True).prefetch_related("polygons").order_by("name")
+        ]),
     }
 
     return render(

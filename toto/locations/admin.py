@@ -1,8 +1,10 @@
 from django.contrib import admin
-from toto.core.base_admin import TotoGeoAdmin
+from toto.core.base_admin import TotoGeoAdmin, TotoModelAdmin
 
 from .models import (
     Address,
+    MapLayer,
+    MapLayerPolygon,
     RouteChain,
     Territory,
     Zone,
@@ -16,6 +18,13 @@ class RouteInline(admin.TabularInline):
     fields = ("sequence", "name", "start_address", "end_address", "geometry")
     autocomplete_fields = ("start_address", "end_address")
     ordering = ("sequence", "name")
+
+
+class MapLayerPolygonInline(admin.TabularInline):
+    model = MapLayerPolygon
+    extra = 0
+    fields = ("name", "value", "geometry", "properties")
+    ordering = ("name", "id")
 
 
 @admin.register(Territory)
@@ -44,6 +53,30 @@ class RouteChainAdmin(admin.ModelAdmin):
         return obj.routes.count()
 
     route_count.short_description = "Routes"
+
+
+@admin.register(MapLayer)
+class MapLayerAdmin(TotoModelAdmin):
+    list_display = ("id", "name", "slug", "unit", "is_active", "polygon_count")
+    list_display_links = ("id", "name")
+    list_filter = ("is_active",)
+    prepopulated_fields = {"slug": ("name",)}
+    search_fields = ("name", "slug", "description")
+    inlines = (MapLayerPolygonInline,)
+
+    def polygon_count(self, obj):
+        return obj.polygons.count()
+
+    polygon_count.short_description = "Polygons"
+
+
+@admin.register(MapLayerPolygon)
+class MapLayerPolygonAdmin(TotoGeoAdmin):
+    list_display = ("id", "name", "layer", "value")
+    list_display_links = ("id", "name")
+    list_filter = ("layer",)
+    search_fields = ("name", "layer__name", "layer__slug")
+    autocomplete_fields = ("layer",)
 
 
 @admin.register(Route)

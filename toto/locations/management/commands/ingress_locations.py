@@ -1,7 +1,7 @@
 from django.contrib.gis.geos import LineString, MultiLineString, MultiPolygon, Point, Polygon
 
 from toto.core.ingress import IngressCommand
-from toto.locations.models import Address, Route, RouteChain, Territory, Zone
+from toto.locations.models import Address, MapLayer, MapLayerPolygon, Route, RouteChain, Territory, Zone
 
 
 class Command(IngressCommand):
@@ -90,6 +90,31 @@ class Command(IngressCommand):
             )
 
         return route_chain
+
+    def upsert_map_layer(self, name, slug, description, unit, style):
+        layer, _ = MapLayer.objects.update_or_create(
+            slug=slug,
+            defaults={
+                "name": name,
+                "description": description,
+                "unit": unit,
+                "style": style,
+                "is_active": True,
+            },
+        )
+        self.map_layers[slug] = layer
+        return layer
+
+    def upsert_map_layer_polygon(self, layer_slug, name, value, coordinates, properties=None):
+        MapLayerPolygon.objects.update_or_create(
+            layer=self.map_layers[layer_slug],
+            name=name,
+            defaults={
+                "geometry": self.polygon(coordinates),
+                "value": value,
+                "properties": properties or {},
+            },
+        )
 
     def create_addresses(self):
         address_data = [
@@ -281,6 +306,62 @@ class Command(IngressCommand):
             ),
         )
 
+    def create_map_layers(self):
+        self.upsert_map_layer(
+            "Tourist Intensity",
+            "tourist-intensity",
+            "Approximate tourist pressure in the current demo regions.",
+            "%",
+            {
+                "colors": ["#4a8f7a", "#d94a4a"],
+                "opacity": 0.32,
+                "show_labels": True,
+                "min": 20,
+                "max": 95,
+            },
+        )
+        self.upsert_map_layer(
+            "Summer Heat",
+            "summer-heat",
+            "Indicative warm-season comfort layer for travel planning.",
+            "°C",
+            {
+                "colors": ["#5f7fc9", "#ff4455"],
+                "opacity": 0.28,
+                "show_labels": True,
+                "min": 16,
+                "max": 33,
+            },
+        )
+
+        regions = [
+            ("Paris", ((2.2241, 48.8156), (2.4699, 48.8156), (2.4699, 48.9022), (2.2241, 48.9022), (2.2241, 48.8156)), 90, 27),
+            ("Normandy", ((-1.95, 48.55), (1.80, 48.55), (1.80, 49.80), (-1.95, 49.80), (-1.95, 48.55)), 62, 20),
+            ("Brittany", ((-5.20, 47.25), (-1.00, 47.25), (-1.00, 48.95), (-5.20, 48.95), (-5.20, 47.25)), 54, 19),
+            ("Provence", ((4.15, 43.20), (6.15, 43.20), (6.15, 44.25), (4.15, 44.25), (4.15, 43.20)), 78, 31),
+            ("Cote d'Azur", ((6.10, 43.35), (7.75, 43.35), (7.75, 44.05), (6.10, 44.05), (6.10, 43.35)), 95, 30),
+            ("Arthurian England", ((-5.00, 50.40), (-0.05, 50.40), (-0.05, 51.75), (-5.00, 51.75), (-5.00, 50.40)), 48, 18),
+            ("Warsaw", ((20.88, 52.12), (21.18, 52.12), (21.18, 52.35), (20.88, 52.35), (20.88, 52.12)), 72, 25),
+            ("Krakow", ((19.80, 49.98), (20.08, 49.98), (20.08, 50.12), (19.80, 50.12), (19.80, 49.98)), 84, 26),
+            ("Gdansk", ((18.50, 54.29), (18.75, 54.29), (18.75, 54.43), (18.50, 54.43), (18.50, 54.29)), 76, 22),
+        ]
+
+        for name, coordinates, tourist_value, heat_value in regions:
+            self.upsert_map_layer_polygon(
+                "tourist-intensity",
+                f"{name} tourist intensity",
+                tourist_value,
+                coordinates,
+                {"region": name},
+            )
+            self.upsert_map_layer_polygon(
+                "summer-heat",
+                f"{name} summer heat",
+                heat_value,
+                coordinates,
+                {"region": name},
+            )
+
     def process(self):
         if not self.full:
             return
@@ -288,11 +369,13 @@ class Command(IngressCommand):
         self.addresses = {}
         self.territories = {}
         self.routes = {}
+        self.map_layers = {}
 
         self.create_addresses()
         self.create_territories()
         self.create_zones()
         self.create_routes()
         self.create_route_chains()
+        self.create_map_layers()
 
         print("[Ingress] Demo European geospatial features created successfully.")

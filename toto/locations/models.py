@@ -88,3 +88,58 @@ class Route(DomainEntity):
 
     def __str__(self):
         return self.name or f"Route {self.pk}"
+
+
+class MapLayer(DomainEntity):
+    """
+    A map layer is a collection of continuous polygons.
+    """
+
+    name = models.CharField(max_length=200)
+    slug = models.SlugField(max_length=220, unique=True)
+    description = models.TextField(blank=True)
+    unit = models.CharField(
+        max_length=32,
+        blank=True,
+        help_text="Examples: °C, %, mm, ppm, people/km²",
+    )
+    style = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Frontend style config: color scale, opacity, legend, etc.",
+    )
+    is_active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return self.name
+
+
+class MapLayerPolygon(DomainEntity):
+    """
+    One continuous polygon inside a map layer.
+    """
+
+    layer = models.ForeignKey(
+        MapLayer,
+        on_delete=models.CASCADE,
+        related_name="polygons",
+    )
+    name = models.CharField(max_length=200, blank=True)
+    geometry = models.PolygonField(
+        srid=SRID,
+        help_text="Must be one continuous polygon.",
+    )
+    value = models.FloatField()
+    properties = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Optional metadata for frontend/domain use.",
+    )
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["layer"]),
+        ]
+
+    def __str__(self):
+        return self.name or f"{self.layer.name} Polygon {self.pk}"

@@ -29,14 +29,29 @@
 {% block content %}
 <script>
   window.locationsPayload = JSON.parse(`{{ locations_json|escapejs }}`);
+  window.mapLayersPayload = JSON.parse(`{{ map_layers_json|escapejs }}`);
 
   function locationsExplorer() {
     return {
       search: "",
       sidebarOpen: false,
+      layerSettingsOpen: false,
       activeType: "All",
       selectedName: "",
+      selectedLayerSlug: "",
+      overlayOpacity: 0.35,
+      showOverlayLabels: true,
       locations: window.locationsPayload || [],
+      mapLayers: window.mapLayersPayload || [],
+      init() {
+        const defaultLayer = this.mapLayers[0];
+        if (!defaultLayer) return;
+
+        this.selectedLayerSlug = defaultLayer.slug;
+        this.overlayOpacity = Number(defaultLayer.style?.opacity ?? 0.35);
+        this.showOverlayLabels = defaultLayer.style?.show_labels !== false;
+        this.$nextTick(() => updateMapLayerOverlay(this.selectedLayer, this.overlayOpacity, this.showOverlayLabels));
+      },
       get availableTypes() {
         return ["All", ...new Set(this.locations.map((location) => location.type).filter(Boolean))];
       },
@@ -56,8 +71,27 @@
       get selectedLocation() {
         return this.locations.find((location) => location.name === this.selectedName);
       },
+      get selectedLayer() {
+        return this.mapLayers.find((layer) => layer.slug === this.selectedLayerSlug) || null;
+      },
       selectType(type) {
         this.activeType = type;
+      },
+      selectLayer(slug) {
+        this.selectedLayerSlug = slug;
+        const layer = this.selectedLayer;
+        if (layer) {
+          this.overlayOpacity = Number(layer.style?.opacity ?? this.overlayOpacity);
+          this.showOverlayLabels = layer.style?.show_labels !== false;
+        }
+        updateMapLayerOverlay(layer, this.overlayOpacity, this.showOverlayLabels);
+      },
+      clearLayer() {
+        this.selectedLayerSlug = "";
+        updateMapLayerOverlay(null, this.overlayOpacity, this.showOverlayLabels);
+      },
+      refreshLayerDisplay() {
+        updateMapLayerOverlay(this.selectedLayer, this.overlayOpacity, this.showOverlayLabels);
       },
       selectLocation(location) {
         this.selectedName = location.name;
@@ -242,6 +276,55 @@
           </button>
         </div>
 
+        <div
+          :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+          class="mt-4 rounded-lg border p-3">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <h3 class="text-sm font-bold">Overlay layers</h3>
+              <p class="text-xs opacity-65" x-text="selectedLayer ? selectedLayer.name : 'No layer selected'"></p>
+            </div>
+            <button
+              type="button"
+              @click="layerSettingsOpen = true"
+              :disabled="!selectedLayer"
+              class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-current/15 transition hover:opacity-75 disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="Configure overlay layer">
+              <i class="fa-solid fa-sliders"></i>
+            </button>
+          </div>
+
+          <div class="mt-3 space-y-2">
+            <button
+              type="button"
+              @click="clearLayer"
+              :class="!selectedLayer
+                ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light')
+                : 'border-current/10'"
+              class="w-full rounded-lg border px-3 py-2 text-left text-sm font-semibold transition hover:opacity-85">
+              No overlay
+            </button>
+            <template x-for="layer in mapLayers" :key="layer.slug">
+              <button
+                type="button"
+                @click="selectLayer(layer.slug)"
+                :class="selectedLayerSlug === layer.slug
+                  ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light')
+                  : 'border-current/10'"
+                class="w-full rounded-lg border px-3 py-2 text-left text-sm transition hover:opacity-85">
+                <span class="flex items-center justify-between gap-2">
+                  <span class="font-semibold" x-text="layer.name"></span>
+                  <span class="text-xs opacity-70">
+                    <span x-text="layer.polygons.length"></span>
+                    zones
+                  </span>
+                </span>
+                <span class="mt-1 block text-xs opacity-65" x-text="layer.description"></span>
+              </button>
+            </template>
+          </div>
+        </div>
+
         <div class="mt-4 min-h-0 flex-1 overflow-y-auto pr-1">
           <template x-if="visibleLocations.length === 0">
             <div
@@ -317,6 +400,67 @@
         </div>
       </div>
     </section>
+
+    <div
+      class="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4"
+      x-show="layerSettingsOpen"
+      x-transition.opacity
+      x-cloak>
+      <div
+        @click.outside="layerSettingsOpen = false"
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark' : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+        class="w-full max-w-md rounded-lg border p-5 shadow-xl">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <h2 class="text-lg font-bold">Overlay display</h2>
+            <p class="mt-1 text-sm opacity-70" x-text="selectedLayer ? selectedLayer.name : 'No layer selected'"></p>
+          </div>
+          <button
+            type="button"
+            @click="layerSettingsOpen = false"
+            class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-current/15 transition hover:opacity-75"
+            aria-label="Close overlay display settings">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+
+        <div class="mt-5 space-y-5">
+          <label class="block">
+            <span class="mb-2 flex items-center justify-between gap-3 text-sm font-semibold">
+              <span>Opacity</span>
+              <span x-text="`${Math.round(overlayOpacity * 100)}%`"></span>
+            </span>
+            <input
+              type="range"
+              min="0.05"
+              max="0.85"
+              step="0.05"
+              x-model.number="overlayOpacity"
+              @input="refreshLayerDisplay"
+              class="w-full accent-current">
+          </label>
+
+          <label class="flex items-center justify-between gap-4">
+            <span>
+              <span class="block text-sm font-semibold">Value labels</span>
+              <span class="block text-xs opacity-65">Show numeric labels in overlay polygons.</span>
+            </span>
+            <input
+              type="checkbox"
+              x-model="showOverlayLabels"
+              @change="refreshLayerDisplay"
+              class="h-5 w-5 accent-current">
+          </label>
+
+          <div
+            :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+            class="rounded-lg border p-3 text-sm">
+            <div class="font-semibold">Legend</div>
+            <div class="mt-3 grid gap-2" id="overlay-legend"></div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -324,6 +468,8 @@
   let map = null;
   let featuresDict = {};
   let allBounds = null;
+  let mapLayerOverlay = null;
+  let mapLayerLabelOverlay = null;
 
   function refreshMapSize() {
     if (map) map.invalidateSize();
@@ -361,6 +507,129 @@
       radius: 7,
       weight: type === "Route Chain" ? 6 : (type === "Route" ? 4 : 2)
     };
+  }
+
+  function interpolateColor(start, end, ratio) {
+    const normalized = Math.max(0, Math.min(1, ratio));
+    const startValue = parseInt(start.replace("#", ""), 16);
+    const endValue = parseInt(end.replace("#", ""), 16);
+    const sr = (startValue >> 16) & 255;
+    const sg = (startValue >> 8) & 255;
+    const sb = startValue & 255;
+    const er = (endValue >> 16) & 255;
+    const eg = (endValue >> 8) & 255;
+    const eb = endValue & 255;
+    const r = Math.round(sr + (er - sr) * normalized);
+    const g = Math.round(sg + (eg - sg) * normalized);
+    const b = Math.round(sb + (eb - sb) * normalized);
+
+    return `#${[r, g, b].map((part) => part.toString(16).padStart(2, "0")).join("")}`;
+  }
+
+  function layerColor(layer, value) {
+    const style = layer?.style || {};
+    const colors = style.colors || [themeColor("success-light", "#4a8f7a"), themeColor("warn-light", "#d94a4a")];
+    const values = (layer?.polygons || []).map((polygon) => polygon.value);
+    if (!values.length) return colors[0];
+
+    const min = Number(style.min ?? Math.min(...values));
+    const max = Number(style.max ?? Math.max(...values));
+    const ratio = max === min ? 0.5 : (value - min) / (max - min);
+
+    return interpolateColor(colors[0], colors[colors.length - 1], ratio);
+  }
+
+  function updateOverlayLegend(layer) {
+    const legend = document.getElementById("overlay-legend");
+    if (!legend) return;
+
+    if (!layer) {
+      legend.innerHTML = '<div class="text-xs opacity-65">Select a layer to see its legend.</div>';
+      return;
+    }
+
+    const values = layer.polygons.map((polygon) => polygon.value);
+    if (!values.length) {
+      legend.innerHTML = '<div class="text-xs opacity-65">This layer has no polygons yet.</div>';
+      return;
+    }
+
+    const style = layer.style || {};
+    const min = Number(style.min ?? Math.min(...values));
+    const max = Number(style.max ?? Math.max(...values));
+    const unit = layer.unit ? ` ${escapeHtml(layer.unit)}` : "";
+    const low = layerColor(layer, min);
+    const high = layerColor(layer, max);
+
+    legend.innerHTML = `
+      <div class="h-3 rounded" style="background: linear-gradient(90deg, ${low}, ${high})"></div>
+      <div class="flex justify-between text-xs opacity-70">
+        <span>${min}${unit}</span>
+        <span>${max}${unit}</span>
+      </div>
+    `;
+  }
+
+  function updateMapLayerOverlay(layer, opacity, showLabels) {
+    if (!map) return;
+
+    if (mapLayerOverlay) {
+      map.removeLayer(mapLayerOverlay);
+      mapLayerOverlay = null;
+    }
+
+    if (mapLayerLabelOverlay) {
+      map.removeLayer(mapLayerLabelOverlay);
+      mapLayerLabelOverlay = null;
+    }
+
+    updateOverlayLegend(layer);
+
+    if (!layer) return;
+
+    const labels = [];
+    const features = layer.polygons.map((polygon) => ({
+      type: "Feature",
+      properties: {
+        id: polygon.id,
+        name: polygon.name,
+        value: polygon.value,
+        metadata: polygon.properties || {}
+      },
+      geometry: polygon.geometry
+    }));
+
+    mapLayerOverlay = L.geoJSON(features, {
+      style: function (feature) {
+        const color = layerColor(layer, feature.properties.value);
+        return {
+          color: color,
+          fillColor: color,
+          fillOpacity: opacity,
+          opacity: Math.min(0.95, opacity + 0.25),
+          weight: 1.5
+        };
+      },
+      onEachFeature: function (feature, leafletLayer) {
+        const unit = layer.unit ? ` ${layer.unit}` : "";
+        leafletLayer.bindPopup(`<strong>${escapeHtml(layer.name)}</strong><br>${escapeHtml(feature.properties.name)}<br>${feature.properties.value}${escapeHtml(unit)}`);
+
+        if (!showLabels) return;
+
+        const center = leafletLayer.getBounds().getCenter();
+        labels.push(L.marker(center, {
+          interactive: false,
+          icon: L.divIcon({
+            className: "map-layer-label",
+            html: `<span style="background: rgba(0,0,0,0.62); color: white; border-radius: 6px; padding: 2px 6px; font-size: 11px; font-weight: 700;">${feature.properties.value}${escapeHtml(unit)}</span>`
+          })
+        }));
+      }
+    }).addTo(map);
+
+    if (showLabels && labels.length) {
+      mapLayerLabelOverlay = L.layerGroup(labels).addTo(map);
+    }
   }
 
   function escapeHtml(value) {
@@ -424,6 +693,12 @@
     });
 
     fitAllLocations();
+    if (window.mapLayersPayload?.length) {
+      const defaultLayer = window.mapLayersPayload[0];
+      updateMapLayerOverlay(defaultLayer, Number(defaultLayer.style?.opacity ?? 0.35), defaultLayer.style?.show_labels !== false);
+    } else {
+      updateOverlayLegend(null);
+    }
     setTimeout(refreshMapSize, 100);
   });
 
