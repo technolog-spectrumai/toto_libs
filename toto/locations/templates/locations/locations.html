@@ -833,6 +833,35 @@
     return element.innerHTML;
   }
 
+  function escapeAttribute(value) {
+    return escapeHtml(value).replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+  }
+
+  function popupContent(type, name) {
+    const title = `<strong>${escapeHtml(type)}</strong><br>${escapeHtml(name)}`;
+    if (type !== "Address") return title;
+
+    return `
+      ${title}
+      <div style="margin-top: 8px;">
+        <button
+          type="button"
+          data-location-name="${escapeAttribute(name)}"
+          onclick="zoomToAddressFromPopup(this)"
+          style="display: inline-flex; align-items: center; gap: 6px; border: 1px solid currentColor; border-radius: 6px; padding: 4px 8px; font-size: 12px; font-weight: 700; background: transparent; cursor: pointer;">
+          <i class="fa-solid fa-location-crosshairs"></i>
+          Zoom to address
+        </button>
+      </div>
+    `;
+  }
+
+  function zoomToAddressFromPopup(button) {
+    const name = button?.dataset?.locationName;
+    if (!name) return;
+    zoomToFeature(name);
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     const isDark = localStorage.getItem("darkMode") === "true";
     const features = window.locationsPayload || [];
@@ -889,7 +918,7 @@
         allBounds = layer.getBounds();
       }
 
-      layer.bindPopup(`<strong>${escapeHtml(type)}</strong><br>${escapeHtml(name)}`);
+      layer.bindPopup(popupContent(type, name));
     });
 
     fitAllLocations();
