@@ -6,13 +6,21 @@
 
 from toto.locations.models import (
     Address as AddressSql,
+    MapLayer as MapLayerSql,
+    MapLayerPolygon as MapLayerPolygonSql,
+    RouteChain as RouteChainSql,
     Territory as TerritorySql,
+    Zone as ZoneSql,
     Route as RouteSql,
 )
 
 from toto.locations.graph.models import (
     Address as AddressNode,
+    MapLayer as MapLayerNode,
+    MapLayerPolygon as MapLayerPolygonNode,
+    RouteChain as RouteChainNode,
     Territory as TerritoryNode,
+    Zone as ZoneNode,
     Route as RouteNode,
 )
 
@@ -42,6 +50,11 @@ class BaseGeoProjection:
     def to_wkt(self, geom):
         return geom.wkt if geom else None
 
+    def to_json(self, value):
+        import json
+
+        return json.dumps(value or {})
+
     # -----------------------------
     # NODE SYNC (shared)
     # -----------------------------
@@ -61,8 +74,10 @@ class BaseGeoProjection:
             # Apply field mapping
             for neo_field, sql_field in self.field_map.items():
                 value = getattr(obj, sql_field)
-                if "geometry" in neo_field:
+                if neo_field in ("geometry", "center"):
                     value = self.to_wkt(value)
+                elif neo_field in ("style", "properties"):
+                    value = self.to_json(value)
                 setattr(node, neo_field, value)
 
             node.save()
@@ -130,6 +145,56 @@ class TerritoryProjection(BaseGeoProjection):
 
 
 # =========================================================
+# ZONE PROJECTION
+# =========================================================
+
+class ZoneProjection(BaseGeoProjection):
+
+    model = "Zone"
+    app = "locations"
+
+    sql_model = ZoneSql
+    neo_model = ZoneNode
+
+    field_map = {
+        "name": "name",
+        "geometry": "geometry",
+    }
+
+    def sync_edges(self):
+        for z in ZoneSql.objects.select_related("territory").all():
+            gz = ZoneNode.nodes.get(uuid=str(z.uid))
+            gz.territory.disconnect_all()
+
+            if z.territory_id:
+                gt = TerritoryNode.nodes.get_or_none(uuid=str(z.territory.uid))
+                if gt:
+                    gz.territory.connect(gt)
+
+
+# =========================================================
+# ROUTE CHAIN PROJECTION
+# =========================================================
+
+class RouteChainProjection(BaseGeoProjection):
+
+    model = "RouteChain"
+    app = "locations"
+
+    sql_model = RouteChainSql
+    neo_model = RouteChainNode
+
+    field_map = {
+        "name": "name",
+        "description": "description",
+    }
+
+    def sync_edges(self):
+        # Routes own the outgoing PART_OF_CHAIN edge.
+        pass
+
+
+# =========================================================
 # ROUTE PROJECTION
 # =========================================================
 
@@ -143,6 +208,7 @@ class RouteProjection(BaseGeoProjection):
 
     field_map = {
         "name": "name",
+        "sequence": "sequence",
         "geometry": "geometry",
     }
 
@@ -152,6 +218,12 @@ class RouteProjection(BaseGeoProjection):
 
             gr.start_address.disconnect_all()
             gr.end_address.disconnect_all()
+            gr.route_chain.disconnect_all()
+
+            if r.route_chain_id:
+                gc = RouteChainNode.nodes.get_or_none(uuid=str(r.route_chain.uid))
+                if gc:
+                    gr.route_chain.connect(gc)
 
             if r.start_address_id:
                 ga = AddressNode.nodes.get_or_none(uuid=str(r.start_address.uid))
@@ -162,3 +234,63 @@ class RouteProjection(BaseGeoProjection):
                 ga = AddressNode.nodes.get_or_none(uuid=str(r.end_address.uid))
                 if ga:
                     gr.end_address.connect(ga)
+
+
+# =========================================================
+# MAP LAYER PROJECTION
+# =========================================================
+
+class MapLayerProjection(BaseGeoProjection):
+
+    model = "MapLayer"
+    app = "locations"
+
+    sql_model = MapLayerSql
+    neo_model = MapLayerNode
+
+    field_map = {
+        "name": "name",
+        "slug": "slug",
+        "description": "description",
+        "unit": "unit",
+        "min_value": "min_value",
+        "max_value": "max_value",
+        "style": "style",
+        "inverted_importance": "inverted_importance",
+        "half_range": "half_range",
+        "is_active": "is_active",
+    }
+
+    def sync_edges(self):
+        # MapLayerPolygon owns the outgoing IN_LAYER edge.
+        pass
+
+
+# =========================================================
+# MAP LAYER POLYGON PROJECTION
+# =========================================================
+
+class MapLayerPolygonProjection(BaseGeoProjection):
+
+    model = "MapLayerPolygon"
+    app = "locations"
+
+    sql_model = MapLayerPolygonSql
+    neo_model = MapLayerPolygonNode
+
+    field_map = {
+        "name": "name",
+        "value": "value",
+        "properties": "properties",
+        "geometry": "geometry",
+        "center": "center",
+    }
+
+    def sync_edges(self):
+        for polygon in MapLayerPolygonSql.objects.select_related("layer").all():
+            gp = MapLayerPolygonNode.nodes.get(uuid=str(polygon.uid))
+            gp.layer.disconnect_all()
+
+            gl = MapLayerNode.nodes.get_or_none(uuid=str(polygon.layer.uid))
+            if gl:
+                gp.layer.connect(gl)
