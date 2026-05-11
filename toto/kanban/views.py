@@ -432,3 +432,70 @@ def sprint_metrics(request, pk):
         "kanban/sprint_metrics.html",
         PageProcessor().decorate(context, request)
     )
+
+
+class MissionDetailView(LoginRequiredMixin, DetailView):
+    model = Mission
+    template_name = "kanban/mission_detail.html"
+    context_object_name = "mission"
+
+    def get_queryset(self):
+        return (
+            Mission.objects
+            .select_related("campaign", "campaign__project", "owner")
+            .prefetch_related(
+                "tasks",
+                "tasks__column",
+                "tasks__sprint",
+                "tasks__assignee",
+            )
+        )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context = PageProcessor().decorate(context, self.request)
+
+        mission = self.object
+        project = mission.campaign.project
+        tasks = mission.tasks.all()
+
+        total_tasks = tasks.count()
+        completed_tasks = tasks.filter(completed_at__isnull=False).count()
+        open_tasks = total_tasks - completed_tasks
+
+        total_weight = tasks.aggregate(total=Sum("weight"))["total"] or 0
+        completed_weight = (
+            tasks
+            .filter(completed_at__isnull=False)
+            .aggregate(total=Sum("weight"))["total"]
+            or 0
+        )
+
+        completion_rate = (
+            round((completed_tasks / total_tasks) * 100, 1)
+            if total_tasks
+            else 0
+        )
+
+        weight_completion_rate = (
+            round((completed_weight / total_weight) * 100, 1)
+            if total_weight
+            else 0
+        )
+
+        context.update({
+            "project": project,
+            "tasks": tasks,
+
+            "total_tasks": total_tasks,
+            "completed_tasks": completed_tasks,
+            "open_tasks": open_tasks,
+
+            "total_weight": total_weight,
+            "completed_weight": completed_weight,
+
+            "completion_rate": completion_rate,
+            "weight_completion_rate": weight_completion_rate,
+        })
+
+        return context

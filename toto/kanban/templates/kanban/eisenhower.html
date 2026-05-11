@@ -225,7 +225,12 @@
                       ? 'border-accent-1 bg-primary-bg-dark'
                       : 'border-accent-2 bg-primary-bg-light'"
                     class="rounded-lg border px-3 py-2">
-                    {{ mission.title }}
+                    <a
+                      href="{% url 'kanban:mission_detail' mission.pk %}"
+                      :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                      class="font-semibold underline-offset-4 transition hover:underline hover:opacity-80">
+                      {{ mission.title }}
+                    </a>
                   </li>
                 {% empty %}
                   <li class="rounded-lg border border-dashed px-3 py-4 text-center italic opacity-50">

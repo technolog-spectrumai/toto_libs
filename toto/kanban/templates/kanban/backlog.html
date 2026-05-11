@@ -133,9 +133,12 @@
                 class="border-b transition last:border-b-0">
 
                 <td class="px-5 py-4 align-top">
-                  <div class="font-semibold">
+                  <a
+                    href="{% url 'kanban:mission_detail' mission.pk %}"
+                    :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                    class="font-semibold underline-offset-4 transition hover:underline hover:opacity-80">
                     {{ mission.title }}
-                  </div>
+                  </a>
                 </td>
 
                 <td class="px-5 py-4 align-top">
