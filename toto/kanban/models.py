@@ -120,6 +120,10 @@ class Mission(DomainEntity):
     def impact_label(self):
         return dict(THREE_SCALE).get(self.impact, self.impact)
 
+    @property
+    def effective_zone(self):
+        return self.campaign.zone
+
 
 
 # 🚀 Sprint

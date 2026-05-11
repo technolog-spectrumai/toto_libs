@@ -102,6 +102,11 @@ class ProjectDetailView(LoginRequiredMixin, DetailView):
                 "auditors",
                 "tasks",
                 "tasks__mission",
+                "tasks__mission__campaign",
+                "tasks__mission__campaign__zone",
+                "tasks__mission__campaign__zone__territory",
+                "tasks__mission__location",
+                "tasks__mission__route",
                 "tasks__assignee",
                 "tasks__sprint",
                 "tasks__column",
@@ -217,14 +222,20 @@ class BacklogView(LoginRequiredMixin, DetailView):
         missions = (
             Mission.objects
             .filter(campaign__project=project)
-            .select_related("campaign", "owner")
+            .select_related(
+                "campaign",
+                "campaign__zone",
+                "campaign__zone__territory",
+                "location",
+                "route",
+                "owner",
+            )
             .prefetch_related(
                 "tasks",
                 "tasks__column",
                 "tasks__sprint",
                 "tasks__assignee",
             )
-            .order_by("campaign__name", "title")
         )
 
         context.update({
@@ -661,6 +672,8 @@ class MissionDetailView(LoginRequiredMixin, DetailView):
                 "campaign__project",
                 "campaign__owner",
                 "owner",
+                "campaign__zone",
+                "campaign__zone__territory",
             )
             .prefetch_related(
                 "tasks",

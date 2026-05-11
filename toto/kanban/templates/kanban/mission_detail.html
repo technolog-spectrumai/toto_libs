@@ -1,5 +1,6 @@
 {% extends "oya/base.html" %}
 {% load static %}
+{% load yaml_filters %}
 
 {% block title %}Mission | {{ mission.title }}{% endblock %}
 
@@ -137,7 +138,7 @@
     </section>
 
     <!-- Mission Details -->
-    <section class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+    <section class="grid grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-4">
 
       <!-- Campaign Card -->
       <article
@@ -190,6 +191,74 @@
         </div>
       </article>
 
+      <!-- Location Card -->
+      <article
+        :class="darkMode
+          ? 'border-accent-1 bg-bubble-bg-dark'
+          : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-2xl border p-5 shadow-sm">
+
+        <h2 class="mb-4 flex items-center gap-2 text-lg font-bold">
+          <i class="fa-solid fa-location-dot"></i>
+          Location
+        </h2>
+
+        <div class="space-y-3 text-sm">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Address</p>
+
+            {% if mission.location %}
+              <a
+                href="{% url 'locations:address_detail' mission.location.pk %}"
+                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                class="mt-1 inline-flex items-start gap-2 font-semibold underline-offset-4 transition hover:underline hover:opacity-80">
+                <i class="fa-solid fa-map-pin mt-1 text-xs"></i>
+                <span>{{ mission.location }}</span>
+              </a>
+            {% else %}
+              <p class="mt-1 opacity-60">—</p>
+            {% endif %}
+          </div>
+
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Route</p>
+
+            {% if mission.route %}
+              <a
+                href="{% url 'locations:route_detail' mission.route.pk %}"
+                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                class="mt-1 inline-flex items-center gap-2 font-semibold underline-offset-4 transition hover:underline hover:opacity-80">
+                <i class="fa-solid fa-route text-xs"></i>
+                {{ mission.route.name|default:"Route" }}
+              </a>
+            {% else %}
+              <p class="mt-1 opacity-60">—</p>
+            {% endif %}
+          </div>
+
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Zone</p>
+
+            {% if mission.effective_zone %}
+              <a
+                href="{% url 'locations:zone_detail' mission.effective_zone.pk %}"
+                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                class="mt-1 inline-flex items-center gap-2 font-semibold underline-offset-4 transition hover:underline hover:opacity-80">
+                <i class="fa-solid fa-draw-polygon text-xs"></i>
+                {{ mission.effective_zone.name }}
+              </a>
+
+              {% if mission.effective_zone.territory %}
+                <p class="mt-1 text-xs opacity-60">
+                  {{ mission.effective_zone.territory.name }}
+                </p>
+              {% endif %}
+            {% else %}
+              <p class="mt-1 opacity-60">—</p>
+            {% endif %}
+          </div>
+        </div>
+      </article>
       <!-- Ownership Card -->
       <article
         :class="darkMode
@@ -270,7 +339,7 @@
             :class="darkMode
               ? 'border-accent-1 bg-sunken-dark'
               : 'border-accent-2 bg-sunken-light'"
-            class="max-h-56 overflow-auto rounded-xl border p-4 text-xs">{{ mission.metadata }}</pre>
+            class="overflow-x-auto whitespace-pre-wrap break-words rounded-xl border p-4 text-xs leading-5">{{ mission.metadata|yaml_print }}</pre>
         {% else %}
           <div
             :class="darkMode
