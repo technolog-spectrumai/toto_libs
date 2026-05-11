@@ -5,15 +5,52 @@
 
 {% block start_script %}
 <style>
-  /* Only structural prose tweaks — no colors */
-  .prose p { margin-top: 0.75rem; margin-bottom: 0.75rem; }
-  .prose pre { padding: 1rem; border-radius: 0.5rem; overflow-x: auto; }
-  .prose code { padding: 0.2rem 0.4rem; border-radius: 0.25rem; }
-  .prose h2 { margin-top: 2rem; margin-bottom: 1rem; font-weight: 700; }
-  .prose h3 { margin-top: 1.5rem; margin-bottom: 0.75rem; font-weight: 600; }
-  .prose img { border-radius: 0.5rem; margin: 1rem auto; }
-  .prose table { width: 100%; border-collapse: collapse; }
-  .prose th, .prose td { padding: 0.5rem; }
+  [x-cloak] {
+    display: none !important;
+  }
+
+  .prose p {
+    margin-top: 0.8rem;
+    margin-bottom: 0.8rem;
+  }
+
+  .prose pre {
+    padding: 1rem;
+    border-radius: 0.75rem;
+    overflow-x: auto;
+  }
+
+  .prose code {
+    padding: 0.2rem 0.4rem;
+    border-radius: 0.35rem;
+  }
+
+  .prose h2 {
+    margin-top: 2rem;
+    margin-bottom: 1rem;
+    font-weight: 800;
+  }
+
+  .prose h3 {
+    margin-top: 1.5rem;
+    margin-bottom: 0.75rem;
+    font-weight: 700;
+  }
+
+  .prose img {
+    border-radius: 0.75rem;
+    margin: 1rem auto;
+  }
+
+  .prose table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .prose th,
+  .prose td {
+    padding: 0.65rem;
+  }
 </style>
 {% endblock %}
 
@@ -22,234 +59,359 @@
   :class="darkMode
     ? 'bg-primary-bg-dark text-text-main-dark'
     : 'bg-primary-bg-light text-text-main-light'"
-  class="flex items-center justify-center px-6 py-16 min-h-screen transition-colors duration-300">
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
 
-  <div
-    :class="darkMode
-      ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
-      : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
-    class="w-full max-w-3xl p-6 rounded-lg shadow-md border space-y-8 transition-colors duration-300">
+  <div class="mx-auto max-w-5xl space-y-6">
 
-    <!-- Page Title -->
-    <h1 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-        class="text-3xl font-bold text-center">
-      {{ page.title }}
-    </h1>
+    <!-- Header -->
+    <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div class="min-w-0">
+        <a
+          href="{% url 'verbena:article_list' %}"
+          class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+          <i class="fa-solid fa-arrow-left"></i>
+          Articles
+        </a>
 
-    <!-- Page Description -->
-    {% if page.description %}
-      <p class="text-center text-sm opacity-70">
-        {{ page.description }}
-      </p>
+        <p
+          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+          class="mt-5 text-xs font-semibold uppercase tracking-wide">
+          Article
+        </p>
+
+        <h1 class="mt-2 break-words text-3xl font-bold tracking-tight sm:text-4xl">
+          {{ page.title }}
+        </h1>
+
+        {% if page.description %}
+          <p class="mt-3 max-w-3xl text-sm leading-6 opacity-75">
+            {{ page.description }}
+          </p>
+        {% else %}
+          <p class="mt-3 max-w-3xl text-sm italic leading-6 opacity-60">
+            No description provided.
+          </p>
+        {% endif %}
+      </div>
+
+      <nav class="flex flex-wrap gap-2">
+        <a
+          href="{% url 'verbena:article_list' %}"
+          :class="darkMode
+            ? 'bg-accent-dark text-primary-bg-dark'
+            : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-layer-group"></i>
+          Library
+        </a>
+      </nav>
+    </header>
+
+    <!-- Overview -->
+    {% if books or sections %}
+      <section
+        :class="darkMode
+          ? 'border-accent-1 bg-bubble-bg-dark'
+          : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-2xl border p-5 shadow-sm sm:p-6">
+
+        <div class="grid grid-cols-1 gap-5 lg:grid-cols-[260px_minmax(0,1fr)]">
+
+          <!-- Article Context -->
+          <div>
+            <h2 class="flex items-center gap-2 text-lg font-bold">
+              <i class="fa-solid fa-circle-info"></i>
+              Overview
+            </h2>
+
+            <div class="mt-4 grid grid-cols-2 gap-3">
+              <div
+                :class="darkMode
+                  ? 'border-accent-1 bg-primary-bg-dark'
+                  : 'border-accent-2 bg-primary-bg-light'"
+                class="rounded-xl border p-3">
+                <div class="text-2xl font-bold">{{ sections|length }}</div>
+                <div class="text-xs opacity-65">Sections</div>
+              </div>
+
+              <div
+                :class="darkMode
+                  ? 'border-accent-1 bg-primary-bg-dark'
+                  : 'border-accent-2 bg-primary-bg-light'"
+                class="rounded-xl border p-3">
+                <div class="text-2xl font-bold">
+                  {% if books %}{{ books|length }}{% else %}0{% endif %}
+                </div>
+                <div class="text-xs opacity-65">Books</div>
+              </div>
+            </div>
+
+            {% if books %}
+              <div class="mt-5">
+                <p class="text-xs font-semibold uppercase tracking-wide opacity-60">
+                  This article is part of
+                </p>
+
+                <div class="mt-3 flex flex-wrap gap-2">
+                  {% for book in books %}
+                    <a
+                      href="{% url 'verbena:book_detail' slug=book.slug %}"
+                      :class="darkMode
+                        ? 'border-accent-1 bg-primary-bg-dark text-accent-dark'
+                        : 'border-accent-2 bg-primary-bg-light text-accent-light'"
+                      class="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold shadow-sm transition hover:opacity-85">
+                      <i class="fa-solid fa-book-open text-[10px]"></i>
+                      {{ book.title }}
+                    </a>
+                  {% endfor %}
+                </div>
+              </div>
+            {% endif %}
+          </div>
+
+          <!-- Contents -->
+          {% if sections %}
+            <nav>
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <h2 class="flex items-center gap-2 text-lg font-bold">
+                    <i class="fa-solid fa-list-ul"></i>
+                    Contents
+                  </h2>
+
+                  <p class="mt-1 text-sm opacity-70">
+                    Jump to a section or subsection.
+                  </p>
+                </div>
+              </div>
+
+              <ol class="mt-4 grid gap-2 text-sm">
+                {% for section in sections %}
+                  <li
+                    :class="darkMode
+                      ? 'border-accent-1 bg-primary-bg-dark'
+                      : 'border-accent-2 bg-primary-bg-light'"
+                    class="rounded-xl border p-3">
+
+                    <a
+                      href="#section-{{ forloop.counter }}"
+                      :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                      class="font-bold underline-offset-4 transition hover:underline">
+                      {{ forloop.counter }}. {{ section.title }}
+                    </a>
+
+                    {% if section.subsections %}
+                      <ol
+                        class="mt-2 space-y-1 border-l pl-3 text-xs"
+                        :class="darkMode ? 'border-accent-dark' : 'border-accent-light'">
+                        {% for sub in section.subsections %}
+                          <li>
+                            <a
+                              href="#subsection-{{ forloop.parentloop.counter }}-{{ forloop.counter }}"
+                              :class="darkMode ? 'text-link-dark' : 'text-link-light'"
+                              class="opacity-85 underline-offset-4 transition hover:underline">
+                              {{ forloop.parentloop.counter }}.{{ forloop.counter }} — {{ sub.title }}
+                            </a>
+                          </li>
+                        {% endfor %}
+                      </ol>
+                    {% endif %}
+                  </li>
+                {% endfor %}
+              </ol>
+            </nav>
+          {% endif %}
+        </div>
+      </section>
     {% endif %}
 
-    {% if books %}
-  <div class="space-y-2 text-center">
-
-    <h3 class="text-sm font-semibold opacity-80"
-        :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
-      This article is part of:
-    </h3>
-
-    <div class="flex flex-wrap justify-center gap-3">
-      {% for book in books %}
-        <a href=""
-           :class="darkMode
-             ? 'bg-primary-bg-dark border border-accent-1 hover:bg-bubble-bg-dark text-accent-dark'
-             : 'bg-primary-bg-light border border-accent-2 hover:bg-bubble-bg-light text-accent-light'"
-           class="px-3 py-1 rounded-md text-sm font-semibold transition-colors duration-300 shadow-sm">
-           {{ book.title }}
-        </a>
-      {% endfor %}
-    </div>
-
-  </div>
-{% endif %}
-
-{% if sections %}
-  <div class="space-y-4">
-
-    <h3 class="text-sm font-semibold text-center opacity-80"
-        :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
-      Contents
-    </h3>
-
-    <ol class="space-y-2 text-sm">
-
-      {% for section in sections %}
-        <li class="space-y-1">
-
-          <!-- Section Link -->
-          <a href="#section-{{ forloop.counter }}"
-             class="font-semibold transition-colors duration-300 hover:underline"
-             :class="darkMode ? 'text-link-dark' : 'text-link-light'">
-            {{ forloop.counter }}. {{ section.title }}
-          </a>
-
-          <!-- Subsections -->
-          {% if section.subsections %}
-            <ol class="ml-5 space-y-1 border-l pl-3"
-                :class="darkMode ? 'border-accent-dark' : 'border-accent-light'">
-
-              {% for sub in section.subsections %}
-                <li>
-                  <a href="#subsection-{{ forloop.parentloop.counter }}-{{ forloop.counter }}"
-                     class="opacity-80 transition-colors duration-300 hover:underline"
-                     :class="darkMode ? 'text-link-dark' : 'text-link-light'">
-                    {{ forloop.parentloop.counter }}.{{ forloop.counter }} — {{ sub.title }}
-                  </a>
-                </li>
-              {% endfor %}
-
-            </ol>
-          {% endif %}
-
-        </li>
-      {% endfor %}
-
-    </ol>
-
-  </div>
-{% endif %}
-
-
     <!-- Sections -->
-    <div class="space-y-10">
+    <div class="space-y-5">
       {% for section in sections %}
         <article
           x-data="{ open: true }"
           :class="darkMode
-            ? 'bg-primary-bg-dark border border-accent-1'
-            : 'bg-primary-bg-light border border-accent-2'"
-          class="p-5 rounded-lg transition-colors duration-300">
+            ? 'border-accent-1 bg-bubble-bg-dark'
+            : 'border-accent-2 bg-bubble-bg-light'"
+          class="overflow-hidden rounded-2xl border shadow-sm">
 
-          <!-- Section Header (collapsible) -->
           <button
+            type="button"
             @click="open = !open"
-            class="w-full flex justify-between items-center text-left">
+            :class="darkMode ? 'bg-sunken-dark' : 'bg-sunken-light'"
+            class="flex w-full items-start justify-between gap-4 border-b border-current/10 px-5 py-4 text-left transition hover:opacity-90 sm:px-6">
 
-            <h2 id="section-{{ forloop.counter }}" class="text-xl font-semibold"
-                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
-              {{ section.title }}
-            </h2>
+            <span class="min-w-0">
+              <span class="text-xs font-semibold uppercase tracking-wide opacity-60">
+                Section {{ forloop.counter }}
+              </span>
 
-            <span class="text-sm opacity-70"
-                  x-text="open ? '−' : '+'"></span>
+              <h2
+                id="section-{{ forloop.counter }}"
+                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                class="mt-1 break-words text-xl font-bold">
+                {{ section.title }}
+              </h2>
+            </span>
+
+            <span
+              class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-current/15 text-sm font-bold">
+              <span x-text="open ? '−' : '+'"></span>
+            </span>
           </button>
-            {% if section.tags %}
-              <div class="flex flex-wrap gap-2 mt-2">
+
+          <div x-show="open" x-collapse class="px-5 py-5 sm:px-6">
+
+            {% if section.tags or section.topics %}
+              <div class="mb-5 flex flex-wrap gap-2">
                 {% for tag in section.tags %}
                   <span
                     :class="darkMode
-                      ? 'bg-primary-bg-dark border border-accent-1 text-accent-dark'
-                      : 'bg-primary-bg-light border border-accent-2 text-accent-light'"
-                    class="px-2 py-1 rounded text-xs font-semibold shadow-sm">
-                    #{{ tag.name }}
+                      ? 'border-accent-1 bg-primary-bg-dark text-accent-dark'
+                      : 'border-accent-2 bg-primary-bg-light text-accent-light'"
+                    class="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold shadow-sm">
+                    <i class="fa-solid fa-hashtag text-[10px]"></i>
+                    {{ tag.name }}
+                  </span>
+                {% endfor %}
+
+                {% for topic in section.topics %}
+                  <span
+                    :class="darkMode
+                      ? 'border-accent-1 bg-primary-bg-dark'
+                      : 'border-accent-2 bg-primary-bg-light'"
+                    class="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold shadow-sm">
+                    <i class="fa-solid fa-tag text-[10px] opacity-70"></i>
+                    {{ topic }}
                   </span>
                 {% endfor %}
               </div>
             {% endif %}
-          {% if section.topics %}
-            <div class="flex flex-wrap gap-2 mt-2">
-              {% for topic in section.topics %}
-                <span
-                  :class="darkMode
-                    ? 'bg-primary-bg-dark border border-accent-1 text-accent-dark'
-                    : 'bg-primary-bg-light border border-accent-2 text-accent-light'"
-                  class="px-2 py-1 rounded text-xs font-semibold shadow-sm">
-                  {{ topic }}
-                </span>
-              {% endfor %}
-            </div>
-          {% endif %}
-          <!-- Section Content -->
-          <div x-show="open" x-collapse class="mt-3">
-            <div class="prose dark:prose-invert max-w-none">
-              {{ section.html | safe }}
+
+            <div class="prose max-w-none dark:prose-invert">
+              {{ section.html|safe }}
             </div>
 
-            <!-- Subsections -->
             {% if section.subsections %}
-              <div class="mt-6 space-y-8">
-
+              <div class="mt-8 space-y-5">
                 {% for sub in section.subsections %}
-                  <div x-data="{ subOpen: true }"
-                       class="border-l-4 pl-4"
-                       :class="darkMode ? 'border-accent-dark' : 'border-accent-light'">
+                  <section
+                    x-data="{ subOpen: true }"
+                    :class="darkMode
+                      ? 'border-accent-1 bg-primary-bg-dark'
+                      : 'border-accent-2 bg-primary-bg-light'"
+                    class="rounded-xl border p-4 sm:p-5">
 
-                    <!-- Subsection Header -->
                     <button
+                      type="button"
                       @click="subOpen = !subOpen"
-                      class="w-full flex justify-between items-center text-left">
+                      class="flex w-full items-start justify-between gap-4 text-left">
 
-                      <h3 id="subsection-{{ forloop.parentloop.counter }}-{{ forloop.counter }}" class="text-lg font-semibold"
-                          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
-                        {{ sub.title }}
-                      </h3>
+                      <span class="min-w-0">
+                        <span class="text-xs font-semibold uppercase tracking-wide opacity-60">
+                          Subsection {{ forloop.parentloop.counter }}.{{ forloop.counter }}
+                        </span>
 
-                      <span class="text-sm opacity-70"
-                            x-text="subOpen ? '−' : '+'"></span>
+                        <h3
+                          id="subsection-{{ forloop.parentloop.counter }}-{{ forloop.counter }}"
+                          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                          class="mt-1 break-words text-lg font-bold">
+                          {{ sub.title }}
+                        </h3>
+                      </span>
+
+                      <span
+                        class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-current/15 text-sm font-bold">
+                        <span x-text="subOpen ? '−' : '+'"></span>
+                      </span>
                     </button>
 
-                    <!-- Subsection Content -->
-                    <div x-show="subOpen" x-collapse class="mt-2">
-                      <div class="prose dark:prose-invert max-w-none">
-                        {{ sub.html | safe }}
+                    <div x-show="subOpen" x-collapse class="mt-4">
+                      <div class="prose max-w-none dark:prose-invert">
+                        {{ sub.html|safe }}
                       </div>
-                        {% if sub.topics %}
-                          <div class="flex flex-wrap gap-2 mt-3">
-                            {% for topic in sub.topics %}
-                              <span
-                                :class="darkMode
-                                  ? 'bg-primary-bg-dark border border-accent-1 text-accent-dark'
-                                  : 'bg-primary-bg-light border border-accent-2 text-accent-light'"
-                                class="px-2 py-1 rounded text-xs font-semibold shadow-sm">
-                                {{ topic }}
-                              </span>
-                            {% endfor %}
-                          </div>
-                        {% endif %}
+
+                      {% if sub.topics %}
+                        <div class="mt-4 flex flex-wrap gap-2">
+                          {% for topic in sub.topics %}
+                            <span
+                              :class="darkMode
+                                ? 'border-accent-1 bg-bubble-bg-dark'
+                                : 'border-accent-2 bg-bubble-bg-light'"
+                              class="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold shadow-sm">
+                              <i class="fa-solid fa-tag text-[10px] opacity-70"></i>
+                              {{ topic }}
+                            </span>
+                          {% endfor %}
+                        </div>
+                      {% endif %}
+
                       {% if sub.image %}
-                        <figure class="mt-4 text-center">
-                          <img src="{{ sub.image.file.url }}"
-                               alt="{{ sub.image.title }}"
-                               class="rounded shadow max-w-full mx-auto" />
+                        <figure
+                          :class="darkMode
+                            ? 'border-accent-1 bg-bubble-bg-dark'
+                            : 'border-accent-2 bg-bubble-bg-light'"
+                          class="mt-5 rounded-xl border p-3 text-center shadow-sm">
+                          <img
+                            src="{{ sub.image.file.url }}"
+                            alt="{{ sub.image.title }}"
+                            class="mx-auto max-w-full rounded-lg shadow-sm">
+
                           {% if sub.image.title %}
-                            <figcaption class="text-sm opacity-70 mt-1">
+                            <figcaption class="mt-2 text-sm opacity-70">
                               {{ sub.image.title }}
                             </figcaption>
                           {% endif %}
                         </figure>
                       {% endif %}
                     </div>
-
-                  </div>
+                  </section>
                 {% endfor %}
-
               </div>
             {% endif %}
           </div>
-
         </article>
+      {% empty %}
+        <div
+          :class="darkMode
+            ? 'border-accent-1 bg-bubble-bg-dark'
+            : 'border-accent-2 bg-bubble-bg-light'"
+          class="rounded-2xl border border-dashed p-10 text-center shadow-sm">
+          <i
+            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+            class="fa-solid fa-file-lines text-3xl"></i>
+
+          <p class="mt-3 text-sm italic opacity-70">
+            This article has no sections yet.
+          </p>
+        </div>
       {% endfor %}
     </div>
 
-
     <!-- Back Buttons -->
-    <div class="flex flex-col items-center space-y-3 mt-8">
+    <footer class="flex flex-wrap items-center justify-between gap-3 pt-2">
+      <a
+        href="{% url 'verbena:article_list' %}"
+        :class="darkMode
+          ? 'border-accent-1 bg-bubble-bg-dark'
+          : 'border-accent-2 bg-bubble-bg-light'"
+        class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+        <i class="fa-solid fa-arrow-left"></i>
+        Back to articles
+      </a>
 
       {% if tag_slug %}
-        <a href="{% url 'verbena:article_list' %}"
-           :class="darkMode
-             ? 'bg-accent-dark text-primary-bg-dark'
-             : 'bg-accent-light text-primary-bg-light'"
-           class="inline-block px-4 py-2 rounded font-semibold hover:opacity-90 transition text-sm text-center w-full">
-          Back to Page List
+        <a
+          href="{% url 'verbena:article_list' %}"
+          :class="darkMode
+            ? 'bg-accent-dark text-primary-bg-dark'
+            : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-list"></i>
+          Back to page list
         </a>
       {% endif %}
-
-    </div>
-
+    </footer>
 
   </div>
 </section>
