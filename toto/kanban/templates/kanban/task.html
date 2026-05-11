@@ -6,55 +6,46 @@
   :class="darkMode
     ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark'
     : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
-  class="group relative overflow-hidden rounded-2xl border p-4 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md"
+  class="relative overflow-hidden rounded-xl border p-3 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md"
   data-task-id="{{ task.id }}"
   data-order="{{ task.position }}">
 
-  <!-- Header -->
+  <!-- Compact Header -->
   <div class="flex items-start justify-between gap-3">
-    <div class="min-w-0 space-y-2">
-      <div>
-        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">
-          Task
-        </p>
+    <div class="min-w-0">
+      <h4 class="break-words text-sm font-bold leading-snug">
+        {{ task.title }}
+      </h4>
 
-        <h4 class="mt-1 break-words text-base font-bold leading-snug">
-          {{ task.title }}
-        </h4>
-      </div>
-
-      <!-- Meta badges -->
-      <div class="flex flex-wrap items-center gap-2 text-xs">
+      <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] opacity-75">
         {% if task.assignee %}
-          <span
-            :class="darkMode
-              ? 'border-accent-1 bg-sunken-dark'
-              : 'border-accent-2 bg-sunken-light'"
-            class="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 font-semibold">
+          <span class="inline-flex items-center gap-1">
             <i class="fa-solid fa-user text-[10px]"></i>
             {{ task.assignee.full_name }}
           </span>
         {% endif %}
 
-        <span
-          :class="darkMode
-            ? 'border-accent-1 bg-sunken-dark'
-            : 'border-accent-2 bg-sunken-light'"
-          class="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 font-semibold">
+        <span class="inline-flex items-center gap-1">
           <i class="fa-solid fa-weight-hanging text-[10px]"></i>
           {{ task.weight_label }}
         </span>
 
         {% if task.due_date %}
-          <span
-            :class="darkMode
-              ? 'border-accent-1 bg-sunken-dark'
-              : 'border-accent-2 bg-sunken-light'"
-            class="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 font-semibold">
+          <span class="inline-flex items-center gap-1">
             <i class="fa-solid fa-calendar text-[10px]"></i>
             {{ task.due_date|date:"M j" }}
           </span>
         {% endif %}
+
+        <a
+          href="{% url 'kanban:mission_detail' task.mission.pk %}"
+          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+          class="inline-flex min-w-0 items-center gap-1 font-semibold underline-offset-4 hover:underline hover:opacity-80">
+          <i class="fa-solid fa-bullseye text-[10px]"></i>
+          <span class="truncate">
+            {{ task.mission.title }}
+          </span>
+        </a>
       </div>
     </div>
 
@@ -62,46 +53,26 @@
       type="button"
       @click="open = !open"
       :aria-expanded="open.toString()"
-      :class="darkMode
-        ? 'border-accent-1 bg-sunken-dark text-text-main-dark'
-        : 'border-accent-2 bg-sunken-light text-text-main-light'"
-      class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border text-sm shadow-sm transition hover:opacity-85">
+      class="shrink-0 text-xs opacity-60 transition hover:opacity-100">
       <i
         class="fa-solid transition-transform duration-200"
         :class="open ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
     </button>
   </div>
 
-  <!-- Quick mission link -->
-  <div class="mt-3">
-    <a
-      href="{% url 'kanban:mission_detail' task.mission.pk %}"
-      :class="darkMode
-        ? 'border-accent-1 bg-sunken-dark text-accent-dark'
-        : 'border-accent-2 bg-sunken-light text-accent-light'"
-      class="inline-flex max-w-full items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold shadow-sm transition hover:opacity-85">
-      <i class="fa-solid fa-bullseye text-[11px]"></i>
-      <span class="truncate">
-        {{ task.mission.title }}
-      </span>
-    </a>
-  </div>
-
   <!-- Expanded details -->
   <div
     x-show="open"
     x-transition
-    class="mt-4 space-y-4 text-sm">
+    class="mt-4 space-y-3 text-sm">
 
-    <!-- Description -->
     {% if task.description %}
       <section
         :class="darkMode
           ? 'border-accent-1 bg-sunken-dark'
           : 'border-accent-2 bg-sunken-light'"
-        class="rounded-xl border p-3">
-        <p class="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
-          <i class="fa-solid fa-align-left"></i>
+        class="rounded-lg border p-3">
+        <p class="mb-1 text-xs font-semibold uppercase tracking-wide opacity-60">
           Description
         </p>
         <div class="leading-6 opacity-80">
@@ -110,16 +81,22 @@
       </section>
     {% endif %}
 
-    <!-- Details grid -->
-    <section class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+    <section class="grid grid-cols-1 gap-2 sm:grid-cols-2">
       <div
         :class="darkMode
           ? 'border-accent-1 bg-sunken-dark'
           : 'border-accent-2 bg-sunken-light'"
-        class="rounded-xl border p-3">
-        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">
-          Mission
-        </p>
+        class="rounded-lg border p-3">
+        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Status</p>
+        <p class="mt-1 font-semibold">{{ task.column.name }}</p>
+      </div>
+
+      <div
+        :class="darkMode
+          ? 'border-accent-1 bg-sunken-dark'
+          : 'border-accent-2 bg-sunken-light'"
+        class="rounded-lg border p-3">
+        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Mission</p>
         <a
           href="{% url 'kanban:mission_detail' task.mission.pk %}"
           :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
@@ -132,23 +109,8 @@
         :class="darkMode
           ? 'border-accent-1 bg-sunken-dark'
           : 'border-accent-2 bg-sunken-light'"
-        class="rounded-xl border p-3">
-        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">
-          Status
-        </p>
-        <p class="mt-1 font-semibold">
-          {{ task.column.name }}
-        </p>
-      </div>
-
-      <div
-        :class="darkMode
-          ? 'border-accent-1 bg-sunken-dark'
-          : 'border-accent-2 bg-sunken-light'"
-        class="rounded-xl border p-3">
-        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">
-          Assignee
-        </p>
+        class="rounded-lg border p-3">
+        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Assignee</p>
         <p class="mt-1 font-semibold">
           {% if task.assignee %}
             {{ task.assignee.full_name }}
@@ -162,13 +124,9 @@
         :class="darkMode
           ? 'border-accent-1 bg-sunken-dark'
           : 'border-accent-2 bg-sunken-light'"
-        class="rounded-xl border p-3">
-        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">
-          Weight
-        </p>
-        <p class="mt-1 font-semibold">
-          {{ task.weight_label }}
-        </p>
+        class="rounded-lg border p-3">
+        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Weight</p>
+        <p class="mt-1 font-semibold">{{ task.weight_label }}</p>
       </div>
 
       {% if task.due_date %}
@@ -176,13 +134,9 @@
           :class="darkMode
             ? 'border-accent-1 bg-sunken-dark'
             : 'border-accent-2 bg-sunken-light'"
-          class="rounded-xl border p-3">
-          <p class="text-xs font-semibold uppercase tracking-wide opacity-60">
-            Due date
-          </p>
-          <p class="mt-1 font-semibold">
-            {{ task.due_date|date:"F j, Y" }}
-          </p>
+          class="rounded-lg border p-3">
+          <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Due date</p>
+          <p class="mt-1 font-semibold">{{ task.due_date|date:"F j, Y" }}</p>
         </div>
       {% endif %}
 
@@ -191,13 +145,9 @@
           :class="darkMode
             ? 'border-accent-1 bg-sunken-dark'
             : 'border-accent-2 bg-sunken-light'"
-          class="rounded-xl border p-3">
-          <p class="text-xs font-semibold uppercase tracking-wide opacity-60">
-            Sprint
-          </p>
-          <p class="mt-1 font-semibold">
-            {{ task.sprint.name }}
-          </p>
+          class="rounded-lg border p-3">
+          <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Sprint</p>
+          <p class="mt-1 font-semibold">{{ task.sprint.name }}</p>
           <p class="mt-1 text-xs opacity-70">
             {{ task.sprint.start_time|date:"M j" }} – {{ task.sprint.end_time|date:"M j" }}
           </p>
@@ -209,26 +159,20 @@
           :class="darkMode
             ? 'border-accent-1 bg-sunken-dark'
             : 'border-accent-2 bg-sunken-light'"
-          class="rounded-xl border p-3">
-          <p class="text-xs font-semibold uppercase tracking-wide opacity-60">
-            Completed
-          </p>
-          <p class="mt-1 font-semibold">
-            {{ task.completed_at|date:"F j, Y H:i" }}
-          </p>
+          class="rounded-lg border p-3">
+          <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Completed</p>
+          <p class="mt-1 font-semibold">{{ task.completed_at|date:"F j, Y H:i" }}</p>
         </div>
       {% endif %}
     </section>
 
-    <!-- Metadata -->
     {% if task.metadata %}
       <section
         :class="darkMode
           ? 'border-accent-1 bg-sunken-dark'
           : 'border-accent-2 bg-sunken-light'"
-        class="rounded-xl border p-3">
-        <p class="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
-          <i class="fa-solid fa-code"></i>
+        class="rounded-lg border p-3">
+        <p class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-60">
           Metadata
         </p>
 
@@ -236,68 +180,55 @@
           :class="darkMode
             ? 'border-accent-1 bg-primary-bg-dark'
             : 'border-accent-2 bg-primary-bg-light'"
-          class="max-h-48 overflow-auto rounded-lg border p-3 text-xs leading-5">{{ task.metadata|yaml_print }}</pre>
+          class="max-h-40 overflow-auto rounded-lg border p-3 text-xs leading-5">{{ task.metadata|yaml_print }}</pre>
       </section>
     {% endif %}
 
-    <!-- Actions -->
     {% if column.is_auditor or column.can_add_task %}
-      <section
-        :class="darkMode
-          ? 'border-accent-1 bg-sunken-dark'
-          : 'border-accent-2 bg-sunken-light'"
-        class="rounded-xl border p-3">
+      <section class="flex flex-wrap gap-2 pt-1">
+        {% if column.is_auditor %}
+          <a
+            href="{% url 'kanban:task_promote' project.pk task.pk %}"
+            :class="darkMode
+              ? 'border-accent-1 text-accent-dark'
+              : 'border-accent-2 text-accent-light'"
+            class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-85">
+            <i class="fa-solid fa-arrow-right text-[11px]"></i>
+            Promote
+          </a>
 
-        <p class="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
-          <i class="fa-solid fa-sliders"></i>
-          Actions
-        </p>
+          <a
+            href="{% url 'kanban:task_demote' project.pk task.pk %}"
+            :class="darkMode
+              ? 'border-warn-dark text-warn-dark'
+              : 'border-warn-light text-warn-light'"
+            class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-85">
+            <i class="fa-solid fa-arrow-left text-[11px]"></i>
+            Demote
+          </a>
+        {% endif %}
 
-        <div class="flex flex-wrap gap-2">
-          {% if column.is_auditor %}
-            <a
-              href="{% url 'kanban:task_promote' project.pk task.pk %}"
-              :class="darkMode
-                ? 'border-accent-1 bg-primary-bg-dark text-accent-dark'
-                : 'border-accent-2 bg-primary-bg-light text-accent-light'"
-              class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold shadow-sm transition hover:opacity-85">
-              <i class="fa-solid fa-arrow-right text-[11px]"></i>
-              Promote
-            </a>
+        {% if column.can_add_task %}
+          <a
+            href="{% url 'kanban:task_edit' project.pk task.pk %}"
+            :class="darkMode
+              ? 'border-accent-1 text-accent-dark'
+              : 'border-accent-2 text-accent-light'"
+            class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-85">
+            <i class="fa-solid fa-pen text-[11px]"></i>
+            Edit
+          </a>
 
-            <a
-              href="{% url 'kanban:task_demote' project.pk task.pk %}"
-              :class="darkMode
-                ? 'border-warn-dark bg-primary-bg-dark text-warn-dark'
-                : 'border-warn-light bg-primary-bg-light text-warn-light'"
-              class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold shadow-sm transition hover:opacity-85">
-              <i class="fa-solid fa-arrow-left text-[11px]"></i>
-              Demote
-            </a>
-          {% endif %}
-
-          {% if column.can_add_task %}
-            <a
-              href="{% url 'kanban:task_edit' project.pk task.pk %}"
-              :class="darkMode
-                ? 'border-accent-1 bg-primary-bg-dark text-accent-dark'
-                : 'border-accent-2 bg-primary-bg-light text-accent-light'"
-              class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold shadow-sm transition hover:opacity-85">
-              <i class="fa-solid fa-pen text-[11px]"></i>
-              Edit
-            </a>
-
-            <a
-              href="{% url 'kanban:task_delete' project.pk task.pk %}"
-              :class="darkMode
-                ? 'border-warn-dark bg-primary-bg-dark text-warn-dark'
-                : 'border-warn-light bg-primary-bg-light text-warn-light'"
-              class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold shadow-sm transition hover:opacity-85">
-              <i class="fa-solid fa-trash text-[11px]"></i>
-              Delete
-            </a>
-          {% endif %}
-        </div>
+          <a
+            href="{% url 'kanban:task_delete' project.pk task.pk %}"
+            :class="darkMode
+              ? 'border-warn-dark text-warn-dark'
+              : 'border-warn-light text-warn-light'"
+            class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-85">
+            <i class="fa-solid fa-trash text-[11px]"></i>
+            Delete
+          </a>
+        {% endif %}
       </section>
     {% endif %}
 
