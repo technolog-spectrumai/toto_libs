@@ -179,12 +179,22 @@ class Command(IngressCommand):
         self.travels[f"{route_name}:{starts_at.isoformat()}"] = travel
         return travel
 
-    def upsert_visit(self, participant_key, location_key, score=None, review=""):
+    def upsert_visit(
+            self,
+            participant_key,
+            location_key,
+            score=None,
+            review="",
+            visited_at=None,
+            reviewed_at=None,
+    ):
         visit, _ = Visit.objects.update_or_create(
             participant=self.people[participant_key],
             location=self.addresses[location_key],
             defaults={
+                "visited_at": visited_at,
                 "score": score,
+                "reviewed_at": reviewed_at,
                 "review": review,
             },
         )
@@ -722,19 +732,228 @@ class Command(IngressCommand):
             self.upsert_travel(**travel)
 
     def create_visits(self):
+        now = timezone.now()
+
         visit_data = [
-            ("alice-martin", "eiffel_tower", 5, "Iconic landmark with an excellent view over Paris."),
-            ("alice-martin", "notre_dame", 4, "Beautiful historic site with strong cultural significance."),
-            ("marie-dubois", "louvre", 5, "Outstanding museum visit with world-class collections."),
-            ("emma-smith", "tintagel_castle", 4, "Dramatic coastal ruins with Arthurian atmosphere."),
-            ("emma-smith", "stonehenge", 5, "Memorable prehistoric monument visit."),
-            ("jan-kowalski", "warsaw_royal_castle", 5, "Excellent historic location in Warsaw Old Town."),
-            ("jan-kowalski", "wawel_castle", 5, "One of the most important royal sites in Poland."),
-            ("jan-kowalski", "long_market", 4, "Great urban landmark in central Gdansk."),
+            {
+                "participant_key": "alice-martin",
+                "location_key": "eiffel_tower",
+                "score": 5,
+                "visited_at": now - timedelta(days=25, hours=11),
+                "reviewed_at": now - timedelta(days=24, hours=18),
+                "review": (
+                    "Iconic landmark with an excellent view over Paris. "
+                    "The area was busy, but the visit felt worth it and easy to combine with a longer city walk."
+                ),
+            },
+            {
+                "participant_key": "marie-dubois",
+                "location_key": "eiffel_tower",
+                "score": 4,
+                "visited_at": now - timedelta(days=14, hours=10),
+                "reviewed_at": now - timedelta(days=13, hours=20),
+                "review": (
+                    "A beautiful stop with strong atmosphere. Best visited earlier in the day before the crowds build up."
+                ),
+            },
+            {
+                "participant_key": "emma-smith",
+                "location_key": "eiffel_tower",
+                "score": 5,
+                "visited_at": now - timedelta(days=7, hours=16),
+                "reviewed_at": now - timedelta(days=6, hours=9),
+                "review": (
+                    "Very memorable. The surrounding views make it feel like more than just a single monument."
+                ),
+            },
+
+            {
+                "participant_key": "alice-martin",
+                "location_key": "notre_dame",
+                "score": 4,
+                "visited_at": now - timedelta(days=24, hours=13),
+                "reviewed_at": now - timedelta(days=23, hours=19),
+                "review": (
+                    "Beautiful historic site with strong cultural significance. "
+                    "The surrounding streets add a lot to the experience."
+                ),
+            },
+            {
+                "participant_key": "marie-dubois",
+                "location_key": "notre_dame",
+                "score": 5,
+                "visited_at": now - timedelta(days=15, hours=12),
+                "reviewed_at": now - timedelta(days=14, hours=8),
+                "review": (
+                    "A deeply meaningful Paris landmark. Excellent for visitors interested in architecture and history."
+                ),
+            },
+
+            {
+                "participant_key": "marie-dubois",
+                "location_key": "louvre",
+                "score": 5,
+                "visited_at": now - timedelta(days=21, hours=10),
+                "reviewed_at": now - timedelta(days=20, hours=17),
+                "review": (
+                    "Outstanding museum visit with world-class collections. "
+                    "It needs more time than expected, so a focused route through the museum helps."
+                ),
+            },
+            {
+                "participant_key": "alice-martin",
+                "location_key": "louvre",
+                "score": 4,
+                "visited_at": now - timedelta(days=9, hours=14),
+                "reviewed_at": now - timedelta(days=8, hours=12),
+                "review": (
+                    "Excellent collection and location. A little overwhelming without a clear plan."
+                ),
+            },
+
+            {
+                "participant_key": "emma-smith",
+                "location_key": "tintagel_castle",
+                "score": 4,
+                "visited_at": now - timedelta(days=20, hours=9),
+                "reviewed_at": now - timedelta(days=19, hours=18),
+                "review": (
+                    "Dramatic coastal ruins with Arthurian atmosphere. "
+                    "The landscape is the strongest part of the visit."
+                ),
+            },
+            {
+                "participant_key": "marie-dubois",
+                "location_key": "tintagel_castle",
+                "score": 5,
+                "visited_at": now - timedelta(days=12, hours=11),
+                "reviewed_at": now - timedelta(days=11, hours=10),
+                "review": (
+                    "A very evocative site. The cliffs and ruins make the place feel distinctive and memorable."
+                ),
+            },
+
+            {
+                "participant_key": "emma-smith",
+                "location_key": "stonehenge",
+                "score": 5,
+                "visited_at": now - timedelta(days=18, hours=10),
+                "reviewed_at": now - timedelta(days=17, hours=13),
+                "review": (
+                    "Memorable prehistoric monument visit. It works especially well as the end point of a longer heritage route."
+                ),
+            },
+            {
+                "participant_key": "alice-martin",
+                "location_key": "stonehenge",
+                "score": 4,
+                "visited_at": now - timedelta(days=6, hours=15),
+                "reviewed_at": now - timedelta(days=5, hours=16),
+                "review": (
+                    "Impressive and atmospheric, though the experience depends a lot on timing and crowd levels."
+                ),
+            },
+
+            {
+                "participant_key": "jan-kowalski",
+                "location_key": "warsaw_royal_castle",
+                "score": 5,
+                "visited_at": now - timedelta(days=28, hours=12),
+                "reviewed_at": now - timedelta(days=27, hours=19),
+                "review": (
+                    "Excellent historic location in Warsaw Old Town. "
+                    "A strong anchor point for understanding the city."
+                ),
+            },
+            {
+                "participant_key": "emma-smith",
+                "location_key": "warsaw_royal_castle",
+                "score": 4,
+                "visited_at": now - timedelta(days=13, hours=13),
+                "reviewed_at": now - timedelta(days=12, hours=9),
+                "review": (
+                    "Very good visit. The surrounding square gives the castle a strong public setting."
+                ),
+            },
+
+            {
+                "participant_key": "jan-kowalski",
+                "location_key": "wawel_castle",
+                "score": 5,
+                "visited_at": now - timedelta(days=23, hours=10),
+                "reviewed_at": now - timedelta(days=22, hours=18),
+                "review": (
+                    "One of the most important royal sites in Poland. "
+                    "The hill, cathedral, and castle together make a complete visit."
+                ),
+            },
+            {
+                "participant_key": "alice-martin",
+                "location_key": "wawel_castle",
+                "score": 5,
+                "visited_at": now - timedelta(days=8, hours=11),
+                "reviewed_at": now - timedelta(days=7, hours=20),
+                "review": (
+                    "Excellent landmark. It feels both historic and spatially impressive."
+                ),
+            },
+
+            {
+                "participant_key": "jan-kowalski",
+                "location_key": "long_market",
+                "score": 4,
+                "visited_at": now - timedelta(days=17, hours=12),
+                "reviewed_at": now - timedelta(days=16, hours=18),
+                "review": (
+                    "Great urban landmark in central Gdansk. "
+                    "Good atmosphere and a natural starting point for a city walk."
+                ),
+            },
+            {
+                "participant_key": "marie-dubois",
+                "location_key": "long_market",
+                "score": 5,
+                "visited_at": now - timedelta(days=5, hours=14),
+                "reviewed_at": now - timedelta(days=4, hours=9),
+                "review": (
+                    "Beautiful street experience with strong architecture and a lively public feel."
+                ),
+            },
+
+            {
+                "participant_key": "jan-kowalski",
+                "location_key": "westerplatte",
+                "score": 4,
+                "visited_at": now - timedelta(days=4, hours=16),
+                "reviewed_at": now - timedelta(days=3, hours=10),
+                "review": (
+                    "Historically important and reflective. Best understood after visiting central Gdansk first."
+                ),
+            },
+            {
+                "participant_key": "emma-smith",
+                "location_key": "mont_saint_michel",
+                "score": 5,
+                "visited_at": now - timedelta(days=19, hours=9),
+                "reviewed_at": now - timedelta(days=18, hours=15),
+                "review": (
+                    "Exceptional place. The approach to the abbey is part of the experience, not just the destination."
+                ),
+            },
+            {
+                "participant_key": "alice-martin",
+                "location_key": "omaha_beach",
+                "score": 5,
+                "visited_at": now - timedelta(days=18, hours=15),
+                "reviewed_at": now - timedelta(days=17, hours=9),
+                "review": (
+                    "Powerful and quiet location. It adds emotional weight to the wider Normandy route."
+                ),
+            },
         ]
 
         for visit in visit_data:
-            self.upsert_visit(*visit)
+            self.upsert_visit(**visit)
 
     def create_event_categories(self):
         self.upsert_event_category(

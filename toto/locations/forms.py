@@ -1,7 +1,6 @@
 from django import forms
 from django.utils import timezone
-
-from .models import Travel
+from .models import Travel, Visit
 
 
 class TravelForm(forms.ModelForm):
@@ -175,5 +174,141 @@ class TravelForm(forms.ModelForm):
         if commit:
             instance.save()
             self.save_m2m()
+
+        return instance
+
+
+class VisitForm(forms.ModelForm):
+    visited_date = forms.DateField(
+        label="Visit date",
+        required=False,
+        widget=forms.DateInput(attrs={
+            "type": "date",
+            "class": (
+                "w-full rounded-lg border px-4 py-2 text-sm outline-none transition "
+                "focus:ring-2 focus:ring-current/20"
+            ),
+            "x-bind:class": (
+                "darkMode "
+                "? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' "
+                ": 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+            ),
+        }),
+    )
+
+    visited_time = forms.TimeField(
+        label="Visit time",
+        required=False,
+        widget=forms.TimeInput(attrs={
+            "type": "time",
+            "class": (
+                "w-full rounded-lg border px-4 py-2 text-sm outline-none transition "
+                "focus:ring-2 focus:ring-current/20"
+            ),
+            "x-bind:class": (
+                "darkMode "
+                "? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' "
+                ": 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+            ),
+        }),
+    )
+
+    class Meta:
+        model = Visit
+        fields = [
+            "participant",
+            "location",
+            "score",
+            "review",
+        ]
+
+        widgets = {
+            "participant": forms.Select(attrs={
+                "class": (
+                    "w-full rounded-lg border px-4 py-2 text-sm outline-none transition "
+                    "focus:ring-2 focus:ring-current/20"
+                ),
+                "x-bind:class": (
+                    "darkMode "
+                    "? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' "
+                    ": 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+                ),
+            }),
+            "location": forms.Select(attrs={
+                "class": (
+                    "w-full rounded-lg border px-4 py-2 text-sm outline-none transition "
+                    "focus:ring-2 focus:ring-current/20"
+                ),
+                "x-bind:class": (
+                    "darkMode "
+                    "? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' "
+                    ": 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+                ),
+            }),
+            "score": forms.NumberInput(attrs={
+                "min": 1,
+                "max": 5,
+                "placeholder": "1–5",
+                "class": (
+                    "w-full rounded-lg border px-4 py-2 text-sm outline-none transition "
+                    "focus:ring-2 focus:ring-current/20"
+                ),
+                "x-bind:class": (
+                    "darkMode "
+                    "? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' "
+                    ": 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+                ),
+            }),
+            "review": forms.Textarea(attrs={
+                "rows": 5,
+                "placeholder": "Write a short visit note or review...",
+                "class": (
+                    "w-full rounded-lg border px-4 py-3 text-sm outline-none transition "
+                    "focus:ring-2 focus:ring-current/20"
+                ),
+                "x-bind:class": (
+                    "darkMode "
+                    "? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' "
+                    ": 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+                ),
+            }),
+        }
+
+        labels = {
+            "participant": "Visitor",
+            "location": "Location",
+            "score": "Score",
+            "review": "Review",
+        }
+
+    def clean(self):
+        cleaned_data = super().clean()
+
+        visited_date = cleaned_data.get("visited_date")
+        visited_time = cleaned_data.get("visited_time")
+
+        if visited_date and visited_time:
+            cleaned_data["visited_at"] = timezone.make_aware(
+                timezone.datetime.combine(visited_date, visited_time)
+            )
+        elif visited_date and not visited_time:
+            cleaned_data["visited_at"] = timezone.make_aware(
+                timezone.datetime.combine(visited_date, timezone.datetime.min.time())
+            )
+        else:
+            cleaned_data["visited_at"] = None
+
+        return cleaned_data
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+
+        instance.visited_at = self.cleaned_data.get("visited_at")
+
+        if (instance.score or instance.review) and not instance.reviewed_at:
+            instance.reviewed_at = timezone.now()
+
+        if commit:
+            instance.save()
 
         return instance

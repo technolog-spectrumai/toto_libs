@@ -252,16 +252,28 @@ class Visit(DomainEntity):
         help_text="Location that was visited"
     )
 
-    review = models.TextField(
-        blank=True,
+    visited_at = models.DateTimeField(
         null=True,
-        help_text="Optional review text"
+        blank=True,
+        help_text="When the visit happened"
     )
 
     score = models.PositiveSmallIntegerField(
         null=True,
         blank=True,
         help_text="Score from 1 to 5"
+    )
+
+    reviewed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When this visit review was submitted"
+    )
+
+    review = models.TextField(
+        blank=True,
+        null=True,
+        help_text="Optional review text"
     )
 
     def __str__(self):

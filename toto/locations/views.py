@@ -26,7 +26,7 @@ from .models import (
     Visit,
     Zone,
 )
-from .forms import TravelForm
+from .forms import TravelForm, VisitForm
 
 
 ROUTING_MODE_OPTIONS = (
@@ -281,6 +281,45 @@ def locations_all(request):
 def address_detail(request, pk):
     location = get_object_or_404(Address, pk=pk)
 
+    reviews = (
+        Visit.objects
+        .filter(location=location)
+        .select_related("participant", "location")
+        .order_by("-visited_at", "-reviewed_at", "-id")
+    )
+
+    average_score = (
+        reviews
+        .filter(score__isnull=False)
+        .aggregate(value=Avg("score"))["value"]
+    )
+
+    if average_score is not None:
+        average_score = round(average_score, 1)
+
+    score_counts = {
+        item["score"]: item["count"]
+        for item in (
+            reviews
+            .filter(score__isnull=False)
+            .values("score")
+            .annotate(count=Count("id"))
+        )
+    }
+
+    max_count = max(score_counts.values(), default=0)
+
+    score_distribution = []
+
+    for score in range(5, 0, -1):
+        count = score_counts.get(score, 0)
+
+        score_distribution.append({
+            "score": score,
+            "count": count,
+            "percent": round((count / max_count) * 100, 1) if max_count else 0,
+        })
+
     events = (
         Event.objects
         .filter(address=location)
@@ -298,12 +337,9 @@ def address_detail(request, pk):
             "geometry": geometry_json(location.geometry),
         }),
         "events": events,
-        "reviews": (
-            Visit.objects
-            .filter(location=location)
-            .select_related("participant", "location")
-            .order_by("-id")
-        ),
+        "reviews": reviews,
+        "average_score": average_score,
+        "score_distribution": score_distribution,
         "person": current_person(request),
     }
 
@@ -721,46 +757,6 @@ def travel_review(request, pk):
     )
 
 
-@login_required
-def travel_summary(request, pk):
-    travel = get_object_or_404(
-        Travel.objects
-        .select_related(
-            "route",
-            "route__start_address",
-            "route__end_address",
-            "route__route_chain",
-        )
-        .prefetch_related("participants"),
-        pk=pk,
-    )
-
-    route = travel.route
-    review_locations = []
-
-    if route:
-        review_locations = [
-            location
-            for location in (route.start_address, route.end_address)
-            if location
-        ]
-
-    context = {
-        "travel": travel,
-        "route": route,
-        "travel_payload_json": json.dumps(travel_payload(travel)),
-        "review_locations": review_locations,
-        "reviews": location_reviews_queryset(review_locations),
-        "person": current_person(request),
-    }
-
-    return render(
-        request,
-        "locations/travel_summary.html",
-        PageProcessor().decorate(context, request),
-    )
-
-
 # ---------------------------------------------------------------------
 # Mutations
 # ---------------------------------------------------------------------
@@ -852,5 +848,44 @@ def travel_create(request):
     return render(
         request,
         "locations/travel_form.html",
+        PageProcessor().decorate(context, request),
+    )
+
+@login_required
+def visit_create(request):
+    person = current_person(request)
+
+    initial = {}
+
+    address_id = request.GET.get("address")
+
+    if address_id:
+        initial["location"] = address_id
+
+    if person:
+        initial["participant"] = person
+
+    if request.method == "POST":
+        form = VisitForm(request.POST)
+
+        if form.is_valid():
+            visit = form.save()
+            messages.success(request, "Visit saved.")
+
+            if visit.location:
+                return redirect("locations:address_detail", pk=visit.location.pk)
+
+            return redirect("locations:locations_all")
+
+    else:
+        form = VisitForm(initial=initial)
+
+    context = {
+        "form": form,
+    }
+
+    return render(
+        request,
+        "locations/visit_form.html",
         PageProcessor().decorate(context, request),
     )
