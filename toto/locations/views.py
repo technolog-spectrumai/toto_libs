@@ -26,8 +26,7 @@ from .models import (
     Visit,
     Zone,
 )
-from .forms import TravelForm, VisitForm
-
+from .forms import TravelForm, VisitForm, AddressCreateForm
 
 ROUTING_MODE_OPTIONS = (
     {"value": "car", "label": "Car", "icon": "fa-car-side"},
@@ -887,5 +886,42 @@ def visit_create(request):
     return render(
         request,
         "locations/visit_form.html",
+        PageProcessor().decorate(context, request),
+    )
+
+@login_required
+def address_create(request):
+    initial_latitude = request.GET.get("lat")
+    initial_longitude = request.GET.get("lng")
+
+    if request.method == "POST":
+        form = AddressCreateForm(request.POST)
+
+        if form.is_valid():
+            address = form.save()
+            messages.success(request, "Address saved.")
+            return redirect("locations:address_detail", pk=address.pk)
+    else:
+        form = AddressCreateForm(
+            latitude=initial_latitude,
+            longitude=initial_longitude,
+            initial={
+                "country_name": request.GET.get("country", ""),
+                "state_or_province_name": request.GET.get("region", ""),
+                "locality_name": request.GET.get("locality", ""),
+                "street": request.GET.get("street", ""),
+                "building": request.GET.get("building", ""),
+            },
+        )
+
+    context = {
+        "form": form,
+        "latitude": initial_latitude or "",
+        "longitude": initial_longitude or "",
+    }
+
+    return render(
+        request,
+        "locations/address_form.html",
         PageProcessor().decorate(context, request),
     )

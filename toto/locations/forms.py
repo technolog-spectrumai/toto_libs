@@ -1,6 +1,6 @@
 from django import forms
 from django.utils import timezone
-from .models import Travel, Visit
+from .models import Travel, Visit, Address
 
 
 class TravelForm(forms.ModelForm):
@@ -312,3 +312,119 @@ class VisitForm(forms.ModelForm):
             instance.save()
 
         return instance
+
+
+class AddressCreateForm(forms.ModelForm):
+    latitude = forms.FloatField(
+        required=False,
+        min_value=-90,
+        max_value=90,
+        widget=forms.NumberInput(attrs={
+            "step": "any",
+            "placeholder": "Latitude",
+            "class": (
+                "w-full rounded-lg border px-3 py-2 text-sm outline-none "
+                "transition focus:ring-2 focus:ring-current/20"
+            ),
+            "x-bind:class": (
+                "darkMode "
+                "? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' "
+                ": 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+            ),
+        }),
+    )
+
+    longitude = forms.FloatField(
+        required=False,
+        min_value=-180,
+        max_value=180,
+        widget=forms.NumberInput(attrs={
+            "step": "any",
+            "placeholder": "Longitude",
+            "class": (
+                "w-full rounded-lg border px-3 py-2 text-sm outline-none "
+                "transition focus:ring-2 focus:ring-current/20"
+            ),
+            "x-bind:class": (
+                "darkMode "
+                "? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' "
+                ": 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+            ),
+        }),
+    )
+
+    class Meta:
+        model = Address
+        fields = [
+            "country_name",
+            "state_or_province_name",
+            "locality_name",
+            "street",
+            "building",
+            "apartment",
+        ]
+        widgets = {
+            "country_name": forms.TextInput(attrs={
+                "placeholder": "PL",
+                "maxlength": "2",
+                "class": "w-full rounded-lg border px-3 py-2 text-sm uppercase outline-none transition focus:ring-2 focus:ring-current/20",
+                "x-bind:class": "darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'",
+            }),
+            "state_or_province_name": forms.TextInput(attrs={
+                "placeholder": "Pomeranian",
+                "class": "w-full rounded-lg border px-3 py-2 text-sm outline-none transition focus:ring-2 focus:ring-current/20",
+                "x-bind:class": "darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'",
+            }),
+            "locality_name": forms.TextInput(attrs={
+                "placeholder": "Gdańsk",
+                "class": "w-full rounded-lg border px-3 py-2 text-sm outline-none transition focus:ring-2 focus:ring-current/20",
+                "x-bind:class": "darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'",
+            }),
+            "street": forms.TextInput(attrs={
+                "placeholder": "Long Market",
+                "class": "w-full rounded-lg border px-3 py-2 text-sm outline-none transition focus:ring-2 focus:ring-current/20",
+                "x-bind:class": "darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'",
+            }),
+            "building": forms.TextInput(attrs={
+                "placeholder": "Landmark / building number",
+                "class": "w-full rounded-lg border px-3 py-2 text-sm outline-none transition focus:ring-2 focus:ring-current/20",
+                "x-bind:class": "darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'",
+            }),
+            "apartment": forms.TextInput(attrs={
+                "placeholder": "Optional",
+                "class": "w-full rounded-lg border px-3 py-2 text-sm outline-none transition focus:ring-2 focus:ring-current/20",
+                "x-bind:class": "darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'",
+            }),
+        }
+
+    def __init__(self, *args, **kwargs):
+        latitude = kwargs.pop("latitude", None)
+        longitude = kwargs.pop("longitude", None)
+
+        super().__init__(*args, **kwargs)
+
+        if latitude is not None:
+            self.fields["latitude"].initial = latitude
+
+        if longitude is not None:
+            self.fields["longitude"].initial = longitude
+
+    def clean_country_name(self):
+        value = self.cleaned_data["country_name"].strip().upper()
+        if len(value) != 2:
+            raise forms.ValidationError("Use a 2-letter country code, for example PL, FR, or GB.")
+        return value
+
+    def save(self, commit=True):
+        address = super().save(commit=False)
+
+        latitude = self.cleaned_data.get("latitude")
+        longitude = self.cleaned_data.get("longitude")
+
+        if latitude is not None and longitude is not None:
+            address.geometry = Point(longitude, latitude, srid=4326)
+
+        if commit:
+            address.save()
+
+        return address

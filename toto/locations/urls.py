@@ -32,5 +32,6 @@ urlpatterns = [
     # Travel
     path("travels/<int:pk>/review/", views.travel_review, name="travel_review"),
     path("travels/new/", views.travel_create, name="travel_create"),
-    path("visits/new/", views.visit_create, name="visit_create")
+    path("visits/new/", views.visit_create, name="visit_create"),
+    path("addresses/new/", views.address_create, name="address_create"),
 ]

@@ -46,6 +46,7 @@
       visibleTypes: {},
       locations: window.locationsPayload || [],
       mapLayers: window.mapLayersPayload || [],
+      addingAddressesEnabled: true,
 
       init() {
         this.availableTypes
@@ -168,6 +169,37 @@
       geometryLabel(location) {
         if (!location.geometry) return "No geometry";
         return location.geometry.type || "Geometry";
+      },
+
+      clickedPoint: null,
+      addressModalOpen: false,
+
+      openAddressModal(latlng) {
+        if (!this.addingAddressesEnabled) {
+          return;
+        }
+        this.clickedPoint = {
+          lat: Number(latlng.lat).toFixed(6),
+          lng: Number(latlng.lng).toFixed(6),
+        };
+        this.addressModalOpen = true;
+      },
+
+      closeAddressModal() {
+        this.addressModalOpen = false;
+        this.clickedPoint = null;
+      },
+
+      get addAddressUrl() {
+        if (!this.clickedPoint) {
+          return "{% url 'locations:address_create' %}";
+        }
+
+        return `{% url 'locations:address_create' %}?lat=${encodeURIComponent(this.clickedPoint.lat)}&lng=${encodeURIComponent(this.clickedPoint.lng)}`;
+      },
+
+      toggleAddressAdding() {
+        this.addingAddressesEnabled = !this.addingAddressesEnabled;
       }
     };
   }
@@ -237,6 +269,15 @@
           class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
           <i class="fa-solid fa-route"></i>
           Search traversable path
+        </a>
+        <a
+          href="{% url 'locations:address_create' %}"
+          :class="darkMode
+            ? 'border-accent-1 bg-bubble-bg-dark'
+            : 'border-accent-2 bg-bubble-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-location-dot"></i>
+          Add address
         </a>
       </div>
     </header>
@@ -522,6 +563,26 @@
             <span x-text="selectedLocation ? selectedLocation.name : 'All mapped locations'"></span>
           </div>
         </div>
+        <div class="pointer-events-auto absolute right-4 top-4 z-[500]">
+
+        <button
+          type="button"
+          @click="toggleAddressAdding()"
+          :class="addingAddressesEnabled
+            ? (darkMode
+              ? 'bg-accent-dark text-primary-bg-dark'
+              : 'bg-accent-light text-primary-bg-light')
+            : (darkMode
+              ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'
+              : 'border-accent-2 bg-bubble-bg-light text-text-main-light')"
+          class="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold shadow-sm backdrop-blur transition hover:opacity-90">
+          <i
+            class="fa-solid"
+            :class="addingAddressesEnabled ? 'fa-wand-magic-sparkles' : 'fa-ban'"></i>
+
+          <span x-text="addingAddressesEnabled ? 'Add by click: on' : 'Add by click: off'"></span>
+        </button>
+      </div>
 
         <div
           :class="darkMode ? 'bg-bubble-bg-dark/95 text-text-main-dark' : 'bg-bubble-bg-light/95 text-text-main-light'"
@@ -599,6 +660,85 @@
       </div>
     </div>
 
+  </div>
+  <div
+  class="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 px-4 py-6"
+  x-show="addressModalOpen"
+  x-transition.opacity
+  x-cloak>
+
+  <div
+    @click.outside="closeAddressModal()"
+    :class="darkMode
+      ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'
+      : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+    class="w-full max-w-md rounded-2xl border p-5 shadow-2xl">
+
+    <div class="flex items-start justify-between gap-4">
+      <div>
+        <p
+          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+          class="text-xs font-semibold uppercase tracking-wide">
+          Map point
+        </p>
+
+        <h2 class="mt-1 flex items-center gap-2 text-xl font-bold">
+          <i class="fa-solid fa-location-dot"></i>
+          Add address here?
+        </h2>
+
+        <p class="mt-2 text-sm opacity-70">
+          Save this clicked map position as a reusable address.
+        </p>
+      </div>
+
+      <button
+        type="button"
+        @click="closeAddressModal()"
+        class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-current/15 transition hover:opacity-75">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+
+      <div
+        :class="darkMode
+          ? 'border-accent-1 bg-primary-bg-dark'
+          : 'border-accent-2 bg-primary-bg-light'"
+        class="mt-5 grid grid-cols-2 gap-3 rounded-xl border p-4 text-sm">
+
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Latitude</p>
+          <p class="mt-1 font-bold" x-text="clickedPoint?.lat || '—'"></p>
+        </div>
+
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Longitude</p>
+          <p class="mt-1 font-bold" x-text="clickedPoint?.lng || '—'"></p>
+        </div>
+      </div>
+
+      <div class="mt-5 flex flex-wrap justify-end gap-2">
+        <button
+          type="button"
+          @click="closeAddressModal()"
+          :class="darkMode
+            ? 'border-accent-1 bg-primary-bg-dark'
+            : 'border-accent-2 bg-primary-bg-light'"
+          class="inline-flex items-center justify-center rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+          Cancel
+        </button>
+
+        <a
+          :href="addAddressUrl"
+          :class="darkMode
+            ? 'bg-accent-dark text-primary-bg-dark'
+            : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-plus"></i>
+          Add address
+        </a>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -933,6 +1073,16 @@
       zoomControl: false,
       scrollWheelZoom: true
     }).setView([52.0, 19.0], 6);
+    map.on("click", function (event) {
+      const root = document.querySelector("[x-data='locationsExplorer()']");
+      const alpine = root ? Alpine.$data(root) : null;
+
+      if (!alpine || typeof alpine.openAddressModal !== "function") {
+        return;
+      }
+
+      alpine.openAddressModal(event.latlng);
+    });
 
     L.control.zoom({ position: "bottomright" }).addTo(map);
     (isDark ? darkTiles : lightTiles).addTo(map);
