@@ -26,6 +26,7 @@ from .models import (
     Visit,
     Zone,
 )
+from .forms import TravelForm
 
 
 ROUTING_MODE_OPTIONS = (
@@ -819,3 +820,37 @@ def update_travel_info(request, pk):
 
     messages.success(request, "Travel info saved.")
     return redirect("locations:travel_review", pk=travel.pk)
+
+@login_required
+def travel_create(request):
+    initial = {}
+
+    route_id = request.GET.get("route")
+
+    if route_id:
+        initial["route"] = route_id
+
+    if request.method == "POST":
+        form = TravelForm(request.POST)
+
+        if form.is_valid():
+            travel = form.save()
+            messages.success(request, "Travel created.")
+
+            if travel.route:
+                return redirect("locations:route_detail", pk=travel.route.pk)
+
+            return redirect("locations:travel_review", pk=travel.pk)
+
+    else:
+        form = TravelForm(initial=initial)
+
+    context = {
+        "form": form,
+    }
+
+    return render(
+        request,
+        "locations/travel_form.html",
+        PageProcessor().decorate(context, request),
+    )

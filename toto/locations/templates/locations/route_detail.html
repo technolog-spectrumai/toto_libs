@@ -25,7 +25,6 @@
       <i class="fa-solid fa-arrow-left"></i>
       Locations
     </a>
-
     <header class="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
       <div>
         <p
@@ -114,6 +113,17 @@
               <span>Not set</span>
             {% endif %}
           </div>
+        </div>
+        <div class="mt-4 space-y-2 text-sm">
+           <a
+            href="{% url 'locations:travel_create' %}?route={{ route.pk }}"
+            :class="darkMode
+              ? 'bg-accent-dark text-primary-bg-dark'
+              : 'bg-accent-light text-primary-bg-light'"
+            class="mt-4 inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+            <i class="fa-solid fa-plus"></i>
+            Add travel
+          </a>
         </div>
       </div>
     </header>

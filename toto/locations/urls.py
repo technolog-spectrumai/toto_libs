@@ -33,4 +33,5 @@ urlpatterns = [
     path("travels/<int:pk>/review/", views.travel_review, name="travel_review"),
     path("travels/<int:pk>/summary/", views.travel_summary, name="travel_summary"),
     path("travels/<int:pk>/info/", views.update_travel_info, name="update_travel_info"),
+    path("travels/new/", views.travel_create, name="travel_create"),
 ]
