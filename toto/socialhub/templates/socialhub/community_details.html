@@ -3,141 +3,349 @@
 
 {% block title %}{{ community.name }} – {{ platform.site_name }}{% endblock %}
 
+{% block start_script %}
+<style>
+  [x-cloak] {
+    display: none !important;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <section
+  x-data="{ showChart: false }"
   :class="darkMode
     ? 'bg-primary-bg-dark text-text-main-dark'
     : 'bg-primary-bg-light text-text-main-light'"
-  class="flex items-center justify-center px-6 py-16 min-h-screen transition-colors duration-300">
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
 
-  <div
-    :class="darkMode
-      ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
-      : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
-    class="w-full max-w-3xl p-6 rounded-lg shadow-md border space-y-8 transition-colors duration-300"
-    x-data="{ showChart: false }">
+  <div class="mx-auto max-w-6xl space-y-6">
 
     <!-- Header -->
-    <div class="text-center space-y-4">
+    <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div class="space-y-2">
+        <a
+          href="{% url 'socialhub:profile_list' %}"
+          class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+          <i class="fa-solid fa-arrow-left"></i>
+          Profiles
+        </a>
 
-      {% if community.logo %}
-        <img src="{{ community.logo.url }}"
-             alt="{{ community.name }}"
-             class="w-32 h-32 rounded-lg mx-auto object-cover border">
-      {% else %}
-        <div class="w-32 h-32 rounded-lg mx-auto bg-gray-300 dark:bg-gray-700"></div>
-      {% endif %}
+        <div>
+          <p
+            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+            class="text-xs font-semibold uppercase tracking-wide">
+            Social Hub
+          </p>
 
-      <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-          class="text-3xl font-extrabold">
-        {{ community.name }}
-      </h2>
+          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+            <i class="fa-solid fa-people-group"></i>
+            {{ community.name }}
+          </h1>
 
-      <p class="text-sm opacity-80">
-        {{ community.get_org_type_display }}
-      </p>
-    </div>
+          <p class="mt-1 text-sm opacity-70">
+            {{ community.get_org_type_display }}
+          </p>
+        </div>
+      </div>
 
-    <!-- Details -->
-    <div class="space-y-3 text-sm">
+      <nav class="flex flex-wrap gap-2">
+        <button
+          type="button"
+          @click="showChart = true"
+          :class="darkMode
+            ? 'bg-accent-dark text-primary-bg-dark'
+            : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-sitemap"></i>
+          Org Chart
+        </button>
 
-      <p><strong>Established:</strong> {{ community.established_year|default:"—" }}</p>
+        <a
+          href="{% url 'socialhub:profile_list' %}"
+          :class="darkMode
+            ? 'border-accent-1 bg-bubble-bg-dark'
+            : 'border-accent-2 bg-bubble-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-users"></i>
+          All profiles
+        </a>
+      </nav>
+    </header>
 
-      <p><strong>Email:</strong> {{ community.email|default:"—" }}</p>
-
-      <p><strong>Location:</strong>
-        {% if community.location %}
-          {{ community.location }}
-        {% else %}
-          —
-        {% endif %}
-      </p>
-
-      <p><strong>Autonomous:</strong> {{ community.is_autonomous|yesno:"Yes,No" }}</p>
-
-      <p><strong>Foreign:</strong> {{ community.is_foreign|yesno:"Yes,No" }}</p>
-
-      <p><strong>Head of Community:</strong>
-        {% if community.head %}
-          <a href="{% url 'socialhub:profile_details' community.head.slug %}"
-             class="underline text-blue-600 dark:text-blue-400">
-            {{ community.head.display_name }}
-          </a>
-        {% else %}
-          —
-        {% endif %}
-      </p>
-    </div>
-
-   <!-- ORG CHART BUTTON -->
-    <button
-      @click="showChart = true"
+    <!-- Community Hero -->
+    <section
       :class="darkMode
-        ? 'bg-accent-dark text-primary-bg-dark'
-        : 'bg-accent-light text-primary-bg-light'"
-      class="w-full py-2 px-4 rounded font-semibold transition-colors duration-300">
-      View Org Chart
-    </button>
-
-    <!-- ORG CHART MODAL -->
-    <div
-      x-show="showChart"
-      x-cloak
-      class="fixed inset-0 flex items-center justify-center p-4 z-50 transition">
+        ? 'border-accent-1 bg-bubble-bg-dark'
+        : 'border-accent-2 bg-bubble-bg-light'"
+      class="overflow-hidden rounded-2xl border shadow-sm">
 
       <div
         :class="darkMode
-          ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
-          : 'bg-primary-bg-light text-text-main-light border-accent-2'"
-        class="rounded-lg w-full max-w-3xl p-4 relative border shadow-xl transition-colors duration-300">
+          ? 'border-accent-1 bg-sunken-dark'
+          : 'border-accent-2 bg-sunken-light'"
+        class="border-b px-5 py-5 sm:px-6">
 
-        <!-- Close button -->
-        <button
-          @click="showChart = false"
-          :class="darkMode ? 'text-text-main-dark' : 'text-text-main-light'"
-          class="absolute top-2 right-2 text-xl font-bold transition-colors duration-300">
-          &times;
-        </button>
+        <div class="flex flex-col gap-5 sm:flex-row sm:items-center">
+          {% if community.logo %}
+            <img
+              src="{{ community.logo.url }}"
+              alt="{{ community.name }}"
+              :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+              class="h-28 w-28 rounded-2xl border object-cover shadow-sm">
+          {% else %}
+            <div
+              :class="darkMode
+                ? 'border-accent-1 bg-primary-bg-dark'
+                : 'border-accent-2 bg-primary-bg-light'"
+              class="flex h-28 w-28 items-center justify-center rounded-2xl border shadow-sm">
+              <i
+                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                class="fa-solid fa-people-group text-4xl"></i>
+            </div>
+          {% endif %}
 
-        <h3 class="text-lg font-semibold mb-3 text-center">Org Chart</h3>
+          <div class="min-w-0 flex-1">
+            <p
+              :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+              class="text-xs font-semibold uppercase tracking-wide">
+              Community
+            </p>
 
-        <div id="orgchart-container"
-             style="height: 600px; overflow: hidden;">
+            <h2 class="mt-1 break-words text-2xl font-bold">
+              {{ community.name }}
+            </h2>
+
+            <p class="mt-2 text-sm opacity-70">
+              {{ community.get_org_type_display }}
+            </p>
+          </div>
+
+          <div
+            :class="darkMode
+              ? 'border-accent-1 bg-primary-bg-dark'
+              : 'border-accent-2 bg-primary-bg-light'"
+            class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm">
+            <i class="fa-solid fa-users"></i>
+            {{ community.members.all|length }} member{% if community.members.all|length != 1 %}s{% endif %}
+          </div>
         </div>
-
       </div>
-    </div>
+
+      <!-- Info Grid -->
+      <div class="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2 lg:grid-cols-3 sm:p-6">
+        <article
+          :class="darkMode
+            ? 'border-accent-1 bg-sunken-dark'
+            : 'border-accent-2 bg-sunken-light'"
+          class="rounded-xl border p-4">
+          <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+            <i class="fa-solid fa-seedling"></i>
+            Established
+          </p>
+          <p class="mt-2 text-sm font-semibold">
+            {{ community.established_year|default:"—" }}
+          </p>
+        </article>
+
+        <article
+          :class="darkMode
+            ? 'border-accent-1 bg-sunken-dark'
+            : 'border-accent-2 bg-sunken-light'"
+          class="rounded-xl border p-4">
+          <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+            <i class="fa-solid fa-envelope"></i>
+            Email
+          </p>
+          <p class="mt-2 break-words text-sm font-semibold">
+            {{ community.email|default:"—" }}
+          </p>
+        </article>
+
+        <article
+          :class="darkMode
+            ? 'border-accent-1 bg-sunken-dark'
+            : 'border-accent-2 bg-sunken-light'"
+          class="rounded-xl border p-4">
+          <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+            <i class="fa-solid fa-location-dot"></i>
+            Location
+          </p>
+          <p class="mt-2 break-words text-sm font-semibold">
+            {% if community.location %}
+              {{ community.location }}
+            {% else %}
+              —
+            {% endif %}
+          </p>
+        </article>
+
+        <article
+          :class="darkMode
+            ? 'border-accent-1 bg-sunken-dark'
+            : 'border-accent-2 bg-sunken-light'"
+          class="rounded-xl border p-4">
+          <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+            <i class="fa-solid fa-compass"></i>
+            Autonomous
+          </p>
+          <p class="mt-2 text-sm font-semibold">
+            {{ community.is_autonomous|yesno:"Yes,No" }}
+          </p>
+        </article>
+
+        <article
+          :class="darkMode
+            ? 'border-accent-1 bg-sunken-dark'
+            : 'border-accent-2 bg-sunken-light'"
+          class="rounded-xl border p-4">
+          <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+            <i class="fa-solid fa-globe"></i>
+            Foreign
+          </p>
+          <p class="mt-2 text-sm font-semibold">
+            {{ community.is_foreign|yesno:"Yes,No" }}
+          </p>
+        </article>
+
+        <article
+          :class="darkMode
+            ? 'border-accent-1 bg-sunken-dark'
+            : 'border-accent-2 bg-sunken-light'"
+          class="rounded-xl border p-4">
+          <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+            <i class="fa-solid fa-user-shield"></i>
+            Head
+          </p>
+          <p class="mt-2 break-words text-sm font-semibold">
+            {% if community.head %}
+              <a
+                href="{% url 'socialhub:profile_details' community.head.slug %}"
+                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                class="underline-offset-4 transition hover:underline hover:opacity-80">
+                {{ community.head.display_name }}
+              </a>
+            {% else %}
+              —
+            {% endif %}
+          </p>
+        </article>
+      </div>
+    </section>
 
     <!-- Members -->
-    <div class="pt-6 border-t">
-      <h3 class="text-xl font-semibold mb-3">Members</h3>
+    <section
+      :class="darkMode
+        ? 'border-accent-1 bg-bubble-bg-dark'
+        : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-2xl border p-5 shadow-sm sm:p-6">
 
-      {% if community.members.all %}
-        <ul class="space-y-2 text-sm">
-          {% for member in community.members.all %}
-            <li>
-              <a href="{% url 'socialhub:profile_details' member.slug %}"
-                 class="underline text-blue-600 dark:text-blue-400">
+      <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 class="flex items-center gap-2 text-lg font-bold">
+            <i class="fa-solid fa-users"></i>
+            Members
+          </h2>
+
+          <p class="mt-1 text-sm opacity-70">
+            People connected to this community.
+          </p>
+        </div>
+
+        <div
+          :class="darkMode
+            ? 'border-accent-1 bg-sunken-dark'
+            : 'border-accent-2 bg-sunken-light'"
+          class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm">
+          <i class="fa-solid fa-id-badge"></i>
+          {{ community.members.all|length }} total
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {% for member in community.members.all %}
+          <a
+            href="{% url 'socialhub:profile_details' member.slug %}"
+            :class="darkMode
+              ? 'border-accent-1 bg-sunken-dark text-accent-dark'
+              : 'border-accent-2 bg-sunken-light text-accent-light'"
+            class="flex items-center justify-between gap-3 rounded-xl border p-4 text-sm font-semibold shadow-sm transition hover:opacity-85">
+
+            <span class="flex min-w-0 items-center gap-2">
+              <i class="fa-solid fa-user text-xs"></i>
+              <span class="truncate">
                 {{ member.display_name }}
-              </a>
-            </li>
-          {% empty %}
-            <li class="text-gray-500 dark:text-gray-400">No members found.</li>
-          {% endfor %}
-        </ul>
-      {% else %}
-        <p class="text-gray-500 dark:text-gray-400">No members found.</p>
-      {% endif %}
-    </div>
+              </span>
+            </span>
 
-    <!-- Back Button -->
-    <a href="{% url 'socialhub:profile_list' %}"
-       :class="darkMode
-         ? 'bg-accent-dark text-primary-bg-dark'
-         : 'bg-accent-light text-primary-bg-light'"
-       class="inline-block px-4 py-2 mt-6 rounded font-semibold hover:opacity-90 transition text-sm text-center">
-      Back to Profiles
-    </a>
+            <i class="fa-solid fa-arrow-right text-xs opacity-70"></i>
+          </a>
+        {% empty %}
+          <div
+            :class="darkMode
+              ? 'border-accent-1 bg-sunken-dark'
+              : 'border-accent-2 bg-sunken-light'"
+            class="rounded-xl border border-dashed p-6 text-center text-sm italic opacity-70 sm:col-span-2 lg:col-span-3">
+            No members found.
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <!-- Org Chart Modal -->
+    <div
+      x-show="showChart"
+      x-cloak
+      x-transition.opacity
+      class="fixed inset-0 z-50 flex items-center justify-center p-4">
+
+      <div
+        class="absolute inset-0"
+        :class="darkMode ? 'bg-primary-bg-dark/80' : 'bg-primary-bg-light/80'"
+        @click="showChart = false"></div>
+
+      <div
+        :class="darkMode
+          ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'
+          : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+        class="relative z-10 flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border shadow-xl">
+
+        <div
+          :class="darkMode
+            ? 'border-accent-1 bg-sunken-dark'
+            : 'border-accent-2 bg-sunken-light'"
+          class="flex items-center justify-between gap-4 border-b px-5 py-4">
+
+          <div>
+            <h3 class="flex items-center gap-2 text-lg font-bold">
+              <i class="fa-solid fa-sitemap"></i>
+              Org Chart
+            </h3>
+
+            <p class="mt-1 text-sm opacity-70">
+              {{ community.name }}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            @click="showChart = false"
+            class="inline-flex h-9 w-9 items-center justify-center rounded-lg text-xl font-bold transition hover:opacity-75">
+            &times;
+          </button>
+        </div>
+
+        <div class="overflow-auto p-4">
+          <div
+            id="orgchart-container"
+            :class="darkMode
+              ? 'border-accent-1 bg-primary-bg-dark'
+              : 'border-accent-2 bg-primary-bg-light'"
+            class="min-h-[600px] rounded-xl border">
+          </div>
+        </div>
+      </div>
+    </div>
 
   </div>
 </section>
