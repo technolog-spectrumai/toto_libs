@@ -3,65 +3,172 @@
 
 {% block title %}Create Task | {{ project.name }}{% endblock %}
 
+{% block start_script %}
+<style>
+  [x-cloak] {
+    display: none !important;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <section
-  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
-  class="flex items-center justify-center px-6 py-16 min-h-screen transition-colors duration-300"
->
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
 
-  <form method="POST"
-        :class="darkMode
-          ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
-          : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
-        class="w-full max-w-lg p-8 rounded-xl shadow-md border space-y-6 transition-colors duration-300">
+  <div class="mx-auto max-w-3xl space-y-6">
 
-    {% csrf_token %}
+    <!-- Header -->
+    <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div class="space-y-2">
+        <a
+          href="{% url 'kanban:project_detail' project.pk %}"
+          class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+          <i class="fa-solid fa-arrow-left"></i>
+          Project board
+        </a>
 
-    <h2 class="text-2xl font-bold text-center mb-2"
-        :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
-      Create Task
-    </h2>
+        <div>
+          <p
+            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+            class="text-xs font-semibold uppercase tracking-wide">
+            Kanban Project
+          </p>
 
-    <p class="text-center text-sm opacity-70 mb-4">
-      Project: <span class="font-semibold">{{ project.name }}</span>
-    </p>
+          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+            <i class="fa-solid fa-square-plus"></i>
+            Create Task
+          </h1>
 
-    {% if form.non_field_errors %}
-      <p class="text-sm text-red-500 font-medium text-center">
-        {{ form.non_field_errors }}
-      </p>
-    {% endif %}
-
-    <!-- Render each field with spacing -->
-    {% for field in form %}
-      <div class="space-y-1">
-        <label class="text-sm font-medium">{{ field.label }}</label>
-        {{ field }}
-        {% if field.errors %}
-          <p class="text-xs text-red-500">{{ field.errors|striptags }}</p>
-        {% endif %}
+          <p class="mt-1 text-sm opacity-70">
+            Add a new task to {{ project.name }}.
+          </p>
+        </div>
       </div>
-    {% endfor %}
 
-    <!-- Submit Button -->
-    <button type="submit"
-            :class="darkMode
-              ? 'bg-accent-dark text-primary-bg-dark'
-              : 'bg-accent-light text-primary-bg-light'"
-            class="w-full py-2 font-semibold rounded hover:opacity-90 transition text-sm">
-      Create Task
-    </button>
+      <nav class="flex flex-wrap gap-2">
+        <a
+          href="{% url 'kanban:project_detail' project.pk %}"
+          :class="darkMode
+            ? 'bg-accent-dark text-primary-bg-dark'
+            : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-table-columns"></i>
+          Board
+        </a>
 
-    <!-- Back Button -->
-    <div class="text-center mt-4">
-      <a href="{% url 'kanban:project_detail' project.pk %}"
-         class="text-sm font-medium underline hover:opacity-80"
-         :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
-        ← Back to Project
-      </a>
-    </div>
+        <a
+          href="{% url 'kanban:backlog' project.pk %}"
+          :class="darkMode
+            ? 'border-accent-1 bg-bubble-bg-dark'
+            : 'border-accent-2 bg-bubble-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-list-check"></i>
+          Backlog
+        </a>
+      </nav>
+    </header>
 
-  </form>
+    <!-- Form Card -->
+    <form
+      method="POST"
+      :class="darkMode
+        ? 'border-accent-1 bg-bubble-bg-dark'
+        : 'border-accent-2 bg-bubble-bg-light'"
+      class="overflow-hidden rounded-2xl border shadow-sm">
 
+      {% csrf_token %}
+
+      <div
+        :class="darkMode
+          ? 'border-accent-1 bg-primary-bg-dark'
+          : 'border-accent-2 bg-primary-bg-light'"
+        class="border-b px-5 py-4 sm:px-6">
+
+        <h2 class="flex items-center gap-2 text-lg font-bold">
+          <i
+            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+            class="fa-solid fa-pen-to-square"></i>
+          Task details
+        </h2>
+
+        <p class="mt-1 text-sm opacity-70">
+          Fill in the task information, priority, sprint, and related mission.
+        </p>
+      </div>
+
+      <div class="space-y-5 p-5 sm:p-6">
+
+        {% if form.non_field_errors %}
+          <div
+            class="rounded-lg border border-red-400/60 bg-red-500/10 px-4 py-3 text-sm font-medium text-red-500">
+            {{ form.non_field_errors }}
+          </div>
+        {% endif %}
+
+        {% for field in form %}
+          <div class="space-y-2">
+            <label
+              for="{{ field.id_for_label }}"
+              class="block text-sm font-semibold">
+              {{ field.label }}
+              {% if field.field.required %}
+                <span class="text-red-500">*</span>
+              {% endif %}
+            </label>
+
+            <div
+              :class="darkMode
+                ? '[&_input]:border-accent-1 [&_select]:border-accent-1 [&_textarea]:border-accent-1 [&_input]:bg-primary-bg-dark [&_select]:bg-primary-bg-dark [&_textarea]:bg-primary-bg-dark [&_input]:text-text-main-dark [&_select]:text-text-main-dark [&_textarea]:text-text-main-dark'
+                : '[&_input]:border-accent-2 [&_select]:border-accent-2 [&_textarea]:border-accent-2 [&_input]:bg-primary-bg-light [&_select]:bg-primary-bg-light [&_textarea]:bg-primary-bg-light [&_input]:text-text-main-light [&_select]:text-text-main-light [&_textarea]:text-text-main-light'"
+              class="[&_input]:w-full [&_select]:w-full [&_textarea]:w-full [&_input]:rounded-lg [&_select]:rounded-lg [&_textarea]:rounded-lg [&_input]:border [&_select]:border [&_textarea]:border [&_input]:px-3 [&_select]:px-3 [&_textarea]:px-3 [&_input]:py-2 [&_select]:py-2 [&_textarea]:py-2 [&_input]:text-sm [&_select]:text-sm [&_textarea]:text-sm [&_input]:shadow-sm [&_select]:shadow-sm [&_textarea]:shadow-sm [&_input]:transition [&_select]:transition [&_textarea]:transition [&_input:focus]:outline-none [&_select:focus]:outline-none [&_textarea:focus]:outline-none [&_input:focus]:ring-2 [&_select:focus]:ring-2 [&_textarea:focus]:ring-2 [&_input:focus]:ring-accent-light [&_select:focus]:ring-accent-light [&_textarea:focus]:ring-accent-light">
+              {{ field }}
+            </div>
+
+            {% if field.help_text %}
+              <p class="text-xs opacity-60">
+                {{ field.help_text }}
+              </p>
+            {% endif %}
+
+            {% if field.errors %}
+              <p class="text-xs font-medium text-red-500">
+                {{ field.errors|striptags }}
+              </p>
+            {% endif %}
+          </div>
+        {% endfor %}
+
+      </div>
+
+      <!-- Actions -->
+      <div
+        :class="darkMode
+          ? 'border-accent-1 bg-primary-bg-dark'
+          : 'border-accent-2 bg-primary-bg-light'"
+        class="flex flex-col-reverse gap-3 border-t px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+
+        <a
+          href="{% url 'kanban:project_detail' project.pk %}"
+          class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold underline transition hover:opacity-80">
+          <i class="fa-solid fa-arrow-left"></i>
+          Cancel
+        </a>
+
+        <button
+          type="submit"
+          :class="darkMode
+            ? 'bg-accent-dark text-primary-bg-dark'
+            : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-plus"></i>
+          Create Task
+        </button>
+      </div>
+    </form>
+
+  </div>
 </section>
 {% endblock %}
