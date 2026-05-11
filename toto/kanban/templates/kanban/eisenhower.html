@@ -161,10 +161,12 @@
                             <i
                               :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
                               class="fa-solid fa-bullseye mt-0.5 text-xs"></i>
-
-                            <span class="break-words font-medium">
+                            <a
+                              href="{% url 'kanban:mission_detail' mission.pk %}"
+                              :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                              class="break-words font-semibold underline-offset-4 transition hover:underline hover:opacity-80">
                               {{ mission.title }}
-                            </span>
+                            </a>
                           </div>
                         </li>
                       {% empty %}
