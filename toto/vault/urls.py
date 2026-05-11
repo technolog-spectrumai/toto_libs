@@ -1,30 +1,13 @@
 from django.urls import path
 from django.views.generic import RedirectView
-
-from .views import (
-    PublicFileListView,
-    PublicFileDownloadView,
-    FileGatewayPageView,
-    FileGatewayUploadView,
-)
+from .views import PublicFileListView, VaultFileDownloadView, FileGatewayPageView, FileGatewayUploadView
 
 app_name = "vault"
 
 urlpatterns = [
-    # -----------------------------
-    # Public Files
-    # -----------------------------
-    path(
-        "",
-        RedirectView.as_view(pattern_name="vault:public_list", permanent=False),
-        name="root",
-    ),
+    path("", RedirectView.as_view(pattern_name="vault:public_list", permanent=False), name="root"),
     path("public/", PublicFileListView.as_view(), name="public_list"),
-    path("public/<slug:bucket_slug>/<slug:key>/", PublicFileDownloadView.as_view(), name="public_file"),
-
-    # -----------------------------
-    # File Gateways
-    # -----------------------------
+    path("public/<slug:bucket_slug>/<slug:key>/", VaultFileDownloadView.as_view(), name="public_file"),
     path("gateways/<slug:bucket_slug>/", FileGatewayPageView.as_view(), name="gateway_page"),
     path("gateways/<slug:bucket_slug>/upload/", FileGatewayUploadView.as_view(), name="gateway_upload"),
 ]
