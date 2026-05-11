@@ -34,6 +34,7 @@
   function locationsExplorer() {
     return {
       search: "",
+      mapSearch: "",
       sidebarOpen: false,
       visibilityOpen: false,
       layersOpen: false,
@@ -153,6 +154,34 @@
         zoomToFeature(location.name);
         highlightFeature(location.name);
         this.sidebarOpen = false;
+      },
+
+      get mapSearchResults() {
+        const query = this.mapSearch.trim().toLowerCase();
+
+        if (!query) {
+          return [];
+        }
+
+        return this.locations
+          .filter((location) => {
+            if (!location.geometry) return false;
+
+            const haystack = `${location.name || ""} ${location.type || ""} ${location.detail || ""}`.toLowerCase();
+            return haystack.includes(query);
+          })
+          .slice(0, 6);
+      },
+
+      moveMapToLocation(location) {
+        if (!location || !location.geometry) {
+          return;
+        }
+
+        this.selectedName = location.name;
+        zoomToFeature(location.name);
+        highlightFeature(location.name);
+        this.mapSearch = location.name;
       },
 
       fitAll() {
@@ -565,8 +594,81 @@
             <span x-text="selectedLocation ? selectedLocation.name : 'All mapped locations'"></span>
           </div>
         </div>
-        <div class="pointer-events-auto absolute right-4 top-4 z-[500]">
+<!--        ======= ON THE MAP ========= -->
+          <div class="pointer-events-auto absolute right-4 top-4 z-[500] flex w-[min(92vw,320px)] flex-col gap-2">
 
+            <!-- Map search only moves map view -->
+            <div
+              :class="darkMode
+                ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'
+                : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+              class="rounded-lg border p-2 shadow-sm backdrop-blur">
+
+              <label class="relative block">
+                <span class="sr-only">Move map to location</span>
+
+                <i class="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs opacity-50"></i>
+
+                <input
+                  x-model="mapSearch"
+                  type="search"
+                  placeholder="Move map to..."
+                  @keydown.enter.prevent="mapSearchResults.length && moveMapToLocation(mapSearchResults[0])"
+                  :class="darkMode
+                    ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder:text-text-main-dark/50'
+                    : 'border-accent-2 bg-primary-bg-light text-text-main-light placeholder:text-text-main-light/50'"
+                  class="w-full rounded-lg border py-2 pl-8 pr-3 text-xs font-semibold outline-none transition focus:ring-2 focus:ring-current/20" />
+              </label>
+
+              <div
+                x-show="mapSearch.trim().length > 0"
+                x-cloak
+                class="mt-2 max-h-56 overflow-y-auto">
+
+                <template x-if="mapSearchResults.length === 0">
+                  <div class="rounded-lg border border-dashed border-current/15 px-3 py-2 text-xs opacity-70">
+                    No mapped location found.
+                  </div>
+                </template>
+
+                <div class="space-y-1">
+                  <template x-for="location in mapSearchResults" :key="`map-search-${location.type}-${location.name}`">
+                    <button
+                      type="button"
+                      @click.stop="moveMapToLocation(location)"
+                      class="w-full rounded-lg px-3 py-2 text-left text-xs transition hover:bg-current/10">
+                      <span class="block font-bold" x-text="location.name"></span>
+                      <span class="mt-0.5 block opacity-60">
+                        <span x-text="location.type"></span>
+                        <span x-show="location.detail"> · </span>
+                        <span x-text="location.detail"></span>
+                      </span>
+                    </button>
+                  </template>
+                </div>
+              </div>
+            </div>
+
+            <!-- Click-to-add toggle -->
+            <button
+              type="button"
+              @click="toggleAddressAdding()"
+              :class="addingAddressesEnabled
+                ? (darkMode
+                  ? 'bg-accent-dark text-primary-bg-dark'
+                  : 'bg-accent-light text-primary-bg-light')
+                : (darkMode
+                  ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'
+                  : 'border-accent-2 bg-bubble-bg-light text-text-main-light')"
+              class="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold shadow-sm backdrop-blur transition hover:opacity-90">
+              <i
+                class="fa-solid"
+                :class="addingAddressesEnabled ? 'fa-wand-magic-sparkles' : 'fa-ban'"></i>
+
+              <span x-text="addingAddressesEnabled ? 'Add by click: on' : 'Add by click: off'"></span>
+            </button>
+          </div>
+<!--        ================= ON THE MAP ================= -->
         <button
           type="button"
           @click="toggleAddressAdding()"
