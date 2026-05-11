@@ -56,7 +56,8 @@ class ArticleListView(ListView):
 
 class VerbenaPageDetailView(DetailView):
     """
-    Displays a single article page with sections and subsections.
+    Displays a single article page with sections, subsections,
+    and bibliographic references with optional Vault file links.
     """
     model = Page
     template_name = "verbena/article_detail.html"
@@ -67,6 +68,7 @@ class VerbenaPageDetailView(DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
 
+        # ─────────── Render Sections & Subsections ───────────
         rendered_sections = []
         for section in self.object.sections.all():
             rendered_subsections = []
@@ -84,14 +86,30 @@ class VerbenaPageDetailView(DetailView):
                 "tags": section.tags.all(),
                 "subsections": rendered_subsections,
             })
-
         context["sections"] = rendered_sections
 
-        # For "Back to Page List"
+        # ─────────── Tag for "Back to Page List" ───────────
         context["tag_slug"] = (
             self.object.tags.first().slug
             if self.object.tags.exists()
             else None
         )
+
+        # ─────────── Bibliographic References with Vault Links ───────────
+        references = []
+        for ref in self.object.get_references():
+            vault_file_url = None
+            # Check if reference has an attached Vault file
+            if hasattr(ref, "vault_file") and ref.vault_file:
+                vault_file_url = ref.vault_file.get_public_url()
+
+            references.append({
+                "title": ref.title,
+                "authors": [a.full_name for a in ref.authors.all()],
+                "year": ref.year,
+                "type": ref.bibtex_type,
+                "vault_file_url": vault_file_url,
+            })
+        context["references"] = references
 
         return PageProcessor().decorate(context, self.request)

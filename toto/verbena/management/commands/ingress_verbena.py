@@ -6,8 +6,6 @@ from toto.verbena.models import (
 )
 from toto.core.ingress import IngressCommand
 from toto.socialhub.models import Person
-from toto.locations.models import Address
-from toto.events.models import Event
 import random
 
 

@@ -124,7 +124,6 @@
         <article x-data="{ open: true }"
                  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
                  class="overflow-hidden rounded-2xl border shadow-sm">
-          <!-- Section header + toggle -->
           <button type="button" @click="open = !open"
                   :class="darkMode ? 'bg-sunken-dark' : 'bg-sunken-light'"
                   class="flex w-full items-start justify-between gap-4 border-b border-current/10 px-5 py-4 text-left transition hover:opacity-90 sm:px-6">
@@ -144,24 +143,6 @@
           </button>
 
           <div x-show="open" x-collapse class="px-5 py-5 sm:px-6">
-            {% if section.tags or section.topics %}
-              <div class="mb-5 flex flex-wrap gap-2">
-                {% for tag in section.tags %}
-                  <span :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-accent-dark'
-                                           : 'border-accent-2 bg-primary-bg-light text-accent-light'"
-                        class="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold shadow-sm">
-                    <i class="fa-solid fa-hashtag text-[10px]"></i> {{ tag.name }}
-                  </span>
-                {% endfor %}
-                {% for topic in section.topics %}
-                  <span :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
-                        class="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold shadow-sm">
-                    <i class="fa-solid fa-tag text-[10px] opacity-70"></i> {{ topic }}
-                  </span>
-                {% endfor %}
-              </div>
-            {% endif %}
-
             <div class="prose max-w-none dark:prose-invert">
               {{ section.html|safe }}
             </div>
@@ -192,21 +173,8 @@
                     <div x-show="subOpen" x-collapse class="mt-4">
                       <div class="prose max-w-none dark:prose-invert">{{ sub.html|safe }}</div>
 
-                      {% if sub.topics %}
-                        <div class="mt-4 flex flex-wrap gap-2">
-                          {% for topic in sub.topics %}
-                            <span :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark'
-                                                    : 'border-accent-2 bg-bubble-bg-light'"
-                                  class="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold shadow-sm">
-                              <i class="fa-solid fa-tag text-[10px] opacity-70"></i> {{ topic }}
-                            </span>
-                          {% endfor %}
-                        </div>
-                      {% endif %}
-
                       {% if sub.image %}
-                        <figure :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark'
-                                                 : 'border-accent-2 bg-bubble-bg-light'"
+                        <figure :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
                                 class="mt-5 rounded-xl border p-3 text-center shadow-sm">
                           <img src="{{ sub.image.file.url }}" alt="{{ sub.image.title }}" class="mx-auto max-w-full rounded-lg shadow-sm">
                           {% if sub.image.title %}
@@ -232,7 +200,7 @@
       {% endfor %}
     </div>
 
-    <!-- Bibliography -->
+    <!-- Bibliography with Vault links -->
     {% if page.get_references %}
       <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
                class="rounded-2xl border p-5 shadow-sm mt-10">
@@ -246,6 +214,16 @@
               {% endif %}
               {% if ref.year %} ({{ ref.year }}){% endif %}
               {% if ref.bibtex_type %} [{{ ref.bibtex_type }}]{% endif %}
+
+              {% if ref.vault_file %}
+                {% with url=ref.vault_file.get_public_url %}
+                  {% if url %}
+                    — <a href="{{ url }}" target="_blank" class="underline text-sm text-accent hover:text-accent-dark">
+                      View file
+                    </a>
+                  {% endif %}
+                {% endwith %}
+              {% endif %}
             </li>
           {% endfor %}
         </ul>
@@ -259,14 +237,6 @@
          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
         <i class="fa-solid fa-arrow-left"></i> Back to articles
       </a>
-
-      {% if tag_slug %}
-        <a href="{% url 'verbena:article_list' %}"
-           :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-           class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-          <i class="fa-solid fa-list"></i> Back to page list
-        </a>
-      {% endif %}
     </footer>
 
   </div>

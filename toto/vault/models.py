@@ -30,7 +30,9 @@ class VaultFile(models.Model):
         ('html', 'HTML'),
         ('text', 'Text File'),
         ('json', 'JSON'),
-        ('svg', 'SVG File')
+        ('svg', 'SVG File'),
+        ('audio', 'Audio'),
+        ('video', 'Video'),
     ]
 
     MIME_MAP = {

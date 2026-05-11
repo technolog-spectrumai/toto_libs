@@ -1,10 +1,9 @@
 from django.db import models
 from django.urls import reverse
 from django.utils.text import slugify
-
 from toto.core.domain import DomainEntity
-from toto.socialhub.models import Person  # all authors use Person
-
+from toto.socialhub.models import Person
+from toto.vault.models import VaultFile
 
 # ────────────────────────────────────────────────
 # TAG (shared across pages, sections, and library)
@@ -137,6 +136,13 @@ class Reference(DomainEntity):
 
     slug = models.SlugField(unique=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    vault_file = models.ForeignKey(
+        VaultFile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="%(class)s_references"
+    )
 
     class Meta:
         abstract = True

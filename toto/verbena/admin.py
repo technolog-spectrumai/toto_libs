@@ -2,10 +2,12 @@ from django.contrib import admin
 from django.urls import reverse
 from django.utils.html import format_html
 from django import forms
+
 from .models import (
     Page, Section, Subsection, Image, Tag,
     Book, Article, Audio, Video
 )
+from toto.vault.models import VaultFile  # Vault files
 
 
 # ────────────────────────────────────────────────
@@ -92,13 +94,13 @@ class SectionAdmin(admin.ModelAdmin):
     list_filter = ["page", "author"]
     ordering = ["page", "order"]
     inlines = [SubsectionInline]
-    filter_horizontal = ["tags"]  # removed topics
+    filter_horizontal = ["tags"]  # topics removed
 
 
 @admin.register(Subsection)
 class SubsectionAdmin(admin.ModelAdmin):
     list_display = ["title", "section", "order", "image"]
-    list_filter = ["section"]  # removed topics
+    list_filter = ["section"]
     ordering = ["section", "order"]
 
 
@@ -125,21 +127,36 @@ class TagAdmin(admin.ModelAdmin):
 
 
 # ────────────────────────────────────────────────
-# LIBRARY ADMINS
+# LIBRARY ADMINS WITH VAULT FILE SUPPORT
 # ────────────────────────────────────────────────
 
 class ReferenceAdminForm(forms.ModelForm):
     class Meta:
-        model = None  # Django will set the model automatically in ModelAdmin
+        model = None  # Django sets this automatically
         fields = "__all__"
         widgets = {
             "abstract": forms.Textarea(attrs={"rows": 4}),
         }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if hasattr(self.Meta, "model"):
+            model_name = self.Meta.model.__name__.lower()
+            compatible_types = {
+                "book": ["pdf", "book"],
+                "article": ["pdf", "article"],
+                "audio": ["audio"],
+                "video": ["video"],
+            }
+            if model_name in compatible_types:
+                self.fields["vault_file"].queryset = VaultFile.objects.filter(
+                    file_type__in=compatible_types[model_name]
+                )
+
 
 class ReferenceAdmin(admin.ModelAdmin):
     form = ReferenceAdminForm
-    list_display = ["title", "author_list", "year", "bibtex_type"]
+    list_display = ["title", "author_list", "year", "bibtex_type", "vault_link"]
     search_fields = ["title", "abstract", "doi", "url"]
     list_filter = ["year", "tags"]
     filter_horizontal = ["authors", "tags"]
@@ -148,6 +165,14 @@ class ReferenceAdmin(admin.ModelAdmin):
         authors = obj.authors.all()
         return ", ".join(a.full_name for a in authors) if authors else "—"
     author_list.short_description = "Authors"
+
+    def vault_link(self, obj):
+        if hasattr(obj, "vault_file") and obj.vault_file:
+            url = obj.vault_file.get_public_url()
+            if url:
+                return format_html('<a href="{}" target="_blank">🔗 Vault File</a>', url)
+        return "—"
+    vault_link.short_description = "Vault File"
 
 
 @admin.register(Book)
@@ -162,9 +187,9 @@ class ArticleAdmin(ReferenceAdmin):
 
 @admin.register(Audio)
 class AudioAdmin(ReferenceAdmin):
-    list_display = ["title", "artist", "album", "year", "bibtex_type", "file"]
+    list_display = ["title", "artist", "album", "year", "bibtex_type", "file", "vault_link"]
 
 
 @admin.register(Video)
 class VideoAdmin(ReferenceAdmin):
-    list_display = ["title", "director", "producer", "year", "bibtex_type", "file"]
+    list_display = ["title", "director", "producer", "year", "bibtex_type", "file", "vault_link"]
