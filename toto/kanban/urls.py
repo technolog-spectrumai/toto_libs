@@ -4,7 +4,7 @@ from .views import (
     ProjectDetailView,
     EisenhowerMatrixView,
     BacklogView,
-    TaskCreateView, TaskUpdateView, TaskDeleteView, promote_task, demote_task
+    TaskCreateView, TaskUpdateView, TaskDeleteView, promote_task, demote_task, sprint_metrics
 )
 
 app_name = 'kanban'
@@ -39,4 +39,9 @@ urlpatterns = [
         name="task_delete"),
     path('<int:project_id>/task/<int:task_id>/promote/', promote_task, name='task_promote'),
     path('<int:project_id>/task/<int:task_id>/demote/', demote_task, name='task_demote'),
+    path(
+        "projects/<int:pk>/sprint-metrics/",
+        sprint_metrics,
+        name="sprint_metrics",
+    ),
 ]

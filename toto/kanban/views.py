@@ -1,6 +1,5 @@
 from django.http import HttpResponseForbidden
 from django.views.generic import DetailView, ListView, UpdateView
-from django.db.models import Q
 from django.contrib.auth.models import AnonymousUser
 from toto.kanban.models import Project, Column, Task, Sprint, Mission
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -12,6 +11,9 @@ from django.views.generic import DeleteView
 from django.shortcuts import get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
+import json
+from django.db.models import Count, Sum, Q
+from django.shortcuts import get_object_or_404, render
 
 
 class ProjectDetailView(LoginRequiredMixin, DetailView):
@@ -293,3 +295,140 @@ def demote_task(request, project_id, task_id):
 
     messages.success(request, f"Task moved back to {prev_column.name}.")
     return redirect("kanban:project_detail", pk=project_id)
+
+
+@login_required
+def sprint_metrics(request, pk):
+    project = get_object_or_404(Project, pk=pk)
+
+    tasks = (
+        Task.objects
+        .filter(column__project=project)
+        .select_related("column", "sprint", "assignee")
+    )
+
+    sprints = (
+        Sprint.objects
+        .filter(project=project)
+        .order_by("-start_time")
+    )
+
+    done_filter = (
+        Q(column__name__iexact="done") |
+        Q(column__name__iexact="complete") |
+        Q(column__name__iexact="completed")
+    )
+
+    sprint_items = []
+
+    for sprint in sprints:
+        sprint_tasks = tasks.filter(sprint=sprint)
+
+        total_tasks = sprint_tasks.count()
+        completed_tasks = sprint_tasks.filter(done_filter).count()
+        open_tasks = total_tasks - completed_tasks
+        total_weight = sprint_tasks.aggregate(total=Sum("weight"))["total"] or 0
+        completed_weight = sprint_tasks.filter(done_filter).aggregate(total=Sum("weight"))["total"] or 0
+
+        completion_rate = round((completed_tasks / total_tasks) * 100, 1) if total_tasks else 0
+        weight_completion_rate = round((completed_weight / total_weight) * 100, 1) if total_weight else 0
+
+        sprint_items.append({
+            "id": sprint.id,
+            "name": sprint.name,
+            "start": sprint.start_time,
+            "end": sprint.end_time,
+            "total_tasks": total_tasks,
+            "completed_tasks": completed_tasks,
+            "open_tasks": open_tasks,
+            "total_weight": total_weight,
+            "completed_weight": completed_weight,
+            "completion_rate": completion_rate,
+            "weight_completion_rate": weight_completion_rate,
+        })
+
+    total_sprints = len(sprint_items)
+    total_tasks = sum(item["total_tasks"] for item in sprint_items)
+    completed_tasks = sum(item["completed_tasks"] for item in sprint_items)
+    total_weight = sum(item["total_weight"] for item in sprint_items)
+    completed_weight = sum(item["completed_weight"] for item in sprint_items)
+
+    overall_completion_rate = round((completed_tasks / total_tasks) * 100, 1) if total_tasks else 0
+    overall_weight_completion_rate = round((completed_weight / total_weight) * 100, 1) if total_weight else 0
+
+    chart_colors = [
+        "#4f5fa1",
+        "#2f3d63",
+        "#5fa38c",
+        "#4a8f7a",
+        "#ff4455",
+        "#d94a4a",
+    ]
+
+    sprint_completion_chart = {
+        "chart_type": "bar",
+        "labels": [item["name"] for item in sprint_items],
+        "datasets": [{
+            "label": "Completion %",
+            "data": [item["completion_rate"] for item in sprint_items],
+            "backgroundColor": chart_colors,
+        }],
+        "options": {
+            "scales": {
+                "y": {
+                    "beginAtZero": True,
+                    "max": 100,
+                }
+            }
+        }
+    }
+
+    sprint_task_chart = {
+        "chart_type": "bar",
+        "labels": [item["name"] for item in sprint_items],
+        "datasets": [
+            {
+                "label": "Completed",
+                "data": [item["completed_tasks"] for item in sprint_items],
+                "backgroundColor": "#5fa38c",
+            },
+            {
+                "label": "Open",
+                "data": [item["open_tasks"] for item in sprint_items],
+                "backgroundColor": "#4f5fa1",
+            },
+        ],
+        "options": {
+            "scales": {
+                "x": {"stacked": True},
+                "y": {
+                    "stacked": True,
+                    "beginAtZero": True,
+                },
+            }
+        }
+    }
+
+    context = {
+        "project": project,
+
+        "sprint_items": sprint_items,
+
+        "total_sprints": total_sprints,
+        "total_tasks": total_tasks,
+        "completed_tasks": completed_tasks,
+        "open_tasks": total_tasks - completed_tasks,
+        "total_weight": total_weight,
+        "completed_weight": completed_weight,
+        "overall_completion_rate": overall_completion_rate,
+        "overall_weight_completion_rate": overall_weight_completion_rate,
+
+        "sprint_completion_chart_json": json.dumps(sprint_completion_chart),
+        "sprint_task_chart_json": json.dumps(sprint_task_chart),
+    }
+
+    return render(
+        request,
+        "kanban/sprint_metrics.html",
+        PageProcessor().decorate(context, request)
+    )
