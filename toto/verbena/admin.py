@@ -3,7 +3,7 @@ from django.urls import reverse
 from django.utils.html import format_html
 from django import forms
 from .models import (
-    Page, Section, Subsection, Image, Tag, Topic,
+    Page, Section, Subsection, Image, Tag,
     Book, Article, Audio, Video
 )
 
@@ -47,7 +47,7 @@ class SubsectionInline(admin.StackedInline):
     model = Subsection
     form = SubsectionInlineForm
     extra = 1
-    fields = ["title", "content", "image", "order", "topics"]
+    fields = ["title", "content", "image", "order"]
     ordering = ["order"]
     show_change_link = True
 
@@ -56,13 +56,13 @@ class SectionInline(admin.StackedInline):
     model = Section
     form = SectionInlineForm
     extra = 1
-    fields = ["title", "content", "author", "order", "topics"]
+    fields = ["title", "content", "author", "order"]
     ordering = ["order"]
     show_change_link = True
 
 
 # ────────────────────────────────────────────────
-# PAGE / SECTION / SUBSECTION / IMAGE / TAG / TOPIC
+# PAGE / SECTION / SUBSECTION / IMAGE / TAG
 # ────────────────────────────────────────────────
 
 @admin.register(Page)
@@ -92,15 +92,14 @@ class SectionAdmin(admin.ModelAdmin):
     list_filter = ["page", "author"]
     ordering = ["page", "order"]
     inlines = [SubsectionInline]
-    filter_horizontal = ["tags", "topics"]
+    filter_horizontal = ["tags"]  # removed topics
 
 
 @admin.register(Subsection)
 class SubsectionAdmin(admin.ModelAdmin):
     list_display = ["title", "section", "order", "image"]
-    list_filter = ["section", "topics"]
+    list_filter = ["section"]  # removed topics
     ordering = ["section", "order"]
-    filter_horizontal = ["topics"]
 
 
 @admin.register(Image)
@@ -125,35 +124,6 @@ class TagAdmin(admin.ModelAdmin):
     prepopulated_fields = {"slug": ("name",)}
 
 
-@admin.register(Topic)
-class TopicAdmin(admin.ModelAdmin):
-    list_display = ["name"]
-    search_fields = ["name", "description"]
-    list_filter = ["community", "person", "event", "route", "territory", "address", "federation"]
-    prepopulated_fields = {"slug": ("name",)}
-    readonly_fields = ["linked_entities"]
-
-    def linked_entities(self, obj):
-        parts = []
-        if obj.community:
-            parts.append(f"Community: {obj.community}")
-        if obj.person:
-            parts.append(f"Person: {obj.person}")
-        if obj.event:
-            parts.append(f"Event: {obj.event}")
-        if obj.route:
-            parts.append(f"Route: {obj.route}")
-        if obj.territory:
-            parts.append(f"Territory: {obj.territory}")
-        if obj.address:
-            parts.append(f"Address: {obj.address}")
-        if obj.federation:
-            parts.append(f"Federation: {obj.federation}")
-        return ",\n".join(parts) if parts else "—"
-
-    linked_entities.short_description = "Linked Entities"
-
-
 # ────────────────────────────────────────────────
 # LIBRARY ADMINS
 # ────────────────────────────────────────────────
@@ -165,6 +135,8 @@ class ReferenceAdminForm(forms.ModelForm):
         widgets = {
             "abstract": forms.Textarea(attrs={"rows": 4}),
         }
+
+
 class ReferenceAdmin(admin.ModelAdmin):
     form = ReferenceAdminForm
     list_display = ["title", "author_list", "year", "bibtex_type"]

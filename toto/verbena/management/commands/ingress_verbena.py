@@ -1,7 +1,7 @@
 from django.utils.text import slugify
 from toto.verbena.models import (
     Page, Section, Subsection,
-    Image, Tag, Topic,
+    Image, Tag,
     Book, Article, Audio, Video
 )
 from toto.core.ingress import IngressCommand
@@ -13,24 +13,6 @@ import random
 
 class Command(IngressCommand):
     help = "Populate the database with sample Verbena Pages, Sections, Subsections and Library items"
-
-    # ────────────────────────────────────────────────
-    # TOPIC CREATION
-    # ────────────────────────────────────────────────
-
-    def get_or_create_topic(self, *, slug_base, name, **filters):
-        existing = Topic.objects.filter(**filters).first()
-        if existing:
-            return existing
-
-        base_slug = slugify(slug_base)
-        slug = base_slug
-        counter = 1
-        while Topic.objects.filter(slug=slug).exists():
-            slug = f"{base_slug}-{counter}"
-            counter += 1
-
-        return Topic.objects.create(slug=slug, name=name, **filters)
 
     # ────────────────────────────────────────────────
     # MAIN PROCESS
@@ -47,7 +29,6 @@ class Command(IngressCommand):
         books, articles, audios, videos = self.create_library_samples(author)
 
         # 2️⃣ Create pages + sections
-        created_pages = []
         for page_title, page_data in pages.items():
             if Page.objects.filter(title=page_title).exists():
                 self.stdout.write(self.style.WARNING(f"⚠️ Skipped existing page: {page_title}"))
@@ -63,8 +44,6 @@ class Command(IngressCommand):
             page.audios_refs.set(random.sample(audios, min(len(audios), random.randint(0, 2))))
             page.videos_refs.set(random.sample(videos, min(len(videos), random.randint(0, 2))))
             page.save()
-
-            created_pages.append(page)
 
         self.stdout.write(self.style.SUCCESS("✅ Verbena ingress complete."))
 
@@ -223,15 +202,6 @@ class Command(IngressCommand):
             )
             subsection.save()
 
-        # Random topics
-        for field, queryset in [
-            ("address", Address.objects.order_by("?")),
-            ("person", Person.objects.order_by("?")),
-            ("event", Event.objects.order_by("?")),
-        ]:
-            obj = queryset.first()
-            if obj and random.random() < 0.3:
-                topic = self.get_or_create_topic(slug_base=f"{field}-{obj.pk}", name=f"{obj}", **{field: obj})
-                subsection.topics.add(topic)
+        # Topics removed entirely — nothing added here
 
         self.stdout.write(self.style.SUCCESS(f"📝 Created subsection: {subsection.title}"))

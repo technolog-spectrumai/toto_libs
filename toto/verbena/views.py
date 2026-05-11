@@ -74,8 +74,7 @@ class VerbenaPageDetailView(DetailView):
                 rendered_subsections.append({
                     "title": sub.title,
                     "image": sub.image,
-                    "html": mark_safe(markdownify(sub.content)),
-                    "topics": [t.name for t in sub.topics.all()],
+                    "html": mark_safe(markdownify(sub.content))
                 })
 
             rendered_sections.append({
@@ -83,7 +82,6 @@ class VerbenaPageDetailView(DetailView):
                 "author": section.author,
                 "html": mark_safe(markdownify(section.content)),
                 "tags": section.tags.all(),
-                "topics": [t.name for t in section.topics.all()],
                 "subsections": rendered_subsections,
             })
 
