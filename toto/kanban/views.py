@@ -456,6 +456,23 @@ class SprintMetricsView(LoginRequiredMixin, ChartViewMixin, DetailView):
     template_name = "kanban/sprint_metrics.html"
     context_object_name = "project"
 
+    def get_selected_sprint(self, project):
+        sprint_id = self.request.GET.get("sprint")
+
+        sprints = (
+            Sprint.objects
+            .filter(project=project)
+            .order_by("-start_time")
+        )
+
+        if sprint_id:
+            try:
+                return sprints.get(pk=sprint_id)
+            except Sprint.DoesNotExist:
+                return sprints.first()
+
+        return sprints.first()
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context = PageProcessor().decorate(context, self.request)
@@ -463,6 +480,14 @@ class SprintMetricsView(LoginRequiredMixin, ChartViewMixin, DetailView):
         project = self.object
         calculator = SprintMetricsCalculator(project)
         metrics = calculator.get_context_data()
+
+        sprints = (
+            Sprint.objects
+            .filter(project=project)
+            .order_by("-start_time")
+        )
+
+        selected_sprint = self.get_selected_sprint(project)
 
         sprint_items = metrics["sprint_items"]
         assignee_items = metrics["assignee_items"]
@@ -495,10 +520,10 @@ class SprintMetricsView(LoginRequiredMixin, ChartViewMixin, DetailView):
         )
 
         burndown_chart = self.line_chart(
-            labels=metrics["burndown_labels"],
+            labels=calculator.get_burndown_labels(selected_sprint),
             datasets=[{
                 "label": "Remaining Weight",
-                "data": metrics["burndown_data"],
+                "data": calculator.get_burndown_data(selected_sprint),
                 "borderColor": self.accent_color,
                 "backgroundColor": self.accent_color,
                 "tension": 0.35,
@@ -542,6 +567,13 @@ class SprintMetricsView(LoginRequiredMixin, ChartViewMixin, DetailView):
 
         context.update({
             **metrics,
+
+            # Historic sprint selector context
+            "sprints": sprints,
+            "selected_sprint": selected_sprint,
+
+            # Keep this for old template compatibility if needed
+            "latest_sprint": selected_sprint,
 
             "sprint_completion_chart_json": self.chart_json(sprint_completion_chart),
             "sprint_task_chart_json": self.chart_json(sprint_task_chart),

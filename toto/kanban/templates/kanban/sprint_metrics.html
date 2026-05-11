@@ -91,7 +91,7 @@
         : 'border-accent-2 bg-bubble-bg-light'"
       class="rounded-2xl border p-4 shadow-sm sm:p-5">
 
-      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h2 class="flex items-center gap-2 text-lg font-bold">
             <i class="fa-solid fa-gauge-high"></i>
@@ -103,13 +103,41 @@
           </p>
         </div>
 
-        <div
-          :class="darkMode
-            ? 'border-accent-1 bg-sunken-dark'
-            : 'border-accent-2 bg-sunken-light'"
-          class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm">
-          <i class="fa-solid fa-percent"></i>
-          {{ overall_completion_rate }}% complete
+        <div class="flex flex-col gap-2 sm:items-end">
+          <div
+            :class="darkMode
+              ? 'border-accent-1 bg-sunken-dark'
+              : 'border-accent-2 bg-sunken-light'"
+            class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm">
+            <i class="fa-solid fa-percent"></i>
+            {{ overall_completion_rate }}% complete
+          </div>
+
+          <form method="get" class="flex flex-wrap items-center gap-2">
+            <label
+              for="sprint"
+              class="text-xs font-semibold uppercase tracking-wide opacity-60">
+              Details sprint
+            </label>
+
+            <select
+              id="sprint"
+              name="sprint"
+              onchange="this.form.submit()"
+              :class="darkMode
+                ? 'border-accent-1 bg-sunken-dark text-text-main-dark'
+                : 'border-accent-2 bg-sunken-light text-text-main-light'"
+              class="rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm transition focus:outline-none focus:ring-2 focus:ring-accent-light">
+
+              {% for sprint in sprints %}
+                <option
+                  value="{{ sprint.id }}"
+                  {% if selected_sprint and sprint.id == selected_sprint.id %}selected{% endif %}>
+                  {{ sprint.name }}
+                </option>
+              {% endfor %}
+            </select>
+          </form>
         </div>
       </div>
     </section>
@@ -119,28 +147,40 @@
       <article
         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
         class="rounded-2xl border p-5 shadow-sm">
-        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Sprints</p>
+        <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+          <i class="fa-solid fa-flag-checkered"></i>
+          Sprints
+        </p>
         <p class="mt-2 text-3xl font-bold">{{ total_sprints }}</p>
       </article>
 
       <article
         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
         class="rounded-2xl border p-5 shadow-sm">
-        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Total tasks</p>
+        <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+          <i class="fa-solid fa-list-check"></i>
+          Total tasks
+        </p>
         <p class="mt-2 text-3xl font-bold">{{ total_tasks }}</p>
       </article>
 
       <article
         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
         class="rounded-2xl border p-5 shadow-sm">
-        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Completed</p>
+        <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+          <i class="fa-solid fa-circle-check"></i>
+          Completed
+        </p>
         <p class="mt-2 text-3xl font-bold">{{ completed_tasks }}</p>
       </article>
 
       <article
         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
         class="rounded-2xl border p-5 shadow-sm">
-        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Open</p>
+        <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+          <i class="fa-regular fa-circle"></i>
+          Open
+        </p>
         <p class="mt-2 text-3xl font-bold">{{ open_tasks }}</p>
       </article>
     </section>
@@ -150,21 +190,30 @@
       <article
         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
         class="rounded-2xl border p-5 shadow-sm">
-        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Total weight</p>
+        <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+          <i class="fa-solid fa-weight-hanging"></i>
+          Total weight
+        </p>
         <p class="mt-2 text-3xl font-bold">{{ total_weight }}</p>
       </article>
 
       <article
         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
         class="rounded-2xl border p-5 shadow-sm">
-        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Completed weight</p>
+        <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+          <i class="fa-solid fa-check-double"></i>
+          Completed weight
+        </p>
         <p class="mt-2 text-3xl font-bold">{{ completed_weight }}</p>
       </article>
 
       <article
         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
         class="rounded-2xl border p-5 shadow-sm">
-        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Weighted progress</p>
+        <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+          <i class="fa-solid fa-chart-line"></i>
+          Weighted progress
+        </p>
         <p class="mt-2 text-3xl font-bold">{{ overall_weight_completion_rate }}%</p>
       </article>
     </section>
@@ -214,7 +263,7 @@
           </h2>
 
           <p class="mt-1 text-sm opacity-70">
-            Burndown, velocity, lead time, assignee workload, and campaign progress.
+            Burndown for the selected sprint, plus velocity, lead time, assignee workload, and campaign progress.
           </p>
         </div>
 
@@ -229,6 +278,43 @@
         class="space-y-6 border-t px-5 py-5 sm:px-6"
         :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
 
+        <!-- Selected Sprint Summary -->
+        <article
+          :class="darkMode
+            ? 'border-accent-1 bg-sunken-dark'
+            : 'border-accent-2 bg-sunken-light'"
+          class="rounded-2xl border p-5 shadow-sm">
+
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 class="flex items-center gap-2 text-base font-bold">
+                <i class="fa-solid fa-magnifying-glass-chart"></i>
+                Selected sprint
+              </h3>
+
+              <p class="mt-1 text-sm opacity-70">
+                {% if selected_sprint %}
+                  {{ selected_sprint.name }} · {{ selected_sprint.start_time|date:"M j, Y" }} – {{ selected_sprint.end_time|date:"M j, Y" }}
+                {% else %}
+                  No sprint selected.
+                {% endif %}
+              </p>
+            </div>
+
+            {% if selected_sprint %}
+              <a
+                href="?sprint={{ selected_sprint.id }}"
+                :class="darkMode
+                  ? 'border-accent-1 bg-primary-bg-dark text-accent-dark'
+                  : 'border-accent-2 bg-primary-bg-light text-accent-light'"
+                class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+                <i class="fa-solid fa-link"></i>
+                Current details
+              </a>
+            {% endif %}
+          </div>
+        </article>
+
         <!-- Burndown -->
         <article
           :class="darkMode
@@ -242,8 +328,8 @@
           </h3>
 
           <p class="mb-4 text-sm opacity-70">
-            {% if latest_sprint %}
-              Remaining weight across {{ latest_sprint.name }}.
+            {% if selected_sprint %}
+              Remaining weight across {{ selected_sprint.name }}.
             {% else %}
               No sprint available.
             {% endif %}
@@ -361,12 +447,38 @@
       <div class="space-y-3">
         {% for sprint in sprint_items %}
           <article
-            :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
-            class="rounded-xl border p-4">
+            :class="darkMode
+              ? 'border-accent-1 bg-sunken-dark'
+              : 'border-accent-2 bg-sunken-light'"
+            class="rounded-xl border p-4 {% if selected_sprint and sprint.id == selected_sprint.id %}ring-2 ring-accent-light{% endif %}">
 
             <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <p class="text-lg font-bold">{{ sprint.name }}</p>
+                <div class="flex flex-wrap items-center gap-2">
+                  <p class="text-lg font-bold">{{ sprint.name }}</p>
+
+                  <a
+                    href="?sprint={{ sprint.id }}"
+                    :class="darkMode
+                      ? 'border-accent-1 bg-primary-bg-dark text-accent-dark'
+                      : 'border-accent-2 bg-primary-bg-light text-accent-light'"
+                    class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold shadow-sm transition hover:opacity-85">
+                    <i class="fa-solid fa-chart-line"></i>
+                    View details
+                  </a>
+
+                  {% if selected_sprint and sprint.id == selected_sprint.id %}
+                    <span
+                      :class="darkMode
+                        ? 'border-accent-1 bg-primary-bg-dark'
+                        : 'border-accent-2 bg-primary-bg-light'"
+                      class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold shadow-sm">
+                      <i class="fa-solid fa-eye"></i>
+                      Selected
+                    </span>
+                  {% endif %}
+                </div>
+
                 <p class="mt-1 text-sm opacity-70">
                   {{ sprint.start|date:"M j, Y" }} – {{ sprint.end|date:"M j, Y" }}
                 </p>
