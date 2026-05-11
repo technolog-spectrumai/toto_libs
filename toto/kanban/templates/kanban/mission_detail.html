@@ -207,7 +207,12 @@
             <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Mission owner</p>
             <p class="mt-1 font-semibold">
               {% if mission.owner %}
-                {{ mission.owner }}
+                <a
+                  href="{% url 'socialhub:profile_details' mission.owner.slug %}"
+                  :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                  class="font-semibold underline-offset-4 transition hover:underline hover:opacity-80">
+                  {{ mission.owner.display_name }}
+                </a>
               {% else %}
                 Unassigned
               {% endif %}
@@ -218,7 +223,12 @@
             <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Campaign owner</p>
             <p class="mt-1 font-semibold">
               {% if mission.campaign.owner %}
-                {{ mission.campaign.owner }}
+                <a
+                  href="{% url 'socialhub:profile_details' mission.campaign.owner.slug %}"
+                  :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                  class="font-semibold underline-offset-4 transition hover:underline hover:opacity-80">
+                  {{ mission.campaign.owner.display_name }}
+                </a>
               {% else %}
                 Unassigned
               {% endif %}
@@ -228,7 +238,16 @@
           <div>
             <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Project owner</p>
             <p class="mt-1 font-semibold">
-              {{ project.owner }}
+              {% if project.owner %}
+                <a
+                  href="{% url 'socialhub:profile_details' project.owner.slug %}"
+                  :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                  class="font-semibold underline-offset-4 transition hover:underline hover:opacity-80">
+                  {{ project.owner.display_name }}
+                </a>
+              {% else %}
+                Unassigned
+              {% endif %}
             </p>
           </div>
         </div>
@@ -421,7 +440,12 @@
 
                 <td class="px-4 py-3">
                   {% if task.assignee %}
-                    {{ task.assignee }}
+                    <a
+                      href="{% url 'socialhub:profile_details' task.assignee.slug %}"
+                      :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                      class="font-semibold underline-offset-4 transition hover:underline hover:opacity-80">
+                      {{ task.assignee.display_name }}
+                    </a>
                   {% else %}
                     Unassigned
                   {% endif %}
@@ -484,7 +508,12 @@
                 Assignee:
                 <span class="font-semibold">
                   {% if task.assignee %}
-                    {{ task.assignee }}
+                    <a
+                      href="{% url 'socialhub:profile_details' task.assignee.slug %}"
+                      :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                      class="font-semibold underline-offset-4 transition hover:underline hover:opacity-80">
+                      {{ task.assignee.display_name }}
+                    </a>
                   {% else %}
                     Unassigned
                   {% endif %}
