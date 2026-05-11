@@ -199,6 +199,18 @@ class Travel(DomainEntity):
         help_text="Additional information about the travel"
     )
 
+    score = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text="Travel score from 1 to 5"
+    )
+
+    reviewed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When this travel was reviewed or scored"
+    )
+
     starts_at = models.DateTimeField(
         help_text="Travel start date and time"
     )
@@ -210,6 +222,17 @@ class Travel(DomainEntity):
     def __str__(self):
         route_name = self.route.name if self.route else "No route"
         return f"Travel via {route_name} from {self.starts_at} to {self.ends_at}"
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                check=(
+                    models.Q(score__gte=1, score__lte=5)
+                    | models.Q(score__isnull=True)
+                ),
+                name="travel_score_between_1_and_5",
+            )
+        ]
 
 
 class Visit(DomainEntity):

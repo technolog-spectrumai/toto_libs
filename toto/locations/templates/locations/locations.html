@@ -494,16 +494,6 @@
                     <i class="fa-solid fa-circle-info"></i>
                     <span>Details</span>
                   </a>
-
-                  <a
-                    x-show="location.review_url"
-                    :href="location.review_url"
-                    @click.stop
-                    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-                    class="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition hover:opacity-80">
-                    <i class="fa-solid fa-star-half-stroke"></i>
-                    <span x-text="location.type === 'Address' ? 'Review' : 'Route review'"></span>
-                  </a>
                 </div>
               </div>
             </template>

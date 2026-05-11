@@ -151,13 +151,24 @@ class Command(IngressCommand):
 
         return route_chain
 
-    def upsert_travel(self, route_name, participant_keys, starts_at, ends_at, info=""):
+    def upsert_travel(
+        self,
+        route_name,
+        participant_keys,
+        starts_at,
+        ends_at,
+        info="",
+        score=None,
+        reviewed_at=None,
+    ):
         travel, _ = Travel.objects.update_or_create(
             route=self.routes[route_name],
             starts_at=starts_at,
             defaults={
                 "ends_at": ends_at,
                 "info": info,
+                "score": score,
+                "reviewed_at": reviewed_at,
             },
         )
 
@@ -165,7 +176,7 @@ class Command(IngressCommand):
             [self.people[key] for key in participant_keys]
         )
 
-        self.travels[route_name] = travel
+        self.travels[f"{route_name}:{starts_at.isoformat()}"] = travel
         return travel
 
     def upsert_visit(self, participant_key, location_key, score=None, review=""):
@@ -501,41 +512,214 @@ class Command(IngressCommand):
     def create_travels(self):
         now = timezone.now()
 
-        self.upsert_travel(
-            "Paris Monument Walk",
-            ("alice-martin", "marie-dubois"),
-            now + timedelta(days=3, hours=10),
-            now + timedelta(days=3, hours=14),
-            "A guided walk through major Paris landmarks.",
-        )
-        self.upsert_travel(
-            "Normandy Heritage Line",
-            ("alice-martin", "emma-smith"),
-            now + timedelta(days=7, hours=9),
-            now + timedelta(days=7, hours=18),
-            "A heritage route from Mont Saint-Michel toward Omaha Beach.",
-        )
-        self.upsert_travel(
-            "Arthurian South England",
-            ("emma-smith",),
-            now + timedelta(days=12, hours=8),
-            now + timedelta(days=12, hours=17),
-            "A mythic route from Tintagel Castle toward Stonehenge.",
-        )
-        self.upsert_travel(
-            "Polish Royal Trail",
-            ("jan-kowalski", "alice-martin"),
-            now + timedelta(days=15, hours=9),
-            now + timedelta(days=15, hours=20),
-            "A royal landmark route between Warsaw and Krakow.",
-        )
-        self.upsert_travel(
-            "Gdansk Long Market Walk",
-            ("jan-kowalski",),
-            now + timedelta(days=18, hours=11),
-            now + timedelta(days=18, hours=15),
-            "A city walk from Long Market toward Westerplatte.",
-        )
+        travel_data = [
+            {
+                "route_name": "Paris Monument Walk",
+                "participant_keys": ("alice-martin", "marie-dubois"),
+                "starts_at": now - timedelta(days=18, hours=10),
+                "ends_at": now - timedelta(days=18, hours=14),
+                "score": 5,
+                "reviewed_at": now - timedelta(days=17, hours=20),
+                "info": (
+                    "Excellent city walk. The route felt coherent, easy to follow, "
+                    "and the transition from the Eiffel Tower toward Notre-Dame gave "
+                    "a strong sense of Parisian scale."
+                ),
+            },
+            {
+                "route_name": "Paris Monument Walk",
+                "participant_keys": ("emma-smith",),
+                "starts_at": now - timedelta(days=10, hours=9),
+                "ends_at": now - timedelta(days=10, hours=13),
+                "score": 4,
+                "reviewed_at": now - timedelta(days=9, hours=18),
+                "info": (
+                    "Beautiful route with strong landmarks. It would benefit from one "
+                    "extra pause point near the Louvre for orientation and rest."
+                ),
+            },
+            {
+                "route_name": "Paris Monument Walk",
+                "participant_keys": ("alice-martin", "jan-kowalski"),
+                "starts_at": now + timedelta(days=3, hours=10),
+                "ends_at": now + timedelta(days=3, hours=14),
+                "score": None,
+                "reviewed_at": None,
+                "info": "A planned guided walk through major Paris landmarks.",
+            },
+            {
+                "route_name": "Normandy Heritage Line",
+                "participant_keys": ("alice-martin", "emma-smith"),
+                "starts_at": now - timedelta(days=22, hours=9),
+                "ends_at": now - timedelta(days=22, hours=18),
+                "score": 5,
+                "reviewed_at": now - timedelta(days=21, hours=11),
+                "info": (
+                    "Deeply memorable heritage route. The distance is substantial, "
+                    "but the movement from Mont Saint-Michel toward Omaha Beach makes "
+                    "the story feel grounded."
+                ),
+            },
+            {
+                "route_name": "Normandy Heritage Line",
+                "participant_keys": ("marie-dubois",),
+                "starts_at": now - timedelta(days=12, hours=8),
+                "ends_at": now - timedelta(days=12, hours=17),
+                "score": 4,
+                "reviewed_at": now - timedelta(days=11, hours=10),
+                "info": (
+                    "Strong historical route. Good for a full-day visit, though the "
+                    "schedule should leave more buffer for walking and reflection."
+                ),
+            },
+            {
+                "route_name": "Normandy Heritage Line",
+                "participant_keys": ("alice-martin", "emma-smith"),
+                "starts_at": now + timedelta(days=7, hours=9),
+                "ends_at": now + timedelta(days=7, hours=18),
+                "score": None,
+                "reviewed_at": None,
+                "info": "A planned heritage route from Mont Saint-Michel toward Omaha Beach.",
+            },
+            {
+                "route_name": "Brittany Coast and Stones",
+                "participant_keys": ("marie-dubois", "emma-smith"),
+                "starts_at": now - timedelta(days=16, hours=8),
+                "ends_at": now - timedelta(days=16, hours=18),
+                "score": 4,
+                "reviewed_at": now - timedelta(days=15, hours=12),
+                "info": (
+                    "A poetic route with excellent landscape changes. Carnac was a strong "
+                    "ending point, but travel time between points should be made explicit."
+                ),
+            },
+            {
+                "route_name": "Brittany Coast and Stones",
+                "participant_keys": ("alice-martin",),
+                "starts_at": now - timedelta(days=6, hours=10),
+                "ends_at": now - timedelta(days=6, hours=17),
+                "score": 3,
+                "reviewed_at": now - timedelta(days=5, hours=9),
+                "info": (
+                    "Good route concept, but it felt less polished than the Paris and Normandy "
+                    "routes. More intermediate stops would help."
+                ),
+            },
+            {
+                "route_name": "Provence to Riviera",
+                "participant_keys": ("marie-dubois", "alice-martin"),
+                "starts_at": now - timedelta(days=20, hours=9),
+                "ends_at": now - timedelta(days=20, hours=19),
+                "score": 5,
+                "reviewed_at": now - timedelta(days=19, hours=14),
+                "info": (
+                    "Excellent sun-chain route. Avignon, Aix, Cannes, and Nice together make "
+                    "a clear cultural and coastal progression."
+                ),
+            },
+            {
+                "route_name": "Provence to Riviera",
+                "participant_keys": ("jan-kowalski",),
+                "starts_at": now - timedelta(days=8, hours=8),
+                "ends_at": now - timedelta(days=8, hours=18),
+                "score": 4,
+                "reviewed_at": now - timedelta(days=7, hours=16),
+                "info": (
+                    "Very enjoyable route. The Riviera segment was strongest; Avignon needs "
+                    "more time if the route is treated as a single-day itinerary."
+                ),
+            },
+            {
+                "route_name": "Arthurian South England",
+                "participant_keys": ("emma-smith",),
+                "starts_at": now - timedelta(days=14, hours=8),
+                "ends_at": now - timedelta(days=14, hours=17),
+                "score": 5,
+                "reviewed_at": now - timedelta(days=13, hours=10),
+                "info": (
+                    "Atmospheric and memorable. Tintagel gives the route a strong beginning, "
+                    "and Stonehenge works well as a monumental endpoint."
+                ),
+            },
+            {
+                "route_name": "Arthurian South England",
+                "participant_keys": ("emma-smith", "marie-dubois"),
+                "starts_at": now + timedelta(days=12, hours=8),
+                "ends_at": now + timedelta(days=12, hours=17),
+                "score": None,
+                "reviewed_at": None,
+                "info": "A planned mythic route from Tintagel Castle toward Stonehenge.",
+            },
+            {
+                "route_name": "Polish Royal Trail",
+                "participant_keys": ("jan-kowalski", "alice-martin"),
+                "starts_at": now - timedelta(days=24, hours=9),
+                "ends_at": now - timedelta(days=24, hours=20),
+                "score": 5,
+                "reviewed_at": now - timedelta(days=23, hours=13),
+                "info": (
+                    "A strong royal-history route. Warsaw and Krakow create a clear national "
+                    "heritage arc, and the route works well as a flagship Polish trail."
+                ),
+            },
+            {
+                "route_name": "Polish Royal Trail",
+                "participant_keys": ("emma-smith",),
+                "starts_at": now - timedelta(days=9, hours=9),
+                "ends_at": now - timedelta(days=9, hours=19),
+                "score": 4,
+                "reviewed_at": now - timedelta(days=8, hours=11),
+                "info": (
+                    "Very good route with impressive anchors. It needs clearer transport notes "
+                    "between Warsaw and Krakow."
+                ),
+            },
+            {
+                "route_name": "Polish Royal Trail",
+                "participant_keys": ("jan-kowalski", "alice-martin"),
+                "starts_at": now + timedelta(days=15, hours=9),
+                "ends_at": now + timedelta(days=15, hours=20),
+                "score": None,
+                "reviewed_at": None,
+                "info": "A planned royal landmark route between Warsaw and Krakow.",
+            },
+            {
+                "route_name": "Gdansk Long Market Walk",
+                "participant_keys": ("jan-kowalski",),
+                "starts_at": now - timedelta(days=11, hours=11),
+                "ends_at": now - timedelta(days=11, hours=15),
+                "score": 4,
+                "reviewed_at": now - timedelta(days=10, hours=17),
+                "info": (
+                    "Compact and pleasant city walk. Long Market is an excellent start, and "
+                    "the route toward Westerplatte adds historical depth."
+                ),
+            },
+            {
+                "route_name": "Gdansk Long Market Walk",
+                "participant_keys": ("alice-martin", "jan-kowalski"),
+                "starts_at": now - timedelta(days=4, hours=10),
+                "ends_at": now - timedelta(days=4, hours=14),
+                "score": 5,
+                "reviewed_at": now - timedelta(days=3, hours=18),
+                "info": (
+                    "Excellent urban route. The shift from city center atmosphere to "
+                    "Westerplatte’s historic landscape is very effective."
+                ),
+            },
+            {
+                "route_name": "Gdansk Long Market Walk",
+                "participant_keys": ("jan-kowalski",),
+                "starts_at": now + timedelta(days=18, hours=11),
+                "ends_at": now + timedelta(days=18, hours=15),
+                "score": None,
+                "reviewed_at": None,
+                "info": "A planned city walk from Long Market toward Westerplatte.",
+            },
+        ]
+
+        for travel in travel_data:
+            self.upsert_travel(**travel)
 
     def create_visits(self):
         visit_data = [

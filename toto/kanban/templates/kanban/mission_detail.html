@@ -188,6 +188,25 @@
               </p>
             </div>
           </div>
+          {% if mission.campaign.zone %}
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Zone</p>
+
+              <a
+                href="{% url 'locations:zone_detail' mission.campaign.zone.pk %}"
+                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                class="mt-1 inline-flex items-center gap-2 font-semibold underline-offset-4 transition hover:underline hover:opacity-80">
+                <i class="fa-solid fa-draw-polygon text-xs"></i>
+                {{ mission.campaign.zone.name }}
+              </a>
+
+              {% if mission.campaign.zone.territory %}
+                <p class="mt-1 text-xs opacity-60">
+                  {{ mission.campaign.zone.territory.name }}
+                </p>
+              {% endif %}
+            </div>
+          {% endif %}
         </div>
       </article>
 
@@ -236,27 +255,6 @@
             {% endif %}
           </div>
 
-          <div>
-            <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Zone</p>
-
-            {% if mission.effective_zone %}
-              <a
-                href="{% url 'locations:zone_detail' mission.effective_zone.pk %}"
-                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-                class="mt-1 inline-flex items-center gap-2 font-semibold underline-offset-4 transition hover:underline hover:opacity-80">
-                <i class="fa-solid fa-draw-polygon text-xs"></i>
-                {{ mission.effective_zone.name }}
-              </a>
-
-              {% if mission.effective_zone.territory %}
-                <p class="mt-1 text-xs opacity-60">
-                  {{ mission.effective_zone.territory.name }}
-                </p>
-              {% endif %}
-            {% else %}
-              <p class="mt-1 opacity-60">—</p>
-            {% endif %}
-          </div>
         </div>
       </article>
       <!-- Ownership Card -->

@@ -6,6 +6,7 @@ from urllib.request import urlopen
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db.models import Avg, Count
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
@@ -126,6 +127,8 @@ def travel_payload(travel):
     return {
         "id": travel.pk,
         "info": travel.info,
+        "score": travel.score,
+        "reviewed_at": travel.reviewed_at.isoformat() if travel.reviewed_at else None,
         "starts_at": travel.starts_at.isoformat() if travel.starts_at else None,
         "ends_at": travel.ends_at.isoformat() if travel.ends_at else None,
         "route": route_payload(route) if route else None,
@@ -411,6 +414,42 @@ def route_detail(request, pk):
         if location
     ]
 
+    travels = (
+        Travel.objects
+        .filter(route=route)
+        .prefetch_related("participants")
+        .order_by("-starts_at")
+    )
+
+    score_summary = travels.aggregate(
+        average_score=Avg("score"),
+        scored_count=Count("score"),
+        total_count=Count("id"),
+    )
+
+    score_counts_raw = {
+        item["score"]: item["count"]
+        for item in (
+            travels
+            .exclude(score__isnull=True)
+            .values("score")
+            .annotate(count=Count("id"))
+        )
+    }
+
+    max_score_count = max(score_counts_raw.values(), default=0)
+
+    score_distribution = []
+
+    for score in range(5, 0, -1):
+        count = score_counts_raw.get(score, 0)
+
+        score_distribution.append({
+            "score": score,
+            "count": count,
+            "pct": round((count / max_score_count) * 100, 1) if max_score_count else 0,
+        })
+
     events = (
         Event.objects
         .filter(route=route)
@@ -421,21 +460,27 @@ def route_detail(request, pk):
     context = {
         "route": route,
         "route_payload_json": json.dumps(route_payload(route)),
-        "travels": (
-            Travel.objects
-            .filter(route=route)
-            .prefetch_related("participants")
-            .order_by("-starts_at")
-        ),
+
+        "travels": travels,
         "events": events,
+
         "review_locations": review_locations,
         "reviews": location_reviews_queryset(review_locations),
         "person": current_person(request),
+
+        "average_score": (
+            round(score_summary["average_score"], 1)
+            if score_summary["average_score"] is not None
+            else None
+        ),
+        "scored_review_count": score_summary["scored_count"],
+        "review_count": score_summary["total_count"],
+        "score_distribution": score_distribution,
     }
 
     return render(
         request,
-        "locations/route_review.html",
+        "locations/route_detail.html",
         PageProcessor().decorate(context, request),
     )
 
