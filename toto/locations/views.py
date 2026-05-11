@@ -12,6 +12,8 @@ from django.views.decorators.http import require_POST
 
 from toto.core.page import PageProcessor
 from toto.socialhub.models import Person
+from toto.kanban.models import Campaign, Mission, Task
+from toto.events.models import Event
 
 from .models import (
     Address,
@@ -39,8 +41,38 @@ ROAD_ROUTING_ENDPOINTS = {
 }
 
 
+# ---------------------------------------------------------------------
+# Payload helpers
+# ---------------------------------------------------------------------
+
 def geometry_json(geometry):
     return json.loads(geometry.geojson) if geometry else None
+
+
+def address_payload(address):
+    return {
+        "id": address.pk,
+        "name": str(address),
+        "country_name": address.country_name,
+        "state_or_province_name": address.state_or_province_name,
+        "locality_name": address.locality_name,
+        "street": address.street,
+        "building": address.building,
+        "apartment": address.apartment,
+        "geometry": geometry_json(address.geometry),
+    }
+
+
+def zone_payload(zone):
+    return {
+        "id": zone.pk,
+        "name": zone.name,
+        "territory": {
+            "id": zone.territory.pk,
+            "name": zone.territory.name,
+        } if zone.territory else None,
+        "geometry": geometry_json(zone.geometry),
+    }
 
 
 def route_chain_geometry(route_chain):
@@ -48,6 +80,7 @@ def route_chain_geometry(route_chain):
 
     for route in route_chain.routes.order_by("sequence", "name", "pk"):
         geometry = geometry_json(route.geometry)
+
         if not geometry:
             continue
 
@@ -70,6 +103,10 @@ def route_payload(route):
         "id": route.pk,
         "name": route.name or f"Route {route.pk}",
         "geometry": geometry_json(route.geometry),
+        "route_chain": {
+            "id": route.route_chain.pk,
+            "name": route.route_chain.name,
+        } if route.route_chain else None,
         "start_address": {
             "id": route.start_address.pk,
             "label": str(route.start_address),
@@ -122,11 +159,16 @@ def map_layer_payload(layer):
     }
 
 
+# ---------------------------------------------------------------------
+# User / review helpers
+# ---------------------------------------------------------------------
+
 def current_person(request):
     if not request.user.is_authenticated:
         return None
 
     person = getattr(request.user, "community_profile", None)
+
     if person:
         return person
 
@@ -143,6 +185,10 @@ def location_reviews_queryset(addresses):
         .order_by("-id")
     )
 
+
+# ---------------------------------------------------------------------
+# Main map/list
+# ---------------------------------------------------------------------
 
 @login_required
 def locations_all(request):
@@ -164,10 +210,12 @@ def locations_all(request):
             "detail": f"Inside {zone.territory.name}" if zone.territory else "Standalone zone",
             "geometry": geometry_json(zone.geometry),
             "geometry_json": geometry_json(zone.geometry),
+            "detail_url": reverse("locations:zone_detail", args=[zone.pk]),
         })
 
     for chain in RouteChain.objects.prefetch_related("routes").all():
         geometry = route_chain_geometry(chain)
+
         locations.append({
             "type": "Route Chain",
             "name": chain.name or f"Route Chain {chain.pk}",
@@ -176,13 +224,18 @@ def locations_all(request):
             "geometry_json": geometry,
         })
 
-    for route in Route.objects.select_related("route_chain").all():
+    for route in Route.objects.select_related(
+        "route_chain",
+        "start_address",
+        "end_address",
+    ).all():
         locations.append({
             "type": "Route",
             "name": route.name or f"Route {route.pk}",
             "detail": f"In {route.route_chain.name}" if route.route_chain else "Route",
             "geometry": geometry_json(route.geometry),
             "geometry_json": geometry_json(route.geometry),
+            "detail_url": reverse("locations:route_detail", args=[route.pk]),
             "review_url": reverse("locations:route_review", args=[route.pk]),
         })
 
@@ -193,6 +246,7 @@ def locations_all(request):
             "detail": address.locality_name,
             "geometry": geometry_json(address.geometry),
             "geometry_json": geometry_json(address.geometry),
+            "detail_url": reverse("locations:address_detail", args=[address.pk]),
             "review_url": reverse("locations:visit_review", args=[address.pk]),
         })
 
@@ -215,6 +269,180 @@ def locations_all(request):
     )
 
 
+# ---------------------------------------------------------------------
+# Detail views
+# ---------------------------------------------------------------------
+
+@login_required
+def address_detail(request, pk):
+    location = get_object_or_404(Address, pk=pk)
+
+    events = (
+        Event.objects
+        .filter(address=location)
+        .select_related("organizer", "category", "route", "zone")
+        .order_by("-start_time")
+    )
+
+    context = {
+        "address": location,
+        "location": location,
+        "location_payload_json": json.dumps({
+            "id": location.pk,
+            "name": str(location),
+            "detail": location.locality_name,
+            "geometry": geometry_json(location.geometry),
+        }),
+        "events": events,
+        "reviews": (
+            Visit.objects
+            .filter(location=location)
+            .select_related("participant", "location")
+            .order_by("-id")
+        ),
+        "person": current_person(request),
+    }
+
+    return render(
+        request,
+        "locations/visit_review.html",
+        PageProcessor().decorate(context, request),
+    )
+
+
+@login_required
+def zone_detail(request, pk):
+    zone = get_object_or_404(
+        Zone.objects.select_related("territory"),
+        pk=pk,
+    )
+
+    campaigns = (
+        Campaign.objects
+        .filter(zone=zone)
+        .select_related("project", "owner")
+        .prefetch_related("missions")
+        .order_by("project__name", "name")
+    )
+
+    missions = (
+        Mission.objects
+        .filter(campaign__zone=zone)
+        .select_related(
+            "campaign",
+            "campaign__project",
+            "owner",
+            "location",
+            "route",
+        )
+        .prefetch_related("tasks")
+        .order_by("campaign__project__name", "campaign__name", "title")
+    )
+
+    tasks = (
+        Task.objects
+        .filter(mission__campaign__zone=zone)
+        .select_related(
+            "mission",
+            "mission__campaign",
+            "mission__campaign__project",
+            "column",
+            "sprint",
+            "assignee",
+        )
+        .order_by("mission__campaign__name", "mission__title", "position", "title")
+    )
+
+    addresses = (
+        Address.objects
+        .filter(missions__campaign__zone=zone)
+        .distinct()
+        .order_by("country_name", "locality_name", "street", "building")
+    )
+
+    routes = (
+        Route.objects
+        .filter(missions__campaign__zone=zone)
+        .select_related("route_chain", "start_address", "end_address")
+        .distinct()
+        .order_by("route_chain__name", "sequence", "name")
+    )
+
+    events = (
+        Event.objects
+        .filter(zone=zone)
+        .select_related("organizer", "category", "address", "route")
+        .order_by("-start_time")
+    )
+
+    context = {
+        "zone": zone,
+        "zone_payload_json": json.dumps(zone_payload(zone)),
+
+        "campaigns": campaigns,
+        "missions": missions,
+        "tasks": tasks,
+        "addresses": addresses,
+        "routes": routes,
+        "events": events,
+    }
+
+    return render(
+        request,
+        "locations/zone_detail.html",
+        PageProcessor().decorate(context, request),
+    )
+
+
+@login_required
+def route_detail(request, pk):
+    route = get_object_or_404(
+        Route.objects.select_related(
+            "route_chain",
+            "start_address",
+            "end_address",
+        ),
+        pk=pk,
+    )
+
+    review_locations = [
+        location
+        for location in (route.start_address, route.end_address)
+        if location
+    ]
+
+    events = (
+        Event.objects
+        .filter(route=route)
+        .select_related("organizer", "category", "address", "zone")
+        .order_by("-start_time")
+    )
+
+    context = {
+        "route": route,
+        "route_payload_json": json.dumps(route_payload(route)),
+        "travels": (
+            Travel.objects
+            .filter(route=route)
+            .prefetch_related("participants")
+            .order_by("-starts_at")
+        ),
+        "events": events,
+        "review_locations": review_locations,
+        "reviews": location_reviews_queryset(review_locations),
+        "person": current_person(request),
+    }
+
+    return render(
+        request,
+        "locations/route_review.html",
+        PageProcessor().decorate(context, request),
+    )
+
+# ---------------------------------------------------------------------
+# Route search
+# ---------------------------------------------------------------------
+
 def parse_coordinate(value, label, minimum, maximum):
     if value in (None, ""):
         raise ValueError(f"{label} is required.")
@@ -235,6 +463,7 @@ def fetch_traversable_route(start_lng, start_lat, end_lng, end_lat, mode):
 
     if mode == "public_transport":
         endpoint = getattr(settings, "LOCATIONS_PUBLIC_TRANSPORT_ROUTING_URL", "")
+
         if not endpoint:
             raise ValueError(
                 "Public transport routing needs a transit backend. "
@@ -388,43 +617,23 @@ def route_search(request):
     )
 
 
+# ---------------------------------------------------------------------
+# Compatibility review URLs
+# ---------------------------------------------------------------------
+
 @login_required
 def route_review(request, pk):
-    route = get_object_or_404(
-        Route.objects.select_related(
-            "route_chain",
-            "start_address",
-            "end_address",
-        ),
-        pk=pk,
-    )
+    return route_detail(request, pk)
 
-    review_locations = [
-        location
-        for location in (route.start_address, route.end_address)
-        if location
-    ]
 
-    context = {
-        "route": route,
-        "route_payload_json": json.dumps(route_payload(route)),
-        "travels": (
-            Travel.objects
-            .filter(route=route)
-            .prefetch_related("participants")
-            .order_by("-starts_at")
-        ),
-        "review_locations": review_locations,
-        "reviews": location_reviews_queryset(review_locations),
-        "person": current_person(request),
-    }
+@login_required
+def visit_review(request, address_id):
+    return address_detail(request, address_id)
 
-    return render(
-        request,
-        "locations/route_review.html",
-        PageProcessor().decorate(context, request),
-    )
 
+# ---------------------------------------------------------------------
+# Travel views
+# ---------------------------------------------------------------------
 
 @login_required
 def travel_review(request, pk):
@@ -466,87 +675,6 @@ def travel_review(request, pk):
     )
 
 
-@require_POST
-@login_required
-def submit_visit_review(request, address_id):
-    person = current_person(request)
-    fallback_url = reverse("locations:locations_all")
-    next_url = request.POST.get("next") or fallback_url
-
-    if not person:
-        messages.error(
-            request,
-            "You need a community profile before you can submit a visit review.",
-        )
-        return redirect(next_url)
-
-    location = get_object_or_404(Address, pk=address_id)
-
-    review = request.POST.get("review", "").strip()
-    raw_score = request.POST.get("score")
-
-    score = None
-    if raw_score not in (None, ""):
-        try:
-            score = int(raw_score)
-        except ValueError:
-            messages.error(request, "Score must be a number from 1 to 5.")
-            return redirect(next_url)
-
-        if score < 1 or score > 5:
-            messages.error(request, "Score must be from 1 to 5.")
-            return redirect(next_url)
-
-    Visit.objects.update_or_create(
-        participant=person,
-        location=location,
-        defaults={
-            "review": review,
-            "score": score,
-        },
-    )
-
-    messages.success(request, "Visit review saved.")
-    return redirect(next_url)
-
-@login_required
-def visit_review(request, address_id):
-    location = get_object_or_404(Address, pk=address_id)
-
-    context = {
-        "location": location,
-        "location_payload_json": json.dumps({
-            "id": location.pk,
-            "name": str(location),
-            "detail": location.locality_name,
-            "geometry": geometry_json(location.geometry),
-        }),
-        "reviews": (
-            Visit.objects
-            .filter(location=location)
-            .select_related("participant", "location")
-            .order_by("-id")
-        ),
-        "person": current_person(request),
-    }
-
-    return render(
-        request,
-        "locations/visit_review.html",
-        PageProcessor().decorate(context, request),
-    )
-
-@require_POST
-@login_required
-def update_travel_info(request, pk):
-    travel = get_object_or_404(Travel, pk=pk)
-
-    travel.info = request.POST.get("info", "").strip()
-    travel.save(update_fields=["info"])
-
-    messages.success(request, "Travel info saved.")
-    return redirect("locations:travel_review", pk=travel.pk)
-
 @login_required
 def travel_summary(request, pk):
     travel = get_object_or_404(
@@ -585,3 +713,64 @@ def travel_summary(request, pk):
         "locations/travel_summary.html",
         PageProcessor().decorate(context, request),
     )
+
+
+# ---------------------------------------------------------------------
+# Mutations
+# ---------------------------------------------------------------------
+
+@require_POST
+@login_required
+def submit_visit_review(request, address_id):
+    person = current_person(request)
+    fallback_url = reverse("locations:locations_all")
+    next_url = request.POST.get("next") or fallback_url
+
+    if not person:
+        messages.error(
+            request,
+            "You need a community profile before you can submit a visit review.",
+        )
+        return redirect(next_url)
+
+    location = get_object_or_404(Address, pk=address_id)
+
+    review = request.POST.get("review", "").strip()
+    raw_score = request.POST.get("score")
+
+    score = None
+
+    if raw_score not in (None, ""):
+        try:
+            score = int(raw_score)
+        except ValueError:
+            messages.error(request, "Score must be a number from 1 to 5.")
+            return redirect(next_url)
+
+        if score < 1 or score > 5:
+            messages.error(request, "Score must be from 1 to 5.")
+            return redirect(next_url)
+
+    Visit.objects.update_or_create(
+        participant=person,
+        location=location,
+        defaults={
+            "review": review,
+            "score": score,
+        },
+    )
+
+    messages.success(request, "Visit review saved.")
+    return redirect(next_url)
+
+
+@require_POST
+@login_required
+def update_travel_info(request, pk):
+    travel = get_object_or_404(Travel, pk=pk)
+
+    travel.info = request.POST.get("info", "").strip()
+    travel.save(update_fields=["info"])
+
+    messages.success(request, "Travel info saved.")
+    return redirect("locations:travel_review", pk=travel.pk)

@@ -4,6 +4,7 @@ from django.contrib.gis.geos import LineString, MultiLineString, MultiPolygon, P
 from django.utils import timezone
 
 from toto.core.ingress import IngressCommand
+from toto.events.models import Event, EventCategory
 from toto.locations.models import (
     Address,
     MapLayer,
@@ -19,7 +20,7 @@ from toto.socialhub.models import Person
 
 
 class Command(IngressCommand):
-    help = "Creates demo geospatial features, map layers with owners, travels, and visits for France, England, and Poland."
+    help = "Creates demo geospatial features, map layers with owners, travels, visits, and location-linked events."
 
     def point(self, longitude, latitude):
         geometry = Point(longitude, latitude)
@@ -44,9 +45,9 @@ class Command(IngressCommand):
 
     def upsert_person(self, key, display_name, email=None, phone=None):
         person = (
-                Person.objects.filter(slug=key).first()
-                or (Person.objects.filter(email=email).first() if email else None)
-                or Person.objects.filter(display_name=display_name).first()
+            Person.objects.filter(slug=key).first()
+            or (Person.objects.filter(email=email).first() if email else None)
+            or Person.objects.filter(display_name=display_name).first()
         )
 
         if not person:
@@ -93,6 +94,7 @@ class Command(IngressCommand):
                 "geometry": self.point(longitude, latitude),
             },
         )
+
         self.addresses[key] = address
         return address
 
@@ -104,17 +106,21 @@ class Command(IngressCommand):
                 "capital": self.addresses.get(capital_key),
             },
         )
+
         self.territories[name] = territory
         return territory
 
     def upsert_zone(self, name, territory_name, *rings):
-        Zone.objects.update_or_create(
+        zone, _ = Zone.objects.update_or_create(
             name=name,
             defaults={
                 "geometry": self.multipolygon(*rings),
                 "territory": self.territories.get(territory_name),
             },
         )
+
+        self.zones[name] = zone
+        return zone
 
     def upsert_route(self, name, start_key, end_key, coordinates):
         route, _ = Route.objects.update_or_create(
@@ -125,6 +131,7 @@ class Command(IngressCommand):
                 "end_address": self.addresses[end_key],
             },
         )
+
         self.routes[name] = route
         return route
 
@@ -170,7 +177,50 @@ class Command(IngressCommand):
                 "review": review,
             },
         )
+
         return visit
+
+    def upsert_event_category(self, name, description):
+        category, _ = EventCategory.objects.update_or_create(
+            name=name,
+            defaults={
+                "description": description,
+            },
+        )
+
+        self.event_categories[name] = category
+        return category
+
+    def upsert_event(
+        self,
+        title,
+        description,
+        start_time,
+        end_time,
+        organizer_key,
+        category_name,
+        address_key=None,
+        route_name=None,
+        zone_name=None,
+        public=True,
+    ):
+        event, _ = Event.objects.update_or_create(
+            title=title,
+            start_time=start_time,
+            defaults={
+                "description": description,
+                "end_time": end_time,
+                "organizer": self.people.get(organizer_key),
+                "category": self.event_categories.get(category_name),
+                "address": self.addresses.get(address_key) if address_key else None,
+                "route": self.routes.get(route_name) if route_name else None,
+                "zone": self.zones.get(zone_name) if zone_name else None,
+                "public": public,
+            },
+        )
+
+        self.events[title] = event
+        return event
 
     def upsert_map_layer(
         self,
@@ -200,12 +250,14 @@ class Command(IngressCommand):
                 "owner": self.people.get(owner_key) if owner_key else None,
             },
         )
+
         self.map_layers[slug] = layer
         return layer
 
     def polygon_center(self, coordinates):
         longitudes = [longitude for longitude, latitude in coordinates[:-1]]
         latitudes = [latitude for longitude, latitude in coordinates[:-1]]
+
         return self.point(
             sum(longitudes) / len(longitudes),
             sum(latitudes) / len(latitudes),
@@ -500,6 +552,141 @@ class Command(IngressCommand):
         for visit in visit_data:
             self.upsert_visit(*visit)
 
+    def create_event_categories(self):
+        self.upsert_event_category(
+            "Field Visit",
+            "On-site event connected to a specific address.",
+        )
+        self.upsert_event_category(
+            "Route Session",
+            "Movement-based event connected to a route.",
+        )
+        self.upsert_event_category(
+            "Regional Briefing",
+            "Event scoped to a zone or operational region.",
+        )
+        self.upsert_event_category(
+            "Cultural Program",
+            "Public or community cultural event.",
+        )
+
+    def create_events(self):
+        now = timezone.now()
+
+        event_data = [
+            {
+                "title": "Paris Landmark Field Visit",
+                "description": "A guided field event around the Eiffel Tower and nearby central Paris landmarks.",
+                "start_time": now + timedelta(days=4, hours=10),
+                "end_time": now + timedelta(days=4, hours=13),
+                "organizer_key": "alice-martin",
+                "category_name": "Field Visit",
+                "address_key": "eiffel_tower",
+            },
+            {
+                "title": "Notre-Dame Cultural Program",
+                "description": "A cultural session focused on the historical role of Notre-Dame and Parisian heritage.",
+                "start_time": now + timedelta(days=5, hours=15),
+                "end_time": now + timedelta(days=5, hours=17),
+                "organizer_key": "marie-dubois",
+                "category_name": "Cultural Program",
+                "address_key": "notre_dame",
+            },
+            {
+                "title": "Paris Monument Walk Briefing",
+                "description": "Preparation and safety briefing for the Paris Monument Walk route.",
+                "start_time": now + timedelta(days=6, hours=9),
+                "end_time": now + timedelta(days=6, hours=11),
+                "organizer_key": "alice-martin",
+                "category_name": "Route Session",
+                "route_name": "Paris Monument Walk",
+            },
+            {
+                "title": "Normandy Memory Route Session",
+                "description": "Route-based session covering Mont Saint-Michel and Omaha Beach heritage points.",
+                "start_time": now + timedelta(days=8, hours=9),
+                "end_time": now + timedelta(days=8, hours=16),
+                "organizer_key": "emma-smith",
+                "category_name": "Route Session",
+                "route_name": "Normandy Heritage Line",
+            },
+            {
+                "title": "Breton Heritage Coordination",
+                "description": "Regional briefing for the Breton heritage area and upcoming visits.",
+                "start_time": now + timedelta(days=9, hours=12),
+                "end_time": now + timedelta(days=9, hours=14),
+                "organizer_key": "marie-dubois",
+                "category_name": "Regional Briefing",
+                "zone_name": "Breton Heritage Zone",
+            },
+            {
+                "title": "Riviera Promenade Public Program",
+                "description": "Public program around Nice and the Riviera promenade area.",
+                "start_time": now + timedelta(days=11, hours=16),
+                "end_time": now + timedelta(days=11, hours=19),
+                "organizer_key": "marie-dubois",
+                "category_name": "Regional Briefing",
+                "zone_name": "Riviera Promenade Zone",
+            },
+            {
+                "title": "Tintagel Legend Field Visit",
+                "description": "Field visit to Tintagel Castle with a focus on Arthurian landscape narratives.",
+                "start_time": now + timedelta(days=13, hours=10),
+                "end_time": now + timedelta(days=13, hours=15),
+                "organizer_key": "emma-smith",
+                "category_name": "Field Visit",
+                "address_key": "tintagel_castle",
+            },
+            {
+                "title": "Arthurian South England Route Session",
+                "description": "Travel and interpretation session along the Tintagel to Stonehenge route.",
+                "start_time": now + timedelta(days=14, hours=8),
+                "end_time": now + timedelta(days=14, hours=17),
+                "organizer_key": "emma-smith",
+                "category_name": "Route Session",
+                "route_name": "Arthurian South England",
+            },
+            {
+                "title": "Warsaw Old Town Zone Briefing",
+                "description": "Planning meeting for Warsaw Old Town heritage activity.",
+                "start_time": now + timedelta(days=16, hours=10),
+                "end_time": now + timedelta(days=16, hours=12),
+                "organizer_key": "jan-kowalski",
+                "category_name": "Regional Briefing",
+                "zone_name": "Warsaw Old Town Zone",
+            },
+            {
+                "title": "Wawel Castle Field Visit",
+                "description": "Field event at Wawel Castle connected to the Polish Royal Trail.",
+                "start_time": now + timedelta(days=17, hours=13),
+                "end_time": now + timedelta(days=17, hours=16),
+                "organizer_key": "jan-kowalski",
+                "category_name": "Field Visit",
+                "address_key": "wawel_castle",
+            },
+            {
+                "title": "Polish Royal Trail Route Session",
+                "description": "Route-based session between Warsaw and Krakow royal landmarks.",
+                "start_time": now + timedelta(days=18, hours=9),
+                "end_time": now + timedelta(days=18, hours=18),
+                "organizer_key": "jan-kowalski",
+                "category_name": "Route Session",
+                "route_name": "Polish Royal Trail",
+            },
+            {
+                "title": "Gdansk Main Town Walk",
+                "description": "Public walk around the Gdansk Main Town and Long Market area.",
+                "start_time": now + timedelta(days=20, hours=11),
+                "end_time": now + timedelta(days=20, hours=14),
+                "organizer_key": "jan-kowalski",
+                "category_name": "Route Session",
+                "route_name": "Gdansk Long Market Walk",
+            },
+        ]
+
+        for event in event_data:
+            self.upsert_event(**event)
+
     def create_map_layers(self):
         self.upsert_map_layer(
             "Tourist Intensity",
@@ -586,10 +773,13 @@ class Command(IngressCommand):
 
         self.addresses = {}
         self.territories = {}
+        self.zones = {}
         self.routes = {}
         self.map_layers = {}
         self.people = {}
         self.travels = {}
+        self.event_categories = {}
+        self.events = {}
 
         self.create_people()
 
@@ -598,9 +788,15 @@ class Command(IngressCommand):
         self.create_zones()
         self.create_routes()
         self.create_route_chains()
+
         self.create_map_layers()
 
         self.create_travels()
         self.create_visits()
 
-        print("[Ingress] Demo European geospatial features, map layer owners, travels, and visits created successfully.")
+        self.create_event_categories()
+        self.create_events()
+
+        print(
+            "[Ingress] Demo European geospatial features, map layer owners, travels, visits, and events created successfully."
+        )
