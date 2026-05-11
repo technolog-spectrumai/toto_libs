@@ -35,6 +35,39 @@ class Page(DomainEntity):
     tags = models.ManyToManyField(Tag, related_name="pages", blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    # ─────────── Bibliography ───────────
+    # ─────────── Bibliography fields ───────────
+    books_refs = models.ManyToManyField(
+        "verbena.Book", blank=True, related_name="pages_refs"
+    )
+    articles_refs = models.ManyToManyField(
+        "verbena.Article", blank=True, related_name="pages_refs"
+    )
+    audios_refs = models.ManyToManyField(
+        "verbena.Audio", blank=True, related_name="pages_refs"
+    )
+    videos_refs = models.ManyToManyField(
+        "verbena.Video", blank=True, related_name="pages_refs"
+    )
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slugify(self.title)
+        super().save(*args, **kwargs)
+
+    def authors(self):
+        return Person.objects.filter(
+            verbena_sections__page=self
+        ).distinct()
+
+    def get_references(self):
+        """
+        Returns all bibliographic references attached to this page, sorted by year descending.
+        """
+        refs = list(self.books_refs.all()) + list(self.articles_refs.all()) + \
+               list(self.audios_refs.all()) + list(self.videos_refs.all())
+        return sorted(refs, key=lambda r: r.year or 0, reverse=True)
+
     def save(self, *args, **kwargs):
         if not self.slug:
             self.slug = slugify(self.title)
