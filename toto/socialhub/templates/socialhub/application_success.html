@@ -3,50 +3,210 @@
 
 {% block title %}Application Submitted | {{ platform.site_name }}{% endblock %}
 
+{% block start_script %}
+<style>
+  [x-cloak] {
+    display: none !important;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <section
   :class="darkMode
     ? 'bg-primary-bg-dark text-text-main-dark'
     : 'bg-primary-bg-light text-text-main-light'"
-  class="flex items-center justify-center px-6 py-16 min-h-screen transition-colors duration-300">
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
 
-  <div
-    :class="darkMode
-      ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
-      : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
-    class="w-full max-w-md p-6 rounded-lg shadow-md border space-y-6 transition-colors duration-300 text-center">
+  <div class="mx-auto flex min-h-[calc(100vh-5rem)] max-w-6xl items-center">
 
-    <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-xl font-bold">
-      Thank you for applying!
-    </h2>
+    <div
+      :class="darkMode
+        ? 'border-accent-1 bg-bubble-bg-dark'
+        : 'border-accent-2 bg-bubble-bg-light'"
+      class="grid w-full overflow-hidden rounded-2xl border shadow-sm lg:grid-cols-2">
 
-    <p class="text-sm">
-      We've received your application. You'll get a confirmation code by email soon.
-      Once verified, you'll gain access to member features.
-    </p>
+      <!-- Confirmation Panel -->
+      <section
+        :class="darkMode
+          ? 'border-accent-1 bg-sunken-dark'
+          : 'border-accent-2 bg-sunken-light'"
+        class="border-b p-6 sm:p-8 lg:border-b-0 lg:border-r lg:p-10">
 
-    {% if username %}
-      <p class="text-center text-sm text-gray-500 dark:text-gray-400">
-        Already have a verification code?
-        <a href="{% url 'socialhub:membership_verification' username %}"
-           class="font-medium underline text-accent-light dark:text-accent-dark hover:opacity-80">
-          Submit Code
-        </a>
-      </p>
-    {% else %}
-      <p class="text-center text-sm text-gray-500 dark:text-gray-400">
-        Verification available after submitting
-      </p>
-    {% endif %}
+        <div class="flex h-full flex-col justify-between gap-10">
+          <div class="space-y-6">
+            <div
+              :class="darkMode
+                ? 'border-accent-1 bg-primary-bg-dark'
+                : 'border-accent-2 bg-primary-bg-light'"
+              class="flex h-16 w-16 items-center justify-center rounded-2xl border shadow-sm">
+              <i
+                :class="darkMode
+                  ? 'fa-moon text-accent-dark'
+                  : 'fa-sun text-accent-light'"
+                class="fa-solid text-2xl"></i>
+            </div>
 
-    <a href="{% url 'core:login' %}"
-       :class="darkMode
-         ? 'bg-accent-dark text-primary-bg-dark'
-         : 'bg-accent-light text-primary-bg-light'"
-       class="inline-block px-4 py-2 mt-4 rounded font-semibold hover:opacity-90 transition text-sm">
-      Back to Login
-    </a>
+            <div>
+              <p
+                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                class="text-xs font-semibold uppercase tracking-wide">
+                Application received
+              </p>
 
+              <h1 class="mt-3 max-w-xl text-3xl font-bold leading-tight sm:text-4xl">
+                Thank you for applying.
+              </h1>
+
+              <p class="mt-4 max-w-xl text-sm leading-6 opacity-75 sm:text-base">
+                We’ve received your application. A confirmation code should arrive by email soon.
+                Once verified, you’ll be able to access member features and continue into
+                {{ platform.site_name }}.
+              </p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 gap-3 text-sm sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+            <div
+              :class="darkMode
+                ? 'border-accent-1 bg-bubble-bg-dark'
+                : 'border-accent-2 bg-bubble-bg-light'"
+              class="rounded-xl border p-4">
+              <i
+                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                class="fa-solid fa-envelope-circle-check"></i>
+              <p class="mt-2 font-semibold">Check email</p>
+              <p class="mt-1 text-xs opacity-65">Look for your code.</p>
+            </div>
+
+            <div
+              :class="darkMode
+                ? 'border-accent-1 bg-bubble-bg-dark'
+                : 'border-accent-2 bg-bubble-bg-light'"
+              class="rounded-xl border p-4">
+              <i
+                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                class="fa-solid fa-key"></i>
+              <p class="mt-2 font-semibold">Verify</p>
+              <p class="mt-1 text-xs opacity-65">Submit your code.</p>
+            </div>
+
+            <div
+              :class="darkMode
+                ? 'border-accent-1 bg-bubble-bg-dark'
+                : 'border-accent-2 bg-bubble-bg-light'"
+              class="rounded-xl border p-4">
+              <i
+                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                class="fa-solid fa-door-open"></i>
+              <p class="mt-2 font-semibold">Enter</p>
+              <p class="mt-1 text-xs opacity-65">Access member tools.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Next Steps Panel -->
+      <section class="p-6 sm:p-8 lg:p-10">
+        <div class="mx-auto flex h-full max-w-md flex-col justify-center space-y-6">
+
+          <div>
+            <h2 class="text-2xl font-bold">
+              Next step
+            </h2>
+
+            <p class="mt-2 text-sm leading-6 opacity-70">
+              Use your verification code when it arrives. You can also return to login
+              and come back later.
+            </p>
+          </div>
+
+          <div
+            :class="darkMode
+              ? 'border-accent-1 bg-sunken-dark'
+              : 'border-accent-2 bg-sunken-light'"
+            class="rounded-2xl border p-5 text-sm shadow-sm">
+
+            {% if username %}
+              <div class="space-y-3">
+                <div
+                  :class="darkMode
+                    ? 'border-accent-1 bg-primary-bg-dark'
+                    : 'border-accent-2 bg-primary-bg-light'"
+                  class="flex h-12 w-12 items-center justify-center rounded-xl border">
+                  <i
+                    :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                    class="fa-solid fa-shield-halved"></i>
+                </div>
+
+                <div>
+                  <p class="font-semibold">
+                    Already have a verification code?
+                  </p>
+
+                  <p class="mt-1 opacity-70">
+                    Submit it now to complete your membership verification.
+                  </p>
+                </div>
+
+                <a
+                  href="{% url 'socialhub:membership_verification' username %}"
+                  :class="darkMode
+                    ? 'bg-accent-dark text-primary-bg-dark'
+                    : 'bg-accent-light text-primary-bg-light'"
+                  class="inline-flex w-full items-center justify-center gap-2 rounded-lg px-5 py-3 text-sm font-semibold shadow-sm transition hover:opacity-90">
+                  <i class="fa-solid fa-key"></i>
+                  Submit Code
+                </a>
+              </div>
+            {% else %}
+              <div class="space-y-3">
+                <div
+                  :class="darkMode
+                    ? 'border-accent-1 bg-primary-bg-dark'
+                    : 'border-accent-2 bg-primary-bg-light'"
+                  class="flex h-12 w-12 items-center justify-center rounded-xl border">
+                  <i
+                    :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                    class="fa-solid fa-clock"></i>
+                </div>
+
+                <div>
+                  <p class="font-semibold">
+                    Verification will be available soon.
+                  </p>
+
+                  <p class="mt-1 opacity-70">
+                    Once your application is ready, use the code sent to your email.
+                  </p>
+                </div>
+              </div>
+            {% endif %}
+          </div>
+
+          <div
+            :class="darkMode
+              ? 'border-accent-1 bg-sunken-dark'
+              : 'border-accent-2 bg-sunken-light'"
+            class="rounded-xl border p-4 text-center text-sm">
+
+            <p class="opacity-75">
+              Want to sign in instead?
+            </p>
+
+            <a
+              href="{% url 'core:login' %}"
+              :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+              class="mt-1 inline-flex items-center justify-center gap-2 font-semibold underline-offset-4 transition hover:underline hover:opacity-80">
+              Back to Login
+              <i class="fa-solid fa-arrow-right text-xs"></i>
+            </a>
+          </div>
+
+        </div>
+      </section>
+
+    </div>
   </div>
 </section>
 {% endblock %}
