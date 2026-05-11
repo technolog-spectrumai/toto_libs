@@ -15,6 +15,26 @@
       Dashboard
     </h1>
 
+    {% if messages %}
+      <div
+        :class="darkMode
+          ? 'border-accent-1 bg-bubble-bg-dark'
+          : 'border-accent-2 bg-bubble-bg-light'"
+        class="mb-8 rounded-xl border p-4 shadow-sm">
+        <div class="space-y-3">
+          {% for message in messages %}
+            <div
+              :class="darkMode
+                ? 'border-accent-1 bg-primary-bg-dark'
+                : 'border-accent-2 bg-primary-bg-light'"
+              class="rounded-lg border px-4 py-3 text-sm">
+              {{ message }}
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-8">
       {% for block in blocks %}
       <div
