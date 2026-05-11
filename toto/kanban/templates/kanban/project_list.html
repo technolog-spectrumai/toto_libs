@@ -2,57 +2,235 @@
 
 {% block title %}Kanban Projects{% endblock %}
 
+{% block start_script %}
+<style>
+  [x-cloak] {
+    display: none !important;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <section
   :class="darkMode
     ? 'bg-primary-bg-dark text-text-main-dark'
     : 'bg-primary-bg-light text-text-main-light'"
-  class="flex items-center justify-center px-6 py-16 min-h-screen transition-colors duration-300">
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
 
-  <div
-    :class="darkMode
-      ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
-      : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
-    class="w-full max-w-2xl p-6 rounded-lg shadow-md border space-y-6 transition-colors duration-300">
+  <div class="mx-auto max-w-7xl space-y-6">
 
-    <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-        class="text-2xl font-bold text-center">
-      Your Kanban Projects
-    </h2>
+    <!-- Header -->
+    <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div class="space-y-2">
+        <a
+          href="{% url 'core:dashboard' %}"
+          class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+          <i class="fa-solid fa-arrow-left"></i>
+          Dashboard
+        </a>
 
+        <div>
+          <p
+            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+            class="text-xs font-semibold uppercase tracking-wide">
+            Kanban
+          </p>
+
+          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+            <i class="fa-solid fa-table-columns"></i>
+            Projects
+          </h1>
+
+          <p class="mt-1 text-sm opacity-70">
+            Open your boards, missions, sprints, and delivery workspaces.
+          </p>
+        </div>
+      </div>
+
+      <nav class="flex flex-wrap gap-2">
+        <a
+          href="{% url 'core:dashboard' %}"
+          :class="darkMode
+            ? 'bg-accent-dark text-primary-bg-dark'
+            : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-house"></i>
+          Dashboard
+        </a>
+      </nav>
+    </header>
+
+    <!-- Overview -->
+    <section
+      :class="darkMode
+        ? 'border-accent-1 bg-bubble-bg-dark'
+        : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-2xl border p-4 shadow-sm sm:p-5">
+
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 class="flex items-center gap-2 text-lg font-bold">
+            <i class="fa-solid fa-diagram-project"></i>
+            Your Kanban projects
+          </h2>
+
+          <p class="mt-1 text-sm opacity-70">
+            Browse the projects you own or collaborate on.
+          </p>
+        </div>
+
+        <div
+          :class="darkMode
+            ? 'border-accent-1 bg-sunken-dark'
+            : 'border-accent-2 bg-sunken-light'"
+          class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm">
+          <i class="fa-solid fa-folder-tree"></i>
+          {{ projects|length }} project{% if projects|length != 1 %}s{% endif %}
+        </div>
+      </div>
+    </section>
+
+    <!-- Projects -->
     {% if projects %}
-      <ul class="space-y-4">
+      <section class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         {% for project in projects %}
-          <li
+          <article
             :class="darkMode
-              ? 'bg-primary-bg-dark border border-accent-1 hover:bg-bubble-bg-dark'
-              : 'bg-primary-bg-light border border-accent-2 hover:bg-bubble-bg-light'"
-            class="p-4 rounded transition-colors duration-300">
+              ? 'border-accent-1 bg-bubble-bg-dark'
+              : 'border-accent-2 bg-bubble-bg-light'"
+            class="group rounded-2xl border p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
 
-            <a href="{% url 'kanban:project_detail' project.pk %}"
-               class="block font-semibold text-lg underline hover:opacity-80">
-              {{ project.name }}
-            </a>
+            <div class="flex items-start justify-between gap-4">
+              <div class="min-w-0">
+                <p
+                  :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                  class="text-xs font-semibold uppercase tracking-wide">
+                  Project
+                </p>
 
-            <p class="text-sm mt-1 text-gray-500 dark:text-gray-400">
-              Owner: {{ project.owner }}
-            </p>
-          </li>
+                <a
+                  href="{% url 'kanban:project_detail' project.pk %}"
+                  :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                  class="mt-1 block break-words text-xl font-bold underline-offset-4 transition hover:underline hover:opacity-80">
+                  {{ project.name }}
+                </a>
+              </div>
+
+              <div
+                :class="darkMode
+                  ? 'border-accent-1 bg-sunken-dark'
+                  : 'border-accent-2 bg-sunken-light'"
+                class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border shadow-sm">
+                <i
+                  :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                  class="fa-solid fa-table-columns"></i>
+              </div>
+            </div>
+
+            {% if project.description %}
+              <p class="mt-4 line-clamp-3 text-sm leading-6 opacity-75">
+                {{ project.description }}
+              </p>
+            {% else %}
+              <p class="mt-4 text-sm italic opacity-60">
+                No project description provided.
+              </p>
+            {% endif %}
+
+            <div
+              :class="darkMode
+                ? 'border-accent-1 bg-sunken-dark'
+                : 'border-accent-2 bg-sunken-light'"
+              class="mt-5 rounded-xl border p-4 text-sm">
+
+              <p class="text-xs font-semibold uppercase tracking-wide opacity-60">
+                Owner
+              </p>
+
+              <p class="mt-1 font-semibold">
+                {% if project.owner %}
+                  <a
+                    href="{% url 'socialhub:profile_details' project.owner.slug %}"
+                    :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                    class="underline-offset-4 transition hover:underline hover:opacity-80">
+                    {{ project.owner.display_name }}
+                  </a>
+                {% else %}
+                  Unassigned
+                {% endif %}
+              </p>
+            </div>
+
+            <div class="mt-5 flex flex-wrap gap-2">
+              <a
+                href="{% url 'kanban:project_detail' project.pk %}"
+                :class="darkMode
+                  ? 'bg-accent-dark text-primary-bg-dark'
+                  : 'bg-accent-light text-primary-bg-light'"
+                class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+                <i class="fa-solid fa-arrow-right"></i>
+                Open board
+              </a>
+
+              <a
+                href="{% url 'kanban:backlog' project.pk %}"
+                :class="darkMode
+                  ? 'border-accent-1 bg-sunken-dark'
+                  : 'border-accent-2 bg-sunken-light'"
+                class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+                <i class="fa-solid fa-list-check"></i>
+                Backlog
+              </a>
+
+              <a
+                href="{% url 'kanban:sprint_metrics' project.pk %}"
+                :class="darkMode
+                  ? 'border-accent-1 bg-sunken-dark'
+                  : 'border-accent-2 bg-sunken-light'"
+                class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+                <i class="fa-solid fa-flag-checkered"></i>
+                Sprints
+              </a>
+            </div>
+          </article>
         {% endfor %}
-      </ul>
+      </section>
     {% else %}
-      <p class="text-center text-sm text-gray-500 dark:text-gray-400">
-        No kanban projects available.
-      </p>
-    {% endif %}
+      <section
+        :class="darkMode
+          ? 'border-accent-1 bg-bubble-bg-dark'
+          : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-2xl border border-dashed p-10 text-center shadow-sm">
 
-    <a href="{% url 'core:dashboard' %}"
-       :class="darkMode
-         ? 'bg-accent-dark text-primary-bg-dark'
-         : 'bg-accent-light text-primary-bg-light'"
-       class="inline-block px-4 py-2 mt-6 rounded font-semibold hover:opacity-90 transition text-sm text-center">
-      Back to Dashboard
-    </a>
+        <div
+          :class="darkMode
+            ? 'border-accent-1 bg-sunken-dark'
+            : 'border-accent-2 bg-sunken-light'"
+          class="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl border shadow-sm">
+          <i
+            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+            class="fa-regular fa-folder-open text-2xl"></i>
+        </div>
+
+        <h2 class="mt-5 text-xl font-bold">
+          No kanban projects available.
+        </h2>
+
+        <p class="mx-auto mt-2 max-w-md text-sm leading-6 opacity-70">
+          Projects you own or collaborate on will appear here.
+        </p>
+
+        <a
+          href="{% url 'core:dashboard' %}"
+          :class="darkMode
+            ? 'bg-accent-dark text-primary-bg-dark'
+            : 'bg-accent-light text-primary-bg-light'"
+          class="mt-5 inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-house"></i>
+          Back to Dashboard
+        </a>
+      </section>
+    {% endif %}
 
   </div>
 </section>
