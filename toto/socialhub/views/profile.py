@@ -1,6 +1,6 @@
 from django.views.generic import ListView, DetailView
 from django.contrib.auth.mixins import LoginRequiredMixin
-from toto.socialhub.models import Person, Community
+from toto.socialhub.models import Person, Community, Experience
 from toto.core.page import PageProcessor
 from django.shortcuts import redirect
 from django.contrib.auth.decorators import login_required
@@ -23,14 +23,31 @@ class ProfileDetailView(LoginRequiredMixin, DetailView):
     template_name = "socialhub/profile_details.html"
     context_object_name = "profile"
 
+    def get_queryset(self):
+        return (
+            super()
+            .get_queryset()
+            .prefetch_related(
+                "communities",
+                "experiences",
+            )
+            .select_related(
+                "address",
+                "user",
+            )
+        )
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         profile = self.get_object()
 
+        context["experiences"] = profile.experiences.all()
+
         # Only show reference requests if viewing your own profile
         if profile.user == self.request.user:
             context["reference_requests"] = profile.sent_references.select_related(
-                "application", "application__community"
+                "application",
+                "application__community",
             ).order_by("-created_at")
         else:
             context["reference_requests"] = None
