@@ -8,10 +8,14 @@ from toto.core.page import PageProcessor
 
 
 # ────────────────────────────────────────────────
-# LIST VIEWS
+# LIST VIEW (all articles or filter by tag)
 # ────────────────────────────────────────────────
 
 class ArticleListView(ListView):
+    """
+    Displays all articles, optionally filtered by tag.
+    Supports search by title or description.
+    """
     model = Page
     template_name = "verbena/article_list.html"
     context_object_name = "articles"
@@ -21,6 +25,7 @@ class ArticleListView(ListView):
     def get_queryset(self):
         qs = super().get_queryset()
 
+        # Search query
         query = self.request.GET.get("q")
         if query:
             qs = qs.filter(
@@ -28,27 +33,20 @@ class ArticleListView(ListView):
                 models.Q(description__icontains=query)
             )
 
+        # Optional tag filter
+        tag_slug = self.kwargs.get("tag_slug")
+        if tag_slug:
+            self.tag = Tag.objects.get(slug=tag_slug)
+            qs = qs.filter(tags=self.tag)
+        else:
+            self.tag = None
+
         return qs
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["tags"] = Tag.objects.all().order_by("name")
-        return PageProcessor().decorate(context, self.request)
-
-
-class VerbenaPageListByTagView(ListView):
-    model = Page
-    template_name = "verbena/article_list_by_tag.html"
-    context_object_name = "pages"
-
-    def get_queryset(self):
-        tag_slug = self.kwargs["tag_slug"]
-        self.tag = Tag.objects.get(slug=tag_slug)
-        return Page.objects.filter(tags=self.tag).order_by("title")
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context["tag"] = self.tag
+        context["tag"] = getattr(self, "tag", None)
         return PageProcessor().decorate(context, self.request)
 
 
@@ -57,6 +55,9 @@ class VerbenaPageListByTagView(ListView):
 # ────────────────────────────────────────────────
 
 class VerbenaPageDetailView(DetailView):
+    """
+    Displays a single article page with sections and subsections.
+    """
     model = Page
     template_name = "verbena/article_detail.html"
     context_object_name = "page"
@@ -67,10 +68,8 @@ class VerbenaPageDetailView(DetailView):
         context = super().get_context_data(**kwargs)
 
         rendered_sections = []
-
         for section in self.object.sections.all():
             rendered_subsections = []
-
             for sub in section.subsections.all():
                 rendered_subsections.append({
                     "title": sub.title,

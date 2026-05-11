@@ -1,7 +1,9 @@
 {% extends "oya/base.html" %}
 {% load static %}
 
-{% block title %}Articles | {{ platform.site_name }}{% endblock %}
+{% block title %}
+  {% if tag %}Articles: {{ tag.name }}{% else %}Articles{% endif %} | {{ platform.site_name }}
+{% endblock %}
 
 {% block content %}
 <section
@@ -15,15 +17,14 @@
     <!-- Header -->
     <header class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <p
-          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-          class="text-xs font-semibold uppercase tracking-wide">
+        <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+           class="text-xs font-semibold uppercase tracking-wide">
           Library
         </p>
 
         <h1 class="mt-2 flex items-center gap-3 text-4xl font-extrabold tracking-tight">
           <i class="fa-solid fa-newspaper"></i>
-          Articles
+          {% if tag %}{{ tag.name }} Articles{% else %}Articles{% endif %}
         </h1>
 
         <p class="mt-2 max-w-2xl text-sm opacity-70">
@@ -31,46 +32,34 @@
         </p>
       </div>
 
-      <a
-        href="{% url 'core:dashboard' %}"
-        :class="darkMode
-          ? 'border-accent-1 bg-bubble-bg-dark'
-          : 'border-accent-2 bg-bubble-bg-light'"
-        class="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold shadow-sm transition hover:opacity-85">
+      <a href="{% url 'core:dashboard' %}"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark'
+                           : 'border-accent-2 bg-bubble-bg-light'"
+         class="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold shadow-sm transition hover:opacity-85">
         <i class="fa-solid fa-arrow-left"></i>
         Dashboard
       </a>
     </header>
 
     <!-- Search + Tags -->
-    <section
-      :class="darkMode
-        ? 'border-accent-1 bg-bubble-bg-dark'
-        : 'border-accent-2 bg-bubble-bg-light'"
-      class="rounded-2xl border p-5 shadow-sm">
-
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark'
+                              : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-2xl border p-5 shadow-sm">
       <form method="get" class="flex flex-col gap-3 sm:flex-row">
         <label class="relative block flex-1">
           <span class="sr-only">Search articles</span>
           <i class="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm opacity-50"></i>
-
-          <input
-            type="text"
-            name="q"
-            value="{{ request.GET.q }}"
-            placeholder="Search articles..."
-            :class="darkMode
-              ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder:text-text-main-dark/50'
-              : 'border-accent-2 bg-primary-bg-light text-text-main-light placeholder:text-text-main-light/50'"
-            class="w-full rounded-lg border py-2.5 pl-9 pr-3 text-sm outline-none transition focus:ring-2 focus:ring-current/20">
+          <input type="text" name="q" value="{{ request.GET.q }}" placeholder="Search articles..."
+                 :class="darkMode
+                   ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder:text-text-main-dark/50'
+                   : 'border-accent-2 bg-primary-bg-light text-text-main-light placeholder:text-text-main-light/50'"
+                 class="w-full rounded-lg border py-2.5 pl-9 pr-3 text-sm outline-none transition focus:ring-2 focus:ring-current/20">
         </label>
 
-        <button
-          type="submit"
-          :class="darkMode
-            ? 'bg-accent-dark text-primary-bg-dark'
-            : 'bg-accent-light text-primary-bg-light'"
-          class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold shadow-sm transition hover:opacity-90">
+        <button type="submit"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark'
+                                  : 'bg-accent-light text-primary-bg-light'"
+                class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold shadow-sm transition hover:opacity-90">
           <i class="fa-solid fa-magnifying-glass"></i>
           Search
         </button>
@@ -78,30 +67,24 @@
 
       {% if tags %}
         <div class="mt-5 flex flex-wrap gap-2">
-          {% for tag in tags %}
-            <a
-              href="{% url 'verbena:page_list_by_tag' tag.slug %}"
-              :class="darkMode
-                ? 'border-accent-1 bg-primary-bg-dark text-accent-dark'
-                : 'border-accent-2 bg-primary-bg-light text-accent-light'"
-              class="inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-semibold shadow-sm transition hover:opacity-85">
+          {% for t in tags %}
+            <a href="{% url 'verbena:page_list_by_tag' t.slug %}"
+               :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-accent-dark'
+                                 : 'border-accent-2 bg-primary-bg-light text-accent-light'"
+               class="inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-semibold shadow-sm transition hover:opacity-85">
               <i class="fa-solid fa-hashtag text-[10px]"></i>
-              {{ tag.name }}
+              {{ t.name }}
             </a>
           {% endfor %}
         </div>
       {% endif %}
     </section>
 
-    <!-- Content -->
+    <!-- Articles List -->
     <section class="grid grid-cols-1 gap-6">
-
-      <!-- Articles -->
-      <div
-        :class="darkMode
-          ? 'border-accent-1 bg-bubble-bg-dark'
-          : 'border-accent-2 bg-bubble-bg-light'"
-        class="rounded-2xl border p-5 shadow-sm">
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark'
+                              : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-2xl border p-5 shadow-sm">
 
         <div class="mb-4 flex items-center justify-between gap-3">
           <div>
@@ -110,15 +93,12 @@
               Articles
             </h2>
             <p class="mt-1 text-sm opacity-70">
-              Latest readable pages and article entries.
+              {% if tag %}Showing articles tagged "{{ tag.name }}"{% else %}Latest readable pages and article entries.{% endif %}
             </p>
           </div>
-
-          <span
-            :class="darkMode
-              ? 'border-accent-1 bg-primary-bg-dark'
-              : 'border-accent-2 bg-primary-bg-light'"
-            class="rounded-full border px-3 py-1 text-xs font-semibold">
+          <span :class="darkMode ? 'border-accent-1 bg-primary-bg-dark'
+                                 : 'border-accent-2 bg-primary-bg-light'"
+                class="rounded-full border px-3 py-1 text-xs font-semibold">
             {{ articles|length }}
           </span>
         </div>
@@ -126,45 +106,34 @@
         {% if articles %}
           <div class="space-y-3">
             {% for article in articles %}
-              <article
-                :class="darkMode
-                  ? 'border-accent-1 bg-primary-bg-dark hover:bg-bubble-bg-dark'
-                  : 'border-accent-2 bg-primary-bg-light hover:bg-bubble-bg-light'"
-                class="group rounded-xl border p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-
+              <article :class="darkMode ? 'border-accent-1 bg-primary-bg-dark hover:bg-bubble-bg-dark'
+                                         : 'border-accent-2 bg-primary-bg-light hover:bg-bubble-bg-light'"
+                       class="group rounded-xl border p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
                 <div class="flex items-start gap-3">
-                  <div
-                    :class="darkMode
-                      ? 'border-accent-1 bg-bubble-bg-dark text-accent-dark'
-                      : 'border-accent-2 bg-bubble-bg-light text-accent-light'"
-                    class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border">
+                  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-accent-dark'
+                                         : 'border-accent-2 bg-bubble-bg-light text-accent-light'"
+                       class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border">
                     <i class="fa-solid fa-file-lines"></i>
                   </div>
-
                   <div class="min-w-0 flex-1">
                     <h3 class="break-words text-base font-bold">
-                      <a
-                        href="{{ article.get_absolute_url }}"
-                        :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-                        class="underline-offset-4 transition hover:underline">
+                      <a href="{{ article.get_absolute_url }}"
+                         :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                         class="underline-offset-4 transition hover:underline">
                         {{ article.title }}
                       </a>
                     </h3>
-
                     <p class="mt-1 break-words text-sm leading-5 opacity-75">
                       {{ article.description|truncatewords:24 }}
                     </p>
-
                     <div class="mt-3 flex flex-wrap items-center gap-3 text-xs opacity-65">
                       <span class="inline-flex items-center gap-1">
                         <i class="fa-solid fa-calendar-days"></i>
                         {{ article.created_at|date:"M d, Y" }}
                       </span>
-
-                      <a
-                        href="{{ article.get_absolute_url }}"
-                        :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-                        class="inline-flex items-center gap-1 font-semibold opacity-90 transition group-hover:opacity-100">
+                      <a href="{{ article.get_absolute_url }}"
+                         :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                         class="inline-flex items-center gap-1 font-semibold opacity-90 transition group-hover:opacity-100">
                         Read
                         <i class="fa-solid fa-arrow-right text-[10px] transition group-hover:translate-x-0.5"></i>
                       </a>
@@ -175,16 +144,14 @@
             {% endfor %}
           </div>
         {% else %}
-          <div
-            :class="darkMode
-              ? 'border-accent-1 bg-primary-bg-dark'
-              : 'border-accent-2 bg-primary-bg-light'"
-            class="rounded-xl border border-dashed p-8 text-center text-sm italic opacity-70">
+          <div :class="darkMode ? 'border-accent-1 bg-primary-bg-dark'
+                                 : 'border-accent-2 bg-primary-bg-light'"
+               class="rounded-xl border border-dashed p-8 text-center text-sm italic opacity-70">
             No articles found.
           </div>
         {% endif %}
-      </div>
 
+      </div>
     </section>
 
   </div>
