@@ -3,11 +3,11 @@ from django.urls import reverse
 from django.utils.text import slugify
 
 from toto.core.domain import DomainEntity
-from toto.socialhub.models import Person  # ← all authors now use Person
+from toto.socialhub.models import Person  # all authors use Person
 
 
 # ────────────────────────────────────────────────
-# TAG
+# TAG (shared across pages, sections, and library)
 # ────────────────────────────────────────────────
 
 class Tag(DomainEntity):
@@ -53,7 +53,7 @@ class Page(DomainEntity):
 
 
 # ────────────────────────────────────────────────
-# IMAGE (NOT projected)
+# IMAGE
 # ────────────────────────────────────────────────
 
 class Image(models.Model):
@@ -79,42 +79,36 @@ class Topic(DomainEntity):
         null=True, blank=True,
         related_name="topics"
     )
-
     person = models.ForeignKey(
         "socialhub.Person",
         on_delete=models.SET_NULL,
         null=True, blank=True,
         related_name="topics"
     )
-
     event = models.ForeignKey(
         "events.Event",
         on_delete=models.SET_NULL,
         null=True, blank=True,
         related_name="topics"
     )
-
     route = models.ForeignKey(
         "locations.Route",
         on_delete=models.SET_NULL,
         null=True, blank=True,
         related_name="topics"
     )
-
     territory = models.ForeignKey(
         "locations.Territory",
         on_delete=models.SET_NULL,
         null=True, blank=True,
         related_name="topics"
     )
-
     address = models.ForeignKey(
         "locations.Address",
         on_delete=models.SET_NULL,
         null=True, blank=True,
         related_name="topics"
     )
-
     federation = models.ForeignKey(
         "core.Federation",
         on_delete=models.SET_NULL,
@@ -140,7 +134,6 @@ class Topic(DomainEntity):
 
 class Section(DomainEntity):
     page = models.ForeignKey(Page, related_name="sections", on_delete=models.CASCADE)
-
     title = models.CharField(max_length=255, blank=True)
     content = models.TextField(blank=True)
 
@@ -151,9 +144,7 @@ class Section(DomainEntity):
         null=True,
         blank=True
     )
-
     order = models.PositiveIntegerField(default=0)
-
     tags = models.ManyToManyField(Tag, related_name="sections", blank=True)
     topics = models.ManyToManyField(Topic, related_name="sections", blank=True)
 
@@ -170,17 +161,14 @@ class Section(DomainEntity):
 
 class Subsection(DomainEntity):
     section = models.ForeignKey(Section, related_name="subsections", on_delete=models.CASCADE)
-
     title = models.CharField(max_length=255, blank=True)
     content = models.TextField(blank=True)
-
     image = models.ForeignKey(
         Image,
         related_name="subsections",
         on_delete=models.SET_NULL,
         null=True, blank=True
     )
-
     order = models.PositiveIntegerField(default=0)
     topics = models.ManyToManyField(Topic, related_name="subsections", blank=True)
 
@@ -189,3 +177,86 @@ class Subsection(DomainEntity):
 
     def __str__(self):
         return f"{self.section.title} – {self.title or 'Subsection'}"
+
+
+# ────────────────────────────────────────────────
+# LIBRARY MODELS
+# ────────────────────────────────────────────────
+
+class Reference(DomainEntity):
+    """
+    Abstract base model for all bibliographic references (Books, Articles, Audio, Video)
+    """
+    title = models.CharField(max_length=500)
+    authors = models.ManyToManyField(Person, related_name="%(class)s_references", blank=True)
+    year = models.PositiveIntegerField(null=True, blank=True)
+    doi = models.CharField(max_length=255, blank=True)
+    url = models.URLField(blank=True)
+    abstract = models.TextField(blank=True)
+    tags = models.ManyToManyField(Tag, related_name="%(class)s_references", blank=True)
+
+    slug = models.SlugField(unique=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        abstract = True
+        ordering = ["-year", "title"]
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slugify(self.title)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.title
+
+    def get_bibtex_key(self):
+        first_author = self.authors.first().last_name if self.authors.exists() else "anon"
+        return f"{first_author}{self.year or 'n.d.'}{slugify(self.title)[:20]}"
+
+    @property
+    def bibtex_type(self):
+        return "misc"
+
+
+class Book(Reference):
+    publisher = models.CharField(max_length=255, blank=True)
+    edition = models.CharField(max_length=50, blank=True)
+    isbn = models.CharField(max_length=20, blank=True)
+
+    @property
+    def bibtex_type(self):
+        return "book"
+
+
+class Article(Reference):
+    journal = models.CharField(max_length=255, blank=True)
+    volume = models.CharField(max_length=20, blank=True)
+    issue = models.CharField(max_length=20, blank=True)
+    pages = models.CharField(max_length=50, blank=True)
+
+    @property
+    def bibtex_type(self):
+        return "article"
+
+
+class Audio(Reference):
+    artist = models.CharField(max_length=255, blank=True)
+    album = models.CharField(max_length=255, blank=True)
+    duration_seconds = models.PositiveIntegerField(null=True, blank=True)
+    file = models.FileField(upload_to="library_audio/", blank=True, null=True)
+
+    @property
+    def bibtex_type(self):
+        return "audio"
+
+
+class Video(Reference):
+    director = models.CharField(max_length=255, blank=True)
+    producer = models.CharField(max_length=255, blank=True)
+    duration_seconds = models.PositiveIntegerField(null=True, blank=True)
+    file = models.FileField(upload_to="library_video/", blank=True, null=True)
+
+    @property
+    def bibtex_type(self):
+        return "video"

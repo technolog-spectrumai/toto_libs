@@ -1,6 +1,7 @@
 from toto.verbena.models import (
     Page, Section, Subsection,
     Image, Tag, Topic,
+    Book, Article, Audio, Video
 )
 from toto.core.ingress import IngressCommand
 import random
@@ -11,7 +12,7 @@ from django.utils.text import slugify
 
 
 class Command(IngressCommand):
-    help = "Populate the database with sample Verbena Pages, Sections, and Subsections"
+    help = "Populate the database with sample Verbena Pages, Sections, Subsections and Library items"
 
     # ────────────────────────────────────────────────
     # TOPIC CREATION
@@ -46,6 +47,7 @@ class Command(IngressCommand):
 
         author = self.get_or_create_demo_person()
         pages = self.get_sample_pages()
+        self.create_library_samples(author)
 
         created_pages = []
 
@@ -74,7 +76,7 @@ class Command(IngressCommand):
         return person
 
     # ────────────────────────────────────────────────
-    # SAMPLE DATA
+    # SAMPLE PAGES
     # ────────────────────────────────────────────────
 
     def get_sample_pages(self):
@@ -107,6 +109,63 @@ class Command(IngressCommand):
                 ]
             }
         }
+
+    # ────────────────────────────────────────────────
+    # SAMPLE LIBRARY ITEMS
+    # ────────────────────────────────────────────────
+
+    def create_library_samples(self, author):
+        # Create sample Books
+        for i in range(3):
+            book = Book.objects.create(
+                title=f"Sample Book {i+1}",
+                year=2020 + i,
+                publisher="Demo Publisher",
+                edition=f"{i+1}th",
+                isbn=f"978-3-16-14841{i}",
+            )
+            book.authors.add(author)
+            book.tags.add(*Tag.objects.order_by("?")[:2])
+            book.save()
+            self.stdout.write(self.style.SUCCESS(f"📚 Created book: {book.title}"))
+
+        # Create sample Articles
+        for i in range(3):
+            article = Article.objects.create(
+                title=f"Sample Article {i+1}",
+                year=2021 + i,
+                journal="Demo Journal",
+                volume=str(i+1),
+                pages=f"{i*10+1}-{i*10+5}",
+            )
+            article.authors.add(author)
+            article.tags.add(*Tag.objects.order_by("?")[:2])
+            article.save()
+            self.stdout.write(self.style.SUCCESS(f"📰 Created article: {article.title}"))
+
+        # Create sample Audio
+        for i in range(2):
+            audio = Audio.objects.create(
+                title=f"Sample Audio {i+1}",
+                artist="Demo Artist",
+                album=f"Demo Album {i+1}",
+            )
+            audio.authors.add(author)
+            audio.tags.add(*Tag.objects.order_by("?")[:1])
+            audio.save()
+            self.stdout.write(self.style.SUCCESS(f"🎵 Created audio: {audio.title}"))
+
+        # Create sample Video
+        for i in range(2):
+            video = Video.objects.create(
+                title=f"Sample Video {i+1}",
+                director="Demo Director",
+                producer=f"Demo Producer {i+1}",
+            )
+            video.authors.add(author)
+            video.tags.add(*Tag.objects.order_by("?")[:1])
+            video.save()
+            self.stdout.write(self.style.SUCCESS(f"🎬 Created video: {video.title}"))
 
     # ────────────────────────────────────────────────
     # PAGE CREATION

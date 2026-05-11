@@ -2,8 +2,10 @@ from django.contrib import admin
 from django.urls import reverse
 from django.utils.html import format_html
 from django import forms
-from markdownx.widgets import MarkdownxWidget
-from .models import Page, Section, Subsection, Image, Tag, Topic
+from .models import (
+    Page, Section, Subsection, Image, Tag, Topic,
+    Book, Article, Audio, Video
+)
 
 
 # ────────────────────────────────────────────────
@@ -15,7 +17,7 @@ class SectionAdminForm(forms.ModelForm):
         model = Section
         fields = "__all__"
         widgets = {
-            "content": MarkdownxWidget(),
+            "content": forms.Textarea(attrs={"rows": 4}),
         }
 
 
@@ -24,7 +26,7 @@ class SectionInlineForm(forms.ModelForm):
         model = Section
         fields = "__all__"
         widgets = {
-            "content": MarkdownxWidget(),
+            "content": forms.Textarea(attrs={"rows": 4}),
         }
 
 
@@ -33,7 +35,7 @@ class SubsectionInlineForm(forms.ModelForm):
         model = Subsection
         fields = "__all__"
         widgets = {
-            "content": MarkdownxWidget(),
+            "content": forms.Textarea(attrs={"rows": 4}),
         }
 
 
@@ -60,7 +62,7 @@ class SectionInline(admin.StackedInline):
 
 
 # ────────────────────────────────────────────────
-# ADMINS
+# PAGE / SECTION / SUBSECTION / IMAGE / TAG / TOPIC
 # ────────────────────────────────────────────────
 
 @admin.register(Page)
@@ -150,3 +152,47 @@ class TopicAdmin(admin.ModelAdmin):
         return ",\n".join(parts) if parts else "—"
 
     linked_entities.short_description = "Linked Entities"
+
+
+# ────────────────────────────────────────────────
+# LIBRARY ADMINS
+# ────────────────────────────────────────────────
+
+class ReferenceAdminForm(forms.ModelForm):
+    class Meta:
+        model = None  # Django will set the model automatically in ModelAdmin
+        fields = "__all__"
+        widgets = {
+            "abstract": forms.Textarea(attrs={"rows": 4}),
+        }
+class ReferenceAdmin(admin.ModelAdmin):
+    form = ReferenceAdminForm
+    list_display = ["title", "author_list", "year", "bibtex_type"]
+    search_fields = ["title", "abstract", "doi", "url"]
+    list_filter = ["year", "tags"]
+    filter_horizontal = ["authors", "tags"]
+
+    def author_list(self, obj):
+        authors = obj.authors.all()
+        return ", ".join(a.full_name for a in authors) if authors else "—"
+    author_list.short_description = "Authors"
+
+
+@admin.register(Book)
+class BookAdmin(ReferenceAdmin):
+    pass
+
+
+@admin.register(Article)
+class ArticleAdmin(ReferenceAdmin):
+    pass
+
+
+@admin.register(Audio)
+class AudioAdmin(ReferenceAdmin):
+    list_display = ["title", "artist", "album", "year", "bibtex_type", "file"]
+
+
+@admin.register(Video)
+class VideoAdmin(ReferenceAdmin):
+    list_display = ["title", "director", "producer", "year", "bibtex_type", "file"]
