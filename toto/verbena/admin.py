@@ -3,7 +3,7 @@ from django.urls import reverse
 from django.utils.html import format_html
 from django import forms
 from markdownx.widgets import MarkdownxWidget
-from .models import Page, Section, Subsection, Image, Tag, Book, Chapter, Topic
+from .models import Page, Section, Subsection, Image, Tag, Topic
 
 
 # ────────────────────────────────────────────────
@@ -121,37 +121,6 @@ class TagAdmin(admin.ModelAdmin):
     list_display = ["name", "slug"]
     search_fields = ["name"]
     prepopulated_fields = {"slug": ("name",)}
-
-
-class ChapterInline(admin.TabularInline):
-    model = Chapter
-    extra = 1
-    fields = ["page", "order"]
-    ordering = ["order"]
-    autocomplete_fields = ["page"]
-
-
-@admin.register(Book)
-class BookAdmin(admin.ModelAdmin):
-    list_display = ["title", "created_at", "page_count"]
-    search_fields = ["title", "description"]
-    list_filter = ["tags"]
-    prepopulated_fields = {"slug": ("title",)}
-    filter_horizontal = ["tags"]
-    inlines = [ChapterInline]
-
-    def page_count(self, obj):
-        return obj.chapters.count()
-    page_count.short_description = "Pages"
-
-
-
-@admin.register(Chapter)
-class ChapterAdmin(admin.ModelAdmin):
-    list_display = ["book", "page", "order"]
-    list_filter = ["book"]
-    ordering = ["book", "order"]
-    autocomplete_fields = ["book", "page"]
 
 
 @admin.register(Topic)

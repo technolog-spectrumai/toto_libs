@@ -3,7 +3,7 @@ from django.urls import reverse
 from django.utils.text import slugify
 
 from toto.core.domain import DomainEntity
-from toto.socialhub.models import Person   # ← all authors now use Person
+from toto.socialhub.models import Person  # ← all authors now use Person
 
 
 # ────────────────────────────────────────────────
@@ -189,56 +189,3 @@ class Subsection(DomainEntity):
 
     def __str__(self):
         return f"{self.section.title} – {self.title or 'Subsection'}"
-
-
-# ────────────────────────────────────────────────
-# BOOK
-# ────────────────────────────────────────────────
-
-class Book(DomainEntity):
-    title = models.CharField(max_length=255)
-    slug = models.SlugField(unique=True, blank=True)
-    description = models.TextField(blank=True)
-
-    cover_image = models.ForeignKey(
-        Image,
-        related_name="book_covers",
-        on_delete=models.SET_NULL,
-        null=True, blank=True
-    )
-
-    tags = models.ManyToManyField(Tag, related_name="books", blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    def save(self, *args, **kwargs):
-        if not self.slug:
-            self.slug = slugify(self.title)
-        super().save(*args, **kwargs)
-
-    def pages(self):
-        return Page.objects.filter(chapters__book=self).order_by("chapters__order")
-
-    def authors(self):
-        return Person.objects.filter(
-            verbena_sections__page__chapters__book=self
-        ).distinct()
-
-    def __str__(self):
-        return self.title
-
-
-# ────────────────────────────────────────────────
-# CHAPTER
-# ────────────────────────────────────────────────
-
-class Chapter(DomainEntity):
-    book = models.ForeignKey(Book, related_name="chapters", on_delete=models.CASCADE)
-    page = models.ForeignKey(Page, related_name="books", on_delete=models.CASCADE)
-    order = models.PositiveIntegerField(default=0)
-
-    class Meta:
-        ordering = ["order"]
-        unique_together = ("book", "page")
-
-    def __str__(self):
-        return f"{self.book.title} → {self.page.title} (#{self.order})"

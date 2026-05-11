@@ -4,8 +4,6 @@ from toto.verbena.models import (
     Topic as TopicSql,
     Section as SectionSql,
     Subsection as SubsectionSql,
-    Book as BookSql,
-    Chapter as ChapterSql,
 )
 
 from toto.verbena.graph.models import (
@@ -14,8 +12,6 @@ from toto.verbena.graph.models import (
     TopicNode,
     SectionNode,
     SubsectionNode,
-    BookNode,
-    ChapterNode,
 )
 
 # External graph models (all DomainNode → use uid)
@@ -283,64 +279,3 @@ class SubsectionProjection(BaseVerbenaProjection):
             SubsectionSql.objects.count()
             + sum(subsection.topics.count() for subsection in SubsectionSql.objects.prefetch_related("topics"))
         )
-
-
-# =========================================================
-# BOOK PROJECTION
-# =========================================================
-
-class BookProjection(BaseVerbenaProjection):
-    model = "Book"
-    sql_model = BookSql
-    neo_model = BookNode
-
-    field_map = {
-        "title": "title",
-        "slug": "slug",
-        "description": "description",
-        "created_at": "created_at",
-    }
-
-    def sync_edges(self):
-        for b in BookSql.objects.all():
-            gb = BookNode.nodes.get(uuid=str(b.uid))
-
-            gb.tags.disconnect_all()
-            for tag in b.tags.all():
-                gt = TagNode.nodes.get_or_none(uuid=str(tag.uid))
-                if gt:
-                    gb.tags.connect(gt)
-
-    def link_count(self):
-        return sum(book.tags.count() for book in BookSql.objects.prefetch_related("tags"))
-
-
-# =========================================================
-# CHAPTER PROJECTION
-# =========================================================
-
-class ChapterProjection(BaseVerbenaProjection):
-    model = "Chapter"
-    sql_model = ChapterSql
-    neo_model = ChapterNode
-
-    field_map = {
-        "order": "order",
-    }
-
-    def sync_edges(self):
-        for c in ChapterSql.objects.all():
-            gc = ChapterNode.nodes.get(uuid=str(c.uid))
-
-            gc.book.disconnect_all()
-            gb = BookNode.nodes.get_or_none(uuid=str(c.book.uid))
-            if gb:
-                gc.book.connect(gb)
-
-            gc.page.disconnect_all()
-            gp = PageNode.nodes.get_or_none(uuid=str(c.page.uid))
-            if gp:
-                gc.page.connect(gp)
-
-    def link_count(self):
-        return ChapterSql.objects.count() * 2

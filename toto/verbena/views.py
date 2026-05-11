@@ -3,7 +3,7 @@ from django.views.generic import ListView, DetailView
 from django.utils.safestring import mark_safe
 from markdownx.utils import markdownify
 
-from .models import Page, Tag, Book
+from .models import Page, Tag
 from toto.core.page import PageProcessor
 
 
@@ -32,50 +32,13 @@ class ArticleListView(ListView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-
         context["tags"] = Tag.objects.all().order_by("name")
-        context["books"] = Book.objects.all().order_by("title")
-
         return PageProcessor().decorate(context, self.request)
-
-
-class VerbenaBookDetailView(DetailView):
-    model = Book
-    template_name = "verbena/book_detail.html"
-    context_object_name = "book"
-    slug_field = "slug"
-    slug_url_kwarg = "slug"
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-
-        # Ordered chapters
-        chapters = (
-            self.object.chapters
-            .select_related("page")
-            .order_by("order")
-        )
-
-        rendered_chapters = []
-        for chapter in chapters:
-            rendered_chapters.append({
-                "order": chapter.order,
-                "page": chapter.page,
-                "title": chapter.page.title,
-                "description": chapter.page.description,
-                "slug": chapter.page.slug,
-                "authors": chapter.page.authors(),
-            })
-
-        context["chapters"] = rendered_chapters
-
-        return PageProcessor().decorate(context, self.request)
-
 
 
 class VerbenaPageListByTagView(ListView):
     model = Page
-    template_name = "verbena/page_list_by_tag.html"
+    template_name = "verbena/article_list_by_tag.html"
     context_object_name = "pages"
 
     def get_queryset(self):
@@ -95,7 +58,7 @@ class VerbenaPageListByTagView(ListView):
 
 class VerbenaPageDetailView(DetailView):
     model = Page
-    template_name = "verbena/page_detail.html"
+    template_name = "verbena/article_detail.html"
     context_object_name = "page"
     slug_field = "slug"
     slug_url_kwarg = "slug"
@@ -124,7 +87,7 @@ class VerbenaPageDetailView(DetailView):
                 "topics": [t.name for t in section.topics.all()],
                 "subsections": rendered_subsections,
             })
-        context["books"] = Book.objects.filter(chapters__page=self.object).distinct()
+
         context["sections"] = rendered_sections
 
         # For "Back to Page List"

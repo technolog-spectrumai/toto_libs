@@ -108,7 +108,7 @@
     </header>
 
     <!-- Overview -->
-    {% if books or sections %}
+    {% if sections %}
       <section
         :class="darkMode
           ? 'border-accent-1 bg-bubble-bg-dark'
@@ -124,7 +124,7 @@
               Overview
             </h2>
 
-            <div class="mt-4 grid grid-cols-2 gap-3">
+            <div class="mt-4 grid grid-cols-1 gap-3">
               <div
                 :class="darkMode
                   ? 'border-accent-1 bg-primary-bg-dark'
@@ -133,94 +133,59 @@
                 <div class="text-2xl font-bold">{{ sections|length }}</div>
                 <div class="text-xs opacity-65">Sections</div>
               </div>
-
-              <div
-                :class="darkMode
-                  ? 'border-accent-1 bg-primary-bg-dark'
-                  : 'border-accent-2 bg-primary-bg-light'"
-                class="rounded-xl border p-3">
-                <div class="text-2xl font-bold">
-                  {% if books %}{{ books|length }}{% else %}0{% endif %}
-                </div>
-                <div class="text-xs opacity-65">Books</div>
-              </div>
             </div>
-
-            {% if books %}
-              <div class="mt-5">
-                <p class="text-xs font-semibold uppercase tracking-wide opacity-60">
-                  This article is part of
-                </p>
-
-                <div class="mt-3 flex flex-wrap gap-2">
-                  {% for book in books %}
-                    <a
-                      href="{% url 'verbena:book_detail' slug=book.slug %}"
-                      :class="darkMode
-                        ? 'border-accent-1 bg-primary-bg-dark text-accent-dark'
-                        : 'border-accent-2 bg-primary-bg-light text-accent-light'"
-                      class="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold shadow-sm transition hover:opacity-85">
-                      <i class="fa-solid fa-book-open text-[10px]"></i>
-                      {{ book.title }}
-                    </a>
-                  {% endfor %}
-                </div>
-              </div>
-            {% endif %}
           </div>
 
           <!-- Contents -->
-          {% if sections %}
-            <nav>
-              <div class="flex items-start justify-between gap-3">
-                <div>
-                  <h2 class="flex items-center gap-2 text-lg font-bold">
-                    <i class="fa-solid fa-list-ul"></i>
-                    Contents
-                  </h2>
+          <nav>
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <h2 class="flex items-center gap-2 text-lg font-bold">
+                  <i class="fa-solid fa-list-ul"></i>
+                  Contents
+                </h2>
 
-                  <p class="mt-1 text-sm opacity-70">
-                    Jump to a section or subsection.
-                  </p>
-                </div>
+                <p class="mt-1 text-sm opacity-70">
+                  Jump to a section or subsection.
+                </p>
               </div>
+            </div>
 
-              <ol class="mt-4 grid gap-2 text-sm">
-                {% for section in sections %}
-                  <li
-                    :class="darkMode
-                      ? 'border-accent-1 bg-primary-bg-dark'
-                      : 'border-accent-2 bg-primary-bg-light'"
-                    class="rounded-xl border p-3">
+            <ol class="mt-4 grid gap-2 text-sm">
+              {% for section in sections %}
+                <li
+                  :class="darkMode
+                    ? 'border-accent-1 bg-primary-bg-dark'
+                    : 'border-accent-2 bg-primary-bg-light'"
+                  class="rounded-xl border p-3">
 
-                    <a
-                      href="#section-{{ forloop.counter }}"
-                      :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-                      class="font-bold underline-offset-4 transition hover:underline">
-                      {{ forloop.counter }}. {{ section.title }}
-                    </a>
+                  <a
+                    href="#section-{{ forloop.counter }}"
+                    :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                    class="font-bold underline-offset-4 transition hover:underline">
+                    {{ forloop.counter }}. {{ section.title }}
+                  </a>
 
-                    {% if section.subsections %}
-                      <ol
-                        class="mt-2 space-y-1 border-l pl-3 text-xs"
-                        :class="darkMode ? 'border-accent-dark' : 'border-accent-light'">
-                        {% for sub in section.subsections %}
-                          <li>
-                            <a
-                              href="#subsection-{{ forloop.parentloop.counter }}-{{ forloop.counter }}"
-                              :class="darkMode ? 'text-link-dark' : 'text-link-light'"
-                              class="opacity-85 underline-offset-4 transition hover:underline">
-                              {{ forloop.parentloop.counter }}.{{ forloop.counter }} — {{ sub.title }}
-                            </a>
-                          </li>
-                        {% endfor %}
-                      </ol>
-                    {% endif %}
-                  </li>
-                {% endfor %}
-              </ol>
-            </nav>
-          {% endif %}
+                  {% if section.subsections %}
+                    <ol
+                      class="mt-2 space-y-1 border-l pl-3 text-xs"
+                      :class="darkMode ? 'border-accent-dark' : 'border-accent-light'">
+                      {% for sub in section.subsections %}
+                        <li>
+                          <a
+                            href="#subsection-{{ forloop.parentloop.counter }}-{{ forloop.counter }}"
+                            :class="darkMode ? 'text-link-dark' : 'text-link-light'"
+                            class="opacity-85 underline-offset-4 transition hover:underline">
+                            {{ forloop.parentloop.counter }}.{{ forloop.counter }} — {{ sub.title }}
+                          </a>
+                        </li>
+                      {% endfor %}
+                    </ol>
+                  {% endif %}
+                </li>
+              {% endfor %}
+            </ol>
+          </nav>
         </div>
       </section>
     {% endif %}

@@ -29,7 +29,6 @@ class TagNode(DomainNode):
 
     pages = RelationshipFrom("PageNode", "HAS_TAG")
     sections = RelationshipFrom("SectionNode", "HAS_TAG")
-    books = RelationshipFrom("BookNode", "HAS_TAG")
 
 
 # ────────────────────────────────────────────────
@@ -46,7 +45,6 @@ class PageNode(DomainNode):
 
     tags = RelationshipTo(TagNode, "HAS_TAG")
     sections = RelationshipFrom("SectionNode", "BELONGS_TO_PAGE")
-    chapters = RelationshipFrom("ChapterNode", "PAGE_IN_CHAPTER")
 
 
 # ────────────────────────────────────────────────
@@ -105,32 +103,3 @@ class SubsectionNode(DomainNode):
 
     section = RelationshipTo(SectionNode, "BELONGS_TO_SECTION")
     topics = RelationshipTo(TopicNode, "HAS_TOPIC")
-
-
-# ────────────────────────────────────────────────
-# BOOK
-# ────────────────────────────────────────────────
-
-class BookNode(DomainNode):
-    __label__ = "Book"
-
-    title = StringProperty(required=True)
-    slug = StringProperty(index=True)
-    description = StringProperty()
-    created_at = DateTimeProperty()
-
-    tags = RelationshipTo(TagNode, "HAS_TAG")
-    chapters = RelationshipFrom("ChapterNode", "CHAPTER_OF_BOOK")
-
-
-# ────────────────────────────────────────────────
-# CHAPTER
-# ────────────────────────────────────────────────
-
-class ChapterNode(DomainNode):
-    __label__ = "Chapter"
-
-    order = IntegerProperty()
-
-    book = RelationshipTo(BookNode, "CHAPTER_OF_BOOK")
-    page = RelationshipTo(PageNode, "PAGE_IN_CHAPTER")

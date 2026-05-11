@@ -1,7 +1,6 @@
 from toto.verbena.models import (
     Page, Section, Subsection,
     Image, Tag, Topic,
-    Book, Chapter
 )
 from toto.core.ingress import IngressCommand
 import random
@@ -12,7 +11,7 @@ from django.utils.text import slugify
 
 
 class Command(IngressCommand):
-    help = "Populate the database with sample Verbena Pages, Sections, Subsections, and Books"
+    help = "Populate the database with sample Verbena Pages, Sections, and Subsections"
 
     # ────────────────────────────────────────────────
     # TOPIC CREATION
@@ -60,8 +59,6 @@ class Command(IngressCommand):
             self.create_sections(page, page_data["sections"], author)
 
             created_pages.append(page)
-
-        self.create_sample_books(created_pages)
 
         self.stdout.write(self.style.SUCCESS("✅ Verbena ingress complete."))
 
@@ -152,7 +149,7 @@ class Command(IngressCommand):
                 page=page,
                 title=title,
                 content=markdown_lorem,
-                author=author,   # ← FIXED
+                author=author,
                 order=i
             )
 
@@ -199,53 +196,3 @@ class Command(IngressCommand):
         self.stdout.write(self.style.SUCCESS(
             f"📝 Created subsection: {subsection.title}"
         ))
-
-    # ────────────────────────────────────────────────
-    # BOOK CREATION
-    # ────────────────────────────────────────────────
-
-    def create_sample_books(self, pages):
-
-        if not pages:
-            return
-
-        books = {
-            "Python Handbook": {
-                "description": "A structured guide to Python fundamentals.",
-                "tags": ["python", "study"],
-                "pages": ["Python Essentials", "Backend Concepts"]
-            },
-            "Django Mastery": {
-                "description": "A complete guide to Django concepts.",
-                "tags": ["django", "web"],
-                "pages": ["Django Overview", "Backend Concepts"]
-            }
-        }
-
-        for book_title, data in books.items():
-
-            if Book.objects.filter(title=book_title).exists():
-                self.stdout.write(self.style.WARNING(f"⚠️ Skipped existing book: {book_title}"))
-                continue
-
-            book = Book.objects.create(
-                title=book_title,
-                description=data["description"]
-            )
-
-            tag_objects = []
-            for name in data["tags"]:
-                tag, _ = Tag.objects.get_or_create(name=name)
-                tag_objects.append(tag)
-            book.tags.set(tag_objects)
-
-            for order, page_title in enumerate(data["pages"], start=1):
-                page = Page.objects.filter(title=page_title).first()
-                if page:
-                    Chapter.objects.create(
-                        book=book,
-                        page=page,
-                        order=order
-                    )
-
-            self.stdout.write(self.style.SUCCESS(f"📘 Created book: {book_title}"))
