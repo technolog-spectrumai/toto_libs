@@ -14,6 +14,10 @@ import random
 class Command(IngressCommand):
     help = "Populate the database with sample Verbena Pages, Sections, Subsections and Library items"
 
+    # ────────────────────────────────────────────────
+    # TOPIC CREATION
+    # ────────────────────────────────────────────────
+
     def get_or_create_topic(self, *, slug_base, name, **filters):
         existing = Topic.objects.filter(**filters).first()
         if existing:
@@ -28,6 +32,10 @@ class Command(IngressCommand):
 
         return Topic.objects.create(slug=slug, name=name, **filters)
 
+    # ────────────────────────────────────────────────
+    # MAIN PROCESS
+    # ────────────────────────────────────────────────
+
     def process(self):
         if not self.full:
             return
@@ -35,10 +43,11 @@ class Command(IngressCommand):
         author = self.get_or_create_demo_person()
         pages = self.get_sample_pages()
 
-        # Create library items first
-        self.create_library_samples(author)
+        # 1️⃣ Create library items
+        books, articles, audios, videos = self.create_library_samples(author)
 
-        # Create pages and sections
+        # 2️⃣ Create pages + sections
+        created_pages = []
         for page_title, page_data in pages.items():
             if Page.objects.filter(title=page_title).exists():
                 self.stdout.write(self.style.WARNING(f"⚠️ Skipped existing page: {page_title}"))
@@ -48,7 +57,20 @@ class Command(IngressCommand):
             self.assign_tags(page, page_data["tags"])
             self.create_sections(page, page_data["sections"], author)
 
+            # 3️⃣ Randomly attach references to this page
+            page.books_refs.set(random.sample(books, min(len(books), random.randint(1, 3))))
+            page.articles_refs.set(random.sample(articles, min(len(articles), random.randint(1, 3))))
+            page.audios_refs.set(random.sample(audios, min(len(audios), random.randint(0, 2))))
+            page.videos_refs.set(random.sample(videos, min(len(videos), random.randint(0, 2))))
+            page.save()
+
+            created_pages.append(page)
+
         self.stdout.write(self.style.SUCCESS("✅ Verbena ingress complete."))
+
+    # ────────────────────────────────────────────────
+    # DEMO PERSON
+    # ────────────────────────────────────────────────
 
     def get_or_create_demo_person(self):
         person, _ = Person.objects.get_or_create(
@@ -56,6 +78,10 @@ class Command(IngressCommand):
             defaults={"bio": "Automatically generated demo author."}
         )
         return person
+
+    # ────────────────────────────────────────────────
+    # SAMPLE PAGES
+    # ────────────────────────────────────────────────
 
     def get_sample_pages(self):
         return {
@@ -88,8 +114,12 @@ class Command(IngressCommand):
             }
         }
 
+    # ────────────────────────────────────────────────
+    # CREATE LIBRARY ITEMS
+    # ────────────────────────────────────────────────
+
     def create_library_samples(self, author):
-        # Books
+        books = []
         for i in range(3):
             book = Book.objects.create(
                 title=f"Sample Book {i+1}",
@@ -101,9 +131,10 @@ class Command(IngressCommand):
             book.authors.add(author)
             book.tags.add(*Tag.objects.order_by("?")[:3])
             book.save()
+            books.append(book)
             self.stdout.write(self.style.SUCCESS(f"📚 Created book: {book.title}"))
 
-        # Articles
+        articles = []
         for i in range(4):
             article = Article.objects.create(
                 title=f"Sample Article {i+1}",
@@ -115,9 +146,10 @@ class Command(IngressCommand):
             article.authors.add(author)
             article.tags.add(*Tag.objects.order_by("?")[:2])
             article.save()
+            articles.append(article)
             self.stdout.write(self.style.SUCCESS(f"📰 Created article: {article.title}"))
 
-        # Audio
+        audios = []
         for i in range(2):
             audio = Audio.objects.create(
                 title=f"Sample Audio {i+1}",
@@ -128,9 +160,10 @@ class Command(IngressCommand):
             audio.authors.add(author)
             audio.tags.add(*Tag.objects.order_by("?")[:1])
             audio.save()
+            audios.append(audio)
             self.stdout.write(self.style.SUCCESS(f"🎵 Created audio: {audio.title}"))
 
-        # Video
+        videos = []
         for i in range(2):
             video = Video.objects.create(
                 title=f"Sample Video {i+1}",
@@ -141,7 +174,14 @@ class Command(IngressCommand):
             video.authors.add(author)
             video.tags.add(*Tag.objects.order_by("?")[:1])
             video.save()
+            videos.append(video)
             self.stdout.write(self.style.SUCCESS(f"🎬 Created video: {video.title}"))
+
+        return books, articles, audios, videos
+
+    # ────────────────────────────────────────────────
+    # PAGE, TAGS, SECTIONS, SUBSECTIONS
+    # ────────────────────────────────────────────────
 
     def create_page(self, title, description):
         page = Page.objects.create(title=title, description=description)
