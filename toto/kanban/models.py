@@ -60,6 +60,14 @@ class Campaign(DomainEntity):
 
     owner = models.ForeignKey(Person, on_delete=models.SET_NULL, null=True, blank=True, db_comment="owned_by")
     metadata = models.JSONField(blank=True, null=True)
+    zone = models.ForeignKey(
+        "locations.Zone",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="campaigns",
+        help_text="Operational zone for this campaign, if it is geographically scoped.",
+    )
 
     def __str__(self):
         return self.name
@@ -78,6 +86,24 @@ class Mission(DomainEntity):
     impact = models.IntegerField(
         choices=THREE_SCALE,
         default=2  # Medium
+    )
+
+    location = models.ForeignKey(
+        "locations.Address",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="missions",
+        help_text="Specific mission location, if applicable.",
+    )
+
+    route = models.ForeignKey(
+        "locations.Route",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="missions",
+        help_text="Route connected to this mission, if movement is involved.",
     )
 
     owner = models.ForeignKey(Person, on_delete=models.SET_NULL, null=True, blank=True, db_comment="owned_by")

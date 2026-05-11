@@ -1,21 +1,19 @@
 from datetime import timedelta
+import random
 
-from django.urls import reverse
-from django.utils import timezone
 from django.contrib.auth.models import User
+from django.utils import timezone
 
 from toto.kanban.models import Project, Column, Task, Sprint, Mission, Campaign
 from toto.socialhub.models import Person
+from toto.locations.models import Address, Zone, Route
 from toto.core.ingress import IngressCommand
-
-import random
 
 
 class Command(IngressCommand):
-    help = "Creates a demo kanban setup with multiple campaigns, missions, sprints, and tasks"
+    help = "Creates a demo kanban setup with multiple campaigns, missions, sprints, tasks, and optional locations"
 
     def process(self):
-
         if not self.full:
             return
 
@@ -31,12 +29,43 @@ class Command(IngressCommand):
         assignees = [member1, member2]
 
         # ----------------------------------------------------
+        # 🗺️ Optional Locations
+        # ----------------------------------------------------
+        zones = list(Zone.objects.all())
+        addresses = list(Address.objects.all())
+        routes = list(Route.objects.all())
+
+        frontend_zone = random.choice(zones) if zones else None
+        backend_zone = random.choice(zones) if zones else None
+
+        mission1_location = random.choice(addresses) if addresses else None
+        mission2_location = random.choice(addresses) if addresses else None
+
+        mission1_route = random.choice(routes) if routes else None
+        mission2_route = random.choice(routes) if routes else None
+
+        if zones:
+            print("✔ Using existing zones for demo campaigns.")
+        else:
+            print("⚠ No zones found. Campaigns will be created without zone.")
+
+        if addresses:
+            print("✔ Using existing addresses for demo missions.")
+        else:
+            print("⚠ No addresses found. Missions will be created without location.")
+
+        if routes:
+            print("✔ Using existing routes for demo missions.")
+        else:
+            print("⚠ No routes found. Missions will be created without route.")
+
+        # ----------------------------------------------------
         # 📁 Project
         # ----------------------------------------------------
         project = Project.objects.create(
             name="Demo Project",
             description="A sample project for Kanban demo",
-            owner=member1
+            owner=member1,
         )
 
         # ----------------------------------------------------
@@ -52,16 +81,27 @@ class Command(IngressCommand):
         # ----------------------------------------------------
         # 📦 Columns
         # ----------------------------------------------------
-        todo = Column.objects.create(project=project, name="To Do", position=1, can_add_task=True)
-        doing = Column.objects.create(project=project, name="In Progress", position=2)
-        done = Column.objects.create(project=project, name="Done", position=3)
+        todo = Column.objects.create(
+            project=project,
+            name="To Do",
+            position=1,
+            can_add_task=True,
+        )
+
+        doing = Column.objects.create(
+            project=project,
+            name="In Progress",
+            position=2,
+        )
+
+        done = Column.objects.create(
+            project=project,
+            name="Done",
+            position=3,
+        )
 
         all_users = list(User.objects.all())
-
-        if len(all_users) >= 2:
-            auditors = random.sample(all_users, 2)
-        else:
-            auditors = all_users  # fallback
+        auditors = random.sample(all_users, 2) if len(all_users) >= 2 else all_users
 
         todo.auditors.set(auditors)
         doing.auditors.set(auditors)
@@ -76,7 +116,12 @@ class Command(IngressCommand):
             description="Deliver UI components and wireframes for MVP",
             start_date=timezone.now().date(),
             end_date=(timezone.now() + timedelta(days=30)).date(),
-            owner=member1
+            owner=member1,
+            zone=frontend_zone,
+            metadata={
+                "demo": True,
+                "focus": "ui",
+            },
         )
 
         backend_campaign = Campaign.objects.create(
@@ -85,32 +130,49 @@ class Command(IngressCommand):
             description="Develop core API endpoints and authentication",
             start_date=timezone.now().date(),
             end_date=(timezone.now() + timedelta(days=45)).date(),
-            owner=member1
+            owner=member1,
+            zone=backend_zone,
+            metadata={
+                "demo": True,
+                "focus": "api",
+            },
         )
 
         # ----------------------------------------------------
-        # 🎯 Missions (3‑level urgency/impact)
+        # 🎯 Missions
         # ----------------------------------------------------
         mission1 = Mission.objects.create(
             campaign=frontend_campaign,
             title="Launch MVP",
             description="Prepare and release the minimum viable product",
-            urgency=3,  # High
-            impact=3,   # High
-            owner=member1
+            urgency=3,
+            impact=3,
+            owner=member1,
+            location=mission1_location,
+            route=mission1_route,
+            metadata={
+                "demo": True,
+                "release_type": "mvp",
+            },
         )
 
         mission2 = Mission.objects.create(
             campaign=backend_campaign,
             title="Authentication System",
             description="Implement JWT-based authentication and user management",
-            urgency=2,  # Medium
-            impact=2,   # Medium
-            owner=member1
+            urgency=2,
+            impact=2,
+            owner=member1,
+            location=mission2_location,
+            route=mission2_route,
+            metadata={
+                "demo": True,
+                "security_area": "authentication",
+            },
         )
 
         # ----------------------------------------------------
-        # 📝 Tasks (Fibonacci weights)
+        # 📝 Tasks
         # ----------------------------------------------------
         tasks = [
             Task.objects.create(
@@ -119,7 +181,8 @@ class Command(IngressCommand):
                 position=1,
                 mission=mission1,
                 assignee=random.choice(assignees),
-                weight=3  # Medium
+                weight=3,
+                metadata={"demo": True, "kind": "setup"},
             ),
             Task.objects.create(
                 column=doing,
@@ -127,7 +190,8 @@ class Command(IngressCommand):
                 position=2,
                 mission=mission1,
                 assignee=random.choice(assignees),
-                weight=5  # Big
+                weight=5,
+                metadata={"demo": True, "kind": "frontend"},
             ),
             Task.objects.create(
                 column=done,
@@ -135,7 +199,8 @@ class Command(IngressCommand):
                 position=3,
                 mission=mission1,
                 assignee=random.choice(assignees),
-                weight=2  # Small
+                weight=2,
+                metadata={"demo": True, "kind": "design"},
             ),
             Task.objects.create(
                 column=todo,
@@ -143,7 +208,8 @@ class Command(IngressCommand):
                 position=1,
                 mission=mission2,
                 assignee=random.choice(assignees),
-                weight=3  # Medium
+                weight=3,
+                metadata={"demo": True, "kind": "database"},
             ),
             Task.objects.create(
                 column=doing,
@@ -151,7 +217,8 @@ class Command(IngressCommand):
                 position=2,
                 mission=mission2,
                 assignee=random.choice(assignees),
-                weight=8  # Large
+                weight=8,
+                metadata={"demo": True, "kind": "api"},
             ),
             Task.objects.create(
                 column=done,
@@ -159,7 +226,8 @@ class Command(IngressCommand):
                 position=3,
                 mission=mission2,
                 assignee=random.choice(assignees),
-                weight=1  # Tiny
+                weight=1,
+                metadata={"demo": True, "kind": "tests"},
             ),
         ]
 
@@ -167,35 +235,37 @@ class Command(IngressCommand):
         # 🚀 Sprints
         # ----------------------------------------------------
         now = timezone.now()
+
         sprint1 = Sprint.objects.create(
             name="Sprint 1",
             project=project,
             start_time=now - timedelta(days=14),
-            end_time=now
+            end_time=now,
         )
+
         sprint2 = Sprint.objects.create(
             name="Sprint 2",
             project=project,
             start_time=now,
-            end_time=now + timedelta(days=14)
+            end_time=now + timedelta(days=14),
         )
 
         # Assign tasks to sprints
         for task in tasks[:3]:
             task.sprint = sprint1
-            task.save()
+            task.save(update_fields=["sprint"])
 
         for task in tasks[3:]:
             task.sprint = sprint2
-            task.save()
+            task.save(update_fields=["sprint"])
 
         # ----------------------------------------------------
         # ✔ Completed tasks
         # ----------------------------------------------------
         tasks[2].completed_at = sprint1.end_time - timedelta(days=2)
-        tasks[2].save()
+        tasks[2].save(update_fields=["completed_at"])
 
         tasks[5].completed_at = sprint2.start_time + timedelta(days=3)
-        tasks[5].save()
+        tasks[5].save(update_fields=["completed_at"])
 
         print("[Ingress] Demo Kanban setup created successfully.")
