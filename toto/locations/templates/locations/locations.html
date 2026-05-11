@@ -30,11 +30,17 @@
 <script>
   window.locationsPayload = JSON.parse(`{{ locations_json|escapejs }}`);
   window.mapLayersPayload = JSON.parse(`{{ map_layers_json|escapejs }}`);
+  window.locationSearchUrl = "{% url 'locations:location_search_api' %}";
 
   function locationsExplorer() {
     return {
       search: "",
       mapSearch: "",
+      mapSearchRemoteResults: [],
+      mapSearchLoading: false,
+      mapSearchError: "",
+      mapSearchDebounce: null,
+
       sidebarOpen: false,
       visibilityOpen: false,
       layersOpen: false,
@@ -49,6 +55,9 @@
       mapLayers: window.mapLayersPayload || [],
       addingAddressesEnabled: true,
 
+      clickedPoint: null,
+      addressModalOpen: false,
+
       init() {
         this.availableTypes
           .filter((type) => type !== "All")
@@ -56,7 +65,12 @@
             this.visibleTypes[type] = true;
           });
 
+        this.$watch("mapSearch", (value) => {
+          this.queueRemoteMapSearch(value);
+        });
+
         const defaultLayer = this.mapLayers[0];
+
         if (!defaultLayer) {
           this.$nextTick(() => applyLocationTypeVisibility(this.visibleTypes));
           return;
@@ -65,6 +79,7 @@
         this.selectedLayerSlug = defaultLayer.slug;
         this.overlayOpacity = Number(defaultLayer.style?.opacity ?? 0.35);
         this.showOverlayLabels = defaultLayer.style?.show_labels !== false;
+
         this.$nextTick(() => {
           applyLocationTypeVisibility(this.visibleTypes);
           updateMapLayerOverlay(this.selectedLayer, this.overlayOpacity, this.showOverlayLabels);
@@ -99,6 +114,46 @@
         return this.mapLayers.find((layer) => layer.slug === this.selectedLayerSlug) || null;
       },
 
+      get localMapSearchResults() {
+        const query = this.mapSearch.trim().toLowerCase();
+
+        if (!query) {
+          return [];
+        }
+
+        return this.locations
+          .filter((location) => {
+            if (!location.geometry) return false;
+
+            const haystack = `${location.name || ""} ${location.type || ""} ${location.detail || ""}`.toLowerCase();
+            return haystack.includes(query);
+          })
+          .slice(0, 6)
+          .map((location) => ({
+            ...location,
+            source: "db",
+            label: location.name,
+          }));
+      },
+
+      get mapSearchResults() {
+        const seen = new Set();
+        const results = [];
+
+        [...this.localMapSearchResults, ...this.mapSearchRemoteResults].forEach((item) => {
+          const key = `${item.source || ""}:${item.label || item.name}:${item.lat || ""}:${item.lng || ""}`;
+
+          if (seen.has(key)) {
+            return;
+          }
+
+          seen.add(key);
+          results.push(item);
+        });
+
+        return results.slice(0, 8);
+      },
+
       selectType(type) {
         this.activeType = type;
       },
@@ -109,9 +164,11 @@
 
       toggleType(type) {
         this.visibleTypes[type] = !this.isTypeVisible(type);
+
         if (this.activeType === type && !this.visibleTypes[type]) {
           this.activeType = "All";
         }
+
         applyLocationTypeVisibility(this.visibleTypes);
       },
 
@@ -119,6 +176,7 @@
         Object.keys(this.visibleTypes).forEach((type) => {
           this.visibleTypes[type] = true;
         });
+
         applyLocationTypeVisibility(this.visibleTypes);
       },
 
@@ -126,17 +184,21 @@
         Object.keys(this.visibleTypes).forEach((type) => {
           this.visibleTypes[type] = false;
         });
+
         this.activeType = "All";
         applyLocationTypeVisibility(this.visibleTypes);
       },
 
       selectLayer(slug) {
         this.selectedLayerSlug = slug;
+
         const layer = this.selectedLayer;
+
         if (layer) {
           this.overlayOpacity = Number(layer.style?.opacity ?? this.overlayOpacity);
           this.showOverlayLabels = layer.style?.show_labels !== false;
         }
+
         updateMapLayerOverlay(layer, this.overlayOpacity, this.showOverlayLabels);
       },
 
@@ -156,32 +218,80 @@
         this.sidebarOpen = false;
       },
 
-      get mapSearchResults() {
-        const query = this.mapSearch.trim().toLowerCase();
+      queueRemoteMapSearch(value) {
+        const query = value.trim();
 
-        if (!query) {
-          return [];
-        }
+        window.clearTimeout(this.mapSearchDebounce);
 
-        return this.locations
-          .filter((location) => {
-            if (!location.geometry) return false;
-
-            const haystack = `${location.name || ""} ${location.type || ""} ${location.detail || ""}`.toLowerCase();
-            return haystack.includes(query);
-          })
-          .slice(0, 6);
-      },
-
-      moveMapToLocation(location) {
-        if (!location || !location.geometry) {
+        if (query.length < 2) {
+          this.mapSearchRemoteResults = [];
+          this.mapSearchError = "";
+          this.mapSearchLoading = false;
           return;
         }
 
-        this.selectedName = location.name;
-        zoomToFeature(location.name);
-        highlightFeature(location.name);
-        this.mapSearch = location.name;
+        this.mapSearchDebounce = window.setTimeout(() => {
+          this.fetchRemoteMapSearch(query);
+        }, 350);
+      },
+
+      async fetchRemoteMapSearch(query) {
+        this.mapSearchLoading = true;
+        this.mapSearchError = "";
+
+        try {
+          const response = await fetch(`${window.locationSearchUrl}?q=${encodeURIComponent(query)}`, {
+            headers: {
+              "X-Requested-With": "XMLHttpRequest",
+            },
+          });
+
+          if (!response.ok) {
+            throw new Error("Search failed.");
+          }
+
+          const payload = await response.json();
+
+          this.mapSearchRemoteResults = (payload.results || []).map((item) => ({
+            ...item,
+            source: "web",
+            label: item.label || item.name || "Search result",
+            name: item.name || item.label || "Search result",
+            type: item.type || "Place",
+            detail: item.locality_name || item.state_or_province_name || item.country_name || "Web result",
+          }));
+        } catch (error) {
+          this.mapSearchRemoteResults = [];
+          this.mapSearchError = "Could not search online right now.";
+        } finally {
+          this.mapSearchLoading = false;
+        }
+      },
+
+      moveMapToLocation(location) {
+        if (!location) {
+          return;
+        }
+
+        if (location.geometry) {
+          this.selectedName = location.name;
+          zoomToFeature(location.name);
+          highlightFeature(location.name);
+          this.mapSearch = location.name;
+          return;
+        }
+
+        if (location.lat && location.lng) {
+          moveMapToCoordinates(
+            Number(location.lat),
+            Number(location.lng),
+            location.label || location.name || "Search result"
+          );
+
+          clearFeatureHighlight();
+          this.selectedName = location.label || location.name || "";
+          this.mapSearch = location.label || location.name || "";
+        }
       },
 
       fitAll() {
@@ -202,17 +312,16 @@
         return location.geometry.type || "Geometry";
       },
 
-      clickedPoint: null,
-      addressModalOpen: false,
-
       openAddressModal(latlng) {
         if (!this.addingAddressesEnabled) {
           return;
         }
+
         this.clickedPoint = {
           lat: Number(latlng.lat).toFixed(6),
           lng: Number(latlng.lng).toFixed(6),
         };
+
         this.addressModalOpen = true;
       },
 
@@ -266,7 +375,9 @@
           class="text-xs font-semibold uppercase tracking-wide">
           Spatial overview
         </p>
+
         <h1 class="mt-2 text-3xl font-bold sm:text-4xl">Locations</h1>
+
         <p class="mt-2 max-w-2xl text-sm opacity-70">
           Browse territories, routes, travels, and addresses in one focused map workspace.
         </p>
@@ -280,12 +391,14 @@
             <div class="text-2xl font-bold" x-text="locations.length"></div>
             <div class="text-xs opacity-65">Total</div>
           </div>
+
           <div
             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
             class="rounded-lg border p-3 shadow-sm">
             <div class="text-2xl font-bold" x-text="mappedLocations.length"></div>
             <div class="text-xs opacity-65">Mapped</div>
           </div>
+
           <div
             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
             class="rounded-lg border p-3 shadow-sm">
@@ -301,6 +414,7 @@
           <i class="fa-solid fa-route"></i>
           Search traversable path
         </a>
+
         <a
           href="{% url 'locations:address_create' %}"
           :class="darkMode
@@ -351,6 +465,7 @@
               shown
             </p>
           </div>
+
           <button
             type="button"
             @click="sidebarOpen = false; setTimeout(() => refreshMapSize(), 250)"
@@ -363,6 +478,7 @@
         <label class="relative block">
           <span class="sr-only">Search locations</span>
           <i class="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm opacity-50"></i>
+
           <input
             x-model="search"
             type="search"
@@ -397,6 +513,7 @@
             <i class="fa-solid fa-expand"></i>
             Fit all
           </button>
+
           <button
             type="button"
             @click="search = ''; activeType = 'All'"
@@ -410,18 +527,22 @@
         <div
           :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
           class="mt-4 rounded-lg border p-3">
+
           <div class="flex items-center justify-between gap-3">
             <button
               type="button"
               @click="visibilityOpen = !visibilityOpen"
               class="flex min-w-0 flex-1 items-center gap-2 text-left">
               <i class="fa-solid fa-eye"></i>
+
               <span class="min-w-0">
                 <span class="block text-sm font-bold">Visible on map</span>
                 <span class="block truncate text-xs opacity-65">Hide zones, addresses, routes, or other feature types.</span>
               </span>
+
               <i class="fa-solid fa-chevron-down ml-auto text-xs transition" :class="visibilityOpen ? 'rotate-180' : ''"></i>
             </button>
+
             <div class="flex gap-1">
               <button
                 type="button"
@@ -430,6 +551,7 @@
                 aria-label="Show all feature types">
                 <i class="fa-solid fa-eye"></i>
               </button>
+
               <button
                 type="button"
                 @click="hideAllTypes"
@@ -453,6 +575,7 @@
                   <span :style="typeStyle(type)" class="h-2.5 w-2.5 shrink-0 rounded-full"></span>
                   <span class="truncate font-semibold" x-text="type"></span>
                 </span>
+
                 <i class="fa-solid" :class="isTypeVisible(type) ? 'fa-eye' : 'fa-eye-slash'"></i>
               </button>
             </template>
@@ -462,18 +585,22 @@
         <div
           :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
           class="mt-4 rounded-lg border p-3">
+
           <div class="flex items-center justify-between gap-3">
             <button
               type="button"
               @click="layersOpen = !layersOpen"
               class="flex min-w-0 flex-1 items-center gap-2 text-left">
               <i class="fa-solid fa-layer-group"></i>
+
               <span class="min-w-0">
                 <span class="block text-sm font-bold">Layers</span>
                 <span class="block truncate text-xs opacity-65" x-text="selectedLayer ? selectedLayer.name : 'No layer selected'"></span>
               </span>
+
               <i class="fa-solid fa-chevron-down ml-auto text-xs transition" :class="layersOpen ? 'rotate-180' : ''"></i>
             </button>
+
             <button
               type="button"
               @click="layerSettingsOpen = true"
@@ -512,6 +639,7 @@
                     zones
                   </span>
                 </span>
+
                 <span class="mt-1 block text-xs opacity-65" x-text="layer.description"></span>
               </button>
             </template>
@@ -543,13 +671,16 @@
                   @click="selectLocation(location)"
                   :disabled="!location.geometry"
                   class="w-full text-left disabled:cursor-not-allowed">
+
                   <div class="flex items-start gap-3">
                     <span :style="typeStyle(location.type)" class="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"></span>
+
                     <span class="min-w-0 flex-1">
                       <span class="flex items-center justify-between gap-2">
                         <span class="text-xs font-semibold uppercase opacity-65" x-text="location.type"></span>
                         <span class="text-[11px] opacity-55" x-text="geometryLabel(location)"></span>
                       </span>
+
                       <span class="mt-1 block break-words text-sm font-semibold" x-text="location.name"></span>
                       <span class="mt-1 block break-words text-xs opacity-60" x-show="location.detail" x-text="location.detail"></span>
                     </span>
@@ -583,6 +714,7 @@
       <div
         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
         class="relative min-h-[70vh] overflow-hidden rounded-lg border shadow-sm lg:h-[76vh]">
+
         <div id="map" class="locations-map h-full min-h-[70vh] w-full lg:min-h-0"></div>
 
         <div class="pointer-events-none absolute left-4 top-4 flex flex-wrap gap-2">
@@ -591,107 +723,108 @@
             class="rounded-lg border border-current/10 px-3 py-2 text-xs font-semibold shadow-sm backdrop-blur">
             <span x-text="selectedLocation ? selectedLocation.type : 'Overview'"></span>
             <span class="opacity-50">/</span>
-            <span x-text="selectedLocation ? selectedLocation.name : 'All mapped locations'"></span>
+            <span x-text="selectedName || 'All mapped locations'"></span>
           </div>
         </div>
-<!--        ======= ON THE MAP ========= -->
-          <div class="pointer-events-auto absolute right-4 top-4 z-[500] flex w-[min(92vw,320px)] flex-col gap-2">
 
-            <!-- Map search only moves map view -->
+        <div class="pointer-events-auto absolute right-4 top-4 z-[500] flex w-[min(92vw,340px)] flex-col gap-2">
+          <div
+            @click.stop
+            :class="darkMode
+              ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'
+              : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+            class="rounded-lg border p-2 shadow-sm backdrop-blur">
+
+            <label class="relative block">
+              <span class="sr-only">Move map to location</span>
+              <i class="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs opacity-50"></i>
+
+              <input
+                x-model="mapSearch"
+                type="search"
+                placeholder="Move map to Poznan, Paris..."
+                @keydown.enter.prevent="mapSearchResults.length && moveMapToLocation(mapSearchResults[0])"
+                :class="darkMode
+                  ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder:text-text-main-dark/50'
+                  : 'border-accent-2 bg-primary-bg-light text-text-main-light placeholder:text-text-main-light/50'"
+                class="w-full rounded-lg border py-2 pl-8 pr-3 text-xs font-semibold outline-none transition focus:ring-2 focus:ring-current/20" />
+            </label>
+
             <div
-              :class="darkMode
-                ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'
-                : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
-              class="rounded-lg border p-2 shadow-sm backdrop-blur">
-
-              <label class="relative block">
-                <span class="sr-only">Move map to location</span>
-
-                <i class="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs opacity-50"></i>
-
-                <input
-                  x-model="mapSearch"
-                  type="search"
-                  placeholder="Move map to..."
-                  @keydown.enter.prevent="mapSearchResults.length && moveMapToLocation(mapSearchResults[0])"
-                  :class="darkMode
-                    ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder:text-text-main-dark/50'
-                    : 'border-accent-2 bg-primary-bg-light text-text-main-light placeholder:text-text-main-light/50'"
-                  class="w-full rounded-lg border py-2 pl-8 pr-3 text-xs font-semibold outline-none transition focus:ring-2 focus:ring-current/20" />
-              </label>
+              x-show="mapSearch.trim().length > 0"
+              x-cloak
+              class="mt-2 max-h-64 overflow-y-auto">
 
               <div
-                x-show="mapSearch.trim().length > 0"
-                x-cloak
-                class="mt-2 max-h-56 overflow-y-auto">
+                x-show="mapSearchLoading"
+                class="rounded-lg border border-current/10 px-3 py-2 text-xs opacity-70">
+                Searching map...
+              </div>
 
-                <template x-if="mapSearchResults.length === 0">
-                  <div class="rounded-lg border border-dashed border-current/15 px-3 py-2 text-xs opacity-70">
-                    No mapped location found.
-                  </div>
-                </template>
+              <div
+                x-show="mapSearchError"
+                class="mt-1 rounded-lg border border-dashed border-current/15 px-3 py-2 text-xs opacity-70"
+                x-text="mapSearchError">
+              </div>
 
-                <div class="space-y-1">
-                  <template x-for="location in mapSearchResults" :key="`map-search-${location.type}-${location.name}`">
-                    <button
-                      type="button"
-                      @click.stop="moveMapToLocation(location)"
-                      class="w-full rounded-lg px-3 py-2 text-left text-xs transition hover:bg-current/10">
-                      <span class="block font-bold" x-text="location.name"></span>
-                      <span class="mt-0.5 block opacity-60">
-                        <span x-text="location.type"></span>
-                        <span x-show="location.detail"> · </span>
-                        <span x-text="location.detail"></span>
-                      </span>
-                    </button>
-                  </template>
+              <template x-if="!mapSearchLoading && mapSearchResults.length === 0">
+                <div class="rounded-lg border border-dashed border-current/15 px-3 py-2 text-xs opacity-70">
+                  No location found.
                 </div>
+              </template>
+
+              <div class="space-y-1">
+                <template x-for="location in mapSearchResults" :key="`map-search-${location.source || 'db'}-${location.label || location.name}-${location.lat || ''}-${location.lng || ''}`">
+                  <button
+                    type="button"
+                    @click.stop="moveMapToLocation(location)"
+                    class="w-full rounded-lg px-3 py-2 text-left text-xs transition hover:bg-current/10">
+
+                    <span class="flex items-start justify-between gap-2">
+                      <span class="block font-bold" x-text="location.label || location.name"></span>
+
+                      <span
+                        class="shrink-0 rounded-full border border-current/10 px-2 py-0.5 text-[10px] font-semibold opacity-70"
+                        x-text="location.source === 'web' ? 'web' : 'db'">
+                      </span>
+                    </span>
+
+                    <span class="mt-0.5 block opacity-60">
+                      <span x-text="location.type"></span>
+                      <span x-show="location.detail"> · </span>
+                      <span x-text="location.detail"></span>
+                    </span>
+                  </button>
+                </template>
               </div>
             </div>
-
-            <!-- Click-to-add toggle -->
-            <button
-              type="button"
-              @click="toggleAddressAdding()"
-              :class="addingAddressesEnabled
-                ? (darkMode
-                  ? 'bg-accent-dark text-primary-bg-dark'
-                  : 'bg-accent-light text-primary-bg-light')
-                : (darkMode
-                  ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'
-                  : 'border-accent-2 bg-bubble-bg-light text-text-main-light')"
-              class="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold shadow-sm backdrop-blur transition hover:opacity-90">
-              <i
-                class="fa-solid"
-                :class="addingAddressesEnabled ? 'fa-wand-magic-sparkles' : 'fa-ban'"></i>
-
-              <span x-text="addingAddressesEnabled ? 'Add by click: on' : 'Add by click: off'"></span>
-            </button>
           </div>
-<!--        ================= ON THE MAP ================= -->
-        <button
-          type="button"
-          @click="toggleAddressAdding()"
-          :class="addingAddressesEnabled
-            ? (darkMode
-              ? 'bg-accent-dark text-primary-bg-dark'
-              : 'bg-accent-light text-primary-bg-light')
-            : (darkMode
-              ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'
-              : 'border-accent-2 bg-bubble-bg-light text-text-main-light')"
-          class="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold shadow-sm backdrop-blur transition hover:opacity-90">
-          <i
-            class="fa-solid"
-            :class="addingAddressesEnabled ? 'fa-wand-magic-sparkles' : 'fa-ban'"></i>
 
-          <span x-text="addingAddressesEnabled ? 'Add by click: on' : 'Add by click: off'"></span>
-        </button>
-      </div>
+          <button
+            type="button"
+            @click.stop="toggleAddressAdding()"
+            :class="addingAddressesEnabled
+              ? (darkMode
+                ? 'bg-accent-dark text-primary-bg-dark'
+                : 'bg-accent-light text-primary-bg-light')
+              : (darkMode
+                ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'
+                : 'border-accent-2 bg-bubble-bg-light text-text-main-light')"
+            class="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold shadow-sm backdrop-blur transition hover:opacity-90">
+            <i
+              class="fa-solid"
+              :class="addingAddressesEnabled ? 'fa-wand-magic-sparkles' : 'fa-ban'"></i>
+
+            <span x-text="addingAddressesEnabled ? 'Add by click: on' : 'Add by click: off'"></span>
+          </button>
+        </div>
 
         <div
           :class="darkMode ? 'bg-bubble-bg-dark/95 text-text-main-dark' : 'bg-bubble-bg-light/95 text-text-main-light'"
           class="absolute bottom-4 left-4 hidden rounded-lg border border-current/10 p-3 text-xs shadow-sm backdrop-blur sm:block">
+
           <div class="mb-2 font-semibold">Legend</div>
+
           <div class="grid gap-1.5">
             <div class="flex items-center gap-2"><span :style="typeStyle('Territory')" class="h-2.5 w-2.5 rounded-full"></span>Territory</div>
             <div class="flex items-center gap-2"><span :style="typeStyle('Zone')" class="h-2.5 w-2.5 rounded-full"></span>Zone</div>
@@ -708,15 +841,18 @@
       x-show="layerSettingsOpen"
       x-transition.opacity
       x-cloak>
+
       <div
         @click.outside="layerSettingsOpen = false"
         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark' : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
         class="w-full max-w-md rounded-lg border p-5 shadow-xl">
+
         <div class="flex items-start justify-between gap-3">
           <div>
             <h2 class="text-lg font-bold">Overlay display</h2>
             <p class="mt-1 text-sm opacity-70" x-text="selectedLayer ? selectedLayer.name : 'No layer selected'"></p>
           </div>
+
           <button
             type="button"
             @click="layerSettingsOpen = false"
@@ -732,6 +868,7 @@
               <span>Opacity</span>
               <span x-text="`${Math.round(overlayOpacity * 100)}%`"></span>
             </span>
+
             <input
               type="range"
               min="0.05"
@@ -747,6 +884,7 @@
               <span class="block text-sm font-semibold">Value labels</span>
               <span class="block text-xs opacity-65">Show numeric labels in overlay polygons.</span>
             </span>
+
             <input
               type="checkbox"
               x-model="showOverlayLabels"
@@ -763,46 +901,46 @@
         </div>
       </div>
     </div>
-
   </div>
-  <div
-  class="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 px-4 py-6"
-  x-show="addressModalOpen"
-  x-transition.opacity
-  x-cloak>
 
   <div
-    @click.outside="closeAddressModal()"
-    :class="darkMode
-      ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'
-      : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
-    class="w-full max-w-md rounded-2xl border p-5 shadow-2xl">
+    class="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 px-4 py-6"
+    x-show="addressModalOpen"
+    x-transition.opacity
+    x-cloak>
 
-    <div class="flex items-start justify-between gap-4">
-      <div>
-        <p
-          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-          class="text-xs font-semibold uppercase tracking-wide">
-          Map point
-        </p>
+    <div
+      @click.outside="closeAddressModal()"
+      :class="darkMode
+        ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'
+        : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+      class="w-full max-w-md rounded-2xl border p-5 shadow-2xl">
 
-        <h2 class="mt-1 flex items-center gap-2 text-xl font-bold">
-          <i class="fa-solid fa-location-dot"></i>
-          Add address here?
-        </h2>
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <p
+            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+            class="text-xs font-semibold uppercase tracking-wide">
+            Map point
+          </p>
 
-        <p class="mt-2 text-sm opacity-70">
-          Save this clicked map position as a reusable address.
-        </p>
+          <h2 class="mt-1 flex items-center gap-2 text-xl font-bold">
+            <i class="fa-solid fa-location-dot"></i>
+            Add address here?
+          </h2>
+
+          <p class="mt-2 text-sm opacity-70">
+            Save this clicked map position as a reusable address.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          @click="closeAddressModal()"
+          class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-current/15 transition hover:opacity-75">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
       </div>
-
-      <button
-        type="button"
-        @click="closeAddressModal()"
-        class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-current/15 transition hover:opacity-75">
-        <i class="fa-solid fa-xmark"></i>
-      </button>
-    </div>
 
       <div
         :class="darkMode
@@ -853,6 +991,7 @@
   let allBounds = null;
   let mapLayerOverlay = null;
   let mapLayerCenterOverlay = null;
+  let mapSearchMarker = null;
 
   function refreshMapSize() {
     if (map) map.invalidateSize();
@@ -868,6 +1007,7 @@
 
   function locationTypeColor(type, isDark) {
     const mode = isDark ? "dark" : "light";
+
     const palette = {
       Territory: `accent-${mode}`,
       Zone: isDark ? "accent-1" : "accent-2",
@@ -875,13 +1015,17 @@
       Route: `link-${mode}`,
       Address: `success-${mode}`
     };
-    const fallback = isDark ? themeColor("accent-dark", "#4f5fa1") : themeColor("accent-light", "#2f3d63");
+
+    const fallback = isDark
+      ? themeColor("accent-dark", "#4f5fa1")
+      : themeColor("accent-light", "#2f3d63");
 
     return themeColor(palette[type], fallback);
   }
 
   function featureStyle(type, isDark) {
     const color = locationTypeColor(type, isDark);
+
     return {
       color: color,
       fillColor: color,
@@ -942,6 +1086,7 @@
   function layerHeatColor(layer, value, isDark) {
     const palette = layerPalette(isDark);
     const { min, max } = layerValueRange(layer);
+
     let ratio = max === min ? 0.5 : (Number(value) - min) / (max - min);
 
     if (layer?.inverted_importance) {
@@ -1028,6 +1173,7 @@
     if (!layer) return;
 
     const centers = [];
+
     const features = layer.polygons.map((polygon) => ({
       type: "Feature",
       properties: {
@@ -1046,7 +1192,9 @@
       },
       onEachFeature: function (feature, leafletLayer) {
         const unit = layer.unit ? ` ${layer.unit}` : "";
+
         leafletLayer.bindPopup(`<strong>${escapeHtml(layer.name)}</strong><br>${escapeHtml(feature.properties.name)}<br>${feature.properties.value}${escapeHtml(unit)}`);
+
         const center = centerLatLng(feature, leafletLayer);
         const markerColor = layerHeatColor(layer, feature.properties.value, localStorage.getItem("darkMode") === "true");
 
@@ -1121,8 +1269,6 @@
     const title = `<strong>${escapeHtml(type)}</strong><br>${escapeHtml(name)}`;
 
     if (item.review_url) {
-      const label = "Review";
-
       return `
         ${title}
         <div style="margin-top: 8px;">
@@ -1130,7 +1276,7 @@
             href="${escapeAttribute(item.review_url)}"
             style="display: inline-flex; align-items: center; gap: 6px; border: 1px solid currentColor; border-radius: 6px; padding: 4px 8px; font-size: 12px; font-weight: 700; background: transparent; cursor: pointer; text-decoration: none; color: inherit;">
             <i class="fa-solid fa-star-half-stroke"></i>
-            ${escapeHtml(label)}
+            Review
           </a>
         </div>
       `;
@@ -1164,10 +1310,12 @@
   document.addEventListener("DOMContentLoaded", function () {
     const isDark = localStorage.getItem("darkMode") === "true";
     const features = window.locationsPayload || [];
+
     const lightTiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
       attribution: "&copy; OpenStreetMap contributors"
     });
+
     const darkTiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
       maxZoom: 19,
       attribution: "&copy; OpenStreetMap contributors &copy; CARTO"
@@ -1177,6 +1325,7 @@
       zoomControl: false,
       scrollWheelZoom: true
     }).setView([52.0, 19.0], 6);
+
     map.on("click", function (event) {
       const root = document.querySelector("[x-data='locationsExplorer()']");
       const alpine = root ? Alpine.$data(root) : null;
@@ -1245,13 +1394,17 @@
 
   function fitAllLocations() {
     if (!map) return;
+
     const bounds = visibleLocationBounds() || allBounds;
+
     if (!bounds || !bounds.isValid()) return;
+
     map.fitBounds(bounds, { padding: [28, 28], maxZoom: 14 });
   }
 
   function zoomToFeature(name) {
     const item = featuresDict[name];
+
     if (!item || !map || !map.hasLayer(item.layer)) return;
 
     const layer = L.geoJSON(item.zoomGeom);
@@ -1261,6 +1414,28 @@
       map.fitBounds(bounds, { padding: [36, 36], maxZoom: item.type === "Address" ? 16 : 13 });
       item.layer.openPopup();
     }
+  }
+
+  function moveMapToCoordinates(lat, lng, label) {
+    if (!map || Number.isNaN(lat) || Number.isNaN(lng)) {
+      return;
+    }
+
+    if (mapSearchMarker) {
+      map.removeLayer(mapSearchMarker);
+      mapSearchMarker = null;
+    }
+
+    mapSearchMarker = L.circleMarker([lat, lng], {
+      radius: 9,
+      weight: 3,
+      fillOpacity: 0.85,
+    })
+      .bindPopup(`<strong>${escapeHtml(label)}</strong><br>${lat.toFixed(6)}, ${lng.toFixed(6)}`)
+      .addTo(map);
+
+    map.setView([lat, lng], 13);
+    mapSearchMarker.openPopup();
   }
 
   function highlightFeature(name) {
@@ -1296,6 +1471,5 @@
       }
     });
   }
-
 </script>
 {% endblock %}

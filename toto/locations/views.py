@@ -7,6 +7,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db.models import Avg, Count
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
@@ -27,7 +28,7 @@ from .models import (
     Zone,
 )
 from .forms import TravelForm, VisitForm, AddressCreateForm
-from .geocode import reverse_geocode_address
+from .geocode import reverse_geocode_address, forward_geocode_locations
 
 
 ROUTING_MODE_OPTIONS = (
@@ -1018,3 +1019,15 @@ def route_save(request):
 
     messages.success(request, f"Route '{route.name}' saved.")
     return redirect("locations:route_detail", pk=route.pk)
+
+
+@login_required
+def location_search_api(request):
+    query = request.GET.get("q", "").strip()
+
+    if len(query) < 2:
+        return JsonResponse({"results": []})
+
+    return JsonResponse({
+        "results": forward_geocode_locations(query),
+    })
