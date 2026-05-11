@@ -1,33 +1,91 @@
+import json
+
 from django.http import HttpResponseForbidden
-from django.views.generic import DetailView, ListView, UpdateView
+from django.views.generic import DetailView, ListView, UpdateView, CreateView, DeleteView
 from django.contrib.auth.models import AnonymousUser
-from toto.kanban.models import Project, Column, Task, Sprint, Mission
 from django.contrib.auth.mixins import LoginRequiredMixin
-from toto.core.page import PageProcessor
-from django.urls import reverse
-from django.views.generic import CreateView
-from toto.kanban.forms import TaskCreateForm
-from django.views.generic import DeleteView
-from django.shortcuts import get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-import json
-from django.db.models import Count, Sum, Q
-from django.shortcuts import get_object_or_404, render
+from django.db.models import Q, Sum
+from django.shortcuts import get_object_or_404, redirect
+from django.urls import reverse
+
+from toto.core.page import PageProcessor
+from toto.kanban.forms import TaskCreateForm
+from toto.kanban.metrics import SprintMetricsCalculator, MissionMetricsCalculator
+from toto.kanban.models import Project, Column, Task, Sprint, Mission
+
+
+class ChartViewMixin:
+    chart_colors = [
+        "#4f5fa1",
+        "#2f3d63",
+        "#5fa38c",
+        "#4a8f7a",
+        "#ff4455",
+        "#d94a4a",
+    ]
+
+    success_color = "#5fa38c"
+    accent_color = "#4f5fa1"
+    accent_alt_color = "#2f3d63"
+    warn_color = "#ff4455"
+
+    def chart_json(self, chart):
+        return json.dumps(chart)
+
+    def bar_chart(self, labels, datasets, stacked=False, max_y=None):
+        y_options = {
+            "beginAtZero": True,
+        }
+
+        if max_y is not None:
+            y_options["max"] = max_y
+
+        return {
+            "chart_type": "bar",
+            "labels": labels,
+            "datasets": datasets,
+            "options": {
+                "scales": {
+                    "x": {
+                        "stacked": stacked,
+                    },
+                    "y": {
+                        **y_options,
+                        "stacked": stacked,
+                    },
+                }
+            },
+        }
+
+    def line_chart(self, labels, datasets):
+        return {
+            "chart_type": "line",
+            "labels": labels,
+            "datasets": datasets,
+            "options": {
+                "scales": {
+                    "y": {
+                        "beginAtZero": True,
+                    }
+                }
+            },
+        }
 
 
 class ProjectDetailView(LoginRequiredMixin, DetailView):
     model = Project
-    template_name = 'kanban/board.html'
-    context_object_name = 'project'
+    template_name = "kanban/board.html"
+    context_object_name = "project"
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context = PageProcessor().decorate(context, self.request)
 
         project = self.get_object()
-        sprint_id = self.request.GET.get('sprint')
-        sprints = Sprint.objects.filter(project=project).order_by('-start_time')
+        sprint_id = self.request.GET.get("sprint")
+        sprints = Sprint.objects.filter(project=project).order_by("-start_time")
 
         selected_sprint = None
         if sprint_id:
@@ -39,18 +97,24 @@ class ProjectDetailView(LoginRequiredMixin, DetailView):
         columns = (
             Column.objects
             .filter(project=project)
-            .order_by('position')
-            .prefetch_related('tasks', 'auditors')
+            .order_by("position")
+            .prefetch_related(
+                "auditors",
+                "tasks",
+                "tasks__mission",
+                "tasks__assignee",
+                "tasks__sprint",
+                "tasks__column",
+            )
         )
 
-        # Annotate each column with a helper attribute
-        for col in columns:
-            col.is_auditor = col.auditors.filter(id=self.request.user.id).exists()
-            y = 0
+        for column in columns:
+            column.is_auditor = column.auditors.filter(id=self.request.user.id).exists()
+
         context.update({
-            'columns': columns,
-            'sprints': sprints,
-            'selected_sprint': selected_sprint
+            "columns": columns,
+            "sprints": sprints,
+            "selected_sprint": selected_sprint,
         })
 
         return context
@@ -58,23 +122,27 @@ class ProjectDetailView(LoginRequiredMixin, DetailView):
 
 class ProjectListView(LoginRequiredMixin, ListView):
     model = Project
-    template_name = 'kanban/project_list.html'
-    context_object_name = 'projects'
+    template_name = "kanban/project_list.html"
+    context_object_name = "projects"
 
     def get_queryset(self):
         user = self.request.user
+
         if isinstance(user, AnonymousUser) or not user.is_authenticated:
             return Project.objects.none()
 
-        return Project.objects.filter(
-            Q(owner__user=user) |
-            Q(collaborators=user)
-        ).distinct()
+        return (
+            Project.objects
+            .filter(
+                Q(owner__user=user) |
+                Q(collaborators=user)
+            )
+            .distinct()
+        )
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context = PageProcessor().decorate(context, self.request)
-        return context
+        return PageProcessor().decorate(context, self.request)
 
 
 class EisenhowerMatrixView(LoginRequiredMixin, DetailView):
@@ -87,28 +155,51 @@ class EisenhowerMatrixView(LoginRequiredMixin, DetailView):
         context = PageProcessor().decorate(context, self.request)
 
         project = self.get_object()
-        missions = Mission.objects.filter(campaign__project=project)
 
-        urgency_levels = {1: "Low", 2: "Medium", 3: "High"}
-        impact_levels = {1: "Low", 2: "Medium", 3: "High"}
+        missions = (
+            Mission.objects
+            .filter(campaign__project=project)
+            .select_related("campaign")
+        )
 
-        # Build a 3×3 matrix as a list of rows
+        urgency_levels = {
+            1: "Low",
+            2: "Medium",
+            3: "High",
+        }
+
+        impact_levels = {
+            1: "Low",
+            2: "Medium",
+            3: "High",
+        }
+
         matrix = []
-        for u, u_label in urgency_levels.items():
+
+        for urgency_value, urgency_label in urgency_levels.items():
             row = []
-            for i, i_label in impact_levels.items():
-                cell_missions = missions.filter(urgency=u, impact=i)
+
+            for impact_value, impact_label in impact_levels.items():
                 row.append({
-                    "urgency": u_label,
-                    "impact": i_label,
-                    "missions": cell_missions,
+                    "urgency": urgency_label,
+                    "impact": impact_label,
+                    "impact_label": impact_label,
+                    "missions": missions.filter(
+                        urgency=urgency_value,
+                        impact=impact_value,
+                    ),
                 })
-            matrix.append({"urgency": u_label, "cells": row})
+
+            matrix.append({
+                "urgency": urgency_label,
+                "cells": row,
+            })
 
         context.update({
             "matrix": matrix,
             "impact_levels": impact_levels.values(),
         })
+
         return context
 
 
@@ -122,20 +213,28 @@ class BacklogView(LoginRequiredMixin, DetailView):
         context = PageProcessor().decorate(context, self.request)
 
         project = self.get_object()
-        # Prefetch campaigns and tasks for efficiency
+
         missions = (
-            Mission.objects.filter(campaign__project=project)
-            .select_related("campaign")
-            .prefetch_related("tasks")
+            Mission.objects
+            .filter(campaign__project=project)
+            .select_related("campaign", "owner")
+            .prefetch_related(
+                "tasks",
+                "tasks__column",
+                "tasks__sprint",
+                "tasks__assignee",
+            )
+            .order_by("campaign__name", "title")
         )
 
         context.update({
             "missions": missions,
         })
+
         return context
 
 
-class TaskCreateView(CreateView):
+class TaskCreateView(LoginRequiredMixin, CreateView):
     model = Task
     form_class = TaskCreateForm
     template_name = "kanban/create_task.html"
@@ -144,10 +243,15 @@ class TaskCreateView(CreateView):
     def dispatch(self, request, *args, **kwargs):
         self.project = get_object_or_404(Project, pk=kwargs["pk"])
 
-        # If ?column=ID is passed, validate it
         column_id = request.GET.get("column")
+
         if column_id:
-            column = get_object_or_404(Column, pk=column_id, project=self.project)
+            column = get_object_or_404(
+                Column,
+                pk=column_id,
+                project=self.project,
+            )
+
             if not column.can_add_task:
                 return HttpResponseForbidden("You cannot add tasks to this column.")
 
@@ -155,24 +259,33 @@ class TaskCreateView(CreateView):
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
-        # Pass project to the form so it can filter missions/columns/sprints
         kwargs["project"] = self.project
         return kwargs
 
     def form_valid(self, form):
-        # Assign project-related fields automatically
         task = form.save(commit=False)
 
-        # If column was passed in URL (?column=3), preselect it
         column_id = self.request.GET.get("column")
+
         if column_id:
-            task.column = get_object_or_404(Column, pk=column_id, project=self.project)
+            task.column = get_object_or_404(
+                Column,
+                pk=column_id,
+                project=self.project,
+            )
 
         task.save()
+
+        if hasattr(form, "save_m2m"):
+            form.save_m2m()
+
         return super().form_valid(form)
 
     def get_success_url(self):
-        return reverse("kanban:project_detail", kwargs={"pk": self.project.pk})
+        return reverse(
+            "kanban:project_detail",
+            kwargs={"pk": self.project.pk},
+        )
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -180,7 +293,7 @@ class TaskCreateView(CreateView):
         return PageProcessor().decorate(context, self.request)
 
 
-class TaskUpdateView(UpdateView):
+class TaskUpdateView(LoginRequiredMixin, UpdateView):
     model = Task
     form_class = TaskCreateForm
     template_name = "kanban/edit_task.html"
@@ -195,13 +308,23 @@ class TaskUpdateView(UpdateView):
 
         return super().dispatch(request, *args, **kwargs)
 
+    def get_queryset(self):
+        return (
+            Task.objects
+            .filter(mission__campaign__project_id=self.kwargs["project_pk"])
+            .select_related("column", "mission", "mission__campaign")
+        )
+
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
         kwargs["project"] = self.project
         return kwargs
 
     def get_success_url(self):
-        return reverse("kanban:project_detail", kwargs={"pk": self.project.pk})
+        return reverse(
+            "kanban:project_detail",
+            kwargs={"pk": self.project.pk},
+        )
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -209,7 +332,7 @@ class TaskUpdateView(UpdateView):
         return PageProcessor().decorate(context, self.request)
 
 
-class TaskDeleteView(DeleteView):
+class TaskDeleteView(LoginRequiredMixin, DeleteView):
     model = Task
     template_name = "kanban/delete_task.html"
     context_object_name = "task"
@@ -223,8 +346,18 @@ class TaskDeleteView(DeleteView):
 
         return super().dispatch(request, *args, **kwargs)
 
+    def get_queryset(self):
+        return (
+            Task.objects
+            .filter(mission__campaign__project_id=self.kwargs["project_pk"])
+            .select_related("column", "mission", "mission__campaign")
+        )
+
     def get_success_url(self):
-        return reverse("kanban:project_detail", kwargs={"pk": self.project.pk})
+        return reverse(
+            "kanban:project_detail",
+            kwargs={"pk": self.project.pk},
+        )
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -233,43 +366,56 @@ class TaskDeleteView(DeleteView):
 
 
 def _get_adjacent_column(task, direction):
-    """Helper: find next or previous column based on position."""
-    current_pos = task.column.position
+    current_position = task.column.position
     project = task.column.project
 
     if direction == "next":
         return (
             Column.objects
-            .filter(project=project, position__gt=current_pos)
+            .filter(
+                project=project,
+                position__gt=current_position,
+            )
             .order_by("position")
             .first()
         )
-    else:
-        return (
-            Column.objects
-            .filter(project=project, position__lt=current_pos)
-            .order_by("-position")
-            .first()
+
+    return (
+        Column.objects
+        .filter(
+            project=project,
+            position__lt=current_position,
         )
+        .order_by("-position")
+        .first()
+    )
 
 
 @login_required
 def promote_task(request, project_id, task_id):
     project = get_object_or_404(Project, id=project_id)
-    task = get_object_or_404(Task, id=task_id, mission__campaign__project=project)
+
+    task = get_object_or_404(
+        Task.objects.select_related("column", "mission", "mission__campaign"),
+        id=task_id,
+        mission__campaign__project=project,
+    )
 
     next_column = _get_adjacent_column(task, "next")
+
     if not next_column:
         messages.warning(request, "Task is already in the last column.")
         return redirect("kanban:project_detail", pk=project_id)
 
-    # Permission check
     if not next_column.auditors.filter(id=request.user.id).exists():
-        messages.error(request, "You are not allowed to promote tasks into this column.")
+        messages.error(
+            request,
+            "You are not allowed to promote tasks into this column.",
+        )
         return redirect("kanban:project_detail", pk=project_id)
 
     task.column = next_column
-    task.save()
+    task.save(update_fields=["column"])
 
     messages.success(request, f"Task promoted to {next_column.name}.")
     return redirect("kanban:project_detail", pk=project_id)
@@ -278,160 +424,196 @@ def promote_task(request, project_id, task_id):
 @login_required
 def demote_task(request, project_id, task_id):
     project = get_object_or_404(Project, id=project_id)
-    task = get_object_or_404(Task, id=task_id, mission__campaign__project=project)
 
-    prev_column = _get_adjacent_column(task, "prev")
-    if not prev_column:
+    task = get_object_or_404(
+        Task.objects.select_related("column", "mission", "mission__campaign"),
+        id=task_id,
+        mission__campaign__project=project,
+    )
+
+    previous_column = _get_adjacent_column(task, "prev")
+
+    if not previous_column:
         messages.warning(request, "Task is already in the first column.")
         return redirect("kanban:project_detail", pk=project_id)
 
-    # Permission check
-    if not prev_column.auditors.filter(id=request.user.id).exists():
-        messages.error(request, "You are not allowed to demote tasks into this column.")
+    if not previous_column.auditors.filter(id=request.user.id).exists():
+        messages.error(
+            request,
+            "You are not allowed to demote tasks into this column.",
+        )
         return redirect("kanban:project_detail", pk=project_id)
 
-    task.column = prev_column
-    task.save()
+    task.column = previous_column
+    task.save(update_fields=["column"])
 
-    messages.success(request, f"Task moved back to {prev_column.name}.")
+    messages.success(request, f"Task moved back to {previous_column.name}.")
     return redirect("kanban:project_detail", pk=project_id)
 
 
-@login_required
-def sprint_metrics(request, pk):
-    project = get_object_or_404(Project, pk=pk)
+class SprintMetricsView(LoginRequiredMixin, ChartViewMixin, DetailView):
+    model = Project
+    template_name = "kanban/sprint_metrics.html"
+    context_object_name = "project"
 
-    tasks = (
-        Task.objects
-        .filter(column__project=project)
-        .select_related("column", "sprint", "assignee")
-    )
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context = PageProcessor().decorate(context, self.request)
 
-    sprints = (
-        Sprint.objects
-        .filter(project=project)
-        .order_by("-start_time")
-    )
+        project = self.object
+        calculator = SprintMetricsCalculator(project)
+        metrics = calculator.get_context_data()
 
-    done_filter = (
-        Q(column__name__iexact="done") |
-        Q(column__name__iexact="complete") |
-        Q(column__name__iexact="completed")
-    )
+        sprint_items = metrics["sprint_items"]
+        assignee_items = metrics["assignee_items"]
 
-    sprint_items = []
+        sprint_completion_chart = self.bar_chart(
+            labels=[item["name"] for item in sprint_items],
+            datasets=[{
+                "label": "Completion %",
+                "data": [item["completion_rate"] for item in sprint_items],
+                "backgroundColor": self.chart_colors,
+            }],
+            max_y=100,
+        )
 
-    for sprint in sprints:
-        sprint_tasks = tasks.filter(sprint=sprint)
+        sprint_task_chart = self.bar_chart(
+            labels=[item["name"] for item in sprint_items],
+            datasets=[
+                {
+                    "label": "Completed",
+                    "data": [item["completed_tasks"] for item in sprint_items],
+                    "backgroundColor": self.success_color,
+                },
+                {
+                    "label": "Open",
+                    "data": [item["open_tasks"] for item in sprint_items],
+                    "backgroundColor": self.accent_color,
+                },
+            ],
+            stacked=True,
+        )
 
-        total_tasks = sprint_tasks.count()
-        completed_tasks = sprint_tasks.filter(done_filter).count()
-        open_tasks = total_tasks - completed_tasks
-        total_weight = sprint_tasks.aggregate(total=Sum("weight"))["total"] or 0
-        completed_weight = sprint_tasks.filter(done_filter).aggregate(total=Sum("weight"))["total"] or 0
+        burndown_chart = self.line_chart(
+            labels=metrics["burndown_labels"],
+            datasets=[{
+                "label": "Remaining Weight",
+                "data": metrics["burndown_data"],
+                "borderColor": self.accent_color,
+                "backgroundColor": self.accent_color,
+                "tension": 0.35,
+            }],
+        )
 
-        completion_rate = round((completed_tasks / total_tasks) * 100, 1) if total_tasks else 0
-        weight_completion_rate = round((completed_weight / total_weight) * 100, 1) if total_weight else 0
+        velocity_chart = self.bar_chart(
+            labels=metrics["velocity_labels"],
+            datasets=[{
+                "label": "Completed Weight",
+                "data": metrics["velocity_data"],
+                "backgroundColor": self.success_color,
+            }],
+        )
 
-        sprint_items.append({
-            "id": sprint.id,
-            "name": sprint.name,
-            "start": sprint.start_time,
-            "end": sprint.end_time,
-            "total_tasks": total_tasks,
-            "completed_tasks": completed_tasks,
-            "open_tasks": open_tasks,
-            "total_weight": total_weight,
-            "completed_weight": completed_weight,
-            "completion_rate": completion_rate,
-            "weight_completion_rate": weight_completion_rate,
+        lead_time_chart = self.bar_chart(
+            labels=metrics["lead_labels"],
+            datasets=[{
+                "label": "Lead Time Days",
+                "data": metrics["lead_data"],
+                "backgroundColor": self.accent_alt_color,
+            }],
+        )
+
+        assignee_workload_chart = self.bar_chart(
+            labels=[item["label"] for item in assignee_items],
+            datasets=[
+                {
+                    "label": "Completed Weight",
+                    "data": [item["completed_weight"] for item in assignee_items],
+                    "backgroundColor": self.success_color,
+                },
+                {
+                    "label": "Open Weight",
+                    "data": [item["open_weight"] for item in assignee_items],
+                    "backgroundColor": self.accent_color,
+                },
+            ],
+            stacked=True,
+        )
+
+        context.update({
+            **metrics,
+
+            "sprint_completion_chart_json": self.chart_json(sprint_completion_chart),
+            "sprint_task_chart_json": self.chart_json(sprint_task_chart),
+
+            "burndown_chart_json": self.chart_json(burndown_chart),
+            "velocity_chart_json": self.chart_json(velocity_chart),
+            "lead_time_chart_json": self.chart_json(lead_time_chart),
+            "assignee_workload_chart_json": self.chart_json(assignee_workload_chart),
         })
 
-    total_sprints = len(sprint_items)
-    total_tasks = sum(item["total_tasks"] for item in sprint_items)
-    completed_tasks = sum(item["completed_tasks"] for item in sprint_items)
-    total_weight = sum(item["total_weight"] for item in sprint_items)
-    completed_weight = sum(item["completed_weight"] for item in sprint_items)
+        return context
 
-    overall_completion_rate = round((completed_tasks / total_tasks) * 100, 1) if total_tasks else 0
-    overall_weight_completion_rate = round((completed_weight / total_weight) * 100, 1) if total_weight else 0
 
-    chart_colors = [
-        "#4f5fa1",
-        "#2f3d63",
-        "#5fa38c",
-        "#4a8f7a",
-        "#ff4455",
-        "#d94a4a",
-    ]
+class MissionMetricsView(LoginRequiredMixin, ChartViewMixin, DetailView):
+    model = Project
+    template_name = "kanban/mission_metrics.html"
+    context_object_name = "project"
 
-    sprint_completion_chart = {
-        "chart_type": "bar",
-        "labels": [item["name"] for item in sprint_items],
-        "datasets": [{
-            "label": "Completion %",
-            "data": [item["completion_rate"] for item in sprint_items],
-            "backgroundColor": chart_colors,
-        }],
-        "options": {
-            "scales": {
-                "y": {
-                    "beginAtZero": True,
-                    "max": 100,
-                }
-            }
-        }
-    }
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context = PageProcessor().decorate(context, self.request)
 
-    sprint_task_chart = {
-        "chart_type": "bar",
-        "labels": [item["name"] for item in sprint_items],
-        "datasets": [
-            {
-                "label": "Completed",
-                "data": [item["completed_tasks"] for item in sprint_items],
-                "backgroundColor": "#5fa38c",
-            },
-            {
-                "label": "Open",
-                "data": [item["open_tasks"] for item in sprint_items],
-                "backgroundColor": "#4f5fa1",
-            },
-        ],
-        "options": {
-            "scales": {
-                "x": {"stacked": True},
-                "y": {
-                    "stacked": True,
-                    "beginAtZero": True,
+        project = self.object
+        calculator = MissionMetricsCalculator(project)
+        metrics = calculator.get_context_data()
+
+        mission_items = metrics["mission_items"]
+
+        mission_task_chart = self.bar_chart(
+            labels=[item["title"] for item in mission_items],
+            datasets=[
+                {
+                    "label": "Completed",
+                    "data": [item["completed_tasks"] for item in mission_items],
+                    "backgroundColor": self.success_color,
                 },
-            }
-        }
-    }
+                {
+                    "label": "Open",
+                    "data": [item["open_tasks"] for item in mission_items],
+                    "backgroundColor": self.accent_color,
+                },
+            ],
+            stacked=True,
+        )
 
-    context = {
-        "project": project,
+        mission_completion_chart = self.bar_chart(
+            labels=[item["title"] for item in mission_items],
+            datasets=[{
+                "label": "Completion %",
+                "data": [item["completion_rate"] for item in mission_items],
+                "backgroundColor": self.chart_colors,
+            }],
+            max_y=100,
+        )
 
-        "sprint_items": sprint_items,
+        mission_weight_chart = self.bar_chart(
+            labels=[item["title"] for item in mission_items],
+            datasets=[{
+                "label": "Total Weight",
+                "data": [item["total_weight"] for item in mission_items],
+                "backgroundColor": self.accent_alt_color,
+            }],
+        )
 
-        "total_sprints": total_sprints,
-        "total_tasks": total_tasks,
-        "completed_tasks": completed_tasks,
-        "open_tasks": total_tasks - completed_tasks,
-        "total_weight": total_weight,
-        "completed_weight": completed_weight,
-        "overall_completion_rate": overall_completion_rate,
-        "overall_weight_completion_rate": overall_weight_completion_rate,
+        context.update({
+            **metrics,
+            "mission_task_chart_json": self.chart_json(mission_task_chart),
+            "mission_completion_chart_json": self.chart_json(mission_completion_chart),
+            "mission_weight_chart_json": self.chart_json(mission_weight_chart),
+        })
 
-        "sprint_completion_chart_json": json.dumps(sprint_completion_chart),
-        "sprint_task_chart_json": json.dumps(sprint_task_chart),
-    }
-
-    return render(
-        request,
-        "kanban/sprint_metrics.html",
-        PageProcessor().decorate(context, request)
-    )
+        return context
 
 
 class MissionDetailView(LoginRequiredMixin, DetailView):
@@ -442,7 +624,12 @@ class MissionDetailView(LoginRequiredMixin, DetailView):
     def get_queryset(self):
         return (
             Mission.objects
-            .select_related("campaign", "campaign__project", "owner")
+            .select_related(
+                "campaign",
+                "campaign__project",
+                "campaign__owner",
+                "owner",
+            )
             .prefetch_related(
                 "tasks",
                 "tasks__column",
@@ -464,6 +651,7 @@ class MissionDetailView(LoginRequiredMixin, DetailView):
         open_tasks = total_tasks - completed_tasks
 
         total_weight = tasks.aggregate(total=Sum("weight"))["total"] or 0
+
         completed_weight = (
             tasks
             .filter(completed_at__isnull=False)

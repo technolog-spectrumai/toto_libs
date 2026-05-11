@@ -194,6 +194,160 @@
       </article>
     </section>
 
+    <!-- Details -->
+    <section
+      x-data="{ open: false }"
+      :class="darkMode
+        ? 'border-accent-1 bg-bubble-bg-dark'
+        : 'border-accent-2 bg-bubble-bg-light'"
+      class="overflow-hidden rounded-2xl border shadow-sm">
+
+      <button
+        type="button"
+        @click="open = !open"
+        class="flex w-full items-center justify-between gap-4 px-5 py-4 text-left sm:px-6">
+
+        <div>
+          <h2 class="flex items-center gap-2 text-lg font-bold">
+            <i class="fa-solid fa-chart-line"></i>
+            Details
+          </h2>
+
+          <p class="mt-1 text-sm opacity-70">
+            Burndown, velocity, lead time, assignee workload, and campaign progress.
+          </p>
+        </div>
+
+        <i
+          class="fa-solid text-sm opacity-70 transition-transform duration-200"
+          :class="open ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+      </button>
+
+      <div
+        x-show="open"
+        x-transition
+        class="space-y-6 border-t px-5 py-5 sm:px-6"
+        :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+
+        <!-- Burndown -->
+        <article
+          :class="darkMode
+            ? 'border-accent-1 bg-sunken-dark'
+            : 'border-accent-2 bg-sunken-light'"
+          class="rounded-2xl border p-5 shadow-sm">
+
+          <h3 class="mb-1 flex items-center gap-2 text-base font-bold">
+            <i class="fa-solid fa-fire-flame-curved"></i>
+            Burndown
+          </h3>
+
+          <p class="mb-4 text-sm opacity-70">
+            {% if latest_sprint %}
+              Remaining weight across {{ latest_sprint.name }}.
+            {% else %}
+              No sprint available.
+            {% endif %}
+          </p>
+
+          {% include "oya/partials/chart.html" with chart_id="burndownChart" data=burndown_chart_json %}
+        </article>
+
+        <!-- Velocity + Lead Time -->
+        <section class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <article
+            :class="darkMode
+              ? 'border-accent-1 bg-sunken-dark'
+              : 'border-accent-2 bg-sunken-light'"
+            class="rounded-2xl border p-5 shadow-sm">
+
+            <h3 class="mb-4 flex items-center gap-2 text-base font-bold">
+              <i class="fa-solid fa-gauge"></i>
+              Velocity
+            </h3>
+
+            {% include "oya/partials/chart.html" with chart_id="velocityChart" data=velocity_chart_json %}
+          </article>
+
+          <article
+            :class="darkMode
+              ? 'border-accent-1 bg-sunken-dark'
+              : 'border-accent-2 bg-sunken-light'"
+            class="rounded-2xl border p-5 shadow-sm">
+
+            <h3 class="mb-4 flex items-center gap-2 text-base font-bold">
+              <i class="fa-solid fa-hourglass-half"></i>
+              Lead time
+            </h3>
+
+            {% include "oya/partials/chart.html" with chart_id="leadTimeChart" data=lead_time_chart_json %}
+          </article>
+        </section>
+
+        <!-- Assignee Workload -->
+        <article
+          :class="darkMode
+            ? 'border-accent-1 bg-sunken-dark'
+            : 'border-accent-2 bg-sunken-light'"
+          class="rounded-2xl border p-5 shadow-sm">
+
+          <h3 class="mb-4 flex items-center gap-2 text-base font-bold">
+            <i class="fa-solid fa-users"></i>
+            Assignee workload
+          </h3>
+
+          {% include "oya/partials/chart.html" with chart_id="assigneeWorkloadChart" data=assignee_workload_chart_json %}
+        </article>
+
+        <!-- Campaign Progress -->
+        <article
+          :class="darkMode
+            ? 'border-accent-1 bg-sunken-dark'
+            : 'border-accent-2 bg-sunken-light'"
+          class="rounded-2xl border p-5 shadow-sm">
+
+          <h3 class="mb-4 flex items-center gap-2 text-base font-bold">
+            <i class="fa-solid fa-road"></i>
+            Campaign progress
+          </h3>
+
+          <div class="space-y-4">
+            {% for campaign in campaign_progress_data %}
+              <div>
+                <div class="mb-2 flex items-center justify-between gap-3 text-sm">
+                  <span class="font-semibold">
+                    {{ campaign.label }}
+                  </span>
+
+                  <span class="whitespace-nowrap opacity-70">
+                    {{ campaign.done }}/{{ campaign.total }} weight · {{ campaign.pct }}%
+                  </span>
+                </div>
+
+                <div
+                  :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+                  class="h-2 overflow-hidden rounded-full">
+                  <div
+                    :style="'width: {{ campaign.pct }}%'"
+                    :class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'"
+                    class="h-full rounded-full">
+                  </div>
+                </div>
+              </div>
+            {% empty %}
+              <div
+                :class="darkMode
+                  ? 'border-accent-1 bg-primary-bg-dark'
+                  : 'border-accent-2 bg-primary-bg-light'"
+                class="rounded-xl border border-dashed p-6 text-center text-sm opacity-70">
+                No campaign progress available.
+              </div>
+            {% endfor %}
+          </div>
+        </article>
+
+      </div>
+    </section>
+
     <!-- Sprint Breakdown -->
     <section
       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"

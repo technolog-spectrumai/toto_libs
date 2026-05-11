@@ -1,108 +1,328 @@
-import json
-from django.views.generic import DetailView
-from django.db.models import Q
-from toto.kanban.models import Project, Column, Task, Sprint, Mission
-from toto.core.page import PageProcessor
-from django.contrib.auth.mixins import LoginRequiredMixin
-from toto.core.page import PageProcessor
-from django.db.models import Sum
 from datetime import timedelta
 
+from django.db.models import Sum
 
-class MetricsView(LoginRequiredMixin, DetailView):
-    model = Project
-    template_name = "kanban/metrics.html"
-    context_object_name = "project"
+from toto.kanban.models import Task, Sprint, Mission
 
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context = PageProcessor().decorate(context, self.request)
 
-        project = self.get_object()
-        sprint = Sprint.objects.filter(project=project).order_by("-start_time").first()
+class BaseMetricsCalculator:
+    def __init__(self, project):
+        self.project = project
+        self.tasks = self.get_project_tasks()
 
-        context.update({
-            "sprint": sprint,
-            "burndown_labels": json.dumps(self.get_burndown_labels(sprint)),
-            "burndown_data": json.dumps(self.get_burndown_data(sprint)),
-            "velocity_labels": json.dumps(self.get_velocity_labels(project)),
-            "velocity_data": json.dumps(self.get_velocity_data(project)),
-            "lead_labels": json.dumps(self.get_lead_labels(project)),
-            "lead_data": json.dumps(self.get_lead_data(project)),
-            "assignee_labels": json.dumps(self.get_assignee_labels(project)),
-            "completed_counts": json.dumps(self.get_completed_counts(project)),
-            "incomplete_counts": json.dumps(self.get_incomplete_counts(project)),
-            "campaign_progress_data": self.get_campaign_progress(project),
-        })
-        return context
+    def get_project_tasks(self):
+        return (
+            Task.objects
+            .filter(mission__campaign__project=self.project)
+            .select_related(
+                "mission",
+                "mission__campaign",
+                "column",
+                "sprint",
+                "assignee",
+            )
+        )
 
-    # --- Helpers ---
+    def percent(self, part, total):
+        return round((part / total) * 100, 1) if total else 0
 
-    def get_burndown_labels(self, sprint):
+    def weight_sum(self, queryset):
+        return queryset.aggregate(total=Sum("weight"))["total"] or 0
+
+    def completed_tasks(self, queryset):
+        return queryset.filter(completed_at__isnull=False)
+
+    def open_tasks(self, queryset):
+        return queryset.filter(completed_at__isnull=True)
+
+    def task_summary(self, queryset):
+        total_tasks = queryset.count()
+        completed_tasks = self.completed_tasks(queryset).count()
+        open_tasks = total_tasks - completed_tasks
+
+        total_weight = self.weight_sum(queryset)
+        completed_weight = self.weight_sum(self.completed_tasks(queryset))
+        open_weight = total_weight - completed_weight
+
+        return {
+            "total_tasks": total_tasks,
+            "completed_tasks": completed_tasks,
+            "open_tasks": open_tasks,
+            "total_weight": total_weight,
+            "completed_weight": completed_weight,
+            "open_weight": open_weight,
+            "completion_rate": self.percent(completed_tasks, total_tasks),
+            "weight_completion_rate": self.percent(completed_weight, total_weight),
+        }
+
+
+class SprintMetricsCalculator(BaseMetricsCalculator):
+    def __init__(self, project):
+        super().__init__(project)
+
+        self.sprints = (
+            Sprint.objects
+            .filter(project=project)
+            .order_by("-start_time")
+        )
+
+    def get_latest_sprint(self):
+        return self.sprints.first()
+
+    def get_sprint_items(self):
+        items = []
+
+        for sprint in self.sprints:
+            sprint_tasks = self.tasks.filter(sprint=sprint)
+
+            items.append({
+                "id": sprint.id,
+                "name": sprint.name,
+                "start": sprint.start_time,
+                "end": sprint.end_time,
+                **self.task_summary(sprint_tasks),
+            })
+
+        return items
+
+    def get_summary(self):
+        sprint_items = self.get_sprint_items()
+
+        total_sprints = len(sprint_items)
+        total_tasks = sum(item["total_tasks"] for item in sprint_items)
+        completed_tasks = sum(item["completed_tasks"] for item in sprint_items)
+        open_tasks = sum(item["open_tasks"] for item in sprint_items)
+
+        total_weight = sum(item["total_weight"] for item in sprint_items)
+        completed_weight = sum(item["completed_weight"] for item in sprint_items)
+        open_weight = sum(item["open_weight"] for item in sprint_items)
+
+        return {
+            "sprint_items": sprint_items,
+            "total_sprints": total_sprints,
+            "total_tasks": total_tasks,
+            "completed_tasks": completed_tasks,
+            "open_tasks": open_tasks,
+            "total_weight": total_weight,
+            "completed_weight": completed_weight,
+            "open_weight": open_weight,
+            "overall_completion_rate": self.percent(completed_tasks, total_tasks),
+            "overall_weight_completion_rate": self.percent(completed_weight, total_weight),
+        }
+
+    def get_burndown_labels(self, sprint=None):
+        sprint = sprint or self.get_latest_sprint()
+
         if not sprint:
             return []
-        days = (sprint.end_time.date() - sprint.start_time.date()).days + 1
-        return [(sprint.start_time.date() + timedelta(days=i)).strftime("%b %d") for i in range(days)]
 
-    def get_burndown_data(self, sprint):
+        days = (sprint.end_time.date() - sprint.start_time.date()).days + 1
+
+        return [
+            (sprint.start_time.date() + timedelta(days=i)).strftime("%b %d")
+            for i in range(days)
+        ]
+
+    def get_burndown_data(self, sprint=None):
+        sprint = sprint or self.get_latest_sprint()
+
         if not sprint:
             return []
-        total_weight = sprint.tasks.aggregate(total=Sum("weight"))["total"] or 0
+
+        sprint_tasks = self.tasks.filter(sprint=sprint)
+        total_weight = self.weight_sum(sprint_tasks)
+
         days = (sprint.end_time.date() - sprint.start_time.date()).days + 1
+
         data = []
+
         for i in range(days):
             day = sprint.start_time.date() + timedelta(days=i)
-            completed_weight = sprint.tasks.filter(completed_at__date__lte=day).aggregate(done=Sum("weight"))["done"] or 0
+
+            completed_weight = (
+                sprint_tasks
+                .filter(completed_at__date__lte=day)
+                .aggregate(done=Sum("weight"))["done"]
+                or 0
+            )
+
             data.append(max(total_weight - completed_weight, 0))
+
         return data
 
-    def get_velocity_labels(self, project):
-        return [sp.name for sp in Sprint.objects.filter(project=project).order_by("start_time")]
-
-    def get_velocity_data(self, project):
+    def get_velocity_labels(self):
         return [
-            sp.tasks.filter(completed_at__isnull=False).aggregate(done=Sum("weight"))["done"] or 0
-            for sp in Sprint.objects.filter(project=project).order_by("start_time")
+            sprint.name
+            for sprint in self.sprints.order_by("start_time")
         ]
 
-    def get_lead_labels(self, project):
-        return [task.title for task in Task.objects.filter(mission__campaign__project=project, completed_at__isnull=False)]
+    def get_velocity_data(self):
+        return [
+            self.weight_sum(
+                self.tasks.filter(
+                    sprint=sprint,
+                    completed_at__isnull=False,
+                )
+            )
+            for sprint in self.sprints.order_by("start_time")
+        ]
 
-    def get_lead_data(self, project):
+    def get_lead_tasks(self):
+        return (
+            self.tasks
+            .filter(
+                completed_at__isnull=False,
+                sprint__isnull=False,
+            )
+            .select_related("sprint")
+        )
+
+    def get_lead_labels(self):
+        return [
+            task.title
+            for task in self.get_lead_tasks()
+        ]
+
+    def get_lead_data(self):
+        return [
+            (task.completed_at.date() - task.sprint.start_time.date()).days
+            for task in self.get_lead_tasks()
+        ]
+
+    def get_assignee_items(self):
+        assignees = (
+            self.tasks
+            .values("assignee_id", "assignee__display_name")
+            .distinct()
+            .order_by("assignee__display_name")
+        )
+
+        items = []
+
+        for assignee in assignees:
+            assignee_id = assignee["assignee_id"]
+
+            if assignee_id:
+                assignee_tasks = self.tasks.filter(assignee_id=assignee_id)
+            else:
+                assignee_tasks = self.tasks.filter(assignee__isnull=True)
+
+            items.append({
+                "label": assignee["assignee__display_name"] or "Unassigned",
+                **self.task_summary(assignee_tasks),
+            })
+
+        return items
+
+    def get_campaign_progress(self):
         data = []
-        for task in Task.objects.filter(mission__campaign__project=project, completed_at__isnull=False):
-            if task.sprint and task.completed_at:
-                data.append((task.completed_at.date() - task.sprint.start_time.date()).days)
+
+        for campaign in self.project.campaigns.all():
+            campaign_tasks = self.tasks.filter(mission__campaign=campaign)
+            summary = self.task_summary(campaign_tasks)
+
+            data.append({
+                "label": campaign.name,
+                "total": summary["total_weight"],
+                "done": summary["completed_weight"],
+                "pct": summary["weight_completion_rate"],
+            })
+
         return data
 
-    def get_assignee_labels(self, project):
-        assignees = Task.objects.filter(mission__campaign__project=project).values("assignee__username").distinct()
-        return [a["assignee__username"] or "Unassigned" for a in assignees]
+    def get_context_data(self):
+        return {
+            **self.get_summary(),
+            "latest_sprint": self.get_latest_sprint(),
 
-    def get_completed_counts(self, project):
-        assignees = Task.objects.filter(mission__campaign__project=project).values("assignee__username").distinct()
-        return [
-            Task.objects.filter(mission__campaign__project=project, assignee__username=a["assignee__username"], completed_at__isnull=False).aggregate(total=Sum("weight"))["total"] or 0
-            for a in assignees
-        ]
+            "burndown_labels": self.get_burndown_labels(),
+            "burndown_data": self.get_burndown_data(),
 
-    def get_incomplete_counts(self, project):
-        assignees = Task.objects.filter(mission__campaign__project=project).values("assignee__username").distinct()
-        return [
-            Task.objects.filter(mission__campaign__project=project, assignee__username=a["assignee__username"], completed_at__isnull=True).aggregate(total=Sum("weight"))["total"] or 0
-            for a in assignees
-        ]
+            "velocity_labels": self.get_velocity_labels(),
+            "velocity_data": self.get_velocity_data(),
 
-    def get_campaign_progress(self, project):
-        data = []
-        for campaign in project.campaigns.all():
-            total = campaign.missions.aggregate(total=Sum("tasks__weight"))["total"] or 0
-            done = campaign.missions.aggregate(done=Sum("tasks__weight", filter=Q(tasks__completed_at__isnull=False)))["done"] or 0
-            pct = (done / total * 100) if total > 0 else 0
-            data.append({"label": campaign.name, "pct": round(pct, 1)})
-        return data
+            "lead_labels": self.get_lead_labels(),
+            "lead_data": self.get_lead_data(),
+
+            "assignee_items": self.get_assignee_items(),
+            "campaign_progress_data": self.get_campaign_progress(),
+        }
 
 
+class MissionMetricsCalculator(BaseMetricsCalculator):
+    def __init__(self, project):
+        super().__init__(project)
 
+        self.missions = (
+            Mission.objects
+            .filter(campaign__project=project)
+            .select_related("campaign", "owner")
+            .prefetch_related(
+                "tasks",
+                "tasks__column",
+                "tasks__sprint",
+                "tasks__assignee",
+            )
+            .order_by("campaign__name", "title")
+        )
 
+    def get_mission_items(self):
+        items = []
 
+        for mission in self.missions:
+            mission_tasks = self.tasks.filter(mission=mission)
+            summary = self.task_summary(mission_tasks)
+
+            items.append({
+                "mission": mission,
+                "tasks": mission_tasks,
+                "title": mission.title,
+                "campaign": mission.campaign.name,
+                "urgency": mission.urgency_label,
+                "impact": mission.impact_label,
+                **summary,
+            })
+
+        return items
+
+    def get_summary(self):
+        mission_items = self.get_mission_items()
+
+        total_missions = len(mission_items)
+        total_tasks = sum(item["total_tasks"] for item in mission_items)
+        completed_tasks = sum(item["completed_tasks"] for item in mission_items)
+        open_tasks = sum(item["open_tasks"] for item in mission_items)
+
+        total_weight = sum(item["total_weight"] for item in mission_items)
+        completed_weight = sum(item["completed_weight"] for item in mission_items)
+        open_weight = sum(item["open_weight"] for item in mission_items)
+
+        high_urgency_count = sum(
+            1 for item in mission_items
+            if item["mission"].urgency == 3
+        )
+
+        high_impact_count = sum(
+            1 for item in mission_items
+            if item["mission"].impact == 3
+        )
+
+        return {
+            "mission_items": mission_items,
+            "total_missions": total_missions,
+            "total_tasks": total_tasks,
+            "completed_tasks": completed_tasks,
+            "open_tasks": open_tasks,
+            "total_weight": total_weight,
+            "completed_weight": completed_weight,
+            "open_weight": open_weight,
+            "overall_completion_rate": self.percent(completed_tasks, total_tasks),
+            "overall_weight_completion_rate": self.percent(completed_weight, total_weight),
+            "high_urgency_count": high_urgency_count,
+            "high_impact_count": high_impact_count,
+        }
+
+    def get_context_data(self):
+        return {
+            **self.get_summary(),
+        }
