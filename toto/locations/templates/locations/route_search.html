@@ -21,10 +21,17 @@
   class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
 
   <div class="mx-auto grid max-w-7xl gap-5 lg:grid-cols-[380px_minmax(0,1fr)]">
+
+    <!-- Sidebar -->
     <aside
-      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      :class="darkMode
+        ? 'border-accent-1 bg-bubble-bg-dark'
+        : 'border-accent-2 bg-bubble-bg-light'"
       class="rounded-lg border p-5 shadow-sm">
-      <a href="{% url 'locations:locations_all' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+
+      <a
+        href="{% url 'locations:locations_all' %}"
+        class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
         <i class="fa-solid fa-arrow-left"></i>
         Locations
       </a>
@@ -35,22 +42,29 @@
           class="text-xs font-semibold uppercase tracking-wide">
           Traversable path
         </p>
+
         <h1 class="mt-2 flex items-center gap-2 text-2xl font-bold">
           <i class="fa-solid fa-route"></i>
           Route Search
         </h1>
+
         <p class="mt-2 text-sm opacity-70">
-          Search a real route between two WGS84 points by car, bicycle, foot, or a configured public transport backend.
+          Search a real route between two saved addresses or manual WGS84 points.
         </p>
       </div>
 
+      <!-- Search form -->
       <form method="get" class="mt-5 space-y-4">
+
+        <!-- Mode -->
         <div>
           <label for="mode" class="mb-1 block text-sm font-semibold">Mode</label>
+
           <div class="relative">
             <i
               id="mode_icon"
               class="fa-solid {{ selected_mode.icon }} pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm opacity-70"></i>
+
             <select
               id="mode"
               name="mode"
@@ -67,17 +81,24 @@
                 </option>
               {% endfor %}
             </select>
+
             <i class="fa-solid fa-chevron-down pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs opacity-60"></i>
           </div>
 
           <div
-            :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+            :class="darkMode
+              ? 'border-accent-1 bg-primary-bg-dark'
+              : 'border-accent-2 bg-primary-bg-light'"
             class="mt-3 flex items-center gap-3 rounded-lg border p-3 text-sm">
+
             <span
-              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              :class="darkMode
+                ? 'bg-accent-dark text-primary-bg-dark'
+                : 'bg-accent-light text-primary-bg-light'"
               class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg">
               <i id="selected_mode_icon" class="fa-solid {{ selected_mode.icon }}"></i>
             </span>
+
             <span>
               <span class="block text-xs opacity-60">Selected mode</span>
               <strong id="selected_mode_label">{{ selected_mode.label }}</strong>
@@ -85,6 +106,7 @@
           </div>
         </div>
 
+        <!-- Geolocation -->
         <button
           type="button"
           id="find-my-location"
@@ -93,15 +115,21 @@
             : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
           class="inline-flex w-full items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
           <i class="fa-solid fa-location-crosshairs"></i>
-          Find my location
+          Use my location as start
         </button>
 
+        <!-- Start -->
         <div
-          :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+          :class="darkMode
+            ? 'border-accent-1 bg-primary-bg-dark'
+            : 'border-accent-2 bg-primary-bg-light'"
           class="rounded-lg border p-3">
+
           <h2 class="text-sm font-semibold">Start point</h2>
+
           <label class="mt-3 block">
             <span class="mb-1 block text-xs opacity-70">Saved address</span>
+
             <select
               id="start_address"
               name="start_address"
@@ -109,7 +137,9 @@
                 ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'
                 : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
               class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+
               <option value="">Manual coordinates</option>
+
               {% for address in address_options %}
                 <option
                   value="{{ address.id }}"
@@ -121,6 +151,7 @@
               {% endfor %}
             </select>
           </label>
+
           <div class="mt-3 grid grid-cols-2 gap-3">
             <label class="block">
               <span class="mb-1 block text-xs opacity-70">Latitude</span>
@@ -134,6 +165,7 @@
                   : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
                 class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
             </label>
+
             <label class="block">
               <span class="mb-1 block text-xs opacity-70">Longitude</span>
               <input
@@ -149,12 +181,18 @@
           </div>
         </div>
 
+        <!-- End -->
         <div
-          :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+          :class="darkMode
+            ? 'border-accent-1 bg-primary-bg-dark'
+            : 'border-accent-2 bg-primary-bg-light'"
           class="rounded-lg border p-3">
+
           <h2 class="text-sm font-semibold">End point</h2>
+
           <label class="mt-3 block">
             <span class="mb-1 block text-xs opacity-70">Saved address</span>
+
             <select
               id="end_address"
               name="end_address"
@@ -162,7 +200,9 @@
                 ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'
                 : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
               class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+
               <option value="">Manual coordinates</option>
+
               {% for address in address_options %}
                 <option
                   value="{{ address.id }}"
@@ -174,6 +214,7 @@
               {% endfor %}
             </select>
           </label>
+
           <div class="mt-3 grid grid-cols-2 gap-3">
             <label class="block">
               <span class="mb-1 block text-xs opacity-70">Latitude</span>
@@ -187,6 +228,7 @@
                   : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
                 class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
             </label>
+
             <label class="block">
               <span class="mb-1 block text-xs opacity-70">Longitude</span>
               <input
@@ -204,7 +246,9 @@
 
         {% if error %}
           <div
-            :class="darkMode ? 'border-warn-dark text-warn-dark bg-primary-bg-dark' : 'border-warn-light text-warn-light bg-primary-bg-light'"
+            :class="darkMode
+              ? 'border-warn-dark text-warn-dark bg-primary-bg-dark'
+              : 'border-warn-light text-warn-light bg-primary-bg-light'"
             class="rounded-lg border p-3 text-sm">
             {{ error }}
           </div>
@@ -212,159 +256,119 @@
 
         <button
           type="submit"
-          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          :class="darkMode
+            ? 'bg-accent-dark text-primary-bg-dark'
+            : 'bg-accent-light text-primary-bg-light'"
           class="inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
           <i class="fa-solid fa-magnifying-glass-location"></i>
           Search route
         </button>
       </form>
 
+      <!-- Result + save route -->
       {% if route %}
         <div
-          :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+          :class="darkMode
+            ? 'border-accent-1 bg-primary-bg-dark'
+            : 'border-accent-2 bg-primary-bg-light'"
           class="mt-5 grid grid-cols-2 gap-2 rounded-lg border p-3 text-sm">
+
           <div>
             <div class="text-lg font-bold">{{ route.properties.distance_km }}</div>
             <div class="text-xs opacity-65">km</div>
           </div>
+
           <div>
             <div class="text-lg font-bold">{{ route.properties.duration_min }}</div>
             <div class="text-xs opacity-65">min</div>
           </div>
+
           <div class="col-span-2 flex items-center gap-2 border-t border-current/10 pt-2 text-xs font-semibold">
             <i class="fa-solid {{ selected_mode.icon }}"></i>
             {{ selected_mode.label }}
+          </div>
+
+          <div class="col-span-2 border-t border-current/10 pt-3">
+            <form method="post" action="{% url 'locations:route_save' %}" class="space-y-3">
+              {% csrf_token %}
+
+              <input type="hidden" name="mode" value="{{ form.mode }}">
+              <input type="hidden" name="start_address" value="{{ form.start_address }}">
+              <input type="hidden" name="end_address" value="{{ form.end_address }}">
+              <input type="hidden" name="start_lat" value="{{ form.start_lat }}">
+              <input type="hidden" name="start_lng" value="{{ form.start_lng }}">
+              <input type="hidden" name="end_lat" value="{{ form.end_lat }}">
+              <input type="hidden" name="end_lng" value="{{ form.end_lng }}">
+              <input type="hidden" name="route_json" value="{{ route_json|escape }}">
+
+              <label class="block">
+                <span class="mb-1 block text-xs font-semibold opacity-70">Route name</span>
+                <input
+                  name="name"
+                  value="{{ selected_mode.label }} route"
+                  :class="darkMode
+                    ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'
+                    : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+                  class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+              </label>
+
+              <button
+                type="submit"
+                :class="darkMode
+                  ? 'bg-accent-dark text-primary-bg-dark'
+                  : 'bg-accent-light text-primary-bg-light'"
+                class="inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+                <i class="fa-solid fa-floppy-disk"></i>
+                Add route
+              </button>
+            </form>
           </div>
         </div>
       {% endif %}
     </aside>
 
+    <!-- Map -->
     <section
-      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      :class="darkMode
+        ? 'border-accent-1 bg-bubble-bg-dark'
+        : 'border-accent-2 bg-bubble-bg-light'"
       class="relative min-h-[72vh] overflow-hidden rounded-lg border shadow-sm">
+
       <div id="route-map" class="h-full min-h-[72vh] w-full"></div>
+
+      <div
+        :class="darkMode
+          ? 'bg-bubble-bg-dark/95 text-text-main-dark'
+          : 'bg-bubble-bg-light/95 text-text-main-light'"
+        class="pointer-events-none absolute left-4 top-4 rounded-lg border border-current/10 px-3 py-2 text-xs font-semibold shadow-sm backdrop-blur">
+        <i class="fa-solid fa-circle-info mr-1"></i>
+        Map clicks are disabled here. Add addresses from the locations map.
+      </div>
     </section>
-  </div>
-
-  <div
-    id="temporary-point-modal"
-    class="fixed inset-0 z-[1000] hidden items-center justify-center bg-black/45 px-4 py-6">
-    <div
-      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark' : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
-      class="w-full max-w-md rounded-lg border p-5 shadow-2xl">
-      <div class="flex items-start justify-between gap-4">
-        <div>
-          <p
-            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-            class="text-xs font-semibold uppercase tracking-wide">
-            Map point
-          </p>
-          <h2 class="mt-1 flex items-center gap-2 text-xl font-bold">
-            <i class="fa-solid fa-location-dot"></i>
-            Add point
-          </h2>
-        </div>
-        <button
-          type="button"
-          id="temporary-point-close"
-          :class="darkMode ? 'hover:bg-primary-bg-dark' : 'hover:bg-primary-bg-light'"
-          class="inline-flex h-9 w-9 items-center justify-center rounded-lg transition">
-          <i class="fa-solid fa-xmark"></i>
-        </button>
-      </div>
-
-      <div class="mt-5 space-y-4">
-        <label class="block">
-          <span class="mb-1 block text-xs font-semibold opacity-70">Name</span>
-          <input
-            id="temporary-point-name"
-            :class="darkMode
-              ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark'
-              : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
-            class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
-        </label>
-
-        <div class="grid grid-cols-2 gap-3">
-          <label class="block">
-            <span class="mb-1 block text-xs font-semibold opacity-70">Latitude</span>
-            <input
-              id="temporary-point-lat"
-              readonly
-              :class="darkMode
-                ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark'
-                : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
-              class="w-full rounded-lg border px-3 py-2 text-sm outline-none">
-          </label>
-          <label class="block">
-            <span class="mb-1 block text-xs font-semibold opacity-70">Longitude</span>
-            <input
-              id="temporary-point-lng"
-              readonly
-              :class="darkMode
-                ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark'
-                : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
-              class="w-full rounded-lg border px-3 py-2 text-sm outline-none">
-          </label>
-        </div>
-
-        <label class="block">
-          <span class="mb-1 block text-xs font-semibold opacity-70">Use as</span>
-          <select
-            id="temporary-point-target"
-            :class="darkMode
-              ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark'
-              : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
-            class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
-            <option value="start">Start point</option>
-            <option value="end">End point</option>
-            <option value="save">Save to choices</option>
-          </select>
-        </label>
-      </div>
-
-      <div class="mt-5 flex justify-end gap-2">
-        <button
-          type="button"
-          id="temporary-point-cancel"
-          :class="darkMode
-            ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark'
-            : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
-          class="inline-flex items-center justify-center rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
-          Cancel
-        </button>
-        <button
-          type="button"
-          id="temporary-point-save"
-          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-          class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-          <i class="fa-solid fa-check"></i>
-          Save point
-        </button>
-      </div>
-    </div>
   </div>
 </div>
 
 <script>
   const routeFeature = JSON.parse(`{{ route_json|escapejs }}`);
+
   const formPoints = {
     start: [Number("{{ form.start_lat }}"), Number("{{ form.start_lng }}")],
     end: [Number("{{ form.end_lat }}"), Number("{{ form.end_lng }}")]
   };
+
   const currentMode = "{{ form.mode }}";
   let routeMap = null;
-  let temporaryPointLayer = null;
-  let pendingTemporaryPoint = null;
-  let temporaryPointCounter = 0;
 
   function routeThemeColor(isDark, mode = currentMode) {
     const colors = window.tailwind?.config?.theme?.extend?.colors || {};
+
     const modeColors = {
       car: isDark ? "accent-dark" : "accent-light",
       bicycle: isDark ? "success-dark" : "success-light",
       foot: isDark ? "link-dark" : "link-light",
       public_transport: isDark ? "warn-dark" : "warn-light"
     };
+
     const fallback = isDark
       ? (colors["accent-dark"] || colors["accent-1"] || "#4f5fa1")
       : (colors["accent-light"] || colors["accent-2"] || "#2f3d63");
@@ -399,6 +403,7 @@
 
     select.addEventListener("change", function () {
       const option = select.options[select.selectedIndex];
+
       if (!option || !option.dataset.lat || !option.dataset.lng) return;
 
       latInput.value = option.dataset.lat;
@@ -406,114 +411,15 @@
     });
   }
 
-  function formatCoordinate(value) {
-    return Number(value).toFixed(6);
-  }
+  function bindGeolocationStart() {
+    const button = document.getElementById("find-my-location");
+    const startAddress = document.getElementById("start_address");
+    const startLat = document.getElementById("start_lat");
+    const startLng = document.getElementById("start_lng");
 
-  function escapeHtml(value) {
-    const div = document.createElement("div");
-    div.textContent = value;
-    return div.innerHTML;
-  }
+    if (!button || !startLat || !startLng) return;
 
-  function openTemporaryPointModal(lat, lng, defaultName = "Map point") {
-    pendingTemporaryPoint = {
-      lat: Number(lat),
-      lng: Number(lng)
-    };
-
-    const modal = document.getElementById("temporary-point-modal");
-    const nameInput = document.getElementById("temporary-point-name");
-    const latInput = document.getElementById("temporary-point-lat");
-    const lngInput = document.getElementById("temporary-point-lng");
-
-    if (!modal || !nameInput || !latInput || !lngInput) return;
-
-    nameInput.value = defaultName;
-    latInput.value = formatCoordinate(lat);
-    lngInput.value = formatCoordinate(lng);
-    modal.classList.remove("hidden");
-    modal.classList.add("flex");
-    window.setTimeout(() => nameInput.focus(), 50);
-  }
-
-  function closeTemporaryPointModal() {
-    const modal = document.getElementById("temporary-point-modal");
-    if (!modal) return;
-
-    modal.classList.add("hidden");
-    modal.classList.remove("flex");
-    pendingTemporaryPoint = null;
-  }
-
-  function addPointOption(select, point) {
-    if (!select) return;
-
-    const option = new Option(point.label, point.id);
-    option.dataset.lat = point.lat;
-    option.dataset.lng = point.lng;
-    option.dataset.temporary = "true";
-    select.add(option);
-  }
-
-  function addTemporaryPointMarker(point) {
-    if (!temporaryPointLayer) return;
-
-    L.marker([point.lat, point.lng])
-      .bindPopup(`<strong>${escapeHtml(point.label)}</strong><br>${point.lat}, ${point.lng}`)
-      .addTo(temporaryPointLayer);
-  }
-
-  function saveTemporaryPoint() {
-    if (!pendingTemporaryPoint) return;
-
-    temporaryPointCounter += 1;
-    const nameInput = document.getElementById("temporary-point-name");
-    const targetSelect = document.getElementById("temporary-point-target");
-    const startSelect = document.getElementById("start_address");
-    const endSelect = document.getElementById("end_address");
-    const label = (nameInput?.value || "").trim() || `Map point ${temporaryPointCounter}`;
-    const point = {
-      id: `temporary:${Date.now()}:${temporaryPointCounter}`,
-      label,
-      lat: formatCoordinate(pendingTemporaryPoint.lat),
-      lng: formatCoordinate(pendingTemporaryPoint.lng)
-    };
-
-    addPointOption(startSelect, point);
-    addPointOption(endSelect, point);
-    addTemporaryPointMarker(point);
-
-    const target = targetSelect?.value || "save";
-    if (target === "start" && startSelect) {
-      startSelect.value = point.id;
-      startSelect.dispatchEvent(new Event("change"));
-    }
-    if (target === "end" && endSelect) {
-      endSelect.value = point.id;
-      endSelect.dispatchEvent(new Event("change"));
-    }
-
-    closeTemporaryPointModal();
-  }
-
-  function bindTemporaryPointControls() {
-    document.getElementById("temporary-point-save")?.addEventListener("click", saveTemporaryPoint);
-    document.getElementById("temporary-point-cancel")?.addEventListener("click", closeTemporaryPointModal);
-    document.getElementById("temporary-point-close")?.addEventListener("click", closeTemporaryPointModal);
-    document.getElementById("temporary-point-modal")?.addEventListener("click", function (event) {
-      if (event.target.id === "temporary-point-modal") {
-        closeTemporaryPointModal();
-      }
-    });
-    document.getElementById("temporary-point-name")?.addEventListener("keydown", function (event) {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        saveTemporaryPoint();
-      }
-    });
-
-    document.getElementById("find-my-location")?.addEventListener("click", function () {
+    button.addEventListener("click", function () {
       if (!navigator.geolocation) {
         window.alert("Your browser does not support location lookup.");
         return;
@@ -523,15 +429,26 @@
         function (position) {
           const lat = position.coords.latitude;
           const lng = position.coords.longitude;
+
+          if (startAddress) {
+            startAddress.value = "";
+          }
+
+          startLat.value = Number(lat).toFixed(6);
+          startLng.value = Number(lng).toFixed(6);
+
           if (routeMap) {
             routeMap.setView([lat, lng], Math.max(routeMap.getZoom(), 14));
           }
-          openTemporaryPointModal(lat, lng, "My location");
         },
         function () {
           window.alert("Location permission was not granted.");
         },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 30000
+        }
       );
     });
   }
@@ -540,27 +457,33 @@
     bindModeSelect();
     bindAddressSelect("start_address", "start_lat", "start_lng");
     bindAddressSelect("end_address", "end_lat", "end_lng");
-    bindTemporaryPointControls();
+    bindGeolocationStart();
 
     const isDark = localStorage.getItem("darkMode") === "true";
-    const map = L.map("route-map", { zoomControl: false }).setView([52.0, 19.0], 5);
+
+    const map = L.map("route-map", {
+      zoomControl: false
+    }).setView([52.0, 19.0], 5);
+
     routeMap = map;
+
     const lightTiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
       attribution: "&copy; OpenStreetMap contributors"
     });
+
     const darkTiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
       maxZoom: 19,
       attribution: "&copy; OpenStreetMap contributors &copy; CARTO"
     });
-    const pointLayer = L.layerGroup().addTo(map);
-    temporaryPointLayer = L.layerGroup().addTo(map);
 
-    L.control.zoom({ position: "bottomright" }).addTo(map);
+    const pointLayer = L.layerGroup().addTo(map);
+
+    L.control.zoom({
+      position: "bottomright"
+    }).addTo(map);
+
     (isDark ? darkTiles : lightTiles).addTo(map);
-    map.on("click", function (event) {
-      openTemporaryPointModal(event.latlng.lat, event.latlng.lng, "Map point");
-    });
 
     L.circleMarker(formPoints.start, {
       radius: 7,
@@ -586,13 +509,22 @@
           opacity: 0.9
         }
       }).addTo(map);
-      map.fitBounds(routeLayer.getBounds(), { padding: [36, 36] });
+
+      map.fitBounds(routeLayer.getBounds(), {
+        padding: [36, 36]
+      });
     } else {
       const bounds = L.latLngBounds([formPoints.start, formPoints.end]);
-      map.fitBounds(bounds, { padding: [36, 36], maxZoom: 13 });
+
+      map.fitBounds(bounds, {
+        padding: [36, 36],
+        maxZoom: 13
+      });
     }
 
-    setTimeout(() => map.invalidateSize(), 100);
+    setTimeout(function () {
+      map.invalidateSize();
+    }, 100);
   });
 </script>
 {% endblock %}

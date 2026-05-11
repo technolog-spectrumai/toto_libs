@@ -1158,5 +1158,28 @@
       item.layer.openPopup();
     }
   }
+  function highlightFeature(name) {
+    if (!map) return;
+
+    featureLayers.forEach((item) => {
+      if (!item.layer) return;
+
+      const isSelected = item.name === name;
+      const isDark = localStorage.getItem("darkMode") === "true";
+
+      if (item.layer.setStyle) {
+        item.layer.setStyle({
+          ...featureStyle(item.type, isDark),
+          opacity: isSelected ? 1 : 0.18,
+          fillOpacity: isSelected ? 0.7 : 0.06,
+          weight: isSelected ? 7 : featureStyle(item.type, isDark).weight,
+        });
+      }
+
+      if (isSelected && item.layer.bringToFront) {
+        item.layer.bringToFront();
+      }
+    });
+  }
 </script>
 {% endblock %}

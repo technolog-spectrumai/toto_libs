@@ -15,6 +15,7 @@ from toto.core.page import PageProcessor
 from toto.socialhub.models import Person
 from toto.kanban.models import Campaign, Mission, Task
 from toto.events.models import Event
+from django.contrib.gis.geos import LineString, MultiLineString
 
 from .models import (
     Address,
@@ -925,3 +926,84 @@ def address_create(request):
         "locations/address_form.html",
         PageProcessor().decorate(context, request),
     )
+
+
+@require_POST
+@login_required
+def route_save(request):
+    name = request.POST.get("name", "").strip()
+    route_json = request.POST.get("route_json", "").strip()
+
+    start_address_id = request.POST.get("start_address")
+    end_address_id = request.POST.get("end_address")
+
+    if not name:
+        messages.error(request, "Route name is required.")
+        return redirect("locations:route_search")
+
+    if not route_json:
+        messages.error(request, "No route geometry was provided.")
+        return redirect("locations:route_search")
+
+    try:
+        payload = json.loads(route_json)
+    except json.JSONDecodeError:
+        messages.error(request, "Route geometry is invalid.")
+        return redirect("locations:route_search")
+
+    geometry = payload.get("geometry")
+
+    if not geometry:
+        messages.error(request, "Route geometry is missing.")
+        return redirect("locations:route_search")
+
+    coordinates = geometry.get("coordinates")
+
+    if not coordinates:
+        messages.error(request, "Route coordinates are missing.")
+        return redirect("locations:route_search")
+
+    geometry_type = geometry.get("type")
+
+    try:
+        if geometry_type == "LineString":
+            line = LineString(*coordinates)
+            route_geometry = MultiLineString(line)
+
+        elif geometry_type == "MultiLineString":
+            route_geometry = MultiLineString(*[
+                LineString(*line_coordinates)
+                for line_coordinates in coordinates
+            ])
+
+        else:
+            messages.error(
+                request,
+                "Only LineString and MultiLineString routes can be saved.",
+            )
+            return redirect("locations:route_search")
+
+        route_geometry.srid = 4326
+
+    except (TypeError, ValueError):
+        messages.error(request, "Route coordinates could not be converted.")
+        return redirect("locations:route_search")
+
+    start_address = None
+    end_address = None
+
+    if start_address_id and not str(start_address_id).startswith("temporary:"):
+        start_address = Address.objects.filter(pk=start_address_id).first()
+
+    if end_address_id and not str(end_address_id).startswith("temporary:"):
+        end_address = Address.objects.filter(pk=end_address_id).first()
+
+    route = Route.objects.create(
+        name=name,
+        geometry=route_geometry,
+        start_address=start_address,
+        end_address=end_address,
+    )
+
+    messages.success(request, f"Route '{route.name}' saved.")
+    return redirect("locations:route_detail", pk=route.pk)
