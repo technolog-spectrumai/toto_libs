@@ -3,24 +3,62 @@
 
 {% block title %}Dashboard | {{ platform.site_name }}{% endblock %}
 
+{% block start_script %}
+<style>
+  [x-cloak] {
+    display: none !important;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
-<div
+<section
   :class="darkMode
     ? 'bg-primary-bg-dark text-text-main-dark'
     : 'bg-primary-bg-light text-text-main-light'"
-  class="min-h-screen px-4 py-10 transition-colors duration-300">
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
 
-  <div class="max-w-6xl mx-auto">
-    <h1 class="text-4xl font-extrabold mb-10 tracking-tight">
-      Dashboard
-    </h1>
+  <div class="mx-auto max-w-6xl space-y-8">
 
-    {% if messages %}
+    <!-- Header -->
+    <header class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <p
+          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+          class="text-xs font-semibold uppercase tracking-wide">
+          Workspace
+        </p>
+
+        <h1 class="mt-2 flex items-center gap-3 text-4xl font-extrabold tracking-tight">
+          <i class="fa-solid fa-gauge-high"></i>
+          Dashboard
+        </h1>
+
+        <p class="mt-2 max-w-2xl text-sm opacity-70">
+          Open your available modules, tools, and community spaces from one place.
+        </p>
+      </div>
+
       <div
         :class="darkMode
           ? 'border-accent-1 bg-bubble-bg-dark'
           : 'border-accent-2 bg-bubble-bg-light'"
-        class="mb-8 rounded-xl border p-4 shadow-sm">
+        class="inline-flex items-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold shadow-sm">
+        <i
+          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+          class="fa-solid fa-layer-group"></i>
+        {{ blocks|length }} item{% if blocks|length != 1 %}s{% endif %}
+      </div>
+    </header>
+
+    <!-- Messages -->
+    {% if messages %}
+      <section
+        :class="darkMode
+          ? 'border-accent-1 bg-bubble-bg-dark'
+          : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-xl border p-4 shadow-sm">
+
         <div class="space-y-3">
           {% for message in messages %}
             <div
@@ -32,41 +70,71 @@
             </div>
           {% endfor %}
         </div>
+      </section>
+    {% endif %}
+
+    <!-- Dashboard Blocks -->
+    {% if blocks %}
+      <div class="grid grid-cols-1 gap-8 md:grid-cols-2">
+        {% for block in blocks %}
+          <article
+            :class="darkMode
+              ? 'bg-bubble-bg-dark border-accent-1'
+              : 'bg-bubble-bg-light border-accent-2'"
+            class="group flex items-start rounded-xl border border-l-8 p-6 shadow-lg transition-all duration-300 hover:scale-[1.015] hover:shadow-xl">
+
+            <div
+              :class="darkMode
+                ? 'bg-primary-bg-dark text-accent-dark border-accent-1'
+                : 'bg-primary-bg-light text-accent-light border-accent-2'"
+              class="mr-4 flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border shadow-sm">
+              <i class="{{ block.icon|default:'fa-solid fa-cube' }} text-2xl"></i>
+            </div>
+
+            <div class="min-w-0 flex-1">
+              <h2 class="break-words text-xl font-semibold">
+                <a
+                  href="{{ block.link|default:'#' }}"
+                  {% if block.link %}target="_blank" rel="noopener noreferrer"{% endif %}
+                  :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                  class="underline-offset-4 transition hover:underline">
+                  {{ block.title|default:"Untitled" }}
+                </a>
+              </h2>
+
+              <p class="mt-2 break-words text-sm leading-relaxed opacity-90">
+                {{ block.description|default:"No description available." }}
+              </p>
+
+              <a
+                href="{{ block.link|default:'#' }}"
+                {% if block.link %}target="_blank" rel="noopener noreferrer"{% endif %}
+                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                class="mt-4 inline-flex items-center gap-2 text-sm font-semibold opacity-90 transition hover:opacity-100">
+                Open
+                <i class="fa-solid fa-arrow-right text-xs transition group-hover:translate-x-0.5"></i>
+              </a>
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div
+        :class="darkMode
+          ? 'border-accent-1 bg-bubble-bg-dark'
+          : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-xl border border-dashed p-8 text-center shadow-sm">
+
+        <i
+          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+          class="fa-solid fa-box-open text-3xl"></i>
+
+        <p class="mt-4 text-lg font-semibold opacity-80">
+          No elements
+        </p>
       </div>
     {% endif %}
 
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-8">
-      {% for block in blocks %}
-      <div
-        :class="darkMode
-          ? 'bg-bubble-bg-dark border border-accent-1 border-l-8'
-          : 'bg-bubble-bg-light border border-accent-2 border-l-8'"
-        class="p-6 rounded-xl shadow-lg flex items-start transition-all duration-300 hover:shadow-xl hover:scale-[1.015]">
-
-        <i class="text-3xl mr-4"
-           :class="darkMode
-             ? 'text-accent-dark {{ block.icon }}'
-             : 'text-accent-light {{ block.icon }}'"></i>
-
-        <div>
-          <h2 class="text-xl font-semibold mb-2">
-            <a href="{{ block.link }}" target="_blank"
-               class="hover:underline focus:outline-none transition"
-               :class="darkMode
-                 ? 'text-accent-dark'
-                 : 'text-accent-light'">
-              {{ block.title }}
-            </a>
-          </h2>
-          <p :class="darkMode ? 'text-text-main-dark' : 'text-text-main-light'" class="text-sm leading-relaxed opacity-90">
-            {{ block.description }}
-          </p>
-        </div>
-      </div>
-      {% empty %}
-      <p class="text-center text-lg opacity-70">No elements</p>
-      {% endfor %}
-    </div>
   </div>
-</div>
+</section>
 {% endblock %}
