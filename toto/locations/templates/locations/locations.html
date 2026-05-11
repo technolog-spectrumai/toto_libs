@@ -799,7 +799,9 @@
               </div>
             </div>
           </div>
+        </div>
 
+        <div class="pointer-events-auto absolute bottom-4 left-4 z-[500] flex flex-col gap-2">
           <button
             type="button"
             @click.stop="toggleAddressAdding()"
@@ -817,20 +819,20 @@
 
             <span x-text="addingAddressesEnabled ? 'Add by click: on' : 'Add by click: off'"></span>
           </button>
-        </div>
 
-        <div
-          :class="darkMode ? 'bg-bubble-bg-dark/95 text-text-main-dark' : 'bg-bubble-bg-light/95 text-text-main-light'"
-          class="absolute bottom-4 left-4 hidden rounded-lg border border-current/10 p-3 text-xs shadow-sm backdrop-blur sm:block">
+          <div
+            :class="darkMode ? 'bg-bubble-bg-dark/95 text-text-main-dark' : 'bg-bubble-bg-light/95 text-text-main-light'"
+            class="hidden rounded-lg border border-current/10 p-3 text-xs shadow-sm backdrop-blur sm:block">
 
-          <div class="mb-2 font-semibold">Legend</div>
+            <div class="mb-2 font-semibold">Legend</div>
 
-          <div class="grid gap-1.5">
-            <div class="flex items-center gap-2"><span :style="typeStyle('Territory')" class="h-2.5 w-2.5 rounded-full"></span>Territory</div>
-            <div class="flex items-center gap-2"><span :style="typeStyle('Zone')" class="h-2.5 w-2.5 rounded-full"></span>Zone</div>
-            <div class="flex items-center gap-2"><span :style="typeStyle('Route Chain')" class="h-2.5 w-2.5 rounded-full"></span>Route Chain</div>
-            <div class="flex items-center gap-2"><span :style="typeStyle('Route')" class="h-2.5 w-2.5 rounded-full"></span>Route</div>
-            <div class="flex items-center gap-2"><span :style="typeStyle('Address')" class="h-2.5 w-2.5 rounded-full"></span>Address</div>
+            <div class="grid gap-1.5">
+              <div class="flex items-center gap-2"><span :style="typeStyle('Territory')" class="h-2.5 w-2.5 rounded-full"></span>Territory</div>
+              <div class="flex items-center gap-2"><span :style="typeStyle('Zone')" class="h-2.5 w-2.5 rounded-full"></span>Zone</div>
+              <div class="flex items-center gap-2"><span :style="typeStyle('Route Chain')" class="h-2.5 w-2.5 rounded-full"></span>Route Chain</div>
+              <div class="flex items-center gap-2"><span :style="typeStyle('Route')" class="h-2.5 w-2.5 rounded-full"></span>Route</div>
+              <div class="flex items-center gap-2"><span :style="typeStyle('Address')" class="h-2.5 w-2.5 rounded-full"></span>Address</div>
+            </div>
           </div>
         </div>
       </div>
