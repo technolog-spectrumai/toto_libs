@@ -151,11 +151,13 @@
       selectLocation(location) {
         this.selectedName = location.name;
         zoomToFeature(location.name);
+        highlightFeature(location.name);
         this.sidebarOpen = false;
       },
 
       fitAll() {
         fitAllLocations();
+        clearFeatureHighlight();
         this.sidebarOpen = false;
       },
 
@@ -1158,6 +1160,7 @@
       item.layer.openPopup();
     }
   }
+
   function highlightFeature(name) {
     if (!map) return;
 
@@ -1181,5 +1184,16 @@
       }
     });
   }
+
+  function clearFeatureHighlight() {
+    const isDark = localStorage.getItem("darkMode") === "true";
+
+    featureLayers.forEach((item) => {
+      if (item.layer?.setStyle) {
+        item.layer.setStyle(featureStyle(item.type, isDark));
+      }
+    });
+  }
+
 </script>
 {% endblock %}
