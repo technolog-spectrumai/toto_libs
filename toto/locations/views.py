@@ -16,7 +16,6 @@ from toto.socialhub.models import Person
 from toto.kanban.models import Campaign, Mission, Task
 from toto.events.models import Event
 from django.contrib.gis.geos import LineString, MultiLineString
-
 from .models import (
     Address,
     MapLayer,
@@ -28,6 +27,8 @@ from .models import (
     Zone,
 )
 from .forms import TravelForm, VisitForm, AddressCreateForm
+from .geocode import reverse_geocode_address
+
 
 ROUTING_MODE_OPTIONS = (
     {"value": "car", "label": "Car", "icon": "fa-car-side"},
@@ -890,6 +891,7 @@ def visit_create(request):
         PageProcessor().decorate(context, request),
     )
 
+
 @login_required
 def address_create(request):
     initial_latitude = request.GET.get("lat")
@@ -902,17 +904,34 @@ def address_create(request):
             address = form.save()
             messages.success(request, "Address saved.")
             return redirect("locations:address_detail", pk=address.pk)
+
     else:
+        geocoded_initial = reverse_geocode_address(
+            initial_latitude,
+            initial_longitude,
+        )
+
+        query_initial = {
+            "country_name": request.GET.get("country", ""),
+            "state_or_province_name": request.GET.get("region", ""),
+            "locality_name": request.GET.get("locality", ""),
+            "street": request.GET.get("street", ""),
+            "building": request.GET.get("building", ""),
+        }
+
+        initial = {
+            **geocoded_initial,
+            **{
+                key: value
+                for key, value in query_initial.items()
+                if value not in (None, "")
+            },
+        }
+
         form = AddressCreateForm(
             latitude=initial_latitude,
             longitude=initial_longitude,
-            initial={
-                "country_name": request.GET.get("country", ""),
-                "state_or_province_name": request.GET.get("region", ""),
-                "locality_name": request.GET.get("locality", ""),
-                "street": request.GET.get("street", ""),
-                "building": request.GET.get("building", ""),
-            },
+            initial=initial,
         )
 
     context = {
@@ -951,42 +970,34 @@ def route_save(request):
         messages.error(request, "Route geometry is invalid.")
         return redirect("locations:route_search")
 
-    geometry = payload.get("geometry")
+    # Accept either:
+    # 1. {"type": "Feature", "geometry": {...}, "properties": {...}}
+    # 2. {"type": "LineString", "coordinates": [...]}
+    # 3. {"type": "MultiLineString", "coordinates": [...]}
+    geometry_payload = payload.get("geometry") if payload.get("type") == "Feature" else payload
 
-    if not geometry:
+    if not geometry_payload:
         messages.error(request, "Route geometry is missing.")
         return redirect("locations:route_search")
 
-    coordinates = geometry.get("coordinates")
-
-    if not coordinates:
-        messages.error(request, "Route coordinates are missing.")
-        return redirect("locations:route_search")
-
-    geometry_type = geometry.get("type")
-
     try:
-        if geometry_type == "LineString":
-            line = LineString(*coordinates)
-            route_geometry = MultiLineString(line)
-
-        elif geometry_type == "MultiLineString":
-            route_geometry = MultiLineString(*[
-                LineString(*line_coordinates)
-                for line_coordinates in coordinates
-            ])
-
-        else:
-            messages.error(
-                request,
-                "Only LineString and MultiLineString routes can be saved.",
-            )
-            return redirect("locations:route_search")
-
-        route_geometry.srid = 4326
-
+        geometry = GEOSGeometry(json.dumps(geometry_payload), srid=4326)
     except (TypeError, ValueError):
         messages.error(request, "Route coordinates could not be converted.")
+        return redirect("locations:route_search")
+
+    if geometry.geom_type == "LineString":
+        route_geometry = MultiLineString(geometry, srid=4326)
+
+    elif geometry.geom_type == "MultiLineString":
+        route_geometry = geometry
+        route_geometry.srid = 4326
+
+    else:
+        messages.error(
+            request,
+            "Only LineString and MultiLineString routes can be saved.",
+        )
         return redirect("locations:route_search")
 
     start_address = None
