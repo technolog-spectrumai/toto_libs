@@ -8,139 +8,262 @@
   :class="darkMode
     ? 'bg-primary-bg-dark text-text-main-dark'
     : 'bg-primary-bg-light text-text-main-light'"
-  class="flex items-center justify-center px-6 py-16 min-h-screen transition-colors duration-300">
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
 
-  <div
-    :class="darkMode
-      ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
-      : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
-    class="w-full max-w-2xl p-6 rounded-lg shadow-md border space-y-10 transition-colors duration-300">
+  <div class="mx-auto max-w-6xl space-y-8">
 
-    <!-- Page Title -->
-    <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-        class="text-2xl font-bold text-center">
-      Articles & Books
-    </h2>
-
-    <!-- Search Bar -->
-    <form method="get" class="flex gap-3 justify-center">
-      <input
-          type="text"
-          name="q"
-          value="{{ request.GET.q }}"
-          placeholder="Search articles..."
-          :class="darkMode
-            ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
-            : 'bg-primary-bg-light text-text-main-light border-accent-2'"
-          class="px-3 py-2 rounded-md border w-full max-w-sm transition-colors duration-300"
-        >
-      <button
-        type="submit"
-        :class="darkMode
-          ? 'bg-accent-dark text-primary-bg-dark'
-          : 'bg-accent-light text-primary-bg-light'"
-        class="px-4 py-2 rounded font-semibold hover:opacity-90 transition">
-        Search
-      </button>
-    </form>
-
-    <!-- Tag List -->
-    {% if tags %}
-      <div class="flex flex-wrap gap-3 justify-center">
-        {% for tag in tags %}
-          <a href="{% url 'verbena:page_list_by_tag' tag.slug %}"
-             :class="darkMode
-               ? 'bg-primary-bg-dark border border-accent-1 hover:bg-bubble-bg-dark text-accent-dark'
-               : 'bg-primary-bg-light border border-accent-2 hover:bg-bubble-bg-light text-accent-light'"
-             class="px-3 py-2 rounded-md text-sm font-semibold transition-colors duration-300 shadow-sm cursor-pointer">
-            #{{ tag.name }}
-          </a>
-        {% endfor %}
-      </div>
-    {% endif %}
-
-    <!-- ARTICLE LIST (NOW FIRST) -->
-    <div class="space-y-4">
-      <h3 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-          class="text-xl font-semibold">
-        Articles
-      </h3>
-
-      {% if articles %}
-        <ul class="space-y-4">
-          {% for article in articles %}
-            <li
-              :class="darkMode
-                ? 'bg-primary-bg-dark border border-accent-1 hover:bg-bubble-bg-dark'
-                : 'bg-primary-bg-light border border-accent-2 hover:bg-bubble-bg-light'"
-              class="p-4 rounded transition-colors duration-300">
-
-              <a href="{{ article.get_absolute_url }}"
-                 class="block font-semibold text-lg underline hover:opacity-80">
-                {{ article.title }}
-              </a>
-
-              <p class="text-sm mt-1 opacity-70">
-                {{ article.description|truncatewords:20 }}
-              </p>
-
-              <p class="text-xs mt-1 opacity-60">
-                {{ article.created_at|date:"M d, Y" }}
-              </p>
-            </li>
-          {% endfor %}
-        </ul>
-      {% else %}
-        <p class="text-center text-sm opacity-70">
-          No articles found.
+    <!-- Header -->
+    <header class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <p
+          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+          class="text-xs font-semibold uppercase tracking-wide">
+          Library
         </p>
-      {% endif %}
-    </div>
 
-    <!-- BOOK LIST (NOW SECOND) -->
-    {% if books %}
-      <div class="space-y-4">
-        <h3 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-            class="text-xl font-semibold">
-          Books
-        </h3>
+        <h1 class="mt-2 flex items-center gap-3 text-4xl font-extrabold tracking-tight">
+          <i class="fa-solid fa-newspaper"></i>
+          Articles & Books
+        </h1>
 
-        <ul class="space-y-4">
-          {% for book in books %}
-            <li
-              :class="darkMode
-                ? 'bg-primary-bg-dark border border-accent-1 hover:bg-bubble-bg-dark'
-                : 'bg-primary-bg-light border border-accent-2 hover:bg-bubble-bg-light'"
-              class="p-4 rounded transition-colors duration-300">
-
-              <a href="{% url 'verbena:book_detail' slug=book.slug %}"
-                 class="block font-semibold text-lg underline hover:opacity-80">
-                {{ book.title }}
-              </a>
-
-              {% if book.description %}
-                <p class="text-sm mt-1 opacity-70">
-                  {{ book.description|truncatewords:20 }}
-                </p>
-              {% endif %}
-
-              <p class="text-xs mt-1 opacity-60">
-                {{ book.chapters.count }} chapters
-              </p>
-            </li>
-          {% endfor %}
-        </ul>
+        <p class="mt-2 max-w-2xl text-sm opacity-70">
+          Browse articles, books, chapters, and tagged reading material.
+        </p>
       </div>
-    {% endif %}
 
-    <!-- Back Button -->
-    <a href="{% url 'core:dashboard' %}"
-       :class="darkMode
-         ? 'bg-accent-dark text-primary-bg-dark'
-         : 'bg-accent-light text-primary-bg-light'"
-       class="inline-block px-4 py-2 mt-6 rounded font-semibold hover:opacity-90 transition text-sm text-center">
-      Back to Dashboard
-    </a>
+      <a
+        href="{% url 'core:dashboard' %}"
+        :class="darkMode
+          ? 'border-accent-1 bg-bubble-bg-dark'
+          : 'border-accent-2 bg-bubble-bg-light'"
+        class="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold shadow-sm transition hover:opacity-85">
+        <i class="fa-solid fa-arrow-left"></i>
+        Dashboard
+      </a>
+    </header>
+
+    <!-- Search + Tags -->
+    <section
+      :class="darkMode
+        ? 'border-accent-1 bg-bubble-bg-dark'
+        : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-2xl border p-5 shadow-sm">
+
+      <form method="get" class="flex flex-col gap-3 sm:flex-row">
+        <label class="relative block flex-1">
+          <span class="sr-only">Search articles</span>
+          <i class="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm opacity-50"></i>
+
+          <input
+            type="text"
+            name="q"
+            value="{{ request.GET.q }}"
+            placeholder="Search articles..."
+            :class="darkMode
+              ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder:text-text-main-dark/50'
+              : 'border-accent-2 bg-primary-bg-light text-text-main-light placeholder:text-text-main-light/50'"
+            class="w-full rounded-lg border py-2.5 pl-9 pr-3 text-sm outline-none transition focus:ring-2 focus:ring-current/20">
+        </label>
+
+        <button
+          type="submit"
+          :class="darkMode
+            ? 'bg-accent-dark text-primary-bg-dark'
+            : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          Search
+        </button>
+      </form>
+
+      {% if tags %}
+        <div class="mt-5 flex flex-wrap gap-2">
+          {% for tag in tags %}
+            <a
+              href="{% url 'verbena:page_list_by_tag' tag.slug %}"
+              :class="darkMode
+                ? 'border-accent-1 bg-primary-bg-dark text-accent-dark'
+                : 'border-accent-2 bg-primary-bg-light text-accent-light'"
+              class="inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-semibold shadow-sm transition hover:opacity-85">
+              <i class="fa-solid fa-hashtag text-[10px]"></i>
+              {{ tag.name }}
+            </a>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </section>
+
+    <!-- Content -->
+    <section class="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+
+      <!-- Articles -->
+      <div
+        :class="darkMode
+          ? 'border-accent-1 bg-bubble-bg-dark'
+          : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-2xl border p-5 shadow-sm">
+
+        <div class="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h2 class="flex items-center gap-2 text-lg font-bold">
+              <i class="fa-solid fa-file-lines"></i>
+              Articles
+            </h2>
+            <p class="mt-1 text-sm opacity-70">
+              Latest readable pages and article entries.
+            </p>
+          </div>
+
+          <span
+            :class="darkMode
+              ? 'border-accent-1 bg-primary-bg-dark'
+              : 'border-accent-2 bg-primary-bg-light'"
+            class="rounded-full border px-3 py-1 text-xs font-semibold">
+            {{ articles|length }}
+          </span>
+        </div>
+
+        {% if articles %}
+          <div class="space-y-3">
+            {% for article in articles %}
+              <article
+                :class="darkMode
+                  ? 'border-accent-1 bg-primary-bg-dark hover:bg-bubble-bg-dark'
+                  : 'border-accent-2 bg-primary-bg-light hover:bg-bubble-bg-light'"
+                class="group rounded-xl border p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+
+                <div class="flex items-start gap-3">
+                  <div
+                    :class="darkMode
+                      ? 'border-accent-1 bg-bubble-bg-dark text-accent-dark'
+                      : 'border-accent-2 bg-bubble-bg-light text-accent-light'"
+                    class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border">
+                    <i class="fa-solid fa-file-lines"></i>
+                  </div>
+
+                  <div class="min-w-0 flex-1">
+                    <h3 class="break-words text-base font-bold">
+                      <a
+                        href="{{ article.get_absolute_url }}"
+                        :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                        class="underline-offset-4 transition hover:underline">
+                        {{ article.title }}
+                      </a>
+                    </h3>
+
+                    <p class="mt-1 break-words text-sm leading-5 opacity-75">
+                      {{ article.description|truncatewords:24 }}
+                    </p>
+
+                    <div class="mt-3 flex flex-wrap items-center gap-3 text-xs opacity-65">
+                      <span class="inline-flex items-center gap-1">
+                        <i class="fa-solid fa-calendar-days"></i>
+                        {{ article.created_at|date:"M d, Y" }}
+                      </span>
+
+                      <a
+                        href="{{ article.get_absolute_url }}"
+                        :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                        class="inline-flex items-center gap-1 font-semibold opacity-90 transition group-hover:opacity-100">
+                        Read
+                        <i class="fa-solid fa-arrow-right text-[10px] transition group-hover:translate-x-0.5"></i>
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </article>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div
+            :class="darkMode
+              ? 'border-accent-1 bg-primary-bg-dark'
+              : 'border-accent-2 bg-primary-bg-light'"
+            class="rounded-xl border border-dashed p-8 text-center text-sm italic opacity-70">
+            No articles found.
+          </div>
+        {% endif %}
+      </div>
+
+      <!-- Books -->
+      <aside
+        :class="darkMode
+          ? 'border-accent-1 bg-bubble-bg-dark'
+          : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-2xl border p-5 shadow-sm">
+
+        <div class="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h2 class="flex items-center gap-2 text-lg font-bold">
+              <i class="fa-solid fa-book"></i>
+              Books
+            </h2>
+            <p class="mt-1 text-sm opacity-70">
+              Structured long-form material.
+            </p>
+          </div>
+
+          <span
+            :class="darkMode
+              ? 'border-accent-1 bg-primary-bg-dark'
+              : 'border-accent-2 bg-primary-bg-light'"
+            class="rounded-full border px-3 py-1 text-xs font-semibold">
+            {{ books|length }}
+          </span>
+        </div>
+
+        {% if books %}
+          <div class="space-y-3">
+            {% for book in books %}
+              <article
+                :class="darkMode
+                  ? 'border-accent-1 bg-primary-bg-dark hover:bg-bubble-bg-dark'
+                  : 'border-accent-2 bg-primary-bg-light hover:bg-bubble-bg-light'"
+                class="group rounded-xl border p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+
+                <h3 class="break-words text-sm font-bold">
+                  <a
+                    href="{% url 'verbena:book_detail' slug=book.slug %}"
+                    :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                    class="underline-offset-4 transition hover:underline">
+                    {{ book.title }}
+                  </a>
+                </h3>
+
+                {% if book.description %}
+                  <p class="mt-2 break-words text-sm leading-5 opacity-75">
+                    {{ book.description|truncatewords:20 }}
+                  </p>
+                {% endif %}
+
+                <div class="mt-3 flex items-center justify-between gap-3 text-xs opacity-70">
+                  <span class="inline-flex items-center gap-1">
+                    <i class="fa-solid fa-layer-group"></i>
+                    {{ book.chapters.count }} chapter{{ book.chapters.count|pluralize }}
+                  </span>
+
+                  <a
+                    href="{% url 'verbena:book_detail' slug=book.slug %}"
+                    :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                    class="inline-flex items-center gap-1 font-semibold">
+                    Open
+                    <i class="fa-solid fa-arrow-right text-[10px] transition group-hover:translate-x-0.5"></i>
+                  </a>
+                </div>
+              </article>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div
+            :class="darkMode
+              ? 'border-accent-1 bg-primary-bg-dark'
+              : 'border-accent-2 bg-primary-bg-light'"
+            class="rounded-xl border border-dashed p-6 text-center text-sm italic opacity-70">
+            No books found.
+          </div>
+        {% endif %}
+      </aside>
+    </section>
 
   </div>
 </section>

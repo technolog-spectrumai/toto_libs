@@ -74,7 +74,7 @@ class PageAdmin(admin.ModelAdmin):
 
     def author_list(self, obj):
         authors = obj.authors()
-        return ", ".join(a.username for a in authors) if authors else "—"
+        return ", ".join(a.full_name for a in authors) if authors else "—"
     author_list.short_description = "Authors"
 
     def view_page(self, obj):
