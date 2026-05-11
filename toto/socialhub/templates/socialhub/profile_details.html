@@ -3,153 +3,338 @@
 
 {% block title %}{{ profile.display_name }}{% endblock %}
 
+{% block start_script %}
+<style>
+  [x-cloak] {
+    display: none !important;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <section
   :class="darkMode
     ? 'bg-primary-bg-dark text-text-main-dark'
     : 'bg-primary-bg-light text-text-main-light'"
-  class="flex items-center justify-center px-6 py-16 min-h-screen transition-colors duration-300">
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
 
-  <div
-    :class="darkMode
-      ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
-      : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
-    class="w-full max-w-xl p-6 rounded-lg shadow-md border space-y-6 transition-colors duration-300">
+  <div class="mx-auto max-w-5xl space-y-6">
 
     <!-- Header -->
-    <div class="text-center space-y-4">
+    <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div class="space-y-2">
+        <a
+          href="{% url 'socialhub:profile_list' %}"
+          class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+          <i class="fa-solid fa-arrow-left"></i>
+          Profiles
+        </a>
 
-      {% if profile.avatar %}
-        <img src="{{ profile.avatar.url }}"
-             alt="{{ profile.display_name }}"
-             class="w-32 h-32 rounded-full mx-auto object-cover border">
-      {% else %}
-        <div class="w-32 h-32 rounded-full mx-auto bg-gray-300 dark:bg-gray-700"></div>
-      {% endif %}
+        <div>
+          <p
+            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+            class="text-xs font-semibold uppercase tracking-wide">
+            Social Hub
+          </p>
 
-      <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-          class="text-2xl font-bold">
-        {{ profile.display_name }}
-      </h2>
+          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+            <i class="fa-solid fa-user-astronaut"></i>
+            {{ profile.display_name }}
+          </h1>
 
-      {% if profile.bio %}
-        <p class="text-sm text-gray-500 dark:text-gray-400">
-          {{ profile.bio }}
-        </p>
-      {% endif %}
-    </div>
+          <p class="mt-1 text-sm opacity-70">
+            Member profile and reference activity.
+          </p>
+        </div>
+      </div>
 
-    <!-- Basic Info -->
-    <div class="space-y-2 text-sm">
-      <p><strong>Email:</strong> {{ profile.email|default:"—" }}</p>
-      <p><strong>Phone:</strong> {{ profile.phone|default:"—" }}</p>
-      <p><strong>Address:</strong> {{ profile.address|default:"—" }}</p>
-      <p><strong>Member Since:</strong> {{ profile.joined_date|date:"F j, Y" }}</p>
-    </div>
+      <nav class="flex flex-wrap gap-2">
+        <a
+          href="{% url 'socialhub:profile_list' %}"
+          :class="darkMode
+            ? 'bg-accent-dark text-primary-bg-dark'
+            : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-users"></i>
+          All profiles
+        </a>
+      </nav>
+    </header>
 
-    <!-- ⭐ Communities Section -->
-    <div class="pt-4 border-t">
-      <h3 class="font-semibold mb-2">Communities</h3>
-
-      {% if profile.communities.all %}
-        <ul class="space-y-1 text-sm">
-          {% for community in profile.communities.all %}
-            <li>
-              <a href="{% url 'socialhub:community_detail' community.slug %}"
-                 class="underline text-blue-600 dark:text-blue-400">
-                {{ community.name }}
-              </a>
-            </li>
-          {% empty %}
-            <li class="text-gray-500 dark:text-gray-400">No communities assigned.</li>
-          {% endfor %}
-        </ul>
-      {% else %}
-        <p class="text-gray-500 dark:text-gray-400">No communities assigned.</p>
-      {% endif %}
-    </div>
-
-    <!-- ⭐ Reference Requests Section -->
-    <div
+    <!-- Profile Hero -->
+    <section
       :class="darkMode
-        ? 'border-accent-1 text-text-main-dark'
-        : 'border-accent-2 text-text-main-light'"
-      class="pt-4 border-t transition-colors duration-300"
-    >
+        ? 'border-accent-1 bg-bubble-bg-dark'
+        : 'border-accent-2 bg-bubble-bg-light'"
+      class="overflow-hidden rounded-2xl border shadow-sm">
 
-      <h3 class="font-semibold mb-2">My Reference Requests</h3>
+      <div
+        :class="darkMode
+          ? 'border-accent-1 bg-sunken-dark'
+          : 'border-accent-2 bg-sunken-light'"
+        class="border-b px-5 py-5 sm:px-6">
 
-      {% if reference_requests %}
-        <ul class="space-y-3 text-sm">
-
-          {% for ref in reference_requests %}
-            <li
+        <div class="flex flex-col gap-5 sm:flex-row sm:items-center">
+          {% if profile.avatar %}
+            <img
+              src="{{ profile.avatar.url }}"
+              alt="{{ profile.display_name }}"
+              :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+              class="h-28 w-28 rounded-2xl border object-cover shadow-sm">
+          {% else %}
+            <div
               :class="darkMode
-                ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
-                : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
-              class="p-3 rounded border transition-colors duration-300"
-            >
-              <p><strong>Applicant:</strong> {{ ref.application.email }}</p>
-              <p><strong>Community:</strong> {{ ref.application.community.name }}</p>
-              <p><strong>Status:</strong> {{ ref.get_status_display }}</p>
+                ? 'border-accent-1 bg-primary-bg-dark'
+                : 'border-accent-2 bg-primary-bg-light'"
+              class="flex h-28 w-28 items-center justify-center rounded-2xl border shadow-sm">
+              <i
+                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                class="fa-solid fa-user text-4xl"></i>
+            </div>
+          {% endif %}
 
-              <p class="text-xs text-gray-500 dark:text-gray-400">
-                Sent: {{ ref.created_at|date:"F j, Y" }}
+          <div class="min-w-0 flex-1">
+            <p
+              :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+              class="text-xs font-semibold uppercase tracking-wide">
+              Profile
+            </p>
+
+            <h2 class="mt-1 break-words text-2xl font-bold">
+              {{ profile.display_name }}
+            </h2>
+
+            {% if profile.bio %}
+              <p class="mt-2 max-w-3xl text-sm leading-6 opacity-75">
+                {{ profile.bio }}
               </p>
+            {% else %}
+              <p class="mt-2 text-sm italic opacity-60">
+                No bio provided.
+              </p>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <!-- Info Grid -->
+      <div class="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2 lg:grid-cols-4 sm:p-6">
+        <article
+          :class="darkMode
+            ? 'border-accent-1 bg-sunken-dark'
+            : 'border-accent-2 bg-sunken-light'"
+          class="rounded-xl border p-4">
+          <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+            <i class="fa-solid fa-envelope"></i>
+            Email
+          </p>
+          <p class="mt-2 break-words text-sm font-semibold">
+            {{ profile.email|default:"—" }}
+          </p>
+        </article>
+
+        <article
+          :class="darkMode
+            ? 'border-accent-1 bg-sunken-dark'
+            : 'border-accent-2 bg-sunken-light'"
+          class="rounded-xl border p-4">
+          <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+            <i class="fa-solid fa-phone"></i>
+            Phone
+          </p>
+          <p class="mt-2 break-words text-sm font-semibold">
+            {{ profile.phone|default:"—" }}
+          </p>
+        </article>
+
+        <article
+          :class="darkMode
+            ? 'border-accent-1 bg-sunken-dark'
+            : 'border-accent-2 bg-sunken-light'"
+          class="rounded-xl border p-4">
+          <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+            <i class="fa-solid fa-location-dot"></i>
+            Address
+          </p>
+          <p class="mt-2 break-words text-sm font-semibold">
+            {{ profile.address|default:"—" }}
+          </p>
+        </article>
+
+        <article
+          :class="darkMode
+            ? 'border-accent-1 bg-sunken-dark'
+            : 'border-accent-2 bg-sunken-light'"
+          class="rounded-xl border p-4">
+          <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+            <i class="fa-solid fa-calendar-days"></i>
+            Member since
+          </p>
+          <p class="mt-2 text-sm font-semibold">
+            {{ profile.joined_date|date:"F j, Y" }}
+          </p>
+        </article>
+      </div>
+    </section>
+
+    <!-- Communities -->
+    <section
+      :class="darkMode
+        ? 'border-accent-1 bg-bubble-bg-dark'
+        : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-2xl border p-5 shadow-sm sm:p-6">
+
+      <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 class="flex items-center gap-2 text-lg font-bold">
+            <i class="fa-solid fa-people-group"></i>
+            Communities
+          </h2>
+
+          <p class="mt-1 text-sm opacity-70">
+            Communities connected to this profile.
+          </p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {% for community in profile.communities.all %}
+          <a
+            href="{% url 'socialhub:community_detail' community.slug %}"
+            :class="darkMode
+              ? 'border-accent-1 bg-sunken-dark text-accent-dark'
+              : 'border-accent-2 bg-sunken-light text-accent-light'"
+            class="flex items-center justify-between gap-3 rounded-xl border p-4 text-sm font-semibold shadow-sm transition hover:opacity-85">
+
+            <span class="flex min-w-0 items-center gap-2">
+              <i class="fa-solid fa-users text-xs"></i>
+              <span class="truncate">
+                {{ community.name }}
+              </span>
+            </span>
+
+            <i class="fa-solid fa-arrow-right text-xs opacity-70"></i>
+          </a>
+        {% empty %}
+          <div
+            :class="darkMode
+              ? 'border-accent-1 bg-sunken-dark'
+              : 'border-accent-2 bg-sunken-light'"
+            class="rounded-xl border border-dashed p-6 text-center text-sm italic opacity-70 sm:col-span-2">
+            No communities assigned.
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <!-- Reference Requests -->
+    <section
+      :class="darkMode
+        ? 'border-accent-1 bg-bubble-bg-dark'
+        : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-2xl border p-5 shadow-sm sm:p-6">
+
+      <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 class="flex items-center gap-2 text-lg font-bold">
+            <i class="fa-solid fa-file-signature"></i>
+            My Reference Requests
+          </h2>
+
+          <p class="mt-1 text-sm opacity-70">
+            Review and respond to pending reference requests.
+          </p>
+        </div>
+
+        <div
+          :class="darkMode
+            ? 'border-accent-1 bg-sunken-dark'
+            : 'border-accent-2 bg-sunken-light'"
+          class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm">
+          <i class="fa-solid fa-inbox"></i>
+          {{ reference_requests|length }} request{% if reference_requests|length != 1 %}s{% endif %}
+        </div>
+      </div>
+
+      <div class="space-y-3">
+        {% for ref in reference_requests %}
+          <article
+            :class="darkMode
+              ? 'border-accent-1 bg-sunken-dark'
+              : 'border-accent-2 bg-sunken-light'"
+            class="rounded-xl border p-4 shadow-sm">
+
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div class="space-y-2 text-sm">
+                <p class="font-bold">
+                  {{ ref.application.email }}
+                </p>
+
+                <div class="flex flex-wrap gap-2 text-xs">
+                  <span
+                    :class="darkMode
+                      ? 'border-accent-1 bg-primary-bg-dark'
+                      : 'border-accent-2 bg-primary-bg-light'"
+                    class="rounded-full border px-3 py-1 font-semibold">
+                    {{ ref.application.community.name }}
+                  </span>
+
+                  <span
+                    :class="darkMode
+                      ? 'border-accent-1 bg-primary-bg-dark'
+                      : 'border-accent-2 bg-primary-bg-light'"
+                    class="rounded-full border px-3 py-1 font-semibold">
+                    {{ ref.get_status_display }}
+                  </span>
+
+                  <span class="rounded-full px-1 py-1 opacity-70">
+                    Sent {{ ref.created_at|date:"F j, Y" }}
+                  </span>
+                </div>
+              </div>
 
               {% if ref.status == "pending" %}
-                <div class="flex gap-3 mt-3">
-
-                  <!-- Accept Button (SUCCESS) -->
+                <div class="flex shrink-0 flex-wrap gap-2">
                   <form method="post" action="{% url 'socialhub:reference_accept' ref.id %}">
                     {% csrf_token %}
                     <button
+                      type="submit"
                       :class="darkMode
-                        ? 'bg-accent-dark text-primary-bg-dark'
-                        : 'bg-accent-light text-primary-bg-light'"
-                      class="px-3 py-1 rounded text-sm font-semibold hover:opacity-90 transition"
-                    >
+                        ? 'bg-success-dark text-primary-bg-dark'
+                        : 'bg-success-light text-primary-bg-light'"
+                      class="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold shadow-sm transition hover:opacity-90">
+                      <i class="fa-solid fa-check"></i>
                       Accept
                     </button>
                   </form>
 
-                  <!-- Reject Button (WARN) -->
                   <form method="post" action="{% url 'socialhub:reference_reject' ref.id %}">
                     {% csrf_token %}
                     <button
+                      type="submit"
                       :class="darkMode
                         ? 'bg-warn-dark text-primary-bg-dark'
                         : 'bg-warn-light text-primary-bg-light'"
-                      class="px-3 py-1 rounded text-sm font-semibold hover:opacity-90 transition"
-                    >
+                      class="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold shadow-sm transition hover:opacity-90">
+                      <i class="fa-solid fa-xmark"></i>
                       Reject
                     </button>
                   </form>
-
                 </div>
               {% endif %}
-
-            </li>
-          {% endfor %}
-
-        </ul>
-
-      {% else %}
-        <p class="text-gray-500 dark:text-gray-400">
-          You haven't submitted any references yet.
-        </p>
-      {% endif %}
-
-    </div>
-
-    <!-- Back Button -->
-    <a href="{% url 'socialhub:profile_list' %}"
-       :class="darkMode
-         ? 'bg-accent-dark text-primary-bg-dark'
-         : 'bg-accent-light text-primary-bg-light'"
-       class="inline-block px-4 py-2 mt-6 rounded font-semibold hover:opacity-90 transition text-sm text-center">
-      Back to Profiles
-    </a>
+            </div>
+          </article>
+        {% empty %}
+          <div
+            :class="darkMode
+              ? 'border-accent-1 bg-sunken-dark'
+              : 'border-accent-2 bg-sunken-light'"
+            class="rounded-xl border border-dashed p-6 text-center text-sm italic opacity-70">
+            You haven't submitted any references yet.
+          </div>
+        {% endfor %}
+      </div>
+    </section>
 
   </div>
 </section>
