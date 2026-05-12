@@ -1,16 +1,12 @@
 from django.utils.text import slugify
-from toto.verbena.models import (
-    Page, Section, Subsection,
-    Image, Tag,
-    Book, Article, Audio, Video
-)
+from toto.verbena.models import Page, Section, Tag, Reference
 from toto.core.ingress import IngressCommand
 from toto.socialhub.models import Person
 import random
 
 
 class Command(IngressCommand):
-    help = "Populate the database with sample Verbena Pages, Sections, Subsections and Library items"
+    help = "Populate the database with sample Verbena Pages, Sections, and Library items"
 
     # ────────────────────────────────────────────────
     # MAIN PROCESS
@@ -23,8 +19,8 @@ class Command(IngressCommand):
         author = self.get_or_create_demo_person()
         pages = self.get_sample_pages()
 
-        # 1️⃣ Create library items
-        books, articles, audios, videos = self.create_library_samples(author)
+        # 1️⃣ Create library items (books and articles only)
+        books, articles = self.create_library_samples(author)
 
         # 2️⃣ Create pages + sections
         for page_title, page_data in pages.items():
@@ -37,10 +33,7 @@ class Command(IngressCommand):
             self.create_sections(page, page_data["sections"], author)
 
             # 3️⃣ Randomly attach references to this page
-            page.books_refs.set(random.sample(books, min(len(books), random.randint(1, 3))))
-            page.articles_refs.set(random.sample(articles, min(len(articles), random.randint(1, 3))))
-            page.audios_refs.set(random.sample(audios, min(len(audios), random.randint(0, 2))))
-            page.videos_refs.set(random.sample(videos, min(len(videos), random.randint(0, 2))))
+            page.references.set(random.sample(books + articles, min(len(books + articles), random.randint(1, 3))))
             page.save()
 
         self.stdout.write(self.style.SUCCESS("✅ Verbena ingress complete."))
@@ -98,7 +91,7 @@ class Command(IngressCommand):
     def create_library_samples(self, author):
         books = []
         for i in range(3):
-            book = Book.objects.create(
+            book = Reference.objects.create(
                 title=f"Sample Book {i+1}",
                 year=2018 + i,
                 publisher="Demo Publisher",
@@ -113,7 +106,7 @@ class Command(IngressCommand):
 
         articles = []
         for i in range(4):
-            article = Article.objects.create(
+            article = Reference.objects.create(
                 title=f"Sample Article {i+1}",
                 year=2019 + i,
                 journal="Demo Journal",
@@ -126,38 +119,10 @@ class Command(IngressCommand):
             articles.append(article)
             self.stdout.write(self.style.SUCCESS(f"📰 Created article: {article.title}"))
 
-        audios = []
-        for i in range(2):
-            audio = Audio.objects.create(
-                title=f"Sample Audio {i+1}",
-                artist="Demo Artist",
-                album=f"Demo Album {i+1}",
-                duration_seconds=random.randint(120, 300)
-            )
-            audio.authors.add(author)
-            audio.tags.add(*Tag.objects.order_by("?")[:1])
-            audio.save()
-            audios.append(audio)
-            self.stdout.write(self.style.SUCCESS(f"🎵 Created audio: {audio.title}"))
-
-        videos = []
-        for i in range(2):
-            video = Video.objects.create(
-                title=f"Sample Video {i+1}",
-                director="Demo Director",
-                producer=f"Demo Producer {i+1}",
-                duration_seconds=random.randint(60, 600)
-            )
-            video.authors.add(author)
-            video.tags.add(*Tag.objects.order_by("?")[:1])
-            video.save()
-            videos.append(video)
-            self.stdout.write(self.style.SUCCESS(f"🎬 Created video: {video.title}"))
-
-        return books, articles, audios, videos
+        return books, articles
 
     # ────────────────────────────────────────────────
-    # PAGE, TAGS, SECTIONS, SUBSECTIONS
+    # PAGE, TAGS, SECTIONS
     # ────────────────────────────────────────────────
 
     def create_page(self, title, description):
@@ -175,31 +140,11 @@ class Command(IngressCommand):
 
     def create_sections(self, page, sections, author):
         for i, (title, content) in enumerate(sections, start=1):
-            markdown_content = f"{content}\n\n## Lorem Ipsum\nLorem ipsum dolor sit amet."
             section = Section.objects.create(
                 page=page,
                 title=title,
-                content=markdown_content,
+                content=content,  # Trix handles headings/images inline
                 author=author,
                 order=i
             )
-            self.create_subsection(section)
         self.stdout.write(self.style.SUCCESS(f"📚 Added {len(sections)} sections to page: {page.title}"))
-
-    def create_subsection(self, section):
-        subsection = Subsection.objects.create(
-            section=section,
-            title=f"{section.title} – Details",
-            content="This is a generated subsection.",
-            order=1
-        )
-        if random.random() < 0.4:
-            subsection.image = Image.objects.create(
-                title=f"Image for {section.title}",
-                file="verbena_images/sample.jpg"
-            )
-            subsection.save()
-
-        # Topics removed entirely — nothing added here
-
-        self.stdout.write(self.style.SUCCESS(f"📝 Created subsection: {subsection.title}"))

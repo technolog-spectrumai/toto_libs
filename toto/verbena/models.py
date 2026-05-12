@@ -1,12 +1,13 @@
 from django.db import models
 from django.urls import reverse
 from django.utils.text import slugify
+from trix_editor.fields import TrixEditorField
 from toto.core.domain import DomainEntity
 from toto.socialhub.models import Person
 from toto.vault.models import VaultFile
 
 # ────────────────────────────────────────────────
-# TAG (shared across pages, sections, and library)
+# TAG
 # ────────────────────────────────────────────────
 
 class Tag(DomainEntity):
@@ -30,23 +31,14 @@ class Page(DomainEntity):
     title = models.CharField(max_length=255)
     slug = models.SlugField(unique=True, blank=True)
     description = models.TextField(blank=True)
-
     tags = models.ManyToManyField(Tag, related_name="pages", blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
-    # ─────────── Bibliography ───────────
-    books_refs = models.ManyToManyField("verbena.Book", blank=True, related_name="pages_refs")
-    articles_refs = models.ManyToManyField("verbena.Article", blank=True, related_name="pages_refs")
-    audios_refs = models.ManyToManyField("verbena.Audio", blank=True, related_name="pages_refs")
-    videos_refs = models.ManyToManyField("verbena.Video", blank=True, related_name="pages_refs")
+    # Bibliography references
+    references = models.ManyToManyField("Reference", blank=True, related_name="pages_refs")
 
     def authors(self):
         return Person.objects.filter(verbena_sections__page=self).distinct()
-
-    def get_references(self):
-        refs = list(self.books_refs.all()) + list(self.articles_refs.all()) + \
-               list(self.audios_refs.all()) + list(self.videos_refs.all())
-        return sorted(refs, key=lambda r: r.year or 0, reverse=True)
 
     def save(self, *args, **kwargs):
         if not self.slug:
@@ -61,32 +53,15 @@ class Page(DomainEntity):
 
 
 # ────────────────────────────────────────────────
-# IMAGE
-# ────────────────────────────────────────────────
-
-class Image(models.Model):
-    title = models.CharField(max_length=255, blank=True)
-    file = models.ImageField(upload_to="verbena_images/")
-
-    def __str__(self):
-        return self.title or f"Image {self.id}"
-
-
-# ────────────────────────────────────────────────
 # SECTION
 # ────────────────────────────────────────────────
 
 class Section(DomainEntity):
     page = models.ForeignKey(Page, related_name="sections", on_delete=models.CASCADE)
     title = models.CharField(max_length=255, blank=True)
-    content = models.TextField(blank=True)
-
+    content = TrixEditorField(blank=True)  # full WYSIWYG, includes headings/images
     author = models.ForeignKey(
-        Person,
-        related_name="verbena_sections",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True
+        Person, related_name="verbena_sections", on_delete=models.SET_NULL, null=True, blank=True
     )
     order = models.PositiveIntegerField(default=0)
     tags = models.ManyToManyField(Tag, related_name="sections", blank=True)
@@ -99,53 +74,35 @@ class Section(DomainEntity):
 
 
 # ────────────────────────────────────────────────
-# SUBSECTION
-# ────────────────────────────────────────────────
-
-class Subsection(DomainEntity):
-    section = models.ForeignKey(Section, related_name="subsections", on_delete=models.CASCADE)
-    title = models.CharField(max_length=255, blank=True)
-    content = models.TextField(blank=True)
-    image = models.ForeignKey(
-        Image,
-        related_name="subsections",
-        on_delete=models.SET_NULL,
-        null=True, blank=True
-    )
-    order = models.PositiveIntegerField(default=0)
-
-    class Meta:
-        ordering = ["order"]
-
-    def __str__(self):
-        return f"{self.section.title} – {self.title or 'Subsection'}"
-
-
-# ────────────────────────────────────────────────
-# LIBRARY MODELS
+# REFERENCE (unified for books and articles)
 # ────────────────────────────────────────────────
 
 class Reference(DomainEntity):
     title = models.CharField(max_length=500)
-    authors = models.ManyToManyField(Person, related_name="%(class)s_references", blank=True)
+    authors = models.ManyToManyField(Person, related_name="references", blank=True)
     year = models.PositiveIntegerField(null=True, blank=True)
     doi = models.CharField(max_length=255, blank=True)
     url = models.URLField(blank=True)
     abstract = models.TextField(blank=True)
-    tags = models.ManyToManyField(Tag, related_name="%(class)s_references", blank=True)
-
+    tags = models.ManyToManyField(Tag, related_name="references", blank=True)
     slug = models.SlugField(unique=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     vault_file = models.ForeignKey(
-        VaultFile,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="%(class)s_references"
+        VaultFile, on_delete=models.SET_NULL, null=True, blank=True, related_name="references"
     )
 
+    # Optional fields for books
+    publisher = models.CharField(max_length=255, blank=True)
+    edition = models.CharField(max_length=50, blank=True)
+    isbn = models.CharField(max_length=20, blank=True)
+
+    # Optional fields for articles
+    journal = models.CharField(max_length=255, blank=True)
+    volume = models.CharField(max_length=20, blank=True)
+    issue = models.CharField(max_length=20, blank=True)
+    pages = models.CharField(max_length=50, blank=True)
+
     class Meta:
-        abstract = True
         ordering = ["-year", "title"]
 
     def save(self, *args, **kwargs):
@@ -162,47 +119,9 @@ class Reference(DomainEntity):
 
     @property
     def bibtex_type(self):
-        return "misc"
-
-
-class Book(Reference):
-    publisher = models.CharField(max_length=255, blank=True)
-    edition = models.CharField(max_length=50, blank=True)
-    isbn = models.CharField(max_length=20, blank=True)
-
-    @property
-    def bibtex_type(self):
-        return "book"
-
-
-class Article(Reference):
-    journal = models.CharField(max_length=255, blank=True)
-    volume = models.CharField(max_length=20, blank=True)
-    issue = models.CharField(max_length=20, blank=True)
-    pages = models.CharField(max_length=50, blank=True)
-
-    @property
-    def bibtex_type(self):
-        return "article"
-
-
-class Audio(Reference):
-    artist = models.CharField(max_length=255, blank=True)
-    album = models.CharField(max_length=255, blank=True)
-    duration_seconds = models.PositiveIntegerField(null=True, blank=True)
-    file = models.FileField(upload_to="library_audio/", blank=True, null=True)
-
-    @property
-    def bibtex_type(self):
-        return "audio"
-
-
-class Video(Reference):
-    director = models.CharField(max_length=255, blank=True)
-    producer = models.CharField(max_length=255, blank=True)
-    duration_seconds = models.PositiveIntegerField(null=True, blank=True)
-    file = models.FileField(upload_to="library_video/", blank=True, null=True)
-
-    @property
-    def bibtex_type(self):
-        return "video"
+        if self.publisher:
+            return "book"
+        elif self.journal:
+            return "article"
+        else:
+            return "misc"

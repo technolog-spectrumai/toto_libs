@@ -1,13 +1,13 @@
 from django.urls import path
-from .views import ArticleListView, VerbenaPageDetailView
+from .views import PageListView, VerbenaPageDetailView
 
 app_name = 'verbena'
 
 urlpatterns = [
-    # All articles or filtered by tag
-    path("", ArticleListView.as_view(), name="article_list"),
-    path("tag/<slug:tag_slug>/", ArticleListView.as_view(), name="page_list_by_tag"),
+    # All pages or filtered by tag
+    path("", PageListView.as_view(), name="page_list"),
+    path("tag/<slug:tag_slug>/", PageListView.as_view(), name="page_list_by_tag"),
 
-    # Article detail
+    # Page detail
     path("<slug:slug>/", VerbenaPageDetailView.as_view(), name="page_detail"),
 ]
