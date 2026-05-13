@@ -20,6 +20,8 @@ packages = [
     "toto.kanban.migrations",
     "toto.locations",
     "toto.locations.graph",
+    "toto.locations.migrations",
+    "toto.locations.plugins",
     "toto.socialhub",
     "toto.socialhub.graph",
     "toto.socialhub.migrations",
