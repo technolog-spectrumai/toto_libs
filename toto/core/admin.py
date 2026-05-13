@@ -1,6 +1,6 @@
 from django.conf import settings
 
-from .models import Platform, Font, Theme, ColorMix, Federation, ApiConnector
+from .models import Platform, Font, Theme, ColorMix, Federation
 from django.utils.html import format_html
 from toto.core.base_admin import TotoModelAdmin
 from django.contrib import admin, messages
@@ -126,32 +126,6 @@ class FederationAdmin(TotoModelAdmin):
     search_fields = ("name",)
     list_filter = ("active", "created_at")
 
-
-@admin.register(ApiConnector)
-class ApiConnectorAdmin(TotoModelAdmin):
-    list_display = ("name", "provider", "auth_type", "api_secret", "signing_key", "is_active", "updated_at")
-    list_filter = ("provider", "auth_type", "is_active", "created_at")
-    search_fields = ("name", "slug", "base_url")
-    prepopulated_fields = {"slug": ("name",)}
-    readonly_fields = ("created_at", "updated_at")
-    autocomplete_fields = ("api_secret", "signing_key", "owner")
-    fieldsets = (
-        (None, {
-            "fields": ("name", "slug", "provider", "base_url", "is_active", "owner"),
-        }),
-        ("Authentication", {
-            "fields": ("auth_type", "api_secret", "signing_key", "auth_config"),
-        }),
-        ("Extra config", {
-            "fields": ("extra",),
-            "description": "Non-secret provider-specific configuration. Do not store secrets here.",
-            "classes": ("collapse",),
-        }),
-        ("Timestamps", {
-            "fields": ("created_at", "updated_at"),
-            "classes": ("collapse",),
-        }),
-    )
 
 
 @admin.register(Platform)

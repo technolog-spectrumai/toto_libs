@@ -258,7 +258,7 @@ class ApiConnector(models.Model):
         on_delete=models.PROTECT,
         null=True,
         blank=True,
-        related_name="api_connectors",
+        related_name="%(class)s_api_connectors",
         help_text="Encrypted API key/token stored in Gervazy.",
     )
     signing_key = models.ForeignKey(
@@ -266,7 +266,7 @@ class ApiConnector(models.Model):
         on_delete=models.PROTECT,
         null=True,
         blank=True,
-        related_name="api_connectors",
+        related_name="%(class)s_signing_keys",
         help_text="Encrypted private key for signed API requests.",
     )
     owner = models.ForeignKey(
@@ -274,7 +274,7 @@ class ApiConnector(models.Model):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="api_connectors",
+        related_name="%(class)s_owned",
     )
     auth_config = JSONField(
         schema=_API_AUTH_CONFIG_SCHEMA,
@@ -293,6 +293,7 @@ class ApiConnector(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        abstract = True
         ordering = ["name"]
 
     def __str__(self):
@@ -303,7 +304,7 @@ class ApiConnector(models.Model):
             base_slug = slugify(self.name) or "api-connector"
             slug = base_slug
             counter = 1
-            while ApiConnector.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+            while type(self).objects.filter(slug=slug).exclude(pk=self.pk).exists():
                 slug = f"{base_slug}-{counter}"
                 counter += 1
             self.slug = slug
@@ -389,14 +390,6 @@ class Platform(models.Model):
         blank=True,
         related_name="platform_api_accounts",
         help_text="User account used for API authentication",
-    )
-    api_connector = models.ForeignKey(
-        ApiConnector,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="platforms",
-        help_text="Generic API connector for outbound platform calls.",
     )
     api_signing_key_out = models.ForeignKey(
         "gervazy.EncryptedPrivateKey",
