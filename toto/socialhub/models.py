@@ -4,7 +4,7 @@ from django.utils import timezone
 from django.utils.text import slugify
 from toto.locations.models import Address, Territory
 from django.core.mail import EmailMessage, get_connection
-from toto.gervazy.models import SecretPassword
+from toto.gervazy.models import EncryptedSecret
 from django.conf import settings
 import uuid
 from django.db import models
@@ -47,7 +47,6 @@ class Community(DomainEntity):
         null=True,
         blank=True,
         related_name='headed_communities',
-        db_comment="headed_by"
     )
 
     logo = models.ImageField(
@@ -105,7 +104,6 @@ class Person(DomainEntity):
         null=True,
         blank=True,
         related_name='mentees',
-        db_comment="mentored_by"
     )
     display_name = models.CharField(max_length=150)
     bio = models.TextField(null=True, blank=True)
@@ -121,7 +119,6 @@ class Person(DomainEntity):
         blank=True,
         related_name='residents',
         help_text="Optional address for this community member",
-        db_comment="resides_at"
     )
     email = models.EmailField(blank=True, null=True)
     phone = models.CharField(max_length=50, blank=True, null=True)
@@ -245,7 +242,7 @@ class ReferenceRequest(models.Model):
 class EmailService(models.Model):
     """
     Stores SMTP configuration for a system component.
-    The SMTP password can be resolved through a SecretPassword unlock box.
+    The SMTP password is stored in a Gervazy EncryptedSecret and must be
     This model does NOT modify or manage the password itself.
     """
 
@@ -262,12 +259,13 @@ class EmailService(models.Model):
         help_text="SMTP login email address"
     )
 
-    # SecretKey unlock box for the SMTP password
-    secret_password = models.OneToOneField(
-        SecretPassword,
-        on_delete=models.CASCADE,
-        related_name="email_service_for",
-        help_text="SecretPassword unlock box for the SMTP password SecretKey"
+    smtp_secret = models.ForeignKey(
+        EncryptedSecret,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="email_services",
+        help_text="Gervazy EncryptedSecret holding the SMTP password.",
     )
 
     host = models.CharField(max_length=255, help_text="SMTP server hostname")
@@ -293,12 +291,12 @@ class EmailService(models.Model):
     # Email sending helper
     # ---------------------------------------------------------
 
-    def send_email(self, subject, body, to, html=None):
+    def send_email(self, subject, body, to, html=None, *, smtp_password: str):
         """
         Sends an email using this EmailService's SMTP configuration.
-        SMTP password is resolved from the linked SecretPassword unlock box.
+        Pass smtp_password explicitly — obtain it from the Gervazy vault session.
         """
-        password = self.secret_password.get_secret_key()
+        password = smtp_password
 
         connection = get_connection(
             backend=settings.EMAIL_BACKEND,

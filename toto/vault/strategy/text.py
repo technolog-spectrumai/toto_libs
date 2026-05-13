@@ -11,9 +11,9 @@ class TextStrategy(FileStrategy):
         base, ext = os.path.splitext(input_path)
         output_path = f"{base}_enc{ext}"
 
-        keyring = file_instance.owner.keyrings.first()
+        keyring = file_instance.owner.uservaults.first()
         if not keyring:
-            raise ValueError("No KeyRing associated with user.")
+            raise ValueError("No UserVault associated with user.")
 
         key = keyring.derive_key(password)
         fernet = Fernet(key)
@@ -36,9 +36,9 @@ class TextStrategy(FileStrategy):
         base, ext = os.path.splitext(input_path)
         output_path = f"{base}_dec{ext}"
 
-        keyring = file_instance.owner.keyrings.first()
+        keyring = file_instance.owner.uservaults.first()
         if not keyring:
-            raise ValueError("No KeyRing associated with user.")
+            raise ValueError("No UserVault associated with user.")
 
         key = keyring.derive_key(password)
         fernet = Fernet(key)

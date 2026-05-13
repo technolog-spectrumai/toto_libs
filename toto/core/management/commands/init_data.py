@@ -2,7 +2,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.core.management import call_command
 import os
 import json
-from toto.gervazy.models import RSAKeyPair
+from toto.gervazy.models import EncryptedPrivateKey
 
 
 class Command(BaseCommand):
@@ -108,11 +108,6 @@ class Command(BaseCommand):
             self.stderr.write(self.style.ERROR("Theme not found. Initialization aborted."))
             return
         author = "www.spectrumAi.pl"
-        keypair = RSAKeyPair.generate(
-            key_id=f"platform-api-key",
-            issuer=domain
-        )
-        keypair.save()
 
         create_platform_args = [
             site_name,
@@ -120,8 +115,6 @@ class Command(BaseCommand):
             author,
             "--active=True",
             f"--theme_id={theme.id}",
-            "--secret_size=64",
-            f"--rsa_keypair_id={keypair.key_id}",
         ]
 
         self.stdout.write(self.style.NOTICE("Creating platform..."))

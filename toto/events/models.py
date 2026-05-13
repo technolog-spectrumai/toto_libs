@@ -55,7 +55,6 @@ class Event(DomainEntity):
         null=True,
         blank=True,
         related_name="organized_events",
-        db_comment="organized_by",
     )
 
     category = models.ForeignKey(
@@ -64,7 +63,6 @@ class Event(DomainEntity):
         null=True,
         blank=True,
         related_name="events",
-        db_comment="belongs_to",
     )
 
     public = models.BooleanField(

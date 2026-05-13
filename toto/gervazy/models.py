@@ -1,373 +1,231 @@
 import os
-import re
-from django.contrib.auth.models import User
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import serialization, hashes
-from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.hazmat.primitives.asymmetric import padding
 import uuid
 import base64
-import secrets
-from django.core.exceptions import ValidationError
+
+from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
+from django.contrib.auth.models import User
 from django.db import models
 from django.utils import timezone
-from cryptography.fernet import Fernet
 
 
+KEY_STATE_CHOICES = [
+    ("pre_active", "Pre-active"),
+    ("active", "Active"),
+    ("suspended", "Suspended"),
+    ("retired", "Retired"),
+    ("compromised", "Compromised"),
+    ("destroyed", "Destroyed"),
+]
 
-class KeyRing(models.Model):
-    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='keyrings')
-    salt = models.BinaryField(help_text="Salt used for key derivation", editable=False)
-    created_at = models.DateTimeField(auto_now_add=True)
-    notes = models.TextField(blank=True, null=True)
-    name = models.CharField(
-        max_length=128,
-        unique=True,
-        blank=True,
-        help_text="Optional unique name for this KeyRing. Auto-generated if omitted."
+
+class UserVault(models.Model):
+    """Per-user vault. Stores Argon2id KDF params and salt; never stores the key itself."""
+    owner = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="uservaults"
     )
-
-    def __str__(self):
-        return f"{self.name} ({self.owner.username})"
-
-    def regenerate_salt(self):
-        self.salt = os.urandom(16)
-        self.save()
-
-    def get_summary(self):
-        return {
-            "name": self.name,
-            "owner": self.owner.username,
-            "created": self.created_at.strftime("%Y-%m-%d"),
-            "notes": self.notes or "—",
-        }
-
-    def derive_key(self, password: str) -> bytes:
-        """Derives a symmetric key from the given password and this KeyRing's salt."""
-        kdf = PBKDF2HMAC(
-            algorithm=hashes.SHA256(),
-            length=32,
-            salt=self.salt,
-            iterations=100_000,
-            backend=default_backend()
-        )
-        return base64.urlsafe_b64encode(kdf.derive(password.encode()))
-
-
-    def save(self, *args, **kwargs):
-        if not self.salt:
-            self.salt = os.urandom(16)
-        if not self.name:
-            self.name = f"keyring-{uuid.uuid4()}"
-        super().save(*args, **kwargs)
-
-
-
-# 🔐 RSA Key Pair Management
-class RSAKeyPair(models.Model):
-    key_id = models.CharField(max_length=100, unique=True)
-    public_key_pem = models.TextField()
-    private_key_pem = models.TextField()
-    issuer = models.URLField()
+    name = models.CharField(max_length=128, unique=True)
+    kdf = models.CharField(max_length=32, default="argon2id")
+    kdf_version = models.PositiveSmallIntegerField(default=19)
+    salt = models.BinaryField(help_text="Random 16-byte KDF salt", editable=False)
+    argon2_memory_cost = models.PositiveIntegerField(default=65536)
+    argon2_iterations = models.PositiveIntegerField(default=3)
+    argon2_lanes = models.PositiveSmallIntegerField(default=4)
     created_at = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return f"RSAKeyPair {self.key_id}"
-
-    def get_private_key(self):
-        return serialization.load_pem_private_key(
-            self.private_key_pem.encode(),
-            password=None,
-            backend=default_backend()
-        )
-
-    def get_public_key(self):
-        return serialization.load_pem_public_key(
-            self.public_key_pem.encode(),
-            backend=default_backend()
-        )
-
-    @classmethod
-    def generate(cls, key_id: str, issuer: str) -> "RSAKeyPair":
-        private_key_obj = rsa.generate_private_key(
-            public_exponent=65537,
-            key_size=2048
-        )
-
-        private_pem = private_key_obj.private_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.PKCS8,
-            encryption_algorithm=serialization.NoEncryption()
-        ).decode()
-
-        public_pem = private_key_obj.public_key().public_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PublicFormat.SubjectPublicKeyInfo
-        ).decode()
-
-        return cls(
-            key_id=key_id,
-            issuer=issuer,
-            private_key_pem=private_pem,
-            public_key_pem=public_pem
-        )
-
-    def sign(self, data: bytes) -> bytes:
-        """
-        Sign arbitrary data using the private key.
-        Returns the signature as raw bytes.
-        """
-        private_key = self.get_private_key()
-        signature = private_key.sign(
-            data,
-            padding.PSS(
-                mgf=padding.MGF1(hashes.SHA256()),
-                salt_length=padding.PSS.MAX_LENGTH
-            ),
-            hashes.SHA256()
-        )
-        return signature
-
-    def verify(self, data: bytes, signature: bytes) -> bool:
-        """
-        Verify a signature using the public key.
-        Returns True if valid, False otherwise.
-        """
-        public_key = self.get_public_key()
-        try:
-            public_key.verify(
-                signature,
-                data,
-                padding.PSS(
-                    mgf=padding.MGF1(hashes.SHA256()),
-                    salt_length=padding.PSS.MAX_LENGTH
-                ),
-                hashes.SHA256()
-            )
-            return True
-        except Exception:
-            return False
-
-    def save(self, *args, **kwargs):
-        """
-        Ensure that when saving, if no PEMs are present,
-        generate a fresh keypair automatically.
-        """
-        if not self.private_key_pem or not self.public_key_pem:
-            new_pair = RSAKeyPair.generate(self.key_id, self.issuer)
-            self.private_key_pem = new_pair.private_key_pem
-            self.public_key_pem = new_pair.public_key_pem
-        super().save(*args, **kwargs)
-
-
-class SecretKey(models.Model):
-    SIZE_CHOICES = [
-        (64, "64 bytes (~86 chars)"),
-        (128, "128 bytes (~172 chars)"),
-        (256, "256 bytes (~344 chars)"),
-    ]
-
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    keyring = models.ForeignKey(KeyRing, on_delete=models.CASCADE, related_name="secrets")
-
-    key_encrypted = models.CharField(max_length=1024)
-    size = models.PositiveIntegerField(choices=SIZE_CHOICES, default=64)
-
-    created_at = models.DateTimeField(auto_now_add=True)
-    expires_at = models.DateTimeField(null=True, blank=True)
-    active = models.BooleanField(default=True)
-
-    # --- Key Derivation ---
-    def _derive_key(self, passphrase: str) -> bytes:
-        return self.keyring.derive_key(passphrase)
-
-    def _get_fernet(self, passphrase: str) -> Fernet:
-        return Fernet(self._derive_key(passphrase))
-
-    # --- Public API ---
-    def generate_key_value(self) -> str:
-        """Generate the longest URL-safe key value for the configured byte size."""
-        return secrets.token_urlsafe(self.size)
-
-    def set_key(self, raw_key: str, passphrase: str):
-        if not raw_key:
-            raw_key = self.generate_key_value()
-
-        f = self._get_fernet(passphrase)
-        self.key_encrypted = f.encrypt(raw_key.encode()).decode()
-
-    def get_key(self, passphrase: str) -> str:
-        f = self._get_fernet(passphrase)
-        return f.decrypt(self.key_encrypted.encode()).decode()
-
-    def rotate(self, passphrase: str):
-        self.set_key("", passphrase)
-        self.created_at = timezone.now()
-        self.save(update_fields=["key_encrypted", "created_at"])
-
-    def is_expired(self):
-        return self.expires_at and timezone.now() >= self.expires_at
-
-    def save(self, *args, **kwargs):
-        if not self.key_encrypted:
-            raise ValueError("Call set_key(raw_key, passphrase) before saving.")
-        super().save(*args, **kwargs)
-
-    def __str__(self):
-        return f"SecretKey {self.id} (size={self.size})"
-
-
-class EnvironmentVariable(models.Model):
-    """Admin-managed environment variable for the current Django process."""
-
-    name = models.CharField(
-        max_length=120,
-        unique=True,
-        help_text="Environment variable name, for example OPENAI_API_KEY.",
-    )
-    active = models.BooleanField(
-        default=True,
-        help_text="When active, admin can set the value into os.environ for this process.",
-    )
     notes = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["name"]
 
     def __str__(self):
-        return self.name
-
-    def clean(self):
-        super().clean()
-        if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", self.name or ""):
-            raise ValidationError({
-                "name": "Use a shell-safe environment variable name, like OPENAI_API_KEY."
-            })
+        return f"{self.name} ({self.owner.username})"
 
     def save(self, *args, **kwargs):
-        self.full_clean()
-        super().save(*args, **kwargs)
-
-    def apply_to_environment(self):
-        if not self.active:
-            os.environ.pop(self.name, None)
-
-    def delete(self, *args, **kwargs):
-        os.environ.pop(self.name, None)
-        return super().delete(*args, **kwargs)
-
-    def set_value(self, value):
-        if self.active:
-            os.environ[self.name] = value
-            return
-
-        os.environ.pop(self.name, None)
-
-    @property
-    def value(self):
-        if not self.active:
-            return ""
-
-        return os.environ.get(self.name, "")
-
-    @property
-    def masked_value(self):
-        value = self.value
-        if not value:
-            return ""
-
-        if len(value) <= 8:
-            return "*" * len(value)
-
-        return f"{value[:4]}{'*' * 8}{value[-4:]}"
-
-
-class SecretPassword(models.Model):
-    """
-    Binds a SecretKey to the EnvironmentVariable that unlocks it.
-
-    Despite the historical name, this model does not store a password payload.
-    It is an automation box for resolving a SecretKey without retyping the
-    passphrase in admin or service code.
-    """
-
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-
-    # Human-friendly identifier (unique)
-    name = models.CharField(
-        max_length=128,
-        unique=True,
-        blank=True,
-        help_text="Optional name for this secret access box. Auto-generated if omitted."
-    )
-
-    secret_key = models.ForeignKey(
-        SecretKey,
-        on_delete=models.CASCADE,
-        related_name="passwords",
-        null=True,
-        blank=True,
-        help_text="SecretKey used to encrypt and decrypt this password."
-    )
-
-    environment_variable = models.ForeignKey(
-        "gervazy.EnvironmentVariable",
-        on_delete=models.PROTECT,
-        related_name="secret_passwords",
-        null=True,
-        blank=True,
-        help_text="Environment variable that contains the passphrase for unlocking the SecretKey."
-    )
-
-    created_at = models.DateTimeField(auto_now_add=True)
-    expires_at = models.DateTimeField(null=True, blank=True)
-    active = models.BooleanField(default=True)
-
-    # --- Unlock / encryption helpers ---
-    def _get_unlock_passphrase(self) -> str:
-        if not self.environment_variable_id:
-            raise RuntimeError(f"SecretPassword {self.name} has no unlock environment variable configured.")
-
-        resolved = self.environment_variable.value
-        if resolved:
-            return resolved
-
-        if self.environment_variable.value:
-            return self.environment_variable.value
-
-        raise RuntimeError(f"Environment variable {self.environment_variable.name} must be set to unlock {self.name}.")
-
-    def get_secret_key(self) -> str:
-        """Return the decrypted SecretKey value using the configured env var."""
-        if not self.secret_key_id:
-            raise RuntimeError(f"SecretPassword {self.name} has no SecretKey configured.")
-
-        return self.secret_key.get_key(self._get_unlock_passphrase())
-
-    def rotate_secret_key(self):
-        if not self.secret_key_id:
-            raise RuntimeError(f"SecretPassword {self.name} has no SecretKey configured.")
-
-        self.secret_key.rotate(self._get_unlock_passphrase())
-
-    def is_expired(self):
-        return self.expires_at and timezone.now() >= self.expires_at
-
-    def save(self, *args, **kwargs):
-        if not self.secret_key_id:
-            raise ValueError("SecretPassword requires a SecretKey.")
-
-        if not self.environment_variable_id:
-            raise ValueError("SecretPassword requires an EnvironmentVariable.")
-
-        # Auto-generate unique name if missing
+        if not self.salt:
+            self.salt = os.urandom(16)
         if not self.name:
-            self.name = f"password-{uuid.uuid4()}"
-
+            self.name = f"vault-{uuid.uuid4()}"
         super().save(*args, **kwargs)
+
+    def derive_key(self, password: str) -> bytes:
+        """Derive a 32-byte UKEK via Argon2id. Returns Fernet-compatible base64url bytes."""
+        kdf = Argon2id(
+            salt=bytes(self.salt),
+            length=32,
+            iterations=self.argon2_iterations,
+            lanes=self.argon2_lanes,
+            memory_cost=self.argon2_memory_cost,
+        )
+        return base64.urlsafe_b64encode(kdf.derive(password.encode()))
+
+
+class VaultMasterKey(models.Model):
+    """VMK encrypted by the password-derived UKEK. One active VMK per vault at a time."""
+    vault = models.ForeignKey(
+        UserVault, on_delete=models.CASCADE, related_name="master_keys"
+    )
+    encrypted_vmk = models.BinaryField()
+    nonce = models.BinaryField()
+    algorithm = models.CharField(max_length=32, default="AES-256-GCM")
+    version = models.PositiveSmallIntegerField(default=1)
+    state = models.CharField(max_length=20, choices=KEY_STATE_CHOICES, default="active")
+    created_at = models.DateTimeField(auto_now_add=True)
+    retired_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-version"]
 
     def __str__(self):
-        return f"SecretPassword {self.name}"
+        return f"VMK v{self.version} — {self.vault.name} [{self.state}]"
+
+
+class WrappedDataKey(models.Model):
+    """DEK wrapped by the VMK. Envelope layer between VMK and object-level secrets."""
+    vault = models.ForeignKey(
+        UserVault, on_delete=models.CASCADE, related_name="data_keys"
+    )
+    vmk_version = models.PositiveSmallIntegerField()
+    encrypted_dek = models.BinaryField()
+    nonce = models.BinaryField()
+    algorithm = models.CharField(max_length=32, default="AES-256-GCM")
+    version = models.PositiveSmallIntegerField(default=1)
+    state = models.CharField(max_length=20, choices=KEY_STATE_CHOICES, default="active")
+    created_at = models.DateTimeField(auto_now_add=True)
+    rotated_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-version"]
+
+    def __str__(self):
+        return (
+            f"DEK v{self.version} (vmk_v{self.vmk_version}) — {self.vault.name} [{self.state}]"
+        )
+
+
+class EncryptedSecret(models.Model):
+    """AES-256-GCM encrypted secret with envelope key reference."""
+    vault = models.ForeignKey(
+        UserVault, on_delete=models.CASCADE, related_name="secrets"
+    )
+    wrapped_key = models.ForeignKey(
+        WrappedDataKey, on_delete=models.PROTECT, related_name="secrets"
+    )
+    name = models.CharField(max_length=255)
+    purpose = models.CharField(max_length=255, blank=True)
+    ciphertext = models.BinaryField()
+    nonce = models.BinaryField()
+    aad = models.BinaryField(blank=True, default=b"")
+    algorithm = models.CharField(max_length=32, default="AES-256-GCM")
+    version = models.PositiveSmallIntegerField(default=1)
+    state = models.CharField(max_length=20, choices=KEY_STATE_CHOICES, default="active")
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"EncryptedSecret '{self.name}' [{self.state}]"
+
+    def is_expired(self):
+        return bool(self.expires_at and timezone.now() >= self.expires_at)
+
+
+class EncryptedFile(models.Model):
+    """Metadata for a chunked AES-256-GCM encrypted file."""
+    vault = models.ForeignKey(
+        UserVault, on_delete=models.CASCADE, related_name="encrypted_files"
+    )
+    owner = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="encrypted_files"
+    )
+    wrapped_key = models.ForeignKey(
+        WrappedDataKey, on_delete=models.PROTECT, related_name="files"
+    )
+    original_name_encrypted = models.BinaryField()
+    original_name_nonce = models.BinaryField()
+    mime_type = models.CharField(max_length=127, blank=True)
+    file = models.FileField(upload_to="vault/encrypted/")
+    nonce_strategy = models.CharField(max_length=32, default="random_per_chunk")
+    chunk_size = models.PositiveIntegerField(default=65536)
+    chunk_count = models.PositiveIntegerField(default=0)
+    ciphertext_sha256 = models.CharField(max_length=64, blank=True)
+    plaintext_size = models.BigIntegerField(default=0)
+    ciphertext_size = models.BigIntegerField(default=0)
+    algorithm = models.CharField(max_length=32, default="AES-256-GCM")
+    version = models.PositiveSmallIntegerField(default=1)
+    state = models.CharField(max_length=20, choices=KEY_STATE_CHOICES, default="active")
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"EncryptedFile #{self.pk} [{self.state}]"
+
+
+class EncryptedFileChunk(models.Model):
+    """Single chunk of an EncryptedFile with its own nonce."""
+    encrypted_file = models.ForeignKey(
+        EncryptedFile, on_delete=models.CASCADE, related_name="chunks"
+    )
+    index = models.PositiveIntegerField()
+    nonce = models.BinaryField()
+    ciphertext_size = models.PositiveIntegerField()
+    ciphertext_sha256 = models.CharField(max_length=64, blank=True)
+
+    class Meta:
+        unique_together = [("encrypted_file", "index")]
+        ordering = ["index"]
+
+    def __str__(self):
+        return f"Chunk {self.index} of EncryptedFile #{self.encrypted_file_id}"
+
+
+class EncryptedPrivateKey(models.Model):
+    """Ed25519/RSA private key encrypted at rest. Public key stored in plaintext."""
+    KEY_TYPE_CHOICES = [
+        ("Ed25519", "Ed25519"),
+        ("RSA-2048", "RSA-2048"),
+        ("RSA-4096", "RSA-4096"),
+    ]
+    vault = models.ForeignKey(
+        UserVault, on_delete=models.CASCADE, related_name="private_keys"
+    )
+    wrapped_key = models.ForeignKey(
+        WrappedDataKey, on_delete=models.PROTECT, related_name="private_keys"
+    )
+    key_id = models.CharField(max_length=100, unique=True)
+    key_type = models.CharField(max_length=16, choices=KEY_TYPE_CHOICES)
+    public_key_pem = models.TextField()
+    issuer = models.URLField(blank=True)
+    encrypted_private_key = models.BinaryField()
+    nonce = models.BinaryField()
+    aad = models.BinaryField(blank=True, default=b"")
+    algorithm = models.CharField(max_length=32, default="AES-256-GCM")
+    state = models.CharField(max_length=20, choices=KEY_STATE_CHOICES, default="active")
+    created_at = models.DateTimeField(auto_now_add=True)
+    retired_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"EncryptedPrivateKey {self.key_id} ({self.key_type}) [{self.state}]"
+
+
+class CryptoAuditLog(models.Model):
+    """Append-only audit trail for cryptographic operations."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    actor = models.ForeignKey(
+        User, null=True, on_delete=models.SET_NULL, related_name="crypto_audit_logs"
+    )
+    vault = models.ForeignKey(
+        UserVault, null=True, on_delete=models.SET_NULL, related_name="audit_logs"
+    )
+    action = models.CharField(max_length=64)
+    object_type = models.CharField(max_length=64, blank=True)
+    object_id = models.CharField(max_length=64, blank=True)
+    success = models.BooleanField()
+    reason = models.TextField(blank=True)
+    key_version = models.PositiveSmallIntegerField(null=True, blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        status = "OK" if self.success else "FAIL"
+        return f"[{self.created_at:%Y-%m-%d %H:%M}] {self.action} by {self.actor} [{status}]"

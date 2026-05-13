@@ -4,7 +4,7 @@ from django.urls import reverse
 from .models import Platform, Font, Theme, ColorMix
 from django.contrib.auth.models import User
 from datetime import datetime
-from toto.gervazy.models import SecretKey
+from toto.gervazy.models import EncryptedSecret
 from django.core.cache import cache
 
 
@@ -30,19 +30,15 @@ class ViewSmokeTests(TestCase):
             footer={"light": "bg-gray-100", "dark": "bg-gray-900"}
         )
 
-        # Create secret key (required by Platform)
-        secret = SecretKey.objects.create(key="dummy-secret")
-
         # Create platform with theme
         self.config = Platform.objects.create(
             domain="example.com",
             site_name="Blue Journal",
             publication_year=datetime.now().year,
             active=True,
-            rate_limit_window=1,       # short window for testing
-            rate_limit_max_requests=3, # small limit for testing
-            secret=secret,
-            theme=theme                # 👈 attach theme
+            rate_limit_window=1,
+            rate_limit_max_requests=3,
+            theme=theme,
         )
 
         # Create user for authenticated views

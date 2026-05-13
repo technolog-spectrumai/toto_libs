@@ -26,7 +26,7 @@ FIB_SCALE = [
 class Project(DomainEntity):
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
-    owner = models.ForeignKey(Person, on_delete=models.CASCADE, db_comment="owned_by")
+    owner = models.ForeignKey(Person, on_delete=models.CASCADE)
     collaborators = models.ManyToManyField(User, related_name='collaborating_projects')
 
     def __str__(self):
@@ -36,7 +36,7 @@ class Project(DomainEntity):
 # 📦 Column
 class Column(DomainEntity):
     graph_node_type = "TaskStatus"
-    project = models.ForeignKey(Project, on_delete=models.CASCADE, db_column="belongs_to_project", db_comment="belongs_to")
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, db_column="belongs_to_project")
     name = models.CharField(max_length=100)
     position = models.PositiveIntegerField()
     can_add_task = models.BooleanField(default=False)
@@ -53,13 +53,13 @@ class Column(DomainEntity):
 
 # 📣 Campaign
 class Campaign(DomainEntity):
-    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="campaigns", db_comment="belongs_to_project")
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="campaigns")
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     start_date = models.DateField(null=True, blank=True)
     end_date = models.DateField(null=True, blank=True)
 
-    owner = models.ForeignKey(Person, on_delete=models.SET_NULL, null=True, blank=True, db_comment="owned_by")
+    owner = models.ForeignKey(Person, on_delete=models.SET_NULL, null=True, blank=True)
     metadata = models.JSONField(blank=True, null=True)
     zone = models.ForeignKey(
         "locations.Zone",
@@ -76,7 +76,7 @@ class Campaign(DomainEntity):
 
 # 🎯 Mission
 class Mission(DomainEntity):
-    campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name="missions", db_comment="belongs_to_campaign")
+    campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name="missions")
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
 
@@ -107,7 +107,7 @@ class Mission(DomainEntity):
         help_text="Route connected to this mission, if movement is involved.",
     )
 
-    owner = models.ForeignKey(Person, on_delete=models.SET_NULL, null=True, blank=True, db_comment="owned_by")
+    owner = models.ForeignKey(Person, on_delete=models.SET_NULL, null=True, blank=True)
     metadata = models.JSONField(blank=True, null=True)
 
     def __str__(self):
@@ -130,7 +130,7 @@ class Mission(DomainEntity):
 # 🚀 Sprint
 class Sprint(DomainEntity):
     name = models.CharField(max_length=100)
-    project = models.ForeignKey(Project, on_delete=models.CASCADE, db_comment="belongs_to")
+    project = models.ForeignKey(Project, on_delete=models.CASCADE)
     start_time = models.DateTimeField()
     end_time = models.DateTimeField()
 
@@ -140,13 +140,13 @@ class Sprint(DomainEntity):
 
 # 📝 Task
 class Task(DomainEntity):
-    mission = models.ForeignKey(Mission, on_delete=models.CASCADE, related_name="tasks", db_comment="belongs_to")
-    column = models.ForeignKey(Column, on_delete=models.CASCADE, related_name='tasks', db_comment="has_status")
-    sprint = models.ForeignKey(Sprint, on_delete=models.SET_NULL, null=True, blank=True, related_name='tasks', db_comment="belongs_to")
+    mission = models.ForeignKey(Mission, on_delete=models.CASCADE, related_name="tasks")
+    column = models.ForeignKey(Column, on_delete=models.CASCADE, related_name='tasks')
+    sprint = models.ForeignKey(Sprint, on_delete=models.SET_NULL, null=True, blank=True, related_name='tasks')
 
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
-    assignee = models.ForeignKey(Person, on_delete=models.SET_NULL, null=True, blank=True, db_comment="assigned_to")
+    assignee = models.ForeignKey(Person, on_delete=models.SET_NULL, null=True, blank=True)
     due_date = models.DateField(null=True, blank=True)
     position = models.PositiveIntegerField(default=0)
 
