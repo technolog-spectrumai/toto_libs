@@ -1,6 +1,5 @@
 from django.contrib import admin
 from .models import Community, Person, MembershipApplication, ReferenceRequest, EmailService
-from toto.academy.models import Experience
 from toto.core.base_admin import TotoModelAdmin
 
 
@@ -44,24 +43,6 @@ class CommunityAdmin(TotoModelAdmin):
     is_foreign_display.short_description = "Foreign"
 
 
-class ExperienceInline(admin.TabularInline):
-    model = Experience
-    extra = 0
-    fields = (
-        "title",
-        "institution",
-        "place",
-        "started_at",
-        "ended_at",
-        "is_current",
-        "order",
-    )
-    ordering = (
-        "order",
-        "-started_at",
-    )
-
-
 @admin.register(Person)
 class PersonAdmin(TotoModelAdmin):
     list_display = (
@@ -88,9 +69,6 @@ class PersonAdmin(TotoModelAdmin):
     list_filter = ('joined_date', 'address__country_name', 'address__state_or_province_name')
     ordering = ('-joined_date',)
     filter_horizontal = ('communities',)
-    inlines = [
-        ExperienceInline,
-    ]
 
     def patron_display(self, obj):
         return obj.patron.display_name if obj.patron else "-"

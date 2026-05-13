@@ -10,9 +10,6 @@ dependencies = [
 [tool.setuptools]
 packages = [
     "toto",
-    "toto.academy",
-    "toto.academy.migrations",
-    "toto.academy.plugins",
     "toto.core",
     "toto.events",
     "toto.gervazy",

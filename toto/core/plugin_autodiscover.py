@@ -9,6 +9,6 @@ def autodiscover_plugins(module_name: str):
         try:
             import_module(full_module_name)
         except ModuleNotFoundError as exc:
-            if exc.name == full_module_name:
+            if exc.name and full_module_name.startswith(exc.name):
                 continue
             raise

@@ -5,7 +5,6 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ("socialhub", "0001_initial"),
-        ("academy", "0001_initial"),
     ]
 
     operations = [
@@ -13,6 +12,11 @@ class Migration(migrations.Migration):
             state_operations=[
                 migrations.DeleteModel("Experience"),
             ],
-            database_operations=[],
+            database_operations=[
+                migrations.RunSQL(
+                    sql="DROP TABLE IF EXISTS socialhub_experience",
+                    reverse_sql="",
+                ),
+            ],
         ),
     ]
