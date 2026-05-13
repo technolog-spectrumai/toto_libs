@@ -220,9 +220,15 @@
         <div
           :class="[
             selectedName === location.name
-              ? (darkMode ? 'border-accent-dark bg-primary-bg-dark' : 'border-accent-light bg-primary-bg-light')
-              : 'border-current/10',
-            !location.geometry ? 'opacity-45' : 'hover:-translate-y-0.5 hover:shadow-md'
+              ? (darkMode
+                  ? 'border-accent-dark bg-primary-bg-dark'
+                  : 'border-accent-light/60 bg-primary-bg-light')
+              : (darkMode
+                  ? 'border-white/8'
+                  : 'border-accent-2/30 bg-primary-bg-light'),
+            !location.geometry
+              ? 'opacity-45'
+              : (darkMode ? 'hover:-translate-y-0.5 hover:shadow-md' : 'hover:border-accent-light/50')
           ]"
           class="group rounded-lg border p-3 transition">
 
@@ -252,8 +258,10 @@
               x-show="location.detail_url"
               :href="location.detail_url"
               @click.stop
-              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-              class="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition hover:opacity-90">
+              :class="darkMode
+                ? 'bg-accent-dark text-primary-bg-dark'
+                : 'border-accent-light/50 text-accent-light'"
+              class="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition hover:opacity-80">
               <i class="fa-solid fa-circle-info"></i>
               <span>Details</span>
             </a>
