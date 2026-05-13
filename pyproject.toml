@@ -10,6 +10,9 @@ dependencies = [
 [tool.setuptools]
 packages = [
     "toto",
+    "toto.academy",
+    "toto.academy.migrations",
+    "toto.academy.plugins",
     "toto.core",
     "toto.events",
     "toto.gervazy",
@@ -22,6 +25,9 @@ packages = [
     "toto.locations.graph",
     "toto.socialhub",
     "toto.socialhub.graph",
+    "toto.socialhub.migrations",
+    "toto.socialhub.plugins",
+    "toto.socialhub.views",
     "toto.vault",
     "toto.verbena",
     "toto.verbena.graph"

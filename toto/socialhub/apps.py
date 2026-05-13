@@ -9,5 +9,3 @@ class SocialHubConfig(AppConfig):
         from toto.core.plugin_autodiscover import autodiscover_plugins
 
         autodiscover_plugins("plugins.profile_plugins")
-
-        from toto.socialhub.plugins import experiences  # noqa: F401

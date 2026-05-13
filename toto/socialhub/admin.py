@@ -1,8 +1,6 @@
 from django.contrib import admin
-from .models import (
-    Community,
-    Experience, Person, MembershipApplication, ReferenceRequest, EmailService
-)
+from .models import Community, Person, MembershipApplication, ReferenceRequest, EmailService
+from toto.academy.models import Experience
 from toto.core.base_admin import TotoModelAdmin
 
 
@@ -102,34 +100,6 @@ class PersonAdmin(TotoModelAdmin):
         return str(obj.address) if obj.address else "-"
     address_display.short_description = "Address"
 
-
-@admin.register(Experience)
-class ExperienceAdmin(TotoModelAdmin):
-    list_display = (
-        "title",
-        "person",
-        "institution",
-        "place",
-        "started_at",
-        "ended_at",
-        "is_current",
-        "order",
-    )
-    list_filter = (
-        "is_current",
-        "institution",
-        "started_at",
-    )
-    search_fields = (
-        "title",
-        "institution",
-        "place",
-        "description",
-        "person__display_name",
-    )
-    autocomplete_fields = (
-        "person",
-    )
 
 
 @admin.register(MembershipApplication)

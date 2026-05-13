@@ -7,7 +7,7 @@ from toto.socialhub.plugins.profile_plugins import ProfilePlugin
     order=20,
 )
 class ExperiencesProfilePlugin(ProfilePlugin):
-    template_name = "socialhub/profile_plugins/experiences.html"
+    template_name = "academy/profile_plugins/experiences.html"
     section_icon = "fa-solid fa-briefcase"
 
     def get_context(self, **kwargs):
