@@ -106,37 +106,8 @@
       {% endfor %}
     </div>
 
-    <!-- Bibliography with Vault links -->
-    {% if page.references.exists %}
-      <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-               class="rounded-2xl border p-5 shadow-sm mt-10">
-        <h2 class="text-lg font-bold mb-4"><i class="fa-solid fa-book"></i> Bibliography</h2>
-        <ul class="list-disc list-inside space-y-2 text-sm">
-          {% for ref in page.references.all|dictsortreversed:"year" %}
-            <li>
-              <strong>{{ ref.title }}</strong>
-              {% if ref.authors.exists %}
-                by {{ ref.authors.all|join:", " }}
-              {% endif %}
-              {% if ref.year %} ({{ ref.year }}){% endif %}
-              {% if ref.bibtex_type %} [{{ ref.bibtex_type }}]{% endif %}
 
-              {% if ref.vault_file %}
-                {% with url=ref.vault_file.get_public_url %}
-                  {% if url %}
-                    — <a href="{{ url }}" target="_blank" class="underline text-sm text-accent hover:text-accent-dark">
-                      View file
-                    </a>
-                  {% endif %}
-                {% endwith %}
-              {% endif %}
-            </li>
-          {% endfor %}
-        </ul>
-      </section>
-    {% endif %}
-
-    <!-- Back Button -->
+<!-- Back Button -->
     <footer class="flex flex-wrap items-center justify-between gap-3 pt-2">
       <a href="{% url 'verbena:page_list' %}"
          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"

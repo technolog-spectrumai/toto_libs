@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from toto.core.domain import DomainEntity
 from toto.socialhub.models import Person
+from toto.verbena.models import AbstractPage
 
 
 # 3‑level hierarchy for missions
@@ -163,3 +164,20 @@ class Task(DomainEntity):
     @property
     def weight_label(self):
         return dict(FIB_SCALE).get(self.weight, self.weight)
+
+
+# 📄 Documentation Page
+class DocumentationPage(AbstractPage):
+    mission = models.OneToOneField(
+        Mission,
+        on_delete=models.CASCADE,
+        related_name="documentation_page",
+    )
+    is_manual = models.BooleanField(
+        default=False,
+        help_text="If true, this page was written manually rather than generated.",
+    )
+
+    class Meta:
+        verbose_name = "Documentation Page"
+        verbose_name_plural = "Documentation Pages"

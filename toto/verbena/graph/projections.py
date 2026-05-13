@@ -2,7 +2,6 @@ from toto.verbena.models import (
     Tag as TagSql,
     Page as PageSql,
     Section as SectionSql,
-    Subsection as SubsectionSql,
 )
 
 from toto.verbena.graph.models import (
@@ -137,23 +136,3 @@ class SectionProjection(BaseVerbenaProjection):
         )
 
 
-# =========================================================
-# SUBSECTION PROJECTION
-# =========================================================
-
-class SubsectionProjection(BaseVerbenaProjection):
-    model = "Subsection"
-    sql_model = SubsectionSql
-    neo_model = SubsectionNode
-    field_map = {"title": "title", "content": "content", "order": "order"}
-
-    def sync_edges(self):
-        for ss in SubsectionSql.objects.all():
-            gss = SubsectionNode.nodes.get(uuid=str(ss.uid))
-            gss.section.disconnect_all()
-            gs = SectionNode.nodes.get_or_none(uuid=str(ss.section.uid))
-            if gs:
-                gss.section.connect(gs)
-
-    def link_count(self):
-        return SubsectionSql.objects.count()

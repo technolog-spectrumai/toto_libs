@@ -1,0 +1,168 @@
+{% extends "library/base.html" %}
+
+{% block library_title %}{{ item.title }}{% endblock %}
+
+{% block library_content %}
+<div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
+
+  <!-- Main content -->
+  <div class="space-y-5">
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-2xl border p-6 shadow-sm">
+
+      <!-- Back link -->
+      <a href="{% url back_url %}"
+         class="inline-flex items-center gap-2 text-sm underline hover:opacity-80 mb-5">
+        <i class="fa-solid fa-arrow-left"></i>
+        {% if item_type == "book" %}Back to Books{% else %}Back to Articles{% endif %}
+      </a>
+
+      <!-- Title & type badge -->
+      <div class="flex flex-wrap items-start gap-3">
+        <div :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-accent-dark' : 'border-accent-2 bg-primary-bg-light text-accent-light'"
+             class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border text-lg">
+          <i class="fa-solid fa-{% if item_type == 'book' %}book{% else %}newspaper{% endif %}"></i>
+        </div>
+        <div class="flex-1 min-w-0">
+          <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+             class="text-xs font-semibold uppercase tracking-wide">
+            {% if item_type == "book" %}Book{% else %}Article{% endif %}
+          </p>
+          <h2 class="mt-0.5 break-words text-2xl font-bold leading-tight">{{ item.title }}</h2>
+        </div>
+      </div>
+
+      <!-- Authors & year -->
+      <div class="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm opacity-80">
+        {% if item.authors.exists %}
+          <span class="inline-flex items-center gap-2">
+            <i class="fa-solid fa-user-pen opacity-60"></i>
+            {% for author in item.authors.all %}{{ author.full_name }}{% if not forloop.last %}, {% endif %}{% endfor %}
+          </span>
+        {% endif %}
+        {% if item.year %}
+          <span class="inline-flex items-center gap-2">
+            <i class="fa-solid fa-calendar opacity-60"></i>
+            {{ item.year }}
+          </span>
+        {% endif %}
+      </div>
+
+      <!-- Abstract -->
+      {% if item.abstract %}
+        <div :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+             class="mt-5 rounded-xl border p-4">
+          <p class="mb-1 text-xs font-semibold uppercase tracking-wide opacity-60">Abstract</p>
+          <p class="text-sm leading-6">{{ item.abstract }}</p>
+        </div>
+      {% endif %}
+
+      <!-- Tags -->
+      {% if item.tags.exists %}
+        <div class="mt-4 flex flex-wrap gap-2">
+          {% for tag in item.tags.all %}
+            <span :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-accent-dark' : 'border-accent-2 bg-primary-bg-light text-accent-light'"
+                  class="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold">
+              <i class="fa-solid fa-hashtag text-[9px]"></i>{{ tag.name }}
+            </span>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Sidebar metadata -->
+  <aside class="space-y-4">
+
+    <!-- Vault file access -->
+    {% if item.vault_file %}
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-2xl border p-4 shadow-sm">
+        <p class="mb-3 text-xs font-semibold uppercase tracking-wide opacity-60">File</p>
+        {% with url=item.vault_file.get_public_url %}
+          {% if url %}
+            <a href="{{ url }}" target="_blank"
+               :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+               class="inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold shadow-sm transition hover:opacity-90">
+              <i class="fa-solid fa-file-arrow-down"></i>
+              Open file
+            </a>
+          {% endif %}
+        {% endwith %}
+        <p class="mt-2 text-center text-xs opacity-60">{{ item.vault_file.title }}</p>
+      </div>
+    {% endif %}
+
+    <!-- Publication details -->
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-2xl border p-4 shadow-sm space-y-3">
+      <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Details</p>
+
+      {% if item_type == "book" %}
+        {% if item.publisher %}
+          <div>
+            <p class="text-xs opacity-55">Publisher</p>
+            <p class="font-semibold text-sm">{{ item.publisher }}</p>
+          </div>
+        {% endif %}
+        {% if item.edition %}
+          <div>
+            <p class="text-xs opacity-55">Edition</p>
+            <p class="font-semibold text-sm">{{ item.edition }}</p>
+          </div>
+        {% endif %}
+        {% if item.isbn %}
+          <div>
+            <p class="text-xs opacity-55">ISBN</p>
+            <p class="font-mono text-sm">{{ item.isbn }}</p>
+          </div>
+        {% endif %}
+      {% else %}
+        {% if item.journal %}
+          <div>
+            <p class="text-xs opacity-55">Journal</p>
+            <p class="font-semibold text-sm italic">{{ item.journal }}</p>
+          </div>
+        {% endif %}
+        {% if item.volume %}
+          <div>
+            <p class="text-xs opacity-55">Volume / Issue</p>
+            <p class="font-semibold text-sm">
+              {{ item.volume }}{% if item.issue %}({{ item.issue }}){% endif %}
+            </p>
+          </div>
+        {% endif %}
+        {% if item.pages %}
+          <div>
+            <p class="text-xs opacity-55">Pages</p>
+            <p class="font-semibold text-sm">{{ item.pages }}</p>
+          </div>
+        {% endif %}
+      {% endif %}
+
+      {% if item.doi %}
+        <div>
+          <p class="text-xs opacity-55">DOI</p>
+          <a href="https://doi.org/{{ item.doi }}" target="_blank"
+             :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+             class="font-mono text-xs break-all underline-offset-2 hover:underline">
+            {{ item.doi }}
+          </a>
+        </div>
+      {% endif %}
+
+      {% if item.url %}
+        <div>
+          <a href="{{ item.url }}" target="_blank"
+             :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+             class="inline-flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
+            <i class="fa-solid fa-arrow-up-right-from-square"></i>
+            External link
+          </a>
+        </div>
+      {% endif %}
+    </div>
+
+  </aside>
+</div>
+{% endblock %}
