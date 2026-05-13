@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import SSOAccessToken, SSOAuthorizationCode, SSOClient, SSOSubject
+from .models import SSOAccessToken, SSOAuthorizationCode, SSOClient, SSOSigningKey, SSOSubject
 
 
 @admin.register(SSOClient)
@@ -9,6 +9,16 @@ class SSOClientAdmin(admin.ModelAdmin):
     list_filter = ["client_type", "active", "trusted"]
     search_fields = ["name", "client_id"]
     readonly_fields = ["created_at", "updated_at"]
+
+
+@admin.register(SSOSigningKey)
+class SSOSigningKeyAdmin(admin.ModelAdmin):
+    list_display = ["key_id", "algorithm", "is_active", "created_at"]
+    list_filter = ["is_active", "algorithm"]
+    readonly_fields = ["key_id", "algorithm", "public_key_pem", "created_at"]
+
+    def has_add_permission(self, request):
+        return False
 
 
 @admin.register(SSOSubject)

@@ -139,6 +139,27 @@ class SSOAuthorizationCode(models.Model):
         return f"Code for {self.user} / {self.client}"
 
 
+class SSOSigningKey(models.Model):
+    """
+    RSA public key used to verify this server's ID token signatures.
+
+    The matching private key MUST NOT be stored in the database.
+    Set it as the environment variable SSO_SIGNING_PRIVATE_KEY (PEM string).
+    """
+
+    key_id = models.CharField(max_length=100, unique=True)
+    algorithm = models.CharField(max_length=16, default="RS256")
+    public_key_pem = models.TextField()
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.key_id} ({'active' if self.is_active else 'inactive'})"
+
+
 class SSOAccessToken(models.Model):
     """
     Opaque bearer token used by /sso/userinfo/.

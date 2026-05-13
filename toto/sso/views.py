@@ -1,6 +1,7 @@
 import base64
 from urllib.parse import urlencode
 
+from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponseBadRequest, HttpResponseForbidden, JsonResponse
 from django.shortcuts import redirect, render
@@ -9,8 +10,40 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
+from toto.core.forms import LoginForm
+from toto.core.page import PageProcessor
 from .models import SSOAccessToken, SSOAuthorizationCode, SSOClient
 from .services import build_id_token, get_issuer, get_jwks, get_subject_for_user, get_user_claims, verify_pkce
+
+
+def login_view(request):
+    processor = PageProcessor()
+    next_url = request.GET.get("next") or request.POST.get("next") or ""
+    form = LoginForm(request.POST or None)
+    context = {"form": form, "page_title": "Sign In", "next": next_url,
+                "login_url": reverse("sso:login")}
+
+    if request.user.is_authenticated:
+        return redirect(next_url or reverse("core:dashboard"))
+
+    if request.method == "POST" and form.is_valid():
+        user = authenticate(
+            request,
+            username=form.cleaned_data["username"],
+            password=form.cleaned_data["password"],
+        )
+        if user:
+            login(request, user)
+            return redirect(next_url or reverse("core:dashboard"))
+        context["error"] = "Invalid credentials."
+
+    return render(request, "sso/login.html", processor.decorate(context, request))
+
+
+def logout_view(request):
+    next_url = request.GET.get("next") or ""
+    logout(request)
+    return redirect(next_url or reverse("core:dashboard"))
 
 
 @require_GET

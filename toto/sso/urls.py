@@ -11,4 +11,6 @@ urlpatterns = [
     path("sso/consent/", views.consent, name="consent"),
     path("sso/token/", views.token, name="token"),
     path("sso/userinfo/", views.userinfo, name="userinfo"),
+    path("sso/login/", views.login_view, name="login"),
+    path("sso/logout/", views.logout_view, name="logout"),
 ]

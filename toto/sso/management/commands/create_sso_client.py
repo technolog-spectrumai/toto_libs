@@ -2,7 +2,7 @@ import secrets
 
 from django.core.management.base import BaseCommand, CommandError
 
-from sso.models import SSOClient
+from toto.sso.models import SSOClient
 
 
 class Command(BaseCommand):
