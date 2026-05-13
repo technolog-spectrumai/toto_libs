@@ -4,7 +4,7 @@ import random
 from django.contrib.auth.models import User
 from django.utils import timezone
 
-from toto.kanban.models import Project, Column, Task, Sprint, Mission, Campaign
+from toto.kanban.models import Campaign, Column, DocumentationPage, DocumentationSection, Mission, Project, Sprint, Task
 from toto.socialhub.models import Person
 from toto.locations.models import Address, Zone, Route
 from toto.core.ingress import IngressCommand
@@ -267,5 +267,68 @@ class Command(IngressCommand):
 
         tasks[5].completed_at = sprint2.start_time + timedelta(days=3)
         tasks[5].save(update_fields=["completed_at"])
+
+        # ----------------------------------------------------
+        # 📄 Documentation Pages
+        # ----------------------------------------------------
+        doc1, _ = DocumentationPage.objects.update_or_create(
+            slug="mvp-launch-overview",
+            defaults={
+                "title": "MVP Launch — Overview",
+                "mission": mission1,
+                "description": "High-level documentation covering scope, goals, and release criteria for the MVP.",
+                "is_manual": False,
+            },
+        )
+        DocumentationSection.objects.get_or_create(
+            page=doc1,
+            title="Scope",
+            defaults={
+                "content": "<h2>Scope</h2><p>The MVP covers core authentication, the main dashboard, and basic CRUD operations. Mobile support and advanced analytics are explicitly out of scope for this release.</p>",
+                "order": 1,
+            },
+        )
+        DocumentationSection.objects.get_or_create(
+            page=doc1,
+            title="Release Criteria",
+            defaults={
+                "content": "<h2>Release Criteria</h2><ul><li>All P0 tasks completed and merged</li><li>End-to-end smoke test passing</li><li>Staging environment signed off by stakeholders</li></ul>",
+                "order": 2,
+            },
+        )
+
+        doc2, _ = DocumentationPage.objects.update_or_create(
+            slug="authentication-system-instruction",
+            defaults={
+                "title": "Authentication System — Instruction",
+                "mission": mission2,
+                "description": "Step-by-step instruction for setting up JWT-based authentication in the project.",
+                "is_manual": True,
+            },
+        )
+        DocumentationSection.objects.get_or_create(
+            page=doc2,
+            title="Setup",
+            defaults={
+                "content": "<h2>Setup</h2><p>Install <code>djangorestframework-simplejwt</code> and add it to <code>INSTALLED_APPS</code>. Configure <code>REST_FRAMEWORK</code> to use <code>JWTAuthentication</code> as the default authenticator.</p>",
+                "order": 1,
+            },
+        )
+        DocumentationSection.objects.get_or_create(
+            page=doc2,
+            title="Endpoints",
+            defaults={
+                "content": "<h2>Endpoints</h2><p>Wire up <code>/api/token/</code> for obtain and <code>/api/token/refresh/</code> for refresh. Protect any view that requires authentication with <code>permission_classes = [IsAuthenticated]</code>.</p>",
+                "order": 2,
+            },
+        )
+        DocumentationSection.objects.get_or_create(
+            page=doc2,
+            title="Testing",
+            defaults={
+                "content": "<h2>Testing</h2><p>Use the included test client to obtain a token pair and assert that protected endpoints return 401 when the header is absent and 200 when a valid Bearer token is provided.</p>",
+                "order": 3,
+            },
+        )
 
         print("[Ingress] Demo Kanban setup created successfully.")

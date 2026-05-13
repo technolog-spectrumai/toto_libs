@@ -5,9 +5,10 @@ from django import forms
 from django.contrib import admin
 from django.utils.timezone import now
 
-from .models import Project, Column, Task, Sprint, Mission, Campaign
+from .models import Project, Column, Task, Sprint, Mission, Campaign, DocumentationPage, DocumentationSection
 from toto.core.batch import BatchAction
 from toto.events.models import Event
+from toto.verbena.admin import SectionInlineMixin, PageAdminMixin
 
 
 class PrettyJSONTextarea(forms.Textarea):
@@ -90,6 +91,19 @@ class CampaignAdmin(admin.ModelAdmin):
     mission_count.short_description = "Missions"
 
 
+# 📄 Documentation Page Inline (metadata only — used inside MissionAdmin)
+class DocumentationPageInline(admin.StackedInline):
+    model = DocumentationPage
+    extra = 0
+    fields = ("title", "slug", "description", "is_manual")
+    prepopulated_fields = {"slug": ("title",)}
+
+
+# 📝 Documentation Section Inline (Trix editor)
+class DocumentationSectionInline(SectionInlineMixin):
+    model = DocumentationSection
+
+
 # 🎯 Mission Admin with Inline Tasks
 class TaskInlineForMission(admin.TabularInline):
     model = Task
@@ -119,7 +133,7 @@ class MissionAdmin(admin.ModelAdmin):
     list_filter = ("campaign", "urgency", "impact")
     search_fields = ("title", "description")
     ordering = ("campaign", "title")
-    inlines = [TaskInlineForMission]
+    inlines = [TaskInlineForMission, DocumentationPageInline]
 
     def task_count(self, obj):
         return obj.tasks.count()
@@ -203,6 +217,17 @@ class TaskAdmin(admin.ModelAdmin):
             request,
             verb="convert to event",
         )
+
+
+# 📄 Documentation Page Admin
+@admin.register(DocumentationPage)
+class DocumentationPageAdmin(PageAdminMixin):
+    list_display = ("title", "mission", "is_manual", "created_at")
+    list_filter = ("is_manual",)
+    search_fields = ["title", "description", "mission__title"]
+    autocomplete_fields = ("mission",)
+    readonly_fields = ["created_at"]
+    inlines = [DocumentationSectionInline]
 
 
 # 🚀 Sprint Admin with Event Conversion

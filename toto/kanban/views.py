@@ -13,7 +13,8 @@ from django.urls import reverse
 from toto.core.page import PageProcessor
 from toto.kanban.forms import TaskCreateForm
 from toto.kanban.metrics import SprintMetricsCalculator, MissionMetricsCalculator
-from toto.kanban.models import Project, Column, Task, Sprint, Mission
+from toto.kanban.models import Project, Column, Task, Sprint, Mission, DocumentationPage
+from toto.verbena.views import PageDetailMixin
 
 
 class ChartViewMixin:
@@ -674,6 +675,7 @@ class MissionDetailView(LoginRequiredMixin, DetailView):
                 "owner",
                 "campaign__zone",
                 "campaign__zone__territory",
+                "documentation_page",
             )
             .prefetch_related(
                 "tasks",
@@ -716,9 +718,15 @@ class MissionDetailView(LoginRequiredMixin, DetailView):
             else 0
         )
 
+        try:
+            documentation_page = mission.documentation_page
+        except mission.__class__.documentation_page.RelatedObjectDoesNotExist:
+            documentation_page = None
+
         context.update({
             "project": project,
             "tasks": tasks,
+            "documentation_page": documentation_page,
 
             "total_tasks": total_tasks,
             "completed_tasks": completed_tasks,
@@ -732,3 +740,17 @@ class MissionDetailView(LoginRequiredMixin, DetailView):
         })
 
         return context
+
+class DocumentationPageDetailView(PageDetailMixin, DetailView):
+    model = DocumentationPage
+    template_name = "kanban/documentation_page_detail.html"
+    context_object_name = "page"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["sections"] = self.render_sections(self.object)
+        context["back_url"] = "kanban:mission_detail"
+        context["back_url_pk"] = self.object.mission.pk
+        context["back_label"] = self.object.mission.title
+        context["page_type_label"] = "Documentation"
+        return PageProcessor().decorate(context, self.request)

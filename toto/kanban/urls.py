@@ -11,6 +11,7 @@ from .views import (
     promote_task,
     demote_task,
     SprintMetricsView,
+    DocumentationPageDetailView,
 )
 
 app_name = "kanban"
@@ -40,6 +41,12 @@ urlpatterns = [
         "mission/<int:pk>/",
         MissionDetailView.as_view(),
         name="mission_detail",
+    ),
+
+    path(
+        "documentation/<int:pk>/",
+        DocumentationPageDetailView.as_view(),
+        name="documentation_page_detail",
     ),
 
     path(

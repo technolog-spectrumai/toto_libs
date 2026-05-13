@@ -2,7 +2,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from toto.core.domain import DomainEntity
 from toto.socialhub.models import Person
-from toto.verbena.models import AbstractPage
+from toto.verbena.models import AbstractPage, AbstractSection
 
 
 # 3‑level hierarchy for missions
@@ -175,9 +175,30 @@ class DocumentationPage(AbstractPage):
     )
     is_manual = models.BooleanField(
         default=False,
-        help_text="If true, this page was written manually rather than generated.",
+        help_text="If true, this page is an instruction / how-to manual for the mission.",
     )
 
     class Meta:
         verbose_name = "Documentation Page"
         verbose_name_plural = "Documentation Pages"
+
+    def get_absolute_url(self):
+        from django.urls import reverse
+        return reverse("kanban:documentation_page_detail", args=[self.pk])
+
+
+# 📝 Documentation Section
+class DocumentationSection(AbstractSection):
+    page = models.ForeignKey(
+        DocumentationPage,
+        on_delete=models.CASCADE,
+        related_name="sections",
+    )
+
+    class Meta:
+        ordering = ["order"]
+        verbose_name = "Documentation Section"
+        verbose_name_plural = "Documentation Sections"
+
+    def __str__(self):
+        return f"{self.page.title} – {self.title or 'Section'}"
