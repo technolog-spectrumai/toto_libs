@@ -8,3 +8,6 @@ class LocationsConfig(AppConfig):
     def ready(self):
         from toto.core.plugin_autodiscover import autodiscover_plugins
         autodiscover_plugins("plugins.sidebar_plugins")
+        autodiscover_plugins("plugins.url_plugins")
+        autodiscover_plugins("plugins.map_plugins")
+        autodiscover_plugins("plugins.context_plugins")

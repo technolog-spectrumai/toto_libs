@@ -51,8 +51,9 @@
         </p>
       </div>
 
+      {% if travel_create_url %}
       <a
-        href="{% url 'locations:travel_create' %}?route={{ route.pk }}"
+        href="{{ travel_create_url }}?route={{ route.pk }}"
         :class="darkMode
           ? 'bg-accent-dark text-primary-bg-dark'
           : 'bg-accent-light text-primary-bg-light'"
@@ -60,6 +61,7 @@
         <i class="fa-solid fa-plus"></i>
         Add travel
       </a>
+      {% endif %}
     </header>
 
     <section class="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_400px]">

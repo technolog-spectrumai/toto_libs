@@ -231,6 +231,8 @@ def locations_all(request):
             "review_url": reverse("locations:route_review", args=[route.pk]),
         })
 
+    from toto.locations.plugins.url_plugins import LocationUrlPlugin
+
     for address in Address.objects.all():
         locations.append({
             "type": "Address",
@@ -239,10 +241,14 @@ def locations_all(request):
             "geometry": geometry_json(address.geometry),
             "geometry_json": geometry_json(address.geometry),
             "detail_url": reverse("locations:address_detail", args=[address.pk]),
-            "review_url": reverse("travels:visit_review", args=[address.pk]),
+            "review_url": LocationUrlPlugin.get_address_visit_review_url(address.pk),
         })
 
+    from toto.locations.plugins.map_plugins import LocationMapPlugin
+    locations.extend(LocationMapPlugin.get_items())
+
     from toto.locations.plugins.sidebar_plugins import LocationSidebarPlugin
+    from toto.locations.plugins.context_plugins import LocationContextPlugin
 
     context = {
         "locations": locations,
@@ -254,6 +260,7 @@ def locations_all(request):
             .prefetch_related("polygons")
             .order_by("name")
         ]),
+        **LocationContextPlugin.get_context(),
     }
 
     context["sidebar_plugin_sections"] = LocationSidebarPlugin.render_all(
@@ -380,10 +387,13 @@ def route_detail(request, pk):
         .order_by("-start_time")
     )
 
+    from toto.locations.plugins.url_plugins import LocationUrlPlugin
+
     context = {
         "route": route,
         "route_payload_json": json.dumps(route_payload(route)),
         "events": events,
+        "travel_create_url": LocationUrlPlugin.get_url("travel_create"),
     }
 
     return render(

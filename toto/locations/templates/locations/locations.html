@@ -473,6 +473,128 @@
           </div>
         </div>
 
+        {% if map_recent_travels or map_recent_visits %}
+        <div
+          x-data="{ open: true }"
+          class="pointer-events-auto absolute left-4 top-14 z-[500] w-[min(92vw,240px)]">
+
+          <button
+            type="button"
+            @click="open = !open"
+            :class="darkMode
+              ? 'bg-bubble-bg-dark/95 text-text-main-dark border-accent-1'
+              : 'bg-bubble-bg-light/95 text-text-main-light border-accent-2'"
+            class="flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold shadow-sm backdrop-blur transition hover:opacity-90">
+            <span class="flex items-center gap-1.5">
+              <i class="fa-solid fa-route opacity-70"></i>
+              Travels &amp; Visits
+            </span>
+            <i class="fa-solid text-[10px] opacity-60" :class="open ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+          </button>
+
+          <div
+            x-show="open"
+            x-transition
+            x-cloak
+            :class="darkMode
+              ? 'bg-bubble-bg-dark/95 text-text-main-dark border-accent-1'
+              : 'bg-bubble-bg-light/95 text-text-main-light border-accent-2'"
+            class="mt-1 overflow-hidden rounded-lg border shadow-sm backdrop-blur">
+
+            {% if map_recent_travels %}
+            <div class="px-3 pt-3 pb-1">
+              <div class="mb-2 flex items-center justify-between gap-2">
+                <span class="text-[10px] font-semibold uppercase tracking-wide opacity-60">Recent Travels</span>
+                <a
+                  href="{% url 'travels:travel_create' %}"
+                  :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                  class="text-[10px] font-semibold underline-offset-2 hover:underline">
+                  + Add
+                </a>
+              </div>
+
+              <div class="space-y-0.5">
+                {% for travel in map_recent_travels %}
+                  <a
+                    href="{% url 'travels:travel_review' travel.pk %}"
+                    :class="darkMode ? 'hover:bg-white/10' : 'hover:bg-black/5'"
+                    class="flex items-center gap-2 rounded px-1 py-1 transition">
+                    <i class="fa-solid fa-route shrink-0 text-[10px] opacity-40"></i>
+                    <span class="min-w-0 flex-1">
+                      <span class="block truncate text-[11px] font-semibold leading-tight">
+                        {% if travel.route %}{{ travel.route.name }}{% else %}Travel #{{ travel.pk }}{% endif %}
+                      </span>
+                      <span class="block text-[10px] opacity-50">{{ travel.starts_at|date:"M j, Y" }}</span>
+                    </span>
+                    {% if travel.score %}
+                      <span class="shrink-0 text-[10px] font-bold opacity-60">{{ travel.score }}/5</span>
+                    {% endif %}
+                  </a>
+                {% endfor %}
+              </div>
+
+              <a
+                href="{% url 'travels:my_travels' %}"
+                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                class="mt-2 block text-center text-[10px] font-semibold underline-offset-2 hover:underline">
+                View all travels
+              </a>
+            </div>
+            {% endif %}
+
+            {% if map_recent_travels and map_recent_visits %}
+            <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="mx-3 border-t"></div>
+            {% endif %}
+
+            {% if map_recent_visits %}
+            <div class="px-3 pt-2 pb-3">
+              <div class="mb-2 flex items-center justify-between gap-2">
+                <span class="text-[10px] font-semibold uppercase tracking-wide opacity-60">Recent Visits</span>
+                <a
+                  href="{% url 'travels:visit_create' %}"
+                  :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                  class="text-[10px] font-semibold underline-offset-2 hover:underline">
+                  + Add
+                </a>
+              </div>
+
+              <div class="space-y-0.5">
+                {% for visit in map_recent_visits %}
+                  {% if visit.location %}
+                  <a
+                    href="{% url 'travels:visit_review' visit.location.pk %}"
+                    :class="darkMode ? 'hover:bg-white/10' : 'hover:bg-black/5'"
+                    class="flex items-center gap-2 rounded px-1 py-1 transition">
+                    <i class="fa-solid fa-location-dot shrink-0 text-[10px] opacity-40"></i>
+                    <span class="min-w-0 flex-1">
+                      <span class="block truncate text-[11px] font-semibold leading-tight">{{ visit.location }}</span>
+                      {% if visit.visited_at %}
+                        <span class="block text-[10px] opacity-50">{{ visit.visited_at|date:"M j, Y" }}</span>
+                      {% elif visit.participant %}
+                        <span class="block text-[10px] opacity-50">{{ visit.participant.display_name }}</span>
+                      {% endif %}
+                    </span>
+                    {% if visit.score %}
+                      <span class="shrink-0 text-[10px] font-bold opacity-60">{{ visit.score }}/5</span>
+                    {% endif %}
+                  </a>
+                  {% endif %}
+                {% endfor %}
+              </div>
+
+              <a
+                href="{% url 'travels:my_travels' %}"
+                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                class="mt-2 block text-center text-[10px] font-semibold underline-offset-2 hover:underline">
+                View all visits
+              </a>
+            </div>
+            {% endif %}
+
+          </div>
+        </div>
+        {% endif %}
+
         <div class="pointer-events-auto absolute right-4 top-4 z-[500] flex w-[min(92vw,340px)] flex-col gap-2">
           <div
             @click.stop
@@ -579,6 +701,8 @@
             <div class="flex items-center gap-2"><span :style="typeStyle('Route Chain')" class="h-2.5 w-2.5 rounded-full"></span>Route Chain</div>
             <div class="flex items-center gap-2"><span :style="typeStyle('Route')" class="h-2.5 w-2.5 rounded-full"></span>Route</div>
             <div class="flex items-center gap-2"><span :style="typeStyle('Address')" class="h-2.5 w-2.5 rounded-full"></span>Address</div>
+            <div class="flex items-center gap-2"><span :style="typeStyle('Travel')" class="h-2.5 w-2.5 rounded-full"></span>Travel</div>
+            <div class="flex items-center gap-2"><span :style="typeStyle('Visit')" class="h-2.5 w-2.5 rounded-full"></span>Visit</div>
           </div>
         </div>
       </div>
@@ -761,7 +885,9 @@
       Zone: isDark ? "accent-1" : "accent-2",
       "Route Chain": `warn-${mode}`,
       Route: `link-${mode}`,
-      Address: `success-${mode}`
+      Address: `success-${mode}`,
+      Travel: `error-${mode}`,
+      Visit: isDark ? "warn-dark" : "warn-light"
     };
 
     const fallback = isDark
@@ -780,7 +906,7 @@
       fillOpacity: ["Territory", "Zone"].includes(type) ? 0.16 : 0.7,
       opacity: 0.95,
       radius: 7,
-      weight: type === "Route Chain" ? 6 : (type === "Route" ? 4 : 2)
+      weight: type === "Route Chain" ? 6 : (["Route", "Travel"].includes(type) ? 4 : 2)
     };
   }
 
@@ -1030,6 +1156,20 @@
       `;
     }
 
+    if (item.detail_url) {
+      return `
+        ${title}
+        <div style="margin-top: 8px;">
+          <a
+            href="${escapeAttribute(item.detail_url)}"
+            style="display: inline-flex; align-items: center; gap: 6px; border: 1px solid currentColor; border-radius: 6px; padding: 4px 8px; font-size: 12px; font-weight: 700; background: transparent; cursor: pointer; text-decoration: none; color: inherit;">
+            <i class="fa-solid fa-arrow-right"></i>
+            View
+          </a>
+        </div>
+      `;
+    }
+
     if (type === "Address") {
       return `
         ${title}
@@ -1159,7 +1299,7 @@
     const bounds = layer.getBounds();
 
     if (bounds.isValid()) {
-      map.fitBounds(bounds, { padding: [36, 36], maxZoom: item.type === "Address" ? 16 : 13 });
+      map.fitBounds(bounds, { padding: [36, 36], maxZoom: ["Address", "Visit"].includes(item.type) ? 16 : 13 });
       item.layer.openPopup();
     }
   }
