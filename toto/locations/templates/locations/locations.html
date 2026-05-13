@@ -476,7 +476,7 @@
         {% if map_recent_travels or map_recent_visits %}
         <div
           x-data="{ open: true }"
-          class="pointer-events-auto absolute left-4 top-14 z-[500] w-[min(92vw,240px)]">
+          class="pointer-events-auto absolute left-4 top-4 z-[500] w-[min(92vw,240px)]">
 
           <button
             type="button"
@@ -484,7 +484,7 @@
             :class="darkMode
               ? 'bg-bubble-bg-dark/95 text-text-main-dark border-accent-1'
               : 'bg-bubble-bg-light/95 text-text-main-light border-accent-2'"
-            class="flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold shadow-sm backdrop-blur transition hover:opacity-90">
+            class="flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-1 text-xs font-semibold shadow-sm backdrop-blur transition hover:opacity-90">
             <span class="flex items-center gap-1.5">
               <i class="fa-solid fa-route opacity-70"></i>
               Travels &amp; Visits
