@@ -30,7 +30,7 @@ class BackupEngine:
     BACKUP_FORMAT = "toto.shared_apps.backup"
     BACKUP_VERSION = "1.0"
 
-    def __init__(self, platform, apps_to_sync=None, vault_password=None):
+    def __init__(self, platform, apps_to_sync=None, vault_password=None, sign=True):
         self.platform = platform
         self.apps_to_sync = list(apps_to_sync or getattr(settings, "APPS_TO_SYNC", []))
         self.vault_password = (
@@ -38,6 +38,7 @@ class BackupEngine:
             or getattr(settings, "BACKUP_VAULT_PASSWORD", "")
             or getattr(settings, "SSO_VAULT_PASSWORD", "")
         )
+        self.sign = sign
 
     def _validate_apps_for_create(self):
         if not self.apps_to_sync:

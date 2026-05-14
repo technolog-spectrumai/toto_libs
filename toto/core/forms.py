@@ -43,13 +43,3 @@ class ApplyBackupForm(forms.Form):
     )
 
 
-class QueryExecForm(forms.Form):
-    query = forms.CharField(
-        required=True,
-        label="Query",
-        widget=forms.Textarea(attrs={
-            "rows": 6,
-            "style": "width:100%;font-family:monospace;",
-            "placeholder": "show apps  |  show models  |  show platform",
-        }),
-    )

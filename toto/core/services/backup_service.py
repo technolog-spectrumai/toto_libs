@@ -44,7 +44,8 @@ class BackupService(BackupEngine):
 
             manifest_path = tmp / "manifest.json"
             self.write_json(manifest_path, manifest)
-            self.write_signature(tmp, manifest_path.read_bytes())
+            if self.sign:
+                self.write_signature(tmp, manifest_path.read_bytes())
             self.write_zip(tmp, output_path)
 
         return output_path
