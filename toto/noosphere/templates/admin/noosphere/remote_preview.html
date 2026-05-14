@@ -7,8 +7,7 @@
     <strong>Local platform:</strong> {{ rule.local_platform }}<br>
     <strong>Remote platform:</strong> {{ rule.remote_platform }}<br>
     <strong>Model:</strong> <code>{{ rule.model_label }}</code><br>
-    <strong>Direction:</strong> {{ rule.get_direction_display }}<br>
-    <strong>Backend:</strong> {{ rule.remote_platform.get_backend_key_for_direction(rule.direction) }}
+    <strong>Backend:</strong> {{ rule.remote_platform.downlink_backend }}
   </p>
 
   {% if error %}
