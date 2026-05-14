@@ -33,6 +33,10 @@ packages = [
     "toto.noosphere",
     "toto.noosphere.migrations",
     "toto.noosphere.services",
+    "toto.polls",
+    "toto.polls.migrations",
+    "toto.polls.management",
+    "toto.polls.management.commands",
 ]
 
 [build-system]
