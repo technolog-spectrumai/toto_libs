@@ -82,11 +82,7 @@ class RemotePlatform(models.Model):
         return self.base_url.rstrip("/")
 
     def get_backend_key_for_direction(self, direction):
-        if direction == "up":
-            return self.uplink_backend
-        if direction == "down":
-            return self.downlink_backend
-        return "default"
+        return self.downlink_backend
 
 
 class SyncRule(models.Model):
@@ -96,11 +92,9 @@ class SyncRule(models.Model):
     One rule = one model + one direction + one remote platform.
     """
 
-    DIRECTION_UP = "up"
     DIRECTION_DOWN = "down"
 
     DIRECTION_CHOICES = [
-        (DIRECTION_UP, "Up"),
         (DIRECTION_DOWN, "Down"),
     ]
 
@@ -169,7 +163,6 @@ class SyncRule(models.Model):
         help_text="Include referenced uid-enabled dependency models where supported.",
     )
 
-    last_pushed_at = models.DateTimeField(null=True, blank=True)
     last_pulled_at = models.DateTimeField(null=True, blank=True)
 
     created_at = models.DateTimeField(default=timezone.now)
@@ -234,20 +227,6 @@ class SyncRule(models.Model):
             else self.model_label
         )
 
-    def mark_synced(self, when=None):
-        when = when or timezone.now()
-
-        if self.direction == self.DIRECTION_UP:
-            self.last_pushed_at = when
-            self.save(update_fields=["last_pushed_at", "updated_at"])
-        elif self.direction == self.DIRECTION_DOWN:
-            self.last_pulled_at = when
-            self.save(update_fields=["last_pulled_at", "updated_at"])
-
-    def mark_pushed(self, when=None):
-        self.last_pushed_at = when or timezone.now()
-        self.save(update_fields=["last_pushed_at", "updated_at"])
-
     def mark_pulled(self, when=None):
         self.last_pulled_at = when or timezone.now()
         self.save(update_fields=["last_pulled_at", "updated_at"])
@@ -270,7 +249,6 @@ class SyncRun(models.Model):
         (STATUS_FAILED, "Failed"),
     ]
 
-    DIRECTION_UP = SyncRule.DIRECTION_UP
     DIRECTION_DOWN = SyncRule.DIRECTION_DOWN
     DIRECTION_CHOICES = SyncRule.DIRECTION_CHOICES
 

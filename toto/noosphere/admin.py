@@ -161,7 +161,6 @@ class RemotePlatformAdmin(TotoModelAdmin):
                 failed = 0
 
                 selected_models = form.cleaned_data["models"]
-                direction = form.cleaned_data["direction"]
 
                 filters = {}
 
@@ -176,13 +175,13 @@ class RemotePlatformAdmin(TotoModelAdmin):
                         adapter = get_sync_adapter(model_label)
                         fields = adapter.allowed_fields or []
 
-                        rule_name = f"{remote_platform.name}: {model_label} {direction}"
+                        rule_name = f"{remote_platform.name}: {model_label} down"
 
                         rule, was_created = SyncRule.objects.update_or_create(
                             local_platform=remote_platform.local_platform,
                             remote_platform=remote_platform,
                             model_label=model_label,
-                            direction=direction,
+                            direction=SyncRule.DIRECTION_DOWN,
                             defaults={
                                 "name": rule_name,
                                 "enabled": True,
@@ -272,19 +271,16 @@ class SyncRuleAdmin(TotoModelAdmin):
         "local_platform",
         "remote_platform",
         "model_label",
-        "direction",
         "enabled",
         "sync_creates",
         "sync_updates",
         "sync_deletes",
-        "last_pushed_at",
         "last_pulled_at",
         "remote_preview_link",
     )
 
     list_filter = (
         "enabled",
-        "direction",
         "sync_creates",
         "sync_updates",
         "sync_deletes",
@@ -304,7 +300,6 @@ class SyncRuleAdmin(TotoModelAdmin):
     readonly_fields = (
         "created_at",
         "updated_at",
-        "last_pushed_at",
         "last_pulled_at",
         "remote_preview_link",
     )
@@ -317,7 +312,6 @@ class SyncRuleAdmin(TotoModelAdmin):
                 "name",
                 "enabled",
                 "model_label",
-                "direction",
             )
         }),
         ("Selection", {
@@ -337,7 +331,6 @@ class SyncRuleAdmin(TotoModelAdmin):
         }),
         ("State", {
             "fields": (
-                "last_pushed_at",
                 "last_pulled_at",
                 "created_at",
                 "updated_at",
@@ -466,11 +459,9 @@ class SyncRunAdmin(TotoModelAdmin):
         "local_platform",
         "remote_platform",
         "rule",
-        "direction",
         "status",
         "started_at",
         "finished_at",
-        "exported_count",
         "imported_count",
         "created_count",
         "updated_count",
@@ -481,7 +472,6 @@ class SyncRunAdmin(TotoModelAdmin):
 
     list_filter = (
         "status",
-        "direction",
         "local_platform",
         "remote_platform",
         "started_at",

@@ -38,11 +38,6 @@
           {% endif %}
         </div>
 
-        <div class="form-row">
-          {{ form.direction.errors }}
-          <label>{{ form.direction.label }}</label>
-          {{ form.direction }}
-        </div>
       </fieldset>
 
       <fieldset class="module aligned">
@@ -92,11 +87,9 @@
         <tr>
           <th>Name</th>
           <th>Model</th>
-          <th>Direction</th>
           <th>Enabled</th>
           <th>Fields</th>
           <th>Filters</th>
-          <th>Last pushed</th>
           <th>Last pulled</th>
         </tr>
       </thead>
@@ -105,7 +98,6 @@
           <tr>
             <td>{{ rule.name }}</td>
             <td><code>{{ rule.model_label }}</code></td>
-            <td>{{ rule.get_direction_display }}</td>
             <td>{{ rule.enabled }}</td>
             <td>
               {% if rule.fields %}
@@ -121,12 +113,11 @@
                 —
               {% endif %}
             </td>
-            <td>{{ rule.last_pushed_at|default:"Never" }}</td>
             <td>{{ rule.last_pulled_at|default:"Never" }}</td>
           </tr>
         {% empty %}
           <tr>
-            <td colspan="8">No sync rules configured for this remote platform.</td>
+            <td colspan="6">No sync rules configured for this remote platform.</td>
           </tr>
         {% endfor %}
       </tbody>

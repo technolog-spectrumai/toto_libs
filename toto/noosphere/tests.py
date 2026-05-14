@@ -34,12 +34,10 @@ class RemotePlatformSmoke(TestCase):
             local_platform=self.platform,
             name="Portal",
             base_url="https://portal.example.com",
-            uplink_backend="studio_https",
             downlink_backend="studio_tor",
         )
-        self.assertEqual(rp.get_backend_key_for_direction("up"), "studio_https")
         self.assertEqual(rp.get_backend_key_for_direction("down"), "studio_tor")
-        self.assertEqual(rp.get_backend_key_for_direction("other"), "default")
+        self.assertEqual(rp.get_backend_key_for_direction("anything"), "studio_tor")
 
     def test_unique_name_per_local(self):
         _remote(self.platform, name="Studio", base_url="https://studio.example.com")
@@ -59,7 +57,7 @@ class SyncRuleSmoke(TestCase):
             remote_platform=self.remote,
             name="events-up",
             model_label="events.Event",
-            direction=SyncRule.DIRECTION_UP,
+            direction=SyncRule.DIRECTION_DOWN,
         )
         self.assertEqual(rule.app_label, "events")
         self.assertEqual(rule.model_name, "Event")
@@ -71,7 +69,7 @@ class SyncRuleSmoke(TestCase):
             remote_platform=self.remote,
             name="rule-a",
             model_label="events.Event",
-            direction=SyncRule.DIRECTION_UP,
+            direction=SyncRule.DIRECTION_DOWN,
         )
         from django.db import IntegrityError
         with self.assertRaises(IntegrityError):
@@ -80,7 +78,7 @@ class SyncRuleSmoke(TestCase):
                 remote_platform=self.remote,
                 name="rule-b",
                 model_label="events.Event",
-                direction=SyncRule.DIRECTION_UP,
+                direction=SyncRule.DIRECTION_DOWN,
             )
 
     def test_clean_rejects_mismatched_remote(self):
@@ -96,24 +94,11 @@ class SyncRuleSmoke(TestCase):
             remote_platform=other_remote,
             name="bad-rule",
             model_label="events.Event",
-            direction=SyncRule.DIRECTION_UP,
+            direction=SyncRule.DIRECTION_DOWN,
         )
         from django.core.exceptions import ValidationError
         with self.assertRaises(ValidationError):
             rule.clean()
-
-    def test_mark_pushed(self):
-        rule = SyncRule.objects.create(
-            local_platform=self.platform,
-            remote_platform=self.remote,
-            name="kanban-up",
-            model_label="kanban.Task",
-            direction=SyncRule.DIRECTION_UP,
-        )
-        self.assertIsNone(rule.last_pushed_at)
-        rule.mark_pushed()
-        rule.refresh_from_db()
-        self.assertIsNotNone(rule.last_pushed_at)
 
     def test_mark_pulled(self):
         rule = SyncRule.objects.create(
@@ -123,9 +108,15 @@ class SyncRuleSmoke(TestCase):
             model_label="kanban.Task",
             direction=SyncRule.DIRECTION_DOWN,
         )
+        self.assertIsNone(rule.last_pulled_at)
         rule.mark_pulled()
         rule.refresh_from_db()
         self.assertIsNotNone(rule.last_pulled_at)
+
+    def test_no_direction_up(self):
+        self.assertFalse(hasattr(SyncRule, "DIRECTION_UP"))
+        direction_values = [c[0] for c in SyncRule.DIRECTION_CHOICES]
+        self.assertEqual(direction_values, ["down"])
 
 
 class SyncRunSmoke(TestCase):
@@ -148,6 +139,7 @@ class SyncRunSmoke(TestCase):
             direction=SyncRule.DIRECTION_DOWN,
         )
         self.assertEqual(run.status, SyncRun.STATUS_RUNNING)
+        self.assertEqual(run.direction, SyncRun.DIRECTION_DOWN)
         self.assertEqual(run.platform, self.platform)
 
         run.mark_success()
@@ -199,13 +191,13 @@ class SyncObjectRunSmoke(TestCase):
             remote_platform=remote,
             name="locs-up",
             model_label="locations.Point",
-            direction=SyncRule.DIRECTION_UP,
+            direction=SyncRule.DIRECTION_DOWN,
         )
         self.run = SyncRun.objects.create(
             local_platform=platform,
             remote_platform=remote,
             rule=rule,
-            direction=SyncRule.DIRECTION_UP,
+            direction=SyncRule.DIRECTION_DOWN,
         )
 
     def test_create_and_str(self):

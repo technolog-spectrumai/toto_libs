@@ -41,9 +41,6 @@ class SyncRunner:
                 f"Remote platform has no outgoing secret key: {rule.remote_platform}"
             )
 
-        if rule.direction not in [SyncRule.DIRECTION_UP, SyncRule.DIRECTION_DOWN]:
-            raise ImproperlyConfigured(f"Unsupported sync direction: {rule.direction}")
-
         run = SyncRun.objects.create(
             local_platform=self.local_platform,
             remote_platform=rule.remote_platform,
@@ -63,7 +60,7 @@ class SyncRunner:
 
             self._apply_remote_response_to_run(run, remote_response)
 
-            rule.mark_synced()
+            rule.mark_pulled()
 
             rule.remote_platform.last_seen_at = timezone.now()
             rule.remote_platform.save(update_fields=["last_seen_at", "updated_at"])

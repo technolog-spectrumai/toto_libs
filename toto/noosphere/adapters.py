@@ -39,11 +39,7 @@ class BaseSyncAdapter:
         return qs
 
     def get_since(self, rule):
-        if rule.direction == rule.DIRECTION_UP:
-            return rule.last_pushed_at
-        if rule.direction == rule.DIRECTION_DOWN:
-            return rule.last_pulled_at
-        return None
+        return rule.last_pulled_at
 
     def get_export_fields(self, rule):
         if rule.fields:

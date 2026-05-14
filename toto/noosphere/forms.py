@@ -1,7 +1,7 @@
 from django import forms
 from django.core.exceptions import ValidationError
 
-from .models import RemotePlatform, SyncRule
+from .models import RemotePlatform
 from .registry import get_registered_model_labels, get_sync_adapter
 from .transport_registry import get_transport_choices
 
@@ -61,11 +61,6 @@ class RemotePlatformSyncConsoleForm(forms.Form):
         widget=forms.CheckboxSelectMultiple,
         required=True,
         help_text="Choose models to sync with this remote platform.",
-    )
-
-    direction = forms.ChoiceField(
-        choices=SyncRule.DIRECTION_CHOICES,
-        required=True,
     )
 
     sync_creates = forms.BooleanField(
