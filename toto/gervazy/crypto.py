@@ -8,9 +8,15 @@ All AES keys are raw 32 bytes.  derive_key() returns base64url(32 bytes);
 we decode that back to raw bytes before using it as an AES-256-GCM key.
 """
 import base64
+import datetime as dt
+import ipaddress
 import os
 
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.x509.oid import NameOID
 
 
 # ---------------------------------------------------------------------------
@@ -27,6 +33,100 @@ def aes_gcm_encrypt(key: bytes, plaintext: bytes, aad: bytes = b"") -> tuple[byt
 def aes_gcm_decrypt(key: bytes, ciphertext: bytes, nonce: bytes, aad: bytes = b"") -> bytes:
     """Decrypt *ciphertext*. Raises ``cryptography.exceptions.InvalidTag`` on failure."""
     return AESGCM(key).decrypt(nonce, ciphertext, aad or None)
+
+
+# ---------------------------------------------------------------------------
+# TLS certificate helpers
+# ---------------------------------------------------------------------------
+
+def generate_self_signed_certificate(
+    *,
+    common_name: str,
+    dns_names: list[str] | None = None,
+    ip_addresses: list[str] | None = None,
+    valid_days: int = 825,
+) -> tuple[bytes, bytes]:
+    """Generate a self-signed RSA certificate and private key in PEM format."""
+    dns_names = dns_names or [common_name]
+    ip_addresses = ip_addresses or []
+
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    subject = issuer = x509.Name(
+        [
+            x509.NameAttribute(NameOID.COUNTRY_NAME, "PL"),
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Toto Local Development"),
+            x509.NameAttribute(NameOID.COMMON_NAME, common_name),
+        ]
+    )
+
+    san_names: list[x509.GeneralName] = [x509.DNSName(name) for name in dns_names]
+    san_names.extend(x509.IPAddress(ipaddress.ip_address(address)) for address in ip_addresses)
+
+    now = dt.datetime.now(dt.timezone.utc)
+    certificate = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(issuer)
+        .public_key(private_key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - dt.timedelta(minutes=5))
+        .not_valid_after(now + dt.timedelta(days=valid_days))
+        .add_extension(x509.SubjectAlternativeName(san_names), critical=False)
+        .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+        .add_extension(
+            x509.KeyUsage(
+                digital_signature=True,
+                key_encipherment=True,
+                key_cert_sign=True,
+                key_agreement=False,
+                content_commitment=False,
+                data_encipherment=False,
+                crl_sign=True,
+                encipher_only=False,
+                decipher_only=False,
+            ),
+            critical=True,
+        )
+        .sign(private_key, hashes.SHA256())
+    )
+
+    key_pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.TraditionalOpenSSL,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+    cert_pem = certificate.public_bytes(serialization.Encoding.PEM)
+    return cert_pem, key_pem
+
+
+def ensure_self_signed_certificate(
+    cert_path,
+    key_path,
+    *,
+    common_name: str = "localhost",
+    dns_names: list[str] | None = None,
+    ip_addresses: list[str] | None = None,
+) -> bool:
+    """Create a self-signed certificate unless both cert and key already exist."""
+    cert_path = os.fspath(cert_path)
+    key_path = os.fspath(key_path)
+
+    if os.path.exists(cert_path) and os.path.exists(key_path):
+        return False
+
+    cert_pem, key_pem = generate_self_signed_certificate(
+        common_name=common_name,
+        dns_names=dns_names,
+        ip_addresses=ip_addresses,
+    )
+    os.makedirs(os.path.dirname(cert_path), exist_ok=True)
+
+    with open(cert_path, "wb") as cert_file:
+        cert_file.write(cert_pem)
+    with open(key_path, "wb") as key_file:
+        key_file.write(key_pem)
+    os.chmod(key_path, 0o600)
+    return True
 
 
 # ---------------------------------------------------------------------------
