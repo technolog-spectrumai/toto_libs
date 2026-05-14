@@ -1,5 +1,6 @@
 {% extends "oya/base.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block title %}Sprint Metrics | {{ project.name }}{% endblock %}
 
@@ -30,19 +31,19 @@
           href="{% url 'kanban:project_detail' project.pk %}"
           class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
           <i class="fa-solid fa-arrow-left"></i>
-          Project board
+          {% trans "Project board" %}
         </a>
 
         <div>
           <p
             :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
             class="text-xs font-semibold uppercase tracking-wide">
-            Kanban Project
+            {% trans "Kanban Project" %}
           </p>
 
           <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
             <i class="fa-solid fa-flag-checkered"></i>
-            Sprint Metrics
+            {% trans "Sprint Metrics" %}
           </h1>
 
           <p class="mt-1 text-sm opacity-70">
@@ -59,7 +60,7 @@
             : 'bg-accent-light text-primary-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
           <i class="fa-solid fa-table-columns"></i>
-          Board
+          {% trans "Board" %}
         </a>
 
         <a
@@ -69,7 +70,7 @@
             : 'border-accent-2 bg-bubble-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
           <i class="fa-solid fa-list-check"></i>
-          Backlog
+          {% trans "Backlog" %}
         </a>
 
         <a
@@ -79,7 +80,7 @@
             : 'border-accent-2 bg-bubble-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
           <i class="fa-solid fa-border-all"></i>
-          Matrix
+          {% trans "Matrix" %}
         </a>
       </nav>
     </header>
@@ -95,11 +96,11 @@
         <div>
           <h2 class="flex items-center gap-2 text-lg font-bold">
             <i class="fa-solid fa-gauge-high"></i>
-            Sprint health
+            {% trans "Sprint health" %}
           </h2>
 
           <p class="mt-1 text-sm opacity-70">
-            Track completion, open work, and weighted progress across project sprints.
+            {% trans "Track completion, open work, and weighted progress across project sprints." %}
           </p>
         </div>
 
@@ -117,7 +118,7 @@
             <label
               for="sprint"
               class="text-xs font-semibold uppercase tracking-wide opacity-60">
-              Details sprint
+              {% trans "Details sprint" %}
             </label>
 
             <select
@@ -149,7 +150,7 @@
         class="rounded-2xl border p-5 shadow-sm">
         <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
           <i class="fa-solid fa-flag-checkered"></i>
-          Sprints
+          {% trans "Sprints" %}
         </p>
         <p class="mt-2 text-3xl font-bold">{{ total_sprints }}</p>
       </article>
@@ -159,7 +160,7 @@
         class="rounded-2xl border p-5 shadow-sm">
         <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
           <i class="fa-solid fa-list-check"></i>
-          Total tasks
+          {% trans "Total tasks" %}
         </p>
         <p class="mt-2 text-3xl font-bold">{{ total_tasks }}</p>
       </article>
@@ -169,7 +170,7 @@
         class="rounded-2xl border p-5 shadow-sm">
         <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
           <i class="fa-solid fa-circle-check"></i>
-          Completed
+          {% trans "Completed" %}
         </p>
         <p class="mt-2 text-3xl font-bold">{{ completed_tasks }}</p>
       </article>
@@ -179,7 +180,7 @@
         class="rounded-2xl border p-5 shadow-sm">
         <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
           <i class="fa-regular fa-circle"></i>
-          Open
+          {% trans "Open" %}
         </p>
         <p class="mt-2 text-3xl font-bold">{{ open_tasks }}</p>
       </article>
@@ -192,7 +193,7 @@
         class="rounded-2xl border p-5 shadow-sm">
         <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
           <i class="fa-solid fa-weight-hanging"></i>
-          Total weight
+          {% trans "Total weight" %}
         </p>
         <p class="mt-2 text-3xl font-bold">{{ total_weight }}</p>
       </article>
@@ -202,7 +203,7 @@
         class="rounded-2xl border p-5 shadow-sm">
         <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
           <i class="fa-solid fa-check-double"></i>
-          Completed weight
+          {% trans "Completed weight" %}
         </p>
         <p class="mt-2 text-3xl font-bold">{{ completed_weight }}</p>
       </article>
@@ -212,7 +213,7 @@
         class="rounded-2xl border p-5 shadow-sm">
         <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
           <i class="fa-solid fa-chart-line"></i>
-          Weighted progress
+          {% trans "Weighted progress" %}
         </p>
         <p class="mt-2 text-3xl font-bold">{{ overall_weight_completion_rate }}%</p>
       </article>
@@ -225,7 +226,7 @@
         class="rounded-2xl border p-5 shadow-sm">
         <h2 class="mb-4 flex items-center gap-2 text-lg font-bold">
           <i class="fa-solid fa-chart-simple"></i>
-          Completion by sprint
+          {% trans "Completion by sprint" %}
         </h2>
 
         {% include "oya/partials/chart.html" with chart_id="sprintCompletionChart" data=sprint_completion_chart_json %}
@@ -236,7 +237,7 @@
         class="rounded-2xl border p-5 shadow-sm">
         <h2 class="mb-4 flex items-center gap-2 text-lg font-bold">
           <i class="fa-solid fa-bars-progress"></i>
-          Open vs completed tasks
+          {% trans "Open vs completed tasks" %}
         </h2>
 
         {% include "oya/partials/chart.html" with chart_id="sprintTaskChart" data=sprint_task_chart_json %}
@@ -259,11 +260,11 @@
         <div>
           <h2 class="flex items-center gap-2 text-lg font-bold">
             <i class="fa-solid fa-chart-line"></i>
-            Details
+            {% trans "Details" %}
           </h2>
 
           <p class="mt-1 text-sm opacity-70">
-            Burndown for the selected sprint, plus velocity, lead time, assignee workload, and campaign progress.
+            {% trans "Burndown for the selected sprint, plus velocity, lead time, assignee workload, and campaign progress." %}
           </p>
         </div>
 
@@ -289,14 +290,14 @@
             <div>
               <h3 class="flex items-center gap-2 text-base font-bold">
                 <i class="fa-solid fa-magnifying-glass-chart"></i>
-                Selected sprint
+                {% trans "Selected sprint" %}
               </h3>
 
               <p class="mt-1 text-sm opacity-70">
                 {% if selected_sprint %}
                   {{ selected_sprint.name }} · {{ selected_sprint.start_time|date:"M j, Y" }} – {{ selected_sprint.end_time|date:"M j, Y" }}
                 {% else %}
-                  No sprint selected.
+                  {% trans "No sprint selected." %}
                 {% endif %}
               </p>
             </div>
@@ -309,7 +310,7 @@
                   : 'border-accent-2 bg-primary-bg-light text-accent-light'"
                 class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
                 <i class="fa-solid fa-link"></i>
-                Current details
+                {% trans "Current details" %}
               </a>
             {% endif %}
           </div>
@@ -324,14 +325,14 @@
 
           <h3 class="mb-1 flex items-center gap-2 text-base font-bold">
             <i class="fa-solid fa-fire-flame-curved"></i>
-            Burndown
+            {% trans "Burndown" %}
           </h3>
 
           <p class="mb-4 text-sm opacity-70">
             {% if selected_sprint %}
-              Remaining weight across {{ selected_sprint.name }}.
+              {% blocktrans with name=selected_sprint.name %}Remaining weight across {{ name }}.{% endblocktrans %}
             {% else %}
-              No sprint available.
+              {% trans "No sprint available." %}
             {% endif %}
           </p>
 
@@ -348,7 +349,7 @@
 
             <h3 class="mb-4 flex items-center gap-2 text-base font-bold">
               <i class="fa-solid fa-gauge"></i>
-              Velocity
+              {% trans "Velocity" %}
             </h3>
 
             {% include "oya/partials/chart.html" with chart_id="velocityChart" data=velocity_chart_json %}
@@ -362,7 +363,7 @@
 
             <h3 class="mb-4 flex items-center gap-2 text-base font-bold">
               <i class="fa-solid fa-hourglass-half"></i>
-              Lead time
+              {% trans "Lead time" %}
             </h3>
 
             {% include "oya/partials/chart.html" with chart_id="leadTimeChart" data=lead_time_chart_json %}
@@ -378,7 +379,7 @@
 
           <h3 class="mb-4 flex items-center gap-2 text-base font-bold">
             <i class="fa-solid fa-users"></i>
-            Assignee workload
+            {% trans "Assignee workload" %}
           </h3>
 
           {% include "oya/partials/chart.html" with chart_id="assigneeWorkloadChart" data=assignee_workload_chart_json %}
@@ -393,7 +394,7 @@
 
           <h3 class="mb-4 flex items-center gap-2 text-base font-bold">
             <i class="fa-solid fa-road"></i>
-            Campaign progress
+            {% trans "Campaign progress" %}
           </h3>
 
           <div class="space-y-4">
@@ -425,7 +426,7 @@
                   ? 'border-accent-1 bg-primary-bg-dark'
                   : 'border-accent-2 bg-primary-bg-light'"
                 class="rounded-xl border border-dashed p-6 text-center text-sm opacity-70">
-                No campaign progress available.
+                {% trans "No campaign progress available." %}
               </div>
             {% endfor %}
           </div>
@@ -441,7 +442,7 @@
 
       <h2 class="mb-4 flex items-center gap-2 text-lg font-bold">
         <i class="fa-solid fa-calendar-days"></i>
-        Sprint breakdown
+        {% trans "Sprint breakdown" %}
       </h2>
 
       <div class="space-y-3">
@@ -464,7 +465,7 @@
                       : 'border-accent-2 bg-primary-bg-light text-accent-light'"
                     class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold shadow-sm transition hover:opacity-85">
                     <i class="fa-solid fa-chart-line"></i>
-                    View details
+                    {% trans "View details" %}
                   </a>
 
                   {% if selected_sprint and sprint.id == selected_sprint.id %}
@@ -474,7 +475,7 @@
                         : 'border-accent-2 bg-primary-bg-light'"
                       class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold shadow-sm">
                       <i class="fa-solid fa-eye"></i>
-                      Selected
+                      {% trans "Selected" %}
                     </span>
                   {% endif %}
                 </div>
@@ -501,22 +502,22 @@
 
             <div class="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
               <div>
-                <p class="opacity-60">Open</p>
+                <p class="opacity-60">{% trans "Open" %}</p>
                 <p class="font-bold">{{ sprint.open_tasks }}</p>
               </div>
 
               <div>
-                <p class="opacity-60">Total weight</p>
+                <p class="opacity-60">{% trans "Total weight" %}</p>
                 <p class="font-bold">{{ sprint.total_weight }}</p>
               </div>
 
               <div>
-                <p class="opacity-60">Done weight</p>
+                <p class="opacity-60">{% trans "Done weight" %}</p>
                 <p class="font-bold">{{ sprint.completed_weight }}</p>
               </div>
 
               <div>
-                <p class="opacity-60">Weighted progress</p>
+                <p class="opacity-60">{% trans "Weighted progress" %}</p>
                 <p class="font-bold">{{ sprint.weight_completion_rate }}%</p>
               </div>
             </div>
@@ -525,7 +526,7 @@
           <div
             :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
             class="rounded-xl border border-dashed p-6 text-center text-sm opacity-70">
-            No sprints available.
+            {% trans "No sprints available." %}
           </div>
         {% endfor %}
       </div>

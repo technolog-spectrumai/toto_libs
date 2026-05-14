@@ -1,7 +1,8 @@
 {% extends "oya/base.html" %}
 {% load static %}
+{% load i18n %}
 
-{% block title %}Add Address | {{ platform.site_name }}{% endblock %}
+{% block title %}{% trans "Add Address" %} | {{ platform.site_name }}{% endblock %}
 
 {% block content %}
 <section
@@ -16,7 +17,7 @@
       href="{% url 'locations:locations_all' %}"
       class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
       <i class="fa-solid fa-arrow-left"></i>
-      Locations
+      {% trans "Locations" %}
     </a>
 
     <header
@@ -28,16 +29,16 @@
       <p
         :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
         class="text-xs font-semibold uppercase tracking-wide">
-        Address
+        {% trans "Address" %}
       </p>
 
       <h1 class="mt-2 flex items-center gap-3 text-3xl font-bold">
         <i class="fa-solid fa-location-dot"></i>
-        Add address
+        {% trans "Add address" %}
       </h1>
 
       <p class="mt-2 text-sm opacity-70">
-        Save a reusable location that can be used in route search, events, visits, and Kanban missions.
+        {% trans "Save a reusable location that can be used in route search, events, visits, and Kanban missions." %}
       </p>
     </header>
 
@@ -63,7 +64,7 @@
       <section class="grid grid-cols-1 gap-5 md:grid-cols-2">
         <div class="space-y-2">
           <label for="{{ form.country_name.id_for_label }}" class="block text-sm font-semibold">
-            Country
+            {% trans "Country" %}
           </label>
           {{ form.country_name }}
           {% if form.country_name.errors %}
@@ -73,7 +74,7 @@
 
         <div class="space-y-2">
           <label for="{{ form.state_or_province_name.id_for_label }}" class="block text-sm font-semibold">
-            State / Province
+            {% trans "State / Province" %}
           </label>
           {{ form.state_or_province_name }}
           {% if form.state_or_province_name.errors %}
@@ -83,7 +84,7 @@
 
         <div class="space-y-2">
           <label for="{{ form.locality_name.id_for_label }}" class="block text-sm font-semibold">
-            Locality
+            {% trans "Locality" %}
           </label>
           {{ form.locality_name }}
           {% if form.locality_name.errors %}
@@ -93,7 +94,7 @@
 
         <div class="space-y-2">
           <label for="{{ form.street.id_for_label }}" class="block text-sm font-semibold">
-            Street / Place
+            {% trans "Street / Place" %}
           </label>
           {{ form.street }}
           {% if form.street.errors %}
@@ -103,7 +104,7 @@
 
         <div class="space-y-2">
           <label for="{{ form.building.id_for_label }}" class="block text-sm font-semibold">
-            Building
+            {% trans "Building" %}
           </label>
           {{ form.building }}
           {% if form.building.errors %}
@@ -113,7 +114,7 @@
 
         <div class="space-y-2">
           <label for="{{ form.apartment.id_for_label }}" class="block text-sm font-semibold">
-            Apartment
+            {% trans "Apartment" %}
           </label>
           {{ form.apartment }}
           {% if form.apartment.errors %}
@@ -138,9 +139,9 @@
           </div>
 
           <div>
-            <h2 class="text-sm font-bold">Coordinates</h2>
+            <h2 class="text-sm font-bold">{% trans "Coordinates" %}</h2>
             <p class="mt-1 text-xs opacity-70">
-              Optional, but required for this address to appear on the map and be used directly in route search.
+              {% trans "Optional, but required for this address to appear on the map and be used directly in route search." %}
             </p>
           </div>
         </div>
@@ -148,7 +149,7 @@
         <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
           <div class="space-y-2">
             <label for="{{ form.latitude.id_for_label }}" class="block text-sm font-semibold">
-              Latitude
+              {% trans "Latitude" %}
             </label>
             {{ form.latitude }}
             {% if form.latitude.errors %}
@@ -158,7 +159,7 @@
 
           <div class="space-y-2">
             <label for="{{ form.longitude.id_for_label }}" class="block text-sm font-semibold">
-              Longitude
+              {% trans "Longitude" %}
             </label>
             {{ form.longitude }}
             {% if form.longitude.errors %}
@@ -175,7 +176,7 @@
             ? 'border-accent-1 bg-primary-bg-dark'
             : 'border-accent-2 bg-primary-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-85">
-          Cancel
+          {% trans "Cancel" %}
         </a>
 
         <button
@@ -185,7 +186,7 @@
             : 'bg-accent-light text-primary-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
           <i class="fa-solid fa-floppy-disk"></i>
-          Save address
+          {% trans "Save address" %}
         </button>
       </div>
     </form>

@@ -1,6 +1,7 @@
 {% extends "bento/base.html" %}
+{% load i18n %}
 
-{% block bento_title %}Categories{% endblock %}
+{% block bento_title %}{% trans "Categories" %}{% endblock %}
 
 {% block bento_content %}
 <section
@@ -9,16 +10,16 @@
   <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
     <div>
       <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-2xl font-bold">
-        Categories
+        {% trans "Categories" %}
       </h2>
-      <p class="mt-1 text-sm opacity-70">Custom node types for Bento idea boxes.</p>
+      <p class="mt-1 text-sm opacity-70">{% trans "Custom node types for Bento idea boxes." %}</p>
     </div>
     <a
       href="{% url 'bento:category_create' %}"
       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
       class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
       <i class="fa-solid fa-plus"></i>
-      New category
+      {% trans "New category" %}
     </a>
   </div>
 
@@ -39,11 +40,11 @@
         {% if category.description %}
           <p class="mt-3 text-sm opacity-75">{{ category.description|truncatewords:24 }}</p>
         {% endif %}
-        <div class="mt-3 text-xs opacity-65">{{ category.idea_boxes.count }} boxes</div>
+        <div class="mt-3 text-xs opacity-65">{% blocktrans with count=category.idea_boxes.count %}{{ count }} boxes{% endblocktrans %}</div>
       </article>
     {% empty %}
       <div class="rounded-lg border border-current/10 p-6 text-sm opacity-70">
-        No categories yet.
+        {% trans "No categories yet." %}
       </div>
     {% endfor %}
   </div>

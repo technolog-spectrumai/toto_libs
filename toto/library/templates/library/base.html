@@ -1,4 +1,5 @@
 {% extends "oya/base.html" %}
+{% load i18n %}
 
 {% block title %}{% block library_title %}Library{% endblock %} | {{ platform.site_name }}{% endblock %}
 
@@ -16,16 +17,16 @@
         <a href="{% url 'core:dashboard' %}"
            class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
           <i class="fa-solid fa-arrow-left"></i>
-          Dashboard
+          {% trans "Dashboard" %}
         </a>
         <div>
           <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
              class="text-xs font-semibold uppercase tracking-wide">
-            Knowledge Base
+            {% trans "Knowledge Base" %}
           </p>
           <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
             <i class="fa-solid fa-book-open"></i>
-            Library
+            {% trans "Library" %}
           </h1>
         </div>
       </div>
@@ -35,13 +36,13 @@
            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
            class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
           <i class="fa-solid fa-book"></i>
-          Books
+          {% trans "Books" %}
         </a>
         <a href="{% url 'library:article_list' %}"
            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
            class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
           <i class="fa-solid fa-newspaper"></i>
-          Articles
+          {% trans "Articles" %}
         </a>
       </nav>
     </header>

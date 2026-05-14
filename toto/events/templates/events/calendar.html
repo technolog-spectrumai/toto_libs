@@ -1,7 +1,8 @@
 {% extends "oya/base.html" %}
 {% load static %}
+{% load i18n %}
 
-{% block title %}Event Calendar{% endblock %}
+{% block title %}{% trans "Event Calendar" %}{% endblock %}
 
 {% block start_script %}
 <!-- FullCalendar Scripts -->
@@ -66,7 +67,7 @@
 
     <!-- 📅 Event Calendar -->
     <section>
-      <h2 class="text-2xl font-bold mb-4">Event Calendar</h2>
+      <h2 class="text-2xl font-bold mb-4">{% trans "Event Calendar" %}</h2>
 
       <div class="p-4 rounded border w-full overflow-hidden"
            :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">

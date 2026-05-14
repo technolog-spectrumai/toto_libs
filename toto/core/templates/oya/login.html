@@ -1,5 +1,6 @@
 {% extends "oya/base.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block title %}Login | {{ platform.site_name }}{% endblock %}
 
@@ -62,12 +63,11 @@
               </p>
 
               <h1 class="mt-3 max-w-xl text-3xl font-bold leading-tight sm:text-4xl">
-                Come back to your workspace.
+                {% trans "Come back to your workspace." %}
               </h1>
 
               <p class="mt-4 max-w-xl text-sm leading-6 opacity-75 sm:text-base">
-                Sign in to continue with your projects, communities, missions, conversations,
-                and the work that connects everything together.
+                {% trans "Sign in to continue with your projects, communities, missions, conversations, and the work that connects everything together." %}
               </p>
             </div>
           </div>
@@ -81,8 +81,8 @@
               <i
                 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
                 class="fa-solid fa-diagram-project"></i>
-              <p class="mt-2 font-semibold">Projects</p>
-              <p class="mt-1 text-xs opacity-65">Track ideas and delivery.</p>
+              <p class="mt-2 font-semibold">{% trans "Projects" %}</p>
+              <p class="mt-1 text-xs opacity-65">{% trans "Track ideas and delivery." %}</p>
             </div>
 
             <div
@@ -93,8 +93,8 @@
               <i
                 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
                 class="fa-solid fa-people-group"></i>
-              <p class="mt-2 font-semibold">Community</p>
-              <p class="mt-1 text-xs opacity-65">Stay connected.</p>
+              <p class="mt-2 font-semibold">{% trans "Community" %}</p>
+              <p class="mt-1 text-xs opacity-65">{% trans "Stay connected." %}</p>
             </div>
 
             <div
@@ -105,8 +105,8 @@
               <i
                 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
                 class="fa-solid fa-bullseye"></i>
-              <p class="mt-2 font-semibold">Missions</p>
-              <p class="mt-1 text-xs opacity-65">Focus on what matters.</p>
+              <p class="mt-2 font-semibold">{% trans "Missions" %}</p>
+              <p class="mt-1 text-xs opacity-65">{% trans "Focus on what matters." %}</p>
             </div>
           </div>
         </div>
@@ -118,11 +118,11 @@
 
           <div>
             <h2 class="text-2xl font-bold">
-              Sign in
+              {% trans "Sign in" %}
             </h2>
 
             <p class="mt-2 text-sm opacity-70">
-              Use your account details to enter.
+              {% trans "Use your account details to enter." %}
             </p>
           </div>
 
@@ -189,7 +189,7 @@
                 : 'bg-accent-light text-primary-bg-light'"
               class="inline-flex w-full items-center justify-center gap-2 rounded-lg px-5 py-3 text-sm font-semibold shadow-sm transition hover:opacity-90">
               <i class="fa-solid fa-arrow-right-to-bracket"></i>
-              Log In
+              {% trans "Log In" %}
             </button>
 
             <div
@@ -199,14 +199,14 @@
               class="rounded-xl border p-4 text-center text-sm">
 
               <p class="opacity-75">
-                New here?
+                {% trans "New here?" %}
               </p>
 
               <a
                 href="{% url 'socialhub:membership_application' %}"
                 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
                 class="mt-1 inline-flex items-center justify-center gap-2 font-semibold underline-offset-4 transition hover:underline hover:opacity-80">
-                Apply for membership
+                {% trans "Apply for membership" %}
                 <i class="fa-solid fa-arrow-right text-xs"></i>
               </a>
             </div>

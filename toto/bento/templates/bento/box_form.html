@@ -1,4 +1,5 @@
 {% extends "bento/base.html" %}
+{% load i18n %}
 
 {% block bento_title %}{{ title }}{% endblock %}
 
@@ -10,7 +11,7 @@
     <div>
       <a href="{% if box %}{% url 'bento:box_detail' box.pk %}{% else %}{% url 'bento:box_list' %}{% endif %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
         <i class="fa-solid fa-arrow-left"></i>
-        Back
+        {% trans "Back" %}
       </a>
       <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="mt-3 text-3xl font-bold">
         {{ title }}
@@ -44,14 +45,14 @@
       <a
         href="{% if box %}{% url 'bento:box_detail' box.pk %}{% else %}{% url 'bento:box_list' %}{% endif %}"
         class="inline-flex items-center justify-center rounded-lg border border-current/20 px-4 py-2 text-sm font-semibold transition hover:opacity-80">
-        Cancel
+        {% trans "Cancel" %}
       </a>
       <button
         type="submit"
         :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
         class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
         <i class="fa-solid fa-floppy-disk"></i>
-        Save box
+        {% trans "Save box" %}
       </button>
     </div>
   </form>

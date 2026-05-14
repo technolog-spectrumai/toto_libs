@@ -1,7 +1,8 @@
 {% extends "oya/base.html" %}
 {% load static %}
+{% load i18n %}
 
-{% block title %}Route Search - {{ platform.site_name }}{% endblock %}
+{% block title %}{% trans "Route Search" %} - {{ platform.site_name }}{% endblock %}
 
 {% block start_script %}
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -33,23 +34,23 @@
         href="{% url 'locations:locations_all' %}"
         class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
         <i class="fa-solid fa-arrow-left"></i>
-        Locations
+        {% trans "Locations" %}
       </a>
 
       <div class="mt-5">
         <p
           :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
           class="text-xs font-semibold uppercase tracking-wide">
-          Traversable path
+          {% trans "Traversable path" %}
         </p>
 
         <h1 class="mt-2 flex items-center gap-2 text-2xl font-bold">
           <i class="fa-solid fa-route"></i>
-          Route Search
+          {% trans "Route Search" %}
         </h1>
 
         <p class="mt-2 text-sm opacity-70">
-          Search a real route between two saved addresses or manual WGS84 points.
+          {% trans "Search a real route between two saved addresses or manual WGS84 points." %}
         </p>
       </div>
 
@@ -58,7 +59,7 @@
 
         <!-- Mode -->
         <div>
-          <label for="mode" class="mb-1 block text-sm font-semibold">Mode</label>
+          <label for="mode" class="mb-1 block text-sm font-semibold">{% trans "Mode" %}</label>
 
           <div class="relative">
             <i
@@ -100,7 +101,7 @@
             </span>
 
             <span>
-              <span class="block text-xs opacity-60">Selected mode</span>
+              <span class="block text-xs opacity-60">{% trans "Selected mode" %}</span>
               <strong id="selected_mode_label">{{ selected_mode.label }}</strong>
             </span>
           </div>
@@ -115,7 +116,7 @@
             : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
           class="inline-flex w-full items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
           <i class="fa-solid fa-location-crosshairs"></i>
-          Use my location as start
+          {% trans "Use my location as start" %}
         </button>
 
         <!-- Start -->
@@ -125,10 +126,10 @@
             : 'border-accent-2 bg-primary-bg-light'"
           class="rounded-lg border p-3">
 
-          <h2 class="text-sm font-semibold">Start point</h2>
+          <h2 class="text-sm font-semibold">{% trans "Start point" %}</h2>
 
           <label class="mt-3 block">
-            <span class="mb-1 block text-xs opacity-70">Saved address</span>
+            <span class="mb-1 block text-xs opacity-70">{% trans "Saved address" %}</span>
 
             <select
               id="start_address"

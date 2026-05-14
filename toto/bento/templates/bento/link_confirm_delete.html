@@ -1,6 +1,7 @@
 {% extends "bento/base.html" %}
+{% load i18n %}
 
-{% block bento_title %}Delete link{% endblock %}
+{% block bento_title %}{% trans "Delete link" %}{% endblock %}
 
 {% block bento_content %}
 <section
@@ -8,7 +9,7 @@
   class="mx-auto max-w-xl rounded-lg border p-6 shadow-sm">
   <h2 class="flex items-center gap-2 text-2xl font-bold">
     <i class="fa-solid fa-link-slash"></i>
-    Delete link?
+    {% trans "Delete link?" %}
   </h2>
   <p class="mt-3 text-sm opacity-75">
     {{ link.from_box }} → {{ link.label|default:"related to" }} → {{ link.to_box }}
@@ -17,14 +18,14 @@
   <form method="post" class="mt-6 flex justify-end gap-2">
     {% csrf_token %}
     <a href="{% url 'bento:box_detail' link.from_box.pk %}" class="inline-flex items-center justify-center rounded-lg border border-current/20 px-4 py-2 text-sm font-semibold transition hover:opacity-80">
-      Cancel
+      {% trans "Cancel" %}
     </a>
     <button
       type="submit"
       :class="darkMode ? 'bg-warn-dark text-primary-bg-dark' : 'bg-warn-light text-primary-bg-light'"
       class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
       <i class="fa-solid fa-trash"></i>
-      Delete
+      {% trans "Delete" %}
     </button>
   </form>
 </section>

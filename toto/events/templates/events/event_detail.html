@@ -1,5 +1,6 @@
 {% extends "oya/base.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block title %}{{ event.title }}{% endblock %}
 
@@ -22,7 +23,7 @@
 
         <div>
           <h3 class="text-md font-bold uppercase tracking-wide"
-            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">Description</h3>
+            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">{% trans "Description" %}</h3>
           <p class="text-base">
             {{ event.description }}
           </p>
@@ -30,19 +31,19 @@
 
         <div>
           <h3 class="text-md font-bold uppercase tracking-wide"
-            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">Location</h3>
+            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">{% trans "Location" %}</h3>
           <p class="text-base">{{ event.location }}</p>
         </div>
 
         <div class="grid grid-cols-2 gap-6">
           <div>
             <p class="text-md font-bold uppercase tracking-wide"
-              :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">Start Time</p>
+              :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">{% trans "Start Time" %}</p>
             <p class="text-base">{{ event.start_time|date:"F j, Y, g:i A" }}</p>
           </div>
           <div>
             <h3 class="text-md font-bold uppercase tracking-wide"
-            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">End Time</h3>
+            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">{% trans "End Time" %}</h3>
             <p class="text-base">{{ event.end_time|date:"F j, Y, g:i A" }}</p>
           </div>
         </div>
@@ -50,7 +51,7 @@
         {% if category %}
         <div>
           <h3 class="text-md font-bold uppercase tracking-wide"
-          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">Category</h3>
+          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">{% trans "Category" %}</h3>
           <p class="text-base">{{ category.name }}</p>
         </div>
         {% endif %}
@@ -58,7 +59,7 @@
         {% if organizer %}
         <div>
           <h3 class="text-md font-bold uppercase tracking-wide"
-          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">Organizer</h3>
+          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">{% trans "Organizer" %}</h3>
           <p class="text-base">{{ organizer.display_name }}</p>
         </div>
         {% endif %}
@@ -71,7 +72,7 @@
         <a href="{% url 'events:event_list' %}"
            class="inline-block px-4 py-2 rounded text-sm font-medium transition
                   text-accent-light dark:text-accent-dark hover:underline">
-          ← Back to Event Calendar
+          ← {% trans "Back to Event Calendar" %}
         </a>
       </div>
     </section>

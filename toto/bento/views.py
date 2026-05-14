@@ -1,6 +1,7 @@
 from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils.translation import gettext_lazy as _
 from toto.core.page import PageProcessor
 
 from .forms import CategoryForm, IdeaBoxForm, IdeaLinkForm
@@ -37,7 +38,7 @@ def filtered_boxes(request):
 def serialize_box(box):
     return {
         "id": box.pk,
-        "title": box.title or "Untitled box",
+        "title": box.title or _("Untitled box"),
         "body": box.body,
         "is_concept": box.is_concept,
         "source_title": box.source_title,
@@ -60,7 +61,7 @@ def serialize_link(link):
         "id": link.pk,
         "from_box": link.from_box_id,
         "to_box": link.to_box_id,
-        "label": link.label or "related to",
+        "label": link.label or _("related to"),
         "properties": link.properties,
         "created_at": link.created_at.isoformat(),
     }
@@ -101,7 +102,7 @@ def box_create(request):
     else:
         form = IdeaBoxForm()
 
-    return bento_render(request, "bento/box_form.html", {"form": form, "title": "New box"})
+    return bento_render(request, "bento/box_form.html", {"form": form, "title": _("New box")})
 
 
 def box_update(request, pk):
@@ -115,7 +116,7 @@ def box_update(request, pk):
     else:
         form = IdeaBoxForm(instance=box)
 
-    return bento_render(request, "bento/box_form.html", {"form": form, "title": "Edit box", "box": box})
+    return bento_render(request, "bento/box_form.html", {"form": form, "title": _("Edit box"), "box": box})
 
 
 def box_delete(request, pk):
@@ -146,7 +147,7 @@ def link_create(request):
     else:
         form = IdeaLinkForm(initial=initial)
 
-    return bento_render(request, "bento/link_form.html", {"form": form, "title": "New link"})
+    return bento_render(request, "bento/link_form.html", {"form": form, "title": _("New link")})
 
 
 def link_delete(request, pk):
@@ -177,7 +178,7 @@ def category_create(request):
     else:
         form = CategoryForm()
 
-    return bento_render(request, "bento/category_form.html", {"form": form, "title": "New category"})
+    return bento_render(request, "bento/category_form.html", {"form": form, "title": _("New category")})
 
 
 def category_update(request, pk):
@@ -191,7 +192,7 @@ def category_update(request, pk):
     else:
         form = CategoryForm(instance=category)
 
-    return bento_render(request, "bento/category_form.html", {"form": form, "title": "Edit category", "category": category})
+    return bento_render(request, "bento/category_form.html", {"form": form, "title": _("Edit category"), "category": category})
 
 
 def api_boxes(request):

@@ -1,4 +1,5 @@
 {% extends "oya/base.html" %}
+{% load i18n %}
 
 {% block title %}Eisenhower Matrix | {{ project.name }}{% endblock %}
 
@@ -26,19 +27,19 @@
           href="{% url 'kanban:project_detail' project.pk %}"
           class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
           <i class="fa-solid fa-arrow-left"></i>
-          Project board
+          {% trans "Project board" %}
         </a>
 
         <div>
           <p
             :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
             class="text-xs font-semibold uppercase tracking-wide">
-            Kanban Project
+            {% trans "Kanban Project" %}
           </p>
 
           <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
             <i class="fa-solid fa-border-all"></i>
-            Eisenhower Matrix
+            {% trans "Eisenhower Matrix" %}
           </h1>
 
           <p class="mt-1 text-sm opacity-70">
@@ -55,7 +56,7 @@
             : 'bg-accent-light text-primary-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
           <i class="fa-solid fa-table-columns"></i>
-          Board
+          {% trans "Board" %}
         </a>
 
         <a
@@ -65,7 +66,7 @@
             : 'border-accent-2 bg-bubble-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
           <i class="fa-solid fa-list-check"></i>
-          Backlog
+          {% trans "Backlog" %}
         </a>
       </nav>
     </header>
@@ -81,11 +82,11 @@
         <div>
           <h2 class="flex items-center gap-2 text-lg font-bold">
             <i class="fa-solid fa-chart-simple"></i>
-            3×3 priority matrix
+            {% trans "3×3 priority matrix" %}
           </h2>
 
           <p class="mt-1 text-sm opacity-70">
-            Compare missions by urgency and impact to decide what needs attention first.
+            {% trans "Compare missions by urgency and impact to decide what needs attention first." %}
           </p>
         </div>
 
@@ -95,7 +96,7 @@
             : 'border-accent-2 bg-primary-bg-light'"
           class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm">
           <i class="fa-solid fa-grip"></i>
-          9 cells
+          {% trans "9 cells" %}
         </div>
       </div>
     </section>
@@ -116,7 +117,7 @@
             class="border-b">
             <tr>
               <th class="min-w-44 px-5 py-4 text-left font-semibold">
-                Urgency \ Impact
+                {% trans "Urgency \\ Impact" %}
               </th>
 
               {% for i_label in impact_levels %}
@@ -171,7 +172,7 @@
                         </li>
                       {% empty %}
                         <li class="flex min-h-20 items-center justify-center rounded-lg border border-dashed px-3 py-2 text-center italic opacity-50">
-                          None
+                          {% trans "None" %}
                         </li>
                       {% endfor %}
                     </ul>
@@ -197,15 +198,15 @@
             <div class="flex items-start justify-between gap-3">
               <div>
                 <p class="text-xs font-semibold uppercase tracking-wide opacity-60">
-                  Matrix cell
+                  {% trans "Matrix cell" %}
                 </p>
 
                 <h2 class="mt-1 text-base font-bold">
-                  {{ row.urgency }} urgency
+                  {% blocktrans with urgency=row.urgency %}{{ urgency }} urgency{% endblocktrans %}
                 </h2>
 
                 <p class="mt-1 text-sm opacity-70">
-                  {{ cell.impact_label }} impact
+                  {% blocktrans with impact=cell.impact_label %}{{ impact }} impact{% endblocktrans %}
                 </p>
               </div>
 
@@ -217,7 +218,7 @@
             <div class="mt-4">
               <p class="mb-2 flex items-center gap-2 text-sm font-semibold">
                 <i class="fa-solid fa-bullseye"></i>
-                Missions
+                {% trans "Missions" %}
               </p>
 
               <ul class="space-y-2 text-sm">
@@ -236,7 +237,7 @@
                   </li>
                 {% empty %}
                   <li class="rounded-lg border border-dashed px-3 py-4 text-center italic opacity-50">
-                    None
+                    {% trans "None" %}
                   </li>
                 {% endfor %}
               </ul>

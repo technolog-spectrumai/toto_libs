@@ -1,6 +1,7 @@
 {% extends "oya/base.html" %}
 {% load static %}
 {% load static yaml_filters %}
+{% load i18n %}
 
 {% block title %}Kanban Project | {{ project.name }}{% endblock %}
 
@@ -46,14 +47,14 @@
           href="{% url 'kanban:project_list' %}"
           class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
           <i class="fa-solid fa-arrow-left"></i>
-          Projects
+          {% trans "Projects" %}
         </a>
 
         <div>
           <p
             :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
             class="text-xs font-semibold uppercase tracking-wide">
-            Kanban Project
+            {% trans "Kanban Project" %}
           </p>
 
           <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
@@ -62,7 +63,7 @@
           </h1>
 
           <p class="mt-1 text-sm opacity-70">
-            Owner: {{ project.owner }}
+            {% blocktrans with owner=project.owner %}Owner: {{ owner }}{% endblocktrans %}
           </p>
         </div>
       </div>
@@ -76,7 +77,7 @@
             : 'border-accent-2 bg-bubble-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
           <i class="fa-solid fa-border-all"></i>
-          Matrix
+          {% trans "Matrix" %}
         </a>
 
         <a
@@ -86,7 +87,7 @@
             : 'border-accent-2 bg-bubble-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
           <i class="fa-solid fa-list-check"></i>
-          Backlog
+          {% trans "Backlog" %}
         </a>
 
         <a
@@ -96,7 +97,7 @@
             : 'bg-accent-light text-primary-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
           <i class="fa-solid fa-layer-group"></i>
-          All projects
+          {% trans "All projects" %}
         </a>
         <a
           href="{% url 'kanban:sprint_metrics' project.pk %}"
@@ -105,7 +106,7 @@
             : 'border-accent-2 bg-bubble-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
           <i class="fa-solid fa-gauge-high"></i>
-          Metrics
+          {% trans "Metrics" %}
         </a>
       </nav>
     </header>
@@ -121,18 +122,18 @@
         <div>
           <h2 class="flex items-center gap-2 text-lg font-bold">
             <i class="fa-solid fa-gauge-high"></i>
-            Board overview
+            {% trans "Board overview" %}
           </h2>
 
           <p class="mt-1 text-sm opacity-70">
-            View tasks by status{% if selected_sprint %} for {{ selected_sprint.name }}{% endif %}.
+            {% if selected_sprint %}{% blocktrans with name=selected_sprint.name %}View tasks by status for {{ name }}{% endblocktrans %}{% else %}{% trans "View tasks by status" %}{% endif %}.
           </p>
         </div>
 
         <!-- Sprint Filter -->
         <form method="get" class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
           <label for="sprint" class="text-sm font-semibold">
-            Sprint
+            {% trans "Sprint" %}
           </label>
 
           <select
@@ -144,7 +145,7 @@
               : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
             class="w-full rounded-lg border px-3 py-2 text-sm shadow-sm transition focus:outline-none focus:ring-2 focus:ring-accent-light sm:min-w-56">
 
-            <option value="">All sprints</option>
+            <option value="">{% trans "All sprints" %}</option>
 
             {% for sprint in sprints %}
               <option

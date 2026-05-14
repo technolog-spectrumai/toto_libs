@@ -1,4 +1,5 @@
 {% extends "oya/base.html" %}
+{% load i18n %}
 
 {% block title %}{% block bento_title %}Bento{% endblock %} | {{ platform.site_name }}{% endblock %}
 
@@ -21,17 +22,17 @@
       <div class="space-y-2">
         <a href="{% url 'core:dashboard' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
           <i class="fa-solid fa-arrow-left"></i>
-          Dashboard
+          {% trans "Dashboard" %}
         </a>
         <div>
           <p
             :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
             class="text-xs font-semibold uppercase tracking-wide">
-            Toto Studio
+            {% trans "Toto Studio" %}
           </p>
           <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
             <i class="fa-solid fa-cubes-stacked"></i>
-            Bento
+            {% trans "Bento" %}
           </h1>
         </div>
       </div>
@@ -42,28 +43,28 @@
           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
           <i class="fa-solid fa-table-cells-large"></i>
-          Boxes
+          {% trans "Boxes" %}
         </a>
         <a
           href="{% url 'bento:box_create' %}"
           :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
           <i class="fa-solid fa-plus"></i>
-          New box
+          {% trans "New box" %}
         </a>
         <a
           href="{% url 'bento:link_create' %}"
           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
           <i class="fa-solid fa-link"></i>
-          New link
+          {% trans "New link" %}
         </a>
         <a
           href="{% url 'bento:category_list' %}"
           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
           <i class="fa-solid fa-shapes"></i>
-          Categories
+          {% trans "Categories" %}
         </a>
       </nav>
     </header>

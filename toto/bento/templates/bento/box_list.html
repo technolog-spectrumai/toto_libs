@@ -1,6 +1,7 @@
 {% extends "bento/base.html" %}
+{% load i18n %}
 
-{% block bento_title %}Boxes{% endblock %}
+{% block bento_title %}{% trans "Boxes" %}{% endblock %}
 
 {% block bento_content %}
 <div class="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
@@ -9,14 +10,14 @@
     class="rounded-lg border p-5 shadow-sm">
     <form method="get" class="space-y-4">
       <div>
-        <label for="q" class="mb-1 block text-sm font-semibold">Search</label>
+        <label for="q" class="mb-1 block text-sm font-semibold">{% trans "Search" %}</label>
         <div class="relative">
           <i class="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm opacity-60"></i>
           <input
             id="q"
             type="search"
             name="q"
-            placeholder="Search boxes..."
+            placeholder="{% trans "Search boxes..." %}"
             value="{{ query }}"
             :class="darkMode
               ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark'
@@ -26,7 +27,7 @@
       </div>
 
       <div>
-        <label for="concept" class="mb-1 block text-sm font-semibold">Type</label>
+        <label for="concept" class="mb-1 block text-sm font-semibold">{% trans "Type" %}</label>
         <select
           id="concept"
           name="concept"
@@ -34,9 +35,9 @@
             ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark'
             : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
           class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
-          <option value="" {% if concept_filter == "" %}selected{% endif %}>All boxes</option>
-          <option value="no" {% if concept_filter == "no" %}selected{% endif %}>Notes only</option>
-          <option value="yes" {% if concept_filter == "yes" %}selected{% endif %}>Concepts only</option>
+          <option value="" {% if concept_filter == "" %}selected{% endif %}>{% trans "All boxes" %}</option>
+          <option value="no" {% if concept_filter == "no" %}selected{% endif %}>{% trans "Notes only" %}</option>
+          <option value="yes" {% if concept_filter == "yes" %}selected{% endif %}>{% trans "Concepts only" %}</option>
         </select>
       </div>
 
@@ -45,26 +46,26 @@
         :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
         class="inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
         <i class="fa-solid fa-filter"></i>
-        Apply filters
+        {% trans "Apply filters" %}
       </button>
     </form>
 
     <div class="mt-5 grid grid-cols-2 gap-3 text-sm">
       <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
         <div class="text-xl font-bold">{{ total_boxes }}</div>
-        <div class="text-xs opacity-65">Boxes</div>
+        <div class="text-xs opacity-65">{% trans "Boxes" %}</div>
       </div>
       <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
         <div class="text-xl font-bold">{{ link_count }}</div>
-        <div class="text-xs opacity-65">Links</div>
+        <div class="text-xs opacity-65">{% trans "Links" %}</div>
       </div>
       <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
         <div class="text-xl font-bold">{{ note_count }}</div>
-        <div class="text-xs opacity-65">Notes</div>
+        <div class="text-xs opacity-65">{% trans "Notes" %}</div>
       </div>
       <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
         <div class="text-xl font-bold">{{ concept_count }}</div>
-        <div class="text-xs opacity-65">Concepts</div>
+        <div class="text-xs opacity-65">{% trans "Concepts" %}</div>
       </div>
     </div>
   </aside>
@@ -86,12 +87,12 @@
               {% if box.is_concept %}
                 <span class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-1 font-semibold">
                   <i class="fa-solid fa-lightbulb"></i>
-                  Concept
+                  {% trans "Concept" %}
                 </span>
               {% else %}
                 <span class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-1 font-semibold">
                   <i class="fa-solid fa-note-sticky"></i>
-                  Note
+                  {% trans "Note" %}
                 </span>
               {% endif %}
               {% if box.source_type %}
@@ -118,7 +119,7 @@
             :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
             class="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
             <i class="fa-solid fa-arrow-right"></i>
-            Open
+            {% trans "Open" %}
           </a>
         </div>
 
@@ -138,8 +139,8 @@
         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
         class="rounded-lg border p-8 text-center shadow-sm">
         <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="fa-solid fa-box-open text-3xl"></i>
-        <h2 class="mt-3 text-xl font-bold">No boxes found</h2>
-        <p class="mt-1 text-sm opacity-70">Create a box or clear the current filters.</p>
+        <h2 class="mt-3 text-xl font-bold">{% trans "No boxes found" %}</h2>
+        <p class="mt-1 text-sm opacity-70">{% trans "Create a box or clear the current filters." %}</p>
       </div>
     {% endfor %}
   </section>

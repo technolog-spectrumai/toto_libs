@@ -1,6 +1,7 @@
 {% extends "oya/base.html" %}
+{% load i18n %}
 
-{% block title %}Kanban Projects{% endblock %}
+{% block title %}{% trans "Kanban Projects" %}{% endblock %}
 
 {% block start_script %}
 <style>
@@ -26,23 +27,23 @@
           href="{% url 'core:dashboard' %}"
           class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
           <i class="fa-solid fa-arrow-left"></i>
-          Dashboard
+          {% trans "Dashboard" %}
         </a>
 
         <div>
           <p
             :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
             class="text-xs font-semibold uppercase tracking-wide">
-            Kanban
+            {% trans "Kanban" %}
           </p>
 
           <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
             <i class="fa-solid fa-table-columns"></i>
-            Projects
+            {% trans "Projects" %}
           </h1>
 
           <p class="mt-1 text-sm opacity-70">
-            Open your boards, missions, sprints, and delivery workspaces.
+            {% trans "Open your boards, missions, sprints, and delivery workspaces." %}
           </p>
         </div>
       </div>
@@ -55,7 +56,7 @@
             : 'bg-accent-light text-primary-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
           <i class="fa-solid fa-house"></i>
-          Dashboard
+          {% trans "Dashboard" %}
         </a>
       </nav>
     </header>
@@ -71,11 +72,11 @@
         <div>
           <h2 class="flex items-center gap-2 text-lg font-bold">
             <i class="fa-solid fa-diagram-project"></i>
-            Your Kanban projects
+            {% trans "Your Kanban projects" %}
           </h2>
 
           <p class="mt-1 text-sm opacity-70">
-            Browse the projects you own or collaborate on.
+            {% trans "Browse the projects you own or collaborate on." %}
           </p>
         </div>
 
@@ -85,7 +86,7 @@
             : 'border-accent-2 bg-sunken-light'"
           class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm">
           <i class="fa-solid fa-folder-tree"></i>
-          {{ projects|length }} project{% if projects|length != 1 %}s{% endif %}
+          {% blocktrans with count=projects|length %}{{ count }} project{% endblocktrans %}
         </div>
       </div>
     </section>
@@ -105,7 +106,7 @@
                 <p
                   :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
                   class="text-xs font-semibold uppercase tracking-wide">
-                  Project
+                  {% trans "Project" %}
                 </p>
 
                 <a
@@ -133,7 +134,7 @@
               </p>
             {% else %}
               <p class="mt-4 text-sm italic opacity-60">
-                No project description provided.
+                {% trans "No project description provided." %}
               </p>
             {% endif %}
 
@@ -144,7 +145,7 @@
               class="mt-5 rounded-xl border p-4 text-sm">
 
               <p class="text-xs font-semibold uppercase tracking-wide opacity-60">
-                Owner
+                {% trans "Owner" %}
               </p>
 
               <p class="mt-1 font-semibold">
@@ -156,7 +157,7 @@
                     {{ project.owner.display_name }}
                   </a>
                 {% else %}
-                  Unassigned
+                  {% trans "Unassigned" %}
                 {% endif %}
               </p>
             </div>
@@ -169,7 +170,7 @@
                   : 'bg-accent-light text-primary-bg-light'"
                 class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
                 <i class="fa-solid fa-arrow-right"></i>
-                Open board
+                {% trans "Open board" %}
               </a>
 
               <a
@@ -179,7 +180,7 @@
                   : 'border-accent-2 bg-sunken-light'"
                 class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
                 <i class="fa-solid fa-list-check"></i>
-                Backlog
+                {% trans "Backlog" %}
               </a>
 
               <a
@@ -189,7 +190,7 @@
                   : 'border-accent-2 bg-sunken-light'"
                 class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
                 <i class="fa-solid fa-flag-checkered"></i>
-                Sprints
+                {% trans "Sprints" %}
               </a>
             </div>
           </article>
@@ -213,11 +214,11 @@
         </div>
 
         <h2 class="mt-5 text-xl font-bold">
-          No kanban projects available.
+          {% trans "No kanban projects available." %}
         </h2>
 
         <p class="mx-auto mt-2 max-w-md text-sm leading-6 opacity-70">
-          Projects you own or collaborate on will appear here.
+          {% trans "Projects you own or collaborate on will appear here." %}
         </p>
 
         <a
@@ -227,7 +228,7 @@
             : 'bg-accent-light text-primary-bg-light'"
           class="mt-5 inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
           <i class="fa-solid fa-house"></i>
-          Back to Dashboard
+          {% trans "Back to Dashboard" %}
         </a>
       </section>
     {% endif %}

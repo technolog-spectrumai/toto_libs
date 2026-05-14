@@ -1,5 +1,6 @@
 {% extends "oya/base.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block title %}Dashboard | {{ platform.site_name }}{% endblock %}
 
@@ -19,16 +20,16 @@
            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
            class="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide hover:opacity-80 transition">
           <i class="fa-solid fa-arrow-left text-[10px]"></i>
-          Welcome Page
+          {% trans "Welcome Page" %}
         </a>
 
         <h1 class="mt-2 flex items-center gap-3 text-4xl font-extrabold tracking-tight">
           <i class="fa-solid fa-gauge-high"></i>
-          Dashboard
+          {% trans "Dashboard" %}
         </h1>
 
         <p class="mt-2 max-w-2xl text-sm opacity-70">
-          Quick access to your main modules, tools, and work areas.
+          {% trans "Quick access to your main modules, tools, and work areas." %}
         </p>
       </div>
 
@@ -40,7 +41,7 @@
         <i
           :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
           class="fa-solid fa-layer-group"></i>
-        {{ blocks|length }} item{% if blocks|length != 1 %}s{% endif %}
+        {% blocktrans with count=blocks|length %}{{ count }} item{% endblocktrans %}
       </div>
     </header>
 
@@ -104,7 +105,7 @@
                 {% if block.link %}target="_blank" rel="noopener noreferrer"{% endif %}
                 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
                 class="mt-3 inline-flex items-center gap-2 text-xs font-semibold opacity-90 transition hover:opacity-100">
-                Open
+                {% trans "Open" %}
                 <i class="fa-solid fa-arrow-right text-[10px] transition group-hover:translate-x-0.5"></i>
               </a>
             </div>
@@ -128,10 +129,10 @@
             class="fa-solid fa-box-open text-2xl"></i>
         </div>
 
-        <h2 class="mt-4 text-lg font-bold">No dashboard items</h2>
+        <h2 class="mt-4 text-lg font-bold">{% trans "No dashboard items" %}</h2>
 
         <p class="mx-auto mt-2 max-w-md text-sm opacity-70">
-          No elements are available right now.
+          {% trans "No elements are available right now." %}
         </p>
       </section>
     {% endif %}

@@ -1,5 +1,6 @@
 {% extends "oya/base.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block title %}Edit Task | {{ project.name }}{% endblock %}
 
@@ -27,23 +28,23 @@
           href="{% url 'kanban:project_detail' project.pk %}"
           class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
           <i class="fa-solid fa-arrow-left"></i>
-          Project board
+          {% trans "Project board" %}
         </a>
 
         <div>
           <p
             :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
             class="text-xs font-semibold uppercase tracking-wide">
-            Kanban Project
+            {% trans "Kanban Project" %}
           </p>
 
           <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
             <i class="fa-solid fa-pen-to-square"></i>
-            Edit Task
+            {% trans "Edit Task" %}
           </h1>
 
           <p class="mt-1 text-sm opacity-70">
-            Update this task in {{ project.name }}.
+            {% blocktrans with name=project.name %}Update this task in {{ name }}{% endblocktrans %}.
           </p>
         </div>
       </div>
@@ -56,7 +57,7 @@
             : 'bg-accent-light text-primary-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
           <i class="fa-solid fa-table-columns"></i>
-          Board
+          {% trans "Board" %}
         </a>
 
         <a
@@ -66,7 +67,7 @@
             : 'border-accent-2 bg-bubble-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
           <i class="fa-solid fa-list-check"></i>
-          Backlog
+          {% trans "Backlog" %}
         </a>
       </nav>
     </header>
@@ -91,11 +92,11 @@
           <i
             :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
             class="fa-solid fa-clipboard-check"></i>
-          Task details
+          {% trans "Task details" %}
         </h2>
 
         <p class="mt-1 text-sm opacity-70">
-          Adjust the task information, status, sprint, priority, or related mission.
+          {% trans "Adjust the task information, status, sprint, priority, or related mission." %}
         </p>
       </div>
 
@@ -153,7 +154,7 @@
           href="{% url 'kanban:project_detail' project.pk %}"
           class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold underline transition hover:opacity-80">
           <i class="fa-solid fa-arrow-left"></i>
-          Cancel
+          {% trans "Cancel" %}
         </a>
 
         <button
@@ -163,7 +164,7 @@
             : 'bg-accent-light text-primary-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
           <i class="fa-solid fa-floppy-disk"></i>
-          Save Changes
+          {% trans "Save Changes" %}
         </button>
       </div>
     </form>
