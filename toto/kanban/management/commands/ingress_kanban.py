@@ -23,7 +23,8 @@ class Command(IngressCommand):
         members = list(Person.objects.all())
 
         if len(members) < 2:
-            raise Exception("❌ Need at least 2 Persons to seed Kanban demo.")
+            print("⚠ Skipping Kanban demo: need at least 2 Persons (none found via socialhub ingress).")
+            return
 
         member1, member2 = random.sample(members, 2)
         assignees = [member1, member2]
