@@ -386,6 +386,8 @@ class TestSSOViews(_SSOServiceBase):
             {"username": "alice", "password": "wrong"},
         )
         self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'role="alert"')
+        self.assertContains(resp, "Sign in failed")
         self.assertContains(resp, "Invalid username or password.")
 
     def test_login_view_invalid_form_shows_error(self):
@@ -394,7 +396,24 @@ class TestSSOViews(_SSOServiceBase):
             {"username": "", "password": ""},
         )
         self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'role="alert"')
+        self.assertContains(resp, "Sign in failed")
         self.assertContains(resp, "Enter your username and password.")
+        self.assertContains(resp, "Try again in")
+
+    @override_settings(LOGIN_RETRY_COOLDOWN_SECONDS=3)
+    def test_login_view_cooldown_blocks_immediate_retry(self):
+        self.http.post(
+            reverse("sso:login"),
+            {"username": "alice", "password": "wrong"},
+        )
+        resp = self.http.post(
+            reverse("sso:login"),
+            {"username": "alice", "password": "wrong"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Please wait")
+        self.assertContains(resp, "Try again in")
 
     def test_login_view_preserves_next_on_failure(self):
         next_url = reverse("core:dashboard")

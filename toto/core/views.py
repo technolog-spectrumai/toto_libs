@@ -1,11 +1,18 @@
 from toto.core.models import Platform
 from toto.core.page import PageProcessor
+from django.contrib import messages
 from django.contrib.auth import get_user_model
 from toto.core.models import Platform
 from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login, logout
 import logging
 from toto.core.forms import LoginForm
+from toto.core.auth_cooldown import (
+    clear_login_retry_cooldown,
+    login_retry_cooldown_remaining,
+    login_retry_cooldown_seconds,
+    start_login_retry_cooldown,
+)
 import os
 from django.conf import settings
 from django.urls import reverse, NoReverseMatch
@@ -95,6 +102,14 @@ def login_view(request):
     form = LoginForm(request.POST or None)
     context = {"form": form, "page_title": "Login"}
 
+    if request.method == "POST":
+        remaining = login_retry_cooldown_remaining(request)
+        if remaining > 0:
+            context["error"] = f"Please wait {remaining} seconds before trying again."
+            context["cooldown_remaining"] = remaining
+            messages.error(request, context["error"])
+            return render(request,"oya/login.html", processor.decorate(context, request))
+
     if request.method == "POST" and form.is_valid():
         user = authenticate(
             request,
@@ -102,12 +117,21 @@ def login_view(request):
             password=form.cleaned_data["password"]
         )
         if user:
+            clear_login_retry_cooldown(request)
             login(request, user)
             logger.info(f"User '{user.username}' logged in successfully.")
             return redirect(_get_next(request))
         else:
             logger.warning(f"Failed login attempt for username '{form.cleaned_data['username']}'.")
-            context["error"] = "Invalid credentials."
+            context["error"] = "Invalid username or password."
+            context["cooldown_remaining"] = login_retry_cooldown_seconds()
+            messages.error(request, context["error"])
+            start_login_retry_cooldown(request)
+    elif request.method == "POST":
+        context["error"] = "Enter your username and password."
+        context["cooldown_remaining"] = login_retry_cooldown_seconds()
+        messages.error(request, context["error"])
+        start_login_retry_cooldown(request)
 
     return render(request,"oya/login.html", processor.decorate(context, request))
 
@@ -116,9 +140,6 @@ def logout_view(request):
     logger.info(f"User '{request.user.username}' logged out.")
     logout(request)
     return redirect(_get_next(request))
-
-
-
 
 
 

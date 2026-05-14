@@ -13,6 +13,12 @@ from django.views.decorators.http import require_GET, require_POST
 
 from toto.core.forms import LoginForm
 from toto.core.page import PageProcessor
+from toto.core.auth_cooldown import (
+    clear_login_retry_cooldown,
+    login_retry_cooldown_remaining,
+    login_retry_cooldown_seconds,
+    start_login_retry_cooldown,
+)
 from .models import SSOAccessToken, SSOAuthorizationCode, SSOClient
 from .services import build_id_token, get_issuer, get_jwks, get_subject_for_user, get_user_claims, verify_pkce
 
@@ -31,6 +37,14 @@ def login_view(request):
     if request.user.is_authenticated:
         return redirect(next_url or reverse("core:dashboard"))
 
+    if request.method == "POST":
+        remaining = login_retry_cooldown_remaining(request)
+        if remaining > 0:
+            context["error"] = f"Please wait {remaining} seconds before trying again."
+            context["cooldown_remaining"] = remaining
+            messages.error(request, context["error"])
+            return render(request, "sso/login.html", processor.decorate(context, request))
+
     if request.method == "POST" and form.is_valid():
         user = authenticate(
             request,
@@ -38,13 +52,18 @@ def login_view(request):
             password=form.cleaned_data["password"],
         )
         if user:
+            clear_login_retry_cooldown(request)
             login(request, user)
             return redirect(next_url or reverse("core:dashboard"))
         context["error"] = "Invalid username or password."
+        context["cooldown_remaining"] = login_retry_cooldown_seconds()
         messages.error(request, context["error"])
+        start_login_retry_cooldown(request)
     elif request.method == "POST":
         context["error"] = "Enter your username and password."
+        context["cooldown_remaining"] = login_retry_cooldown_seconds()
         messages.error(request, context["error"])
+        start_login_retry_cooldown(request)
 
     return render(request, "sso/login.html", processor.decorate(context, request))
 

@@ -1,5 +1,5 @@
 import time
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from .models import Platform, Font, Theme, ColorMix
 from django.contrib.auth.models import User
@@ -8,6 +8,14 @@ from toto.gervazy.models import EncryptedSecret
 from django.core.cache import cache
 
 
+@override_settings(
+    CACHES={
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "core-tests",
+        }
+    }
+)
 class ViewSmokeTests(TestCase):
     def setUp(self):
         # Create supporting objects for Theme
@@ -52,6 +60,17 @@ class ViewSmokeTests(TestCase):
         self.client.login(username="testuser", password="testpass")
         response = self.client.get(reverse('core:dashboard'))
         self.assertEqual(response.status_code, 200)
+
+    def test_login_view_invalid_credentials_shows_visible_error(self):
+        response = self.client.post(
+            reverse("core:login"),
+            {"username": "testuser", "password": "wrong"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'role="alert"')
+        self.assertContains(response, "Sign in failed")
+        self.assertContains(response, "Invalid username or password.")
+        self.assertContains(response, "Try again in")
 
     def test_inactive_platform_redirects_to_maintenance(self):
         """Inactive platform should redirect all requests to maintenance page."""

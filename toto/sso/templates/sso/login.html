@@ -98,12 +98,46 @@
 
           {% if error %}
             <div
-              :class="darkMode
-                ? 'border-warn-dark bg-sunken-dark text-warn-dark'
-                : 'border-warn-light bg-sunken-light text-warn-light'"
-              class="rounded-lg border px-4 py-3 text-sm font-medium">
-              {{ error }}
+              role="alert"
+              aria-live="assertive"
+              style="border: 2px solid #dc2626; background: #fef2f2; color: #7f1d1d;"
+              class="rounded-lg px-4 py-3 text-sm shadow-sm">
+              <div class="flex items-start gap-3">
+                <i class="fa-solid fa-circle-exclamation mt-0.5 text-red-600"></i>
+                <div>
+                  <p class="font-bold">Sign in failed</p>
+                  <p class="mt-1 font-medium">{{ error }}</p>
+                  {% if cooldown_remaining %}
+                    <div data-login-cooldown="{{ cooldown_remaining }}" class="mt-3">
+                      <p class="text-xs font-bold uppercase tracking-wide">
+                        Try again in <span data-login-countdown>{{ cooldown_remaining }}</span>s
+                      </p>
+                      <div style="height: 6px; background: #fecaca;" class="mt-2 overflow-hidden rounded-full">
+                        <div data-login-cooldown-bar style="height: 100%; width: 100%; background: #dc2626; transition: width 1s linear;"></div>
+                      </div>
+                    </div>
+                  {% endif %}
+                </div>
+              </div>
             </div>
+          {% elif messages %}
+            {% for message in messages %}
+              {% if message.tags == "error" %}
+                <div
+                  role="alert"
+                  aria-live="assertive"
+                  style="border: 2px solid #dc2626; background: #fef2f2; color: #7f1d1d;"
+                  class="rounded-lg px-4 py-3 text-sm shadow-sm">
+	                  <div class="flex items-start gap-3">
+	                    <i class="fa-solid fa-circle-exclamation mt-0.5 text-red-600"></i>
+	                    <div>
+	                      <p class="font-bold">Sign in failed</p>
+	                      <p class="mt-1 font-medium">{{ message }}</p>
+	                    </div>
+	                  </div>
+	                </div>
+	              {% endif %}
+            {% endfor %}
           {% endif %}
 
           <form method="POST" action="{% url 'sso:login' %}" class="space-y-5">
@@ -160,4 +194,48 @@
     </div>
   </div>
 </section>
+{% endblock %}
+
+{% block end_script %}
+{{ block.super }}
+<script>
+  (() => {
+    const root = document.querySelector("[data-login-cooldown]");
+    if (!root) return;
+
+    const total = Number(root.dataset.loginCooldown || "0");
+    if (!total) return;
+
+    let remaining = total;
+    const label = root.querySelector("[data-login-countdown]");
+    const bar = root.querySelector("[data-login-cooldown-bar]");
+    const submit = document.querySelector("form button[type='submit']");
+
+    const setSubmitDisabled = (disabled) => {
+      if (!submit) return;
+      submit.disabled = disabled;
+      submit.style.opacity = disabled ? "0.55" : "";
+      submit.style.cursor = disabled ? "not-allowed" : "";
+    };
+
+    const render = () => {
+      if (label) label.textContent = String(Math.max(0, remaining));
+      if (bar) bar.style.width = `${Math.max(0, remaining / total) * 100}%`;
+    };
+
+    setSubmitDisabled(true);
+    render();
+
+    const timer = window.setInterval(() => {
+      remaining -= 1;
+      render();
+
+      if (remaining <= 0) {
+        window.clearInterval(timer);
+        setSubmitDisabled(false);
+        root.querySelector("p").textContent = "You can try again now.";
+      }
+    }, 1000);
+  })();
+</script>
 {% endblock %}
