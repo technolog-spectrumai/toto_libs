@@ -131,12 +131,14 @@ class BackupEngine:
         Export object by uid. FK references to uid-enabled models are exported as:
           {"__ref__": true, "model": "app.Model", "uid": "..."}
         Non-domain FKs fall back to the raw *_id column value.
+        GeoDjango geometries are exported as:
+          {"__geo__": true, "ewkt": "SRID=4326;POINT(...)"}
         """
         data = {"uid": str(obj.uid), "fields": {}}
         for field in obj._meta.fields:
             if field.primary_key or field.name == "uid":
                 continue
-            if field.is_relation and field.many_to_one:
+            if field.is_relation and (field.many_to_one or field.one_to_one):
                 related = getattr(obj, field.name)
                 if related is None:
                     data["fields"][field.name] = None
@@ -149,8 +151,20 @@ class BackupEngine:
                 else:
                     data["fields"][field.attname] = getattr(obj, field.attname)
                 continue
-            data["fields"][field.name] = getattr(obj, field.name)
+            data["fields"][field.name] = self._to_serializable(getattr(obj, field.name))
         return data
+
+    def _to_serializable(self, value):
+        """Convert non-JSON-native values to a serializable form."""
+        if value is None:
+            return None
+        try:
+            from django.contrib.gis.geos import GEOSGeometry
+            if isinstance(value, GEOSGeometry):
+                return {"__geo__": True, "ewkt": value.ewkt}
+        except ImportError:
+            pass
+        return value
 
     # ---------------------------------------------------------
     # Hashing

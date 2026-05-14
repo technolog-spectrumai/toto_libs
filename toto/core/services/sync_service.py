@@ -56,6 +56,9 @@ class SyncService(BackupEngine):
             field = model._meta.get_field(field_name)
             if isinstance(value, dict) and value.get("__ref__"):
                 resolved[field.name] = self._resolve_reference(value)
+            elif isinstance(value, dict) and value.get("__geo__"):
+                from django.contrib.gis.geos import GEOSGeometry
+                resolved[field.name] = GEOSGeometry(value["ewkt"]) if value.get("ewkt") else None
             else:
                 resolved[field.name] = value
         return resolved
