@@ -1,6 +1,7 @@
 import base64
 from urllib.parse import urlencode
 
+from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponseBadRequest, HttpResponseForbidden, JsonResponse
@@ -20,8 +21,12 @@ def login_view(request):
     processor = PageProcessor()
     next_url = request.GET.get("next") or request.POST.get("next") or ""
     form = LoginForm(request.POST or None)
-    context = {"form": form, "page_title": "Sign In", "next": next_url,
-                "login_url": reverse("sso:login")}
+    context = {
+        "form": form,
+        "page_title": "Sign In",
+        "next": next_url,
+        "login_url": reverse("sso:login"),
+    }
 
     if request.user.is_authenticated:
         return redirect(next_url or reverse("core:dashboard"))
@@ -35,7 +40,11 @@ def login_view(request):
         if user:
             login(request, user)
             return redirect(next_url or reverse("core:dashboard"))
-        context["error"] = "Invalid credentials."
+        context["error"] = "Invalid username or password."
+        messages.error(request, context["error"])
+    elif request.method == "POST":
+        context["error"] = "Enter your username and password."
+        messages.error(request, context["error"])
 
     return render(request, "sso/login.html", processor.decorate(context, request))
 

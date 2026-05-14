@@ -386,7 +386,24 @@ class TestSSOViews(_SSOServiceBase):
             {"username": "alice", "password": "wrong"},
         )
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, "Invalid credentials")
+        self.assertContains(resp, "Invalid username or password.")
+
+    def test_login_view_invalid_form_shows_error(self):
+        resp = self.http.post(
+            reverse("sso:login"),
+            {"username": "", "password": ""},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Enter your username and password.")
+
+    def test_login_view_preserves_next_on_failure(self):
+        next_url = reverse("core:dashboard")
+        resp = self.http.post(
+            f"{reverse('sso:login')}?next={next_url}",
+            {"username": "alice", "password": "wrong"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, f'value="{next_url}"')
 
     # --- authorize ---
 
