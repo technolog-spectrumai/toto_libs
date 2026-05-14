@@ -4,8 +4,8 @@ from django.db import transaction
 
 from toto.core.services.sync_service import SyncService
 
-from noosphere.models import SyncObjectRun
-from noosphere.registry import get_sync_adapter
+from ..models import SyncObjectRun
+from ..registry import get_sync_adapter
 
 
 class SyncPackageImporter(SyncService):

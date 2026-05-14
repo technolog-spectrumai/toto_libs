@@ -13,7 +13,7 @@ Then configure:
     }
 """
 
-from noosphere.transports import BaseRemoteTransport
+from toto.noosphere.transports import BaseRemoteTransport
 
 
 class StudioHttpsTransport(BaseRemoteTransport):

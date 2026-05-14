@@ -4,9 +4,9 @@ from pathlib import Path
 from django.core.exceptions import ImproperlyConfigured
 from django.utils import timezone
 
-from noosphere.models import SyncRule, SyncRun
-from noosphere.services.package_builder import SyncPackageBuilder
-from noosphere.transport_registry import get_transport_for_rule
+from ..models import SyncRule, SyncRun
+from .package_builder import SyncPackageBuilder
+from ..transport_registry import get_transport_for_rule
 
 
 class SyncRunner:

@@ -4,7 +4,7 @@ from django.utils.module_loading import import_string
 
 
 FALLBACK_TRANSPORTS = {
-    "default": "noosphere.transports.RequestsTransport",
+    "default": "toto.noosphere.transports.RequestsTransport",
 }
 
 

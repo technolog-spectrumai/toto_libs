@@ -1,4 +1,4 @@
-from noosphere.transport_registry import get_transport_for_rule
+from .transport_registry import get_transport_for_rule
 
 
 class RemotePreviewClient:

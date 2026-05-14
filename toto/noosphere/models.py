@@ -413,7 +413,7 @@ class SyncObjectRun(models.Model):
     run = models.ForeignKey(
         SyncRun,
         on_delete=models.CASCADE,
-        related_name="objects",
+        related_name="object_runs",
     )
 
     model_label = models.CharField(max_length=150)

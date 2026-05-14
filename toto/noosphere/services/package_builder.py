@@ -2,7 +2,7 @@ from django.core.exceptions import ImproperlyConfigured
 
 from toto.core.services.backup_service import BackupService
 
-from noosphere.registry import get_sync_adapter
+from ..registry import get_sync_adapter
 
 
 class SyncPackageBuilder(BackupService):
