@@ -222,16 +222,24 @@ class BackupEngine:
         )
 
     def write_signature(self, tmpdir, data: bytes):
+        """Sign the manifest and write signature.txt. Skipped if no signing key is configured."""
+        if not self.platform.api_signing_key_out or not self.vault_password:
+            return
         sig = self.sign_bytes(data)
         (Path(tmpdir) / "signature.txt").write_text(
             base64.b64encode(sig).decode(), encoding="utf-8"
         )
 
     def verify_signature(self, tmpdir):
+        """Verify signature.txt against manifest.json. Skipped if no public key or signature file."""
         tmpdir = Path(tmpdir)
         sig_path = tmpdir / "signature.txt"
         if not sig_path.exists():
-            raise ImproperlyConfigured("Backup is missing signature.txt.")
+            return
+        if not self.platform.api_verify_key_in:
+            raise ImproperlyConfigured(
+                "Backup has a signature but Platform.api_verify_key_in is not configured."
+            )
         signature = base64.b64decode(sig_path.read_text(encoding="utf-8"))
         try:
             self._get_public_key().verify(

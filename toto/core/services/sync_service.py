@@ -55,12 +55,16 @@ class SyncService(BackupEngine):
         for field_name, value in fields.items():
             field = model._meta.get_field(field_name)
             if isinstance(value, dict) and value.get("__ref__"):
+                # __ref__: assign the related object via field.name (e.g. "module")
                 resolved[field.name] = self._resolve_reference(value)
             elif isinstance(value, dict) and value.get("__geo__"):
                 from django.contrib.gis.geos import GEOSGeometry
                 resolved[field.name] = GEOSGeometry(value["ewkt"]) if value.get("ewkt") else None
             else:
-                resolved[field.name] = value
+                # Raw value — keep the original key (may be an attname like "module_id")
+                # so Django receives the raw FK column value rather than a bare int
+                # assigned to the descriptor, which would raise a type error.
+                resolved[field_name] = value
         return resolved
 
     def _resolve_reference(self, value):
