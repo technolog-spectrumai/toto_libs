@@ -1,8 +1,9 @@
 from django import forms
+from django.conf import settings
 from django.core.exceptions import ValidationError
 
 from .models import RemotePlatform
-from .registry import get_registered_model_labels, get_sync_adapter
+from .registry import get_sync_adapter
 from .transport_registry import get_transport_choices
 
 
@@ -108,16 +109,18 @@ class RemotePlatformSyncConsoleForm(forms.Form):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        choices = []
+        model_labels = list(getattr(settings, "NOOSPHERE_SYNCABLE_MODELS", []))
 
-        for model_label in get_registered_model_labels():
+        choices = []
+        for model_label in sorted(set(model_labels)):
             try:
                 adapter = get_sync_adapter(model_label)
-                label = model_label
                 if adapter.allowed_fields:
                     label = f"{model_label} — {len(adapter.allowed_fields)} fields"
-                choices.append((model_label, label))
-            except Exception:
-                choices.append((model_label, model_label))
+                else:
+                    label = model_label
+            except LookupError:
+                label = model_label
+            choices.append((model_label, label))
 
         self.fields["models"].choices = choices
