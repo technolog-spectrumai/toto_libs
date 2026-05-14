@@ -21,12 +21,6 @@ class SyncPackageImporter(SyncService):
       - JSON reading
       - _resolve_fields()
       - _resolve_reference()
-
-    Adds only:
-      - sync manifest policy
-      - create/update skipping
-      - selected field enforcement
-      - run/object logging
     """
 
     def apply_sync_package(self, backup_path, run=None, verify_signature=True):

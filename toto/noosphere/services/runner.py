@@ -5,8 +5,8 @@ from django.core.exceptions import ImproperlyConfigured
 from django.utils import timezone
 
 from noosphere.models import SyncRule, SyncRun
-from noosphere.services.client import SyncClient
 from noosphere.services.package_builder import SyncPackageBuilder
+from noosphere.transport_registry import get_transport_for_rule
 
 
 class SyncRunner:
@@ -58,8 +58,8 @@ class SyncRunner:
             run.package_hash = package_hash
             run.save(update_fields=["package_hash"])
 
-            client = self.get_client(rule)
-            remote_response = client.upload_package(package_path)
+            transport = get_transport_for_rule(rule)
+            remote_response = transport.upload_package(package_path)
 
             self._apply_remote_response_to_run(run, remote_response)
 
@@ -78,9 +78,6 @@ class SyncRunner:
         except Exception as exc:
             run.mark_failed(message=str(exc))
             raise
-
-    def get_client(self, rule):
-        return SyncClient.from_remote_platform(rule.remote_platform)
 
     def _build_package(self, rule):
         return SyncPackageBuilder(

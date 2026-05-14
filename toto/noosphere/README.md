@@ -1,6 +1,7 @@
 # noosphere
 
-Drop-in Django app for selective per-model sync rules with `RemotePlatform`.
+Drop-in Django app for selective per-model sync rules with `RemotePlatform`
+and deployment-configurable transport classes.
 
 This package includes:
 
@@ -14,10 +15,11 @@ noosphere/
   adapters.py
   registry.py
   autodiscover.py
+  transports.py
+  transport_registry.py
   remote.py
   services/
     __init__.py
-    client.py
     package_builder.py
     importer.py
     runner.py
@@ -49,16 +51,45 @@ python manage.py makemigrations noosphere
 python manage.py migrate
 ```
 
-## Models
+## Transport configuration
 
-- `RemotePlatform`: a remote Django project/server with URL, auth, SSL, timeout.
-- `SyncRule`: selected model + direction + remote platform + field/filter policy.
-- `SyncRun`: one execution log.
-- `SyncObjectRun`: per-object audit log.
+Transport backend choices come from `settings.NOOSPHERE_TRANSPORTS`.
 
-## Admin
+Example:
 
-`RemotePlatformAdmin` includes an admin sync console where a user can choose registered sync models and create/update `SyncRule` rows.
+```python
+NOOSPHERE_TRANSPORTS = {
+    "default": "noosphere.transports.RequestsTransport",
+    "tor": "noosphere.transports.TorTransport",
+    "tor_browser": "noosphere.transports.TorBrowserTransport",
+
+    # Deployment-specific examples:
+    # "studio_uplink": "portal.noosphere_transports.StudioUplinkTransport",
+    # "studio_downlink": "portal.noosphere_transports.StudioDownlinkTransport",
+}
+```
+
+`RemotePlatform.uplink_backend` and `RemotePlatform.downlink_backend`
+are limited in admin to these keys.
+
+If the setting is missing, only:
+
+```python
+"default": "noosphere.transports.RequestsTransport"
+```
+
+is available.
+
+## Tor
+
+Tor transport requires:
+
+```bash
+pip install "requests[socks]"
+```
+
+`TorTransport` uses `socks5h://127.0.0.1:9050`.
+`TorBrowserTransport` uses `socks5h://127.0.0.1:9150`.
 
 ## Important
 
@@ -70,29 +101,5 @@ toto.core.services.sync_service.SyncService
 ```
 
 The noosphere services subclass/wrap those core services. They do not duplicate ZIP, signature, hash, manifest, FK, or Geo mechanics.
-
-## Required core patch
-
-Your core `BackupService.create_backup()` must accept:
-
-```python
-model_labels=None
-queryset_map=None
-field_map=None
-sync_meta=None
-```
-
-Your core `BackupEngine.serialize_model()` should accept:
-
-```python
-queryset=None
-fields=None
-```
-
-Your core `BackupEngine.serialize_object()` should accept:
-
-```python
-fields=None
-```
 
 See `PATCH_NOTES.md`.

@@ -9,19 +9,7 @@ class SyncPackageBuilder(BackupService):
     """
     Selective sync package builder.
 
-    Reuses core BackupService for:
-      - temp directory creation
-      - manifest creation
-      - JSON writing
-      - hashing
-      - signing
-      - ZIP writing
-
-    Adds only:
-      - model selection
-      - queryset selection
-      - field selection
-      - sync metadata
+    Reuses core BackupService for package mechanics.
     """
 
     def create_rule_package(self, rule, output_path=None):
@@ -64,6 +52,7 @@ class SyncPackageBuilder(BackupService):
                 "id": rule.remote_platform_id,
                 "name": rule.remote_platform.name,
                 "base_url": rule.remote_platform.normalized_base_url,
+                "backend": rule.remote_platform.get_backend_key_for_direction(rule.direction),
             },
 
             "model_label": adapter.model_label,

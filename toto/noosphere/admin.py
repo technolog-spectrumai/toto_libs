@@ -11,19 +11,22 @@ except Exception:
     TotoModelAdmin = admin.ModelAdmin
 
 
-from .forms import RemotePlatformSyncConsoleForm
+from .forms import RemotePlatformAdminForm, RemotePlatformSyncConsoleForm
 from .models import RemotePlatform, SyncRule, SyncRun, SyncObjectRun
 from .registry import get_sync_adapter
 
 
 @admin.register(RemotePlatform)
 class RemotePlatformAdmin(TotoModelAdmin):
+    form = RemotePlatformAdminForm
+
     list_display = (
         "name",
         "local_platform",
         "base_url",
         "enabled",
-        "verify_ssl",
+        "uplink_backend",
+        "downlink_backend",
         "timeout_seconds",
         "last_seen_at",
         "sync_console_link",
@@ -31,8 +34,9 @@ class RemotePlatformAdmin(TotoModelAdmin):
 
     list_filter = (
         "enabled",
-        "verify_ssl",
         "local_platform",
+        "uplink_backend",
+        "downlink_backend",
     )
 
     search_fields = (
@@ -64,9 +68,10 @@ class RemotePlatformAdmin(TotoModelAdmin):
                 "incoming_secret_key",
             )
         }),
-        ("HTTP", {
+        ("Transport", {
             "fields": (
-                "verify_ssl",
+                "uplink_backend",
+                "downlink_backend",
                 "timeout_seconds",
             )
         }),

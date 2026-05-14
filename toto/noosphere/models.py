@@ -6,11 +6,9 @@ class RemotePlatform(models.Model):
     """
     A remote Django project / platform that this instance can communicate with.
 
-    Example:
-      - Portal knows about Studio
-      - Studio knows about Portal
-
-    The URL/secrets live here instead of on Platform.
+    URL/secrets/backend keys live here instead of on the local Platform.
+    Transport implementation is selected by uplink_backend/downlink_backend and
+    resolved from settings.NOOSPHERE_TRANSPORTS at runtime.
     """
 
     name = models.CharField(max_length=150)
@@ -23,7 +21,7 @@ class RemotePlatform(models.Model):
     )
 
     base_url = models.URLField(
-        help_text="Base URL of the remote project. Example: https://studio.example.com",
+        help_text="Base URL of the remote project. Can be HTTPS or .onion.",
     )
 
     enabled = models.BooleanField(default=True)
@@ -40,7 +38,18 @@ class RemotePlatform(models.Model):
         help_text="Optional secret expected from this remote when it calls us.",
     )
 
-    verify_ssl = models.BooleanField(default=True)
+    uplink_backend = models.CharField(
+        max_length=120,
+        default="default",
+        help_text="Transport backend used for up sync. Choices come from NOOSPHERE_TRANSPORTS.",
+    )
+
+    downlink_backend = models.CharField(
+        max_length=120,
+        default="default",
+        help_text="Transport backend used for down sync. Choices come from NOOSPHERE_TRANSPORTS.",
+    )
+
     timeout_seconds = models.PositiveIntegerField(default=60)
 
     notes = models.TextField(blank=True)
@@ -72,16 +81,19 @@ class RemotePlatform(models.Model):
     def normalized_base_url(self):
         return self.base_url.rstrip("/")
 
+    def get_backend_key_for_direction(self, direction):
+        if direction == "up":
+            return self.uplink_backend
+        if direction == "down":
+            return self.downlink_backend
+        return "default"
+
 
 class SyncRule(models.Model):
     """
     Per-model sync policy.
 
     One rule = one model + one direction + one remote platform.
-
-    If you need bidirectional sync for the same model, create two rules:
-      - one with direction="up"
-      - one with direction="down"
     """
 
     DIRECTION_UP = "up"
@@ -208,9 +220,6 @@ class SyncRule(models.Model):
 
     @property
     def platform(self):
-        """
-        Backwards-compatible alias.
-        """
         return self.local_platform
 
     @property
@@ -331,9 +340,6 @@ class SyncRun(models.Model):
 
     @property
     def platform(self):
-        """
-        Backwards-compatible alias.
-        """
         return self.local_platform
 
     def finish(self, status, message="", remote_response=None):

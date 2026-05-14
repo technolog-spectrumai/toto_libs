@@ -4,17 +4,6 @@ from django.core.exceptions import ImproperlyConfigured
 class BaseSyncAdapter:
     """
     Base adapter for one syncable model.
-
-    Domain apps should create sync_adapters.py and register adapters there:
-
-        from noosphere.adapters import BaseSyncAdapter
-        from noosphere.registry import register_sync_adapter
-        from .models import Theme
-
-        @register_sync_adapter
-        class ThemeSyncAdapter(BaseSyncAdapter):
-            model = Theme
-            allowed_fields = ["name", "font", "color_mix"]
     """
 
     model = None
