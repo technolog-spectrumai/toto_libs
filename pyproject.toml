@@ -37,6 +37,11 @@ packages = [
     "toto.polls.migrations",
     "toto.polls.management",
     "toto.polls.management.commands",
+    "toto.bento",
+    "toto.bento.graph",
+    "toto.bento.migrations",
+    "toto.bento.management",
+    "toto.bento.management.commands",
 ]
 
 [build-system]

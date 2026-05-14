@@ -1,0 +1,251 @@
+{% extends "bento/base.html" %}
+
+{% block bento_title %}{{ box.title|default:"Untitled box" }}{% endblock %}
+
+{% block bento_content %}
+<div
+  x-data="{
+    deleteBoxOpen: false,
+    deleteLinkId: null,
+    graph: null,
+    async loadGraph() {
+      const response = await fetch('{% url "bento:api_box_graph" box.pk %}');
+      this.graph = await response.json();
+    }
+  }"
+  x-init="loadGraph()"
+  class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+  <section class="space-y-5">
+    <article
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-lg border p-6 shadow-sm">
+      <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div class="min-w-0 space-y-3">
+          <a href="{% url 'bento:box_list' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+            <i class="fa-solid fa-arrow-left"></i>
+            All boxes
+          </a>
+          <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="break-words text-3xl font-bold">
+            {{ box.title|default:"Untitled box" }}
+          </h2>
+          <div class="flex flex-wrap items-center gap-2 text-xs opacity-75">
+            {% if box.is_concept %}
+              <span class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-1 font-semibold">
+                <i class="fa-solid fa-lightbulb"></i>
+                Concept
+              </span>
+            {% else %}
+              <span class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-1 font-semibold">
+                <i class="fa-solid fa-note-sticky"></i>
+                Note
+              </span>
+            {% endif %}
+            <span>Created {{ box.created_at|date:"M d, Y H:i" }}</span>
+            <span>Updated {{ box.updated_at|date:"M d, Y H:i" }}</span>
+            {% if box.category %}
+              <span class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-1 font-semibold">
+                <i class="fa-solid fa-shapes"></i>
+                {{ box.category }}
+              </span>
+            {% endif %}
+            {% if box.topic %}
+              <span class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-1 font-semibold">
+                <i class="fa-solid fa-tag"></i>
+                {{ box.topic }}
+              </span>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="flex flex-wrap gap-2">
+          <a
+            href="{% url 'bento:box_update' box.pk %}"
+            :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+            class="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
+            <i class="fa-solid fa-pen"></i>
+            Edit
+          </a>
+          <button
+            type="button"
+            @click="deleteBoxOpen = true"
+            :class="darkMode ? 'border-warn-dark text-warn-dark' : 'border-warn-light text-warn-light'"
+            class="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
+            <i class="fa-solid fa-trash"></i>
+            Delete
+          </button>
+        </div>
+      </div>
+
+      {% if box.body %}
+        <div class="mt-5 border-t border-current/10 pt-5 text-sm leading-7 opacity-90">
+          {{ box.body|linebreaks }}
+        </div>
+      {% endif %}
+    </article>
+
+    <div class="grid gap-5 xl:grid-cols-2">
+      <section
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-lg border p-5 shadow-sm">
+        <h3 class="flex items-center gap-2 text-lg font-bold">
+          <i class="fa-solid fa-book-open"></i>
+          Source
+        </h3>
+        {% if box.source_title or box.source_url or box.source_type %}
+          <div class="mt-4 space-y-2 text-sm">
+            {% if box.source_title %}<p class="font-semibold">{{ box.source_title }}</p>{% endif %}
+            {% if box.source_type %}<p class="opacity-75">{{ box.source_type }}</p>{% endif %}
+            {% if box.source_url %}
+              <a href="{{ box.source_url }}" target="_blank" rel="noopener" class="inline-flex items-center gap-2 underline hover:opacity-80">
+                <i class="fa-solid fa-up-right-from-square"></i>
+                Open source
+              </a>
+            {% endif %}
+          </div>
+        {% else %}
+          <p class="mt-4 text-sm opacity-60">No source.</p>
+        {% endif %}
+      </section>
+
+      <section
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-lg border p-5 shadow-sm">
+        <h3 class="flex items-center gap-2 text-lg font-bold">
+          <i class="fa-solid fa-quote-left"></i>
+          Quote
+        </h3>
+        {% if box.quote %}
+          <blockquote class="mt-4 border-l-4 border-current/20 pl-4 text-sm leading-7 opacity-85">
+            {{ box.quote|linebreaks }}
+          </blockquote>
+        {% else %}
+          <p class="mt-4 text-sm opacity-60">No quote.</p>
+        {% endif %}
+      </section>
+    </div>
+
+    <section
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-lg border p-5 shadow-sm">
+      <h3 class="flex items-center gap-2 text-lg font-bold">
+        <i class="fa-solid fa-code"></i>
+        Properties
+      </h3>
+      {% if box.properties %}
+        <pre :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="mt-4 overflow-auto rounded-lg p-4 text-xs">{{ box.properties }}</pre>
+      {% else %}
+        <p class="mt-4 text-sm opacity-60">No properties.</p>
+      {% endif %}
+    </section>
+  </section>
+
+  <aside class="space-y-5">
+    <section
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-lg border p-5 shadow-sm">
+      <h3 class="flex items-center gap-2 text-lg font-bold">
+        <i class="fa-solid fa-diagram-project"></i>
+        Links
+      </h3>
+      <div class="mt-4 flex flex-wrap gap-2">
+        <a href="{% url 'bento:link_create' %}?from={{ box.pk }}" class="inline-flex items-center gap-2 rounded-lg border border-current/20 px-3 py-2 text-sm font-semibold hover:opacity-80">
+          <i class="fa-solid fa-arrow-up-right-from-square"></i>
+          Link from this
+        </a>
+        <a href="{% url 'bento:link_create' %}?to={{ box.pk }}" class="inline-flex items-center gap-2 rounded-lg border border-current/20 px-3 py-2 text-sm font-semibold hover:opacity-80">
+          <i class="fa-solid fa-arrow-down"></i>
+          Link to this
+        </a>
+      </div>
+    </section>
+
+    <section
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-lg border p-5 shadow-sm">
+      <h3 class="text-sm font-bold uppercase tracking-wide opacity-70">Outgoing</h3>
+      <div class="mt-3 space-y-3">
+        {% for link in outgoing_links %}
+          <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3 text-sm">
+            <div class="font-semibold">{{ link.label|default:"related to" }}</div>
+            <a href="{% url 'bento:box_detail' link.to_box.pk %}" class="mt-1 block underline hover:opacity-80">{{ link.to_box }}</a>
+            <button type="button" @click="deleteLinkId = {{ link.pk }}" class="mt-2 inline-flex items-center gap-2 text-xs font-semibold underline hover:opacity-80">
+              <i class="fa-solid fa-trash"></i>
+              Delete link
+            </button>
+          </div>
+        {% empty %}
+          <p class="text-sm opacity-60">No outgoing links.</p>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-lg border p-5 shadow-sm">
+      <h3 class="text-sm font-bold uppercase tracking-wide opacity-70">Incoming</h3>
+      <div class="mt-3 space-y-3">
+        {% for link in incoming_links %}
+          <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3 text-sm">
+            <a href="{% url 'bento:box_detail' link.from_box.pk %}" class="font-semibold underline hover:opacity-80">{{ link.from_box }}</a>
+            <div class="mt-1 opacity-75">{{ link.label|default:"related to" }}</div>
+          </div>
+        {% empty %}
+          <p class="text-sm opacity-60">No incoming links.</p>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-lg border p-5 shadow-sm">
+      <h3 class="flex items-center gap-2 text-lg font-bold">
+        <i class="fa-solid fa-network-wired"></i>
+        API graph
+      </h3>
+      <div class="mt-4 text-sm" x-show="!graph">Loading...</div>
+      <div class="mt-4 space-y-2 text-sm" x-show="graph">
+        <div><strong x-text="graph?.nodes?.length || 0"></strong> nodes</div>
+        <div><strong x-text="graph?.links?.length || 0"></strong> links</div>
+      </div>
+    </section>
+  </aside>
+
+  <div x-show="deleteBoxOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4">
+    <div
+      @click.outside="deleteBoxOpen = false"
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="w-full max-w-md rounded-lg border p-5 shadow-2xl">
+      <h3 class="flex items-center gap-2 text-xl font-bold">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+        Delete box?
+      </h3>
+      <p class="mt-3 text-sm opacity-75">This will remove the box and its links.</p>
+      <form method="post" action="{% url 'bento:box_delete' box.pk %}" class="mt-5 flex justify-end gap-2">
+        {% csrf_token %}
+        <button type="button" @click="deleteBoxOpen = false" class="rounded-lg border border-current/20 px-4 py-2 text-sm font-semibold">Cancel</button>
+        <button type="submit" :class="darkMode ? 'bg-warn-dark text-primary-bg-dark' : 'bg-warn-light text-primary-bg-light'" class="rounded-lg px-4 py-2 text-sm font-semibold">Delete</button>
+      </form>
+    </div>
+  </div>
+
+  {% for link in outgoing_links %}
+    <div x-show="deleteLinkId === {{ link.pk }}" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4">
+      <div
+        @click.outside="deleteLinkId = null"
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="w-full max-w-md rounded-lg border p-5 shadow-2xl">
+        <h3 class="flex items-center gap-2 text-xl font-bold">
+          <i class="fa-solid fa-link-slash"></i>
+          Delete link?
+        </h3>
+        <p class="mt-3 text-sm opacity-75">{{ link.label|default:"related to" }} → {{ link.to_box }}</p>
+        <form method="post" action="{% url 'bento:link_delete' link.pk %}" class="mt-5 flex justify-end gap-2">
+          {% csrf_token %}
+          <button type="button" @click="deleteLinkId = null" class="rounded-lg border border-current/20 px-4 py-2 text-sm font-semibold">Cancel</button>
+          <button type="submit" :class="darkMode ? 'bg-warn-dark text-primary-bg-dark' : 'bg-warn-light text-primary-bg-light'" class="rounded-lg px-4 py-2 text-sm font-semibold">Delete</button>
+        </form>
+      </div>
+    </div>
+  {% endfor %}
+</div>
+{% endblock %}

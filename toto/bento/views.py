@@ -1,0 +1,222 @@
+from django.db.models import Q
+from django.http import JsonResponse
+from django.shortcuts import get_object_or_404, redirect, render
+from toto.core.page import PageProcessor
+
+from .forms import CategoryForm, IdeaBoxForm, IdeaLinkForm
+from .models import Category, IdeaBox, IdeaLink
+
+
+def bento_render(request, template_name, context):
+    return render(request, template_name, PageProcessor().decorate(context, request))
+
+
+def filtered_boxes(request):
+    query = request.GET.get("q", "")
+    concept_filter = request.GET.get("concept", "")
+
+    boxes = IdeaBox.objects.select_related("category")
+
+    if query:
+        boxes = boxes.filter(
+            Q(title__icontains=query)
+            | Q(body__icontains=query)
+            | Q(source_title__icontains=query)
+            | Q(source_type__icontains=query)
+            | Q(quote__icontains=query)
+        )
+
+    if concept_filter == "yes":
+        boxes = boxes.filter(is_concept=True)
+    elif concept_filter == "no":
+        boxes = boxes.filter(is_concept=False)
+
+    return boxes, query, concept_filter
+
+
+def serialize_box(box):
+    return {
+        "id": box.pk,
+        "title": box.title or "Untitled box",
+        "body": box.body,
+        "is_concept": box.is_concept,
+        "source_title": box.source_title,
+        "source_url": box.source_url,
+        "source_type": box.source_type,
+        "quote": box.quote,
+        "category": {
+            "id": box.category_id,
+            "name": str(box.category),
+            "slug": box.category.slug,
+        } if box.category_id else None,
+        "properties": box.properties,
+        "created_at": box.created_at.isoformat(),
+        "updated_at": box.updated_at.isoformat(),
+    }
+
+
+def serialize_link(link):
+    return {
+        "id": link.pk,
+        "from_box": link.from_box_id,
+        "to_box": link.to_box_id,
+        "label": link.label or "related to",
+        "properties": link.properties,
+        "created_at": link.created_at.isoformat(),
+    }
+
+
+def box_list(request):
+    boxes, query, concept_filter = filtered_boxes(request)
+
+    return bento_render(request, "bento/box_list.html", {
+        "boxes": boxes,
+        "query": query,
+        "concept_filter": concept_filter,
+        "total_boxes": IdeaBox.objects.count(),
+        "concept_count": IdeaBox.objects.filter(is_concept=True).count(),
+        "note_count": IdeaBox.objects.filter(is_concept=False).count(),
+        "link_count": IdeaLink.objects.count(),
+    })
+
+
+def box_detail(request, pk):
+    box = get_object_or_404(IdeaBox.objects.select_related("category"), pk=pk)
+    outgoing_links = box.outgoing_links.select_related("to_box")
+    incoming_links = box.incoming_links.select_related("from_box")
+
+    return bento_render(request, "bento/box_detail.html", {
+        "box": box,
+        "outgoing_links": outgoing_links,
+        "incoming_links": incoming_links,
+    })
+
+
+def box_create(request):
+    if request.method == "POST":
+        form = IdeaBoxForm(request.POST)
+        if form.is_valid():
+            box = form.save()
+            return redirect("bento:box_detail", pk=box.pk)
+    else:
+        form = IdeaBoxForm()
+
+    return bento_render(request, "bento/box_form.html", {"form": form, "title": "New box"})
+
+
+def box_update(request, pk):
+    box = get_object_or_404(IdeaBox, pk=pk)
+
+    if request.method == "POST":
+        form = IdeaBoxForm(request.POST, instance=box)
+        if form.is_valid():
+            box = form.save()
+            return redirect("bento:box_detail", pk=box.pk)
+    else:
+        form = IdeaBoxForm(instance=box)
+
+    return bento_render(request, "bento/box_form.html", {"form": form, "title": "Edit box", "box": box})
+
+
+def box_delete(request, pk):
+    box = get_object_or_404(IdeaBox, pk=pk)
+
+    if request.method == "POST":
+        box.delete()
+        return redirect("bento:box_list")
+
+    return bento_render(request, "bento/box_confirm_delete.html", {"box": box})
+
+
+def link_create(request):
+    initial = {}
+    from_box_id = request.GET.get("from")
+    to_box_id = request.GET.get("to")
+
+    if from_box_id:
+        initial["from_box"] = from_box_id
+    if to_box_id:
+        initial["to_box"] = to_box_id
+
+    if request.method == "POST":
+        form = IdeaLinkForm(request.POST)
+        if form.is_valid():
+            link = form.save()
+            return redirect("bento:box_detail", pk=link.from_box.pk)
+    else:
+        form = IdeaLinkForm(initial=initial)
+
+    return bento_render(request, "bento/link_form.html", {"form": form, "title": "New link"})
+
+
+def link_delete(request, pk):
+    link = get_object_or_404(IdeaLink, pk=pk)
+    from_box_pk = link.from_box.pk
+
+    if request.method == "POST":
+        link.delete()
+        return redirect("bento:box_detail", pk=from_box_pk)
+
+    return bento_render(request, "bento/link_confirm_delete.html", {"link": link})
+
+
+def category_list(request):
+    categories = Category.objects.prefetch_related("idea_boxes")
+
+    return bento_render(request, "bento/category_list.html", {
+        "categories": categories,
+    })
+
+
+def category_create(request):
+    if request.method == "POST":
+        form = CategoryForm(request.POST)
+        if form.is_valid():
+            category = form.save()
+            return redirect("bento:category_update", pk=category.pk)
+    else:
+        form = CategoryForm()
+
+    return bento_render(request, "bento/category_form.html", {"form": form, "title": "New category"})
+
+
+def category_update(request, pk):
+    category = get_object_or_404(Category, pk=pk)
+
+    if request.method == "POST":
+        form = CategoryForm(request.POST, instance=category)
+        if form.is_valid():
+            form.save()
+            return redirect("bento:category_list")
+    else:
+        form = CategoryForm(instance=category)
+
+    return bento_render(request, "bento/category_form.html", {"form": form, "title": "Edit category", "category": category})
+
+
+def api_boxes(request):
+    boxes, query, concept_filter = filtered_boxes(request)
+    return JsonResponse({
+        "query": query,
+        "concept": concept_filter,
+        "count": boxes.count(),
+        "results": [serialize_box(box) for box in boxes[:100]],
+    })
+
+
+def api_box_graph(request, pk):
+    box = get_object_or_404(IdeaBox, pk=pk)
+    outgoing_links = list(box.outgoing_links.select_related("to_box"))
+    incoming_links = list(box.incoming_links.select_related("from_box"))
+    related_boxes = {box.pk: box}
+
+    for link in outgoing_links:
+        related_boxes[link.to_box.pk] = link.to_box
+    for link in incoming_links:
+        related_boxes[link.from_box.pk] = link.from_box
+
+    return JsonResponse({
+        "focus": box.pk,
+        "nodes": [serialize_box(related_box) for related_box in related_boxes.values()],
+        "links": [serialize_link(link) for link in outgoing_links + incoming_links],
+    })
