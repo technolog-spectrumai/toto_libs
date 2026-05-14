@@ -141,15 +141,24 @@ class SSOAuthorizationCode(models.Model):
 
 class SSOSigningKey(models.Model):
     """
-    RSA public key used to verify this server's ID token signatures.
+    RSA signing key pair for OIDC ID tokens.
 
-    The matching private key MUST NOT be stored in the database.
-    Set it as the environment variable SSO_SIGNING_PRIVATE_KEY (PEM string).
+    The public key is stored in plaintext for fast JWKS responses.
+    The private key is stored encrypted in Gervazy (EncryptedPrivateKey).
+    Decryption requires the SSO_VAULT_PASSWORD setting.
     """
 
     key_id = models.CharField(max_length=100, unique=True)
     algorithm = models.CharField(max_length=16, default="RS256")
     public_key_pem = models.TextField()
+    encrypted_key = models.OneToOneField(
+        "gervazy.EncryptedPrivateKey",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="sso_signing_key",
+        help_text="Gervazy EncryptedPrivateKey holding the RSA private key.",
+    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

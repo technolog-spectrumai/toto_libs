@@ -77,7 +77,7 @@ class PageProcessor:
             "platform": platform_data,
             "font": theme_data.get("font", {}),
             "theme": theme_data,
-            "logo": self.config.logo.url,
+            "logo": self.config.logo.url if self.config.logo else None,
         })
 
         return context
