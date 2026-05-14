@@ -1,5 +1,4 @@
 from django import forms
-from django.conf import settings
 
 
 class LoginForm(forms.Form):
@@ -19,25 +18,38 @@ class LoginForm(forms.Form):
         })
     )
 
-class SyncAppsForm(forms.Form):
+class BackupAppsForm(forms.Form):
     apps = forms.MultipleChoiceField(
-        choices=[(app, app) for app in settings.APPS_TO_SYNC],
+        choices=[],
         widget=forms.CheckboxSelectMultiple,
         required=True,
-        label="Select apps to sync"
-    )
-
-    api_url = forms.CharField(
-        required=True,
-        label="Remote API URL",
-        help_text="Address of the remote sync endpoint"
+        label="Apps",
     )
 
     def __init__(self, *args, **kwargs):
         apps_choices = kwargs.pop("apps_choices", [])
-        initial_api_url = kwargs.pop("initial_api_url", "")
-
         super().__init__(*args, **kwargs)
-
         self.fields["apps"].choices = [(a, a) for a in apps_choices]
-        self.fields["api_url"].initial = initial_api_url
+
+
+class ApplyBackupForm(forms.Form):
+    backup_file = forms.FileField(required=True, label="Backup ZIP")
+    verify_signature = forms.BooleanField(required=False, initial=True, label="Verify signature")
+    clear_existing = forms.BooleanField(
+        required=False,
+        initial=False,
+        label="Clear existing data first",
+        help_text="Deletes existing objects for imported models before restoring.",
+    )
+
+
+class QueryExecForm(forms.Form):
+    query = forms.CharField(
+        required=True,
+        label="Query",
+        widget=forms.Textarea(attrs={
+            "rows": 6,
+            "style": "width:100%;font-family:monospace;",
+            "placeholder": "show apps  |  show models  |  show platform",
+        }),
+    )

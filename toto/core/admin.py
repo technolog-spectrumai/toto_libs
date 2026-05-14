@@ -1,13 +1,18 @@
-from django.conf import settings
+import os
+import tempfile
 
-from .models import Platform, Font, Theme, ColorMix, Federation
-from django.utils.html import format_html
-from toto.core.base_admin import TotoModelAdmin
+from django.conf import settings
 from django.contrib import admin, messages
-from django.shortcuts import render, redirect
+from django.http import FileResponse
+from django.shortcuts import redirect, render
 from django.urls import path
-from .forms import SyncAppsForm
-from toto.core.sync.service import SyncService
+from django.utils.html import format_html
+
+from toto.core.base_admin import TotoModelAdmin
+from .forms import BackupAppsForm, ApplyBackupForm, QueryExecForm
+from .models import Platform, Font, Theme, ColorMix, Federation
+from .services.backup_service import BackupService
+from .services.sync_service import SyncService
 
 
 @admin.register(Font)
@@ -24,13 +29,7 @@ class ColorMixAdmin(TotoModelAdmin):
     readonly_fields = ('preview_light', 'preview_dark')
 
     fieldsets = (
-        (None, {
-            'fields': ('name',)
-        }),
-
-        # -------------------------
-        # LIGHT MODE
-        # -------------------------
+        (None, {'fields': ('name',)}),
         ('Light Mode Colors', {
             'fields': (
                 'primary_bg_light', 'text_main_light',
@@ -39,13 +38,9 @@ class ColorMixAdmin(TotoModelAdmin):
                 'footer_bg_light', 'footer_text_light',
                 'accent_light', 'warn_light',
                 'success_light', 'sunken_light', 'link_light',
-                'preview_light'
+                'preview_light',
             )
         }),
-
-        # -------------------------
-        # DARK MODE
-        # -------------------------
         ('Dark Mode Colors', {
             'fields': (
                 'primary_bg_dark', 'text_main_dark',
@@ -54,62 +49,36 @@ class ColorMixAdmin(TotoModelAdmin):
                 'footer_bg_dark', 'footer_text_dark',
                 'accent_dark', 'warn_dark',
                 'success_dark', 'sunken_dark', 'link_dark',
-                'preview_dark'
+                'preview_dark',
             )
         }),
-
-        ('Accent Colors', {
-            'fields': ('accent_1', 'accent_2')
-        }),
+        ('Accent Colors', {'fields': ('accent_1', 'accent_2')}),
     )
 
-    # -------------------------
-    # PREVIEW RENDERING
-    # -------------------------
     def preview_light(self, obj):
-        return self._render_preview_set(
-            bg=obj.primary_bg_light,
-            bubble=obj.bubble_bg_light,
-            text=obj.text_main_light,
-            accent_mode=obj.accent_light,
-            footer_bg=obj.footer_bg_light,
-            footer_text=obj.footer_text_light,
-            label="Light"
+        return self._render_preview(
+            obj.primary_bg_light, obj.bubble_bg_light,
+            obj.text_main_light, obj.accent_light,
+            obj.footer_bg_light, obj.footer_text_light, "Light",
         )
     preview_light.short_description = "Light Preview"
 
     def preview_dark(self, obj):
-        return self._render_preview_set(
-            bg=obj.primary_bg_dark,
-            bubble=obj.bubble_bg_dark,
-            text=obj.text_main_dark,
-            accent_mode=obj.accent_dark,
-            footer_bg=obj.footer_bg_dark,
-            footer_text=obj.footer_text_dark,
-            label="Dark"
+        return self._render_preview(
+            obj.primary_bg_dark, obj.bubble_bg_dark,
+            obj.text_main_dark, obj.accent_dark,
+            obj.footer_bg_dark, obj.footer_text_dark, "Dark",
         )
     preview_dark.short_description = "Dark Preview"
 
-    def _render_preview_set(self, bg, bubble, text, accent_mode, footer_bg, footer_text, label):
+    def _render_preview(self, bg, bubble, text, accent, footer_bg, footer_text, label):
         return format_html(
-            '''
-            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                <div style="background-color:{bg}; color:{text}; padding:8px; border-radius:4px; width:120px; text-align:center;">
-                    {label} BG
-                </div>
-                <div style="background-color:{bubble}; color:{text}; padding:8px; border-radius:4px; width:120px; text-align:center;">
-                    Bubble
-                </div>
-                <div style="background-color:{accent}; color:{text}; padding:8px; border-radius:4px; width:120px; text-align:center;">
-                    Accent {label}
-                </div>
-            </div>
-            ''',
-            bg=bg,
-            bubble=bubble,
-            text=text,
-            accent=accent_mode,
-            label=label
+            '''<div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <div style="background-color:{bg};color:{text};padding:8px;border-radius:4px;width:120px;text-align:center;">{label} BG</div>
+                <div style="background-color:{bubble};color:{text};padding:8px;border-radius:4px;width:120px;text-align:center;">Bubble</div>
+                <div style="background-color:{accent};color:{text};padding:8px;border-radius:4px;width:120px;text-align:center;">Accent {label}</div>
+            </div>''',
+            bg=bg, bubble=bubble, text=text, accent=accent, label=label,
         )
 
 
@@ -127,101 +96,134 @@ class FederationAdmin(TotoModelAdmin):
     list_filter = ("active", "created_at")
 
 
-
 @admin.register(Platform)
 class PlatformAdmin(TotoModelAdmin):
     list_display = (
-        'site_name',
-        'domain',
-        'publication_year',
-        'active',
-        'get_theme_name',
-        'rate_limit_window',
-        'rate_limit_max_requests',
+        'site_name', 'domain', 'publication_year', 'active',
+        'get_theme_name', 'rate_limit_window', 'rate_limit_max_requests',
     )
-
     search_fields = ('site_name', 'domain', 'theme__name')
     list_filter = ('active', 'publication_year', 'theme')
     ordering = ['publication_year']
+    actions = ["backup_console_action"]
 
-    actions = ["sync_action"]
-
-    # -------------------------
-    # Helpers
-    # -------------------------
     def get_theme_name(self, obj):
         return obj.theme.name if obj.theme else '-'
     get_theme_name.short_description = 'Theme'
 
-    # -------------------------
-    # Custom admin URLs
-    # -------------------------
     def get_urls(self):
-        urls = super().get_urls()
-        custom = [
+        return [
             path(
-                "sync/<int:platform_id>/",
-                self.admin_site.admin_view(self.sync_view),
-                name="platform_sync",
+                "backup-console/<int:platform_id>/",
+                self.admin_site.admin_view(self.backup_console_view),
+                name="platform_backup_console",
             ),
-        ]
-        return custom + urls
+        ] + super().get_urls()
 
-    # -------------------------
-    # Action entry point
-    # -------------------------
-    def sync_action(self, request, queryset):
+    def backup_console_action(self, request, queryset):
         if queryset.count() != 1:
             self.message_user(request, "Select exactly one platform.", level=messages.ERROR)
             return
+        return redirect(f"backup-console/{queryset.first().id}/")
 
-        platform = queryset.first()
-        return redirect(f"sync/{platform.id}/")
+    backup_console_action.short_description = "Backup / seed console"
 
-    sync_action.short_description = "Sync selected platform"
+    # ---------------------------------------------------------
+    # Backup console view — all boxes on one page
+    # ---------------------------------------------------------
 
-    # -------------------------
-    # Custom sync form view
-    # -------------------------
-    def sync_view(self, request, platform_id):
+    def backup_console_view(self, request, platform_id):
         platform = Platform.objects.get(id=platform_id)
-
         apps_choices = getattr(settings, "APPS_TO_SYNC", [])
 
+        backup_form = BackupAppsForm(apps_choices=apps_choices, initial={"apps": apps_choices})
+        apply_form = ApplyBackupForm()
+        query_form = QueryExecForm()
+        query_result = None
+
         if request.method == "POST":
-            form = SyncAppsForm(
-                request.POST,
-                apps_choices=apps_choices,
-                initial_api_url=platform.api_url
-            )
-            if form.is_valid():
-                apps = form.cleaned_data["apps"]
-                api_url = form.cleaned_data["api_url"]
+            action = request.POST.get("action")
 
-                # run sync (RSA-based)
-                try:
-                    service = SyncService(
-                        api_url=api_url,
-                        platform=platform,
-                        apps_to_sync=apps
+            if action == "create_backup":
+                backup_form = BackupAppsForm(request.POST, apps_choices=apps_choices)
+                if backup_form.is_valid():
+                    try:
+                        service = BackupService(
+                            platform=platform,
+                            apps_to_sync=backup_form.cleaned_data["apps"],
+                        )
+                        backup_path = service.create_backup()
+                    except Exception as e:
+                        self.message_user(request, f"Backup failed: {e}", level=messages.ERROR)
+                        return redirect(".")
+                    return FileResponse(
+                        open(backup_path, "rb"),
+                        as_attachment=True,
+                        filename=backup_path.name,
                     )
-                    service.sync_all()
-                except Exception as e:
-                    messages.error(request, f"Sync failed: {e}")
-                    return redirect("..")
 
-                messages.success(request, "Sync completed successfully.")
-                return redirect("..")
+            elif action == "apply_backup":
+                apply_form = ApplyBackupForm(request.POST, request.FILES)
+                if apply_form.is_valid():
+                    tmp_path = None
+                    try:
+                        with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+                            for chunk in apply_form.cleaned_data["backup_file"].chunks():
+                                tmp.write(chunk)
+                            tmp_path = tmp.name
+                        SyncService(platform=platform, apps_to_sync=apps_choices).apply_backup(
+                            backup_path=tmp_path,
+                            verify_signature=apply_form.cleaned_data["verify_signature"],
+                            clear_existing=apply_form.cleaned_data["clear_existing"],
+                        )
+                        self.message_user(request, "Backup applied successfully.")
+                        return redirect(".")
+                    except Exception as e:
+                        self.message_user(request, f"Apply backup failed: {e}", level=messages.ERROR)
+                    finally:
+                        if tmp_path:
+                            try:
+                                os.remove(tmp_path)
+                            except Exception:
+                                pass
 
-        else:
-            form = SyncAppsForm(
-                apps_choices=apps_choices,
-                initial_api_url=platform.api_url
-            )
+            elif action == "exec_query":
+                query_form = QueryExecForm(request.POST)
+                if query_form.is_valid():
+                    try:
+                        query_result = self._exec_query(platform, query_form.cleaned_data["query"])
+                    except Exception as e:
+                        self.message_user(request, f"Query failed: {e}", level=messages.ERROR)
 
         context = {
-            "form": form,
+            **self.admin_site.each_context(request),
+            "title": f"Backup Console: {platform.site_name}",
             "platform": platform,
-            "title": f"Sync Platform: {platform.site_name}",
+            "backup_form": backup_form,
+            "apply_form": apply_form,
+            "query_form": query_form,
+            "query_result": query_result,
         }
-        return render(request, "admin/platform_sync_form.html", context)
+        return render(request, "admin/platform_backup_console.html", context)
+
+    def _exec_query(self, platform, query):
+        q = query.strip().lower()
+        if q == "show apps":
+            return getattr(settings, "APPS_TO_SYNC", [])
+        if q == "show models":
+            from django.apps import apps
+            result = []
+            for app_label in getattr(settings, "APPS_TO_SYNC", []):
+                for model in apps.get_app_config(app_label).get_models():
+                    if hasattr(model, "uid"):
+                        result.append(model._meta.label)
+            return result
+        if q == "show platform":
+            return {
+                "id": platform.id,
+                "site_name": platform.site_name,
+                "domain": platform.domain,
+                "active": platform.active,
+                "api_url": platform.api_url,
+            }
+        raise ValueError("Unknown query. Try: show apps | show models | show platform")

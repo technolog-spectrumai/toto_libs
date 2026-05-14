@@ -1,0 +1,97 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content %}
+<h1>{{ title }}</h1>
+
+<style>
+  .console-box {
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin-bottom: 20px;
+    background: #fff;
+  }
+  .console-box summary {
+    padding: 12px 16px;
+    font-weight: bold;
+    font-size: 14px;
+    cursor: pointer;
+    background: #f8f8f8;
+    border-radius: 4px;
+    user-select: none;
+    list-style: none;
+  }
+  .console-box summary::-webkit-details-marker { display: none; }
+  .console-box summary::before {
+    content: "▶ ";
+    font-size: 10px;
+    display: inline-block;
+    transition: transform 0.15s;
+  }
+  .console-box[open] summary::before { transform: rotate(90deg); }
+  .console-box-body {
+    padding: 16px;
+    border-top: 1px solid #eee;
+  }
+  .console-box input[type="submit"],
+  .console-box button[type="submit"] {
+    margin-top: 10px;
+  }
+  pre.query-result {
+    background: #f4f4f4;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    padding: 12px;
+    font-size: 13px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+</style>
+
+{# ── Backup ─────────────────────────────────────────────── #}
+<details class="console-box">
+  <summary>Create Backup</summary>
+  <div class="console-box-body">
+    <p>Select apps and download a signed backup ZIP.</p>
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="create_backup">
+      {{ backup_form.as_p }}
+      <input type="submit" value="Create &amp; download backup" class="default">
+    </form>
+  </div>
+</details>
+
+{# ── Restore / Seed ──────────────────────────────────────── #}
+<details class="console-box">
+  <summary>Restore / Seed</summary>
+  <div class="console-box-body">
+    <p>Upload a signed backup ZIP and seed this portal from it.</p>
+    <form method="post" enctype="multipart/form-data">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="apply_backup">
+      {{ apply_form.as_p }}
+      <input type="submit" value="Apply backup" class="default">
+    </form>
+  </div>
+</details>
+
+{# ── Query ───────────────────────────────────────────────── #}
+<details class="console-box"{% if query_result is not None %} open{% endif %}>
+  <summary>Query</summary>
+  <div class="console-box-body">
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="exec_query">
+      {{ query_form.as_p }}
+      <input type="submit" value="Execute" class="default">
+    </form>
+    {% if query_result is not None %}
+      <h3 style="margin-top:16px;">Result</h3>
+      <pre class="query-result">{{ query_result }}</pre>
+    {% endif %}
+  </div>
+</details>
+
+<p><a href="../..">← Back to Platform list</a></p>
+{% endblock %}
