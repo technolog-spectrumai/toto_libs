@@ -158,12 +158,17 @@ class BackupEngine:
         """Convert non-JSON-native values to a serializable form."""
         if value is None:
             return None
+        # GeoDjango geometry → tagged EWKT
         try:
             from django.contrib.gis.geos import GEOSGeometry
             if isinstance(value, GEOSGeometry):
                 return {"__geo__": True, "ewkt": value.ewkt}
         except ImportError:
             pass
+        # FileField / ImageField → stored path string
+        from django.db.models.fields.files import FieldFile
+        if isinstance(value, FieldFile):
+            return value.name or ""
         return value
 
     # ---------------------------------------------------------

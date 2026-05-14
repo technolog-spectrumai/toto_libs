@@ -34,16 +34,20 @@ class UserVaultAdmin(TotoModelAdmin):
     list_display = ("name", "owner", "kdf", "argon2_memory_cost", "argon2_iterations", "created_at")
     list_filter = ("kdf", "created_at")
     search_fields = ("name", "owner__username")
-    readonly_fields = ("salt", "created_at")
+    readonly_fields = ("salt_info", "created_at")
     inlines = [VaultMasterKeyInline, WrappedDataKeyInline]
     fieldsets = (
         (None, {"fields": ("owner", "name", "notes")}),
         ("KDF parameters", {
-            "fields": ("kdf", "kdf_version", "salt", "argon2_memory_cost", "argon2_iterations", "argon2_lanes"),
+            "fields": ("kdf", "kdf_version", "salt_info", "argon2_memory_cost", "argon2_iterations", "argon2_lanes"),
             "description": "Argon2id key derivation parameters. Salt is generated automatically.",
         }),
         ("Timestamps", {"fields": ("created_at",)}),
     )
+
+    @admin.display(description="Salt")
+    def salt_info(self, obj):
+        return f"{len(obj.salt)} bytes" if obj.salt else "—"
 
 
 @admin.register(VaultMasterKey)
@@ -67,11 +71,11 @@ class EncryptedSecretAdmin(TotoModelAdmin):
     list_display = ("name", "vault", "purpose", "state", "version", "created_at", "expires_at", "is_expired")
     list_filter = ("state", "purpose", "created_at", "expires_at")
     search_fields = ("name", "purpose", "vault__name")
-    readonly_fields = ("created_at",)
+    readonly_fields = ("created_at", "ciphertext_info")
     fieldsets = (
         (None, {"fields": ("vault", "wrapped_key", "name", "purpose", "state")}),
         ("Ciphertext", {
-            "fields": ("algorithm", "version", "ciphertext", "nonce", "aad"),
+            "fields": ("algorithm", "version", "ciphertext_info"),
             "description": "Raw ciphertext stored as binary. Never displayed in plaintext.",
         }),
         ("Lifecycle", {"fields": ("expires_at", "created_at")}),
@@ -80,6 +84,15 @@ class EncryptedSecretAdmin(TotoModelAdmin):
     @admin.display(boolean=True)
     def is_expired(self, obj):
         return obj.is_expired()
+
+    @admin.display(description="Ciphertext")
+    def ciphertext_info(self, obj):
+        if not obj.ciphertext:
+            return "—"
+        size = len(obj.ciphertext)
+        nonce_size = len(obj.nonce) if obj.nonce else 0
+        aad_size = len(obj.aad) if obj.aad else 0
+        return f"Encrypted ({size} bytes), nonce {nonce_size} bytes, aad {aad_size} bytes"
 
 
 class EncryptedFileChunkInline(admin.TabularInline):
@@ -104,16 +117,25 @@ class EncryptedPrivateKeyAdmin(TotoModelAdmin):
     list_display = ("key_id", "vault", "key_type", "state", "created_at", "retired_at")
     list_filter = ("key_type", "state", "created_at")
     search_fields = ("key_id", "vault__name", "issuer")
-    readonly_fields = ("created_at", "public_key_pem")
+    readonly_fields = ("created_at", "public_key_pem", "ciphertext_info")
     fieldsets = (
         (None, {"fields": ("vault", "wrapped_key", "key_id", "key_type", "issuer", "state")}),
         ("Public key", {"fields": ("public_key_pem",)}),
         ("Encrypted private key", {
-            "fields": ("algorithm", "encrypted_private_key", "nonce", "aad"),
+            "fields": ("algorithm", "ciphertext_info"),
             "description": "Private key stored as AES-256-GCM ciphertext. Never exported in plaintext.",
         }),
         ("Lifecycle", {"fields": ("created_at", "retired_at")}),
     )
+
+    @admin.display(description="Ciphertext")
+    def ciphertext_info(self, obj):
+        if not obj.encrypted_private_key:
+            return "—"
+        size = len(obj.encrypted_private_key)
+        nonce_size = len(obj.nonce) if obj.nonce else 0
+        aad_size = len(obj.aad) if obj.aad else 0
+        return f"Encrypted ({size} bytes), nonce {nonce_size} bytes, aad {aad_size} bytes"
 
 
 @admin.register(CryptoAuditLog)
