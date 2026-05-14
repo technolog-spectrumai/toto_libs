@@ -137,10 +137,12 @@
               <div
                 role="alert"
                 aria-live="assertive"
-                style="border: 2px solid #dc2626; background: #fef2f2; color: #7f1d1d;"
-                class="rounded-lg px-4 py-3 text-sm shadow-sm">
+                :class="darkMode
+                  ? 'border-warn-dark bg-sunken-dark text-warn-dark'
+                  : 'border-warn-light bg-sunken-light text-warn-light'"
+                class="rounded-lg border px-4 py-3 text-sm shadow-sm">
                 <div class="flex items-start gap-3">
-                  <i class="fa-solid fa-circle-exclamation mt-0.5 text-red-600"></i>
+                  <i :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" class="fa-solid fa-circle-exclamation mt-0.5"></i>
                   <div>
                     <p class="font-bold">Sign in failed</p>
                     <p class="mt-1 font-medium">{{ error }}</p>
@@ -149,8 +151,8 @@
                         <p class="text-xs font-bold uppercase tracking-wide">
                           Try again in <span data-login-countdown>{{ cooldown_remaining }}</span>s
                         </p>
-                        <div style="height: 6px; background: #fecaca;" class="mt-2 overflow-hidden rounded-full">
-                          <div data-login-cooldown-bar style="height: 100%; width: 100%; background: #dc2626; transition: width 1s linear;"></div>
+                        <div :class="darkMode ? 'bg-warn-dark/20' : 'bg-warn-light/20'" class="mt-2 h-1.5 overflow-hidden rounded-full">
+                          <div data-login-cooldown-bar :class="darkMode ? 'bg-warn-dark' : 'bg-warn-light'" style="height: 100%; width: 100%; transition: width 1s linear;"></div>
                         </div>
                       </div>
                     {% endif %}
