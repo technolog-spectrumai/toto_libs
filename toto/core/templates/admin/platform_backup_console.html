@@ -33,10 +33,10 @@
     padding: 16px;
     border-top: 1px solid #eee;
   }
-  .console-box input[type="submit"],
-  .console-box button[type="submit"] {
-    margin-top: 10px;
-  }
+  .console-box input[type="submit"] { margin-top: 10px; }
+  .app-checklist { list-style: none; padding: 0; margin: 8px 0 12px; }
+  .app-checklist li { margin: 4px 0; }
+  .app-checklist label { font-family: monospace; cursor: pointer; }
   pre.query-result {
     background: #f4f4f4;
     border: 1px solid #ddd;
@@ -46,24 +46,39 @@
     white-space: pre-wrap;
     word-break: break-word;
   }
+  .field-error { color: #ba2121; font-size: 13px; margin: 4px 0; }
 </style>
 
 {# ── Backup ─────────────────────────────────────────────── #}
-<details class="console-box">
+<details class="console-box"{% if backup_form.errors %} open{% else %} open{% endif %}>
   <summary>Create Backup</summary>
   <div class="console-box-body">
     <p>Select apps and download a signed backup ZIP.</p>
     <form method="post">
       {% csrf_token %}
       <input type="hidden" name="action" value="create_backup">
-      {{ backup_form.as_p }}
+
+      <p><strong>Apps:</strong></p>
+      {% if backup_form.apps.errors %}
+        <p class="field-error">{{ backup_form.apps.errors.as_text }}</p>
+      {% endif %}
+      <ul class="app-checklist">
+        {% for checkbox in backup_form.apps %}
+          <li>
+            <label>
+              {{ checkbox.tag }} {{ checkbox.choice_label }}
+            </label>
+          </li>
+        {% endfor %}
+      </ul>
+
       <input type="submit" value="Create &amp; download backup" class="default">
     </form>
   </div>
 </details>
 
 {# ── Restore / Seed ──────────────────────────────────────── #}
-<details class="console-box">
+<details class="console-box"{% if apply_form.errors %} open{% endif %}>
   <summary>Restore / Seed</summary>
   <div class="console-box-body">
     <p>Upload a signed backup ZIP and seed this portal from it.</p>

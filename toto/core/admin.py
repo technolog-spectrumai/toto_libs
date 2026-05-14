@@ -171,7 +171,7 @@ class PlatformAdmin(TotoModelAdmin):
                             for chunk in apply_form.cleaned_data["backup_file"].chunks():
                                 tmp.write(chunk)
                             tmp_path = tmp.name
-                        SyncService(platform=platform, apps_to_sync=apps_choices).apply_backup(
+                        SyncService(platform=platform).apply_backup(
                             backup_path=tmp_path,
                             verify_signature=apply_form.cleaned_data["verify_signature"],
                             clear_existing=apply_form.cleaned_data["clear_existing"],

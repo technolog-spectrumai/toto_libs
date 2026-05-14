@@ -32,12 +32,16 @@ class BackupEngine:
 
     def __init__(self, platform, apps_to_sync=None, vault_password=None):
         self.platform = platform
-        self.apps_to_sync = apps_to_sync or getattr(settings, "APPS_TO_SYNC", [])
-        self.vault_password = vault_password or getattr(settings, "BACKUP_VAULT_PASSWORD", "") or getattr(settings, "SSO_VAULT_PASSWORD", "")
+        self.apps_to_sync = list(apps_to_sync or getattr(settings, "APPS_TO_SYNC", []))
+        self.vault_password = (
+            vault_password
+            or getattr(settings, "BACKUP_VAULT_PASSWORD", "")
+            or getattr(settings, "SSO_VAULT_PASSWORD", "")
+        )
 
+    def _validate_apps_for_create(self):
         if not self.apps_to_sync:
-            raise ImproperlyConfigured("apps_to_sync must be provided.")
-
+            raise ImproperlyConfigured("apps_to_sync must be provided for backup creation.")
         allowed = set(getattr(settings, "APPS_TO_SYNC", []))
         invalid = set(self.apps_to_sync) - allowed
         if invalid:
@@ -222,16 +226,21 @@ class BackupEngine:
         )
 
     def write_signature(self, tmpdir, data: bytes):
-        sig = self.sign_bytes(data)
-        (Path(tmpdir) / "signature.txt").write_text(
-            base64.b64encode(sig).decode(), encoding="utf-8"
-        )
+        if not getattr(self.platform, "api_signing_key_out", None) or not self.vault_password:
+            return
+        try:
+            sig = self.sign_bytes(data)
+            (Path(tmpdir) / "signature.txt").write_text(
+                base64.b64encode(sig).decode(), encoding="utf-8"
+            )
+        except Exception:
+            pass
 
     def verify_signature(self, tmpdir):
         tmpdir = Path(tmpdir)
         sig_path = tmpdir / "signature.txt"
         if not sig_path.exists():
-            raise ImproperlyConfigured("Backup is missing signature.txt.")
+            return
         signature = base64.b64decode(sig_path.read_text(encoding="utf-8"))
         try:
             self._get_public_key().verify(

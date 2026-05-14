@@ -12,6 +12,8 @@ class SyncService(BackupEngine):
         with self.extract_zip(backup_path) as tmp:
             manifest = self.load_manifest(tmp)
             self.validate_manifest(manifest)
+            # Use the app list from the manifest so the caller doesn't need to pass it
+            self.apps_to_sync = manifest.get("apps", [])
             self.verify_hashes(tmp, manifest)
 
             if verify_signature:

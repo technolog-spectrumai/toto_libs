@@ -9,6 +9,7 @@ class BackupService(BackupEngine):
     """Creates a signed backup ZIP from local shared/core app data."""
 
     def create_backup(self, output_path=None):
+        self._validate_apps_for_create()
         if output_path is None:
             ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
             output_path = Path(tempfile.gettempdir()) / f"backup-{ts}.zip"

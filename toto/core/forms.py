@@ -21,7 +21,7 @@ class LoginForm(forms.Form):
 class BackupAppsForm(forms.Form):
     apps = forms.MultipleChoiceField(
         choices=[],
-        widget=forms.CheckboxSelectMultiple,
+        widget=forms.CheckboxSelectMultiple(),
         required=True,
         label="Apps",
     )
