@@ -1,0 +1,133 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+  <h1>{{ title }}</h1>
+
+  <div class="module">
+    <h2>Remote platform</h2>
+
+    <p>
+      <strong>Remote:</strong> {{ remote_platform.name }}<br>
+      <strong>URL:</strong> {{ remote_platform.base_url }}<br>
+      <strong>Local platform:</strong> {{ local_platform }}<br>
+      <strong>Enabled:</strong> {{ remote_platform.enabled }}
+    </p>
+  </div>
+
+  <div class="module">
+    <h2>Create or update sync rules</h2>
+
+    <form method="post">
+      {% csrf_token %}
+
+      {% if form.non_field_errors %}
+        <div class="errornote">
+          {{ form.non_field_errors }}
+        </div>
+      {% endif %}
+
+      <fieldset class="module aligned">
+        <div class="form-row">
+          {{ form.models.errors }}
+          <label>{{ form.models.label }}</label>
+          {{ form.models }}
+          {% if form.models.help_text %}
+            <div class="help">{{ form.models.help_text }}</div>
+          {% endif %}
+        </div>
+
+        <div class="form-row">
+          {{ form.direction.errors }}
+          <label>{{ form.direction.label }}</label>
+          {{ form.direction }}
+        </div>
+      </fieldset>
+
+      <fieldset class="module aligned">
+        <h2>Behavior</h2>
+
+        <div class="form-row">
+          <label>{{ form.sync_creates }} {{ form.sync_creates.label }}</label>
+        </div>
+
+        <div class="form-row">
+          <label>{{ form.sync_updates }} {{ form.sync_updates.label }}</label>
+        </div>
+
+        <div class="form-row">
+          <label>{{ form.sync_deletes }} {{ form.sync_deletes.label }}</label>
+        </div>
+
+        <div class="form-row">
+          <label>{{ form.changed_since_last_sync }} {{ form.changed_since_last_sync.label }}</label>
+        </div>
+
+        <div class="form-row">
+          <label>{{ form.only_active }} {{ form.only_active.label }}</label>
+        </div>
+
+        <div class="form-row">
+          <label>{{ form.include_dependencies }} {{ form.include_dependencies.label }}</label>
+        </div>
+
+        <div class="form-row">
+          <label>{{ form.run_after_create }} {{ form.run_after_create.label }}</label>
+        </div>
+      </fieldset>
+
+      <div class="submit-row">
+        <input type="submit" value="Create/update sync rules" class="default">
+        <a href="../" class="button cancel-link">Back</a>
+      </div>
+    </form>
+  </div>
+
+  <div class="module">
+    <h2>Existing rules for this remote platform</h2>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Model</th>
+          <th>Direction</th>
+          <th>Enabled</th>
+          <th>Fields</th>
+          <th>Filters</th>
+          <th>Last pushed</th>
+          <th>Last pulled</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for rule in existing_rules %}
+          <tr>
+            <td>{{ rule.name }}</td>
+            <td><code>{{ rule.model_label }}</code></td>
+            <td>{{ rule.get_direction_display }}</td>
+            <td>{{ rule.enabled }}</td>
+            <td>
+              {% if rule.fields %}
+                <code>{{ rule.fields }}</code>
+              {% else %}
+                All adapter fields
+              {% endif %}
+            </td>
+            <td>
+              {% if rule.filters %}
+                <code>{{ rule.filters }}</code>
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td>{{ rule.last_pushed_at|default:"Never" }}</td>
+            <td>{{ rule.last_pulled_at|default:"Never" }}</td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="8">No sync rules configured for this remote platform.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

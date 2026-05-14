@@ -2,11 +2,82 @@ from django.db import models
 from django.utils import timezone
 
 
+class RemotePlatform(models.Model):
+    """
+    A remote Django project / platform that this instance can communicate with.
+
+    Example:
+      - Portal knows about Studio
+      - Studio knows about Portal
+
+    The URL/secrets live here instead of on Platform.
+    """
+
+    name = models.CharField(max_length=150)
+
+    local_platform = models.ForeignKey(
+        "core.Platform",
+        on_delete=models.CASCADE,
+        related_name="remote_platforms",
+        help_text="The local platform configuration this remote belongs to.",
+    )
+
+    base_url = models.URLField(
+        help_text="Base URL of the remote project. Example: https://studio.example.com",
+    )
+
+    enabled = models.BooleanField(default=True)
+
+    outgoing_secret_key = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Secret used when this instance calls the remote API.",
+    )
+
+    incoming_secret_key = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Optional secret expected from this remote when it calls us.",
+    )
+
+    verify_ssl = models.BooleanField(default=True)
+    timeout_seconds = models.PositiveIntegerField(default=60)
+
+    notes = models.TextField(blank=True)
+
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "remote platform"
+        verbose_name_plural = "remote platforms"
+        ordering = ["local_platform", "name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["local_platform", "name"],
+                name="unique_remote_platform_name_per_local_platform",
+            ),
+            models.UniqueConstraint(
+                fields=["local_platform", "base_url"],
+                name="unique_remote_platform_url_per_local_platform",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.name} — {self.base_url}"
+
+    @property
+    def normalized_base_url(self):
+        return self.base_url.rstrip("/")
+
+
 class SyncRule(models.Model):
     """
     Per-model sync policy.
 
-    One rule = one model + one direction.
+    One rule = one model + one direction + one remote platform.
 
     If you need bidirectional sync for the same model, create two rules:
       - one with direction="up"
@@ -33,8 +104,14 @@ class SyncRule(models.Model):
         (CONFLICT_SKIP, "Skip conflicts"),
     ]
 
-    platform = models.ForeignKey(
+    local_platform = models.ForeignKey(
         "core.Platform",
+        on_delete=models.CASCADE,
+        related_name="noosphere_sync_rules",
+    )
+
+    remote_platform = models.ForeignKey(
+        RemotePlatform,
         on_delete=models.CASCADE,
         related_name="sync_rules",
     )
@@ -89,16 +166,52 @@ class SyncRule(models.Model):
     class Meta:
         verbose_name = "sync rule"
         verbose_name_plural = "sync rules"
-        ordering = ["platform", "model_label", "direction", "name"]
+        ordering = [
+            "local_platform",
+            "remote_platform",
+            "model_label",
+            "direction",
+            "name",
+        ]
         constraints = [
             models.UniqueConstraint(
-                fields=["platform", "model_label", "direction"],
-                name="unique_sync_rule_per_platform_model_direction",
+                fields=[
+                    "local_platform",
+                    "remote_platform",
+                    "model_label",
+                    "direction",
+                ],
+                name="unique_noosphere_rule_per_local_remote_model_direction",
             )
         ]
 
     def __str__(self):
-        return f"{self.name} — {self.model_label} — {self.direction}"
+        return (
+            f"{self.name} — "
+            f"{self.model_label} — "
+            f"{self.direction} — "
+            f"{self.remote_platform}"
+        )
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        if self.remote_platform_id and self.local_platform_id:
+            if self.remote_platform.local_platform_id != self.local_platform_id:
+                raise ValidationError(
+                    {
+                        "remote_platform": (
+                            "Remote platform must belong to the selected local platform."
+                        )
+                    }
+                )
+
+    @property
+    def platform(self):
+        """
+        Backwards-compatible alias.
+        """
+        return self.local_platform
 
     @property
     def app_label(self):
@@ -106,7 +219,11 @@ class SyncRule(models.Model):
 
     @property
     def model_name(self):
-        return self.model_label.split(".", 1)[1] if "." in self.model_label else self.model_label
+        return (
+            self.model_label.split(".", 1)[1]
+            if "." in self.model_label
+            else self.model_label
+        )
 
     def mark_synced(self, when=None):
         when = when or timezone.now()
@@ -148,9 +265,17 @@ class SyncRun(models.Model):
     DIRECTION_DOWN = SyncRule.DIRECTION_DOWN
     DIRECTION_CHOICES = SyncRule.DIRECTION_CHOICES
 
-    platform = models.ForeignKey(
+    local_platform = models.ForeignKey(
         "core.Platform",
         on_delete=models.CASCADE,
+        related_name="noosphere_sync_runs",
+    )
+
+    remote_platform = models.ForeignKey(
+        RemotePlatform,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name="sync_runs",
     )
 
@@ -203,6 +328,13 @@ class SyncRun(models.Model):
     def __str__(self):
         rule_name = self.rule.name if self.rule else "unknown rule"
         return f"{rule_name} — {self.direction} — {self.status}"
+
+    @property
+    def platform(self):
+        """
+        Backwards-compatible alias.
+        """
+        return self.local_platform
 
     def finish(self, status, message="", remote_response=None):
         self.status = status
@@ -275,7 +407,7 @@ class SyncObjectRun(models.Model):
     run = models.ForeignKey(
         SyncRun,
         on_delete=models.CASCADE,
-        related_name="object_runs",
+        related_name="objects",
     )
 
     model_label = models.CharField(max_length=150)
