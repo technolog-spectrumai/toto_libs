@@ -22,7 +22,7 @@ def _get_template(name):
     return os.path.join(template_dir, name)
 
 
-def home_view(request):
+def welcome_view(request):
     processor = PageProcessor()
 
     platform = Platform.objects.filter(active=True).first()

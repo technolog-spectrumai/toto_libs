@@ -45,7 +45,7 @@ class ViewSmokeTests(TestCase):
         self.user = User.objects.create_user(username="testuser", password="testpass")
 
     def test_home_view_loads(self):
-        response = self.client.get(reverse('core:home'))
+        response = self.client.get(reverse('core:welcome'))
         self.assertEqual(response.status_code, 200)
 
     def test_dashboard_view_loads_for_authenticated_user(self):
@@ -57,32 +57,32 @@ class ViewSmokeTests(TestCase):
         """Inactive platform should redirect all requests to maintenance page."""
         self.config.active = False
         self.config.save()
-        response = self.client.get(reverse('core:home'))
+        response = self.client.get(reverse('core:welcome'))
         self.assertEqual(response.status_code, 302)
         #self.assertRedirects(response, reverse('core:maintenance'))
     #
     def test_rate_limit_blocks_after_max_requests(self):
         """Exceeding max requests within window should return 429."""
         for i in range(self.config.rate_limit_max_requests):
-            response = self.client.get(reverse('core:home'))
+            response = self.client.get(reverse('core:welcome'))
             self.assertEqual(response.status_code, 200)
 
         # Next request should be blocked
-        response = self.client.get(reverse('core:home'))
+        response = self.client.get(reverse('core:welcome'))
         self.assertEqual(response.status_code, 429)
 
     def test_rate_limit_resets_after_window(self):
         """Requests should be allowed again after window expires."""
         for i in range(self.config.rate_limit_max_requests):
-            self.client.get(reverse('core:home'))
+            self.client.get(reverse('core:welcome'))
 
         # Blocked
-        response = self.client.get(reverse('core:home'))
+        response = self.client.get(reverse('core:welcome'))
         self.assertEqual(response.status_code, 429)
 
         # Wait for window to expire
         time.sleep(self.config.rate_limit_window)
 
         # Should be allowed again
-        response = self.client.get(reverse('core:home'))
+        response = self.client.get(reverse('core:welcome'))
         self.assertEqual(response.status_code, 200)
