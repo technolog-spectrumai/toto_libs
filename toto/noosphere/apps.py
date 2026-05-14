@@ -5,3 +5,7 @@ class NoosphereConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
     name = "toto.noosphere"
     verbose_name = "Noosphere"
+
+    def ready(self):
+        from .autodiscover import autodiscover_sync_adapters
+        autodiscover_sync_adapters()

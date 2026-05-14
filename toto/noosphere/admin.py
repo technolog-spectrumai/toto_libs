@@ -96,6 +96,7 @@ class RemotePlatformAdmin(TotoModelAdmin):
 
     actions = (
         "sync_console_action",
+        "auto_populate_rules",
     )
 
     def get_urls(self):
@@ -135,6 +136,54 @@ class RemotePlatformAdmin(TotoModelAdmin):
         return redirect(f"sync-console/{queryset.first().id}/")
 
     sync_console_action.short_description = "Sync console"
+
+    def auto_populate_rules(self, request, queryset):
+        from django.conf import settings
+
+        model_labels = list(getattr(settings, "NOOSPHERE_SYNCABLE_MODELS", []))
+        if not model_labels:
+            self.message_user(request, "NOOSPHERE_SYNCABLE_MODELS is empty.", level=messages.WARNING)
+            return
+
+        created_total = 0
+        updated_total = 0
+
+        for remote_platform in queryset.select_related("local_platform"):
+            for model_label in model_labels:
+                try:
+                    adapter = get_sync_adapter(model_label)
+                    fields = adapter.allowed_fields or []
+                except LookupError:
+                    fields = []
+
+                rule_name = f"{remote_platform.name}: {model_label} down"
+                _, was_created = SyncRule.objects.update_or_create(
+                    local_platform=remote_platform.local_platform,
+                    remote_platform=remote_platform,
+                    model_label=model_label,
+                    direction=SyncRule.DIRECTION_DOWN,
+                    defaults={
+                        "name": rule_name,
+                        "enabled": True,
+                        "fields": fields,
+                        "conflict_policy": SyncRule.CONFLICT_SOURCE_WINS,
+                        "sync_creates": True,
+                        "sync_updates": True,
+                        "sync_deletes": False,
+                    },
+                )
+                if was_created:
+                    created_total += 1
+                else:
+                    updated_total += 1
+
+        self.message_user(
+            request,
+            f"Sync rules auto-populated. Created: {created_total}, updated: {updated_total}.",
+            level=messages.SUCCESS,
+        )
+
+    auto_populate_rules.short_description = "Auto-populate sync rules from settings"
 
     def sync_console_view(self, request, remote_platform_id):
         remote_platform = (
@@ -187,6 +236,7 @@ class RemotePlatformAdmin(TotoModelAdmin):
                                 "enabled": True,
                                 "fields": fields,
                                 "filters": filters,
+                                "conflict_policy": SyncRule.CONFLICT_SOURCE_WINS,
                                 "sync_creates": form.cleaned_data["sync_creates"],
                                 "sync_updates": form.cleaned_data["sync_updates"],
                                 "sync_deletes": form.cleaned_data["sync_deletes"],
