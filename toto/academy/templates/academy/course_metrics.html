@@ -1,0 +1,203 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}Metrics – {{ course.title }}{% endblock %}
+
+{% block start_script %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% include "oya/partials/dim.html" %}
+<style>[x-cloak] { display: none !important; }</style>
+{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-5xl space-y-6">
+
+    <!-- Header -->
+    <header class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div class="space-y-2">
+        <a href="{% url 'academy:course-detail' slug=course.slug %}"
+           class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+          <i class="fa-solid fa-arrow-left"></i>
+          {{ course.title }}
+        </a>
+
+        <div>
+          <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+             class="text-xs font-semibold uppercase tracking-wide">Course Metrics</p>
+          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+            <i class="fa-solid fa-chart-line"></i>
+            {{ course.title }}
+          </h1>
+        </div>
+      </div>
+    </header>
+
+    <!-- Summary cards -->
+    <section class="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+               class="rounded-2xl border p-5 shadow-sm">
+        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Enrolled</p>
+        <p class="mt-2 text-3xl font-bold">{{ total_enrolled }}</p>
+      </article>
+
+      <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+               class="rounded-2xl border p-5 shadow-sm">
+        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Completed</p>
+        <p class="mt-2 text-3xl font-bold">{{ total_completed }}</p>
+      </article>
+
+      <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+               class="rounded-2xl border p-5 shadow-sm">
+        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Modules</p>
+        <p class="mt-2 text-3xl font-bold">{{ module_stats|length }}</p>
+      </article>
+
+      <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+               class="rounded-2xl border p-5 shadow-sm">
+        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Cohorts</p>
+        <p class="mt-2 text-3xl font-bold">{{ cohort_stats|length }}</p>
+      </article>
+    </section>
+
+    <!-- Enrollment chart -->
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-2xl border p-5 shadow-sm">
+      <h2 class="flex items-center gap-2 text-lg font-bold mb-4">
+        <i class="fa-solid fa-chart-pie"></i>
+        Enrollment overview
+      </h2>
+      <div class="mx-auto max-w-xs">
+        <div :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+             class="rounded-xl border p-4">
+          {% include "oya/partials/chart.html" with chart_id="enrollmentChart" data=enrollment_chart_json %}
+        </div>
+      </div>
+    </section>
+
+    <!-- Cohorts -->
+    {% if cohort_stats %}
+      <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+               class="rounded-2xl border p-5 shadow-sm">
+        <h2 class="flex items-center gap-2 text-lg font-bold mb-4">
+          <i class="fa-solid fa-users"></i>
+          Cohorts
+        </h2>
+
+        <div class="space-y-3">
+          {% for cs in cohort_stats %}
+            <div :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                 class="rounded-xl border p-4">
+              <div class="flex flex-wrap items-start justify-between gap-3 mb-3">
+                <div>
+                  <p class="font-semibold">{{ cs.cohort.title }}</p>
+                  {% if cs.cohort.teacher %}
+                    <p class="text-xs opacity-60 mt-0.5">
+                      <i class="fa-solid fa-chalkboard-user"></i>
+                      {{ cs.cohort.teacher.display_name }}
+                    </p>
+                  {% endif %}
+                </div>
+                <div class="flex flex-wrap gap-2 text-xs">
+                  {% if cs.cohort.is_active %}
+                    <span :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                          class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-semibold">
+                      <i class="fa-solid fa-circle text-green-500 text-[8px]"></i> Active
+                    </span>
+                  {% endif %}
+                  {% if cs.cohort.capacity %}
+                    <span :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                          class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-semibold">
+                      <i class="fa-solid fa-user-group"></i> {{ cs.member_count }}/{{ cs.cohort.capacity }}
+                    </span>
+                  {% else %}
+                    <span :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                          class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-semibold">
+                      <i class="fa-solid fa-user-group"></i> {{ cs.member_count }} members
+                    </span>
+                  {% endif %}
+                </div>
+              </div>
+
+              <div class="flex items-center justify-between gap-4 text-sm mb-1">
+                <span class="opacity-70">Course completion</span>
+                <span class="font-bold">
+                  {{ cs.completed }}/{{ cs.member_count }}
+                  <span class="font-normal opacity-60">({{ cs.pct }}%)</span>
+                </span>
+              </div>
+              <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+                   class="h-2 w-full overflow-hidden rounded-full">
+                <div :class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'"
+                     class="h-full rounded-full transition-all"
+                     style="width: {{ cs.pct }}%"></div>
+              </div>
+
+              {% if cs.cohort.starts_at or cs.cohort.ends_at %}
+                <div class="mt-3 flex flex-wrap gap-4 text-xs opacity-60">
+                  {% if cs.cohort.starts_at %}
+                    <span><i class="fa-solid fa-calendar-day mr-1"></i>Starts {{ cs.cohort.starts_at|date:"M j, Y" }}</span>
+                  {% endif %}
+                  {% if cs.cohort.ends_at %}
+                    <span><i class="fa-solid fa-calendar-check mr-1"></i>Ends {{ cs.cohort.ends_at|date:"M j, Y" }}</span>
+                  {% endif %}
+                </div>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+
+    <!-- Per-module quiz stats -->
+    {% for ms in module_stats %}
+      {% if ms.quiz_rows %}
+        <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                 class="rounded-2xl border shadow-sm overflow-hidden">
+
+          <div :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+               class="border-b p-5">
+            <h2 class="font-bold text-lg">{{ ms.module.order }}. {{ ms.module.title }}</h2>
+            {% if ms.module.description %}
+              <p class="text-sm opacity-70 mt-1">{{ ms.module.description }}</p>
+            {% endif %}
+          </div>
+
+          <div class="divide-y" :class="darkMode ? 'divide-accent-1/30' : 'divide-accent-2/30'">
+            {% for row in ms.quiz_rows %}
+              <div class="flex items-center justify-between gap-4 p-5">
+                <div>
+                  <p class="font-semibold text-sm">{{ row.quiz.title }}</p>
+                  <p class="text-xs opacity-60 mt-0.5">{{ row.quiz.questions.count }} question{{ row.quiz.questions.count|pluralize }}</p>
+                </div>
+                <div class="flex items-center gap-3">
+                  <span :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                        class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold">
+                    <i class="fa-solid fa-check-to-slot opacity-60"></i>
+                    {{ row.completed_attempts }} completed
+                  </span>
+                  <a href="{% url 'quizzes:quiz-metrics' pk=row.quiz.pk %}"
+                     :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                     class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition hover:opacity-90">
+                    <i class="fa-solid fa-chart-bar"></i>
+                    Details
+                  </a>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        </section>
+      {% endif %}
+    {% empty %}
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-2xl border border-dashed p-8 text-center text-sm italic opacity-70">
+        No published quizzes in this course yet.
+      </div>
+    {% endfor %}
+
+  </div>
+</section>
+{% endblock %}

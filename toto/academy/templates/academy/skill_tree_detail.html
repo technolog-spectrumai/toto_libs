@@ -1,0 +1,270 @@
+{% extends "oya/base.html" %}
+
+{% block title %}{{ tree.title }} | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-6 py-16 transition-colors duration-300">
+
+  <div class="max-w-7xl mx-auto space-y-8">
+
+    <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div class="space-y-2">
+        <a href="{% url 'academy:skill-forest' %}" class="text-sm underline hover:opacity-80">
+          Skill forest
+        </a>
+
+        <h1 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-3xl font-bold">
+          {{ tree.title }}
+        </h1>
+
+        <p class="opacity-75">{{ tree.description|default:"No description yet." }}</p>
+      </div>
+
+      <a href="{% url 'academy:course-list' %}" class="text-sm underline hover:opacity-80">
+        Courses
+      </a>
+    </div>
+
+    <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
+      <section
+        :class="darkMode
+          ? 'bg-bubble-bg-dark border-accent-1'
+          : 'bg-bubble-bg-light border-accent-2'"
+        class="border rounded-lg shadow-md overflow-hidden transition-colors duration-300">
+        <div id="skill-tree-chart" class="h-[36rem] w-full"></div>
+      </section>
+
+      <aside class="space-y-4">
+        <section
+          id="skill-inspector"
+          :class="darkMode
+            ? 'bg-bubble-bg-dark border-accent-1'
+            : 'bg-bubble-bg-light border-accent-2'"
+          class="border rounded-lg p-5 shadow-md space-y-3 transition-colors duration-300">
+          <div class="text-xs uppercase tracking-wide opacity-60">
+            Selected Skill
+          </div>
+
+          <h2 id="skill-inspector-title" class="text-xl font-bold">
+            {{ tree.title }}
+          </h2>
+
+          <p id="skill-inspector-description" class="text-sm opacity-75">
+            Select a skill to see connected courses.
+          </p>
+
+          <div id="skill-inspector-courses" class="space-y-2"></div>
+        </section>
+
+        <section
+          :class="darkMode
+            ? 'bg-bubble-bg-dark border-accent-1'
+            : 'bg-bubble-bg-light border-accent-2'"
+          class="border rounded-lg p-5 shadow-md space-y-4 transition-colors duration-300">
+          <div class="flex items-center justify-between gap-3">
+            <h2 class="text-xl font-bold">Skills</h2>
+            <span class="text-xs opacity-60">{{ badges|length }} total</span>
+          </div>
+
+          <div class="space-y-3 max-h-[34rem] overflow-y-auto pr-1">
+            {% for badge in badges %}
+              <article
+                :class="darkMode
+                  ? 'bg-primary-bg-dark border-accent-1'
+                  : 'bg-primary-bg-light border-accent-2'"
+                class="border rounded p-4 space-y-2">
+                <div class="font-bold">
+                  <i class="{{ badge.icon }}"></i>
+                  {{ badge.title }}
+                </div>
+
+                <p class="text-sm opacity-70">{{ badge.description }}</p>
+
+                {% if badge.prerequisites.all %}
+                  <div class="text-xs opacity-70">
+                    Requires:
+                    {% for prerequisite in badge.prerequisites.all %}
+                      {{ prerequisite.title }}{% if not forloop.last %}, {% endif %}
+                    {% endfor %}
+                  </div>
+                {% endif %}
+
+                {% if badge.unlocking_modules.all %}
+                  <div class="flex flex-wrap gap-2 pt-1">
+                    {% for module in badge.unlocking_modules.all %}
+                      <a
+                        href="{{ module.course.get_absolute_url }}"
+                        :class="darkMode
+                          ? 'bg-accent-dark text-primary-bg-dark'
+                          : 'bg-accent-light text-primary-bg-light'"
+                        class="rounded px-2 py-1 text-xs font-semibold hover:opacity-90 transition">
+                        {{ module.course.title }}
+                      </a>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+              </article>
+            {% empty %}
+              <p class="text-sm opacity-60">No skills in this tree yet.</p>
+            {% endfor %}
+          </div>
+        </section>
+      </aside>
+    </div>
+  </div>
+</section>
+
+{{ tree_graph|json_script:"skill-tree-data" }}
+{% endblock %}
+
+{% block end_script %}
+<script>
+function skillTreeTheme(colors, darkMode) {
+  const theme = darkMode ? "dark" : "light";
+
+  return {
+    page: colors[`primary-bg-${theme}`],
+    bubble: colors[`bubble-bg-${theme}`],
+    text: colors[`text-main-${theme}`],
+    accent: colors[`accent-${theme}`],
+  };
+}
+
+function renderCourseLinks(container, courses, colors, darkMode) {
+  container.replaceChildren();
+
+  if (!courses || courses.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "text-sm opacity-60";
+    empty.textContent = "No course unlocks this skill yet.";
+    container.appendChild(empty);
+    return;
+  }
+
+  courses.forEach(course => {
+    const link = document.createElement("a");
+    link.href = course.url;
+    link.textContent = course.title;
+    link.className = "block rounded px-3 py-2 text-sm font-semibold hover:opacity-90 transition";
+
+    if (darkMode) {
+      link.style.backgroundColor = colors["accent-dark"];
+      link.style.color = colors["primary-bg-dark"];
+    } else {
+      link.style.backgroundColor = colors["accent-light"];
+      link.style.color = colors["primary-bg-light"];
+    }
+
+    container.appendChild(link);
+  });
+}
+
+function createSkillTree(container, graph, colors, darkMode) {
+  const palette = skillTreeTheme(colors, darkMode);
+
+  return cytoscape({
+    container,
+    elements: graph.elements,
+    style: [
+      {
+        selector: "node",
+        style: {
+          "background-color": palette.bubble,
+          "border-color": palette.accent,
+          "border-width": 2,
+          "color": palette.text,
+          "font-size": 12,
+          "font-weight": 600,
+          "height": 78,
+          "label": "data(label)",
+          "shape": "round-rectangle",
+          "text-halign": "center",
+          "text-max-width": 150,
+          "text-valign": "center",
+          "text-wrap": "wrap",
+          "width": 174,
+        }
+      },
+      {
+        selector: "node[kind = 'group']",
+        style: {
+          "background-color": palette.accent,
+          "color": palette.page,
+          "height": 64,
+          "width": 188,
+        }
+      },
+      {
+        selector: "edge",
+        style: {
+          "curve-style": "bezier",
+          "line-color": palette.accent,
+          "target-arrow-color": palette.accent,
+          "target-arrow-shape": "triangle",
+          "width": 2,
+        }
+      }
+    ],
+    layout: {
+      name: "breadthfirst",
+      directed: true,
+      roots: [`group-${graph.tree.id}`],
+      spacingFactor: 1.25,
+      padding: 36,
+      fit: true,
+    },
+    maxZoom: 2.25,
+    minZoom: 0.2,
+    wheelSensitivity: 0.2,
+  });
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  const colors = {{ theme.theme.colors|safe }};
+  const graph = JSON.parse(document.getElementById("skill-tree-data").textContent);
+  const container = document.getElementById("skill-tree-chart");
+  const inspectorTitle = document.getElementById("skill-inspector-title");
+  const inspectorDescription = document.getElementById("skill-inspector-description");
+  const inspectorCourses = document.getElementById("skill-inspector-courses");
+  let chart;
+
+  const render = () => {
+    if (chart) chart.destroy();
+
+    const darkMode = Alpine.evaluate(document.documentElement, "darkMode");
+    chart = createSkillTree(container, graph, colors, darkMode);
+    container.style.backgroundColor = skillTreeTheme(colors, darkMode).page;
+
+    chart.on("tap", "node", event => {
+      const data = event.target.data();
+      inspectorTitle.textContent = data.label;
+      inspectorDescription.textContent = data.description || "No description yet.";
+      renderCourseLinks(inspectorCourses, data.courses, colors, darkMode);
+    });
+  };
+
+  render();
+
+  const toggleButton = document.querySelector(".site-theme-toggle-button");
+  if (toggleButton) {
+    toggleButton.addEventListener("click", () => window.setTimeout(render, 0));
+  }
+
+  const resizeObserver = new ResizeObserver(() => {
+    if (chart) {
+      chart.resize();
+      chart.fit();
+    }
+  });
+  resizeObserver.observe(container);
+});
+</script>
+{% endblock %}

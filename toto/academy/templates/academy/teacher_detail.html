@@ -1,0 +1,208 @@
+{% extends "oya/base.html" %}
+
+{% block title %}{{ teacher.display_name }} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-6 py-16 transition-colors duration-300">
+
+  <div class="max-w-6xl mx-auto space-y-8">
+
+    <div
+      :class="darkMode
+        ? 'bg-bubble-bg-dark border-accent-1'
+        : 'bg-bubble-bg-light border-accent-2'"
+      class="border rounded-lg p-6 shadow-md space-y-4">
+
+      <a href="{% url 'academy:course-list' %}" class="text-sm underline hover:opacity-80">
+        Courses
+      </a>
+
+      <div class="flex flex-col gap-5 md:flex-row md:items-center">
+        {% if teacher.person.avatar %}
+          <img
+            src="{{ teacher.person.avatar.url }}"
+            alt="{{ teacher.display_name }}"
+            class="h-28 w-28 rounded-full object-cover border border-current/20">
+        {% endif %}
+
+        <div class="space-y-2">
+          <h1 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-3xl font-bold">
+            {{ teacher.display_name }}
+          </h1>
+
+          {% if teacher.title %}
+            <p class="font-semibold opacity-80">{{ teacher.title }}</p>
+          {% endif %}
+
+          {% if teacher.bio %}
+            <p class="opacity-75">{{ teacher.bio }}</p>
+          {% elif teacher.person.bio %}
+            <p class="opacity-75">{{ teacher.person.bio }}</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    {% if experiences %}
+      <section class="space-y-4">
+        <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-2xl font-bold">
+          Experience
+        </h2>
+
+        <div class="grid gap-4 md:grid-cols-2">
+          {% for item in experiences %}
+            <article
+              :class="darkMode
+                ? 'bg-bubble-bg-dark border-accent-1'
+                : 'bg-bubble-bg-light border-accent-2'"
+              class="border rounded-lg p-4 shadow-md space-y-2">
+              <div class="font-bold">{{ item.title }}</div>
+
+              {% if item.institution or item.place %}
+                <div class="text-sm opacity-75">
+                  {% if item.institution %}{{ item.institution }}{% endif %}
+                  {% if item.institution and item.place %} / {% endif %}
+                  {% if item.place %}{{ item.place }}{% endif %}
+                </div>
+              {% endif %}
+
+              <div class="text-xs opacity-60">
+                {% if item.started_at %}{{ item.started_at|date:"M Y" }}{% else %}Earlier{% endif %}
+                -
+                {% if item.is_current %}Present{% elif item.ended_at %}{{ item.ended_at|date:"M Y" }}{% else %}Open{% endif %}
+              </div>
+
+              {% if item.description %}
+                <p class="text-sm opacity-75">{{ item.description }}</p>
+              {% endif %}
+            </article>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+
+    <section class="space-y-4">
+      <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-2xl font-bold">
+        Courses
+      </h2>
+
+      {% if courses %}
+        <div class="grid gap-5 md:grid-cols-2">
+          {% for course in courses %}
+            <article
+              :class="darkMode
+                ? 'bg-bubble-bg-dark border-accent-1'
+                : 'bg-bubble-bg-light border-accent-2'"
+              class="border rounded-lg p-5 shadow-md space-y-3">
+              {% if course.is_virtual %}
+                <div class="text-xl font-bold">{{ course.title }}</div>
+              {% else %}
+                <a href="{{ course.get_absolute_url }}" class="block text-xl font-bold underline hover:opacity-80">
+                  {{ course.title }}
+                </a>
+              {% endif %}
+
+              <p class="text-sm opacity-75">{{ course.description|truncatewords:28 }}</p>
+
+              <div class="flex flex-wrap gap-4 text-xs opacity-60">
+                <span>{{ course.module_count }} modules</span>
+                <span>{{ course.lesson_count }} lessons</span>
+                {% if course.is_virtual %}
+                  <span>External course</span>
+                {% endif %}
+              </div>
+            </article>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-sm opacity-60">No courses assigned yet.</p>
+      {% endif %}
+    </section>
+
+    {% if modules or lessons %}
+      <section class="grid gap-6 lg:grid-cols-2">
+        <div class="space-y-4">
+          <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-2xl font-bold">
+            Modules
+          </h2>
+
+          {% for module in modules %}
+            <article
+              :class="darkMode
+                ? 'bg-bubble-bg-dark border-accent-1'
+                : 'bg-bubble-bg-light border-accent-2'"
+              class="border rounded-lg p-4 shadow-md space-y-2">
+              <div class="font-bold">{{ module.title }}</div>
+              <a href="{{ module.course.get_absolute_url }}" class="text-sm underline hover:opacity-80">
+                {{ module.course.title }}
+              </a>
+            </article>
+          {% empty %}
+            <p class="text-sm opacity-60">No modules assigned directly.</p>
+          {% endfor %}
+        </div>
+
+        <div class="space-y-4">
+          <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-2xl font-bold">
+            Lessons
+          </h2>
+
+          {% for lesson in lessons %}
+            <article
+              :class="darkMode
+                ? 'bg-bubble-bg-dark border-accent-1'
+                : 'bg-bubble-bg-light border-accent-2'"
+              class="border rounded-lg p-4 shadow-md space-y-2">
+              <div class="font-bold">{{ lesson.title }}</div>
+              <div class="text-sm opacity-70">{{ lesson.module.course.title }} / {{ lesson.module.title }}</div>
+              <a href="{% url 'memo:card-list' slug=lesson.lecture.slug %}" class="text-sm underline hover:opacity-80">
+                Lecture deck
+              </a>
+            </article>
+          {% empty %}
+            <p class="text-sm opacity-60">No lessons assigned directly.</p>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+
+    <section class="space-y-4">
+      <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-2xl font-bold">
+        Certificates
+      </h2>
+
+      {% if certificates %}
+        <div class="grid gap-4 md:grid-cols-2">
+          {% for certificate in certificates %}
+            <article
+              :class="darkMode
+                ? 'bg-bubble-bg-dark border-accent-1'
+                : 'bg-bubble-bg-light border-accent-2'"
+              class="border rounded-lg p-4 shadow-md space-y-2">
+              <div class="font-bold">{{ certificate.display_title }}</div>
+              {% if certificate.description %}
+                <p class="text-sm opacity-75">{{ certificate.description }}</p>
+              {% endif %}
+              <div class="text-xs opacity-60">
+                {{ certificate.uuid }} / {{ certificate.granted_at|date:"M d, Y" }}
+              </div>
+              {% if certificate.course %}
+                <a href="{{ certificate.course.get_absolute_url }}" class="text-sm underline hover:opacity-80">
+                  {{ certificate.course.title }}
+                </a>
+              {% endif %}
+            </article>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-sm opacity-60">No certificates listed yet.</p>
+      {% endif %}
+    </section>
+
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,202 @@
+{% extends "oya/base.html" %}
+
+{% block title %}Skill Forest | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-6 py-16 transition-colors duration-300">
+
+  <div class="max-w-6xl mx-auto space-y-8">
+
+    <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div class="space-y-2">
+        <h1 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-3xl font-bold">
+          Skill Forest
+        </h1>
+        <p class="opacity-75">
+          Separate skill trees grouped by domain.
+        </p>
+      </div>
+
+      <a href="{% url 'academy:course-list' %}" class="text-sm underline hover:opacity-80">
+        Courses
+      </a>
+    </div>
+
+    {% if trees %}
+      <div class="grid gap-6 lg:grid-cols-2">
+        {% for tree in trees %}
+          <article
+            :class="darkMode
+              ? 'bg-bubble-bg-dark border-accent-1'
+              : 'bg-bubble-bg-light border-accent-2'"
+            class="border rounded-lg shadow-md overflow-hidden transition-colors duration-300">
+
+            <div class="p-5 flex items-start justify-between gap-4">
+              <div class="space-y-2">
+                <h2 class="text-xl font-bold">{{ tree.title }}</h2>
+                <p class="text-sm opacity-75">{{ tree.description|default:"No description yet." }}</p>
+                <div class="text-xs opacity-60">{{ tree.badges.count }} skills</div>
+              </div>
+
+              <a
+                href="{% url 'academy:skill-tree-detail' slug=tree.slug %}"
+                :class="darkMode
+                  ? 'bg-accent-dark text-primary-bg-dark'
+                  : 'bg-accent-light text-primary-bg-light'"
+                class="shrink-0 rounded px-3 py-2 text-xs font-semibold hover:opacity-90 transition">
+                Open Tree
+              </a>
+            </div>
+
+            <div
+              id="skill-tree-preview-{{ forloop.counter0 }}"
+              class="skill-tree-preview h-72 border-t border-current/20"
+              data-tree-index="{{ forloop.counter0 }}">
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="opacity-60">No skill trees available yet.</p>
+    {% endif %}
+  </div>
+</section>
+
+{{ tree_graphs|json_script:"skill-forest-data" }}
+{% endblock %}
+
+{% block end_script %}
+<script>
+function skillTreeTheme(colors, darkMode) {
+  const theme = darkMode ? "dark" : "light";
+
+  return {
+    page: colors[`primary-bg-${theme}`],
+    bubble: colors[`bubble-bg-${theme}`],
+    text: colors[`text-main-${theme}`],
+    accent: colors[`accent-${theme}`],
+    border: colors[`accent-${darkMode ? "1" : "2"}`] || colors[`accent-${theme}`],
+  };
+}
+
+function createSkillTree(container, graph, colors, darkMode, compact) {
+  const palette = skillTreeTheme(colors, darkMode);
+
+  return cytoscape({
+    container,
+    elements: graph.elements,
+    style: [
+      {
+        selector: "node",
+        style: {
+          "background-color": palette.bubble,
+          "border-color": palette.accent,
+          "border-width": 2,
+          "color": palette.text,
+          "font-size": compact ? 10 : 12,
+          "font-weight": 600,
+          "height": compact ? 54 : 78,
+          "label": "data(label)",
+          "shape": "round-rectangle",
+          "text-halign": "center",
+          "text-max-width": compact ? 110 : 150,
+          "text-valign": "center",
+          "text-wrap": "wrap",
+          "width": compact ? 126 : 174,
+        }
+      },
+      {
+        selector: "node[kind = 'group']",
+        style: {
+          "background-color": palette.accent,
+          "color": palette.page,
+          "height": compact ? 48 : 64,
+          "shape": "round-rectangle",
+          "width": compact ? 140 : 188,
+        }
+      },
+      {
+        selector: "edge",
+        style: {
+          "curve-style": "bezier",
+          "line-color": palette.accent,
+          "target-arrow-color": palette.accent,
+          "target-arrow-shape": "triangle",
+          "width": 2,
+        }
+      }
+    ],
+    layout: {
+      name: "breadthfirst",
+      directed: true,
+      roots: [`group-${graph.tree.id}`],
+      spacingFactor: compact ? 1.1 : 1.25,
+      padding: compact ? 12 : 24,
+      fit: true,
+    },
+    maxZoom: 2,
+    minZoom: 0.25,
+    wheelSensitivity: 0.2,
+  });
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  const colors = {{ theme.theme.colors|safe }};
+  const graphs = JSON.parse(document.getElementById("skill-forest-data").textContent);
+  const charts = [];
+
+  const render = () => {
+    charts.splice(0).forEach(chart => chart.destroy());
+
+    document.querySelectorAll(".skill-tree-preview").forEach(container => {
+      const graph = graphs[Number(container.dataset.treeIndex)];
+      if (!graph) return;
+
+      const chart = createSkillTree(
+        container,
+        graph,
+        colors,
+        Alpine.evaluate(document.documentElement, "darkMode"),
+        true
+      );
+
+      chart.on("tap", "node", () => {
+        window.location.href = graph.tree.url;
+      });
+
+      charts.push(chart);
+      container.style.backgroundColor = skillTreeTheme(
+        colors,
+        Alpine.evaluate(document.documentElement, "darkMode")
+      ).page;
+    });
+  };
+
+  render();
+
+  const toggleButton = document.querySelector(".site-theme-toggle-button");
+  if (toggleButton) {
+    toggleButton.addEventListener("click", () => window.setTimeout(render, 0));
+  }
+
+  const resizeObserver = new ResizeObserver(() => {
+    charts.forEach(chart => {
+      chart.resize();
+      chart.fit();
+    });
+  });
+
+  document.querySelectorAll(".skill-tree-preview").forEach(container => {
+    resizeObserver.observe(container);
+  });
+});
+</script>
+{% endblock %}
