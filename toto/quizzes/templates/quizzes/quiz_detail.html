@@ -1,0 +1,209 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}Quiz – {{ quiz.title }}{% endblock %}
+
+{% block start_script %}
+{% include "oya/partials/dim.html" %}
+<style>[x-cloak] { display: none !important; }</style>
+{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-3xl space-y-6">
+
+    <!-- Header -->
+    <header class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div class="space-y-2">
+        <a href="{{ back_url }}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+          <i class="fa-solid fa-arrow-left"></i>
+          {{ back_label }}
+        </a>
+
+        <div>
+          <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+             class="text-xs font-semibold uppercase tracking-wide">Quiz</p>
+          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+            <i class="fa-solid fa-circle-question"></i>
+            {{ quiz.title }}
+          </h1>
+          {% if quiz.description %}
+            <p class="mt-2 max-w-2xl text-sm opacity-70">{{ quiz.description }}</p>
+          {% endif %}
+        </div>
+      </div>
+
+      {% if can_view_metrics %}
+        <a href="{% url 'quizzes:quiz-metrics' pk=quiz.pk %}"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-accent-dark' : 'border-accent-2 bg-bubble-bg-light text-accent-light'"
+           class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-chart-bar"></i>
+          Metrics
+        </a>
+      {% endif %}
+    </header>
+
+    <!-- Already completed banner -->
+    {% if existing_attempt %}
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-2xl border p-5 shadow-sm">
+        <div class="flex items-start gap-3">
+          <i class="fa-solid fa-circle-check mt-0.5 text-lg" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+          <div>
+            <p class="font-semibold">You completed this quiz on {{ existing_attempt.completed_at|date:"F j, Y" }}.</p>
+            <p class="mt-1 text-sm opacity-70">Your answers are shown below. Each quiz can only be submitted once.</p>
+          </div>
+        </div>
+      </div>
+    {% endif %}
+
+    <!-- Quiz form / results -->
+    {% if existing_attempt %}
+      <!-- Read-only results -->
+      <div class="space-y-5">
+        {% for item in questions_data %}
+          {% with q=item.question answers=item.answers selected_ids=item.selected_ids %}
+            <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                     class="rounded-2xl border shadow-sm overflow-hidden">
+
+              <div :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                   class="border-b p-5">
+                <div class="flex items-start justify-between gap-4">
+                  <p class="font-semibold leading-snug">{{ forloop.counter }}. {{ q.text }}</p>
+                  {% if q.max_time %}
+                    <span :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                          class="shrink-0 inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold">
+                      <i class="fa-solid fa-clock"></i> {{ q.max_time }} min
+                    </span>
+                  {% endif %}
+                </div>
+                {% if q.is_multiple_choice %}
+                  <p class="mt-1 text-xs opacity-60">Multiple choice</p>
+                {% endif %}
+              </div>
+
+              <div class="space-y-2 p-5">
+                {% for answer in answers %}
+                  {% with selected=answer.pk|stringformat:"i" in_selected=selected_ids %}
+                    <div class="flex items-start gap-3 rounded-xl border p-4
+                      {% if answer.pk in selected_ids %}
+                        {% if answer.is_correct %}
+                          border-green-500 bg-green-500/10
+                        {% else %}
+                          border-red-500 bg-red-500/10
+                        {% endif %}
+                      {% elif answer.is_correct %}
+                        border-green-500/40
+                        {% if darkMode %}border-green-500/40{% endif %}
+                      {% else %}
+                        {% if darkMode %}border-accent-1 bg-sunken-dark{% else %}border-accent-2 bg-sunken-light{% endif %}
+                      {% endif %}">
+                      <i class="mt-0.5 fa-solid text-sm
+                        {% if answer.pk in selected_ids %}
+                          {% if answer.is_correct %}fa-circle-check text-green-500{% else %}fa-circle-xmark text-red-500{% endif %}
+                        {% elif answer.is_correct %}fa-circle-check opacity-40 text-green-500
+                        {% else %}fa-circle opacity-30{% endif %}"></i>
+                      <div class="min-w-0">
+                        <p class="text-sm font-semibold">{{ answer.text }}</p>
+                        {% if answer.pk in selected_ids and answer.explanation %}
+                          <p class="mt-1 text-xs opacity-70">{{ answer.explanation }}</p>
+                        {% endif %}
+                        {% if answer.traits.all %}
+                          <div class="mt-2 flex flex-wrap gap-1">
+                            {% for trait in answer.traits.all %}
+                              <span :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                                    class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold opacity-70">
+                                <i class="{{ trait.icon }} text-[10px]"></i> {{ trait.title }}
+                              </span>
+                            {% endfor %}
+                          </div>
+                        {% endif %}
+                      </div>
+                    </div>
+                  {% endwith %}
+                {% endfor %}
+
+                {% if q.explanation %}
+                  <div :class="darkMode ? 'bg-sunken-dark' : 'bg-sunken-light'"
+                       class="mt-3 rounded-xl p-4 text-sm opacity-80">
+                    <i class="fa-solid fa-lightbulb mr-2 opacity-60"></i>{{ q.explanation }}
+                  </div>
+                {% endif %}
+              </div>
+            </article>
+          {% endwith %}
+        {% endfor %}
+      </div>
+
+    {% else %}
+      <!-- Active form -->
+      <form method="post" class="space-y-5">
+        {% csrf_token %}
+
+        {% for item in questions_data %}
+          {% with q=item.question answers=item.answers %}
+            <article x-data="{ answered: false }"
+                     :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                     class="rounded-2xl border shadow-sm overflow-hidden">
+
+              <div :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                   class="border-b p-5">
+                <div class="flex items-start justify-between gap-4">
+                  <p class="font-semibold leading-snug">{{ forloop.counter }}. {{ q.text }}</p>
+                  {% if q.max_time %}
+                    <span :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                          class="shrink-0 inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold">
+                      <i class="fa-solid fa-clock"></i> {{ q.max_time }} min
+                    </span>
+                  {% endif %}
+                </div>
+                {% if q.is_multiple_choice %}
+                  <p class="mt-1 text-xs opacity-60">Select all that apply</p>
+                {% else %}
+                  <p class="mt-1 text-xs opacity-60">Select one answer</p>
+                {% endif %}
+              </div>
+
+              <div class="space-y-2 p-5">
+                {% for answer in answers %}
+                  <label :class="darkMode ? 'border-accent-1 bg-sunken-dark hover:bg-primary-bg-dark' : 'border-accent-2 bg-sunken-light hover:bg-primary-bg-light'"
+                         class="group flex cursor-pointer items-start gap-3 rounded-xl border p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+                    <input
+                      type="{% if q.is_multiple_choice %}checkbox{% else %}radio{% endif %}"
+                      name="question_{{ q.pk }}"
+                      value="{{ answer.pk }}"
+                      @change="answered = true"
+                      class="mt-1 h-4 w-4 accent-current">
+                    <span class="text-sm font-semibold leading-snug">{{ answer.text }}</span>
+                  </label>
+                {% empty %}
+                  <p class="text-sm opacity-60 italic">No answers configured.</p>
+                {% endfor %}
+              </div>
+            </article>
+          {% endwith %}
+        {% endfor %}
+
+        <div class="flex flex-wrap items-center justify-end gap-3 pt-2">
+          <a href="{{ back_url }}"
+             :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+             class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-85">
+            <i class="fa-solid fa-arrow-left"></i>
+            Back
+          </a>
+          <button type="submit"
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                  class="inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+            <i class="fa-solid fa-paper-plane"></i>
+            Submit quiz
+          </button>
+        </div>
+      </form>
+    {% endif %}
+
+  </div>
+</section>
+{% endblock %}
