@@ -169,7 +169,7 @@ def build_settings(base_dir: Path, config_path: str | Path | None = None) -> dic
 
     # ------------------------------------------------------------ database
     db_engine = db_cfg.get("engine", "spatialite")
-    use_postgres = django_env == "PROD" or db_engine == "postgis"
+    use_postgres = db_engine == "postgis"
 
     if use_postgres:
         databases: dict[str, Any] = {

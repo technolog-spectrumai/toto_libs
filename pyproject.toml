@@ -32,9 +32,7 @@ packages = [
     "toto.vault",
     "toto.verbena",
     "toto.verbena.graph",
-    "toto.noosphere",
-    "toto.noosphere.migrations",
-    "toto.noosphere.services",
+
     "toto.polls",
     "toto.polls.migrations",
     "toto.polls.management",
