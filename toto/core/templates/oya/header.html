@@ -9,8 +9,9 @@
     <!-- Site Name -->
     <div class="flex items-center gap-3">
         {% if logo %}
-          <a href="{% url 'core:welcome' %}" class="flex items-center">
-            <img src="{{ logo }}" alt="Federation Logo" class="h-8 w-auto hover:opacity-80 transition">
+          <a href="{% url 'core:welcome' %}" class="flex items-center" id="federation-logo-link">
+            <img src="{{ logo }}" alt="" class="h-8 w-auto hover:opacity-80 transition"
+                 onerror="document.getElementById('federation-logo-link').style.display='none'">
           </a>
         {% endif %}
       <h1 class="text-2xl font-bold tracking-tight">
