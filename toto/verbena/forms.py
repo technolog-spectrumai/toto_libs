@@ -4,7 +4,7 @@ from django.utils.text import slugify
 from toto.vault.models import Bucket, VaultFile
 
 
-class MemoDeckLatexExportForm(forms.Form):
+class VerbenaPageLatexExportForm(forms.Form):
     bucket = forms.ModelChoiceField(
         queryset=Bucket.objects.none(),
         required=True,
@@ -14,7 +14,7 @@ class MemoDeckLatexExportForm(forms.Form):
         max_length=255,
         required=True,
         label="File name",
-        help_text="Example: onboarding-deck.tex. The name is normalized into a Vault key.",
+        help_text="Example: research-notes.tex. The name is normalized into a Vault key.",
     )
     make_public = forms.BooleanField(
         required=False,

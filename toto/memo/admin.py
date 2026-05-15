@@ -12,7 +12,7 @@ from django.urls import path, reverse
 from django.utils.html import format_html
 
 from toto.memo.forms import MemoDeckLatexExportForm
-from toto.memo.latex import clean_theme_name, deck_to_beamer_latex
+from toto.memo.latex import deck_to_article_latex
 from .models import (
     MemoDeck,
     MemoCard,
@@ -104,7 +104,7 @@ class MemoDeckAdmin(admin.ModelAdmin):
             return
         return redirect(f"latex-export-console/{queryset.first().id}/")
 
-    latex_export_console_action.short_description = "Export to Beamer LaTeX in Vault"
+    latex_export_console_action.short_description = "Export to LaTeX article in Vault"
 
     def latex_export_console_view(self, request, deck_id):
         deck = get_object_or_404(
@@ -114,16 +114,14 @@ class MemoDeckAdmin(admin.ModelAdmin):
         form = MemoDeckLatexExportForm(
             user=request.user,
             initial={
-                "theme": "Madrid",
-                "file_name": f"{deck.slug}-beamer.tex",
+                "file_name": f"{deck.slug}.tex",
             },
         )
 
         if request.method == "POST":
             form = MemoDeckLatexExportForm(request.POST, user=request.user)
             if form.is_valid():
-                theme = clean_theme_name(form.cleaned_data["theme"])
-                latex = deck_to_beamer_latex(deck, theme=theme)
+                latex = deck_to_article_latex(deck)
                 key = form.cleaned_data["file_name"]
                 filename = f"{key}.tex"
                 content = latex.encode("utf-8")
@@ -135,7 +133,7 @@ class MemoDeckAdmin(admin.ModelAdmin):
                     file_type="text",
                     bucket=form.cleaned_data["bucket"],
                     is_public=form.cleaned_data["make_public"],
-                    notes=f"Exported from memo deck '{deck.title}' with Beamer theme {theme}.",
+                    notes=f"Exported from memo deck '{deck.title}' as a LaTeX article.",
                     content_hash=hashlib.sha256(content).hexdigest(),
                 )
                 vault_file.file.save(filename, ContentFile(content), save=False)
@@ -153,7 +151,7 @@ class MemoDeckAdmin(admin.ModelAdmin):
             "title": f"LaTeX Export Console: {deck.title}",
             "deck": deck,
             "form": form,
-            "preview": deck_to_beamer_latex(deck, theme=form.initial.get("theme", "Madrid")),
+            "preview": deck_to_article_latex(deck),
             "back_url": reverse("admin:memo_memodeck_change", args=[deck.id]),
         }
         return render(request, "admin/memo_latex_export_console.html", context)
