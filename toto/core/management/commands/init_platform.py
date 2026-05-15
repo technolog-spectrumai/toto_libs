@@ -84,7 +84,7 @@ class Command(BaseCommand):
         db_config = settings.DATABASES.get("default", {})
         db_engine = db_config.get("ENGINE", "")
 
-        if "sqlite3" in db_engine:
+        if "sqlite3" in db_engine or "spatialite" in db_engine:
             db_path = db_config.get("NAME")
             if db_path and os.path.exists(db_path):
                 self.stdout.write(self.style.WARNING(f"Deleting SQLite database: {db_path}"))
