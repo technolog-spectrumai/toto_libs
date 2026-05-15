@@ -16,6 +16,13 @@ class RenderedPlugin:
     plugin: "BasePlugin"
 
 
+@dataclass(order=True)
+class RenderedFloatingPlugin:
+    order: int
+    key: str
+    html: str
+
+
 class BasePlugin:
     """
     Generic reusable plugin base.
@@ -190,3 +197,32 @@ class BasePlugin:
             html=self.render_html(**kwargs),
             plugin=self,
         )
+
+
+class FloatingPlugin(BasePlugin):
+    """
+    Base for globally-injected floating UI widgets (e.g. chat buttons, help overlays).
+
+    Rendered into a fixed-position container in oya/base.html via the
+    ``render_floating_plugins`` template tag.
+    """
+
+    registry: ClassVar[dict[str, "FloatingPlugin"]] = {}
+
+    def render(self, **kwargs) -> RenderedFloatingPlugin | None:
+        if not self.is_visible(**kwargs):
+            return None
+        return RenderedFloatingPlugin(
+            order=self.get_order(),
+            key=self.get_key(),
+            html=self.render_html(**kwargs),
+        )
+
+    @classmethod
+    def render_all(cls, **kwargs) -> list[RenderedFloatingPlugin]:
+        rendered = []
+        for plugin in cls.all():
+            result = plugin.render(**kwargs)
+            if result is not None:
+                rendered.append(result)
+        return sorted(rendered)
