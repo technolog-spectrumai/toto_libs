@@ -273,7 +273,12 @@ def build_settings(base_dir: Path, config_path: str | Path | None = None) -> dic
         }
 
     # ---------------------------------------------------- allowed hosts / CSRF
-    allowed_hosts_default = ",".join(cfg.get("allowed_hosts", ["localhost", "127.0.0.1"]))
+    _host_list = list(cfg.get("allowed_hosts", ["localhost", "127.0.0.1"]))
+    _nginx_names = cfg.get("nginx", {}).get("server_names", [])
+    for _h in _nginx_names:
+        if _h not in _host_list:
+            _host_list.append(_h)
+    allowed_hosts_default = ",".join(_host_list)
     allowed_hosts = _env_list("ALLOWED_HOSTS", allowed_hosts_default)
 
     if django_env == "PROD":
