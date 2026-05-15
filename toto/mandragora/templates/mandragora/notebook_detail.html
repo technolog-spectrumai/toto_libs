@@ -1,0 +1,499 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+
+{% block title %}Notebook: {{ notebook.title }}{% endblock %}
+
+{% block start_script %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.3/ace.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.3/mode-python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.3/theme-twilight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.3/theme-textmate.min.js"></script>
+
+<link rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+
+<script>
+  const darkMode = localStorage.getItem("darkMode") === "true";
+</script>
+
+<!-- Font Awesome -->
+<link rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+{% endblock %}
+
+{% block content %}
+<div
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300">
+
+  <div class="max-w-6xl mx-auto space-y-10">
+
+    <!-- Header -->
+    <section
+      :class="darkMode
+        ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
+        : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+      class="p-6 rounded-lg border shadow-sm space-y-2">
+
+      <h1 class="text-2xl font-bold">{{ notebook.title }}</h1>
+
+      <p class="text-sm text-gray-500 dark:text-gray-400">
+        Last updated: {{ notebook.updated_at|date:"Y-m-d H:i" }}
+      </p>
+
+            <!-- Kernel Controls -->
+      <div class="flex items-center gap-3 mt-3">
+
+          <!-- Start Kernel -->
+          <button
+              onclick="startKernel({{ notebook.id }})"
+              :class="darkMode
+                  ? 'bg-accent-dark text-primary-bg-dark'
+                  : 'bg-accent-light text-primary-bg-light'"
+              class="px-3 py-1 rounded font-semibold hover:opacity-90 transition text-sm flex items-center gap-2">
+              <i class="fa-solid fa-play"></i>
+              Start Kernel
+          </button>
+
+          <!-- Stop Kernel -->
+          <button
+              onclick="stopKernel({{ notebook.id }})"
+              :class="darkMode
+                  ? 'bg-warn-dark text-primary-bg-dark'
+                  : 'bg-warn-light text-primary-bg-light'"
+              class="px-3 py-1 rounded font-semibold hover:opacity-90 transition text-sm flex items-center gap-2">
+              <i class="fa-solid fa-stop"></i>
+              Stop Kernel
+          </button>
+
+          <!-- Status Indicator (placeholder) -->
+          <span id="kernel-status"
+              class="text-sm opacity-70 flex items-center gap-1">
+              <i class="fa-solid fa-circle text-gray-400"></i>
+              <span>Unknown</span>
+          </span>
+      </div>
+    </section>
+
+    <!-- Cells -->
+    <section class="space-y-6">
+
+      <h2 class="text-xl font-bold">Cells</h2>
+
+      {% if cells %}
+        {% for cell in cells %}
+          <div
+            :class="darkMode
+              ? 'bg-bubble-bg-dark border-accent-1'
+              : 'bg-bubble-bg-light border-accent-2'"
+            class="p-4 rounded border shadow-sm space-y-4 transition-colors duration-300">
+
+            <!-- Cell header -->
+            <div class="flex justify-between items-center">
+              <span class="text-sm font-semibold opacity-70">
+                Cell {{ forloop.counter }} — {{ cell.cell_type|title }}
+              </span>
+
+              <button
+                  data-cell-id="{{ cell.id }}"
+                  data-run-url="{% url 'mandragora:run_cell' cell.id %}"
+                  onclick="runCell(this)"
+                  :class="darkMode
+                    ? 'bg-accent-dark text-primary-bg-dark'
+                    : 'bg-accent-light text-primary-bg-light'"
+                  class="px-3 py-1 rounded font-semibold hover:opacity-90 transition text-sm flex items-center gap-2">
+
+                  <i class="fa-solid fa-play"></i>
+                  Run
+              </button>
+              <button
+                  onclick="deleteCell({{ cell.id }})"
+                  :class="darkMode
+                      ? 'bg-warn-dark text-primary-bg-dark'
+                      : 'bg-warn-light text-primary-bg-light'"
+                  class="px-3 py-1 rounded font-semibold hover:opacity-90 transition text-sm flex items-center gap-2">
+                  <i class="fa-solid fa-trash"></i>
+                  Delete
+              </button>
+
+              <button
+                    onclick="promoteCellToLambda({{ cell.id }})"
+                    :class="darkMode
+                        ? 'bg-indigo-700 text-primary-bg-dark'
+                        : 'bg-indigo-500 text-primary-bg-light'"
+                    class="px-3 py-1 rounded font-semibold hover:opacity-90 transition text-sm flex items-center gap-2">
+
+                    <i class="fa-solid fa-cloud-arrow-up"></i>
+                    Promote
+              </button>
+
+              <span class="text-xs opacity-60">
+                Executed {{ cell.execution_count }} time{{ cell.execution_count|pluralize }}
+              </span>
+            </div>
+
+
+            {% if cell.cell_type == "code" %}
+
+                <div id="editor-{{ cell.id }}"
+                     class="code-editor border rounded h-[40vh] overflow-hidden"
+                     :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+                </div>
+
+                <div id="stdout-box-{{ cell.id }}" style="{% if not cell.stdout %}display:none{% endif %}"
+                  class="p-3 rounded border text-sm whitespace-pre-wrap">
+                  <strong>Output:</strong>
+                  <pre id="stdout-{{ cell.id }}" class="mt-1 whitespace-pre-wrap">{{ cell.stdout }}</pre>
+                </div>
+
+                <div id="stderr-box-{{ cell.id }}" style="{% if not cell.stderr %}display:none{% endif %}"
+                  :class="darkMode
+                    ? 'border-warn-dark'
+                    : 'border-warn-light'"
+                  class="p-3 rounded border text-sm whitespace-pre-wrap">
+                  <strong :class="darkMode
+                    ? 'text-warn-dark'
+                    : 'text-warn-light'">Error:</strong>
+                  <pre id="stderr-{{ cell.id }}" class="mt-1 whitespace-pre-wrap">{{ cell.stderr }}</pre>
+                </div>
+
+                <div id="rich-{{ cell.id }}" class="mt-3"></div>
+            {% else %}
+              <!-- Markdown cell -->
+              <div class="prose dark:prose-invert max-w-none">
+                {{ cell.content|linebreaks }}
+              </div>
+            {% endif %}
+
+          </div>
+        {% endfor %}
+      {% else %}
+        <p class="text-sm text-gray-500 dark:text-gray-400">
+          This notebook has no cells yet.
+        </p>
+      {% endif %}
+
+    </section>
+  <button
+      onclick="createNewCell({{ notebook.id }})"
+      :class="darkMode
+          ? 'bg-accent-dark text-primary-bg-dark'
+          : 'bg-accent-light text-primary-bg-light'"
+      class="px-4 py-2 rounded font-semibold hover:opacity-90 transition text-sm flex items-center gap-2">
+      <i class="fa-solid fa-plus"></i>
+      New Cell
+  </button>
+    <a href="{% url 'mandragora:notebook_list' %}"
+       :class="darkMode
+         ? 'bg-accent-dark text-primary-bg-dark'
+         : 'bg-accent-light text-primary-bg-light'"
+       class="inline-block px-4 py-2 rounded font-semibold hover:opacity-90 transition text-sm text-center">
+      Back to Notebooks
+    </a>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block end_script %}
+<script>
+function createAceEditor(elementId, initialValue) {
+    const editor = ace.edit(elementId);
+
+    editor.setTheme(darkMode ? "ace/theme/twilight" : "ace/theme/textmate");
+    editor.session.setMode("ace/mode/python");
+
+    editor.setValue(initialValue, -1);
+
+    editor.setOptions({
+        fontSize: "14px",
+        showPrintMargin: false,
+        wrap: true,
+        readOnly: false,
+    });
+
+    return editor;
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    {% for cell in cells %}
+        {% if cell.cell_type == "code" %}
+            createAceEditor(
+                "editor-{{ cell.id }}",
+                `{{ cell.content|escapejs }}`
+            );
+        {% endif %}
+    {% endfor %}
+});
+</script>
+
+<script>
+async function runCell(buttonEl) {
+    const url = buttonEl.dataset.runUrl;
+    const cellId = buttonEl.dataset.cellId;
+
+    const editor = ace.edit(`editor-${cellId}`);
+    const code = editor.getValue();
+
+    const originalHTML = buttonEl.innerHTML;
+    buttonEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Running...`;
+    buttonEl.disabled = true;
+
+    try {
+        const response = await fetch(url, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": getCookie("csrftoken"),
+            },
+            body: JSON.stringify({ content: code })
+        });
+
+        const data = await response.json();
+
+        // Update stdout
+        const stdoutBox = document.getElementById(`stdout-box-${cellId}`);
+        const stdoutEl = document.getElementById(`stdout-${cellId}`);
+        stdoutEl.textContent = data.stdout || "";
+        stdoutBox.style.display = data.stdout ? "block" : "none";
+
+        // Update stderr
+        const stderrBox = document.getElementById(`stderr-box-${cellId}`);
+        const stderrEl = document.getElementById(`stderr-${cellId}`);
+        stderrEl.textContent = data.stderr || "";
+        stderrBox.style.display = data.stderr ? "block" : "none";
+
+        // Update execution count
+        const execCountEl = document.getElementById(`exec-count-${cellId}`);
+        if (execCountEl) execCountEl.textContent = data.execution_count ?? "";
+
+        // Update rich output (if you want)
+        const richEl = document.getElementById(`rich-${cellId}`);
+        if (richEl) {
+            richEl.innerHTML = "";
+            (data.rich_output || []).forEach(item => {
+                const data = item.data;
+
+                // Matplotlib PNG
+                if (data["image/png"]) {
+                    const img = document.createElement("img");
+                    img.src = "data:image/png;base64," + data["image/png"];
+                    img.className = "rounded border mt-2";
+                    richEl.appendChild(img);
+                }
+
+                // Text or JSON output
+                if (data["text/plain"]) {
+                    const pre = document.createElement("pre");
+                    pre.textContent = data["text/plain"];
+                    richEl.appendChild(pre);
+                }
+            });
+        }
+
+    } catch (error) {
+        console.error("Error running cell:", error);
+        alert("Failed to execute cell.");
+    } finally {
+        buttonEl.innerHTML = originalHTML;
+        buttonEl.disabled = false;
+    }
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== "") {
+        const cookies = document.cookie.split(";");
+        for (let cookie of cookies) {
+            cookie = cookie.trim();
+            if (cookie.startsWith(name + "=")) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
+
+<script>
+async function startKernel(notebookId) {
+    const url = `/mandragora/kernel/${notebookId}/start/`;
+    updateKernelStatus("starting");
+
+    try {
+        const response = await fetch(url, {
+            method: "POST",
+            headers: {
+                "X-CSRFToken": getCookie("csrftoken"),
+            }
+        });
+        const data = await response.json();
+
+        if (data.state === "started") {
+            updateKernelStatus("running");
+        } else {
+            updateKernelStatus("stopped");
+            alert("Kernel failed to start: " + (data.error || JSON.stringify(data)));
+        }
+    } catch (error) {
+        console.error("Error starting kernel:", error);
+        updateKernelStatus("stopped");
+        alert("Failed to start kernel.");
+    }
+}
+
+async function stopKernel(notebookId) {
+    const url = `/mandragora/kernel/${notebookId}/stop/`;
+
+    try {
+        const response = await fetch(url, {
+            method: "POST",
+            headers: {
+                "X-CSRFToken": getCookie("csrftoken"),
+            }
+        });
+
+        const data = await response.json();
+        console.log("Kernel stopped:", data);
+
+        updateKernelStatus("stopped");
+
+    } catch (error) {
+        console.error("Error stopping kernel:", error);
+        alert("Failed to stop kernel.");
+    }
+}
+
+function updateKernelStatus(state) {
+    const el = document.getElementById("kernel-status");
+    const icon = el.querySelector("i");
+    const text = el.querySelector("span");
+
+    if (state === "running") {
+        icon.className = "fa-solid fa-circle text-green-500";
+        text.textContent = "Running";
+    } else if (state === "stopped") {
+        icon.className = "fa-solid fa-circle text-red-500";
+        text.textContent = "Stopped";
+    } else if (state === "starting") {
+        icon.className = "fa-solid fa-circle-notch fa-spin text-yellow-400";
+        text.textContent = "Starting…";
+    } else {
+        icon.className = "fa-solid fa-circle text-gray-400";
+        text.textContent = "Unknown";
+    }
+}
+</script>
+<script>
+async function checkKernelStatus(notebookId) {
+    const url = `/mandragora/kernel/${notebookId}/status/`;
+
+    try {
+        const response = await fetch(url);
+        const data = await response.json();
+        updateKernelStatus(data.status);
+    } catch (e) {
+        updateKernelStatus("unknown");
+    }
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    const notebookId = {{ notebook.id }};
+
+    // Run once on load
+    checkKernelStatus(notebookId);
+
+    // Poll every 5 seconds
+    setInterval(() => {
+        checkKernelStatus(notebookId);
+    }, 5000);
+});
+</script>
+<script>
+async function createNewCell(notebookId) {
+    const url = `/mandragora/${notebookId}/cells/create/`;
+
+    try {
+        const response = await fetch(url, {
+            method: "POST",
+            headers: {
+                "X-CSRFToken": getCookie("csrftoken"),
+            }
+        });
+
+        const data = await response.json();
+        location.reload(); // only here, because new cell must appear
+
+    } catch (error) {
+        console.error("Error creating cell:", error);
+        alert("Failed to create new cell.");
+    }
+}
+</script>
+<script>
+async function deleteCell(cellId) {
+    const url = `/mandragora/cells/${cellId}/delete/`;
+
+    if (!confirm("Delete this cell?")) return;
+
+    try {
+        const response = await fetch(url, {
+            method: "POST",
+            headers: {
+                "X-CSRFToken": getCookie("csrftoken"),
+            }
+        });
+
+        const data = await response.json();
+
+        if (data.status === "deleted") {
+            location.reload(); // simplest for now
+        }
+
+    } catch (error) {
+        console.error("Error deleting cell:", error);
+        alert("Failed to delete cell.");
+    }
+}
+</script>
+<script>
+async function promoteCellToLambda(cellId) {
+    try {
+        // Get content from editor
+        const editor = ace.edit(`editor-${cellId}`);
+        const code = editor.getValue();
+
+        const response = await fetch(`/mandragora/cell/${cellId}/promote/`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": getCookie("csrftoken"),
+            },
+            body: JSON.stringify({
+                content: code,
+                function_name: `notebook_cell_${cellId}` // optional
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.status === "created" || data.status === "updated") {
+            alert(`Lambda function ${data.function_name} ${data.status}.`);
+        } else {
+            alert("Unexpected response from server.");
+        }
+
+    } catch (err) {
+        console.error(err);
+        alert("Failed to promote cell to Lambda.");
+    }
+}
+</script>
+
+
+
+{% endblock %}

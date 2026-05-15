@@ -1,0 +1,87 @@
+<script>
+
+class GroupHelper {
+    constructor(paper, yShapes) {
+        this.paper = paper;
+        this.yShapes = yShapes;
+    }
+
+    // ─────────────────────────────────────────────
+    // GROUP
+    // ─────────────────────────────────────────────
+
+    group(items) {
+        if (!items || items.length < 2) return null;
+
+        const id = crypto.randomUUID();
+        const childIds = items.map(i => i._id);
+
+        // 1. Create Yjs group
+        this.yShapes.set(id, {
+            id,
+            type: "group",
+            children: childIds,
+            transform: null
+        });
+
+        // 2. Create Paper group
+        const group = new this.paper.Group(items);
+        group._id = id;
+
+        return { id, group, childIds };
+    }
+
+    // ─────────────────────────────────────────────
+    // UNGROUP
+    // ─────────────────────────────────────────────
+
+    ungroup(groupItem) {
+        const id = groupItem._id;
+        const shape = this.yShapes.get(id);
+        if (!shape || shape.type !== "group") return null;
+
+        const childIds = shape.children;
+
+        // 1. Remove Yjs group
+        this.yShapes.delete(id);
+
+        // 2. Move children to root
+        const children = [...groupItem.children];
+        children.forEach(child => {
+            child.remove();
+            this.paper.project.activeLayer.addChild(child);
+        });
+
+        // 3. Remove Paper group
+        groupItem.remove();
+
+        return { id, childIds, children };
+    }
+
+    createGroupFromChildren(id, childIds) {
+
+        // 1. Create Yjs group
+        this.yShapes.set(id, {
+            id,
+            type: "group",
+            children: childIds,
+            transform: null
+        });
+
+        // 2. Build Paper.Group
+        const items = childIds
+            .map(cid => this.paper.project.getItem({ _id: cid }))
+            .filter(Boolean);
+
+        const group = new this.paper.Group(items);
+        group._id = id;
+
+        return { id, group, childIds };
+    }
+}
+
+window.GroupHelper = GroupHelper;
+
+
+
+</script>

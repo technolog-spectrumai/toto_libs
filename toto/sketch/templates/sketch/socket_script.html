@@ -1,0 +1,134 @@
+<script>
+class BoardSocketProvider {
+    constructor(ydoc, boardId, Y) {
+        this.ydoc = ydoc;
+        this.boardId = boardId;
+        this.Y = Y;
+        this.socket = null;
+        this.isOpen = false;
+        this.enabled = true;
+        this.reconnectTimer = null;
+        this.connect();
+
+        this.ydoc.on("update", (update, origin) => {
+            if (origin === this || origin === "initial-load") return;
+            this.send({
+                type: "yjs_update",
+                update: Array.from(update),
+            });
+        });
+    }
+
+    connect() {
+        if (!this.enabled) return;
+        if (this.socket && this.socket.readyState <= WebSocket.OPEN) return;
+
+        this.clearReconnectTimer();
+        const scheme = window.location.protocol === "https:" ? "wss" : "ws";
+        this.socket = new WebSocket(`${scheme}://${window.location.host}/ws/sketch/${this.boardId}/`);
+        this.dispatchStatus();
+
+        this.socket.addEventListener("open", () => {
+            this.isOpen = true;
+            this.dispatchStatus();
+            this.sync();
+            this.publishState();
+        });
+
+        this.socket.addEventListener("close", () => {
+            this.isOpen = false;
+            this.socket = null;
+            this.dispatchStatus();
+            this.scheduleReconnect();
+        });
+
+        this.socket.addEventListener("message", event => {
+            const message = JSON.parse(event.data);
+
+            if (message.type === "yjs_update" || message.type === "yjs_sync_response") {
+                this.Y.applyUpdate(this.ydoc, new Uint8Array(message.update), this);
+                return;
+            }
+
+            if (message.type === "yjs_sync_request") {
+                this.send({
+                    type: "yjs_sync_response",
+                    target_channel: message.sender_channel,
+                    update: Array.from(this.Y.encodeStateAsUpdate(this.ydoc)),
+                });
+            }
+        });
+    }
+
+    send(message) {
+        if (!this.enabled) return;
+        if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
+        this.socket.send(JSON.stringify(message));
+    }
+
+    sync() {
+        this.send({ type: "yjs_sync_request" });
+    }
+
+    publishState() {
+        this.send({
+            type: "yjs_update",
+            update: Array.from(this.Y.encodeStateAsUpdate(this.ydoc)),
+        });
+    }
+
+    toggle() {
+        if (this.enabled) {
+            this.disable();
+        } else {
+            this.enable();
+        }
+    }
+
+    enable() {
+        if (this.enabled) return;
+        this.enabled = true;
+        this.connect();
+        this.dispatchStatus();
+    }
+
+    disable() {
+        if (!this.enabled && !this.socket) return;
+        this.enabled = false;
+        this.clearReconnectTimer();
+
+        if (this.socket) {
+            this.socket.close();
+            this.socket = null;
+        }
+
+        this.isOpen = false;
+        this.dispatchStatus();
+    }
+
+    scheduleReconnect() {
+        if (!this.enabled || this.reconnectTimer) return;
+        this.reconnectTimer = setTimeout(() => {
+            this.reconnectTimer = null;
+            this.connect();
+        }, 1500);
+    }
+
+    clearReconnectTimer() {
+        if (!this.reconnectTimer) return;
+        clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = null;
+    }
+
+    dispatchStatus() {
+        document.dispatchEvent(new CustomEvent("sketch-sync-status", {
+            detail: {
+                enabled: this.enabled,
+                connected: this.isOpen
+            }
+        }));
+    }
+}
+
+window.BoardSocketProvider = BoardSocketProvider;
+</script>

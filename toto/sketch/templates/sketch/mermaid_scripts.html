@@ -1,0 +1,68 @@
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({ startOnLoad: true });
+</script>
+<script>
+class MermaidConverter {
+    constructor() {}
+
+    async render(code) {
+        const chartId = "mermaid-" + Math.random().toString(36).slice(2);
+
+        // Mermaid → raw SVG
+        const { svg } = await mermaid.render(chartId, code);
+
+        // Clean it
+        return this.clean(svg);
+    }
+
+    clean(svgString) {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(svgString, "image/svg+xml");
+
+        const foreignObjects = Array.from(doc.querySelectorAll("foreignObject"));
+
+        foreignObjects.forEach(node => {
+            const span = node.querySelector("span");
+            if (!span) return;
+
+            const text = span.textContent.trim();
+            if (!text) return;
+
+            // Find parent <g transform="translate(x,y)">
+            const g = node.closest("g[transform]");
+            let x = 0, y = 0;
+
+            if (g) {
+                const match = g.getAttribute("transform")
+                    .match(/translate\(([-0-9.]+),\s*([-0-9.]+)\)/);
+
+                if (match) {
+                    x = parseFloat(match[1]);
+                    y = parseFloat(match[2]);
+                }
+            }
+
+            // Create real SVG <text>
+            const textNode = doc.createElementNS("http://www.w3.org/2000/svg", "text");
+            textNode.setAttribute("x", x);
+            textNode.setAttribute("y", y);
+            textNode.setAttribute("font-size", "16");
+            textNode.setAttribute("text-anchor", "middle");
+            textNode.setAttribute("fill", "#333");
+            textNode.textContent = text;
+
+            const target = g || node.parentNode;
+            if (!target) return;
+
+            target.appendChild(textNode);
+            node.remove();
+        });
+
+        return new XMLSerializer().serializeToString(doc.documentElement);
+    }
+}
+
+window.MermaidConverter = MermaidConverter;
+
+</script>

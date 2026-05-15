@@ -1,0 +1,344 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}Visit Review | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>[x-cloak] { display: none !important; }</style>
+{% endblock %}
+
+{% block content %}
+<script>
+  window.locationPayload = JSON.parse(`{{ location_payload_json|escapejs }}`);
+</script>
+
+<div
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-7xl">
+    <div class="flex items-center gap-4">
+      <a
+        href="{% url 'travels:my_travels' %}"
+        class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+        <i class="fa-solid fa-arrow-left"></i>
+        Travels
+      </a>
+
+      <a
+        href="{% url 'locations:locations_all' %}"
+        class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+        <i class="fa-solid fa-map-location-dot"></i>
+        Locations
+      </a>
+    </div>
+
+    <header class="mt-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div>
+        <p
+          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+          class="text-xs font-semibold uppercase tracking-wide">
+          Visit review
+        </p>
+
+        <h1 class="mt-2 text-3xl font-bold sm:text-4xl">
+          {{ location }}
+        </h1>
+
+        <p class="mt-2 text-sm opacity-70">
+          {{ location.locality_name }}, {{ location.state_or_province_name }}, {{ location.country_name }}
+        </p>
+      </div>
+
+      <a
+        href="{% url 'travels:visit_create' %}?address={{ location.pk }}"
+        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+        class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+        <i class="fa-solid fa-plus"></i>
+        Add visit
+      </a>
+    </header>
+
+    <section class="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_400px]">
+      <div class="space-y-5">
+        <div
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="overflow-hidden rounded-lg border shadow-sm">
+          <div id="visit-review-map" class="h-[400px] w-full"></div>
+        </div>
+
+        <section
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="rounded-lg border p-5 shadow-sm">
+
+          <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 class="text-lg font-bold">Visitor reviews</h2>
+              <p class="mt-1 text-sm opacity-70">Real visit notes, scores, and timing for this address.</p>
+            </div>
+
+            <span
+              :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+              class="inline-flex items-center gap-2 rounded-full border border-current/10 px-3 py-1 text-xs font-semibold">
+              <i class="fa-solid fa-comment"></i>
+              {{ reviews|length }} reviews
+            </span>
+          </div>
+
+          <div class="space-y-3">
+            {% for review in reviews %}
+              <article
+                x-data="{ deleteOpen: false }"
+                :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                class="rounded-xl border p-4">
+
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p class="font-bold">
+                      {% if review.participant %}
+                        <a
+                          href="{% url 'socialhub:profile_details' review.participant.slug %}"
+                          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                          class="underline-offset-4 hover:underline hover:opacity-80">
+                          {{ review.participant.display_name }}
+                        </a>
+                      {% else %}
+                        Unknown visitor
+                      {% endif %}
+                    </p>
+
+                    <div class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs opacity-70">
+                      {% if review.visited_at %}
+                        <span class="inline-flex items-center gap-1">
+                          <i class="fa-solid fa-calendar-day"></i>
+                          Visited {{ review.visited_at|date:"M j, Y H:i" }}
+                        </span>
+                      {% endif %}
+
+                      {% if review.ends_at %}
+                        <span class="inline-flex items-center gap-1">
+                          <i class="fa-solid fa-calendar-check"></i>
+                          Left {{ review.ends_at|date:"M j, Y H:i" }}
+                        </span>
+                      {% endif %}
+
+                      {% if review.length_of_stay_display %}
+                        <span class="inline-flex items-center gap-1">
+                          <i class="fa-solid fa-clock"></i>
+                          {{ review.length_of_stay_display }} stay
+                        </span>
+                      {% endif %}
+
+                      {% if review.reviewed_at %}
+                        <span class="inline-flex items-center gap-1">
+                          <i class="fa-solid fa-pen"></i>
+                          Reviewed {{ review.reviewed_at|date:"M j, Y H:i" }}
+                        </span>
+                      {% endif %}
+                    </div>
+                  </div>
+
+                  <div class="flex shrink-0 items-center gap-2">
+                    {% if review.score %}
+                      <div
+                        :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                        class="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-sm font-bold">
+                        <i
+                          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                          class="fa-solid fa-star text-xs"></i>
+                        {{ review.score }}/5
+                      </div>
+                    {% else %}
+                      <span class="rounded-full border border-dashed border-current/15 px-3 py-1 text-xs opacity-60">No score</span>
+                    {% endif %}
+
+                    <button
+                      type="button"
+                      @click="deleteOpen = true"
+                      :class="darkMode ? 'text-red-400 border-accent-1' : 'text-red-600 border-accent-2'"
+                      class="inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-semibold transition hover:opacity-80">
+                      <i class="fa-solid fa-trash"></i>
+                    </button>
+                  </div>
+                </div>
+
+                {% if review.review %}
+                  <p class="mt-3 text-sm leading-6 opacity-85">{{ review.review }}</p>
+                {% else %}
+                  <p class="mt-3 text-sm italic opacity-60">No written review.</p>
+                {% endif %}
+
+                <!-- Delete confirmation modal -->
+                <div
+                  x-show="deleteOpen"
+                  x-cloak
+                  class="fixed inset-0 z-50 flex items-center justify-center p-4"
+                  @keydown.escape.window="deleteOpen = false">
+
+                  <div class="absolute inset-0 bg-black/50" @click="deleteOpen = false"></div>
+
+                  <div
+                    :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+                    class="relative z-10 w-full max-w-sm rounded-2xl border p-6 shadow-xl">
+
+                    <h2 class="text-lg font-bold">Delete visit?</h2>
+                    <p class="mt-2 text-sm opacity-70">
+                      This will permanently delete
+                      {% if review.participant %}{{ review.participant.display_name }}'s{% endif %}
+                      visit record. This action cannot be undone.
+                    </p>
+
+                    <div class="mt-5 flex gap-3">
+                      <form method="post" action="{% url 'travels:visit_delete' review.pk %}">
+                        {% csrf_token %}
+                        <button
+                          type="submit"
+                          class="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-red-700">
+                          <i class="fa-solid fa-trash"></i>
+                          Yes, delete
+                        </button>
+                      </form>
+
+                      <button
+                        type="button"
+                        @click="deleteOpen = false"
+                        :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                        class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </article>
+            {% empty %}
+              <div
+                :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                class="rounded-xl border border-dashed p-6 text-center text-sm opacity-70">
+                No visit reviews yet.
+              </div>
+            {% endfor %}
+          </div>
+        </section>
+      </div>
+
+      <aside class="space-y-5">
+        <div
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="rounded-lg border p-5 shadow-sm">
+
+          <h2 class="text-lg font-bold">Review summary</h2>
+          <p class="mt-1 text-sm opacity-70">Scores submitted by visitors.</p>
+
+          <div class="mt-4 grid grid-cols-2 gap-3">
+            <div
+              :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+              class="rounded-xl border border-current/10 p-4">
+              <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Reviews</p>
+              <p class="mt-2 text-2xl font-bold">{{ reviews|length }}</p>
+            </div>
+
+            <div
+              :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+              class="rounded-xl border border-current/10 p-4">
+              <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Average</p>
+              <p class="mt-2 text-2xl font-bold">
+                {% if average_score %}{{ average_score }}/5{% else %}—{% endif %}
+              </p>
+            </div>
+          </div>
+
+          <div class="mt-5 space-y-3">
+            {% for item in score_distribution %}
+              <div>
+                <div class="mb-1 flex items-center justify-between text-xs">
+                  <span class="font-semibold">{{ item.score }} stars</span>
+                  <span class="opacity-70">{{ item.count }}</span>
+                </div>
+
+                <div
+                  :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+                  class="h-2 overflow-hidden rounded-full">
+                  <div
+                    :style="'width: {{ item.percent }}%'"
+                    :class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'"
+                    class="h-full rounded-full">
+                  </div>
+                </div>
+              </div>
+            {% empty %}
+              <p class="rounded-lg border border-dashed border-current/15 p-4 text-sm opacity-70">No scores yet.</p>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="rounded-lg border p-5 shadow-sm">
+
+          <h2 class="mb-3 text-lg font-bold">Submit review</h2>
+
+          <form method="post" action="{% url 'travels:submit_visit_review' location.pk %}" class="space-y-3">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.path }}">
+
+            <div>
+              <label class="block text-sm font-semibold">Score (optional)</label>
+              <input
+                type="number"
+                name="score"
+                min="1"
+                max="5"
+                placeholder="1–5"
+                :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+                class="mt-1 w-full rounded-lg border px-3 py-2 text-sm outline-none transition focus:ring-2 focus:ring-current/20">
+            </div>
+
+            <div>
+              <label class="block text-sm font-semibold">Review</label>
+              <textarea
+                name="review"
+                rows="4"
+                placeholder="Write a short note or review..."
+                :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+                class="mt-1 w-full rounded-lg border px-3 py-2 text-sm outline-none transition focus:ring-2 focus:ring-current/20"></textarea>
+            </div>
+
+            <button
+              type="submit"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="w-full rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+              Submit
+            </button>
+          </form>
+        </div>
+      </aside>
+    </section>
+  </div>
+</div>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const payload = window.locationPayload;
+    const isDark = localStorage.getItem("darkMode") === "true";
+    const map = L.map("visit-review-map", { zoomControl: false }).setView([52.0, 19.0], 5);
+    L.control.zoom({ position: "bottomright" }).addTo(map);
+
+    const lightTiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap contributors" });
+    const darkTiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap contributors &copy; CARTO" });
+
+    (isDark ? darkTiles : lightTiles).addTo(map);
+
+    if (payload?.geometry) {
+      const marker = L.geoJSON(payload.geometry, {
+        pointToLayer: function (feature, latlng) {
+          return L.circleMarker(latlng, { radius: 9, weight: 2, fillOpacity: 0.85 });
+        }
+      }).bindPopup(payload.name).addTo(map);
+
+      map.fitBounds(marker.getBounds(), { padding: [36, 36], maxZoom: 16 });
+    }
+  });
+</script>
+{% endblock %}

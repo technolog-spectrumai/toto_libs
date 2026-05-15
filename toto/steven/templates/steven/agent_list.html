@@ -1,0 +1,110 @@
+{% extends 'steven/base.html' %}
+{% block steven_title %}Steven Agents{% endblock %}
+{% block steven_content %}
+  <div class="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+    {% for agent in agents %}
+      <section
+        :class="darkMode
+          ? 'bg-bubble-bg-dark border-accent-1'
+          : 'bg-bubble-bg-light border-accent-2'"
+        class="rounded-lg border p-5 shadow-md transition hover:shadow-lg">
+        <div class="space-y-3">
+          <div class="flex items-center gap-3">
+            {% if agent.avatar %}
+              <img
+                src="{{ agent.avatar.url }}"
+                alt="{{ agent.name }}"
+                class="h-12 w-12 shrink-0 rounded-lg border border-current/15 object-cover">
+            {% else %}
+              <div
+                :class="darkMode
+                  ? 'bg-primary-bg-dark text-accent-dark border-accent-1'
+                  : 'bg-primary-bg-light text-accent-light border-accent-2'"
+                class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border text-lg font-bold">
+                {{ agent.name|first|upper }}
+              </div>
+            {% endif %}
+
+            <a
+              href="{% url 'steven:agent_detail' agent.slug %}"
+              class="min-w-0 break-words text-xl font-bold underline hover:opacity-80">
+              {{ agent.name }}
+            </a>
+          </div>
+
+          <p class="text-sm opacity-75">{{ agent.description|default:'No description yet.' }}</p>
+
+          <div class="flex flex-wrap gap-3 text-xs opacity-60">
+            <span>{{ agent.model_name }}</span>
+            <span>Temperature {{ agent.temperature }}</span>
+          </div>
+
+          <div class="flex flex-wrap gap-2">
+            {% for tool in agent.tools.all %}
+              {% if tool.enabled %}
+                <span
+                  :class="darkMode
+                    ? 'border-accent-1 text-text-main-dark'
+                    : 'border-accent-2 text-text-main-light'"
+                  class="rounded border px-2 py-1 text-xs">
+                  {{ tool.get_key_display }}
+                </span>
+              {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+      </section>
+    {% empty %}
+      <section
+        :class="darkMode
+          ? 'bg-bubble-bg-dark border-accent-1'
+          : 'bg-bubble-bg-light border-accent-2'"
+        class="rounded-lg border p-5 shadow-md">
+        <p class="text-sm opacity-75">
+          No active agents yet. Create one in <a href="/admin/" class="underline hover:opacity-80">Django admin</a>.
+        </p>
+      </section>
+    {% endfor %}
+  </div>
+
+  <section
+    :class="darkMode
+      ? 'bg-bubble-bg-dark border-accent-1'
+      : 'bg-bubble-bg-light border-accent-2'"
+    class="rounded-lg border p-5 shadow-md">
+    <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-2xl font-bold">
+      Recent Runs
+    </h2>
+
+    <div class="mt-4 overflow-x-auto">
+      <table class="w-full min-w-[720px] border-collapse text-left text-sm">
+        <thead class="opacity-70">
+          <tr>
+            <th class="border-b border-current/15 py-3 pr-4 font-semibold">Agent</th>
+            <th class="border-b border-current/15 py-3 pr-4 font-semibold">Status</th>
+            <th class="border-b border-current/15 py-3 pr-4 font-semibold">Prompt</th>
+            <th class="border-b border-current/15 py-3 pr-4 font-semibold">Created</th>
+          </tr>
+        </thead>
+        <tbody>
+      {% for run in recent_runs %}
+        <tr>
+          <td class="border-b border-current/10 py-3 pr-4">{{ run.agent.name }}</td>
+          <td class="border-b border-current/10 py-3 pr-4">{{ run.get_status_display }}</td>
+          <td class="border-b border-current/10 py-3 pr-4">
+            <a href="{% url 'steven:run_detail' run.pk %}" class="underline hover:opacity-80">
+              {{ run.user_prompt|truncatechars:80 }}
+            </a>
+          </td>
+          <td class="border-b border-current/10 py-3 pr-4 opacity-70">{{ run.created_at|date:"M d, Y H:i" }}</td>
+        </tr>
+      {% empty %}
+        <tr>
+          <td colspan="4" class="py-4 text-sm opacity-60">No runs yet.</td>
+        </tr>
+      {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endblock %}

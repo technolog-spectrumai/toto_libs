@@ -1,0 +1,254 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}Add Visit | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>[x-cloak] { display: none !important; }</style>
+{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-7xl space-y-6">
+
+    <a
+      href="{% url 'travels:my_travels' %}"
+      class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+      <i class="fa-solid fa-arrow-left"></i>
+      Travels
+    </a>
+
+    <header
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-2xl border p-5 shadow-sm">
+      <p
+        :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+        class="text-xs font-semibold uppercase tracking-wide">
+        Visit
+      </p>
+      <h1 class="mt-2 flex items-center gap-3 text-3xl font-bold">
+        <i class="fa-solid fa-location-dot"></i>
+        Add visit
+      </h1>
+      <p class="mt-2 text-sm opacity-70">
+        Pick a location on the map, then fill in the visit details.
+      </p>
+    </header>
+
+    <form method="post" id="visit-form">
+      {% csrf_token %}
+
+      {% if form.non_field_errors %}
+        <div
+          :class="darkMode ? 'border-warn-dark bg-primary-bg-dark text-warn-dark' : 'border-warn-light bg-primary-bg-light text-warn-light'"
+          class="rounded-xl border p-4 text-sm font-semibold">
+          {{ form.non_field_errors }}
+        </div>
+      {% endif %}
+
+      <div class="grid gap-6 lg:grid-cols-[1fr_400px]">
+
+        <!-- Map picker -->
+        <div class="space-y-3">
+          <p class="text-sm font-semibold">
+            Select location
+            <span class="ml-1 text-xs font-normal opacity-60">click a pin on the map</span>
+          </p>
+
+          <div
+            :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+            class="overflow-hidden rounded-xl border shadow-sm">
+            <div id="location-picker-map" class="h-[480px] w-full sm:h-[560px]"></div>
+          </div>
+
+          <!-- hidden input that holds the selected address ID -->
+          <input type="hidden" name="location" id="id_location"
+            value="{{ form.location.value|default:'' }}">
+
+          <div
+            id="selected-location-display"
+            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+            class="rounded-xl border p-4 text-sm shadow-sm">
+            <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Selected location</p>
+            <p id="selected-location-name" class="mt-1 font-bold opacity-40 italic">None</p>
+          </div>
+
+          {% if form.location.errors %}
+            <p class="text-sm text-red-500">{{ form.location.errors }}</p>
+          {% endif %}
+        </div>
+
+        <!-- Form fields -->
+        <div
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="space-y-5 rounded-2xl border p-5 shadow-sm self-start">
+
+          <div class="space-y-2">
+            <label for="{{ form.participant.id_for_label }}" class="block text-sm font-semibold">
+              {{ form.participant.label }}
+            </label>
+            {{ form.participant }}
+            {% if form.participant.errors %}
+              <p class="text-sm text-red-500">{{ form.participant.errors }}</p>
+            {% endif %}
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div class="space-y-2">
+              <label for="{{ form.visited_date.id_for_label }}" class="block text-sm font-semibold">
+                {{ form.visited_date.label }}
+              </label>
+              {{ form.visited_date }}
+              {% if form.visited_date.errors %}
+                <p class="text-sm text-red-500">{{ form.visited_date.errors }}</p>
+              {% endif %}
+            </div>
+
+            <div class="space-y-2">
+              <label for="{{ form.visited_time.id_for_label }}" class="block text-sm font-semibold">
+                {{ form.visited_time.label }}
+              </label>
+              {{ form.visited_time }}
+              {% if form.visited_time.errors %}
+                <p class="text-sm text-red-500">{{ form.visited_time.errors }}</p>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div class="space-y-2">
+              <label for="{{ form.ended_date.id_for_label }}" class="block text-sm font-semibold">
+                {{ form.ended_date.label }}
+              </label>
+              {{ form.ended_date }}
+              {% if form.ended_date.errors %}
+                <p class="text-sm text-red-500">{{ form.ended_date.errors }}</p>
+              {% endif %}
+            </div>
+
+            <div class="space-y-2">
+              <label for="{{ form.ended_time.id_for_label }}" class="block text-sm font-semibold">
+                {{ form.ended_time.label }}
+              </label>
+              {{ form.ended_time }}
+              {% if form.ended_time.errors %}
+                <p class="text-sm text-red-500">{{ form.ended_time.errors }}</p>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="space-y-2">
+            <label for="{{ form.score.id_for_label }}" class="block text-sm font-semibold">
+              {{ form.score.label }}
+            </label>
+            {{ form.score }}
+            <p class="text-xs opacity-60">Optional. 1–5.</p>
+            {% if form.score.errors %}
+              <p class="text-sm text-red-500">{{ form.score.errors }}</p>
+            {% endif %}
+          </div>
+
+          <div class="space-y-2">
+            <label for="{{ form.review.id_for_label }}" class="block text-sm font-semibold">
+              {{ form.review.label }}
+            </label>
+            {{ form.review }}
+            {% if form.review.errors %}
+              <p class="text-sm text-red-500">{{ form.review.errors }}</p>
+            {% endif %}
+          </div>
+
+          <div class="flex flex-wrap items-center justify-end gap-3 pt-2">
+            <a
+              href="{% url 'travels:my_travels' %}"
+              :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+              class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-85">
+              Cancel
+            </a>
+
+            <button
+              type="submit"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+              <i class="fa-solid fa-plus"></i>
+              Add visit
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </form>
+
+  </div>
+</section>
+
+<script>
+(function () {
+  const addresses = JSON.parse('{{ addresses_json|escapejs }}');
+  const initialId = {{ initial_address_id|default:"null" }};
+  const isDark = localStorage.getItem('darkMode') === 'true';
+
+  const map = L.map('location-picker-map', { zoomControl: false }).setView([48.0, 10.0], 4);
+  L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+  const lightTiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19, attribution: '&copy; OpenStreetMap contributors'
+  });
+  const darkTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    maxZoom: 19, attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+  });
+  (isDark ? darkTiles : lightTiles).addTo(map);
+
+  const defaultStyle = { radius: 8, weight: 2, fillOpacity: 0.75, color: isDark ? '#5f7fc9' : '#2a4b8f' };
+  const selectedStyle = { radius: 11, weight: 3, fillOpacity: 1.0, color: '#ff4455' };
+
+  const markers = {};
+  let selectedId = null;
+
+  function selectAddress(id, name) {
+    selectedId = id;
+    document.getElementById('id_location').value = id;
+    const nameEl = document.getElementById('selected-location-name');
+    nameEl.textContent = name;
+    nameEl.classList.remove('opacity-40', 'italic');
+
+    Object.entries(markers).forEach(([markerId, m]) => {
+      m.setStyle(parseInt(markerId) === id ? selectedStyle : defaultStyle);
+    });
+  }
+
+  addresses.forEach(function (addr) {
+    if (!addr.geometry || addr.geometry.type !== 'Point') return;
+    const [lng, lat] = addr.geometry.coordinates;
+    const marker = L.circleMarker([lat, lng], { ...defaultStyle });
+    marker.bindTooltip(`<strong>${addr.name}</strong><br>${addr.locality || ''}, ${addr.country || ''}`, {
+      direction: 'top', offset: [0, -8]
+    });
+    marker.on('click', () => selectAddress(addr.id, addr.name));
+    marker.addTo(map);
+    markers[addr.id] = marker;
+  });
+
+  if (initialId && markers[initialId]) {
+    const addr = addresses.find(a => a.id === initialId);
+    if (addr) selectAddress(addr.id, addr.name);
+    map.setView(markers[initialId].getLatLng(), 10);
+  } else if (Object.keys(markers).length > 0) {
+    const group = L.featureGroup(Object.values(markers));
+    map.fitBounds(group.getBounds(), { padding: [32, 32] });
+  }
+
+  document.getElementById('visit-form').addEventListener('submit', function (e) {
+    if (!document.getElementById('id_location').value) {
+      e.preventDefault();
+      alert('Please select a location on the map before submitting.');
+    }
+  });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,242 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}Cypher Queries{% endblock %}
+
+{% block content %}
+<div
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-6 py-10 transition-colors duration-300"
+>
+
+  <div class="max-w-4xl mx-auto space-y-12">
+
+  <section>
+    <div
+      class="p-8 rounded-2xl shadow-xl border text-center sticky top-0 z-10 backdrop-blur-md space-y-4"
+      :class="darkMode
+        ? 'bg-bubble-bg-dark border-accent-1'
+        : 'bg-bubble-bg-light border-accent-2'"
+    >
+
+      <h2
+        class="text-4xl font-extrabold tracking-tight"
+        :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+      >
+        Cypher Query Viewer
+      </h2>
+
+      <!-- Query Selector + JSON Button -->
+      <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
+
+        <!-- Query Selector -->
+        <form method="get" class="inline-flex items-center gap-3">
+          <label class="text-sm font-medium whitespace-nowrap">Query:</label>
+
+          <select
+            name="query"
+            class="text-sm border rounded-lg px-3 py-2 focus:ring-2 focus:ring-accent-light shadow-sm w-48 sm:w-60"
+            :class="darkMode
+              ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
+              : 'bg-primary-bg-light text-text-main-light border-accent-2'"
+            onchange="this.form.submit()"
+          >
+            <option value="">Select a query…</option>
+
+            {% for q in queries %}
+              <option value="{{ q.id }}" {% if selected_query and q.id == selected_query.id %}selected{% endif %}>
+                {{ q.name }}
+              </option>
+            {% endfor %}
+          </select>
+        </form>
+
+        {% if selected_query %}
+          <button
+            onclick="loadGraph('{% url 'ravioli:query_graph_data' selected_query.id %}')"
+            class="px-4 py-2 rounded-lg font-semibold text-sm hover:opacity-90 transition whitespace-nowrap"
+            :class="darkMode
+              ? 'bg-accent-dark text-primary-bg-dark'
+              : 'bg-accent-light text-primary-bg-light'"
+          >
+            Load Graph
+          </button>
+        {% endif %}
+
+      </div>
+
+    </div>
+  </section>
+
+    {% if request.user.is_superuser %}
+      <section class="flex justify-end">
+        <a
+          href="{% url 'ravioli:projection_sync' %}"
+          class="inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium opacity-60 transition hover:opacity-100"
+          :class="darkMode
+            ? 'text-warn-dark hover:bg-bubble-bg-dark'
+            : 'text-warn-light hover:bg-bubble-bg-light'"
+        >
+          <i class="fa-solid fa-arrows-rotate"></i>
+          Go to sync view
+        </a>
+      </section>
+    {% endif %}
+
+    <!-- Query Details -->
+    {% if selected_query %}
+      <section>
+        <div
+          class="p-6 rounded-xl shadow-md border"
+          :class="darkMode
+            ? 'bg-bubble-bg-dark border-accent-1'
+            : 'bg-bubble-bg-light border-accent-2'"
+        >
+          <h3
+            class="text-2xl font-bold mb-4"
+            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+          >
+            {{ selected_query.name }}
+          </h3>
+
+          <h4 class="font-semibold mb-2">Cypher Query</h4>
+          <pre
+            class="p-4 rounded border overflow-auto text-sm"
+            :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+          >{{ selected_query.query }}</pre>
+        </div>
+      </section>
+    {% endif %}
+    <div id="cy"
+         style="
+            width: 100%;
+            height: 600px;
+            min-height: 600px;
+            border-radius: 12px;
+            margin-top: 20px;
+         "
+         :class="darkMode
+            ? 'bg-primary-bg-dark border-accent-1'
+            : 'bg-primary-bg-light border-accent-2'"
+         class="border shadow-inner">
+    </div>
+    <!-- Back -->
+    <section class="text-center">
+      <a
+        href="{% url 'core:dashboard' %}"
+        class="inline-block px-5 py-2 rounded-lg font-semibold text-sm hover:opacity-90 transition"
+        :class="darkMode
+          ? 'bg-accent-dark text-primary-bg-dark'
+          : 'bg-accent-light text-primary-bg-light'"
+      >
+        Back to Dashboard
+      </a>
+    </section>
+
+  </div>
+
+</div>
+{% endblock %}
+
+{% block end_script %}
+<script src="https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
+
+<script>
+async function loadGraph(url) {
+
+    const response = await fetch(url);
+    console.log(response);
+    const data = await response.json();
+
+    const tw = tailwind.config.theme.extend.colors;
+    const dark = localStorage.getItem('darkMode') === 'true';
+
+    const nodeBorderColor = dark ? tw["accent-dark"] : tw["accent-light"];
+    const nodeTextColor   = dark ? tw["text-main-dark"] : tw["text-main-light"];
+    const nodeBgColor     = dark ? tw["bubble-bg-dark"] : tw["bubble-bg-light"];
+    const edgeColor       = nodeBorderColor;
+    const selectedColor   = dark ? tw["accent-dark"] : tw["accent-light"];
+
+    const elements = [];
+
+    data.nodes.forEach(n => {
+        elements.push({
+            data: {
+                id: n.id,
+                label: n.props.name || n.labels.join(", "),
+                props: n.props
+            }
+        });
+    });
+
+    data.edges.forEach(e => {
+        elements.push({
+            data: {
+                id: e.id,
+                source: e.start,
+                target: e.end,
+                label: e.type,
+                props: e.props
+            }
+        });
+    });
+
+    const cy = cytoscape({
+        container: document.getElementById('cy'),
+        elements: elements,
+        style: [
+            {
+                selector: 'node',
+                style: {
+                    'background-color': nodeBgColor,
+                    'background-opacity': 0.75,
+                    'border-width': 2,
+                    'border-color': nodeBorderColor,
+                    'label': 'data(label)',
+                    'color': nodeTextColor,
+                    'font-size': '11px',
+                    'text-valign': 'center',
+                    'text-halign': 'center'
+                }
+            },
+            {
+                selector: 'edge',
+                style: {
+                    'width': 1.5,
+                    'line-color': edgeColor,
+                    'target-arrow-color': edgeColor,
+                    'target-arrow-shape': 'triangle',
+                    'curve-style': 'bezier',
+                    'label': 'data(label)',
+                    'font-size': '9px',
+                    'color': edgeColor
+                }
+            },
+            {
+                selector: ':selected',
+                style: {
+                    'border-color': selectedColor,
+                    'line-color': selectedColor,
+                    'target-arrow-color': selectedColor
+                }
+            }
+        ],
+        layout: { name: 'cose', animate: true }
+    });
+
+    const root = document.querySelector('[x-data]');
+
+    cy.on('tap', 'node', function(evt) {
+        root.__x.$data.selectedNode = evt.target.data();
+        root.__x.$data.openNodeModal = true;
+    });
+
+    cy.on('tap', 'edge', function(evt) {
+        root.__x.$data.selectedNode = evt.target.data();
+        root.__x.$data.openNodeModal = true;
+    });
+}
+</script>
+{% endblock %}

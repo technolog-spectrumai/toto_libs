@@ -1,0 +1,180 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}Projection Sync{% endblock %}
+
+{% block content %}
+<div
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-6 py-10 transition-colors duration-300">
+
+  <div class="mx-auto max-w-5xl space-y-8">
+    <header
+      class="rounded-xl border p-6 shadow-md"
+      :class="darkMode
+        ? 'bg-bubble-bg-dark border-accent-1'
+        : 'bg-bubble-bg-light border-accent-2'">
+      <a href="{% url 'ravioli:query_unified' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+        <i class="fa-solid fa-arrow-left"></i>
+        Cypher queries
+      </a>
+
+      <div class="mt-4 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div>
+          <p
+            class="text-xs font-semibold uppercase tracking-wide"
+            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+            Ravioli
+          </p>
+          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+            <i class="fa-solid fa-arrows-rotate"></i>
+            Projection Sync
+          </h1>
+          <p class="mt-2 max-w-2xl text-sm opacity-75">
+            Sync selected Django models into the Neo4j projection graph.
+          </p>
+        </div>
+
+        <button
+          id="projection-start"
+          type="button"
+          class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90 disabled:opacity-50"
+          :class="darkMode
+            ? 'bg-accent-dark text-primary-bg-dark'
+            : 'bg-accent-light text-primary-bg-light'">
+          <i class="fa-solid fa-play"></i>
+          Run sync
+        </button>
+      </div>
+    </header>
+
+    <section
+      class="rounded-xl border p-5 shadow-md"
+      :class="darkMode
+        ? 'bg-bubble-bg-dark border-warn-dark'
+        : 'bg-bubble-bg-light border-warn-light'">
+      <div class="flex items-start gap-3">
+        <i
+          class="fa-solid fa-triangle-exclamation mt-1 text-2xl"
+          :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">
+        </i>
+        <div>
+          <h2 class="text-xl font-bold">One-way operation</h2>
+          <p class="mt-1 text-sm opacity-75">
+            This writes Django model data into Neo4j projection nodes and relationships. It does not pull changes back into Django.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section
+      class="rounded-xl border p-6 shadow-md"
+      :class="darkMode
+        ? 'bg-bubble-bg-dark border-accent-1'
+        : 'bg-bubble-bg-light border-accent-2'">
+      <div class="grid gap-4 md:grid-cols-2">
+        {% for app, models in grouped_models.items %}
+          <fieldset
+            class="rounded-lg border p-4"
+            :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'">
+            <legend class="px-2 text-sm font-bold">{{ app }}</legend>
+            <div class="mt-2 grid gap-2 text-sm">
+              {% for model in models %}
+                <label class="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    class="projection-model h-4 w-4 rounded"
+                    value="{{ model }}"
+                    checked>
+                  <span>{{ model }}</span>
+                </label>
+              {% endfor %}
+            </div>
+          </fieldset>
+        {% endfor %}
+      </div>
+
+      <div class="mt-6 space-y-2">
+        <div class="flex items-center justify-between gap-3 text-sm">
+          <span id="projection-status" class="opacity-75">Idle</span>
+          <span id="projection-count" class="font-semibold">0 / 0</span>
+        </div>
+        <progress
+          id="projection-progress"
+          value="0"
+          max="100"
+          class="h-3 w-full overflow-hidden rounded-lg">
+        </progress>
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}
+
+{% block end_script %}
+<script>
+let projectionSource = null;
+
+function setProjectionStatus(message, current, total) {
+    const progress = document.getElementById("projection-progress");
+    const status = document.getElementById("projection-status");
+    const count = document.getElementById("projection-count");
+
+    if (status) status.textContent = message || "Idle";
+
+    if (progress && total) {
+        progress.max = total;
+        progress.value = current || 0;
+    } else if (progress) {
+        progress.max = 100;
+        progress.value = 0;
+    }
+
+    if (count) count.textContent = `${current || 0} / ${total || 0}`;
+}
+
+function selectedProjectionModels() {
+    return Array.from(document.querySelectorAll(".projection-model:checked"))
+        .map((input) => input.value);
+}
+
+function startProjectionSync() {
+    const button = document.getElementById("projection-start");
+    const params = new URLSearchParams();
+
+    selectedProjectionModels().forEach((model) => params.append("models", model));
+
+    if (projectionSource) {
+        projectionSource.close();
+    }
+
+    setProjectionStatus("Starting projection sync", 0, 0);
+    if (button) button.disabled = true;
+
+    const url = `{% url 'ravioli:run_projection_stream' %}?${params.toString()}`;
+    projectionSource = new EventSource(url);
+
+    projectionSource.onmessage = function (event) {
+        const data = JSON.parse(event.data);
+        setProjectionStatus(data.message, data.current, data.total);
+
+        if (data.status === "completed" || data.status === "error") {
+            projectionSource.close();
+            projectionSource = null;
+            if (button) button.disabled = false;
+        }
+    };
+
+    projectionSource.onerror = function () {
+        setProjectionStatus("Projection stream disconnected", 0, 0);
+        projectionSource.close();
+        projectionSource = null;
+        if (button) button.disabled = false;
+    };
+}
+
+document.getElementById("projection-start")?.addEventListener("click", startProjectionSync);
+</script>
+{% endblock %}

@@ -1,0 +1,292 @@
+<div class="space-y-3" x-data="sketchTools" x-init="$store.sketch.darkMode = darkMode">
+  <!-- TOP TABS: DRAW + STYLE + TRANSFORM -->
+  <div class="flex gap-2 mb-4">
+    <button
+      @click="currentTab = 'draw'"
+      :class="[
+        currentTab === 'draw'
+          ? (darkMode ? 'font-bold border-b-2 border-accent-dark'
+                      : 'font-bold border-b-2 border-accent-light')
+          : 'opacity-60'
+      ]"
+      class="flex-1 py-1 text-sm"
+    >
+      Draw
+    </button>
+
+    <button
+      @click="currentTab = 'style'"
+      :class="[
+        currentTab === 'style'
+          ? (darkMode ? 'font-bold border-b-2 border-accent-dark'
+                      : 'font-bold border-b-2 border-accent-light')
+          : 'opacity-60'
+      ]"
+      class="flex-1 py-1 text-sm"
+    >
+      Style
+    </button>
+
+    <button
+      @click="currentTab = 'transform'"
+      :class="[
+        currentTab === 'transform'
+          ? (darkMode ? 'font-bold border-b-2 border-accent-dark'
+                      : 'font-bold border-b-2 border-accent-light')
+          : 'opacity-60'
+      ]"
+      class="flex-1 py-1 text-sm"
+    >
+      Transform
+    </button>
+  </div>
+
+  <!-- DRAW TAB -->
+  <template x-if="currentTab === 'draw'">
+    <div class="space-y-4">
+
+      <!-- 1D TOOLS -->
+      <div>
+
+        <div class="mt-2 space-y-1">
+          <template x-for="tool in tools1d" :key="tool.id">
+            <button
+              @click="setTool(tool.id)"
+              :class="[
+                darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2',
+                currentTool === tool.id ? 'font-bold border-4' : 'border'
+              ]"
+              class="w-full flex items-center gap-2 px-3 py-2 rounded shadow-sm text-sm font-semibold">
+              <i :class="tool.icon"></i>
+              <span x-text="tool.label"></span>
+            </button>
+          </template>
+        </div>
+      </div>
+
+      <!-- 2D TOOLS -->
+      <div>
+
+        <div class="mt-2 space-y-1">
+          <template x-for="tool in tools2d" :key="tool.id">
+            <button
+              @click="setTool(tool.id)"
+              :class="[
+                darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2',
+                currentTool === tool.id ? 'font-bold border-4' : 'border'
+              ]"
+              class="w-full flex items-center gap-2 px-3 py-2 rounded shadow-sm text-sm font-semibold">
+              <i :class="tool.icon"></i>
+              <span x-text="tool.label"></span>
+            </button>
+          </template>
+        </div>
+      </div>
+
+    </div>
+  </template>
+
+  <!-- STYLE TAB -->
+  <template x-if="currentTab === 'style'">
+    <div class="space-y-4">
+
+      <!-- BRUSH -->
+      <div>
+
+        <div class="space-y-3 mt-2">
+
+          <!-- Brush Size -->
+          <div>
+            <label class="block text-xs font-semibold">Brush Size</label>
+            <input type="range" min="1" max="20"
+              x-model="$store.sketch.brushSize"
+              @input="setBrushSize($event.target.value)"
+              class="w-full border rounded" />
+            <div class="text-xs">Size: <span x-text="$store.sketch.brushSize"></span>px</div>
+          </div>
+
+          <!-- Brush Color -->
+          <div>
+            <label class="block text-xs font-semibold">Color</label>
+            <input type="color"
+              x-model="$store.sketch.brushColor"
+              @input="setBrushColor($event.target.value)"
+              class="w-full h-10 border rounded" />
+          </div>
+
+          <!-- Brush Style -->
+          <div>
+            <label class="block text-xs font-semibold">Style</label>
+            <select
+              x-model="$store.sketch.brushStyle"
+              @change="setBrushStyle($event.target.value)"
+              class="w-full p-1 border rounded">
+              <option value="solid">Solid</option>
+              <option value="dashed">Dashed</option>
+            </select>
+          </div>
+
+          <!-- Brush Opacity -->
+          <div>
+            <label class="block text-xs font-semibold">Brush Opacity</label>
+            <input type="range" min="0" max="1" step="0.01"
+              x-model="$store.sketch.brushOpacity"
+              @input="setBrushOpacity($event.target.value)"
+              class="w-full" />
+            <div class="text-xs">
+              Opacity: <span x-text="Math.round($store.sketch.brushOpacity * 100)"></span>%
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- FILL -->
+      <div x-show="['rect','circle'].includes(currentTool)">
+        <label class="block text-sm font-semibold">Fill</label>
+        <select
+          x-model="$store.sketch.fillMode"
+          @change="setFillMode($event.target.value)"
+          class="w-full p-1 border rounded">
+          <option value="color">Color</option>
+          <option value="none">No Fill</option>
+        </select>
+
+        <input type="color"
+          x-model="$store.sketch.fillColor"
+          @input="setFillColor($event.target.value)"
+          class="w-full h-10 mt-2 border rounded" />
+
+        <label class="block text-sm font-semibold mt-2">Fill Opacity</label>
+        <input type="range" min="0" max="1" step="0.01"
+          x-model="$store.sketch.fillOpacity"
+          @input="setFillOpacity($event.target.value)"
+          class="w-full" />
+        <div class="text-xs">
+          Opacity: <span x-text="Math.round($store.sketch.fillOpacity * 100)"></span>%
+        </div>
+      </div>
+
+    </div>
+  </template>
+
+  <!-- TRANSFORM TAB -->
+  <template x-if="currentTab === 'transform'">
+    <div class="space-y-2">
+      <template x-for="tool in toolsTransform" :key="tool.id">
+        <button
+          @click="setTool(tool.id)"
+          :class="[
+            darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2',
+            currentTool === tool.id ? 'font-bold border-4' : 'border'
+          ]"
+          class="w-full flex items-center gap-2 px-3 py-2 rounded shadow-sm text-sm font-semibold">
+          <i :class="tool.icon"></i>
+          <span x-text="tool.label"></span>
+        </button>
+      </template>
+    </div>
+  </template>
+
+</div>
+
+
+
+<script>
+document.addEventListener("alpine:init", () => {
+    Alpine.store("sketch", {
+        darkMode: localStorage.getItem('darkMode') === 'true',
+        panelOpen: false,
+        currentTab: "draw",
+        currentTool: "pencil",
+
+        tools1d: [
+            { id: 'pencil', label: 'pencil', icon: 'fa-solid fa-pencil' },
+            { id: 'pen', label: 'Pen', icon: 'fa-solid fa-pen-fancy' },
+            { id: 'line',     label: 'Line',      icon: 'fa-solid fa-minus' },
+            { id: 'elbow', label: 'Elbow', icon: 'fa-solid fa-turn-up' },
+            { id: 'arrow', label: 'Arrow', icon: 'fa-solid fa-arrow-right' },
+            { id: 'text',     label: 'Text',      icon: 'fa-solid fa-font' }
+        ],
+
+        tools2d: [
+            { id: 'rect',   label: 'Rectangle', icon: 'fa-regular fa-square' },
+            { id: 'circle', label: 'Circle',    icon: 'fa-regular fa-circle' },
+            { id: 'triangle', label: 'Triangle', icon: 'fa-solid fa-play' },
+            { id: 'icon', label: 'Icon', icon: 'fa-solid fa-icons' }
+        ],
+
+        toolsTransform: [
+            { id: 'select', label: 'Select', icon: 'fa-regular fa-hand-pointer' },
+            { id: 'move', label: 'Move', icon: 'fa-solid fa-up-down-left-right' },
+            { id: 'rotate', label: 'Rotate', icon: 'fa-solid fa-rotate-right' },
+            { id: 'scale', label: 'Scale', icon: 'fa-solid fa-expand' },
+            { id: 'universalTransform', label: 'Transform', icon: 'fa-solid fa-up-right-and-down-left-from-center' },
+            { id: 'union', label: 'Union', icon: 'fa-solid fa-circle-plus' },
+            { id: 'intersection', label: 'Intersection', icon: 'fa-solid fa-bolt' },
+            { id: 'subtraction', label: 'Subtraction', icon: 'fa-solid fa-circle-minus' },
+            { id: 'delete', label: 'Delete', icon: 'fa-solid fa-trash' },
+            { id: 'group', label: 'Group', icon: 'fa-solid fa-object-group' },
+            { id: 'ungroup', label: 'Ungroup', icon: 'fa-solid fa-object-ungroup' },
+            { id: 'bringForward', label: 'Bring Forward', icon: 'fa-solid fa-arrow-up' },
+            { id: 'sendBackward', label: 'Send Backward', icon: 'fa-solid fa-arrow-down' },
+            { id: 'fill', label: 'Fill', icon: 'fa-solid fa-fill-drip' }
+        ],
+
+        brushSize: 2,
+        brushColor: "#000000",
+        brushStyle: "solid",
+        brushOpacity: 1,
+
+        fillMode: "color",
+        fillColor: "#ffffff",
+        fillOpacity: 1,
+
+        selectedItems: [],
+    });
+});
+</script>
+<script>
+document.addEventListener("alpine:init", () => {
+
+    Alpine.data("sketchTools", () => ({
+
+        // METHODS
+        setBrushSize(v) { Alpine.store("sketch").brushSize = Number(v) },
+        setBrushColor(v) { Alpine.store("sketch").brushColor = v },
+        setBrushStyle(v) { Alpine.store("sketch").brushStyle = v },
+        setTool(v) { Alpine.store("sketch").currentTool = v },
+        setFillMode(v) { Alpine.store("sketch").fillMode = v },
+        setFillColor(v) { Alpine.store("sketch").fillColor = v },
+        setFillOpacity(v) { Alpine.store("sketch").fillOpacity = Number(v) },
+        setBrushOpacity(v) { Alpine.store("sketch").brushOpacity = Number(v) },
+
+        // GETTERS / SETTERS
+        get darkMode() { return Alpine.store("sketch").darkMode },
+        get panelOpen() { return Alpine.store("sketch").panelOpen },
+
+        get currentTab() { return Alpine.store("sketch").currentTab },
+        set currentTab(v) { Alpine.store("sketch").currentTab = v },
+
+        get currentTool() { return Alpine.store("sketch").currentTool },
+
+        get tools1d() { return Alpine.store("sketch").tools1d },
+        get tools2d() { return Alpine.store("sketch").tools2d },
+
+        get brushSize() { return Alpine.store("sketch").brushSize },
+        get brushColor() { return Alpine.store("sketch").brushColor },
+        get brushStyle() { return Alpine.store("sketch").brushStyle },
+
+
+        get brushOpacity() { return Alpine.store("sketch").brushOpacity },
+
+        get fillMode() { return Alpine.store("sketch").fillMode },
+        get fillColor() { return Alpine.store("sketch").fillColor },
+        get fillOpacity() { return Alpine.store("sketch").fillOpacity },
+
+        get toolsTransform() { return Alpine.store("sketch").toolsTransform },
+
+    }));
+
+});
+</script>

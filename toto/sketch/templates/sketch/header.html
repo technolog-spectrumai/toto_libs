@@ -1,0 +1,51 @@
+<div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+
+    <!-- Left: Name + Created -->
+    <div>
+        <h1 class="text-2xl font-bold">{{ board.name }}</h1>
+        <p class="text-sm text-gray-500 dark:text-gray-400">
+            Created: {{ board.created_at|date:"Y-m-d H:i" }}
+        </p>
+    </div>
+
+    <!-- Right: Buttons -->
+    <div class="flex items-center gap-3">
+
+        <!-- Save Button -->
+        <button
+            :class="darkMode
+                ? 'bg-accent-dark text-primary-bg-dark'
+                : 'bg-accent-light text-primary-bg-light'"
+            class="px-4 py-2 rounded font-semibold hover:opacity-90 transition text-sm flex items-center gap-2"
+        >
+            <i class="fa-solid fa-floppy-disk"></i>
+            Save
+        </button>
+
+        <!-- Auto‑Save Off -->
+        <button
+            id="autosave-off"
+            :class="darkMode
+                ? 'bg-sunken-dark text-text-main-dark'
+                : 'bg-sunken-light text-text-main-light'"
+            class="px-4 py-2 rounded font-semibold transition text-sm flex items-center gap-2 shadow-inner"
+        >
+            <i class="fa-solid fa-clock"></i>
+            Auto‑Save Off
+        </button>
+
+        <!-- Auto‑Save On -->
+        <button
+            id="autosave-on"
+            :class="darkMode
+                ? 'bg-success-dark text-primary-bg-dark'
+                : 'bg-success-light text-primary-bg-light'"
+            class="px-4 py-2 rounded font-semibold transition text-sm flex items-center gap-2 hover:opacity-90 hidden"
+        >
+            <i class="fa-solid fa-clock"></i>
+            Auto‑Save On
+        </button>
+
+    </div>
+
+</div>

@@ -1,0 +1,354 @@
+<script>
+class SelectTool extends window.BaseTool {
+
+    toolName = "select";
+
+    onMouseDown(event) {
+        const hit = paper.project.hitTest(event.point, {
+            fill: true,
+            stroke: true,
+            segments: true,
+            tolerance: 5,
+            children: true
+        });
+
+        const shift = event.modifiers.shift;
+
+        // Clicked empty → unselect all
+        if (!hit || !hit.item) {
+            this.unselectAll();
+            this.state.selectedItems = [];
+            return;
+        }
+
+        let item = hit.item;
+
+        while (item && item.parent && item.parent.className === "Group") {
+            item = item.parent;
+        }
+
+        // SHIFT-click → toggle selection
+        if (shift) {
+            if (this.state.selectedItems.includes(item)) {
+                item.selected = false;
+                this.state.selectedItems = this.state.selectedItems.filter(i => i !== item);
+            } else {
+                item.selected = true;
+                this.state.selectedItems.push(item);
+            }
+            return;
+        }
+
+        // Normal click → select only this item
+        this.unselectAll();
+        item.selected = true;
+
+
+        this.state.selectedItems = [item];
+    }
+
+    unselectAll() {
+        paper.project.activeLayer.children.forEach(item => {
+            item.selected = false;
+        });
+    }
+}
+
+
+class RotateTool extends window.BaseTool {
+
+    toolName = "rotate";
+
+    static apply(item, data, paper) {
+        const center = new paper.Point(data.center[0], data.center[1]);
+        item.rotate(data.angle, center);
+    }
+
+    onMouseDown(event) {
+        this.items = this.state.selectedItems;
+        if (!this.items.length) return;
+
+        // Combined bounding box
+        let bounds = this.items[0].bounds.clone();
+        for (let i = 1; i < this.items.length; i++) {
+            bounds = bounds.unite(this.items[i].bounds);
+        }
+
+        this.center = bounds.center;
+        this.startAngle = this.center.subtract(event.point).angle;
+    }
+
+    onMouseDrag(event) {
+        if (!this.items.length) return;
+
+        const currentAngle = this.center.subtract(event.point).angle;
+        const delta = currentAngle - this.startAngle;
+
+        // 🔥 Rotate locally ONLY (no Yjs yet)
+        this.items.forEach(item => {
+            item.rotate(delta, this.center);
+        });
+
+        this.startAngle = currentAngle;
+    }
+
+    onMouseUp(event) {
+        if (!this.items || !this.items.length) return;
+
+        // 🔥 Commit rotated geometry to Yjs
+        this.items.forEach(item => {
+            const id = item._id;
+            const shape = painter.yShapes.get(id);
+            if (!shape) return;
+            painter.saveTransformedGeometry(shape, item);
+        });
+
+        this.startAngle = null;
+    }
+}
+
+
+class MoveTool extends window.BaseTool {
+
+    toolName = "move";
+
+    static apply(item, data, paper) {
+        const delta = new paper.Point(data.delta[0], data.delta[1]);
+        item.translate(delta);
+    }
+
+    onMouseDown(event) {
+        this.items = this.state.selectedItems;
+        if (!this.items.length) return;
+
+        this.lastPoint = event.point;
+    }
+
+    onMouseDrag(event) {
+        if (!this.items.length) return;
+
+        const delta = event.point.subtract(this.lastPoint);
+
+        this.items.forEach(item => {
+            item.position = item.position.add(delta);
+        });
+
+        this.lastPoint = event.point;
+    }
+
+    onMouseUp(event) {
+        if (!this.items || !this.items.length) return;
+
+        this.items.forEach(item => {
+            const id = item._id; // make sure you set this in renderSegments
+            const shape = painter.yShapes.get(id);
+            if (!shape) return;
+            painter.saveTransformedGeometry(shape, item);
+        });
+
+        this.lastPoint = null;
+    }
+}
+
+
+class DeleteTool extends window.BaseTool {
+
+    toolName = "delete";
+
+    onMouseDown(event) {
+        const items = this.state.selectedItems;
+        if (!items.length) return;
+
+        items.forEach(item => {
+            const id = item._id;
+            painter.delete(id);
+            item.remove();
+        });
+
+        this.state.selectedItems = [];
+    }
+}
+
+
+class ScaleTool extends window.BaseTool {
+
+    toolName = "scale";
+
+    static apply(item, data, paper) {
+        const center = new paper.Point(data.center[0], data.center[1]);
+        item.scale(data.factor, center);
+    }
+
+    onMouseDown(event) {
+        this.items = this.state.selectedItems;
+        if (!this.items.length) return;
+
+        // Combined bounding box of all selected items
+        let bounds = this.items[0].bounds.clone();
+        for (let i = 1; i < this.items.length; i++) {
+            bounds = bounds.unite(this.items[i].bounds);
+        }
+
+        this.center = bounds.center;
+        this.startDistance = this.center.getDistance(event.point);
+    }
+
+    onMouseDrag(event) {
+        if (!this.items.length) return;
+
+        const currentDistance = this.center.getDistance(event.point);
+        if (this.startDistance === 0) return;
+
+        const factor = currentDistance / this.startDistance;
+
+        // 🔥 Scale locally ONLY (no Yjs yet)
+        this.items.forEach(item => {
+            item.scale(factor, this.center);
+        });
+
+        this.startDistance = currentDistance;
+    }
+
+    onMouseUp(event) {
+        if (!this.items || !this.items.length) return;
+
+        // 🔥 Commit scaled geometry to Yjs
+        this.items.forEach(item => {
+            const id = item._id;
+            const shape = painter.yShapes.get(id);
+            if (!shape) return;
+            painter.saveTransformedGeometry(shape, item);
+        });
+
+        this.startDistance = null;
+    }
+
+
+}
+
+class UniversalTransformTool extends window.BaseTool {
+
+    toolName = "universalTransform";
+
+    onMouseDown(event) {
+        const hit = paper.project.hitTest(event.point, {
+            fill: true,
+            stroke: true,
+            segments: true,
+            tolerance: 5,
+            children: true
+        });
+
+        if (!hit || !hit.item) return;
+
+        const item = window.YPainter.resolveItem(hit.item);
+        if (!item || !item._id) return;
+
+        this.state.selectedItems.forEach(selected => {
+            selected.selected = false;
+        });
+
+        item.selected = true;
+        this.state.selectedItems = [item];
+        window.transformModalHelper?.openTransformModal(item);
+    }
+}
+
+class BooleanOperationTool extends window.BaseTool {
+    operation = null;
+
+    onActivate() {
+        painter.applyBooleanToSelected(this.operation);
+    }
+}
+
+class UnionTool extends BooleanOperationTool {
+    toolName = "union";
+    operation = "or";
+}
+
+class IntersectionTool extends BooleanOperationTool {
+    toolName = "intersection";
+    operation = "and";
+}
+
+class SubtractionTool extends BooleanOperationTool {
+    toolName = "subtraction";
+    operation = "not";
+}
+
+
+class GroupTool extends window.BaseTool {
+    toolName = "group";
+
+    onMouseDown() {
+        const items = this.state.selectedItems;
+        if (!items || items.length < 2) return;
+
+        painter.group(items);
+
+        // Clear selection
+        this.state.selectedItems = [];
+    }
+}
+
+class UngroupTool extends window.BaseTool {
+    toolName = "ungroup";
+
+    onMouseDown() {
+        const items = this.state.selectedItems;
+        if (!items || items.length !== 1) return;
+
+        const item = items[0];
+        if (item.className !== "Group") return;
+
+        let children = painter.ungroup(item);
+        this.state.selectedItems = children;
+    }
+}
+
+class BringForwardTool extends window.BaseTool {
+    toolName = "bringForward";
+
+    onMouseDown() {
+        const items = this.state.selectedItems;
+        if (!items || items.length !== 1) return;
+
+        painter.bringForward(items[0]);
+    }
+}
+
+
+class SendBackwardTool extends window.BaseTool {
+    toolName = "sendBackward";
+
+    onMouseDown() {
+        const items = this.state.selectedItems;
+        if (!items || items.length !== 1) return;
+
+        painter.sendBackward(items[0]);
+    }
+}
+
+class FillTool extends window.BaseTool {
+    toolName = "fill";
+
+    onActivate() {
+        painter.applyBrushToSelected();
+    }
+
+    onMouseDown(event) {
+        const item = painter.findItem(event.point);
+        if (!item) return;
+
+        painter.applyBrushToItems([item]);
+    }
+}
+
+
+
+window.FillTool = FillTool;
+
+
+
+</script>

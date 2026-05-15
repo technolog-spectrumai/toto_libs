@@ -1,0 +1,55 @@
+<div
+  :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+  class="mt-4 rounded-lg border p-3">
+
+  <div class="flex items-center justify-between gap-3 mb-3">
+    <h3 class="flex items-center gap-2 text-sm font-bold">
+      <i class="{{ sidebar_plugin_icon }}"></i>
+      {{ sidebar_plugin_title }}
+    </h3>
+
+    <a
+      href="{% url 'travels:travel_create' %}"
+      :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+      class="inline-flex items-center gap-1 text-xs font-semibold underline-offset-4 hover:underline">
+      <i class="fa-solid fa-plus"></i>
+      Add
+    </a>
+  </div>
+
+  {% if recent_travels %}
+    <div class="space-y-2">
+      {% for travel in recent_travels %}
+        <a
+          href="{% url 'travels:travel_review' travel.pk %}"
+          :class="darkMode ? 'hover:bg-sunken-dark' : 'hover:bg-sunken-light'"
+          class="flex items-start gap-2 rounded-lg p-2 transition">
+
+          <i class="fa-solid fa-route mt-0.5 text-xs opacity-50 shrink-0"></i>
+
+          <span class="min-w-0">
+            <span class="block truncate text-xs font-semibold">
+              {% if travel.route %}{{ travel.route.name }}{% else %}Travel #{{ travel.pk }}{% endif %}
+            </span>
+            <span class="block text-[11px] opacity-55">{{ travel.starts_at|date:"M j, Y" }}</span>
+          </span>
+
+          {% if travel.score %}
+            <span class="ml-auto shrink-0 text-[11px] font-bold opacity-70">
+              {{ travel.score }}/5
+            </span>
+          {% endif %}
+        </a>
+      {% endfor %}
+    </div>
+
+    <a
+      href="{% url 'travels:my_travels' %}"
+      :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+      class="mt-3 block text-center text-xs font-semibold underline-offset-4 hover:underline">
+      View all travels
+    </a>
+  {% else %}
+    <p class="text-xs opacity-60">No travels recorded yet.</p>
+  {% endif %}
+</div>

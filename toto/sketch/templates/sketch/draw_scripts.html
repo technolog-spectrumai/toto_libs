@@ -1,0 +1,422 @@
+<script>
+
+// ----------------------
+// FREEHAND
+// ----------------------
+class FreehandTool extends window.BaseTool {
+
+    toolName = "pencil"
+
+    onMouseDown(event) {
+        this.id = crypto.randomUUID();
+        this.segments = [{
+            point: [event.point.x, event.point.y],
+            handleIn: [0, 0],
+            handleOut: [0, 0]
+        }];
+
+        painter.createShape({
+            id: this.id,
+            type: "path",
+            strokeColor: this.state.brushColor,
+            strokeWidth: this.state.brushSize,
+            opacity: this.state.brushOpacity,
+            dashArray: this.makeDashArray(),
+            fillColor: null,
+            segments: this.segments
+        });
+    }
+
+    onMouseDrag(event) {
+        this.segments.push({
+            point: [event.point.x, event.point.y],
+            handleIn: [0, 0],
+            handleOut: [0, 0]
+        });
+
+        painter.updateShape(this.id, { segments: this.segments });
+    }
+
+    onMouseUp(event) {
+        const tmp = new paper.Path();
+        this.segments.forEach(seg => tmp.add(new paper.Point(seg.point[0], seg.point[1])));
+        tmp.simplify(1);
+
+        const simplified = tmp.segments.map(s => ({
+            point: [s.point.x, s.point.y],
+            handleIn: [s.handleIn.x, s.handleIn.y],
+            handleOut: [s.handleOut.x, s.handleOut.y]
+        }));
+
+        tmp.remove();
+
+        this.segments = simplified;
+        painter.updateShape(this.id, { segments: this.segments });
+    }
+}
+
+
+class SmoothFreehandTool extends FreehandTool {
+
+    toolName = "pen"
+
+    onMouseUp(event) {
+        const tmp = new paper.Path();
+        this.segments.forEach(seg => tmp.add(new paper.Point(seg.point[0], seg.point[1])));
+        tmp.simplify(50);
+
+        const simplified = tmp.segments.map(s => ({
+            point: [s.point.x, s.point.y],
+            handleIn: [s.handleIn.x, s.handleIn.y],
+            handleOut: [s.handleOut.x, s.handleOut.y]
+        }));
+
+        tmp.remove();
+
+        this.segments = simplified;
+        painter.updateShape(this.id, { segments: this.segments });
+    }
+}
+
+
+class LineTool extends window.BaseTool {
+
+    toolName = "line";
+
+    onMouseDown(event) {
+        this.id = crypto.randomUUID();
+
+        const p = {
+            point: [event.point.x, event.point.y],
+            handleIn: [0, 0],
+            handleOut: [0, 0]
+        };
+
+        this.segments = [p, { ...p }];
+
+        painter.createShape({
+            id: this.id,
+            type: "path",
+            strokeColor: this.state.brushColor,
+            strokeWidth: this.state.brushSize,
+            opacity: this.state.brushOpacity,
+            dashArray: this.makeDashArray(),
+            fillColor: null,
+            segments: this.segments
+        });
+    }
+
+    onMouseDrag(event) {
+        this.segments[1] = {
+            point: [event.point.x, event.point.y],
+            handleIn: [0, 0],
+            handleOut: [0, 0]
+        };
+
+        painter.updateShape(this.id, { segments: this.segments });
+    }
+}
+
+class ElbowLineTool extends window.BaseTool {
+
+    toolName = "elbow";
+
+    onMouseDown(event) {
+        this.id = crypto.randomUUID();
+        this.start = event.point;
+        this.created = false;
+    }
+
+    onMouseDrag(event) {
+        const shape = this.buildShape(event.point);
+
+        if (!this.created) {
+            painter.createShape(shape);
+            this.created = true;
+        } else {
+            painter.updateShape(this.id, shape);
+        }
+    }
+
+    onMouseUp(event) {
+        const shape = this.buildShape(event.point);
+
+        if (!this.created) {
+            painter.createShape(shape);
+            this.created = true;
+        } else {
+            painter.updateShape(this.id, shape);
+        }
+    }
+
+    buildShape(end) {
+        const midX = this.start.x + (end.x - this.start.x) / 2;
+        const points = [
+            [this.start.x, this.start.y],
+            [midX, this.start.y],
+            [midX, end.y],
+            [end.x, end.y]
+        ];
+
+        return {
+            id: this.id,
+            type: "path",
+            strokeColor: this.state.brushColor,
+            strokeWidth: this.state.brushSize,
+            opacity: this.state.brushOpacity,
+            dashArray: this.makeDashArray(),
+            fillColor: null,
+            closed: false,
+            segments: points.map(point => ({
+                point,
+                handleIn: [0, 0],
+                handleOut: [0, 0]
+            }))
+        };
+    }
+}
+
+
+class RectTool extends window.BaseTool {
+
+    toolName = "rect";
+
+    onMouseDown(event) {
+        this.id = crypto.randomUUID();
+        this.start = event.point;
+        this.created = false;
+    }
+
+    onMouseDrag(event) {
+        const rect = new paper.Rectangle(this.start, event.point);
+        const path = new paper.Path.Rectangle(rect);
+
+        const segments = path.segments.map(s => ({
+            point: [s.point.x, s.point.y],
+            handleIn: [s.handleIn.x, s.handleIn.y],
+            handleOut: [s.handleOut.x, s.handleOut.y]
+        }));
+
+        path.remove();
+
+        const shape = {
+            id: this.id,
+            type: "path",
+            strokeColor: this.state.brushColor,
+            strokeWidth: this.state.brushSize,
+            outlineOpacity: this.state.fillOpacity,
+            fillOpacity: this.state.brushOpacity,
+            dashArray: this.makeDashArray(),
+            closed: true,
+            fillColor: this.state.fillMode === "color" ? this.state.fillColor : null,
+            segments
+        };
+
+        if (!this.created) {
+            painter.createShape(shape);
+            this.created = true;
+        } else {
+            painter.updateShape(this.id, shape);
+        }
+    }
+}
+
+
+class CircleTool extends window.BaseTool {
+
+    toolName = "circle";
+
+    onMouseDown(event) {
+        this.id = crypto.randomUUID();
+        this.start = event.point;
+        this.created = false;
+    }
+
+    onMouseDrag(event) {
+        const radius = this.start.getDistance(event.point);
+        const path = new paper.Path.Circle(this.start, radius);
+
+        const segments = path.segments.map(seg => ({
+            point: [seg.point.x, seg.point.y],
+            handleIn: [seg.handleIn.x, seg.handleIn.y],
+            handleOut: [seg.handleOut.x, seg.handleOut.y]
+        }));
+
+        path.remove();
+
+        const shape = {
+            id: this.id,
+            type: "path",
+            strokeColor: this.state.brushColor,
+            strokeWidth: this.state.brushSize,
+            opacity: this.state.brushOpacity,
+            dashArray: this.makeDashArray(),
+            closed: true,
+            fillColor: this.state.fillMode === "color" ? this.state.fillColor : null,
+            segments
+        };
+
+        if (!this.created) {
+            painter.createShape(shape);
+            this.created = true;
+        } else {
+            painter.updateShape(this.id, shape);
+        }
+    }
+}
+
+class TriangleTool extends window.BaseTool {
+
+    toolName = "triangle";
+
+    onMouseDown(event) {
+        this.id = crypto.randomUUID();
+        this.start = event.point;
+        this.created = false;
+    }
+
+    onMouseDrag(event) {
+        const rect = new paper.Rectangle(this.start, event.point);
+        const top = new paper.Point(rect.center.x, rect.top);
+        const right = new paper.Point(rect.right, rect.bottom);
+        const left = new paper.Point(rect.left, rect.bottom);
+        const points = [top, right, left];
+
+        const shape = {
+            id: this.id,
+            type: "path",
+            strokeColor: this.state.brushColor,
+            strokeWidth: this.state.brushSize,
+            opacity: this.state.brushOpacity,
+            dashArray: this.makeDashArray(),
+            closed: true,
+            fillColor: this.state.fillMode === "color" ? this.state.fillColor : null,
+            segments: points.map(point => ({
+                point: [point.x, point.y],
+                handleIn: [0, 0],
+                handleOut: [0, 0]
+            }))
+        };
+
+        if (!this.created) {
+            painter.createShape(shape);
+            this.created = true;
+        } else {
+            painter.updateShape(this.id, shape);
+        }
+    }
+}
+
+// ----------------------
+// TEXT
+// ----------------------
+class TextTool extends window.BaseTool {
+
+    toolName = "text";
+
+    onMouseDown(event) {
+        window.textModalHelper?.openTextModal(event.point, {
+            fillColor: this.state.brushColor,
+            fontSize: this.state.brushSize * 4,
+            fontFamily: "Arial",
+            bold: false,
+            italic: false,
+            opacity: this.state.brushOpacity
+        });
+    }
+}
+
+class IconTool extends window.BaseTool {
+
+    toolName = "icon";
+
+    onMouseDown(event) {
+        window.iconModalHelper?.openIconModal(event.point, {
+            fillColor: this.state.brushColor,
+            opacity: this.state.brushOpacity
+        });
+    }
+}
+
+class ArrowTool extends window.BaseTool {
+
+    toolName = "arrow";
+
+    onMouseDown(event) {
+        this.id = crypto.randomUUID();
+        this.start = event.point;
+        this.end = event.point;
+        this.created = false;
+    }
+
+    onMouseDrag(event) {
+        this.end = event.point;
+
+        const shape = this.buildArrowShape();
+
+        if (!this.created) {
+            painter.createShape(shape);
+            this.created = true;
+        } else {
+            painter.updateShape(this.id, shape);
+        }
+    }
+
+    onMouseUp(event) {
+        this.end = event.point;
+        const shape = this.buildArrowShape();
+        painter.updateShape(this.id, shape);
+    }
+
+    buildArrowShape() {
+        const start = this.start;
+        const end = this.end;
+
+        // Arrowhead size
+        const headLength = 12 * (this.state.brushSize / 2);
+        const headWidth = 8 * (this.state.brushSize / 2);
+
+        // Direction vector
+        const vec = end.subtract(start);
+        const angle = vec.angle;
+
+        // Arrowhead points
+        const left = end.add(
+            new paper.Point({
+                length: headLength,
+                angle: angle + 180 + 25
+            })
+        );
+
+        const right = end.add(
+            new paper.Point({
+                length: headLength,
+                angle: angle + 180 - 25
+            })
+        );
+
+        // Build path segments
+        const segments = [
+            { point: [start.x, start.y], handleIn: [0,0], handleOut: [0,0] },
+            { point: [end.x, end.y], handleIn: [0,0], handleOut: [0,0] },
+            { point: [left.x, left.y], handleIn: [0,0], handleOut: [0,0] },
+            { point: [end.x, end.y], handleIn: [0,0], handleOut: [0,0] },
+            { point: [right.x, right.y], handleIn: [0,0], handleOut: [0,0] }
+        ];
+
+        return {
+            id: this.id,
+            type: "path",
+            strokeColor: this.state.brushColor,
+            strokeWidth: this.state.brushSize,
+            opacity: this.state.brushOpacity,
+            dashArray: this.makeDashArray(),
+            fillColor: null,
+            closed: false,
+            segments
+        };
+    }
+}
+
+
+</script>

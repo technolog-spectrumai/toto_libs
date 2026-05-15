@@ -1,0 +1,7 @@
+[workspace]
+resolver = "2"
+members = [
+    "enigma_core",
+    "enigma_py",
+    "enigma_wasm",
+]

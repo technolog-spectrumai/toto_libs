@@ -1,0 +1,13 @@
+[package]
+name = "enigma-wasm"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+enigma-core = { path = "../enigma_core" }
+wasm-bindgen = "=0.2.100"
+js-sys = "=0.3.77"
+getrandom = { version = "0.2", features = ["js"] }

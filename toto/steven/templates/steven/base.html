@@ -1,0 +1,40 @@
+{% extends "oya/base.html" %}
+
+{% block title %}{% block steven_title %}Steven{% endblock %} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-6 py-16 transition-colors duration-300">
+
+  <div class="mx-auto max-w-6xl space-y-8">
+    <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div class="space-y-2">
+        <a href="{% url 'core:dashboard' %}" class="text-sm underline hover:opacity-80">
+          Dashboard
+        </a>
+        <h1 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-3xl font-bold">
+          Steven
+        </h1>
+        <p class="max-w-2xl text-sm opacity-75">
+          Manage Agents, launch runs, and inspect their outputs inside Toto Studio.
+        </p>
+      </div>
+
+      <a
+        href="{% url 'steven:agent_list' %}"
+        :class="darkMode
+          ? 'bg-accent-dark text-primary-bg-dark'
+          : 'bg-accent-light text-primary-bg-light'"
+        class="inline-flex items-center justify-center gap-2 rounded px-4 py-2 text-sm font-semibold transition hover:opacity-90">
+        <i class="fa-solid fa-robot"></i>
+        Agents
+      </a>
+    </div>
+
+    {% block steven_content %}{% endblock %}
+  </div>
+</section>
+{% endblock %}

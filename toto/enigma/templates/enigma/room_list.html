@@ -1,0 +1,113 @@
+{% extends "oya/base.html" %}
+
+{% block title %}Enigma Rooms{% endblock %}
+
+{% block content %}
+<main
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto flex w-full max-w-6xl flex-col gap-6">
+    <header class="flex flex-col gap-4 border-b border-current/10 pb-6 md:flex-row md:items-end md:justify-between">
+      <div class="space-y-2">
+        <a href="{% url 'core:dashboard' %}" class="text-sm underline hover:opacity-80">Dashboard</a>
+        <h1 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-3xl font-bold">
+          Enigma
+        </h1>
+        <p class="max-w-2xl text-sm opacity-70">Active conversations</p>
+      </div>
+
+      <form method="get" class="flex w-full gap-2 md:w-[24rem]">
+        <input
+          type="text"
+          name="q"
+          value="{{ request.GET.q }}"
+          placeholder="Search rooms"
+          :class="darkMode
+            ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
+            : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+          class="min-w-0 flex-1 rounded border px-3 py-2 text-sm outline-none transition focus:ring-2 focus:ring-current/20">
+        <button
+          type="submit"
+          :class="darkMode
+            ? 'bg-accent-dark text-primary-bg-dark'
+            : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center justify-center rounded px-3 py-2 text-sm font-semibold transition hover:opacity-90"
+          aria-label="Search">
+          <i class="fa-solid fa-magnifying-glass"></i>
+        </button>
+      </form>
+    </header>
+
+    {% if rooms %}
+      <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {% for room in rooms %}
+          <a
+            href="{% url 'enigma:room_detail' room.slug %}"
+            :class="darkMode
+              ? 'bg-bubble-bg-dark border-accent-1 hover:border-accent-dark'
+              : 'bg-bubble-bg-light border-accent-2 hover:border-accent-light'"
+            class="group rounded-lg border p-5 shadow-md transition hover:-translate-y-0.5 hover:shadow-lg">
+            <div class="flex items-start justify-between gap-4">
+              <div class="min-w-0 space-y-2">
+                <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="break-words text-xl font-bold">
+                  {{ room.name }}
+                </h2>
+                <p class="text-sm opacity-60">{{ room.slug }}</p>
+              </div>
+              <span
+                :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded border text-sm">
+                <i class="fa-solid fa-comments"></i>
+              </span>
+            </div>
+
+            <div class="mt-5 flex items-center justify-between text-xs opacity-70">
+              <span>{{ room.participant_count }} participant{{ room.participant_count|pluralize }}</span>
+              <span class="inline-flex items-center gap-2 font-semibold">
+                Open <i class="fa-solid fa-arrow-right transition group-hover:translate-x-1"></i>
+              </span>
+            </div>
+          </a>
+        {% endfor %}
+      </div>
+
+      {% if is_paginated %}
+        <nav class="flex items-center justify-between border-t border-current/10 pt-5 text-sm">
+          {% if page_obj.has_previous %}
+            <a
+              href="?page={{ page_obj.previous_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}"
+              class="underline hover:opacity-80">
+              Previous
+            </a>
+          {% else %}
+            <span></span>
+          {% endif %}
+
+          <span class="opacity-70">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+
+          {% if page_obj.has_next %}
+            <a
+              href="?page={{ page_obj.next_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}"
+              class="underline hover:opacity-80">
+              Next
+            </a>
+          {% else %}
+            <span></span>
+          {% endif %}
+        </nav>
+      {% endif %}
+    {% else %}
+      <section
+        :class="darkMode
+          ? 'bg-bubble-bg-dark border-accent-1'
+          : 'bg-bubble-bg-light border-accent-2'"
+        class="rounded-lg border p-6 text-sm opacity-75 shadow-md">
+        No chat rooms found.
+      </section>
+    {% endif %}
+  </div>
+</main>
+{% endblock %}

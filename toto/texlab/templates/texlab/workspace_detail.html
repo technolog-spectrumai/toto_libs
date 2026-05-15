@@ -1,0 +1,222 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{{ workspace.name }} | {% trans "LaTeX" %} | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+<style>[x-cloak] { display: none !important; }</style>
+{% endblock %}
+
+{% block content %}
+<div
+  x-data="{ showCreateFileModal: false, showDeleteModal: false }"
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-5xl space-y-6">
+
+    <!-- Header -->
+    <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div class="space-y-2">
+        <a href="{% url 'texlab:workspace_list' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+          <i class="fa-solid fa-arrow-left"></i>
+          {% trans "Workspaces" %}
+        </a>
+        <div>
+          <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+             class="text-xs font-semibold uppercase tracking-wide">
+            <i class="fa-solid fa-database mr-1 opacity-70"></i>{{ workspace.bucket.name }}
+          </p>
+          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+            <i class="fa-solid fa-folder-open"></i>
+            {{ workspace.name }}
+          </h1>
+        </div>
+      </div>
+
+      <nav class="flex flex-wrap items-center gap-2">
+        <div
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm shadow-sm">
+          <i class="fa-solid fa-file opacity-60"></i>
+          <span class="font-bold">{{ files|length }}</span>
+          <span class="opacity-65">{% trans "files" %}</span>
+        </div>
+
+        <button
+          @click="showCreateFileModal = true"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-file-circle-plus"></i>
+          {% trans "New file" %}
+        </button>
+
+        <button
+          @click="showDeleteModal = true"
+          class="inline-flex items-center gap-2 rounded-lg border border-red-400/30 px-4 py-2 text-sm font-semibold text-red-400 transition hover:bg-red-400/10">
+          <i class="fa-solid fa-trash"></i>
+          {% trans "Delete" %}
+        </button>
+      </nav>
+    </header>
+
+    <!-- File table -->
+    {% include "texlab/partials/_ws_file_table.html" with files=files workspace=workspace %}
+
+  </div>
+
+  <!-- ── Create File Modal ──────────────────────────────────── -->
+  <div
+    x-show="showCreateFileModal"
+    x-transition.opacity
+    x-cloak
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/55 px-4">
+
+    <div
+      @click.outside="showCreateFileModal = false"
+      :class="darkMode
+        ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'
+        : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+      class="w-full max-w-md rounded-2xl border p-6 shadow-2xl space-y-5">
+
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+             class="text-xs font-semibold uppercase tracking-wide">{% trans "New" %}</p>
+          <h2 class="mt-1 flex items-center gap-2 text-xl font-bold">
+            <i class="fa-solid fa-file-circle-plus"></i>
+            {% trans "Create File" %}
+          </h2>
+        </div>
+        <button type="button" @click="showCreateFileModal = false"
+          class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-current/15 transition hover:opacity-75">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div>
+        <label class="mb-1 block text-xs font-semibold opacity-70">{% trans "File name" %}</label>
+        <input
+          id="fileName" type="text"
+          placeholder="{% trans 'e.g. main.tex' %}"
+          :class="darkMode
+            ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder:text-text-main-dark/40'
+            : 'border-accent-2 bg-primary-bg-light text-text-main-light placeholder:text-text-main-light/40'"
+          class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20 transition" />
+      </div>
+
+      <div class="flex justify-end gap-2 pt-1">
+        <button type="button" @click="showCreateFileModal = false"
+          :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+          class="rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+          {% trans "Cancel" %}
+        </button>
+        <button id="submitCreateFile" type="button"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-plus"></i>
+          {% trans "Create" %}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Delete Workspace Modal ─────────────────────────────── -->
+  <div
+    x-show="showDeleteModal"
+    x-transition.opacity
+    x-cloak
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/55 px-4">
+
+    <div
+      @click.outside="showDeleteModal = false"
+      :class="darkMode
+        ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'
+        : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+      class="w-full max-w-sm rounded-2xl border p-6 shadow-2xl space-y-4">
+
+      <div class="flex items-start justify-between gap-4">
+        <h2 class="flex items-center gap-2 text-lg font-bold text-red-400">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+          {% trans "Delete workspace?" %}
+        </h2>
+        <button type="button" @click="showDeleteModal = false"
+          class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-current/15 transition hover:opacity-75">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <p class="text-sm opacity-70">
+        {% trans "This will permanently delete" %}
+        <strong>{{ workspace.name }}</strong>
+        {% trans "and all its files. This cannot be undone." %}
+      </p>
+
+      <div class="flex justify-end gap-2 pt-1">
+        <button type="button" @click="showDeleteModal = false"
+          :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+          class="rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+          {% trans "Cancel" %}
+        </button>
+        <button id="confirmDeleteWorkspace" type="button"
+          class="inline-flex items-center gap-2 rounded-lg bg-red-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-red-600">
+          <i class="fa-solid fa-trash"></i>
+          {% trans "Delete" %}
+        </button>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block end_script %}
+<script>
+const createFileUrl = "{% url 'texlab:create_file' workspace.slug %}";
+
+document.getElementById("submitCreateFile").addEventListener("click", async () => {
+  const name = document.getElementById("fileName").value.trim();
+  if (!name) { alert("{% trans 'Please enter a file name.' %}"); return; }
+
+  const formData = new FormData();
+  formData.append("name", name);
+
+  const response = await fetch(createFileUrl, {
+    method: "POST",
+    body: formData,
+    credentials: "same-origin",
+  });
+
+  let data;
+  try { data = await response.json(); }
+  catch { alert("{% trans 'Server returned an invalid response.' %}"); return; }
+
+  if (data.status === "ok") {
+    window.location.href = data.url;
+  } else {
+    alert(data.error || "{% trans 'Failed to create file.' %}");
+  }
+});
+
+const deleteWorkspaceUrl = "{% url 'texlab:workspace_delete_json' slug=workspace.slug %}";
+
+document.getElementById("confirmDeleteWorkspace").addEventListener("click", async () => {
+  const response = await fetch(deleteWorkspaceUrl, {
+    method: "POST",
+    headers: { "X-CSRFToken": "{{ csrf_token }}" },
+    credentials: "same-origin",
+  });
+
+  let data;
+  try { data = await response.json(); }
+  catch { alert("{% trans 'Server returned an invalid response.' %}"); return; }
+
+  if (data.status === "ok") {
+    window.location.href = "{% url 'texlab:workspace_list' %}";
+  } else {
+    alert(data.error || "{% trans 'Failed to delete workspace.' %}");
+  }
+});
+</script>
+{% endblock %}

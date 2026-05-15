@@ -1,0 +1,14 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<h1>Apply Transform to {{ image.filename }}</h1>
+
+<form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+
+    <button type="submit" class="default">Apply</button>
+</form>
+
+<p><a href="{{ request.META.HTTP_REFERER }}">Back</a></p>
+{% endblock %}

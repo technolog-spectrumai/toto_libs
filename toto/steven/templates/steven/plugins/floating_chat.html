@@ -1,0 +1,87 @@
+{% if agent %}
+<div
+  x-data="{ open: false, loading: false }"
+  class="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3"
+>
+  <!-- Chat panel -->
+  <div
+    x-show="open"
+    x-transition:enter="transition ease-out duration-200"
+    x-transition:enter-start="opacity-0 translate-y-4 scale-95"
+    x-transition:enter-end="opacity-100 translate-y-0 scale-100"
+    x-transition:leave="transition ease-in duration-150"
+    x-transition:leave-start="opacity-100 translate-y-0 scale-100"
+    x-transition:leave-end="opacity-0 translate-y-4 scale-95"
+    :class="darkMode ? 'bg-bubble-bg-dark text-text-main-dark border-accent-dark/30' : 'bg-bubble-bg-light text-text-main-light border-accent-light/30'"
+    class="w-80 rounded-2xl border shadow-2xl overflow-hidden"
+    style="display: none;"
+  >
+    <!-- Header -->
+    <div
+      :class="darkMode ? 'bg-appbar-bg-dark text-appbar-text-dark' : 'bg-appbar-bg-light text-appbar-text-light'"
+      class="flex items-center justify-between px-4 py-3"
+    >
+      <div class="flex items-center gap-2 text-sm font-semibold">
+        <i class="fa-solid fa-robot text-xs"></i>
+        <span>{{ agent.name }}</span>
+      </div>
+      <button @click="open = false" class="opacity-60 hover:opacity-100 transition text-xs">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+
+    <!-- Result area -->
+    <div
+      id="steven-chat-result"
+      :class="darkMode ? 'bg-primary-bg-dark/60' : 'bg-primary-bg-light/60'"
+      class="min-h-20 max-h-60 overflow-y-auto px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap"
+    ></div>
+
+    <!-- Form -->
+    <form
+      hx-post="{% url 'steven:quick_ask' agent.slug %}"
+      hx-target="#steven-chat-result"
+      hx-swap="innerHTML"
+      hx-indicator="#steven-chat-spinner"
+      @htmx:before-request="loading = true"
+      @htmx:after-request="loading = false"
+      class="flex flex-col gap-2 px-4 py-3 border-t"
+      :class="darkMode ? 'border-accent-dark/20' : 'border-accent-light/20'"
+    >
+      {% csrf_token %}
+      <textarea
+        name="user_prompt"
+        rows="3"
+        placeholder="Ask {{ agent.name }} something…"
+        required
+        :class="darkMode
+          ? 'bg-primary-bg-dark text-text-main-dark placeholder:text-text-main-dark/40 border-accent-dark/30'
+          : 'bg-primary-bg-light text-text-main-light placeholder:text-text-main-light/40 border-accent-light/30'"
+        class="w-full resize-none rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20 transition"
+      ></textarea>
+      <button
+        type="submit"
+        :disabled="loading"
+        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+        class="flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-90 disabled:opacity-50"
+      >
+        <span id="steven-chat-spinner" class="htmx-indicator">
+          <i class="fa-solid fa-spinner fa-spin"></i>
+        </span>
+        <span x-text="loading ? 'Thinking…' : 'Ask'"></span>
+      </button>
+    </form>
+  </div>
+
+  <!-- Toggle button -->
+  <button
+    @click="open = !open"
+    :class="darkMode ? 'bg-accent-dark text-primary-bg-dark shadow-accent-dark/30' : 'bg-accent-light text-primary-bg-light shadow-accent-light/30'"
+    class="flex items-center gap-2 rounded-full px-5 py-3 text-sm font-bold shadow-lg transition hover:scale-105 active:scale-95"
+    title="Ask AI"
+  >
+    <i class="fa-solid fa-robot"></i>
+    <span x-text="open ? 'Close' : 'Ask AI'"></span>
+  </button>
+</div>
+{% endif %}

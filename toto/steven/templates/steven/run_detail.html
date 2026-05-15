@@ -1,0 +1,68 @@
+{% extends 'steven/base.html' %}
+{% block steven_title %}{{ run.agent.name }} Run #{{ run.pk }}{% endblock %}
+{% block steven_content %}
+<section
+  :class="darkMode
+    ? 'bg-bubble-bg-dark border-accent-1'
+    : 'bg-bubble-bg-light border-accent-2'"
+  class="rounded-lg border p-6 shadow-md space-y-6">
+  <div class="flex items-start gap-4">
+    {% if run.agent.avatar %}
+      <img
+        src="{{ run.agent.avatar.url }}"
+        alt="{{ run.agent.name }}"
+        class="h-20 w-20 shrink-0 rounded-lg border border-current/15 object-cover shadow-sm">
+    {% else %}
+      <div
+        :class="darkMode
+          ? 'bg-primary-bg-dark text-accent-dark border-accent-1'
+          : 'bg-primary-bg-light text-accent-light border-accent-2'"
+        class="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg border text-2xl font-bold shadow-sm">
+        {{ run.agent.name|first|upper }}
+      </div>
+    {% endif %}
+
+    <div class="min-w-0 space-y-2">
+      <a href="{% url 'steven:agent_detail' run.agent.slug %}" class="text-sm underline hover:opacity-80">
+        {{ run.agent.name }}
+      </a>
+      <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="break-words text-3xl font-bold">
+        Run #{{ run.pk }}
+      </h2>
+      <div class="flex flex-wrap gap-3 text-xs opacity-70">
+        <span>{{ run.agent.model_name }}</span>
+        <span>{{ run.get_status_display }}</span>
+        <span>Created {{ run.created_at|date:"M d, Y H:i" }}</span>
+        {% if run.started_at %}<span>Started {{ run.started_at|date:"M d, Y H:i" }}</span>{% endif %}
+        {% if run.finished_at %}<span>Finished {{ run.finished_at|date:"M d, Y H:i" }}</span>{% endif %}
+      </div>
+      {% if run.agent.description %}
+        <p class="text-sm opacity-75">{{ run.agent.description }}</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="space-y-3">
+    <h3 class="text-lg font-bold">Prompt</h3>
+    <pre
+      :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+      class="overflow-x-auto whitespace-pre-wrap rounded-lg border border-current/10 p-4 text-sm">{{ run.user_prompt }}</pre>
+  </div>
+
+  <div class="space-y-3">
+    <h3 class="text-lg font-bold">Result</h3>
+    <pre
+      :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+      class="overflow-x-auto whitespace-pre-wrap rounded-lg border border-current/10 p-4 text-sm">{{ run.result|default:'No result.' }}</pre>
+  </div>
+
+  {% if run.error %}
+    <div class="space-y-3">
+      <h3 class="text-lg font-bold text-red-500">Error</h3>
+      <pre
+        :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+        class="overflow-x-auto whitespace-pre-wrap rounded-lg border border-red-500/40 p-4 text-sm">{{ run.error }}</pre>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

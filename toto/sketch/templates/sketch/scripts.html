@@ -1,0 +1,166 @@
+<script>
+  class BaseTool {
+    constructor(state) {
+        this.state = state; // Alpine state reference
+    }
+
+    onMouseDown(event) {}
+    onMouseDrag(event) {}
+    onMouseUp(event) {}
+}
+class FreehandTool extends BaseTool {
+    onMouseDown(event) {
+        this.path = new paper.Path({
+            strokeColor: this.state.brushColor,
+            strokeWidth: this.state.brushSize,
+            strokeCap: "round",
+            strokeJoin: "round"
+        });
+
+        if (this.state.brushStyle === "dashed") {
+            this.path.dashArray = [10, 10];
+        }
+
+        this.path.add(event.point);
+    }
+
+    onMouseDrag(event) {
+        this.path.add(event.point);
+    }
+
+    onMouseUp(event) {
+        this.path.simplify(10);
+    }
+}
+class LineTool extends BaseTool {
+    onMouseDown(event) {
+        this.path = new paper.Path({
+            strokeColor: this.state.brushColor,
+            strokeWidth: this.state.brushSize
+        });
+
+        this.path.add(event.point);
+        this.path.add(event.point);
+    }
+
+    onMouseDrag(event) {
+        this.path.segments[1].point = event.point;
+    }
+}
+class RectTool extends BaseTool {
+    onMouseDown(event) {
+        this.start = event.point;
+
+        this.path = new paper.Path({
+            strokeColor: this.state.brushColor,
+            strokeWidth: this.state.brushSize
+        });
+
+        if (this.state.brushStyle === "dashed") {
+            this.path.dashArray = [10, 10];
+        }
+    }
+
+    onMouseDrag(event) {
+        this.path.removeSegments();
+
+        const rect = new paper.Rectangle(this.start, event.point);
+        this.path.addRectangle(rect);
+
+        if (this.state.fillMode === "color") {
+            this.path.fillColor = this.state.fillColor;
+            this.path.opacity = this.state.fillOpacity;
+        }
+    }
+}
+class CircleTool extends BaseTool {
+    onMouseDown(event) {
+        this.start = event.point;
+
+        this.path = new paper.Path({
+            strokeColor: this.state.brushColor,
+            strokeWidth: this.state.brushSize
+        });
+
+        if (this.state.brushStyle === "dashed") {
+            this.path.dashArray = [10, 10];
+        }
+    }
+
+    onMouseDrag(event) {
+        this.path.removeSegments();
+
+        const radius = this.start.getDistance(event.point);
+        this.path.addCircle(this.start, radius);
+
+        if (this.state.fillMode === "color") {
+            this.path.fillColor = this.state.fillColor;
+            this.path.opacity = this.state.fillOpacity;
+        }
+    }
+}
+class TextTool extends BaseTool {
+    onMouseDown(event) {
+        window.textModalHelper?.openTextModal(event.point, {
+            fillColor: this.state.brushColor,
+            fontSize: this.state.brushSize * 4,
+            fontFamily: "Arial",
+            bold: false,
+            italic: false,
+            opacity: this.state.brushOpacity ?? 1
+        });
+    }
+}
+class ToolDispatcher {
+    constructor(getState) {
+        this.getState = getState;
+
+        this.tools = {
+            freehand: FreehandTool,
+            line: LineTool,
+            rect: RectTool,
+            circle: CircleTool,
+            text: TextTool
+        };
+
+        this.activeTool = null;
+    }
+
+    getToolInstance() {
+        const state = this.getState();
+        const ToolClass = this.tools[state.currentTool];
+        if (!this.activeTool || !(this.activeTool instanceof ToolClass)) {
+            this.activeTool = new ToolClass(state);
+        }
+        return this.activeTool;
+    }
+
+    onMouseDown(event) {
+        this.getToolInstance().onMouseDown(event);
+    }
+
+    onMouseDrag(event) {
+        this.getToolInstance().onMouseDrag(event);
+    }
+
+    onMouseUp(event) {
+        this.getToolInstance().onMouseUp(event);
+    }
+}
+
+</script>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    paper.setup("sketch-canvas");
+
+    const dispatcher = new ToolDispatcher(() => {
+        return document.querySelector("[x-data]").__x.$data;
+    });
+
+    const tool = new paper.Tool();
+
+    tool.onMouseDown = (e) => dispatcher.onMouseDown(e);
+    tool.onMouseDrag = (e) => dispatcher.onMouseDrag(e);
+    tool.onMouseUp = (e) => dispatcher.onMouseUp(e);
+});
+</script>

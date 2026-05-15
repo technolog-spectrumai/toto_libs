@@ -1,0 +1,157 @@
+<script>
+    class DrawingHelper {
+    constructor(paper) {
+        this.paper = paper;
+    }
+
+    // -------------------------
+    // TEXT
+    // -------------------------
+    drawText(shape, item) {
+        if (!item) {
+            item = new this.paper.PointText();
+        }
+
+        item._id = shape.id;
+        item.point = new this.paper.Point(shape.point.x, shape.point.y);
+        item.content = shape.content;
+        item.fillColor = shape.fillColor;
+        item.fontSize = shape.fontSize;
+        item.fontFamily = shape.fontFamily || "Arial";
+        item.fontWeight = shape.fontWeight || "normal";
+        item.fontStyle = shape.fontStyle || "normal";
+        item.opacity = shape.opacity;
+
+        return item;
+    }
+
+    // -------------------------
+    // PATH
+    // -------------------------
+    drawPath(shape, item) {
+        if (!item) {
+            item = new this.paper.Path();
+        }
+
+        item._id = shape.id;
+
+        // ─────────────────────────────────────────────
+        // OUTLINE (stroke)
+        // ─────────────────────────────────────────────
+        item.strokeColor = shape.strokeColor;
+        item.strokeWidth = shape.strokeWidth;
+
+        if (item.strokeColor && shape.outlineOpacity !== undefined) {
+            item.strokeColor.alpha = shape.outlineOpacity;
+        }
+
+        // ─────────────────────────────────────────────
+        // FILL
+        // ─────────────────────────────────────────────
+        item.fillColor = shape.fillColor || null;
+        item.fillRule = shape.fillRule || "nonzero";
+
+        if (item.fillColor && shape.fillOpacity !== undefined) {
+            item.fillColor.alpha = shape.fillOpacity;
+        }
+
+        // ─────────────────────────────────────────────
+        // GLOBAL OPACITY (affects whole item)
+        // ─────────────────────────────────────────────
+        if (shape.opacity !== undefined) {
+            item.opacity = shape.opacity;
+        }
+
+        // ─────────────────────────────────────────────
+        // GEOMETRY
+        // ─────────────────────────────────────────────
+        item.removeSegments();
+        shape.segments.forEach(seg => {
+            const s = item.add(new this.paper.Point(seg.point[0], seg.point[1]));
+            s.handleIn = new this.paper.Point(seg.handleIn[0], seg.handleIn[1]);
+            s.handleOut = new this.paper.Point(seg.handleOut[0], seg.handleOut[1]);
+        });
+
+        item.closed = shape.closed ?? false;
+
+        return item;
+    }
+
+    drawCompoundPath(shape, item) {
+        if (item) {
+            item.remove();
+        }
+
+        item = new this.paper.CompoundPath();
+        item._id = shape.id;
+        item.strokeColor = shape.strokeColor || null;
+        item.strokeWidth = shape.strokeWidth || 1;
+        item.fillColor = shape.fillColor || null;
+        item.fillRule = shape.fillRule || "evenodd";
+
+        if (shape.opacity !== undefined) {
+            item.opacity = shape.opacity;
+        }
+
+        (shape.children || []).forEach(child => {
+            const path = new this.paper.Path();
+            path.closed = child.closed ?? true;
+
+            child.segments.forEach(seg => {
+                const segment = path.add(new this.paper.Point(seg.point[0], seg.point[1]));
+                segment.handleIn = new this.paper.Point(seg.handleIn[0], seg.handleIn[1]);
+                segment.handleOut = new this.paper.Point(seg.handleOut[0], seg.handleOut[1]);
+            });
+
+            item.addChild(path);
+        });
+
+        return item;
+    }
+
+    normalizeChildren(children) {
+        if (!children) return [];
+
+        // Already an array
+        if (Array.isArray(children)) return children;
+
+        // Y.Array → convert to JS array
+        if (typeof children.toArray === "function") {
+            return children.toArray();
+        }
+
+        // Object map → convert values
+        if (typeof children === "object") {
+            return Object.values(children);
+        }
+
+        // String → split
+        if (typeof children === "string") {
+            return children.split(",");
+        }
+
+        return [];
+    }
+
+    drawGroup(shape, paperItems) {
+        let group = paperItems.get(shape.id);
+        if (group) group.remove();
+
+        group = new this.paper.Group();
+        group._id = shape.id;
+        const childIds = this.normalizeChildren(shape.children);
+        childIds.forEach(childId => {
+            const childItem = paperItems.get(childId);
+            if (!childItem) return;
+
+            childItem.remove();
+            group.addChild(childItem);
+        });
+
+
+        return group;
+    }
+}
+
+window.DrawingHelper = DrawingHelper
+</script>

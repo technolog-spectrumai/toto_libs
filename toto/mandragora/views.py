@@ -1,0 +1,223 @@
+from django.conf import settings
+from django.views.decorators.http import require_POST
+from django.views.generic import ListView, DetailView
+from django.shortcuts import get_object_or_404
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.urls import reverse_lazy
+from toto.core.page import PageProcessor
+
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+
+from .models import Notebook, Cell, LambdaFunction, ComputeKernel
+from .tasks import execute_cell_task
+from .kernel import KernelClient
+
+
+# ---------------------------------------------------------
+#  Notebook List + Detail
+# ---------------------------------------------------------
+
+class NotebookListView(LoginRequiredMixin, ListView):
+    model = Notebook
+    template_name = "mandragora/notebook_list.html"
+    context_object_name = "notebooks"
+    login_url = reverse_lazy("core:login")
+
+    def get_queryset(self):
+        return Notebook.objects.all().order_by("title")
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        return PageProcessor().decorate(context, self.request)
+
+
+class NotebookDetailView(LoginRequiredMixin, DetailView):
+    model = Notebook
+    template_name = "mandragora/notebook_detail.html"
+    context_object_name = "notebook"
+    slug_field = "slug"
+    slug_url_kwarg = "slug"
+    login_url = reverse_lazy("core:login")
+
+    def get_object(self, queryset=None):
+        return get_object_or_404(
+            Notebook,
+            slug=self.kwargs["slug"]
+        )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        notebook = self.get_object()
+        context["cells"] = notebook.cells.order_by("position")
+        return PageProcessor().decorate(context, self.request)
+
+
+# ---------------------------------------------------------
+#  Helpers
+# ---------------------------------------------------------
+
+def ensure_notebook_kernel(notebook: Notebook):
+    """Create a ComputeKernel for the notebook if missing."""
+    if notebook.kernel is None:
+        kernel = ComputeKernel.objects.create(
+            name=f"notebook-kernel-{notebook.id}",
+            timeout_ms=5000,
+            env={},
+            dependencies=[]
+        )
+        notebook.kernel = kernel
+        notebook.save(update_fields=["kernel"])
+    return notebook.kernel
+
+
+def ensure_lambda_kernel(lambda_fn: LambdaFunction):
+    """Create a ComputeKernel for the lambda function if missing."""
+    if lambda_fn.kernel is None:
+        kernel = ComputeKernel.objects.create(
+            name=f"lambda-kernel-{lambda_fn.id}",
+            timeout_ms=3000,
+            env={},
+            dependencies=[]
+        )
+        lambda_fn.kernel = kernel
+        lambda_fn.save(update_fields=["kernel"])
+    return lambda_fn.kernel
+
+
+# ---------------------------------------------------------
+#  Cell Execution
+# ---------------------------------------------------------
+
+@api_view(["POST"])
+def run_cell(request, cell_id):
+    cell = Cell.objects.get(id=cell_id)
+
+    if "content" in request.data:
+        cell.content = request.data["content"]
+    cell.save()
+
+    execute_cell_task(cell.id)
+    cell.refresh_from_db()
+
+    return Response({
+        "stdout": cell.stdout,
+        "stderr": cell.stderr,
+        "execution_count": cell.execution_count,
+        "rich_output": cell.rich_output,
+    })
+
+
+# ---------------------------------------------------------
+#  Notebook Kernel Management
+# ---------------------------------------------------------
+
+client = KernelClient(addr=getattr(settings, "KERNEL_SERVER_ADDR", "tcp://127.0.0.1:5555"))
+
+@api_view(["POST"])
+def start_kernel(request, notebook_id):
+    notebook = get_object_or_404(Notebook, id=notebook_id)
+    kernel = ensure_notebook_kernel(notebook)
+
+    payload = {
+        "kernel_name": "python3",
+        "timeout_ms": kernel.timeout_ms,
+        "env": kernel.env or {},
+        "dependencies": kernel.dependencies or []
+    }
+
+    result = client.start(notebook.id, payload)
+    return Response(result)
+
+
+@api_view(["POST"])
+def stop_kernel(request, notebook_id):
+    notebook = get_object_or_404(Notebook, id=notebook_id)
+    ensure_notebook_kernel(notebook)
+    result = client.stop(notebook.id)
+    return Response(result)
+
+
+@api_view(["GET"])
+def check_kernel(request, notebook_id):
+    notebook = get_object_or_404(Notebook, id=notebook_id)
+    result = client.status(notebook.id)
+    if result.get("running"):
+        return Response({"status": "running"})
+    return Response({"status": "stopped"})
+
+
+# ---------------------------------------------------------
+#  Cell CRUD
+# ---------------------------------------------------------
+
+@api_view(["POST"])
+def create_cell(request, notebook_id):
+    notebook = get_object_or_404(Notebook, id=notebook_id)
+
+    last_cell = notebook.cells.order_by("-position").first()
+    next_position = (last_cell.position + 1) if last_cell else 1
+
+    cell = Cell.objects.create(
+        notebook=notebook,
+        cell_type="code",
+        content="",
+        position=next_position,
+    )
+
+    return Response({
+        "id": cell.id,
+        "position": cell.position,
+        "content": cell.content,
+        "cell_type": cell.cell_type,
+    })
+
+
+@api_view(["POST"])
+def delete_cell(request, cell_id):
+    cell = get_object_or_404(Cell, id=cell_id)
+    notebook = cell.notebook
+
+    cell.delete()
+
+    for index, c in enumerate(notebook.cells.order_by("position"), start=1):
+        if c.position != index:
+            c.position = index
+            c.save(update_fields=["position"])
+
+    return Response({"status": "deleted"})
+
+
+# ---------------------------------------------------------
+#  Promote Cell → LambdaFunction
+# ---------------------------------------------------------
+
+@api_view(["POST"])
+def promote_cell_to_lambda(request, cell_id):
+    cell = get_object_or_404(Cell, id=cell_id)
+
+    content = request.data.get("content", cell.content)
+
+    function_name = request.data.get(
+        "function_name",
+        f"notebook_cell_{cell.id}"
+    )
+
+    lambda_fn, created = LambdaFunction.objects.update_or_create(
+        function_name=function_name,
+        defaults={
+            "content": content,
+            "stdout": "",
+            "stderr": "",
+        }
+    )
+
+    kernel = ensure_lambda_kernel(lambda_fn)
+
+    return Response({
+        "status": "created" if created else "updated",
+        "lambda_function_id": lambda_fn.id,
+        "function_name": lambda_fn.function_name,
+        "kernel": kernel.name,
+        "content": lambda_fn.content,
+    })

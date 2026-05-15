@@ -1,0 +1,125 @@
+{% extends 'steven/base.html' %}
+{% block steven_title %}{{ agent.name }}{% endblock %}
+{% block steven_content %}
+<section
+  :class="darkMode
+    ? 'bg-bubble-bg-dark border-accent-1'
+    : 'bg-bubble-bg-light border-accent-2'"
+  class="rounded-lg border p-6 shadow-md">
+  <div class="grid gap-6 lg:grid-cols-[1fr_1.15fr]">
+    <div class="space-y-4">
+      <a href="{% url 'steven:agent_list' %}" class="text-sm underline hover:opacity-80">
+        All agents
+      </a>
+
+      <div class="flex items-start gap-4">
+        {% if agent.avatar %}
+          <img
+            src="{{ agent.avatar.url }}"
+            alt="{{ agent.name }}"
+            class="h-20 w-20 shrink-0 rounded-lg border border-current/15 object-cover shadow-sm">
+        {% else %}
+          <div
+            :class="darkMode
+              ? 'bg-primary-bg-dark text-accent-dark border-accent-1'
+              : 'bg-primary-bg-light text-accent-light border-accent-2'"
+            class="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg border text-2xl font-bold shadow-sm">
+            {{ agent.name|first|upper }}
+          </div>
+        {% endif %}
+
+        <div class="min-w-0 space-y-2">
+          <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="break-words text-3xl font-bold">
+            {{ agent.name }}
+          </h2>
+          <p class="opacity-75">{{ agent.description|default:"No description yet." }}</p>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap gap-3 text-xs opacity-70">
+        <span>{{ agent.model_name }}</span>
+        <span>Temperature {{ agent.temperature }}</span>
+        <span>Updated {{ agent.updated_at|date:"M d, Y H:i" }}</span>
+      </div>
+
+      <div class="flex flex-wrap gap-2">
+        {% for tool in agent.tools.all %}
+          {% if tool.enabled %}
+            <span
+              :class="darkMode
+                ? 'border-accent-1 text-text-main-dark'
+                : 'border-accent-2 text-text-main-light'"
+              class="rounded border px-2 py-1 text-xs">
+              {{ tool.get_key_display }}
+            </span>
+          {% endif %}
+        {% empty %}
+          <span class="text-sm opacity-60">No tools enabled.</span>
+        {% endfor %}
+      </div>
+    </div>
+
+    <form method="post" class="space-y-4">
+      {% csrf_token %}
+      <div class="space-y-2">
+        <label for="{{ form.user_prompt.id_for_label }}" class="block text-sm font-semibold">
+          {{ form.user_prompt.label }}
+        </label>
+        {{ form.user_prompt }}
+        {% if form.user_prompt.errors %}
+          <div class="text-sm text-red-500">{{ form.user_prompt.errors }}</div>
+        {% endif %}
+      </div>
+
+      <button
+        type="submit"
+        :class="darkMode
+          ? 'bg-accent-dark text-primary-bg-dark'
+          : 'bg-accent-light text-primary-bg-light'"
+        class="inline-flex items-center justify-center gap-2 rounded px-4 py-2 text-sm font-semibold transition hover:opacity-90">
+        <i class="fa-solid fa-play"></i>
+        Run Agent
+      </button>
+    </form>
+  </div>
+</section>
+
+<section
+  :class="darkMode
+    ? 'bg-bubble-bg-dark border-accent-1'
+    : 'bg-bubble-bg-light border-accent-2'"
+  class="rounded-lg border p-5 shadow-md">
+  <h3 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-2xl font-bold">
+    Run History
+  </h3>
+
+  <div class="mt-4 overflow-x-auto">
+    <table class="w-full min-w-[720px] border-collapse text-left text-sm">
+      <thead class="opacity-70">
+        <tr>
+          <th class="border-b border-current/15 py-3 pr-4 font-semibold">ID</th>
+          <th class="border-b border-current/15 py-3 pr-4 font-semibold">Status</th>
+          <th class="border-b border-current/15 py-3 pr-4 font-semibold">Prompt</th>
+          <th class="border-b border-current/15 py-3 pr-4 font-semibold">Created</th>
+        </tr>
+      </thead>
+      <tbody>
+    {% for run in runs %}
+      <tr>
+        <td class="border-b border-current/10 py-3 pr-4">
+          <a href="{% url 'steven:run_detail' run.pk %}" class="underline hover:opacity-80">#{{ run.pk }}</a>
+        </td>
+        <td class="border-b border-current/10 py-3 pr-4">{{ run.get_status_display }}</td>
+        <td class="border-b border-current/10 py-3 pr-4">{{ run.user_prompt|truncatechars:80 }}</td>
+        <td class="border-b border-current/10 py-3 pr-4 opacity-70">{{ run.created_at|date:"M d, Y H:i" }}</td>
+      </tr>
+    {% empty %}
+      <tr>
+        <td colspan="4" class="py-4 text-sm opacity-60">No runs for this agent.</td>
+      </tr>
+    {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

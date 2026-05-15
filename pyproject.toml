@@ -4,12 +4,14 @@ version = "0.1.0"
 description = "Shared Django apps"
 requires-python = ">=3.10"
 dependencies = [
-    "Django>=4.2"
+    "Django>=4.2",
+    "PyYAML>=6.0",
 ]
 
 [tool.setuptools]
 packages = [
     "toto",
+    "toto.conf",
     "toto.core",
     "toto.events",
     "toto.gervazy",
@@ -42,6 +44,45 @@ packages = [
     "toto.bento.migrations",
     "toto.bento.management",
     "toto.bento.management.commands",
+    # --- formerly studio apps ---
+    "toto.enigma",
+    "toto.enigma.agent",
+    "toto.enigma.management",
+    "toto.enigma.management.commands",
+    "toto.enigma.migrations",
+    "toto.enigma.services",
+    "toto.ravioli",
+    "toto.ravioli.management",
+    "toto.ravioli.management.commands",
+    "toto.ravioli.migrations",
+    "toto.texlab",
+    "toto.texlab.management",
+    "toto.texlab.management.commands",
+    "toto.texlab.migrations",
+    "toto.mandragora",
+    "toto.mandragora.management",
+    "toto.mandragora.management.commands",
+    "toto.mandragora.migrations",
+    "toto.sketch",
+    "toto.sketch.management",
+    "toto.sketch.management.commands",
+    "toto.sketch.migrations",
+    "toto.ocr",
+    "toto.ocr.management",
+    "toto.ocr.management.commands",
+    "toto.ocr.migrations",
+    "toto.steven",
+    "toto.steven.management",
+    "toto.steven.management.commands",
+    "toto.steven.migrations",
+    "toto.steven.plugins",
+    "toto.steven.services",
+    "toto.travels",
+    "toto.travels.graph",
+    "toto.travels.management",
+    "toto.travels.management.commands",
+    "toto.travels.migrations",
+    "toto.travels.plugins",
 ]
 
 [build-system]

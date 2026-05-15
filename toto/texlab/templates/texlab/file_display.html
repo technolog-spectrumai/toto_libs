@@ -1,0 +1,451 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}Editing {{ file.vault_file.title }} – {{ workspace.name }}{% endblock %}
+
+{% block start_script %}
+<!-- Ace Editor CDN -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.3/ace.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.3/mode-latex.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.3/theme-twilight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.3/theme-textmate.min.js"></script>
+<script src="{% static 'oya/diff_match_patch.js' %}"></script>
+
+<!-- Font Awesome -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+
+<script>
+  const darkMode = localStorage.getItem("darkMode") === "true";
+</script>
+{% endblock %}
+
+{% block content %}
+<div
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300">
+
+  <div class="max-w-6xl mx-auto space-y-10">
+
+    <!-- Header -->
+    <section
+      :class="darkMode
+        ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
+        : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+      class="p-6 rounded-lg border shadow-sm space-y-2">
+
+      <h1 class="text-2xl font-bold">{{ file.vault_file.title }}</h1>
+      <p class="text-sm text-gray-500 dark:text-gray-400">
+        Workspace: {{ workspace.name }}
+      </p>
+    </section>
+
+    <!-- Editor -->
+    <section class="space-y-4">
+
+      <!-- Header row -->
+      <div class="flex items-center justify-between">
+        <h2 class="text-xl font-bold">Editor</h2>
+
+        <div class="flex items-center gap-3">
+
+          <!-- Read-only toggle -->
+          <button
+            id="toggle-readonly"
+            class="px-3 py-1 rounded font-semibold text-sm flex items-center gap-2
+                   bg-accent-light text-primary-bg-light dark:bg-accent-dark dark:text-primary-bg-dark
+                   hover:opacity-90 transition">
+            <i id="lock-icon" class="fa-solid fa-lock-open"></i>
+            <span id="lock-label">Read‑Write</span>
+          </button>
+
+          <!-- Sync toggle -->
+          <button
+            id="toggle-sync"
+            class="px-3 py-1 rounded font-semibold text-sm flex items-center gap-2
+                   bg-accent-light text-primary-bg-light dark:bg-accent-dark dark:text-primary-bg-dark
+                   hover:opacity-90 transition">
+            <i id="sync-icon" class="fa-solid fa-arrows-rotate"></i>
+            <span id="sync-label">Sync ON</span>
+          </button>
+
+              <button
+                id="save-file"
+                onclick="saveFile()"
+                :class="darkMode
+                  ? 'bg-success-dark text-primary-bg-dark'
+                  : 'bg-success-light text-primary-bg-light'"
+                class="px-3 py-1 rounded font-semibold text-sm flex items-center gap-2 hover:opacity-90 transition"
+              >
+                <i class="fa-solid fa-floppy-disk"></i>
+                <span>Save</span>
+              </button>
+              {% if file.file_type == "tex" %}
+              <button
+                id="compile-file"
+                class="px-3 py-1 rounded font-semibold text-sm flex items-center gap-2
+                       bg-blue-600 text-white hover:bg-blue-700 transition">
+                <i class="fa-solid fa-gears"></i>
+                <span>Compile</span>
+              </button>
+              {% endif %}
+              <button
+                id="delete-file"
+                :class="darkMode
+                  ? 'bg-warn-dark text-primary-bg-dark'
+                  : 'bg-warn-light text-primary-bg-light'"
+                class="px-3 py-1 rounded font-semibold text-sm flex items-center gap-2 hover:opacity-90 transition"
+              >
+                <i class="fa-solid fa-trash"></i>
+                <span>Delete</span>
+              </button>
+        </div>
+      </div>
+
+      <!-- Editor container -->
+      <div id="editor"
+           class="border rounded h-[75vh]"
+           :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+      </div>
+
+    <div id="compile-errors"
+         class="hidden mt-4 p-4 rounded border text-sm whitespace-pre-wrap"
+         :class="darkMode
+            ? 'border-warn-dark text-text-main-dark'
+            : 'border-warn-light text-text-main-light'">
+
+      <div id="compile-errors-title" class="font-bold mb-2"
+           :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">
+
+      </div>
+
+      <pre id="compile-errors-text" class="whitespace-pre-wrap"></pre>
+    </div>
+
+    <div id="compile-success"
+         class="hidden mt-4 p-4 rounded border text-sm"
+         :class="darkMode
+            ? 'border-accent-1 text-text-main-dark'
+            : 'border-accent-2 text-text-main-light'">
+
+      <h3 class="font-bold mb-2"
+          :class="darkMode ? 'text-accent-1' : 'text-accent-2'">
+        Success
+      </h3>
+
+      <div id="compile-success-text"></div>
+    </div>
+
+    </section>
+
+    <a href="{% url 'texlab:workspace_detail' workspace.slug %}"
+       :class="darkMode
+         ? 'bg-accent-dark text-primary-bg-dark'
+         : 'bg-accent-light text-primary-bg-light'"
+       class="inline-block px-4 py-2 rounded font-semibold hover:opacity-90 transition text-sm text-center">
+      Back to Workspace
+    </a>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block end_script %}
+<script>
+// ======================================================
+//  Reusable Sync Module for Ace + diff-match-patch
+// ======================================================
+const TexSync = (() => {
+
+  const dmp = new diff_match_patch();
+
+  // Internal state
+  let lastContent = "";
+  let suppress = false;
+
+  // Initialize baseline
+  function initBaseline(editor) {
+    lastContent = editor.getValue();
+  }
+
+  // ------------------------------------------------------
+  // Send full document + patch
+  // ------------------------------------------------------
+  function sendFullAndPatch(editor, socket) {
+    const newContent = editor.getValue();
+
+    const patches = dmp.patch_make(lastContent, newContent);
+    const patchText = dmp.patch_toText(patches);
+
+    lastContent = newContent;
+
+    socket.send(JSON.stringify({
+      type: "full+patch",
+      content: newContent,
+      patch: patchText
+    }));
+  }
+
+  // ------------------------------------------------------
+  // Handle local editor changes
+  // ------------------------------------------------------
+  function onLocalChange(editor, socket, syncEnabled) {
+    if (!syncEnabled) return;
+    if (suppress) return;
+
+    sendFullAndPatch(editor, socket);
+  }
+
+  // ------------------------------------------------------
+  // Apply incoming patch or full content
+  // ------------------------------------------------------
+  function applyIncomingContent(editor, data) {
+    suppress = true;
+
+    if (data.patch) {
+      const current = editor.getValue();
+      const [patched] = dmp.patch_apply(
+        dmp.patch_fromText(data.patch),
+        current
+      );
+      editor.setValue(patched, -1);
+      lastContent = patched;
+
+    } else if (data.content) {
+      editor.setValue(data.content, -1);
+      lastContent = data.content;
+    }
+
+    suppress = false;
+  }
+
+  // ------------------------------------------------------
+  // Handle server → client WebSocket messages
+  // ------------------------------------------------------
+  function onServerMessage(editor, syncEnabled, event) {
+    if (!syncEnabled) return;
+
+    const data = JSON.parse(event.data);
+    applyIncomingContent(editor, data);
+  }
+
+  // Public API
+  return {
+    initBaseline,
+    onLocalChange,
+    onServerMessage
+  };
+
+})();
+
+
+</script>
+<script>
+function createAceEditor(elementId) {
+  const editor = ace.edit(elementId);
+
+  // Theme
+  editor.setTheme(darkMode ? "ace/theme/twilight" : "ace/theme/textmate");
+
+  // Mode
+  editor.session.setMode("ace/mode/latex");
+
+  // Load content
+  editor.setValue(`{{ content|escapejs }}`, -1);
+
+  // Default options
+  editor.setOptions({
+    fontSize: "14px",
+    showPrintMargin: false,
+    wrap: true,
+    readOnly: false,
+  });
+
+  return editor;
+}
+</script>
+<script>
+  const editor = createAceEditor("editor");
+
+  // Initialize baseline for diff-match-patch
+  TexSync.initBaseline(editor);
+
+  // ----------------------------
+  // READ-ONLY TOGGLE
+  // ----------------------------
+  const toggleBtn = document.getElementById("toggle-readonly");
+  const lockIcon = document.getElementById("lock-icon");
+  const lockLabel = document.getElementById("lock-label");
+
+  let isReadOnly = false;
+
+  toggleBtn.addEventListener("click", () => {
+    isReadOnly = !isReadOnly;
+    editor.setReadOnly(isReadOnly);
+
+    if (isReadOnly) {
+      lockIcon.classList.replace("fa-lock-open", "fa-lock");
+      lockLabel.textContent = "Read‑Only";
+      editor.container.style.opacity = "0.7";
+    } else {
+      lockIcon.classList.replace("fa-lock", "fa-lock-open");
+      lockLabel.textContent = "Read‑Write";
+      editor.container.style.opacity = "1";
+    }
+  });
+
+  // ----------------------------
+  // SYNC TOGGLE
+  // ----------------------------
+  const syncBtn = document.getElementById("toggle-sync");
+  const syncIcon = document.getElementById("sync-icon");
+  const syncLabel = document.getElementById("sync-label");
+
+  let syncEnabled = true;
+
+  syncBtn.addEventListener("click", () => {
+    syncEnabled = !syncEnabled;
+
+    if (syncEnabled) {
+      syncIcon.classList.replace("fa-ban", "fa-arrows-rotate");
+      syncLabel.textContent = "Sync ON";
+      syncBtn.style.opacity = "1";
+    } else {
+      syncIcon.classList.replace("fa-arrows-rotate", "fa-ban");
+      syncLabel.textContent = "Sync OFF";
+      syncBtn.style.opacity = "0.7";
+    }
+  });
+
+  // ----------------------------
+  // WEBSOCKET SYNC
+  // ----------------------------
+  const fileId = "{{ file.id }}";
+  const wsScheme = window.location.protocol === "https:" ? "wss" : "ws";
+  const socket = new WebSocket(`${wsScheme}://${window.location.host}/ws/texlab/file/${fileId}/`);
+
+  // Local → Server
+  editor.session.on("change", () => {
+    TexSync.onLocalChange(editor, socket, syncEnabled);
+  });
+
+  // Server → Local
+  socket.onmessage = (event) => {
+    TexSync.onServerMessage(editor, syncEnabled, event);
+  };
+
+  window.TexLabEditor = editor;
+</script>
+<script>
+  document.getElementById("delete-file").addEventListener("click", async () => {
+  if (!confirm("Are you sure you want to delete this file? This cannot be undone.")) {
+    return;
+  }
+
+  const fileId = "{{ file.id }}";
+  const deleteUrlBase = "{% url 'texlab:delete_file' file_id=0 %}";
+  const deleteUrl = deleteUrlBase.replace("0", "{{ file.id }}");
+
+  try {
+    const response = await fetch(deleteUrl, {
+      method: "POST",
+      headers: {
+        "X-CSRFToken": "{{ csrf_token }}",
+      },
+    });
+
+    const data = await response.json();
+
+    if (data.status === "ok") {
+      // Redirect back to workspace
+      window.location.href = "{% url 'texlab:workspace_detail' workspace.slug %}";
+    } else {
+      alert("Error: " + (data.error || "Unknown error"));
+    }
+
+  } catch (err) {
+    alert("Request failed: " + err);
+  }
+});
+</script>
+<script>
+  const compileBtn = document.getElementById("compile-file");
+
+  const errorBox = document.getElementById("compile-errors");
+  const errorTitle = document.getElementById("compile-errors-title");
+  const errorText = document.getElementById("compile-errors-text");
+
+  const successBox = document.getElementById("compile-success");
+  const successText = document.getElementById("compile-success-text");
+
+  const blinkDelayMs = 800;
+
+  compileBtn.addEventListener("click", async () => {
+    // Reset panels
+    errorBox.classList.add("hidden");
+    errorTitle.textContent = "";
+    errorText.textContent = "";
+
+    successBox.classList.add("hidden");
+    successText.textContent = "";
+
+    // PROCESSING → yellow
+    compileBtn.disabled = true;
+    compileBtn.style.opacity = "0.6";
+    compileBtn.style.backgroundColor = "#eab308";   // yellow-500
+
+    try {
+      const response = await fetch("{% url 'texlab:compile_latex' file_id=file.id %}", {
+        method: "POST"
+      });
+
+      const data = await response.json();
+      console.log("Compile response:", data);
+
+      if (data.status === "ok") {
+        // SUCCESS → green blink
+        compileBtn.style.backgroundColor = "#16a34a";   // green-600
+        setTimeout(() => compileBtn.style.backgroundColor = "", blinkDelayMs);
+
+        // Show success box with PDF link
+        if (data.pdf_url) {
+          successText.innerHTML = `
+            <a href="${data.pdf_url}" target="_blank"
+               class="underline hover:opacity-80">
+               Open generated PDF
+            </a>
+          `;
+          successBox.classList.remove("hidden");
+        }
+
+      } else {
+        // SERVER ERROR → red blink + show log
+        compileBtn.style.backgroundColor = "#dc2626";   // red-600
+        setTimeout(() => compileBtn.style.backgroundColor = "", blinkDelayMs);
+
+        if (data.log) {
+          errorTitle.textContent = "Error";
+          errorText.textContent = data.log;
+          errorBox.classList.remove("hidden");
+        }
+      }
+
+    } catch (err) {
+      console.error("Compile error:", err);
+
+      // NETWORK/JS ERROR → longer red blink
+      compileBtn.style.backgroundColor = "#dc2626";
+      setTimeout(() => compileBtn.style.backgroundColor = "", Math.ceil(1.5 * blinkDelayMs));
+
+      errorTitle.textContent = "Unexpected Error";
+      errorText.textContent = err;
+      errorBox.classList.remove("hidden");
+
+    } finally {
+      compileBtn.disabled = false;
+      compileBtn.style.opacity = "1";
+    }
+  });
+</script>
+{% endblock %}

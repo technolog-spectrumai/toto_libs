@@ -1,0 +1,252 @@
+import json
+from urllib.parse import urlparse
+
+from channels.db import database_sync_to_async
+from channels.generic.websocket import AsyncWebsocketConsumer
+
+
+MLS_TYPES = {
+    "mls_key_package",
+    "mls_welcome",
+    "mls_commit",
+    "mls_app",
+}
+
+YJS_TYPES = {
+    "yjs_update",
+    "yjs_sync_request",
+    "yjs_sync_response",
+}
+
+
+class ChatConsumer(AsyncWebsocketConsumer):
+    async def connect(self):
+        self.room_slug = self.scope["url_route"]["kwargs"]["room_slug"]
+        self.room_group_name = f"chat_{self.room_slug}"
+
+        user = self.scope.get("user")
+
+        if not await self.user_can_send(user):
+            await self.close(code=4403)
+            return
+
+        await self.channel_layer.group_add(
+            self.room_group_name,
+            self.channel_name,
+        )
+        await self.accept()
+        await self.broadcast_participants()
+
+    async def disconnect(self, close_code):
+        await self.channel_layer.group_discard(
+            self.room_group_name,
+            self.channel_name,
+        )
+        await self.broadcast_participants()
+
+    async def receive(self, text_data):
+        try:
+            data = json.loads(text_data)
+        except json.JSONDecodeError:
+            await self.send_error("Invalid JSON.")
+            return
+
+        user = self.scope.get("user")
+        cant_send = await self.user_can_send(user)
+        if not cant_send:
+            await self.send_error(
+                "You are observing this room. Join as a participant before sending messages."
+            )
+            return
+
+        data_type = data.get("type")
+
+        if data_type in YJS_TYPES:
+            await self.handle_yjs_message(data)
+            return
+
+        if data_type in MLS_TYPES:
+            await self.handle_opaque_mls_message(user, data)
+            return
+
+        if data_type == "chat_message" and data.get("message"):
+            await self.handle_chat_message(user, data)
+            return
+
+        await self.send_error(
+            "Only chat messages, Yjs messages, and MLS-encrypted messages are accepted."
+        )
+
+    async def handle_yjs_message(self, data):
+        data["sender_channel"] = self.channel_name
+
+        await self.broadcast(
+            payload=data,
+            sender_channel=self.channel_name,
+            target_channel=data.get("target_channel"),
+        )
+
+    async def handle_opaque_mls_message(self, user, data):
+        """
+        Fully opaque MLS relay.
+
+        The server forwards only the cryptographic payload and routing fields.
+        No user identity, avatar, or server-side metadata is injected, so the
+        server cannot correlate ciphertexts to participants at the application layer.
+        """
+        payload = {
+            "type": data.get("type"),
+            "sender_channel": self.channel_name,
+            "target_channel": data.get("target_channel"),
+        }
+
+        for field in (
+            "message_id",
+            "device_id",
+            "key_package",
+            "welcome",
+            "commit",
+            "ciphertext",
+            "epoch",
+            "group_id",
+            "sender_name",
+            "sender_avatar_url",
+        ):
+            if field in data:
+                payload[field] = data[field]
+
+        await self.broadcast(
+            payload=payload,
+            sender_channel=self.channel_name,
+            target_channel=payload.get("target_channel"),
+        )
+
+    async def handle_chat_message(self, user, data):
+        participant = await self.get_chat_participant(user)
+
+        data["user"] = participant.display_name
+        data["avatar_url"] = self.absolute_url(participant.avatar_url)
+        data["participant_type"] = participant.participant_type
+        data["sender_channel"] = self.channel_name
+        data["target_channel"] = None
+
+        await self.broadcast(
+            payload=data,
+            sender_channel=self.channel_name,
+            target_channel=None,
+        )
+
+    async def broadcast_participants(self):
+        await self.broadcast(
+            payload=await self.room_participants_payload(),
+            sender_channel=self.channel_name,
+            target_channel=None,
+        )
+
+    async def broadcast(self, *, payload, sender_channel, target_channel=None):
+        await self.channel_layer.group_send(
+            self.room_group_name,
+            {
+                "type": "chat_message",
+                "payload": payload,
+                "sender_channel": sender_channel,
+                "target_channel": target_channel,
+            },
+        )
+
+    async def chat_message(self, event):
+        target_channel = event.get("target_channel")
+
+        if target_channel and target_channel != self.channel_name:
+            return
+
+        payload = event["payload"]
+
+        # Do not echo local-only transport messages back to the socket that sent them.
+        # MLS application messages cannot be decrypted by their sender.
+        if (
+            payload.get("type")
+            in {
+                "yjs_update",
+                "yjs_sync_request",
+                "mls_key_package",
+                "mls_welcome",
+                "mls_commit",
+                "mls_app",
+            }
+            and event.get("sender_channel") == self.channel_name
+        ):
+            return
+
+        await self.send(text_data=json.dumps(payload))
+
+    async def send_error(self, message):
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "system_error",
+                    "user": "System",
+                    "message": message,
+                }
+            )
+        )
+
+    def absolute_url(self, url):
+        if not url:
+            return url
+        parsed = urlparse(url)
+        if parsed.scheme and parsed.netloc:
+            return url
+
+        headers = dict(self.scope.get("headers") or [])
+        host = headers.get(b"host", b"").decode("utf-8")
+        forwarded_proto = headers.get(b"x-forwarded-proto", b"").decode("utf-8")
+        scheme = forwarded_proto or ("https" if self.scope.get("scheme") == "wss" else "http")
+        path = url if url.startswith("/") else f"/{url}"
+
+        return f"{scheme}://{host}{path}" if host else path
+
+    @database_sync_to_async
+    def room_participants_payload(self):
+        from toto.enigma.models import Room
+
+        room = Room.objects.get(slug=self.room_slug)
+        participants_qs = room.chat_participants.filter(is_active=True).select_related("person")
+        participants = [
+            {
+                "name": participant.display_name,
+                "avatar_url": self.absolute_url(participant.avatar_url),
+                "type": participant.participant_type,
+            }
+            for participant in participants_qs
+        ]
+
+        return {
+            "type": "room_participants",
+            "room_slug": self.room_slug,
+            "participant_count": len(participants),
+            "participants": participants,
+        }
+
+    @database_sync_to_async
+    def get_chat_participant(self, user):
+        from toto.enigma.models import Room
+
+        room = Room.objects.get(slug=self.room_slug)
+        return room.chat_participants.select_related("person__user").get(
+            person__user=user,
+            is_active=True,
+        )
+
+    @database_sync_to_async
+    def user_can_send(self, user):
+        from toto.enigma.models import Room
+
+        if not user or not user.is_authenticated:
+            return False
+
+        return Room.objects.filter(
+            slug=self.room_slug,
+            chat_participants__is_active=True,
+            chat_participants__person__user=user,
+        ).exists()

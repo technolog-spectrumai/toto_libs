@@ -1,0 +1,44 @@
+<script>
+window.MathJax = {
+    startup: {
+        typeset: false
+    },
+    svg: {
+        fontCache: "none"
+    }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+<script>
+class FormulaConverter {
+    constructor(size = 32) {
+        this.size = size;
+    }
+
+    async render(input) {
+        const formula = input.trim();
+        if (!formula) return "";
+
+        await MathJax.startup.promise;
+
+        const node = MathJax.tex2svg(formula, {
+            display: true,
+            em: this.size,
+            ex: this.size / 2,
+            containerWidth: 800
+        });
+
+        const svg = node.querySelector("svg");
+        if (!svg) {
+            throw new Error("MathJax did not render an SVG.");
+        }
+
+        svg.removeAttribute("style");
+        svg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+
+        return new XMLSerializer().serializeToString(svg);
+    }
+}
+
+window.FormulaConverter = FormulaConverter;
+</script>
