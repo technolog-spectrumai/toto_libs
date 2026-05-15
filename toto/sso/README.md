@@ -69,26 +69,28 @@ Minimum required scope: `openid`.
 
 ### Register the client (your side)
 
+Run from the `portal/` directory (env vars must point at your deployment's database):
+
 ```bash
 # Confidential client — server-side app with a secret
-python manage.py --config configs/portal_mini.yaml create_sso_client \
+python manage.py create_sso_client \
   --name "Acme HR Portal" \
   --redirect-uri "https://acme.example.com/auth/callback"
 
 # Multiple redirect URIs
-python manage.py --config configs/portal_mini.yaml create_sso_client \
+python manage.py create_sso_client \
   --name "Acme HR Portal" \
   --redirect-uri "https://acme.example.com/auth/callback" \
   --redirect-uri "https://staging.acme.example.com/auth/callback"
 
 # Public client — SPA or mobile app (no secret, must use PKCE)
-python manage.py --config configs/portal_mini.yaml create_sso_client \
+python manage.py create_sso_client \
   --name "Acme Mobile App" \
   --redirect-uri "https://acme.example.com/callback" \
   --public
 
 # Trusted client — skip consent screen (internal/first-party apps only)
-python manage.py --config configs/portal_mini.yaml create_sso_client \
+python manage.py create_sso_client \
   --name "Internal Dashboard" \
   --redirect-uri "https://internal.example.com/callback" \
   --trusted
@@ -148,7 +150,7 @@ ID tokens are signed with **RS256** (RSA + SHA-256). The private key is encrypte
 Generate the signing key once after deployment:
 
 ```bash
-python manage.py --config configs/portal_mini.yaml create_sso_signing_key
+python manage.py create_sso_signing_key
 ```
 
 ---
