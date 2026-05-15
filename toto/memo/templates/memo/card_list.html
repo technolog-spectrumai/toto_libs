@@ -1,0 +1,91 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %} Presentations | {{ platform.site_name }} {% endblock %}
+
+{% block start_script %}
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js/dist/reveal.css">
+  <link rel="stylesheet" id="reveal-theme">
+
+  <script>
+    let lastDarkMode = localStorage.getItem('darkMode');
+
+    function updateRevealTheme() {
+      const themeLink = document.getElementById('reveal-theme');
+      const darkMode = localStorage.getItem('darkMode');
+      themeLink.href = darkMode === 'true'
+        ? "https://cdn.jsdelivr.net/npm/reveal.js/dist/theme/black.css"
+        : "https://cdn.jsdelivr.net/npm/reveal.js/dist/theme/white.css";
+    }
+
+    updateRevealTheme();
+
+    setInterval(() => {
+      const currentDarkMode = localStorage.getItem('darkMode');
+      if (currentDarkMode !== lastDarkMode) {
+        lastDarkMode = currentDarkMode;
+        updateRevealTheme();
+      }
+    }, 500);
+
+  </script>
+{% endblock %}
+
+{% block content %}
+<body id="reveal-container">
+
+<div class="reveal">
+  <div class="slides">
+
+    <!-- Title Slide -->
+    <section>
+      <h2>Cards in "{{ deck.title }}"</h2>
+      <p>Total cards: {{ cards|length }}</p>
+    </section>
+
+    {% if cards %}
+      {% for card in cards %}
+        <section>
+          <h3>{{ card.title }}</h3>
+
+          {% if card.content %}
+            <p>{{ card.content }}</p>
+          {% endif %}
+
+          {% if card.image_url %}
+            <img src="{{ card.image_url }}" alt="Image for {{ card.title }}"
+                 style="max-width: 100%; height: auto;">
+          {% endif %}
+
+          {% if card.diagram and card.diagram.svg_url %}
+            <img src="{{ card.diagram.svg_url }}" alt="{{ card.diagram.title|default:card.title }}"
+                 style="max-width: 100%; height: auto; margin-top: 20px;">
+          {% endif %}
+        </section>
+      {% endfor %}
+    {% else %}
+      <section>
+        <p>No cards in this deck yet.</p>
+      </section>
+    {% endif %}
+
+    <!-- Back to Decks Slide -->
+    <section>
+      <a href="{% url 'memo:deck-list' %}">← Back to Decks</a>
+    </section>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block end_script %}
+<script src="https://cdn.jsdelivr.net/npm/reveal.js/dist/reveal.js"></script>
+
+<script>
+  Reveal.initialize({
+    transition: 'slide',
+    hash: true
+  });
+
+</script>
+{% endblock %}

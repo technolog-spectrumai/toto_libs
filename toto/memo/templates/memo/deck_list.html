@@ -1,0 +1,214 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}Decks | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-6 py-16 transition-colors duration-300">
+
+  <div class="max-w-5xl mx-auto space-y-8">
+
+    <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div class="space-y-2">
+        <h1
+          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+          class="text-3xl font-bold">
+          Memo Decks
+        </h1>
+
+        <p class="opacity-75">
+          Search lecture decks by title or tag.
+        </p>
+      </div>
+
+      <a href="{% url 'core:dashboard' %}" class="text-sm underline hover:opacity-80">
+        Dashboard
+      </a>
+    </div>
+
+    <section
+      :class="darkMode
+        ? 'bg-bubble-bg-dark border-accent-1'
+        : 'bg-bubble-bg-light border-accent-2'"
+      class="border rounded-lg p-5 shadow-md space-y-5 transition-colors duration-300">
+
+      <form method="get" class="flex flex-col gap-3 sm:flex-row">
+        <input
+          type="search"
+          name="q"
+          value="{{ query }}"
+          placeholder="Search decks or tags..."
+          :class="darkMode
+            ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
+            : 'bg-primary-bg-light text-text-main-light border-accent-2'"
+          class="min-w-0 flex-1 rounded border px-3 py-2 transition-colors duration-300">
+
+        <button
+          type="submit"
+          :class="darkMode
+            ? 'bg-accent-dark text-primary-bg-dark'
+            : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded px-4 py-2 font-semibold hover:opacity-90 transition">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          Search
+        </button>
+
+        {% if query %}
+          <a
+            href="{% url 'memo:deck-list' %}"
+            :class="darkMode
+              ? 'bg-primary-bg-dark border-accent-1'
+              : 'bg-primary-bg-light border-accent-2'"
+            class="inline-flex items-center justify-center rounded border px-4 py-2 text-sm font-semibold hover:opacity-80 transition">
+            Clear
+          </a>
+        {% endif %}
+      </form>
+
+      {% if tags %}
+        <div class="flex flex-wrap gap-2">
+          {% for tag in tags %}
+            <a
+              href="{% url 'memo:deck-list' %}?q={{ tag.name|urlencode }}"
+              :class="darkMode
+                ? 'bg-primary-bg-dark border-accent-1 text-accent-dark hover:bg-bubble-bg-dark'
+                : 'bg-primary-bg-light border-accent-2 text-accent-light hover:bg-bubble-bg-light'"
+              class="rounded border px-3 py-2 text-sm font-semibold transition-colors">
+              #{{ tag.name }}
+            </a>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </section>
+
+    <section class="space-y-4">
+      <div class="flex items-center justify-between gap-4">
+        <h2
+          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+          class="text-2xl font-bold">
+          Decks
+        </h2>
+
+        <span class="text-sm opacity-60">
+          {{ page_obj.start_index }}-{{ page_obj.end_index }} of {{ paginator.count }}
+        </span>
+      </div>
+
+      {% if decks %}
+        <div class="grid gap-5 md:grid-cols-2">
+          {% for deck in decks %}
+            <article
+              :class="darkMode
+                ? 'bg-bubble-bg-dark border-accent-1'
+                : 'bg-bubble-bg-light border-accent-2'"
+              class="border rounded-lg p-5 shadow-md space-y-4 transition-colors duration-300">
+
+              <div class="space-y-2">
+                <a
+                  href="{% url 'memo:card-list' slug=deck.slug %}"
+                  class="block text-xl font-bold underline hover:opacity-80">
+                  {{ deck.title }}
+                </a>
+
+                {% if deck.description %}
+                  <p class="text-sm opacity-75">
+                    {{ deck.description|truncatewords:24 }}
+                  </p>
+                {% endif %}
+              </div>
+
+              <div class="flex flex-wrap gap-4 text-xs opacity-65">
+                <span>{{ deck.cards.count }} cards</span>
+                <span>{{ deck.created_at|date:"M d, Y" }}</span>
+                <span>{{ deck.author.username }}</span>
+              </div>
+
+              {% if deck.tags.all %}
+                <div class="flex flex-wrap gap-2">
+                  {% for tag in deck.tags.all %}
+                    <a
+                      href="{% url 'memo:deck-list' %}?q={{ tag.name|urlencode }}"
+                      :class="darkMode
+                        ? 'bg-primary-bg-dark border-accent-1 text-accent-dark'
+                        : 'bg-primary-bg-light border-accent-2 text-accent-light'"
+                      class="rounded border px-2 py-1 text-xs font-semibold hover:opacity-80 transition">
+                      #{{ tag.name }}
+                    </a>
+                  {% endfor %}
+                </div>
+              {% endif %}
+            </article>
+          {% endfor %}
+        </div>
+
+        {% if is_paginated %}
+          <nav class="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between">
+            <div class="text-sm opacity-60">
+              Page {{ page_obj.number }} of {{ paginator.num_pages }}
+            </div>
+
+            <div class="flex gap-2">
+              {% if page_obj.has_previous %}
+                <a
+                  href="?{{ querystring }}page={{ page_obj.previous_page_number }}"
+                  :class="darkMode
+                    ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark'
+                    : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+                  class="inline-flex items-center gap-2 rounded border px-4 py-2 text-sm font-semibold hover:opacity-80 transition">
+                  <i class="fa-solid fa-arrow-left"></i>
+                  Previous
+                </a>
+              {% else %}
+                <span
+                  :class="darkMode
+                    ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark'
+                    : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+                  class="inline-flex items-center gap-2 rounded border px-4 py-2 text-sm font-semibold opacity-40">
+                  <i class="fa-solid fa-arrow-left"></i>
+                  Previous
+                </span>
+              {% endif %}
+
+              {% if page_obj.has_next %}
+                <a
+                  href="?{{ querystring }}page={{ page_obj.next_page_number }}"
+                  :class="darkMode
+                    ? 'bg-accent-dark text-primary-bg-dark'
+                    : 'bg-accent-light text-primary-bg-light'"
+                  class="inline-flex items-center gap-2 rounded px-4 py-2 text-sm font-semibold hover:opacity-90 transition">
+                  Next
+                  <i class="fa-solid fa-arrow-right"></i>
+                </a>
+              {% else %}
+                <span
+                  :class="darkMode
+                    ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark'
+                    : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+                  class="inline-flex items-center gap-2 rounded border px-4 py-2 text-sm font-semibold opacity-40">
+                  Next
+                  <i class="fa-solid fa-arrow-right"></i>
+                </span>
+              {% endif %}
+            </div>
+          </nav>
+        {% endif %}
+      {% else %}
+        <div
+          :class="darkMode
+            ? 'bg-bubble-bg-dark border-accent-1'
+            : 'bg-bubble-bg-light border-accent-2'"
+          class="border rounded-lg p-8 text-center shadow-md">
+          <p class="text-sm opacity-70">
+            No decks found.
+          </p>
+        </div>
+      {% endif %}
+    </section>
+
+  </div>
+</section>
+{% endblock %}
