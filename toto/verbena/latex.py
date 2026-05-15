@@ -75,10 +75,15 @@ class TrixHTMLToLatexParser(HTMLParser):
             self.parts.append(r"\begin{enumerate}" + "\n")
         elif tag == "li":
             self.parts.append(r"\item ")
-        elif tag == "h1":
+        elif tag in {"h1", "h2", "h3"}:
             self._paragraph_break()
-            self.parts.append(r"\subsection{")
-        elif tag in {"h2", "h3", "h4", "h5", "h6"}:
+            command = {
+                "h1": "subsection",
+                "h2": "subsubsection",
+                "h3": "paragraph",
+            }[tag]
+            self.parts.append(rf"\{command}{{")
+        elif tag in {"h4", "h5", "h6"}:
             self._paragraph_break()
             self.parts.append(r"\textbf{")
 
