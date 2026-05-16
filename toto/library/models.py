@@ -5,7 +5,7 @@ from django.utils.text import slugify
 from toto.core.domain import DomainEntity
 from toto.people.models import Person
 from toto.vault.models import VaultFile
-from toto.verbena.models import Tag
+from toto.palimpsest.models import Tag
 
 
 # ────────────────────────────────────────────────

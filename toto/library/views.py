@@ -2,7 +2,7 @@ from django.db import models
 from django.views.generic import ListView, DetailView
 
 from .models import Book, Article
-from toto.verbena.models import Tag
+from toto.palimpsest.models import Tag
 from toto.ui import PageProcessor
 
 

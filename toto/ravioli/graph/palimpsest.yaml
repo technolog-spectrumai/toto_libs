@@ -1,15 +1,15 @@
-app: verbena
+app: palimpsest
 
 nodes:
-  - label: Tag
-    model: toto.verbena.models.Tag
+  - label: PalimpsestTag
+    model: toto.palimpsest.models.Tag
     uuid_field: uid
     fields:
       name: name
       slug: slug
 
-  - label: Page
-    model: toto.verbena.models.Page
+  - label: PalimpsestPage
+    model: toto.palimpsest.models.Page
     uuid_field: uid
     fields:
       title: title
@@ -17,8 +17,8 @@ nodes:
       description: description
       created_at: created_at
 
-  - label: Section
-    model: toto.verbena.models.Section
+  - label: PalimpsestSection
+    model: toto.palimpsest.models.Section
     uuid_field: uid
     fields:
       title: title
@@ -26,28 +26,28 @@ nodes:
       order: order
 
 links:
-  - from_label: Page
-    to_label: Tag
+  - from_label: PalimpsestPage
+    to_label: PalimpsestTag
     relation: HAS_TAG
     source: tags
     cardinality: many
 
-  - from_label: Section
-    to_label: Page
+  - from_label: PalimpsestSection
+    to_label: PalimpsestPage
     relation: BELONGS_TO_PAGE
     source: page
     cardinality: one
     nullable: false
 
-  - from_label: Section
+  - from_label: PalimpsestSection
     to_label: Person
     relation: AUTHORED_BY
     source: author
     cardinality: one
     nullable: true
 
-  - from_label: Section
-    to_label: Tag
+  - from_label: PalimpsestSection
+    to_label: PalimpsestTag
     relation: HAS_TAG
     source: tags
     cardinality: many

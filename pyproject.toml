@@ -41,6 +41,10 @@ packages = [
     "toto.socialhub.views",
     "toto.vault",
     "toto.verbena",
+    "toto.palimpsest",
+    "toto.palimpsest.migrations",
+    "toto.palimpsest.management",
+    "toto.palimpsest.management.commands",
 
     "toto.polls",
     "toto.polls.migrations",

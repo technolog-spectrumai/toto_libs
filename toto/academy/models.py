@@ -106,7 +106,7 @@ class CourseModule(models.Model):
     slug = models.SlugField(max_length=200)
     description = models.TextField(blank=True)
     verbena_page = models.ForeignKey(
-        "verbena.Page",
+        "palimpsest.Page",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

@@ -1,0 +1,196 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}{{ page.title }} | Palimpsest | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+<style>
+  .palimpsest-prose {
+    font-size: 1.05rem;
+    line-height: 1.85;
+  }
+  .palimpsest-prose p { margin: 0.9rem 0; }
+  .palimpsest-prose h1,
+  .palimpsest-prose h2,
+  .palimpsest-prose h3 {
+    font-weight: 800;
+    line-height: 1.2;
+    margin: 1.7rem 0 0.8rem;
+  }
+  .palimpsest-prose h1 { font-size: 1.8rem; }
+  .palimpsest-prose h2 { font-size: 1.45rem; }
+  .palimpsest-prose h3 { font-size: 1.2rem; }
+  .palimpsest-prose blockquote {
+    border-left: 3px solid currentColor;
+    font-style: italic;
+    margin: 1.4rem 0;
+    padding-left: 1rem;
+    opacity: 0.8;
+  }
+  .palimpsest-prose pre {
+    border: 1px solid rgba(128, 128, 128, 0.28);
+    border-radius: 0.5rem;
+    overflow-x: auto;
+    padding: 1rem;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-5xl space-y-6">
+    <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div class="min-w-0">
+        <a href="{% url back_url %}"
+           class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+          <i class="fa-solid fa-arrow-left"></i>
+          {{ back_label }}
+        </a>
+
+        <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+           class="mt-5 text-xs font-semibold uppercase tracking-wide">
+          {{ publication_name }} / {{ page_type_label }}
+        </p>
+
+        <h1 class="mt-2 break-words text-4xl font-extrabold tracking-tight sm:text-5xl">
+          {{ page.title }}
+        </h1>
+
+        {% if page.description %}
+          <p class="mt-3 max-w-3xl text-sm leading-6 opacity-75">{{ page.description }}</p>
+        {% endif %}
+
+        <div class="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs opacity-65">
+          <span class="inline-flex items-center gap-1">
+            <i class="fa-solid fa-user-pen"></i>
+            {{ page.author_names }}
+          </span>
+          <span class="inline-flex items-center gap-1">
+            <i class="fa-regular fa-clock"></i>
+            {{ page.reading_time_minutes }} min read
+          </span>
+          <span class="inline-flex items-center gap-1">
+            <i class="fa-solid fa-file-lines"></i>
+            {{ page.section_count }} section{{ page.section_count|pluralize }}
+          </span>
+          <span class="inline-flex items-center gap-1">
+            <i class="fa-regular fa-calendar"></i>
+            {{ page.created_at|date:"M d, Y" }}
+          </span>
+        </div>
+      </div>
+
+      {% if user.is_authenticated %}
+        <nav class="flex flex-wrap gap-2">
+          <a href="{% url 'palimpsest:section_create' page.slug %}"
+             :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+             class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+            <i class="fa-solid fa-plus"></i>
+            Section
+          </a>
+          <a href="{% url 'palimpsest:page_update' page.slug %}"
+             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+            <i class="fa-solid fa-pen-to-square"></i>
+            Edit
+          </a>
+        </nav>
+      {% endif %}
+    </header>
+
+    {% if page.tags.exists %}
+      <div class="flex flex-wrap gap-2">
+        {% for t in page.tags.all %}
+          <a href="{% url 'palimpsest:page_list_by_tag' t.slug %}"
+             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-accent-dark' : 'border-accent-2 bg-bubble-bg-light text-accent-light'"
+             class="inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-semibold shadow-sm transition hover:opacity-85">
+            <i class="fa-solid fa-hashtag text-[10px]"></i>
+            {{ t.name }}
+          </a>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <div class="space-y-5">
+      {% for section in sections %}
+        <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                 class="overflow-hidden rounded-2xl border shadow-sm">
+          <header :class="darkMode ? 'bg-sunken-dark' : 'bg-sunken-light'"
+                  class="flex items-start justify-between gap-4 border-b border-current/10 px-5 py-4 sm:px-6">
+            <div class="min-w-0">
+              <p class="text-xs font-semibold uppercase tracking-wide opacity-60">
+                Section {{ forloop.counter|stringformat:"02d" }}
+              </p>
+              {% if section.title %}
+                <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                    class="mt-1 break-words text-2xl font-bold">
+                  {{ section.title }}
+                </h2>
+              {% endif %}
+              {% if section.author %}
+                <p class="mt-1 text-xs opacity-55">
+                  <i class="fa-solid fa-user-pen"></i> {{ section.author.display_name }}
+                </p>
+              {% endif %}
+            </div>
+
+            {% if user.is_authenticated and section.pk %}
+              <div class="flex shrink-0 gap-2">
+                <a href="{% url 'palimpsest:section_update' page.slug section.pk %}"
+                   class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-current/15 transition hover:opacity-80"
+                   title="Edit section">
+                  <i class="fa-solid fa-pen text-xs"></i>
+                </a>
+                <a href="{% url 'palimpsest:section_delete' page.slug section.pk %}"
+                   class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-current/15 transition hover:opacity-80"
+                   title="Delete section">
+                  <i class="fa-solid fa-trash text-xs"></i>
+                </a>
+              </div>
+            {% endif %}
+          </header>
+
+          <div class="px-5 py-5 sm:px-6">
+            <div class="palimpsest-prose max-w-none">
+              {{ section.html|safe }}
+            </div>
+          </div>
+        </article>
+      {% empty %}
+        <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-2xl border border-dashed p-10 text-center shadow-sm">
+          <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="fa-solid fa-feather-pointed text-3xl"></i>
+          <p class="mt-3 text-sm italic opacity-70">No sections yet.</p>
+          {% if user.is_authenticated %}
+            <a href="{% url 'palimpsest:section_create' page.slug %}"
+               :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+               class="mt-4 inline-flex items-center gap-2 text-sm font-semibold">
+              Add the first section
+              <i class="fa-solid fa-arrow-right text-[10px]"></i>
+            </a>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+
+    <footer class="flex flex-wrap items-center justify-between gap-3 pt-2">
+      <a href="{% url 'palimpsest:page_list' %}"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+        <i class="fa-solid fa-arrow-left"></i>
+        Palimpsest
+      </a>
+      {% if user.is_authenticated %}
+        <a href="{% url 'palimpsest:page_delete' page.slug %}"
+           class="inline-flex items-center justify-center gap-2 rounded-lg border border-current/20 px-4 py-2 text-sm font-semibold opacity-70 transition hover:opacity-100">
+          <i class="fa-solid fa-trash"></i>
+          Delete piece
+        </a>
+      {% endif %}
+    </footer>
+  </div>
+</section>
+{% endblock %}

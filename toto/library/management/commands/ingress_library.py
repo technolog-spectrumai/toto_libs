@@ -2,7 +2,7 @@ from django.utils.text import slugify
 
 from toto.ingress import IngressCommand
 from toto.people.models import Person
-from toto.verbena.models import Tag
+from toto.palimpsest.models import Tag
 
 from toto.library.models import Article, Book
 
