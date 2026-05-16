@@ -1,133 +1,308 @@
-from django.conf import settings
-from django.utils.module_loading import import_string
+"""
+ravioli.projection — YAML-driven SQL → Neo4j projection.
+
+No neomodel.  All graph writes go through raw Cypher via ravioli.connection.
+Django apps supply the source data; ravioli/graph/*.yaml owns the graph shape;
+this module owns the projection logic.
+"""
+
+import json
+import importlib
+
+from .loader import load_all_configs, import_model
 
 
-class ProjectionRegistry:
+# ---------------------------------------------------------------------------
+# Value helpers
+# ---------------------------------------------------------------------------
 
-    def __init__(self):
-        self.projections = [
-            import_string(path)()   # dynamically load class and instantiate
-            for path in settings.GRAPH_PROJECTIONS
-        ]
+def _apply_transform(value, transform):
+    if transform == "wkt":
+        return value.wkt if value else None
+    if transform == "str":
+        return str(value) if value is not None else None
+    if transform == "json":
+        return json.dumps(value or {})
+    if transform == "file_url":
+        try:
+            return value.url if value else None
+        except (ValueError, AttributeError):
+            return None
+    if transform == "default_dict":
+        return value or {}
+    return value
 
-    def grouped_models(self):
-        groups = {}
-        for proj in self.projections:
-            groups.setdefault(proj.app, []).append(proj.model)
-        return groups
 
-    def find_projections_for(self, selected_models):
-        return [
-            proj for proj in self.projections
-            if proj.model in selected_models
-        ]
+def _get_value(obj, field_def):
+    """Read one field from a Django model instance, applying optional transforms."""
+    if isinstance(field_def, dict):
+        sql_field = field_def.get("source")
+        transform = field_def.get("transform")
+    else:
+        sql_field = field_def
+        transform = None
 
+    value = getattr(obj, sql_field, None)
+    return _apply_transform(value, transform)
+
+
+# ---------------------------------------------------------------------------
+# Projection runner
+# ---------------------------------------------------------------------------
 
 class ProjectionRunner:
-    def __init__(self, selected_models=None):
-        registry = ProjectionRegistry()
+    """
+    Projects all nodes first, then all links.
 
-        if selected_models:
-            self.projections = registry.find_projections_for(selected_models)
-        else:
-            self.projections = registry.projections
+    client  — a ravioli.connection.Neo4jClient instance
+    configs — output of ravioli.loader.load_all_configs()
+              (pass explicitly so the runner can be constructed without I/O)
+    """
 
-    def projection_stats(self, proj):
-        if hasattr(proj, "projection_stats"):
-            stats = proj.projection_stats()
-        else:
-            stats = {
-                "items": 0,
-                "links": 0,
-                "node_data_size": 1,
-            }
+    def __init__(self, client, configs=None):
+        self.client = client
+        self.configs = configs if configs is not None else load_all_configs()
+        self._label_map = self._build_label_map()
 
-        return {
-            "items": int(stats.get("items") or 0),
-            "links": int(stats.get("links") or 0),
-            "node_data_size": int(stats.get("node_data_size") or 0),
-        }
+    # ------------------------------------------------------------------
+    # Label → model mapping (built once, used for every link lookup)
+    # ------------------------------------------------------------------
 
-    def projection_size(self, stats):
-        node_size = stats["items"] * stats["node_data_size"]
-        return node_size + stats["links"]
+    def _build_label_map(self):
+        mapping = {}
+        for config in self.configs:
+            for node in config.get("nodes", []):
+                label = node["label"]
+                mapping[label] = {
+                    "node_def": node,
+                    "model": import_model(node["model"]),
+                    "uuid_field": node.get("uuid_field", "uid"),
+                }
+        return mapping
 
-    def projection_plan(self):
-        plan = []
+    # ------------------------------------------------------------------
+    # Grouped labels — used by admin / views for display
+    # ------------------------------------------------------------------
 
-        for proj in self.projections:
-            stats = self.projection_stats(proj)
-            node_size = stats["items"] * stats["node_data_size"]
-            edge_size = stats["links"]
+    def grouped_models(self):
+        result = {}
+        for config in self.configs:
+            app = config.get("app", "")
+            result[app] = [node["label"] for node in config.get("nodes", [])]
+        return result
 
-            plan.append({
-                "projection": proj,
-                "stats": stats,
-                "node_size": node_size,
-                "edge_size": edge_size,
-                "total_size": node_size + edge_size,
-            })
+    # ------------------------------------------------------------------
+    # Two-pass public API
+    # ------------------------------------------------------------------
 
-        return plan
+    def project_all_nodes(self):
+        for config in self.configs:
+            for node_def in config.get("nodes", []):
+                self._project_node(node_def)
+
+    def project_all_links(self):
+        for config in self.configs:
+            for link_def in config.get("links", []):
+                self._project_link(link_def)
 
     def run(self):
-        for proj in self.projections:
-            proj.sync_nodes()
+        self.project_all_nodes()
+        self.project_all_links()
 
-        for proj in self.projections:
-            proj.sync_edges()
+    # ------------------------------------------------------------------
+    # Streaming progress (for the admin SSE view)
+    # ------------------------------------------------------------------
 
-    def run_with_progress(self):
-        plan = self.projection_plan()
-        total_size = sum(item["total_size"] for item in plan)
-        current_size = 0
+    def run_with_progress(self, selected_labels=None):
+        node_defs = []
+        link_defs = []
+        for config in self.configs:
+            for node in config.get("nodes", []):
+                if selected_labels is None or node["label"] in selected_labels:
+                    node_defs.append(node)
+            for link in config.get("links", []):
+                if selected_labels is None or link.get("from_label") in selected_labels:
+                    link_defs.append(link)
+
+        total = len(node_defs) + len(link_defs)
+        current = 0
 
         yield {
             "status": "started",
             "current": 0,
-            "total": total_size,
-            "message": "Starting projection sync",
+            "total": total,
+            "message": "Starting projection",
         }
 
-        for item in plan:
-            proj = item["projection"]
-
-            proj.sync_nodes()
-            current_size += item["node_size"]
+        for node_def in node_defs:
+            self._project_node(node_def)
+            current += 1
             yield {
                 "status": "running",
                 "phase": "nodes",
-                "projection": proj.__class__.__name__,
-                "model": str(proj.model),
-                "current": current_size,
-                "total": total_size,
-                "items": item["stats"]["items"],
-                "links": item["stats"]["links"],
-                "node_data_size": item["stats"]["node_data_size"],
-                "message": f"Synced nodes for {proj.__class__.__name__}",
+                "label": node_def["label"],
+                "model": node_def.get("model", ""),
+                "current": current,
+                "total": total,
+                "message": f"Projected nodes: {node_def['label']}",
             }
 
-        for item in plan:
-            proj = item["projection"]
-
-            proj.sync_edges()
-            current_size += item["edge_size"]
+        for link_def in link_defs:
+            self._project_link(link_def)
+            current += 1
             yield {
                 "status": "running",
-                "phase": "edges",
-                "projection": proj.__class__.__name__,
-                "model": str(proj.model),
-                "current": current_size,
-                "total": total_size,
-                "items": item["stats"]["items"],
-                "links": item["stats"]["links"],
-                "node_data_size": item["stats"]["node_data_size"],
-                "message": f"Synced edges for {proj.__class__.__name__}",
+                "phase": "links",
+                "relation": link_def.get("relation", ""),
+                "current": current,
+                "total": total,
+                "message": f"Projected links: {link_def.get('relation', '')}",
             }
 
         yield {
             "status": "completed",
-            "current": total_size,
-            "total": total_size,
-            "message": "Projection sync completed",
+            "current": total,
+            "total": total,
+            "message": "Projection complete",
         }
+
+    # ------------------------------------------------------------------
+    # Node projection
+    # ------------------------------------------------------------------
+
+    def _project_node(self, node_def):
+        model = import_model(node_def["model"])
+        label = node_def["label"]
+        uuid_field = node_def.get("uuid_field", "uid")
+        field_map = node_def.get("fields", {})
+
+        if not field_map:
+            for obj in model.objects.all():
+                uuid = str(getattr(obj, uuid_field))
+                self.client.run_cypher(
+                    f"MERGE (n:{label} {{uuid: $uuid}})",
+                    {"uuid": uuid},
+                )
+            return
+
+        set_clause = ", ".join(f"n.{k} = ${k}" for k in field_map)
+        query = f"MERGE (n:{label} {{uuid: $uuid}}) SET {set_clause}"
+
+        for obj in model.objects.all():
+            uuid = str(getattr(obj, uuid_field))
+            props = {k: _get_value(obj, v) for k, v in field_map.items()}
+            self.client.run_cypher(query, {"uuid": uuid, **props})
+
+    # ------------------------------------------------------------------
+    # Link projection (dispatch)
+    # ------------------------------------------------------------------
+
+    def _project_link(self, link_def):
+        if link_def.get("via_model"):
+            self._project_junction_link(link_def)
+        else:
+            self._project_fk_link(link_def)
+
+    # ------------------------------------------------------------------
+    # FK / M2M link
+    # ------------------------------------------------------------------
+
+    def _project_fk_link(self, link_def):
+        from_label = link_def["from_label"]
+        to_label = link_def["to_label"]
+        relation = link_def["relation"]
+        source_field = link_def["source"]
+        cardinality = link_def.get("cardinality", "one")
+        nullable = link_def.get("nullable", True)
+
+        from_info = self._label_map[from_label]
+        to_info = self._label_map[to_label]
+        from_model = from_info["model"]
+        from_uuid_field = from_info["uuid_field"]
+        to_uuid_field = to_info["uuid_field"]
+
+        merge_query = (
+            f"MATCH (a:{from_label} {{uuid: $f}}) "
+            f"MATCH (b:{to_label} {{uuid: $t}}) "
+            f"MERGE (a)-[:{relation}]->(b)"
+        )
+        clear_query = (
+            f"MATCH (a:{from_label} {{uuid: $uuid}})"
+            f"-[r:{relation}]->() DELETE r"
+        )
+
+        for obj in from_model.objects.all():
+            from_uuid = str(getattr(obj, from_uuid_field))
+
+            # Clear stale relationships before re-syncing.
+            self.client.run_cypher(clear_query, {"uuid": from_uuid})
+
+            if cardinality == "many":
+                for related in getattr(obj, source_field).all():
+                    to_uuid = str(getattr(related, to_uuid_field))
+                    self.client.run_cypher(merge_query, {"f": from_uuid, "t": to_uuid})
+            else:
+                # Use the _id shortcut to avoid an extra DB hit when the FK is null.
+                id_attr = f"{source_field}_id"
+                has_value = (
+                    bool(getattr(obj, id_attr))
+                    if hasattr(obj, id_attr)
+                    else bool(getattr(obj, source_field, None))
+                )
+                if has_value:
+                    related = getattr(obj, source_field, None)
+                    if related is not None:
+                        to_uuid = str(getattr(related, to_uuid_field))
+                        self.client.run_cypher(merge_query, {"f": from_uuid, "t": to_uuid})
+
+    # ------------------------------------------------------------------
+    # Junction-model link  (separate SQL model carries relationship props)
+    # ------------------------------------------------------------------
+
+    def _project_junction_link(self, link_def):
+        from_label = link_def["from_label"]
+        to_label = link_def["to_label"]
+        relation = link_def["relation"]
+        via_model_path = link_def["via_model"]
+        from_field = link_def["from_field"]
+        to_field = link_def["to_field"]
+        props_map = link_def.get("props", {})
+
+        via_model = import_model(via_model_path)
+        from_info = self._label_map[from_label]
+        to_info = self._label_map[to_label]
+        from_uuid_field = from_info["uuid_field"]
+        to_uuid_field = to_info["uuid_field"]
+
+        # Wipe all relationships of this type globally before re-creating.
+        self.client.run_cypher(f"MATCH ()-[r:{relation}]->() DELETE r")
+
+        if props_map:
+            set_clause = ", ".join(f"r.{k} = ${k}" for k in props_map)
+            query = (
+                f"MATCH (a:{from_label} {{uuid: $f}}) "
+                f"MATCH (b:{to_label} {{uuid: $t}}) "
+                f"CREATE (a)-[r:{relation}]->(b) SET {set_clause}"
+            )
+        else:
+            query = (
+                f"MATCH (a:{from_label} {{uuid: $f}}) "
+                f"MATCH (b:{to_label} {{uuid: $t}}) "
+                f"CREATE (a)-[:{relation}]->(b)"
+            )
+
+        qs = via_model.objects.select_related(from_field, to_field).all()
+        for junction_obj in qs:
+            from_obj = getattr(junction_obj, from_field, None)
+            to_obj = getattr(junction_obj, to_field, None)
+            if from_obj is None or to_obj is None:
+                continue
+
+            from_uuid = str(getattr(from_obj, from_uuid_field))
+            to_uuid = str(getattr(to_obj, to_uuid_field))
+            params: dict = {"f": from_uuid, "t": to_uuid}
+
+            for rel_field, sql_field in props_map.items():
+                params[rel_field] = _get_value(junction_obj, sql_field)
+
+            self.client.run_cypher(query, params)

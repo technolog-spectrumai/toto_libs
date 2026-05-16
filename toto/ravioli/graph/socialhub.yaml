@@ -1,0 +1,71 @@
+app: socialhub
+
+nodes:
+  - label: Community
+    model: toto.socialhub.models.Community
+    uuid_field: uid
+    fields:
+      name: name
+      slug: slug
+      org_type: org_type
+      established_year: established_year
+      is_autonomous: is_autonomous
+      is_foreign: is_foreign
+
+  - label: Person
+    model: toto.socialhub.models.Person
+    uuid_field: uid
+    fields:
+      display_name: display_name
+      email: email
+      phone: phone
+      date_of_birth: date_of_birth
+
+links:
+  - from_label: Community
+    to_label: Person
+    relation: HAS_MEMBER
+    source: members
+    cardinality: many
+
+  - from_label: Community
+    to_label: Person
+    relation: HEAD
+    source: head
+    cardinality: one
+    nullable: true
+
+  - from_label: Community
+    to_label: Federation
+    relation: BELONGS_TO
+    source: federation
+    cardinality: one
+    nullable: true
+
+  - from_label: Community
+    to_label: Address
+    relation: LOCATED_AT
+    source: location
+    cardinality: one
+    nullable: true
+
+  - from_label: Community
+    to_label: Territory
+    relation: IN_TERRITORY
+    source: territory
+    cardinality: one
+    nullable: true
+
+  - from_label: Person
+    to_label: Person
+    relation: MENTORED_BY
+    source: patron
+    cardinality: one
+    nullable: true
+
+  - from_label: Person
+    to_label: Address
+    relation: RESIDES_AT
+    source: address
+    cardinality: one
+    nullable: true

@@ -1,0 +1,47 @@
+app: bento
+
+nodes:
+  - label: IdeaCategory
+    model: toto.bento.models.Category
+    uuid_field: uid
+    fields:
+      name: name
+      slug: slug
+      description: description
+
+  - label: IdeaBox
+    model: toto.bento.models.IdeaBox
+    uuid_field: uid
+    fields:
+      title: title
+      body: body
+      is_concept: is_concept
+      source_title: source_title
+      source_url: source_url
+      source_type: source_type
+      quote: quote
+      properties:
+        source: properties
+        transform: default_dict
+      created_at: created_at
+      updated_at: updated_at
+
+links:
+  - from_label: IdeaBox
+    to_label: IdeaCategory
+    relation: HAS_CATEGORY
+    source: category
+    cardinality: one
+    nullable: true
+
+  # IdeaLink is a junction model that carries relationship properties.
+  - from_label: IdeaBox
+    to_label: IdeaBox
+    relation: IDEA_LINK
+    via_model: toto.bento.models.IdeaLink
+    from_field: from_box
+    to_field: to_box
+    props:
+      label: label
+      properties: properties
+      created_at: created_at

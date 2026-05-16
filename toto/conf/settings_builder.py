@@ -224,16 +224,11 @@ def build_settings(base_dir: Path, config_path: str | Path | None = None) -> dic
         )
         bolt_url = f"bolt://{neo4j_user}:{neo4j_password}@{neo4j_uri.replace('bolt://', '')}"
         neo4j_settings = {
+            "RAVIOLI_ENABLED": True,
             "NEO4J_URI": neo4j_uri,
             "NEO4J_USER": neo4j_user,
             "NEO4J_PASSWORD": neo4j_password,
-            "NEOMODEL_NEO4J_BOLT_URL": bolt_url,
         }
-        try:
-            from neomodel import config as neomodel_config  # noqa: PLC0415
-            neomodel_config.DATABASE_URL = bolt_url
-        except ImportError:
-            pass
 
     # --------------------------------------------------------------- celery
     celery_settings: dict[str, Any] = {}
@@ -369,7 +364,6 @@ def build_settings(base_dir: Path, config_path: str | Path | None = None) -> dic
     )
 
     migration_modules = cfg.get("migration_modules", {})
-    graph_projections = cfg.get("graph_projections", [])
 
     # ----------------------------------------------------------- assemble
     result: dict[str, Any] = {
@@ -458,8 +452,5 @@ def build_settings(base_dir: Path, config_path: str | Path | None = None) -> dic
 
     if migration_modules:
         result["MIGRATION_MODULES"] = migration_modules
-
-    if graph_projections:
-        result["GRAPH_PROJECTIONS"] = graph_projections
 
     return result

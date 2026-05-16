@@ -1,0 +1,45 @@
+app: travels
+
+nodes:
+  - label: Travel
+    model: toto.travels.models.Travel
+    uuid_field: uid
+    fields:
+      info: info
+      starts_at: starts_at
+      ends_at: ends_at
+
+  - label: Visit
+    model: toto.travels.models.Visit
+    uuid_field: uid
+    fields:
+      review: review
+      score: score
+
+links:
+  - from_label: Travel
+    to_label: Route
+    relation: USES_ROUTE
+    source: route
+    cardinality: one
+    nullable: true
+
+  - from_label: Travel
+    to_label: Person
+    relation: HAS_PARTICIPANT
+    source: participants
+    cardinality: many
+
+  - from_label: Visit
+    to_label: Person
+    relation: HAS_PARTICIPANT
+    source: participant
+    cardinality: one
+    nullable: true
+
+  - from_label: Visit
+    to_label: Address
+    relation: VISITED_LOCATION
+    source: location
+    cardinality: one
+    nullable: true

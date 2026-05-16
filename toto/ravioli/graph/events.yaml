@@ -1,0 +1,33 @@
+app: events
+
+nodes:
+  - label: EventCategory
+    model: toto.events.models.EventCategory
+    uuid_field: uid
+    fields:
+      name: name
+
+  - label: Event
+    model: toto.events.models.Event
+    uuid_field: uid
+    fields:
+      title: title
+      location: location
+      start_time: start_time
+      end_time: end_time
+      public: public
+
+links:
+  - from_label: Event
+    to_label: Person
+    relation: ORGANIZED_BY
+    source: organizer
+    cardinality: one
+    nullable: true
+
+  - from_label: Event
+    to_label: EventCategory
+    relation: HAS_CATEGORY
+    source: category
+    cardinality: one
+    nullable: true

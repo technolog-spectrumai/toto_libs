@@ -1,48 +1,47 @@
+import json
+
 from django.contrib import admin, messages
 from django.shortcuts import render, redirect
 from django.urls import path
+
 from .models import CypherQuery, CypherQueryResult, GraphSync
-from .neo4j_client import Neo4jClient
-import json
-from .projection import ProjectionRunner, ProjectionRegistry
 
 
-# ---------------------------------------------------------
-# NORMAL ADMIN FOR CYPHER QUERY
-# ---------------------------------------------------------
 @admin.register(CypherQuery)
 class CypherQueryAdmin(admin.ModelAdmin):
     list_display = ("name",)
-    # No fancy template — normal Django admin
 
-
-# ---------------------------------------------------------
-# FANCY GRAPH VIEWER FOR QUERY RESULTS
-# ---------------------------------------------------------
 
 @admin.register(CypherQueryResult)
 class CypherQueryResultAdmin(admin.ModelAdmin):
     list_display = ("query",)
 
     def change_view(self, request, object_id, form_url="", extra_context=None):
+        from .connection import Neo4jClient, is_enabled
+
         obj = CypherQueryResult.objects.get(pk=object_id)
-
-        client = Neo4jClient()
-        records = client.run_cypher(obj.query.query)
-        nodes, edges = client.extract_graph(records)
-
-        for n in nodes:
-            n["props"] = json.dumps(n["props"])
-
-        for e in edges:
-            e["props"] = json.dumps(e["props"])
-
         context = {
             "title": f"Graph Viewer: {obj.query.name}",
             "query": obj.query.query,
-            "nodes": nodes,
-            "edges": edges,
+            "nodes": [],
+            "edges": [],
         }
+
+        if is_enabled():
+            client = Neo4jClient()
+            try:
+                records = client.run_cypher(obj.query.query)
+                nodes, edges = client.extract_graph(records)
+            finally:
+                client.close()
+
+            for n in nodes:
+                n["props"] = json.dumps(n["props"])
+            for e in edges:
+                e["props"] = json.dumps(e["props"])
+
+            context["nodes"] = nodes
+            context["edges"] = edges
 
         return render(request, "admin/cypher_results.html", context)
 
@@ -55,31 +54,47 @@ class GraphSyncAdmin(admin.ModelAdmin):
         return GraphSync.objects.none()
 
     def changelist_view(self, request, extra_context=None):
-        registry = ProjectionRegistry()
+        from .loader import grouped_models, load_all_configs
 
         extra_context = extra_context or {}
-        extra_context["grouped_models"] = registry.grouped_models()
-
+        extra_context["grouped_models"] = grouped_models(load_all_configs())
         return super().changelist_view(request, extra_context=extra_context)
 
     def get_urls(self):
         urls = super().get_urls()
         custom = [
-            path("run-sync/", self.admin_site.admin_view(self.run_sync), name="graph-sync"),
+            path(
+                "run-sync/",
+                self.admin_site.admin_view(self.run_sync),
+                name="graph-sync",
+            ),
         ]
         return custom + urls
 
     def run_sync(self, request):
+        from .connection import Neo4jClient, is_enabled
+        from .loader import load_all_configs
+        from .projection import ProjectionRunner
+
+        if not is_enabled():
+            messages.error(request, "ravioli is not enabled (RAVIOLI_ENABLED=False).")
+            return redirect("..")
+
         selected = request.POST.getlist("models")
+        configs = load_all_configs()
+        client = Neo4jClient()
+        try:
+            runner = ProjectionRunner(client, configs)
+            if selected:
+                for _ in runner.run_with_progress(selected_labels=selected):
+                    pass
+            else:
+                runner.run()
+        finally:
+            client.close()
 
-        runner = ProjectionRunner(selected_models=selected)
-        runner.run()
-
-        messages.success(request, f"Graph sync completed for: {', '.join(selected)}")
+        messages.success(
+            request,
+            f"Graph sync completed for: {', '.join(selected) if selected else 'all'}",
+        )
         return redirect("..")
-
-
-
-
-
-
