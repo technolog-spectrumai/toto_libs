@@ -1,3 +1,5 @@
+import json
+
 from django.contrib.auth import get_user_model
 
 from toto.core.ingress import IngressCommand
@@ -6,6 +8,63 @@ from toto.steven.models import AgentConnector, AgentProfile, AgentTool
 User = get_user_model()
 
 _DEFAULT_SLUG = "steven-default"
+
+_DEFAULT_RULES = {
+    "fallback": (
+        "I'm not sure I understood. I can help with: pricing, support, "
+        "accounts, cancellations, or platform questions. Type 'help' for built-in commands."
+    ),
+    "rules": [
+        {
+            "intent": "greeting",
+            "required_any": ["hello", "hi", "hey", "greet", "morning", "evening", "good"],
+            "required_all": [],
+            "response": "Hello! How can I help you today?",
+        },
+        {
+            "intent": "farewell",
+            "required_any": ["bye", "goodbye", "ciao", "later", "farewell", "see"],
+            "required_all": [],
+            "response": "Goodbye! Feel free to come back anytime.",
+        },
+        {
+            "intent": "pricing",
+            "required_any": ["price", "cost", "fee", "plan", "tier", "billing", "pay", "payment", "charge"],
+            "required_all": [],
+            "response": "Which plan are you asking about? We have free, starter, and pro tiers.",
+        },
+        {
+            "intent": "cancel_subscription",
+            "required_any": ["cancel", "stop", "unsubscribe", "quit", "terminate"],
+            "required_all": ["subscription"],
+            "response": "I can help with cancellation. Would you like to cancel your subscription? Please confirm.",
+        },
+        {
+            "intent": "technical_support",
+            "required_any": ["error", "bug", "broken", "issue", "problem", "fix", "crash", "fail", "wrong", "not work"],
+            "required_all": [],
+            "response": "Can you describe what is not working? I'll log it and escalate to the team.",
+        },
+        {
+            "intent": "account",
+            "required_any": ["account", "profile", "login", "password", "username", "sign", "register", "access"],
+            "required_all": [],
+            "response": "For account-related questions, go to your profile settings or contact an admin.",
+        },
+        {
+            "intent": "feature_request",
+            "required_any": ["feature", "request", "suggest", "idea", "wish", "roadmap", "add"],
+            "required_all": [],
+            "response": "Thanks for the suggestion! Feature requests can be submitted via the feedback form.",
+        },
+        {
+            "intent": "contact",
+            "required_any": ["contact", "reach", "email", "phone", "talk", "speak", "human"],
+            "required_all": [],
+            "response": "To reach a human, please use the contact form or email support@example.com.",
+        },
+    ],
+}
 
 
 class Command(IngressCommand):
@@ -63,6 +122,8 @@ class Command(IngressCommand):
         else:
             self.stdout.write(self.style.WARNING("  Connector already exists: Rule-based"))
 
+        default_prompt = json.dumps(_DEFAULT_RULES, indent=2)
+
         agent, created = AgentProfile.objects.get_or_create(
             slug=_DEFAULT_SLUG,
             defaults={
@@ -70,27 +131,38 @@ class Command(IngressCommand):
                 "description": "A general-purpose AI agent managed by Toto Studio.",
                 "user": agent_user,
                 "connector": rb_connector,
-                "system_prompt": (
-                    "You are Steven, an AI agent manager inside Toto Studio. "
-                    "Use tools when helpful, explain what you did, and ask "
-                    "for clarification only when truly required."
-                ),
+                "system_prompt": default_prompt,
                 "is_active": True,
             },
         )
 
         if created:
-            self.stdout.write(self.style.SUCCESS("  Created agent: Steven (rule-based connector)"))
+            self.stdout.write(self.style.SUCCESS("  Created agent: Steven (rule-based, NLP rules in system_prompt)"))
         else:
             self.stdout.write(self.style.WARNING("  Agent already exists: Steven"))
+            # Upgrade plain-text system_prompt to JSON rule set
+            try:
+                json.loads(agent.system_prompt)
+            except (json.JSONDecodeError, TypeError):
+                agent.system_prompt = default_prompt
+                agent.save(update_fields=["system_prompt"])
+                self.stdout.write(self.style.SUCCESS("  Upgraded system_prompt to JSON rule set"))
 
         if agent.user_id != agent_user.id:
             agent.user = agent_user
             agent.save(update_fields=["user"])
             self.stdout.write(self.style.SUCCESS("  Linked Steven to websocket user"))
 
-        # Attach rule-based connector if agent has none at all
-        if agent.connector_id is None:
+        # Use rule-based connector when agent has no connector, or has OpenAI without a key
+        needs_rb = (
+            agent.connector_id is None
+            or (
+                agent.connector is not None
+                and agent.connector.provider == "openai"
+                and agent.connector.api_secret_id is None
+            )
+        )
+        if needs_rb and agent.connector_id != rb_connector.id:
             agent.connector = rb_connector
             agent.save(update_fields=["connector"])
             self.stdout.write(self.style.SUCCESS("  Attached rule-based connector to Steven"))

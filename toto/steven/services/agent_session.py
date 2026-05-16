@@ -153,75 +153,80 @@ class StubAgentSession(AgentSession):
 
 class RuleBasedAgentSession(AgentSession):
     """
-    Simple pattern-matching chat for dev/demo — no API key required.
-    Handles greetings, time, echo, basic arithmetic, and help.
+    NLP-powered rule-based chat — no API key required.
+
+    The agent's system_prompt is stored as JSON containing intent rules
+    (see nlp.py for the schema).  Built-in commands (time, echo, calc,
+    help, who) are always available and checked before NLP matching.
     """
 
-    _HELP = (
-        "I'm a rule-based bot. I understand:\n"
-        "  hello / hi        — greeting\n"
-        "  time / date       — current date & time\n"
-        "  echo <text>       — repeat your text\n"
-        "  calc <expr>       — evaluate simple arithmetic (e.g. calc 2+2*3)\n"
-        "  who are you       — my identity\n"
-        "  help / ?          — this list\n"
-        "  bye               — farewell\n"
-        "\nFor real AI, configure an OpenAI connector in Admin → Steven."
+    _BUILTIN_HELP = (
+        "Built-in commands (always available):\n"
+        "  time / date / now        — current date & time\n"
+        "  echo <text>              — repeat your text\n"
+        "  calc <expr>              — safe arithmetic  (e.g. calc 2+2*3)\n"
+        "  who are you              — agent identity\n"
+        "  help                     — this list\n"
+        "\nEverything else is matched against intent rules stored in my\n"
+        "system prompt (Admin → Steven → Agents → system_prompt JSON)."
     )
 
     def invoke(self, user_prompt: str) -> str:
-        import ast
-        import operator as op
-        from datetime import datetime
+        from .nlp import parse_system_prompt, spacy_available
 
         text = user_prompt.strip()
         lower = text.lower()
 
-        # Greeting
-        if any(lower.startswith(w) for w in ("hello", "hi", "hey", "greetings", "good morning", "good evening")):
-            return f"Hello! I'm {self.profile.name}. How can I help? (type 'help' to see what I can do)"
+        # --- Built-in commands (prefix / exact match, before NLP) ----------
 
-        # Farewell
-        if any(lower.startswith(w) for w in ("bye", "goodbye", "see you", "ciao", "later")):
-            return f"Goodbye! Come back anytime."
+        if lower in ("help", "?", "commands"):
+            matcher, _ = parse_system_prompt(self.profile.system_prompt)
+            intents = (
+                "\n  ".join(f"• {r.intent}" for r in matcher.rules)
+                if matcher and matcher.rules
+                else "  (no rules defined)"
+            )
+            return f"{self._BUILTIN_HELP}\n\nConfigured intents:\n  {intents}"
 
-        # Identity
-        if any(p in lower for p in ("who are you", "what are you", "your name", "introduce yourself")):
+        if lower in ("who are you", "what are you", "whoami"):
+            nlp_note = "spaCy" if spacy_available() else "simple split (spaCy not available)"
             return (
-                f"I'm {self.profile.name}, a rule-based chat assistant running inside Toto Studio.\n"
-                f"System prompt: {self.profile.system_prompt[:120]}…\n\n"
-                "I don't call any external AI — I just match patterns. "
-                "Configure an OpenAI connector to get real responses."
+                f"I'm {self.profile.name}, a rule-based assistant inside Toto Studio.\n"
+                f"NLP backend: {nlp_note}\n"
+                "I match your input against intent rules in my system_prompt JSON.\n"
+                "Configure an OpenAI connector to replace me with a real AI."
             )
 
-        # Help
-        if lower in ("help", "?", "commands", "what can you do", "usage"):
-            return self._HELP
-
-        # Current time / date
-        if any(p in lower for p in ("time", "date", "today", "now", "clock")):
+        if any(p in lower for p in ("what time", "current time", "what date", "today", " date", " time", "clock")):
+            from datetime import datetime
             now = datetime.now()
-            return f"Current date & time: {now.strftime('%A, %d %B %Y — %H:%M:%S')}"
+            return f"{now.strftime('%A, %d %B %Y  %H:%M:%S')}"
 
-        # Echo
         if lower.startswith("echo "):
             return text[5:].strip() or "(nothing to echo)"
 
-        # Calculator
-        if lower.startswith(("calc ", "calculate ", "compute ", "= ")):
+        if lower.startswith(("calc ", "calculate ", "compute ")):
             expr = text.split(None, 1)[1] if " " in text else ""
             return self._safe_eval(expr)
 
-        # Bare arithmetic expression (no keyword)
         if self._looks_like_math(lower):
             return self._safe_eval(text)
 
-        # Default
-        return (
-            f'I didn\'t understand: "{text}"\n'
-            "Type 'help' to see what I can do, "
-            "or configure an OpenAI connector for real AI responses."
-        )
+        # --- NLP intent matching -------------------------------------------
+
+        matcher, fallback = parse_system_prompt(self.profile.system_prompt)
+        if matcher is None:
+            return (
+                fallback + "\n\n"
+                "(system_prompt is plain text — convert to JSON rule set to enable NLP matching)"
+            )
+
+        intent, response = matcher.match(text)
+        return response
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
 
     @staticmethod
     def _looks_like_math(text: str) -> bool:
@@ -247,7 +252,7 @@ class RuleBasedAgentSession(AgentSession):
                 return _OPS[type(node.op)](_eval(node.left), _eval(node.right))
             if isinstance(node, ast.UnaryOp) and type(node.op) in _OPS:
                 return _OPS[type(node.op)](_eval(node.operand))
-            raise ValueError(f"Unsupported operation: {ast.dump(node)}")
+            raise ValueError(f"Unsupported: {ast.dump(node)}")
 
         try:
             tree = ast.parse(expr.strip(), mode="eval")
@@ -256,7 +261,7 @@ class RuleBasedAgentSession(AgentSession):
                 result = int(result)
             return f"{expr.strip()} = {result}"
         except Exception:
-            return f'Could not evaluate: "{expr}". Try something like: calc 2 + 3 * 4'
+            return f'Could not evaluate: "{expr}". Try e.g. calc 2 + 3 * 4'
 
 
 def create_agent_session(profile) -> AgentSession:
