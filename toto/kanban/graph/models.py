@@ -7,7 +7,7 @@ from neomodel import (
     StringProperty,
 )
 
-from toto.core.domain import DomainNode
+from toto.core.graph.base import DomainNode
 from toto.socialhub.graph.models import Person as PersonNode
 
 

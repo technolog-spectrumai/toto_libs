@@ -2,7 +2,7 @@ from neomodel import (
     StructuredNode, StringProperty, IntegerProperty,
     BooleanProperty, DateProperty, RelationshipTo, RelationshipFrom
 )
-from toto.core.domain import DomainNode
+from toto.core.graph.base import DomainNode
 from toto.core.graph.models import Federation
 from toto.locations.graph.models import Address as AddressNode
 from toto.locations.graph.models import Territory as TerritoryNode

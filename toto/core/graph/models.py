@@ -2,7 +2,7 @@ from neomodel import (
     StructuredNode, StringProperty, BooleanProperty,
     DateTimeProperty, RelationshipTo
 )
-from toto.core.domain import DomainNode
+from toto.core.graph.base import DomainNode
 
 
 class Federation(DomainNode):

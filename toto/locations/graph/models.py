@@ -8,7 +8,7 @@ from neomodel import (
     RelationshipFrom,
 )
 
-from toto.core.domain import DomainNode
+from toto.core.graph.base import DomainNode
 
 # ---------------------------------------------------------
 # ADDRESS
