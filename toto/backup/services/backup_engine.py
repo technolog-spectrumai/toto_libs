@@ -200,12 +200,16 @@ class BackupEngine:
     # Signing / verification
     # ---------------------------------------------------------
 
+    def _get_backup_profile(self):
+        return getattr(self.platform, "backup_profile", None)
+
     def _get_private_key(self):
         from toto.gervazy.crypto import GervazyCryptoSession
 
-        epk = self.platform.api_signing_key_out
+        profile = self._get_backup_profile()
+        epk = profile.signing_key if profile else None
         if not epk:
-            raise ImproperlyConfigured("Platform.api_signing_key_out is not configured.")
+            raise ImproperlyConfigured("BackupProfile.signing_key is not configured.")
         if not self.vault_password:
             raise ImproperlyConfigured(
                 "No vault password available. Set BACKUP_VAULT_PASSWORD in environment."
@@ -214,9 +218,10 @@ class BackupEngine:
         return serialization.load_pem_private_key(pem.encode(), password=None)
 
     def _get_public_key(self):
-        pem = self.platform.api_verify_key_in
+        profile = self._get_backup_profile()
+        pem = profile.verify_key if profile else None
         if not pem:
-            raise ImproperlyConfigured("Platform.api_verify_key_in is not configured.")
+            raise ImproperlyConfigured("BackupProfile.verify_key is not configured.")
         return serialization.load_pem_public_key(pem.encode())
 
     def sign_bytes(self, data: bytes) -> bytes:
@@ -227,7 +232,8 @@ class BackupEngine:
         )
 
     def write_signature(self, tmpdir, data: bytes):
-        if not getattr(self.platform, "api_signing_key_out", None) or not self.vault_password:
+        profile = self._get_backup_profile()
+        if not profile or not profile.signing_key or not self.vault_password:
             return
         try:
             sig = self.sign_bytes(data)

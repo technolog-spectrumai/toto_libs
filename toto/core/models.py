@@ -186,14 +186,6 @@ class Platform(models.Model):
         related_name="platform_themes",
         help_text="Theme applied to this platform",
     )
-    signing_secret = models.ForeignKey(
-        "gervazy.EncryptedSecret",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="platform_signing_secrets",
-        help_text="Encrypted secret used for platform token signing.",
-    )
     rate_limit_window = models.IntegerField(
         default=60,
         help_text="Rate limit window in seconds",
@@ -229,19 +221,5 @@ class Platform(models.Model):
         related_name="platform_api_accounts",
         help_text="User account used for API authentication",
     )
-    api_signing_key_out = models.ForeignKey(
-        "gervazy.EncryptedPrivateKey",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="platform_outbound_signing",
-        help_text="Encrypted private key used when this platform sends signed sync requests.",
-    )
-    api_verify_key_in = models.TextField(
-        null=True,
-        blank=True,
-        help_text="Public key PEM used to verify incoming sync requests.",
-    )
-
     def __str__(self):
         return f"{self.site_name} Platform"

@@ -1,18 +1,9 @@
-import os
-import tempfile
-
-from django.conf import settings
-from django.contrib import admin, messages
-from django.http import FileResponse
-from django.shortcuts import redirect, render
-from django.urls import path
+from django.contrib import admin
 from django.utils.html import format_html
 
 from toto.core.base_admin import TotoModelAdmin
-from .forms import BackupAppsForm, ApplyBackupForm
+from toto.backup.admin import BackupAdminMixin
 from .models import Platform, Font, Theme, ColorMix, Federation
-from .services.backup_service import BackupService
-from .services.sync_service import SyncService
 
 
 @admin.register(Font)
@@ -97,7 +88,7 @@ class FederationAdmin(TotoModelAdmin):
 
 
 @admin.register(Platform)
-class PlatformAdmin(TotoModelAdmin):
+class PlatformAdmin(BackupAdminMixin, TotoModelAdmin):
     list_display = (
         'site_name', 'domain', 'publication_year', 'active',
         'get_theme_name', 'rate_limit_window', 'rate_limit_max_requests',
@@ -110,112 +101,3 @@ class PlatformAdmin(TotoModelAdmin):
     def get_theme_name(self, obj):
         return obj.theme.name if obj.theme else '-'
     get_theme_name.short_description = 'Theme'
-
-    def get_urls(self):
-        return [
-            path(
-                "backup-console/<int:platform_id>/",
-                self.admin_site.admin_view(self.backup_console_view),
-                name="platform_backup_console",
-            ),
-            path(
-                "seed-console/<int:platform_id>/",
-                self.admin_site.admin_view(self.seed_console_view),
-                name="platform_seed_console",
-            ),
-        ] + super().get_urls()
-
-    def backup_console_action(self, request, queryset):
-        if queryset.count() != 1:
-            self.message_user(request, "Select exactly one platform.", level=messages.ERROR)
-            return
-        return redirect(f"backup-console/{queryset.first().id}/")
-
-    backup_console_action.short_description = "Backup console"
-
-    def seed_console_action(self, request, queryset):
-        if queryset.count() != 1:
-            self.message_user(request, "Select exactly one platform.", level=messages.ERROR)
-            return
-        return redirect(f"seed-console/{queryset.first().id}/")
-
-    seed_console_action.short_description = "Seed console"
-
-    # ---------------------------------------------------------
-    # Backup console view
-    # ---------------------------------------------------------
-
-    def backup_console_view(self, request, platform_id):
-        platform = Platform.objects.get(id=platform_id)
-        apps_choices = getattr(settings, "APPS_TO_SYNC", [])
-
-        backup_form = BackupAppsForm(apps_choices=apps_choices, initial={"apps": apps_choices})
-
-        if request.method == "POST":
-            backup_form = BackupAppsForm(request.POST, apps_choices=apps_choices)
-            if backup_form.is_valid():
-                sign = request.POST.get("sign_backup") == "1"
-                try:
-                    service = BackupService(
-                        platform=platform,
-                        apps_to_sync=backup_form.cleaned_data["apps"],
-                        sign=sign,
-                    )
-                    backup_path = service.create_backup()
-                except Exception as e:
-                    self.message_user(request, f"Backup failed: {e}", level=messages.ERROR)
-                    return redirect(".")
-                return FileResponse(
-                    open(backup_path, "rb"),
-                    as_attachment=True,
-                    filename=backup_path.name,
-                )
-
-        context = {
-            **self.admin_site.each_context(request),
-            "title": f"Backup Console: {platform.site_name}",
-            "platform": platform,
-            "backup_form": backup_form,
-        }
-        return render(request, "admin/platform_backup_console.html", context)
-
-    # ---------------------------------------------------------
-    # Seed console view
-    # ---------------------------------------------------------
-
-    def seed_console_view(self, request, platform_id):
-        platform = Platform.objects.get(id=platform_id)
-        apply_form = ApplyBackupForm()
-
-        if request.method == "POST":
-            apply_form = ApplyBackupForm(request.POST, request.FILES)
-            if apply_form.is_valid():
-                tmp_path = None
-                try:
-                    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
-                        for chunk in apply_form.cleaned_data["backup_file"].chunks():
-                            tmp.write(chunk)
-                        tmp_path = tmp.name
-                    SyncService(platform=platform).apply_backup(
-                        backup_path=tmp_path,
-                        verify_signature=apply_form.cleaned_data["verify_signature"],
-                        clear_existing=apply_form.cleaned_data["clear_existing"],
-                    )
-                    self.message_user(request, "Backup applied successfully.")
-                    return redirect(".")
-                except Exception as e:
-                    self.message_user(request, f"Apply backup failed: {e}", level=messages.ERROR)
-                finally:
-                    if tmp_path:
-                        try:
-                            os.remove(tmp_path)
-                        except Exception:
-                            pass
-
-        context = {
-            **self.admin_site.each_context(request),
-            "title": f"Seed Console: {platform.site_name}",
-            "platform": platform,
-            "apply_form": apply_form,
-        }
-        return render(request, "admin/platform_seed_console.html", context)
