@@ -181,6 +181,14 @@ class ApiConnector(models.Model):
         )
 
 
+class Connector(ApiConnector):
+    """Concrete generic API connector for non-specialized outbound integrations."""
+
+    class Meta(ApiConnector.Meta):
+        verbose_name = "API connector"
+        verbose_name_plural = "API connectors"
+
+
 # ---------------------------------------------------------------------------
 # EmailService (SMTP configuration, secrets live in Gervazy)
 # ---------------------------------------------------------------------------
