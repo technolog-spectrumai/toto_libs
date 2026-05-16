@@ -29,6 +29,7 @@
     : 'bg-primary-bg-light text-text-main-light'"
   class="min-h-screen px-4 py-10 transition-colors duration-300">
 
+  {% csrf_token %}
   <div class="max-w-6xl mx-auto space-y-10">
 
     <!-- Header -->
@@ -304,6 +305,10 @@ async function runCell(buttonEl) {
 }
 
 function getCookie(name) {
+    if (name === "csrftoken") {
+        const el = document.querySelector("[name=csrfmiddlewaretoken]");
+        if (el) return el.value;
+    }
     let cookieValue = null;
     if (document.cookie && document.cookie !== "") {
         const cookies = document.cookie.split(";");
