@@ -28,7 +28,11 @@ class NotebookKernel:
         self.kc.wait_for_ready(timeout=30)
 
         for dep in config.get("dependencies", []):
-            self.execute(f"!pip install {dep}")
+            if isinstance(dep, dict):
+                specifier = dep["package_name"] + (dep.get("version_spec") or "")
+            else:
+                specifier = dep
+            self.execute(f"!pip install {specifier}")
 
     def execute(self, code, timeout=None):
         timeout = timeout or self.timeout

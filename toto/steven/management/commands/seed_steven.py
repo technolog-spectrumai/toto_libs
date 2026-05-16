@@ -27,13 +27,7 @@ class Command(BaseCommand):
             connector.api_secret = api_secret
         connector.save()
 
-        agent, created = AgentProfile.objects.get_or_create(
-            slug="steven-default",
-            defaults={
-                "name": "Steven Default",
-                "description": "A general-purpose AI agent managed by the Steven Django app.",
-                "connector": connector,
-                "system_prompt": (
+        agent, created = AgentProfile.objects.get_or_create(h": (
                     "You are Steven, an AI agent manager. Use tools when helpful, explain what you did, "
                     "and ask for clarification only when required."
                 ),

@@ -325,12 +325,26 @@ function getCookie(name) {
 </script>
 
 <script>
+let kernelAutoClose = true;
+
 async function startKernel(notebookId) {
-    const url = `/mandragora/kernel/${notebookId}/start/`;
     updateKernelStatus("starting");
 
+    // Fetch deps first so we can show what's being installed
+    let depsLabel = "";
     try {
-        const response = await fetch(url, {
+        const depsRes = await fetch(`/mandragora/kernel/${notebookId}/dependencies/`);
+        const depsData = await depsRes.json();
+        kernelAutoClose = depsData.auto_close ?? true;
+        const deps = depsData.dependencies || [];
+        if (deps.length > 0) {
+            depsLabel = deps.map(d => d.package_name).join(", ");
+            updateKernelStatus("starting", `installing ${depsLabel}`);
+        }
+    } catch (e) {}
+
+    try {
+        const response = await fetch(`/mandragora/kernel/${notebookId}/start/`, {
             method: "POST",
             headers: {
                 "X-CSRFToken": getCookie("csrftoken"),
@@ -373,7 +387,7 @@ async function stopKernel(notebookId) {
     }
 }
 
-function updateKernelStatus(state) {
+function updateKernelStatus(state, detail) {
     const el = document.getElementById("kernel-status");
     const icon = el.querySelector("i");
     const text = el.querySelector("span");
@@ -386,7 +400,7 @@ function updateKernelStatus(state) {
         text.textContent = "Stopped";
     } else if (state === "starting") {
         icon.className = "fa-solid fa-circle-notch fa-spin text-yellow-400";
-        text.textContent = "Starting…";
+        text.textContent = detail ? `Starting… ${detail}` : "Starting…";
     } else {
         icon.className = "fa-solid fa-circle text-gray-400";
         text.textContent = "Unknown";
@@ -409,13 +423,23 @@ async function checkKernelStatus(notebookId) {
 document.addEventListener("DOMContentLoaded", () => {
     const notebookId = {{ notebook.id }};
 
-    // Run once on load
-    checkKernelStatus(notebookId);
+    // Resolve auto_close setting and initial status
+    fetch(`/mandragora/kernel/${notebookId}/dependencies/`)
+        .then(r => r.json())
+        .then(d => { kernelAutoClose = d.auto_close ?? true; })
+        .catch(() => {});
 
-    // Poll every 5 seconds
-    setInterval(() => {
-        checkKernelStatus(notebookId);
-    }, 5000);
+    checkKernelStatus(notebookId);
+    setInterval(() => checkKernelStatus(notebookId), 5000);
+});
+
+// Auto-close kernel on page leave if kernel.auto_close is true
+window.addEventListener("beforeunload", () => {
+    if (!kernelAutoClose) return;
+    const notebookId = {{ notebook.id }};
+    const form = new FormData();
+    form.append("csrfmiddlewaretoken", getCookie("csrftoken"));
+    navigator.sendBeacon(`/mandragora/kernel/${notebookId}/stop/`, form);
 });
 </script>
 <script>

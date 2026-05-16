@@ -9,7 +9,7 @@ from toto.core.page import PageProcessor
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from .models import Notebook, Cell, LambdaFunction, ComputeKernel
+from .models import Cell, ComputeKernel, KernelDependency, LambdaFunction, Notebook
 from .tasks import execute_cell_task
 from .kernel import KernelClient
 
@@ -58,13 +58,11 @@ class NotebookDetailView(LoginRequiredMixin, DetailView):
 # ---------------------------------------------------------
 
 def ensure_notebook_kernel(notebook: Notebook):
-    """Create a ComputeKernel for the notebook if missing."""
     if notebook.kernel is None:
         kernel = ComputeKernel.objects.create(
             name=f"notebook-kernel-{notebook.id}",
             timeout_ms=5000,
             env={},
-            dependencies=[]
         )
         notebook.kernel = kernel
         notebook.save(update_fields=["kernel"])
@@ -72,13 +70,11 @@ def ensure_notebook_kernel(notebook: Notebook):
 
 
 def ensure_lambda_kernel(lambda_fn: LambdaFunction):
-    """Create a ComputeKernel for the lambda function if missing."""
     if lambda_fn.kernel is None:
         kernel = ComputeKernel.objects.create(
             name=f"lambda-kernel-{lambda_fn.id}",
             timeout_ms=3000,
             env={},
-            dependencies=[]
         )
         lambda_fn.kernel = kernel
         lambda_fn.save(update_fields=["kernel"])
@@ -119,15 +115,35 @@ def start_kernel(request, notebook_id):
     notebook = get_object_or_404(Notebook, id=notebook_id)
     kernel = ensure_notebook_kernel(notebook)
 
+    deps = list(
+        kernel.kernel_dependencies.values("package_name", "version_spec")
+    )
+
     payload = {
         "kernel_name": "python3",
         "timeout_ms": kernel.timeout_ms,
         "env": kernel.env or {},
-        "dependencies": kernel.dependencies or []
+        "dependencies": deps,
     }
 
     result = client.start(notebook.id, payload)
+    result["installing"] = [
+        d["package_name"] + (d["version_spec"] or "") for d in deps
+    ]
     return Response(result)
+
+
+@api_view(["GET"])
+def kernel_dependencies(request, notebook_id):
+    notebook = get_object_or_404(Notebook, id=notebook_id)
+    kernel = ensure_notebook_kernel(notebook)
+    deps = list(
+        kernel.kernel_dependencies.values(
+            "package_name", "version_spec", "install_status"
+        )
+    )
+    auto_close = kernel.auto_close
+    return Response({"dependencies": deps, "auto_close": auto_close})
 
 
 @api_view(["POST"])

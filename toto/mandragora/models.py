@@ -32,15 +32,57 @@ class ComputeKernel(models.Model):
     Stores environment variables and execution timeout.
     """
     name = models.CharField(max_length=255, unique=True)
-    # Environment variables injected into the kernel
     env = models.JSONField(null=True, blank=True)
-    # Timeout in milliseconds for cell execution
     timeout_ms = models.IntegerField(default=5000)
-    # Pip dependencies installed inside the kernel
-    dependencies = models.JSONField(null=True, blank=True)
+    auto_close = models.BooleanField(
+        default=True,
+        help_text="Automatically stop this kernel when the user leaves the notebook page.",
+    )
     created_at = models.DateTimeField(default=timezone.now)
+
     def __str__(self):
         return self.name
+
+
+class KernelDependency(models.Model):
+    PENDING = "pending"
+    INSTALLING = "installing"
+    INSTALLED = "installed"
+    FAILED = "failed"
+
+    STATUS_CHOICES = [
+        (PENDING, "Pending"),
+        (INSTALLING, "Installing"),
+        (INSTALLED, "Installed"),
+        (FAILED, "Failed"),
+    ]
+
+    kernel = models.ForeignKey(
+        ComputeKernel,
+        on_delete=models.CASCADE,
+        related_name="kernel_dependencies",
+    )
+    package_name = models.CharField(max_length=255)
+    version_spec = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text='e.g. ">=1.21", "==2.0.0", or blank for latest',
+    )
+    install_status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default=PENDING
+    )
+    install_log = models.TextField(blank=True)
+    installed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name_plural = "kernel dependencies"
+        unique_together = [("kernel", "package_name")]
+
+    def pip_specifier(self):
+        return f"{self.package_name}{self.version_spec}" if self.version_spec else self.package_name
+
+    def __str__(self):
+        return self.pip_specifier()
 
 
 # ---------------------------------------------------------
