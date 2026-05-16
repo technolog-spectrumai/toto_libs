@@ -12,7 +12,11 @@ class StevenChatPlugin(FloatingPlugin):
 
     def get_context(self, **kwargs):
         from toto.steven.models import AgentProfile
+        from django.db import OperationalError
 
         context = super().get_context(**kwargs)
-        context["agent"] = AgentProfile.objects.filter(is_active=True).first()
+        try:
+            context["agent"] = AgentProfile.objects.filter(is_active=True).first()
+        except OperationalError:
+            context["agent"] = None
         return context
