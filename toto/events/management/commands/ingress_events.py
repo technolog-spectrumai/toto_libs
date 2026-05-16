@@ -4,7 +4,7 @@ import random
 from django.utils.timezone import now
 from faker import Faker
 
-from toto.core.ingress import IngressCommand
+from toto.ingress import IngressCommand
 from toto.events.models import EventCategory, Event
 from toto.locations.models import Address, Route, Zone
 from toto.socialhub.models import Person

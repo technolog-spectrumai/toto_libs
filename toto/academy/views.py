@@ -8,7 +8,7 @@ from django.views.generic import TemplateView
 from django.views.generic import DetailView, ListView
 
 from toto.competence.models import SkillBadge, SkillGroup
-from toto.core.page import PageProcessor
+from toto.ui import PageProcessor
 from toto.verbena.views import PageDetailMixin
 
 from .models import (

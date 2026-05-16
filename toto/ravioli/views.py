@@ -6,7 +6,7 @@ from django.shortcuts import render, get_object_or_404
 from django.views.decorators.http import require_GET
 
 from .models import CypherQuery
-from toto.core.page import PageProcessor
+from toto.ui import PageProcessor
 
 
 def superuser_required(view_func):

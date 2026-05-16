@@ -13,6 +13,8 @@ packages = [
     "toto",
     "toto.conf",
     "toto.core",
+    "toto.ui",
+    "toto.ingress",
     "toto.events",
     "toto.gervazy",
     "toto.kanban",

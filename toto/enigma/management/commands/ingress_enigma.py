@@ -1,4 +1,4 @@
-from toto.core.ingress import IngressCommand
+from toto.ingress import IngressCommand
 from toto.enigma.models import Participant, Room
 from django.contrib.auth import get_user_model
 from django.utils.text import slugify

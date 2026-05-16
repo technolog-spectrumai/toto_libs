@@ -3,7 +3,7 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
-from toto.core.page import PageProcessor
+from toto.ui import PageProcessor
 
 from .forms import AgentRunForm
 from .models import AgentProfile, AgentRun

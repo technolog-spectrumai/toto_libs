@@ -1,7 +1,7 @@
 from django.utils.text import slugify
 
 from toto.competence.models import SkillBadge, SkillBadgePrerequisite, SkillGroup
-from toto.core.ingress import IngressCommand
+from toto.ingress import IngressCommand
 
 
 class Command(IngressCommand):

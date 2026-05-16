@@ -5,7 +5,7 @@ from django.urls import reverse_lazy
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.decorators import login_required
-from toto.core.page import PageProcessor
+from toto.ui import PageProcessor
 from .models import OcrProject, OcrImage, ImageTransform
 from django.shortcuts import render
 from django.urls import reverse

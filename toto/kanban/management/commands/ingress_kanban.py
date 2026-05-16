@@ -7,7 +7,7 @@ from django.utils import timezone
 from toto.kanban.models import Campaign, Column, DocumentationPage, DocumentationSection, Mission, Project, Sprint, Task
 from toto.socialhub.models import Person
 from toto.locations.models import Address, Zone, Route
-from toto.core.ingress import IngressCommand
+from toto.ingress import IngressCommand
 
 
 class Command(IngressCommand):

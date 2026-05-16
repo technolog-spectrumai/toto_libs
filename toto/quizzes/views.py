@@ -7,7 +7,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.generic import ListView
 
-from toto.core.page import PageProcessor
+from toto.ui import PageProcessor
 
 from .models import Quiz, QuizAnswer, QuizAttempt, QuizAttemptAnswer
 

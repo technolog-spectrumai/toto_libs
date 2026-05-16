@@ -1,5 +1,5 @@
 from toto.core.models import Platform
-from toto.core.page import PageProcessor
+from toto.ui import PageProcessor
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from toto.core.models import Platform

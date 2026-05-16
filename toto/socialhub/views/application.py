@@ -2,7 +2,7 @@ from django.contrib.auth import get_user_model
 from toto.core.models import Platform
 from django.shortcuts import render, redirect, get_object_or_404
 from toto.socialhub.models import Person, Community, MembershipApplication, generate_code, EmailService, ReferenceRequest
-from toto.core.page import PageProcessor
+from toto.ui import PageProcessor
 from django.utils import timezone
 from django.contrib.auth.models import User
 from toto.socialhub.forms import MembershipApplicationForm, CodeVerificationForm, ReferenceRequestForm

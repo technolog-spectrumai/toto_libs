@@ -2,7 +2,7 @@ from django.views.generic import ListView, DetailView
 from django.contrib.auth.mixins import LoginRequiredMixin
 from toto.socialhub.models import Person, Community
 from toto.socialhub.plugins.profile_plugins import ProfilePlugin
-from toto.core.page import PageProcessor
+from toto.ui import PageProcessor
 from django.shortcuts import redirect
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied

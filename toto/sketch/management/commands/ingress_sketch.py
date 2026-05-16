@@ -1,4 +1,4 @@
-from toto.core.ingress import IngressCommand
+from toto.ingress import IngressCommand
 from django.contrib.auth import get_user_model
 from faker import Faker
 from toto.sketch.models import Board, BoardObject

@@ -2,10 +2,10 @@ import uuid
 
 from django.core.files.base import ContentFile
 from django.views.generic import ListView
-from toto.core.page import PageProcessor
+from toto.ui import PageProcessor
 from django.views.generic import DetailView
 from django.shortcuts import get_object_or_404
-from toto.core.page import PageProcessor
+from toto.ui import PageProcessor
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from toto.texlab.models import LatexFile

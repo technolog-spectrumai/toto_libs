@@ -10,7 +10,7 @@ from django.db.models import Q, Sum
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
 
-from toto.core.page import PageProcessor
+from toto.ui import PageProcessor
 from toto.kanban.forms import TaskCreateForm
 from toto.kanban.metrics import SprintMetricsCalculator, MissionMetricsCalculator
 from toto.kanban.models import Project, Column, Task, Sprint, Mission, DocumentationPage

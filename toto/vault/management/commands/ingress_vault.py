@@ -1,7 +1,7 @@
 from django.contrib.auth.models import User
 from django.core.management.base import CommandError
 from django.utils.text import slugify
-from toto.core.ingress import IngressCommand
+from toto.ingress import IngressCommand
 from toto.gervazy.models import UserVault
 from toto.vault.models import VaultFile, Bucket, FileGateway
 import os

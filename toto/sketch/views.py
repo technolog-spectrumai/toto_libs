@@ -3,7 +3,7 @@ from django.views.generic import ListView, DetailView
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.shortcuts import get_object_or_404
 from django.urls import reverse_lazy
-from toto.core.page import PageProcessor
+from toto.ui import PageProcessor
 import json
 from django.http import JsonResponse
 from django.views import View

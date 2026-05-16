@@ -2,7 +2,7 @@ from django.shortcuts import get_object_or_404
 from django.urls import reverse
 from django.views.generic import ListView, DetailView
 from toto.socialhub.models import Person, Community
-from toto.core.page import PageProcessor
+from toto.ui import PageProcessor
 from django.http import JsonResponse
 
 

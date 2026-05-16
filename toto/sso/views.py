@@ -12,7 +12,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
 from toto.core.forms import LoginForm
-from toto.core.page import PageProcessor
+from toto.ui import PageProcessor
 from toto.core.auth_cooldown import (
     clear_login_retry_cooldown,
     login_retry_cooldown_remaining,

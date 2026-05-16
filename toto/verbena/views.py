@@ -3,7 +3,7 @@ from django.views.generic import ListView, DetailView
 from django.utils.safestring import mark_safe
 
 from .models import Page, Tag
-from toto.core.page import PageProcessor
+from toto.ui import PageProcessor
 
 
 # ────────────────────────────────────────────────

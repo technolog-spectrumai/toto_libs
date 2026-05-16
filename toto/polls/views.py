@@ -1,7 +1,7 @@
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, get_object_or_404, redirect
 from django.urls import reverse
-from toto.core.page import PageProcessor
+from toto.ui import PageProcessor
 import json
 
 from .models import Poll, Option, Vote

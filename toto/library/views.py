@@ -3,7 +3,7 @@ from django.views.generic import ListView, DetailView
 
 from .models import Book, Article
 from toto.verbena.models import Tag
-from toto.core.page import PageProcessor
+from toto.ui import PageProcessor
 
 
 class BookListView(ListView):

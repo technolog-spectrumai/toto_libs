@@ -1,5 +1,5 @@
 from django.contrib.auth.models import User
-from toto.core.ingress import IngressCommand
+from toto.ingress import IngressCommand
 from toto.gervazy.models import UserVault
 
 

@@ -2,7 +2,7 @@ from django.contrib.auth.models import User
 from django.core.files.base import ContentFile
 from faker.utils.text import slugify
 from toto.memo.models import MemoDeck, MemoCard, Tag, MemoDiagram
-from toto.core.ingress import IngressCommand
+from toto.ingress import IngressCommand
 from toto.vault.models import Bucket, VaultFile
 import random
 

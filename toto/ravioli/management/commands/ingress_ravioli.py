@@ -1,4 +1,4 @@
-from toto.core.ingress import IngressCommand
+from toto.ingress import IngressCommand
 from toto.ravioli.models import CypherQuery, CypherQueryResult
 
 

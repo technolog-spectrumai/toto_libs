@@ -2,7 +2,7 @@ from datetime import timedelta
 
 from django.utils import timezone
 
-from toto.core.ingress import IngressCommand
+from toto.ingress import IngressCommand
 from toto.locations.models import Address, Route
 from toto.socialhub.models import Person
 from toto.travels.models import Travel, Visit

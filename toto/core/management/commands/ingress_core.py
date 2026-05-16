@@ -4,7 +4,7 @@ import json
 from django.core.files import File
 from django.core.management.base import BaseCommand, CommandError
 from django.core.management import call_command
-from toto.core.ingress import IngressCommand
+from toto.ingress import IngressCommand
 from toto.core.models import Platform, Federation
 from django.conf import settings
 

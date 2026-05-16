@@ -4,7 +4,7 @@ from django.db import models
 from django.views.generic import ListView
 
 from .models import MemoCard, MemoDeck, Tag
-from toto.core.page import PageProcessor
+from toto.ui import PageProcessor
 
 
 class MemoDeckListView(ListView):

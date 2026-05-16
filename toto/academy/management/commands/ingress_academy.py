@@ -4,7 +4,7 @@ from django.utils.text import slugify
 from toto.competence.models import SkillBadge
 from toto.memo.models import MemoDeck
 from toto.quizzes.models import Quiz
-from toto.core.ingress import IngressCommand
+from toto.ingress import IngressCommand
 from toto.socialhub.models import Person
 
 from toto.academy.models import (

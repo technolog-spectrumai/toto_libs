@@ -10,7 +10,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
-from toto.core.page import PageProcessor
+from toto.ui import PageProcessor
 from toto.socialhub.models import Person
 from toto.locations.models import Address
 from toto.locations.views import geometry_json, route_payload, travel_payload

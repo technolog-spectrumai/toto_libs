@@ -1,4 +1,4 @@
-from toto.core.ingress import IngressCommand
+from toto.ingress import IngressCommand
 from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
 from toto.texlab.models import LatexWorkspace, LatexFile

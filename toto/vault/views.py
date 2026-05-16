@@ -7,7 +7,7 @@ from django.views.generic import ListView, DetailView
 from django.urls import reverse
 from django.contrib.auth.mixins import LoginRequiredMixin
 
-from toto.core.page import PageProcessor
+from toto.ui import PageProcessor
 from .models import VaultFile, Bucket, FileGateway
 
 

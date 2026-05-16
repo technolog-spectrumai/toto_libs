@@ -2,7 +2,7 @@ from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.translation import gettext_lazy as _
-from toto.core.page import PageProcessor
+from toto.ui import PageProcessor
 
 from .forms import CategoryForm, IdeaBoxForm, IdeaLinkForm
 from .models import Category, IdeaBox, IdeaLink

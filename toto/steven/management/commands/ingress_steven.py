@@ -2,7 +2,7 @@ import json
 
 from django.contrib.auth import get_user_model
 
-from toto.core.ingress import IngressCommand
+from toto.ingress import IngressCommand
 from toto.steven.models import AgentConnector, AgentProfile, AgentTool
 
 User = get_user_model()

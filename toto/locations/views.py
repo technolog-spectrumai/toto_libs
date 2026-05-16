@@ -11,7 +11,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
-from toto.core.page import PageProcessor
+from toto.ui import PageProcessor
 from toto.socialhub.models import Person
 from toto.kanban.models import Campaign, Mission, Task
 from toto.events.models import Event

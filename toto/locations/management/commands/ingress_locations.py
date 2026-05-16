@@ -3,7 +3,7 @@ from datetime import timedelta
 from django.contrib.gis.geos import LineString, MultiLineString, MultiPolygon, Point, Polygon
 from django.utils import timezone
 
-from toto.core.ingress import IngressCommand
+from toto.ingress import IngressCommand
 from toto.events.models import Event, EventCategory
 from toto.locations.models import (
     Address,

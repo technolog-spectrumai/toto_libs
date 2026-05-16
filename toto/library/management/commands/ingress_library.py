@@ -1,6 +1,6 @@
 from django.utils.text import slugify
 
-from toto.core.ingress import IngressCommand
+from toto.ingress import IngressCommand
 from toto.socialhub.models import Person
 from toto.verbena.models import Tag
 

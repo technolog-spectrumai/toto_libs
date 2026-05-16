@@ -2,7 +2,7 @@ from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect
 from django.views.generic import ListView, DetailView, View
 from django.db import models
-from toto.core.page import PageProcessor
+from toto.ui import PageProcessor
 from toto.enigma.models import Participant, Room
 from toto.socialhub.models import Person
 

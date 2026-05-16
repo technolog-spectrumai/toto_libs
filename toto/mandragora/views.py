@@ -4,7 +4,7 @@ from django.views.generic import ListView, DetailView
 from django.shortcuts import get_object_or_404
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.urls import reverse_lazy
-from toto.core.page import PageProcessor
+from toto.ui import PageProcessor
 
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
