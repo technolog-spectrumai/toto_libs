@@ -8,12 +8,14 @@ from toto.core.models import ApiConnector
 
 
 class AgentConnector(ApiConnector):
-    """OpenAI agent connector. Inherits base connector config from ApiConnector."""
+    """Agent connector. Supports OpenAI (real AI) and Rule-based (no API key, for dev/testing)."""
 
     OPENAI = ApiConnector.PROVIDER_OPENAI
+    RULE_BASED = ApiConnector.PROVIDER_RULE_BASED
 
     PROVIDER_CHOICES = [
         (ApiConnector.PROVIDER_OPENAI, "OpenAI"),
+        (ApiConnector.PROVIDER_RULE_BASED, "Rule-based (no API key)"),
     ]
 
     class Meta(ApiConnector.Meta):
@@ -21,8 +23,8 @@ class AgentConnector(ApiConnector):
 
     def clean(self):
         super().clean()
-        if self.provider != self.PROVIDER_OPENAI:
-            raise ValidationError({"provider": "Only OpenAI connectors are supported for now."})
+        if self.provider not in (self.OPENAI, self.RULE_BASED):
+            raise ValidationError({"provider": "Only OpenAI and Rule-based connectors are supported."})
 
     def runtime_environment(self):
         """Returns credential dict. Requires a vault session to resolve; raises RuntimeError if unavailable."""

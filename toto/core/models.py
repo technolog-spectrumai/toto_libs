@@ -233,6 +233,7 @@ class ApiConnector(models.Model):
     PROVIDER_ANTHROPIC = "anthropic"
     PROVIDER_GITHUB = "github"
     PROVIDER_CUSTOM = "custom"
+    PROVIDER_RULE_BASED = "rule_based"
 
     PROVIDER_CHOICES = [
         (PROVIDER_GENERIC, "Generic"),
@@ -240,6 +241,7 @@ class ApiConnector(models.Model):
         (PROVIDER_ANTHROPIC, "Anthropic"),
         (PROVIDER_GITHUB, "GitHub"),
         (PROVIDER_CUSTOM, "Custom"),
+        (PROVIDER_RULE_BASED, "Rule-based (no API key)"),
     ]
 
     name = models.CharField(max_length=120, unique=True)

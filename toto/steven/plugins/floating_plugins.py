@@ -11,12 +11,26 @@ class StevenChatPlugin(FloatingPlugin):
     template_name = "steven/plugins/floating_chat.html"
 
     def get_context(self, **kwargs):
-        from toto.steven.models import AgentProfile
+        from django.conf import settings
         from django.db import OperationalError
 
+        from toto.steven.models import AgentProfile
+
         context = super().get_context(**kwargs)
+        context["steven_debug"] = settings.DEBUG
+        context["steven_stub_reason"] = None
+
         try:
-            context["agent"] = AgentProfile.objects.filter(is_active=True).first()
-        except OperationalError:
+            agent = AgentProfile.objects.select_related("connector").filter(is_active=True).first()
+            context["agent"] = agent
+            if agent is None:
+                pass
+            elif agent.connector_id is None:
+                context["steven_stub_reason"] = "No connector attached — running in stub mode."
+            elif agent.connector.provider == "rule_based":
+                context["steven_stub_reason"] = "Rule-based mode — no real AI (configure OpenAI connector to enable)."
+        except OperationalError as exc:
             context["agent"] = None
+            context["steven_stub_reason"] = f"DB not ready: {exc}"
+
         return context

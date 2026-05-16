@@ -24,11 +24,22 @@
       <div class="flex items-center gap-2 text-sm font-semibold">
         <i class="fa-solid fa-robot text-xs"></i>
         <span>{{ agent.name }}</span>
+        {% if steven_stub_reason %}
+        <span class="text-[10px] font-normal opacity-60 ml-1">(stub)</span>
+        {% endif %}
       </div>
       <button @click="open = false" class="opacity-60 hover:opacity-100 transition text-xs">
         <i class="fa-solid fa-xmark"></i>
       </button>
     </div>
+
+    {% if steven_debug and steven_stub_reason %}
+    <!-- DEBUG stub notice -->
+    <div class="px-3 py-2 text-xs font-mono bg-yellow-50 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 border-b border-yellow-300/40">
+      <i class="fa-solid fa-triangle-exclamation mr-1"></i>
+      {{ steven_stub_reason }}
+    </div>
+    {% endif %}
 
     <!-- Result area -->
     <div
@@ -83,5 +94,20 @@
     <i class="fa-solid fa-robot"></i>
     <span x-text="open ? 'Close' : 'Ask AI'"></span>
   </button>
+</div>
+
+{% elif steven_debug %}
+<!-- DEBUG: agent not seeded — run manage.py ingress_steven -->
+<div class="fixed bottom-6 right-6 z-50" title="Steven: no active agent found. Run: manage.py ingress_steven">
+  <button
+    disabled
+    class="flex items-center gap-2 rounded-full px-5 py-3 text-sm font-bold shadow-lg opacity-40 cursor-not-allowed bg-gray-500 text-white"
+  >
+    <i class="fa-solid fa-robot"></i>
+    <span>Ask AI</span>
+  </button>
+  <div class="mt-1 text-center text-[10px] font-mono text-gray-500">
+    no agent — run ingress_steven
+  </div>
 </div>
 {% endif %}
