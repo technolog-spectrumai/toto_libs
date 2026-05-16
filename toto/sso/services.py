@@ -47,15 +47,14 @@ def get_active_signing_key() -> SSOSigningKey:
 
 
 def _open_sso_vault(epk) -> GervazyCryptoSession:
-    """Open a GervazyCryptoSession for the vault that owns *epk*."""
+    """Open a GervazyCryptoSession for the strongbox that owns *epk*."""
     password = getattr(settings, "SSO_VAULT_PASSWORD", "").strip()
     if not password:
         raise RuntimeError(
             "SSO_VAULT_PASSWORD is not set. "
             "Configure this environment variable with the SSO system vault password."
         )
-    vault = epk.vault
-    return GervazyCryptoSession(vault, password)
+    return GervazyCryptoSession(epk.strongbox, password)
 
 
 def get_signing_private_key_pem() -> str:

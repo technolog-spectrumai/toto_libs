@@ -17,12 +17,12 @@ from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 
 from toto.gervazy.crypto import GervazyCryptoSession
-from toto.gervazy.models import UserVault, WrappedDataKey
+from toto.gervazy.models import UserStrongbox, WrappedDataKey
 from toto.sso.models import SSOSigningKey
 
 User = get_user_model()
 
-_SSO_VAULT_NAME = "sso-system-vault"
+_SSO_STRONGBOX_NAME = "sso-system-strongbox"
 
 
 class Command(BaseCommand):
@@ -31,8 +31,8 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--key-id", required=True, help="Unique key ID, e.g. sso-main-2026-05")
         parser.add_argument("--key-size", type=int, default=2048, choices=[2048, 4096])
-        parser.add_argument("--vault-owner", default="admin", help="Username of the vault owner user")
-        parser.add_argument("--vault-password", default="", help="Vault password (overrides SSO_VAULT_PASSWORD setting)")
+        parser.add_argument("--vault-owner", default="admin", help="Username of the strongbox owner user")
+        parser.add_argument("--vault-password", default="", help="Strongbox password (overrides SSO_VAULT_PASSWORD setting)")
 
     def handle(self, *args, **options):
         from django.conf import settings
@@ -53,19 +53,19 @@ class Command(BaseCommand):
         except User.DoesNotExist:
             raise CommandError(f"User {options['vault_owner']!r} not found.")
 
-        # Get or create the SSO system vault
-        vault = UserVault.objects.filter(name=_SSO_VAULT_NAME).first()
-        if vault is None:
-            self.stdout.write(f"Creating SSO system vault: {_SSO_VAULT_NAME!r}")
-            session, wrapped_key = GervazyCryptoSession.initialize_vault(
-                owner, _SSO_VAULT_NAME, password
+        # Get or create the SSO system strongbox.
+        strongbox = UserStrongbox.objects.filter(name=_SSO_STRONGBOX_NAME).first()
+        if strongbox is None:
+            self.stdout.write(f"Creating SSO system strongbox: {_SSO_STRONGBOX_NAME!r}")
+            session, wrapped_key = GervazyCryptoSession.initialize_strongbox(
+                owner, _SSO_STRONGBOX_NAME, password
             )
         else:
-            self.stdout.write(f"Using existing SSO system vault: {_SSO_VAULT_NAME!r}")
-            session = GervazyCryptoSession(vault, password)
-            wrapped_key = WrappedDataKey.objects.filter(vault=vault, state="active").first()
+            self.stdout.write(f"Using existing SSO system strongbox: {_SSO_STRONGBOX_NAME!r}")
+            session = GervazyCryptoSession(strongbox, password)
+            wrapped_key = WrappedDataKey.objects.filter(strongbox=strongbox, state="active").first()
             if wrapped_key is None:
-                raise CommandError("SSO vault has no active WrappedDataKey. The vault may be corrupt.")
+                raise CommandError("SSO strongbox has no active WrappedDataKey. The strongbox may be corrupt.")
 
         # Generate RSA key pair
         self.stdout.write(f"Generating RSA-{options['key_size']} key pair…")

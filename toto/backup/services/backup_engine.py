@@ -214,7 +214,7 @@ class BackupEngine:
             raise ImproperlyConfigured(
                 "No vault password available. Set BACKUP_VAULT_PASSWORD in environment."
             )
-        pem = GervazyCryptoSession(epk.vault, self.vault_password).decrypt_private_key(epk)
+        pem = GervazyCryptoSession(epk.strongbox, self.vault_password).decrypt_private_key(epk)
         return serialization.load_pem_private_key(pem.encode(), password=None)
 
     def _get_public_key(self):

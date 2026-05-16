@@ -1,10 +1,10 @@
 from django.contrib.auth.models import User
 from toto.ingress import IngressCommand
-from toto.gervazy.models import UserVault
+from toto.gervazy.models import UserStrongbox
 
 
 class Command(IngressCommand):
-    help = "Seed Gervazy app with a demo UserVault"
+    help = "Seed Gervazy app with a demo UserStrongbox"
 
     def process(self):
         username = "admin"
@@ -16,15 +16,15 @@ class Command(IngressCommand):
             )
             return
 
-        vault, created = UserVault.objects.get_or_create(
+        strongbox, created = UserStrongbox.objects.get_or_create(
             owner=user,
-            name="Gervazy Demo Vault",
-            defaults={"notes": "Demo vault for development. Do not use in production."},
+            name="Gervazy Demo Strongbox",
+            defaults={"notes": "Demo strongbox for development. Do not use in production."},
         )
 
         if created:
-            self.stdout.write(self.style.SUCCESS(f"Created UserVault: {vault.name}"))
+            self.stdout.write(self.style.SUCCESS(f"Created UserStrongbox: {strongbox.name}"))
         else:
-            self.stdout.write(f"UserVault already exists: {vault.name}")
+            self.stdout.write(f"UserStrongbox already exists: {strongbox.name}")
 
         self.stdout.write(self.style.SUCCESS("Gervazy demo data seeded successfully."))

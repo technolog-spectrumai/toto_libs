@@ -2,7 +2,7 @@ from django.contrib.auth.models import User
 from django.core.management.base import CommandError
 from django.utils.text import slugify
 from toto.ingress import IngressCommand
-from toto.gervazy.models import UserVault
+from toto.gervazy.models import UserStrongbox
 from toto.vault.models import VaultFile, Bucket, FileGateway
 import os
 import random
@@ -33,9 +33,9 @@ class Command(IngressCommand):
             raise CommandError("No users found. Create at least one user first.")
 
         # -----------------------------
-        # Vault: UserVault
+        # Vault: UserStrongbox
         # -----------------------------
-        keyring, _ = UserVault.objects.get_or_create(
+        keyring, _ = UserStrongbox.objects.get_or_create(
             owner=user,
             name="Demo Key",
         )

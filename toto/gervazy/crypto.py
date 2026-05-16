@@ -1,12 +1,16 @@
 """
 Gervazy crypto layer.
 
-Envelope hierarchy (bottom up):
-  password  →  Argon2id UKEK  →  decrypt VMK  →  decrypt DEK  →  decrypt data
+Envelope hierarchy:
 
-All AES keys are raw 32 bytes.  derive_key() returns base64url(32 bytes);
-we decode that back to raw bytes before using it as an AES-256-GCM key.
+    password -> Argon2id UKEK -> decrypt VMK -> decrypt DEK -> decrypt data
+
+All AES keys are raw 32 bytes.
+
+UserStrongbox.derive_key() returns base64url(32 bytes), so this module decodes it
+back to raw 32 bytes before using it as an AES-256-GCM key.
 """
+
 import base64
 import datetime as dt
 import ipaddress
@@ -19,20 +23,78 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
 
+AES_GCM_KEY_SIZE = 32
+AES_GCM_NONCE_SIZE = 12
+
+
 # ---------------------------------------------------------------------------
 # Low-level AES-256-GCM helpers
 # ---------------------------------------------------------------------------
 
+def _validate_aes_key(key: bytes) -> None:
+    if not isinstance(key, bytes):
+        raise TypeError("AES-GCM key must be bytes.")
+
+    if len(key) != AES_GCM_KEY_SIZE:
+        raise ValueError("AES-256-GCM key must be exactly 32 bytes.")
+
+
+def _validate_nonce(nonce: bytes) -> None:
+    if not isinstance(nonce, bytes):
+        raise TypeError("AES-GCM nonce must be bytes.")
+
+    if len(nonce) != AES_GCM_NONCE_SIZE:
+        raise ValueError("AES-GCM nonce must be exactly 12 bytes.")
+
+
 def aes_gcm_encrypt(key: bytes, plaintext: bytes, aad: bytes = b"") -> tuple[bytes, bytes]:
-    """Encrypt *plaintext* and return ``(ciphertext_with_tag, nonce)``."""
-    nonce = os.urandom(12)
-    ciphertext = AESGCM(key).encrypt(nonce, plaintext, aad or None)
+    """Encrypt plaintext and return (ciphertext_with_tag, nonce)."""
+    _validate_aes_key(key)
+
+    if not isinstance(plaintext, bytes):
+        raise TypeError("Plaintext must be bytes.")
+
+    if aad is None:
+        aad = b""
+
+    if not isinstance(aad, bytes):
+        raise TypeError("AAD must be bytes.")
+
+    nonce = os.urandom(AES_GCM_NONCE_SIZE)
+    ciphertext = AESGCM(key).encrypt(nonce, plaintext, aad)
     return ciphertext, nonce
 
 
 def aes_gcm_decrypt(key: bytes, ciphertext: bytes, nonce: bytes, aad: bytes = b"") -> bytes:
-    """Decrypt *ciphertext*. Raises ``cryptography.exceptions.InvalidTag`` on failure."""
-    return AESGCM(key).decrypt(nonce, ciphertext, aad or None)
+    """Decrypt ciphertext. Raises InvalidTag if authentication fails."""
+    _validate_aes_key(key)
+    _validate_nonce(nonce)
+
+    if not isinstance(ciphertext, bytes):
+        raise TypeError("Ciphertext must be bytes.")
+
+    if aad is None:
+        aad = b""
+
+    if not isinstance(aad, bytes):
+        raise TypeError("AAD must be bytes.")
+
+    return AESGCM(key).decrypt(nonce, ciphertext, aad)
+
+
+def generate_raw_key() -> bytes:
+    """Generate a random 32-byte AES-256 key."""
+    return os.urandom(AES_GCM_KEY_SIZE)
+
+
+def decode_derived_key(encoded_key: bytes) -> bytes:
+    """Decode UserStrongbox.derive_key() output into a raw AES-256-GCM key."""
+    raw_key = base64.urlsafe_b64decode(encoded_key)
+
+    if len(raw_key) != AES_GCM_KEY_SIZE:
+        raise ValueError("Decoded derived key must be exactly 32 bytes.")
+
+    return raw_key
 
 
 # ---------------------------------------------------------------------------
@@ -51,6 +113,7 @@ def generate_self_signed_certificate(
     ip_addresses = ip_addresses or []
 
     private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
     subject = issuer = x509.Name(
         [
             x509.NameAttribute(NameOID.COUNTRY_NAME, "PL"),
@@ -63,6 +126,7 @@ def generate_self_signed_certificate(
     san_names.extend(x509.IPAddress(ipaddress.ip_address(address)) for address in ip_addresses)
 
     now = dt.datetime.now(dt.timezone.utc)
+
     certificate = (
         x509.CertificateBuilder()
         .subject_name(subject)
@@ -95,6 +159,7 @@ def generate_self_signed_certificate(
         format=serialization.PrivateFormat.TraditionalOpenSSL,
         encryption_algorithm=serialization.NoEncryption(),
     )
+
     cert_pem = certificate.public_bytes(serialization.Encoding.PEM)
     return cert_pem, key_pem
 
@@ -119,12 +184,21 @@ def ensure_self_signed_certificate(
         dns_names=dns_names,
         ip_addresses=ip_addresses,
     )
-    os.makedirs(os.path.dirname(cert_path), exist_ok=True)
+
+    cert_dir = os.path.dirname(cert_path)
+    key_dir = os.path.dirname(key_path)
+
+    if cert_dir:
+        os.makedirs(cert_dir, exist_ok=True)
+    if key_dir:
+        os.makedirs(key_dir, exist_ok=True)
 
     with open(cert_path, "wb") as cert_file:
         cert_file.write(cert_pem)
+
     with open(key_path, "wb") as key_file:
         key_file.write(key_pem)
+
     os.chmod(key_path, 0o600)
     return True
 
@@ -135,53 +209,107 @@ def ensure_self_signed_certificate(
 
 class GervazyCryptoSession:
     """
-    In-memory session for an unlocked UserVault.
+    In-memory session for an unlocked UserStrongbox.
 
-    Decrypted key material (UKEK, VMK, DEK) is cached in instance dicts and
-    never written to the database.  Create a fresh session per request or
-    operation; do not share across threads.
+    Decrypted key material is cached in memory only:
+    - UKEK
+    - VMK
+    - DEK
+
+    Create a fresh session per request or operation. Do not share across threads.
     """
 
-    def __init__(self, vault, password: str):
-        from toto.gervazy.models import UserVault  # noqa: F401 – import guard
-        self._vault = vault
-        # derive_key returns base64url-encoded bytes; decode to raw 32-byte key
-        self._ukek: bytes = base64.urlsafe_b64decode(vault.derive_key(password))
-        self._vmk_cache: dict[int, bytes] = {}   # vmk.version → raw VMK bytes
-        self._dek_cache: dict[int, bytes] = {}   # wrapped_key.pk → raw DEK bytes
+    def __init__(self, strongbox, password: str):
+        self._strongbox = strongbox
+        self._vault = strongbox  # Backward-compatible attribute during transition.
+        self._ukek: bytes = decode_derived_key(strongbox.derive_key(password))
+
+        # Cache by database primary key, not by version.
+        self._vmk_cache: dict[object, bytes] = {}
+        self._dek_cache: dict[object, bytes] = {}
+
+    # ------------------------------------------------------------------
+    # State checks
+    # ------------------------------------------------------------------
+
+    def _require_active_vmk(self, vmk) -> None:
+        if vmk.strongbox_id != self._strongbox.id:
+            raise RuntimeError("VMK does not belong to this strongbox.")
+
+        if vmk.state != "active":
+            raise RuntimeError(f"VMK is not active. Current state: {vmk.state}")
+
+    def _require_active_dek(self, wrapped_key) -> None:
+        if wrapped_key.strongbox_id != self._strongbox.id:
+            raise RuntimeError("WrappedDataKey does not belong to this strongbox.")
+
+        if wrapped_key.state != "active":
+            raise RuntimeError(f"WrappedDataKey is not active. Current state: {wrapped_key.state}")
+
+        self._require_active_vmk(wrapped_key.vmk)
+
+    def _require_active_secret(self, secret) -> None:
+        if secret.strongbox_id != self._strongbox.id:
+            raise RuntimeError("EncryptedSecret does not belong to this strongbox.")
+
+        if secret.state != "active":
+            raise RuntimeError(f"EncryptedSecret is not active. Current state: {secret.state}")
+
+        if secret.is_expired():
+            raise RuntimeError("EncryptedSecret is expired.")
+
+        self._require_active_dek(secret.wrapped_key)
+
+    def _require_active_private_key(self, epk) -> None:
+        if epk.strongbox_id != self._strongbox.id:
+            raise RuntimeError("EncryptedPrivateKey does not belong to this strongbox.")
+
+        if epk.state != "active":
+            raise RuntimeError(f"EncryptedPrivateKey is not active. Current state: {epk.state}")
+
+        self._require_active_dek(epk.wrapped_key)
 
     # ------------------------------------------------------------------
     # Internal key unwrapping
     # ------------------------------------------------------------------
 
     def _unwrap_vmk(self, vmk) -> bytes:
-        if vmk.version not in self._vmk_cache:
-            raw = aes_gcm_decrypt(
+        self._require_active_vmk(vmk)
+        cache_key = vmk.pk
+
+        if cache_key not in self._vmk_cache:
+            raw_vmk = aes_gcm_decrypt(
                 self._ukek,
                 bytes(vmk.encrypted_vmk),
                 bytes(vmk.nonce),
             )
-            self._vmk_cache[vmk.version] = raw
-        return self._vmk_cache[vmk.version]
+
+            if len(raw_vmk) != AES_GCM_KEY_SIZE:
+                raise RuntimeError("Unwrapped VMK is not a valid AES-256 key.")
+
+            self._vmk_cache[cache_key] = raw_vmk
+
+        return self._vmk_cache[cache_key]
 
     def _unwrap_dek(self, wrapped_key) -> bytes:
-        pk = wrapped_key.pk
-        if pk not in self._dek_cache:
-            vmk_record = self._vault.master_keys.filter(
-                version=wrapped_key.vmk_version
-            ).first()
-            if vmk_record is None:
-                raise RuntimeError(
-                    f"VMK v{wrapped_key.vmk_version} not found in vault {self._vault.name!r}."
-                )
-            raw_vmk = self._unwrap_vmk(vmk_record)
+        self._require_active_dek(wrapped_key)
+        cache_key = wrapped_key.pk
+
+        if cache_key not in self._dek_cache:
+            raw_vmk = self._unwrap_vmk(wrapped_key.vmk)
+
             raw_dek = aes_gcm_decrypt(
                 raw_vmk,
                 bytes(wrapped_key.encrypted_dek),
                 bytes(wrapped_key.nonce),
             )
-            self._dek_cache[pk] = raw_dek
-        return self._dek_cache[pk]
+
+            if len(raw_dek) != AES_GCM_KEY_SIZE:
+                raise RuntimeError("Unwrapped DEK is not a valid AES-256 key.")
+
+            self._dek_cache[cache_key] = raw_dek
+
+        return self._dek_cache[cache_key]
 
     # ------------------------------------------------------------------
     # Public decrypt methods
@@ -189,44 +317,77 @@ class GervazyCryptoSession:
 
     def decrypt_secret(self, secret) -> str:
         """Decrypt an EncryptedSecret and return the plaintext string."""
+        self._require_active_secret(secret)
         dek = self._unwrap_dek(secret.wrapped_key)
+
         plaintext = aes_gcm_decrypt(
             dek,
             bytes(secret.ciphertext),
             bytes(secret.nonce),
-            bytes(secret.aad),
+            bytes(secret.aad or b""),
         )
-        return plaintext.decode()
+
+        return plaintext.decode("utf-8")
 
     def decrypt_private_key(self, epk) -> str:
         """Decrypt an EncryptedPrivateKey and return the PEM string."""
+        self._require_active_private_key(epk)
         dek = self._unwrap_dek(epk.wrapped_key)
+
         plaintext = aes_gcm_decrypt(
             dek,
             bytes(epk.encrypted_private_key),
             bytes(epk.nonce),
-            bytes(epk.aad),
+            bytes(epk.aad or b""),
         )
-        return plaintext.decode()
+
+        return plaintext.decode("utf-8")
 
     # ------------------------------------------------------------------
     # Public encrypt helpers
     # ------------------------------------------------------------------
 
-    def encrypt_secret(self, wrapped_key, plaintext: str, *, name: str, purpose: str = "") -> "EncryptedSecret":
-        """Encrypt a string and save it as an EncryptedSecret."""
+    def encrypt_secret(
+        self,
+        wrapped_key,
+        plaintext: str,
+        *,
+        name: str,
+        purpose: str = "",
+    ) -> "EncryptedSecret":
+        """
+        Encrypt a string and save it as an EncryptedSecret.
+
+        This creates the object first to get a stable UUID, then uses that UUID
+        in AAD, then saves ciphertext.
+        """
         from toto.gervazy.models import EncryptedSecret
-        dek = self._unwrap_dek(wrapped_key)
-        ciphertext, nonce = aes_gcm_encrypt(dek, plaintext.encode())
-        return EncryptedSecret.objects.create(
-            vault=self._vault,
+
+        self._require_active_dek(wrapped_key)
+
+        secret = EncryptedSecret.objects.create(
+            strongbox=self._strongbox,
             wrapped_key=wrapped_key,
             name=name,
             purpose=purpose,
-            ciphertext=ciphertext,
-            nonce=nonce,
+            ciphertext=b"temporary",
             state="active",
         )
+
+        aad = secret.build_aad()
+        dek = self._unwrap_dek(wrapped_key)
+
+        ciphertext, nonce = aes_gcm_encrypt(
+            dek,
+            plaintext.encode("utf-8"),
+            aad,
+        )
+
+        secret.ciphertext = ciphertext
+        secret.nonce = nonce
+        secret.aad = aad
+        secret.save(update_fields=["ciphertext", "nonce", "aad", "updated_at"])
+        return secret
 
     def encrypt_private_key(
         self,
@@ -241,10 +402,18 @@ class GervazyCryptoSession:
     ) -> "EncryptedPrivateKey":
         """Encrypt a private key PEM and save it as an EncryptedPrivateKey."""
         from toto.gervazy.models import EncryptedPrivateKey
+
+        self._require_active_dek(wrapped_key)
         dek = self._unwrap_dek(wrapped_key)
-        ciphertext, nonce = aes_gcm_encrypt(dek, private_key_pem.encode(), aad)
+
+        ciphertext, nonce = aes_gcm_encrypt(
+            dek,
+            private_key_pem.encode("utf-8"),
+            aad or b"",
+        )
+
         return EncryptedPrivateKey.objects.create(
-            vault=self._vault,
+            strongbox=self._strongbox,
             wrapped_key=wrapped_key,
             key_id=key_id,
             key_type=key_type,
@@ -252,54 +421,78 @@ class GervazyCryptoSession:
             issuer=issuer,
             encrypted_private_key=ciphertext,
             nonce=nonce,
-            aad=aad,
+            aad=aad or b"",
             state="active",
         )
 
     # ------------------------------------------------------------------
-    # Vault initialisation (classmethod factory)
+    # Strongbox initialization
     # ------------------------------------------------------------------
 
     @classmethod
-    def initialize_vault(cls, owner, vault_name: str, password: str) -> tuple["GervazyCryptoSession", "WrappedDataKey"]:
-        """
-        Create a new UserVault with a VMK and an initial DEK.
+    def initialize_strongbox(
+        cls,
+        owner,
+        strongbox_name: str,
+        password: str,
+    ) -> tuple["GervazyCryptoSession", "WrappedDataKey"]:
+        """Create a new UserStrongbox with one VMK and one initial DEK."""
+        from toto.gervazy.models import UserStrongbox, VaultMasterKey, WrappedDataKey
 
-        Returns ``(session, wrapped_key)`` where *session* is already unlocked
-        and *wrapped_key* is the first active WrappedDataKey for that vault.
-        """
-        from toto.gervazy.models import UserVault, VaultMasterKey, WrappedDataKey
+        if not password:
+            raise ValueError("Strongbox password is required.")
 
-        vault = UserVault.objects.create(owner=owner, name=vault_name)
-        raw_ukek: bytes = base64.urlsafe_b64decode(vault.derive_key(password))
+        strongbox = UserStrongbox.objects.create(owner=owner, name=strongbox_name)
+        raw_ukek = decode_derived_key(strongbox.derive_key(password))
 
-        # Generate and wrap VMK
-        raw_vmk = os.urandom(32)
+        # Generate and wrap VMK.
+        raw_vmk = generate_raw_key()
         encrypted_vmk, vmk_nonce = aes_gcm_encrypt(raw_ukek, raw_vmk)
+
         vmk = VaultMasterKey.objects.create(
-            vault=vault,
+            strongbox=strongbox,
             encrypted_vmk=encrypted_vmk,
             nonce=vmk_nonce,
             version=1,
             state="active",
         )
 
-        # Generate and wrap DEK
-        raw_dek = os.urandom(32)
+        # Generate and wrap DEK.
+        raw_dek = generate_raw_key()
         encrypted_dek, dek_nonce = aes_gcm_encrypt(raw_vmk, raw_dek)
+
         wrapped_key = WrappedDataKey.objects.create(
-            vault=vault,
-            vmk_version=vmk.version,
+            strongbox=strongbox,
+            vmk=vmk,
             encrypted_dek=encrypted_dek,
             nonce=dek_nonce,
             version=1,
             state="active",
         )
 
-        # Build the session with warm caches so callers can use it immediately
+        # Build unlocked session with warm caches.
         session = cls.__new__(cls)
-        session._vault = vault
+        session._strongbox = strongbox
+        session._vault = strongbox  # Backward-compatible attribute during transition.
         session._ukek = raw_ukek
-        session._vmk_cache = {vmk.version: raw_vmk}
+        session._vmk_cache = {vmk.pk: raw_vmk}
         session._dek_cache = {wrapped_key.pk: raw_dek}
         return session, wrapped_key
+
+    # Backward-compatible alias during transition.
+    initialize_vault = initialize_strongbox
+
+    # ------------------------------------------------------------------
+    # Cleanup
+    # ------------------------------------------------------------------
+
+    def close(self) -> None:
+        """
+        Best-effort cleanup.
+
+        Python cannot guarantee memory zeroization for immutable bytes, but
+        clearing references is still better than keeping secrets around.
+        """
+        self._ukek = b""
+        self._vmk_cache.clear()
+        self._dek_cache.clear()

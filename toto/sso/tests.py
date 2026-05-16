@@ -24,7 +24,7 @@ from toto.gervazy.crypto import (
 )
 from toto.gervazy.models import (
     EncryptedSecret,
-    UserVault,
+    UserStrongbox,
     VaultMasterKey,
     WrappedDataKey,
 )
@@ -62,11 +62,11 @@ def _make_rsa_pair(key_size=2048):
 
 def _setup_sso_signing_key(admin_user, private_pem, public_pem, vault_password=_VAULT_PASSWORD):
     """
-    Create a gervazy vault + encrypted private key + SSOSigningKey.
+    Create a gervazy strongbox + encrypted private key + SSOSigningKey.
     Returns (signing_key, session, wrapped_key).
     """
-    session, wrapped_key = GervazyCryptoSession.initialize_vault(
-        admin_user, "sso-system-vault", vault_password
+    session, wrapped_key = GervazyCryptoSession.initialize_strongbox(
+        admin_user, "sso-system-strongbox", vault_password
     )
     epk = session.encrypt_private_key(
         wrapped_key,
@@ -138,54 +138,54 @@ class TestGervazyCryptoSession(TestCase):
     def setUp(self):
         self.user = User.objects.create_user("vault_user", password="pw")
 
-    def test_initialize_vault_creates_models(self):
-        session, wrapped_key = GervazyCryptoSession.initialize_vault(
-            self.user, "test-vault-init", "pw"
+    def test_initialize_strongbox_creates_models(self):
+        session, wrapped_key = GervazyCryptoSession.initialize_strongbox(
+            self.user, "test-strongbox-init", "pw"
         )
-        self.assertTrue(UserVault.objects.filter(name="test-vault-init").exists())
-        self.assertTrue(VaultMasterKey.objects.filter(vault=session._vault).exists())
-        self.assertTrue(WrappedDataKey.objects.filter(vault=session._vault).exists())
+        self.assertTrue(UserStrongbox.objects.filter(name="test-strongbox-init").exists())
+        self.assertTrue(VaultMasterKey.objects.filter(strongbox=session._strongbox).exists())
+        self.assertTrue(WrappedDataKey.objects.filter(strongbox=session._strongbox).exists())
 
     def test_session_caches_keys_after_initialize(self):
-        session, wrapped_key = GervazyCryptoSession.initialize_vault(
-            self.user, "test-vault-cache", "pw"
+        session, wrapped_key = GervazyCryptoSession.initialize_strongbox(
+            self.user, "test-strongbox-cache", "pw"
         )
-        self.assertIn(1, session._vmk_cache)
+        self.assertIn(wrapped_key.vmk_id, session._vmk_cache)
         self.assertIn(wrapped_key.pk, session._dek_cache)
 
     def test_encrypt_and_decrypt_secret(self):
-        session, wrapped_key = GervazyCryptoSession.initialize_vault(
-            self.user, "test-vault-secret", "pw"
+        session, wrapped_key = GervazyCryptoSession.initialize_strongbox(
+            self.user, "test-strongbox-secret", "pw"
         )
         secret = session.encrypt_secret(wrapped_key, "my-api-key", name="api-key")
         result = session.decrypt_secret(secret)
         self.assertEqual(result, "my-api-key")
 
     def test_decrypt_secret_with_fresh_session(self):
-        session1, wrapped_key = GervazyCryptoSession.initialize_vault(
-            self.user, "test-vault-fresh", "pw123"
+        session1, wrapped_key = GervazyCryptoSession.initialize_strongbox(
+            self.user, "test-strongbox-fresh", "pw123"
         )
         secret = session1.encrypt_secret(wrapped_key, "fresh-secret-value", name="test")
 
-        # Open new session from DB
-        vault = session1._vault
-        session2 = GervazyCryptoSession(vault, "pw123")
+        # Open new session from DB.
+        strongbox = session1._strongbox
+        session2 = GervazyCryptoSession(strongbox, "pw123")
         self.assertEqual(session2.decrypt_secret(secret), "fresh-secret-value")
 
     def test_wrong_password_raises_on_decrypt(self):
-        session, wrapped_key = GervazyCryptoSession.initialize_vault(
-            self.user, "test-vault-badpw", "correct-password"
+        session, wrapped_key = GervazyCryptoSession.initialize_strongbox(
+            self.user, "test-strongbox-badpw", "correct-password"
         )
         secret = session.encrypt_secret(wrapped_key, "value", name="x")
 
-        vault = session._vault
-        bad_session = GervazyCryptoSession(vault, "wrong-password")
+        strongbox = session._strongbox
+        bad_session = GervazyCryptoSession(strongbox, "wrong-password")
         with self.assertRaises(InvalidTag):
             bad_session.decrypt_secret(secret)
 
     def test_encrypt_and_decrypt_private_key(self):
-        session, wrapped_key = GervazyCryptoSession.initialize_vault(
-            self.user, "test-vault-pk", "pw"
+        session, wrapped_key = GervazyCryptoSession.initialize_strongbox(
+            self.user, "test-strongbox-pk", "pw"
         )
         private_pem, public_pem = _make_rsa_pair()
         epk = session.encrypt_private_key(
@@ -199,14 +199,14 @@ class TestGervazyCryptoSession(TestCase):
         self.assertEqual(result, private_pem)
 
     def test_derive_key_is_deterministic(self):
-        vault = UserVault.objects.create(owner=self.user, name="determ-vault")
-        k1 = vault.derive_key("same-password")
-        k2 = vault.derive_key("same-password")
+        strongbox = UserStrongbox.objects.create(owner=self.user, name="determ-strongbox")
+        k1 = strongbox.derive_key("same-password")
+        k2 = strongbox.derive_key("same-password")
         self.assertEqual(k1, k2)
 
     def test_derive_key_differs_for_different_passwords(self):
-        vault = UserVault.objects.create(owner=self.user, name="diff-vault")
-        self.assertNotEqual(vault.derive_key("pw-a"), vault.derive_key("pw-b"))
+        strongbox = UserStrongbox.objects.create(owner=self.user, name="diff-strongbox")
+        self.assertNotEqual(strongbox.derive_key("pw-a"), strongbox.derive_key("pw-b"))
 
 
 # ---------------------------------------------------------------------------
