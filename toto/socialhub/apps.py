@@ -9,3 +9,4 @@ class SocialHubConfig(AppConfig):
         from toto.core.plugin_autodiscover import autodiscover_plugins
 
         autodiscover_plugins("plugins.profile_plugins")
+        autodiscover_plugins("plugins.community_plugins")

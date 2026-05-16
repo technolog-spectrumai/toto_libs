@@ -1,6 +1,14 @@
 from django import forms
+from trix_editor.widgets import TrixEditorWidget
+
 from toto.people.models import Person
-from toto.socialhub.models import MembershipApplication, ReferenceRequest, Community
+from toto.socialhub.models import (
+    CommunityNewsPost,
+    CommunityNewsTopic,
+    MembershipApplication,
+    ReferenceRequest,
+)
+from toto.verbena.forms import apply_oya_field_styles
 
 
 class MembershipApplicationForm(forms.ModelForm):
@@ -60,3 +68,27 @@ class ReferenceRequestForm(forms.ModelForm):
                 'rows': 4
             })
         }
+
+
+class CommunityNewsPostForm(forms.ModelForm):
+    class Meta:
+        model = CommunityNewsPost
+        fields = [
+            "title",
+            "content",
+            "author",
+            "source_page",
+            "topics",
+            "visibility",
+        ]
+        widgets = {
+            "title": forms.TextInput(attrs={"placeholder": "Optional headline"}),
+            "content": TrixEditorWidget(),
+            "topics": forms.SelectMultiple(),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["content"].required = True
+        self.fields["topics"].queryset = CommunityNewsTopic.objects.order_by("name")
+        apply_oya_field_styles(self.fields, skip={"content"})

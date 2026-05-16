@@ -1,8 +1,15 @@
 from django.contrib import admin
 
 from toto.core.base_admin import TotoModelAdmin
+from toto.verbena.admin import make_section_form
 
-from .models import Community, MembershipApplication, ReferenceRequest
+from .models import (
+    Community,
+    CommunityNewsPost,
+    CommunityNewsTopic,
+    MembershipApplication,
+    ReferenceRequest,
+)
 
 
 @admin.register(Community)
@@ -33,6 +40,7 @@ class CommunityAdmin(TotoModelAdmin):
 
     ordering = ('name',)
     prepopulated_fields = {'slug': ('name',)}
+    filter_horizontal = ('senior_members',)
 
     def head_display(self, obj):
         return obj.head.display_name if obj.head else "-"
@@ -79,3 +87,27 @@ class ReferenceRequestAdmin(TotoModelAdmin):
         return obj.is_accepted
 
 
+@admin.register(CommunityNewsPost)
+class CommunityNewsPostAdmin(TotoModelAdmin):
+    list_display = (
+        "display_title",
+        "community",
+        "author",
+        "created_at",
+    )
+    list_filter = ("community", "topics", "visibility")
+    search_fields = ("title", "content", "community__name", "author__display_name")
+    filter_horizontal = ("topics",)
+    autocomplete_fields = ("author", "community", "source_page")
+    date_hierarchy = "created_at"
+
+    def get_form(self, request, obj=None, **kwargs):
+        kwargs.setdefault("form", make_section_form(CommunityNewsPost))
+        return super().get_form(request, obj, **kwargs)
+
+
+@admin.register(CommunityNewsTopic)
+class CommunityNewsTopicAdmin(TotoModelAdmin):
+    list_display = ("name", "slug")
+    search_fields = ("name",)
+    prepopulated_fields = {"slug": ("name",)}

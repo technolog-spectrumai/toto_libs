@@ -1,10 +1,10 @@
 from django.db import models
 from django.urls import reverse
 from django.utils.html import strip_tags
-from django.utils.text import slugify
 
 from toto.people.models import Person
 from toto.verbena.models import AbstractPage, AbstractSection, AbstractTag
+from toto.verbena.utils import unique_slug
 
 
 class Tag(AbstractTag):
@@ -91,16 +91,3 @@ class Section(AbstractSection):
 
     def __str__(self):
         return f"{self.page.title} - {self.title or 'Section'}"
-
-
-def unique_slug(instance, value):
-    base_slug = slugify(value) or "item"
-    slug = base_slug
-    counter = 1
-    queryset = instance.__class__.objects.all()
-    if instance.pk:
-        queryset = queryset.exclude(pk=instance.pk)
-    while queryset.filter(slug=slug).exists():
-        counter += 1
-        slug = f"{base_slug}-{counter}"
-    return slug

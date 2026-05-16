@@ -21,6 +21,22 @@ nodes:
       phone: phone
       date_of_birth: date_of_birth
 
+  - label: CommunityNewsTopic
+    model: toto.socialhub.models.CommunityNewsTopic
+    uuid_field: uid
+    fields:
+      name: name
+      slug: slug
+
+  - label: CommunityNewsPost
+    model: toto.socialhub.models.CommunityNewsPost
+    uuid_field: uid
+    fields:
+      title: title
+      content: content
+      visibility: visibility
+      created_at: created_at
+
 links:
   - from_label: Community
     to_label: Person
@@ -32,6 +48,38 @@ links:
     to_label: Person
     relation: HEAD
     source: head
+    cardinality: one
+    nullable: true
+
+  - from_label: Community
+    to_label: Person
+    relation: HAS_SENIOR_MEMBER
+    source: senior_members
+    cardinality: many
+
+  - from_label: CommunityNewsPost
+    to_label: Community
+    relation: ANNOUNCES_IN
+    source: community
+    cardinality: one
+
+  - from_label: CommunityNewsPost
+    to_label: CommunityNewsTopic
+    relation: HAS_TOPIC
+    source: topics
+    cardinality: many
+
+  - from_label: CommunityNewsPost
+    to_label: Person
+    relation: AUTHORED_BY
+    source: author
+    cardinality: one
+    nullable: true
+
+  - from_label: CommunityNewsPost
+    to_label: PalimpsestPage
+    relation: POINTS_TO
+    source: source_page
     cardinality: one
     nullable: true
 

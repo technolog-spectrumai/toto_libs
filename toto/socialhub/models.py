@@ -3,7 +3,10 @@ import uuid
 
 from django.contrib.auth.models import User
 from django.db import models
+from django.urls import reverse
+from django.utils.html import strip_tags
 from django.utils import timezone
+from django.utils.text import Truncator
 from django.utils.text import slugify
 
 from toto.core.domain import DomainEntity
@@ -11,6 +14,8 @@ from toto.core.models import Federation
 from toto.locations.models import Address, Territory
 from toto.people.models import Person  # re-exported for backward compat  # noqa: F401
 from toto.api.models import EmailService as EmailService  # re-exported for backward compat  # noqa: F401
+from toto.verbena.models import AbstractSection, AbstractTag
+from toto.verbena.utils import unique_slug
 
 
 class Community(DomainEntity):
@@ -48,6 +53,12 @@ class Community(DomainEntity):
         null=True,
         blank=True,
         related_name="headed_communities",
+    )
+    senior_members = models.ManyToManyField(
+        "people.Person",
+        related_name="senior_communities",
+        blank=True,
+        help_text="Members allowed to manage community announcements and news.",
     )
 
     logo = models.ImageField(
@@ -94,6 +105,79 @@ class Community(DomainEntity):
         on_delete=models.SET_NULL,
         related_name="communities"
     )
+
+
+class CommunityNewsTopic(AbstractTag):
+    class Meta:
+        verbose_name = "Community news topic"
+        verbose_name_plural = "Community news topics"
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = unique_slug(self, self.name, fallback="topic")
+        super().save(*args, **kwargs)
+
+
+class CommunityNewsPost(AbstractSection):
+    PUBLIC = "public"
+    COMMUNITY = "community"
+
+    VISIBILITY_CHOICES = [
+        (PUBLIC, "Public"),
+        (COMMUNITY, "Community"),
+    ]
+
+    author = models.ForeignKey(
+        "people.Person",
+        related_name="community_news_posts",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    community = models.ForeignKey(
+        Community,
+        related_name="news_posts",
+        on_delete=models.CASCADE,
+    )
+    source_page = models.ForeignKey(
+        "palimpsest.Page",
+        related_name="community_news_posts",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        help_text="Optional long-form Palimpsest page this post points to.",
+    )
+    topics = models.ManyToManyField(
+        CommunityNewsTopic,
+        related_name="posts",
+        blank=True,
+    )
+    visibility = models.CharField(max_length=20, choices=VISIBILITY_CHOICES, default=PUBLIC)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Community news post"
+        verbose_name_plural = "Community news posts"
+
+    @property
+    def plain_text(self):
+        return " ".join(strip_tags(self.content or "").split())
+
+    @property
+    def excerpt(self):
+        return Truncator(self.plain_text).chars(220)
+
+    @property
+    def display_title(self):
+        return self.title or self.excerpt or "Untitled post"
+
+    def get_absolute_url(self):
+        return f"{reverse('socialhub:community_detail', args=[self.community.slug])}#community-news-post-{self.pk}"
+
+    def __str__(self):
+        return self.display_title
 
 
 
@@ -183,5 +267,3 @@ class ReferenceRequest(models.Model):
                 # 3. Add them to the community they applied to
                 member.communities.add(application.community)
                 member.save()
-
-

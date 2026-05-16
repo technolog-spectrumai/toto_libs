@@ -1,6 +1,11 @@
 from django.urls import path
 from toto.socialhub.views.profile import ProfileListView, ProfileDetailView, my_profile_redirect
 from toto.socialhub.views.community import CommunityListView, CommunityDetailView, community_org_chart_data_by_slug
+from toto.socialhub.views.community_news import (
+    community_news_create,
+    community_news_delete,
+    community_news_update,
+)
 from toto.socialhub.views.application import membership_application_view, application_success_view, \
     verification_success_view, reference_request_view, reference_next, verify_application_view, reference_accept, \
     reference_reject
@@ -12,7 +17,10 @@ urlpatterns = [
     path("profiles/<slug:slug>/", ProfileDetailView.as_view(), name="profile_details"),
 
     path("communities/", CommunityListView.as_view(), name="community_list"),
+    path("communities/<slug:community_slug>/news/new/", community_news_create, name="community_news_create"),
     path("communities/<slug:slug>/", CommunityDetailView.as_view(), name="community_detail"),
+    path("community-news/<int:pk>/edit/", community_news_update, name="community_news_update"),
+    path("community-news/<int:pk>/delete/", community_news_delete, name="community_news_delete"),
     path("community/org-chart/data/<slug:company_slug>/", community_org_chart_data_by_slug,
          name="community_org_chart_data_by_slug"),
     path("my-profile/", my_profile_redirect, name="my_profile"),

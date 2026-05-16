@@ -3,6 +3,7 @@ from django.urls import reverse
 from django.views.generic import ListView, DetailView
 from toto.people.models import Person
 from toto.socialhub.models import Community
+from toto.socialhub.plugins.community_plugins import CommunityPlugin
 from toto.ui import PageProcessor
 from django.http import JsonResponse
 
@@ -33,7 +34,13 @@ class CommunityDetailView(DetailView):
             "socialhub:community_org_chart_data_by_slug",
             kwargs={"company_slug": community.slug}
         )
-        return PageProcessor().decorate(context, self.request)
+        context = PageProcessor().decorate(context, self.request)
+        context["community_plugin_sections"] = CommunityPlugin.render_all(
+            request=self.request,
+            community=community,
+            base_context=context,
+        )
+        return context
 
 
 def community_org_chart_data_by_slug(request, company_slug):
@@ -56,5 +63,3 @@ def community_org_chart_data_by_slug(request, company_slug):
         })
 
     return JsonResponse({"nodes": nodes})
-
-

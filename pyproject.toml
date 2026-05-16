@@ -37,6 +37,8 @@ packages = [
     "toto.locations.plugins",
     "toto.socialhub",
     "toto.socialhub.migrations",
+    "toto.socialhub.management",
+    "toto.socialhub.management.commands",
     "toto.socialhub.plugins",
     "toto.socialhub.views",
     "toto.vault",

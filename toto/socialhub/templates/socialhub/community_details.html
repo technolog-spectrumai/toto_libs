@@ -233,6 +233,11 @@
       </div>
     </section>
 
+    <!-- Community Plugins -->
+    {% for section in community_plugin_sections %}
+      {{ section.html }}
+    {% endfor %}
+
     <!-- Members -->
     <section
       :class="darkMode

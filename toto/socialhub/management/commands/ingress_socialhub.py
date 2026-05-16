@@ -1,10 +1,12 @@
 import random
 from django.contrib.auth.models import User
 from django.utils import timezone
+from django.utils.text import slugify
 from toto.ingress import IngressCommand
 from toto.people.models import Person
-from toto.socialhub.models import Community
+from toto.socialhub.models import Community, CommunityNewsPost, CommunityNewsTopic
 from toto.locations.models import Address
+from toto.palimpsest.models import Page
 
 
 class Command(IngressCommand):
@@ -65,6 +67,9 @@ class Command(IngressCommand):
             self.stdout.write(self.style.NOTICE("👑 Assigning head..."))
             community.head = members[0]
             community.save()
+
+        self.assign_senior_members(community, tester_person, members)
+        self.create_community_news(community, tester_person)
 
         self.stdout.write(self.style.SUCCESS("✅ SocialHub ingress complete."))
 
@@ -215,3 +220,57 @@ class Command(IngressCommand):
         )
         member.communities.add(community)
         return member
+
+    def assign_senior_members(self, community, tester_person, members):
+        senior_members = [tester_person, *members[:2]]
+        community.senior_members.add(*[member for member in senior_members if member])
+        self.stdout.write(self.style.SUCCESS("✔ Assigned senior community members."))
+
+    def create_community_news(self, community, author):
+        page = Page.objects.order_by("-created_at").first()
+        topics = self.create_news_topics()
+
+        samples = [
+            {
+                "title": "Friday notes are open",
+                "content": "<div>Drop short updates, blockers, and tiny wins here. Longer reflections can still move into Palimpsest.</div>",
+                "topics": ["announcements", "community"],
+                "source_page": page,
+            },
+            {
+                "title": "",
+                "content": "<div>Small reminder: a good update is often just one useful sentence plus a next step.</div>",
+                "topics": ["microblog", "craft"],
+            },
+            {
+                "title": "Community publishing rhythm",
+                "content": "<div>News is for the pulse. Palimpsest is for the piece.</div>",
+                "topics": ["announcements", "craft"],
+                "source_page": page,
+            },
+        ]
+
+        for data in samples:
+            post, created = CommunityNewsPost.objects.get_or_create(
+                community=community,
+                title=data["title"],
+                content=data["content"],
+                defaults={
+                    "author": author,
+                    "source_page": data.get("source_page"),
+                },
+            )
+            if created:
+                post.topics.set([topics[name] for name in data["topics"]])
+                self.stdout.write(self.style.SUCCESS(f"✔ Created community news: {post.display_title}"))
+
+    def create_news_topics(self):
+        names = ["announcements", "community", "microblog", "craft"]
+        topics = {}
+        for name in names:
+            topic, _ = CommunityNewsTopic.objects.get_or_create(
+                slug=slugify(name),
+                defaults={"name": name.replace("-", " ").title()},
+            )
+            topics[name] = topic
+        return topics
