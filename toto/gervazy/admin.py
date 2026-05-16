@@ -78,7 +78,8 @@ class EncryptedSecretAdmin(TotoModelAdmin):
             "fields": ("algorithm", "version", "ciphertext_info"),
             "description": "Raw ciphertext stored as binary. Never displayed in plaintext.",
         }),
-        ("Lifecycle", {"fields": ("expires_at", "created_at")}),
+        ("Lifecycle", {"fields": ("expires_at", "c"
+                                                "reated_at")}),
     )
 
     @admin.display(boolean=True)
