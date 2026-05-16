@@ -1,7 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import User
 from toto.core.domain import DomainEntity
-from toto.socialhub.models import Person
+from toto.people.models import Person
 from toto.verbena.models import AbstractPage, AbstractSection
 
 

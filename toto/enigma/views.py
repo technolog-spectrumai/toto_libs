@@ -4,7 +4,7 @@ from django.views.generic import ListView, DetailView, View
 from django.db import models
 from toto.ui import PageProcessor
 from toto.enigma.models import Participant, Room
-from toto.socialhub.models import Person
+from toto.people.models import Person
 
 
 class RoomListView(ListView):

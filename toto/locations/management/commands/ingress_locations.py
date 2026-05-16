@@ -14,7 +14,7 @@ from toto.locations.models import (
     Territory,
     Zone,
 )
-from toto.socialhub.models import Person
+from toto.people.models import Person
 
 
 class Command(IngressCommand):

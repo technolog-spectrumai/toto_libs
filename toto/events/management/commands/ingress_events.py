@@ -7,7 +7,7 @@ from faker import Faker
 from toto.ingress import IngressCommand
 from toto.events.models import EventCategory, Event
 from toto.locations.models import Address, Route, Zone
-from toto.socialhub.models import Person
+from toto.people.models import Person
 
 
 fake = Faker()

@@ -5,7 +5,7 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 
 from toto.kanban.models import Campaign, Column, DocumentationPage, DocumentationSection, Mission, Project, Sprint, Task
-from toto.socialhub.models import Person
+from toto.people.models import Person
 from toto.locations.models import Address, Zone, Route
 from toto.ingress import IngressCommand
 

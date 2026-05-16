@@ -19,7 +19,7 @@ class Room(models.Model):
         blank=True,
     )
     people = models.ManyToManyField(
-        "socialhub.Person",
+        "people.Person",
         through="Participant",
         related_name="enigma_rooms",
         blank=True,
@@ -40,7 +40,7 @@ class Participant(models.Model):
         related_name="chat_participants",
     )
     person = models.ForeignKey(
-        "socialhub.Person",
+        "people.Person",
         on_delete=models.CASCADE,
         related_name="chat_participations",
         null=True,

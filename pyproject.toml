@@ -15,6 +15,8 @@ packages = [
     "toto.core",
     "toto.ui",
     "toto.ingress",
+    "toto.people",
+    "toto.people.migrations",
     "toto.events",
     "toto.gervazy",
     "toto.kanban",

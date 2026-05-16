@@ -1,15 +1,18 @@
 import random
+import uuid
+
+from django.conf import settings
 from django.contrib.auth.models import User
+from django.core.mail import EmailMessage, get_connection
+from django.db import models
 from django.utils import timezone
 from django.utils.text import slugify
-from toto.locations.models import Address, Territory
-from django.core.mail import EmailMessage, get_connection
-from toto.gervazy.models import EncryptedSecret
-from django.conf import settings
-import uuid
-from django.db import models
+
 from toto.core.domain import DomainEntity
 from toto.core.models import Federation
+from toto.gervazy.models import EncryptedSecret
+from toto.locations.models import Address, Territory
+from toto.people.models import Person  # re-exported for backward compat  # noqa: F401
 
 
 class Community(DomainEntity):
@@ -42,11 +45,11 @@ class Community(DomainEntity):
     established_year = models.IntegerField(null=True, blank=True)
 
     head = models.ForeignKey(
-        'Person',
+        "people.Person",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='headed_communities',
+        related_name="headed_communities",
     )
 
     logo = models.ImageField(
@@ -95,61 +98,6 @@ class Community(DomainEntity):
     )
 
 
-class Person(DomainEntity):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='community_profile', null=True, blank=True)
-    communities = models.ManyToManyField(Community, related_name='members')
-    patron = models.ForeignKey(
-        'self',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='mentees',
-    )
-    display_name = models.CharField(max_length=150)
-    bio = models.TextField(null=True, blank=True)
-    avatar = models.ImageField(upload_to='avatars/', null=True, blank=True)
-    joined_date = models.DateTimeField(default=timezone.now)
-    slug = models.SlugField(unique=True, blank=True)
-    # ➕ Add address field
-    date_of_birth = models.DateField(null=True, blank=True)
-    address = models.ForeignKey(
-        Address,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='residents',
-        help_text="Optional address for this community member",
-    )
-    email = models.EmailField(blank=True, null=True)
-    phone = models.CharField(max_length=50, blank=True, null=True)
-
-    def __str__(self):
-        return self.display_name
-
-    def save(self, *args, **kwargs):
-        if not self.slug:
-            base_slug = slugify(self.display_name)
-            slug = base_slug
-            counter = 1
-            while Person.objects.filter(slug=slug).exists():
-                slug = f"{base_slug}-{counter}"
-                counter += 1
-            self.slug = slug
-        super().save(*args, **kwargs)
-
-    @property
-    def full_name(self):
-        # Prefer display_name
-        if self.display_name:
-            return self.display_name
-
-        # Fallback to linked Django user if present
-        if self.user:
-            return self.user.get_full_name() or self.user.username
-
-        return "Unnamed Member"
-
-
 
 def generate_code(k=6):
     return ''.join(random.choices('0123456789', k=k))
@@ -185,7 +133,7 @@ class MembershipApplication(models.Model):
 
 class ReferenceRequest(models.Model):
     application = models.ForeignKey(MembershipApplication, on_delete=models.CASCADE, related_name='reference_requests')
-    referrer = models.ForeignKey(Person, on_delete=models.CASCADE, related_name='sent_references')
+    referrer = models.ForeignKey("people.Person", on_delete=models.CASCADE, related_name="sent_references")
     message = models.TextField(blank=True)
     STATUS_CHOICES = [
         ('pending', 'Pending'),

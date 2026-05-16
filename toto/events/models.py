@@ -1,6 +1,6 @@
 from uuid import uuid4
 from django.db import models
-from toto.socialhub.models import Person
+from toto.people.models import Person
 from toto.core.domain import DomainEntity
 
 

@@ -12,7 +12,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from toto.ui import PageProcessor
-from toto.socialhub.models import Person
+from toto.people.models import Person
 from toto.kanban.models import Campaign, Mission, Task
 from toto.events.models import Event
 from django.contrib.gis.geos import LineString, MultiLineString

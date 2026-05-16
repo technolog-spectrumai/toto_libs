@@ -1,7 +1,7 @@
 from django.contrib import admin
 
-from toto.socialhub.admin import PersonAdmin
-from toto.socialhub.models import Person
+from toto.people.admin import PersonAdmin
+from toto.people.models import Person
 
 from .models import Experience, SkillBadge, SkillBadgePrerequisite, SkillGroup
 

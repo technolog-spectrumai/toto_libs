@@ -1,5 +1,6 @@
 from django import forms
-from toto.socialhub.models import MembershipApplication, ReferenceRequest, Person, Community
+from toto.people.models import Person
+from toto.socialhub.models import MembershipApplication, ReferenceRequest, Community
 
 
 class MembershipApplicationForm(forms.ModelForm):

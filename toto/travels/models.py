@@ -4,7 +4,7 @@ from toto.core.domain import DomainEntity
 
 class Travel(DomainEntity):
     participants = models.ManyToManyField(
-        "socialhub.Person",
+        "people.Person",
         related_name="travels",
         help_text="People participating in this travel",
     )
@@ -80,7 +80,7 @@ class Travel(DomainEntity):
 
 class Visit(DomainEntity):
     participant = models.ForeignKey(
-        "socialhub.Person",
+        "people.Person",
         on_delete=models.CASCADE,
         related_name="visits",
         help_text="Person who made the visit",

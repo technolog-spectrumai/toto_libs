@@ -206,7 +206,7 @@ class EnigmaConnectionTests(TestCase):
             EnigmaConnection.for_participant(participant)
 
     def make_person(self):
-        from toto.socialhub.models import Person
+        from toto.people.models import Person
 
         return Person.objects.create(
             display_name="Human User",

@@ -2,7 +2,8 @@ import random
 from django.contrib.auth.models import User
 from django.utils import timezone
 from toto.ingress import IngressCommand
-from toto.socialhub.models import Community, Person
+from toto.people.models import Person
+from toto.socialhub.models import Community
 from toto.locations.models import Address
 
 

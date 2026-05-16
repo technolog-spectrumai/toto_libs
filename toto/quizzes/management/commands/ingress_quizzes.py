@@ -2,7 +2,7 @@ from django.contrib.auth import get_user_model
 
 from toto.quizzes.models import Quiz, QuizAnswer, QuizAnswerTrait, QuizQuestion, QuizTrait
 from toto.ingress import IngressCommand
-from toto.socialhub.models import Person
+from toto.people.models import Person
 
 User = get_user_model()
 

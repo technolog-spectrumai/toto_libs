@@ -2,7 +2,7 @@ from toto.ingress import IngressCommand
 from toto.enigma.models import Participant, Room
 from django.contrib.auth import get_user_model
 from django.utils.text import slugify
-from toto.socialhub.models import Person
+from toto.people.models import Person
 
 User = get_user_model()
 

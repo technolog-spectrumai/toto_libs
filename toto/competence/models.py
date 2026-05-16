@@ -1,6 +1,6 @@
 from django.db import models
 
-from toto.socialhub.models import Person
+from toto.people.models import Person
 
 
 class Experience(models.Model):

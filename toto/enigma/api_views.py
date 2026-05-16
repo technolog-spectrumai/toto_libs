@@ -145,7 +145,7 @@ class MeApiView(CorsApiView):
         }
 
         try:
-            from toto.socialhub.models import Person
+            from toto.people.models import Person
             person = Person.objects.filter(user=user).first()
             if person:
                 data["full_name"] = person.full_name or data["full_name"]
@@ -187,7 +187,7 @@ class RoomDetailApiView(CorsApiView):
         is_participant = False
         if request.user and request.user.is_authenticated:
             try:
-                from toto.socialhub.models import Person
+                from toto.people.models import Person
                 person = Person.objects.filter(user=request.user).first()
                 if person:
                     is_participant = room.chat_participants.filter(person=person, is_active=True).exists()
@@ -210,7 +210,7 @@ class RoomJoinApiView(CorsApiView):
         except Room.DoesNotExist:
             return JsonResponse({"error": "Room not found."}, status=404)
 
-        from toto.socialhub.models import Person
+        from toto.people.models import Person
         from toto.enigma.models import Participant
 
         person = Person.objects.filter(user=request.user).first()
@@ -238,7 +238,7 @@ class RoomLeaveApiView(CorsApiView):
         except Room.DoesNotExist:
             return JsonResponse({"error": "Room not found."}, status=404)
 
-        from toto.socialhub.models import Person
+        from toto.people.models import Person
         from toto.enigma.models import Participant
 
         person = Person.objects.filter(user=request.user).first()
@@ -255,7 +255,7 @@ class RoomLeaveAllApiView(CorsApiView):
         if not request.user or not request.user.is_authenticated:
             return JsonResponse({"error": "Not authenticated."}, status=401)
 
-        from toto.socialhub.models import Person
+        from toto.people.models import Person
         from toto.enigma.models import Participant
 
         person = Person.objects.filter(user=request.user).first()

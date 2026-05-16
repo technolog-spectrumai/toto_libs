@@ -175,7 +175,7 @@ class MapLayer(DomainEntity):
     )
     is_active = models.BooleanField(default=True)
     owner = models.ForeignKey(
-        "socialhub.Person",
+        "people.Person",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

@@ -5,7 +5,7 @@ from toto.competence.models import SkillBadge
 from toto.memo.models import MemoDeck
 from toto.quizzes.models import Quiz
 from toto.ingress import IngressCommand
-from toto.socialhub.models import Person
+from toto.people.models import Person
 
 from toto.academy.models import (
     Certificate,

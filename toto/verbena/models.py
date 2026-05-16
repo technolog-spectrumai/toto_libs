@@ -2,7 +2,7 @@ from django.db import models
 from django.utils.text import slugify
 from trix_editor.fields import TrixEditorField
 from toto.core.domain import DomainEntity
-from toto.socialhub.models import Person
+from toto.people.models import Person
 
 
 # ────────────────────────────────────────────────

@@ -7,7 +7,7 @@ from django.urls import reverse
 
 from toto.competence.models import SkillBadge
 from toto.memo.models import MemoDeck
-from toto.socialhub.models import Person
+from toto.people.models import Person
 from toto.verbena.models import AbstractPage, AbstractSection
 
 

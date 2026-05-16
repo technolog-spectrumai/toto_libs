@@ -1,6 +1,6 @@
 from django import forms
 from toto.kanban.models import Task, Mission, Column, Sprint
-from toto.socialhub.models import Person
+from toto.people.models import Person
 
 
 class TaskCreateForm(forms.ModelForm):
