@@ -131,22 +131,35 @@ class Command(IngressCommand):
                 "description": "A general-purpose AI agent managed by Toto Studio.",
                 "user": agent_user,
                 "connector": rb_connector,
+                "model_name": "LoboLightNLP",
                 "system_prompt": default_prompt,
                 "is_active": True,
             },
         )
 
         if created:
-            self.stdout.write(self.style.SUCCESS("  Created agent: Steven (rule-based, NLP rules in system_prompt)"))
+            self.stdout.write(self.style.SUCCESS("  Created agent: Steven (LoboLightNLP rule-based)"))
         else:
             self.stdout.write(self.style.WARNING("  Agent already exists: Steven"))
-            # Upgrade plain-text system_prompt to JSON rule set
-            try:
-                json.loads(agent.system_prompt)
-            except (json.JSONDecodeError, TypeError):
-                agent.system_prompt = default_prompt
-                agent.save(update_fields=["system_prompt"])
-                self.stdout.write(self.style.SUCCESS("  Upgraded system_prompt to JSON rule set"))
+
+        update_fields = []
+
+        # Upgrade plain-text system_prompt to JSON rule set
+        try:
+            json.loads(agent.system_prompt)
+        except (json.JSONDecodeError, TypeError):
+            agent.system_prompt = default_prompt
+            update_fields.append("system_prompt")
+            self.stdout.write(self.style.SUCCESS("  Upgraded system_prompt to JSON rule set"))
+
+        # Fix model name for rule-based agents
+        if agent.model_name != "LoboLightNLP" and agent.connector_id == rb_connector.id:
+            agent.model_name = "LoboLightNLP"
+            update_fields.append("model_name")
+            self.stdout.write(self.style.SUCCESS("  Set model_name to LoboLightNLP"))
+
+        if update_fields:
+            agent.save(update_fields=update_fields)
 
         if agent.user_id != agent_user.id:
             agent.user = agent_user
