@@ -1,18 +1,16 @@
 import random
 import uuid
 
-from django.conf import settings
 from django.contrib.auth.models import User
-from django.core.mail import EmailMessage, get_connection
 from django.db import models
 from django.utils import timezone
 from django.utils.text import slugify
 
 from toto.core.domain import DomainEntity
 from toto.core.models import Federation
-from toto.gervazy.models import EncryptedSecret
 from toto.locations.models import Address, Territory
 from toto.people.models import Person  # re-exported for backward compat  # noqa: F401
+from toto.api.models import EmailService as EmailService  # re-exported for backward compat  # noqa: F401
 
 
 class Community(DomainEntity):
@@ -68,7 +66,7 @@ class Community(DomainEntity):
     is_foreign = models.BooleanField(default=False,
                                      help_text="Indicates whether this federation originates outside the local jurisdiction")
     email_service = models.ForeignKey(
-        "socialhub.EmailService",
+        "api.EmailService",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -187,85 +185,3 @@ class ReferenceRequest(models.Model):
                 member.save()
 
 
-class EmailService(models.Model):
-    """
-    Stores SMTP configuration for a system component.
-    The SMTP password is stored in a Gervazy EncryptedSecret and must be
-    This model does NOT modify or manage the password itself.
-    """
-
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-
-    # Optional human-friendly name
-    name = models.CharField(
-        max_length=128,
-        unique=True,
-        blank=True,
-        help_text="Optional name for this email service. Auto-generated if omitted."
-    )
-    email_address = models.EmailField(
-        help_text="SMTP login email address"
-    )
-
-    smtp_secret = models.ForeignKey(
-        EncryptedSecret,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="email_services",
-        help_text="Gervazy EncryptedSecret holding the SMTP password.",
-    )
-
-    host = models.CharField(max_length=255, help_text="SMTP server hostname")
-    port = models.PositiveIntegerField(default=587)
-    use_tls = models.BooleanField(default=True)
-    use_ssl = models.BooleanField(default=False)
-
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    # ---------------------------------------------------------
-    # Save override
-    # ---------------------------------------------------------
-
-    def save(self, *args, **kwargs):
-        if not self.name:
-            self.name = f"email-service-{uuid.uuid4()}"
-        super().save(*args, **kwargs)
-
-    def __str__(self):
-        return f"EmailService {self.name} ({self.email_address})"
-
-    # ---------------------------------------------------------
-    # Email sending helper
-    # ---------------------------------------------------------
-
-    def send_email(self, subject, body, to, html=None, *, smtp_password: str):
-        """
-        Sends an email using this EmailService's SMTP configuration.
-        Pass smtp_password explicitly — obtain it from the Gervazy vault session.
-        """
-        password = smtp_password
-
-        connection = get_connection(
-            backend=settings.EMAIL_BACKEND,
-            host=self.host,
-            port=self.port,
-            username=self.email_address,
-            password=password,
-            use_tls=self.use_tls,
-            use_ssl=self.use_ssl,
-        )
-
-        msg = EmailMessage(
-            subject=subject,
-            body=body,
-            from_email=self.email_address,
-            to=[to] if isinstance(to, str) else to,
-            connection=connection,
-        )
-
-        if html:
-            msg.content_subtype = "html"
-            msg.body = html
-
-        return msg.send()

@@ -11,6 +11,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
+        ('people', '0001_initial'),
         ('socialhub', '0001_initial'),
     ]
 
@@ -21,7 +22,7 @@ class Migration(migrations.Migration):
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('joined_at', models.DateTimeField(auto_now_add=True)),
                 ('is_active', models.BooleanField(default=True)),
-                ('person', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='chat_participations', to='socialhub.person')),
+                ('person', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='chat_participations', to='people.person')),
             ],
             options={
                 'ordering': ['person__display_name'],
@@ -36,7 +37,7 @@ class Migration(migrations.Migration):
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('created_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, to=settings.AUTH_USER_MODEL)),
                 ('participants', models.ManyToManyField(blank=True, related_name='chat_rooms', to=settings.AUTH_USER_MODEL)),
-                ('people', models.ManyToManyField(blank=True, related_name='enigma_rooms', through='enigma.Participant', to='socialhub.person')),
+                ('people', models.ManyToManyField(blank=True, related_name='enigma_rooms', through='enigma.Participant', to='people.person')),
             ],
             options={
                 'ordering': ['name'],

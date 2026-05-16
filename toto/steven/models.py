@@ -4,7 +4,7 @@ from urllib.request import Request, urlopen
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
-from toto.core.models import ApiConnector
+from toto.api.models import ApiConnector
 
 
 class AgentConnector(ApiConnector):

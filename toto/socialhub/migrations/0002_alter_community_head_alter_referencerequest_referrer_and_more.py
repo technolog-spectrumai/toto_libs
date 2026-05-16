@@ -8,9 +8,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('locations', '0003_alter_maplayer_owner'),
-        ('enigma', '0002_alter_participant_person_alter_room_people'),
         ('quizzes', '0002_alter_quiz_owner_alter_quizattempt_participant'),
-        ('travels', '0002_alter_travel_participants_alter_visit_participant'),
         ('verbena', '0002_alter_section_author'),
         ('competence', '0003_alter_experience_person'),
         ('library', '0003_alter_article_authors_alter_book_authors'),

@@ -2,7 +2,7 @@ from django.contrib import admin
 
 from toto.core.base_admin import TotoModelAdmin
 
-from .models import Community, MembershipApplication, ReferenceRequest, EmailService
+from .models import Community, MembershipApplication, ReferenceRequest
 
 
 @admin.register(Community)
@@ -79,15 +79,3 @@ class ReferenceRequestAdmin(TotoModelAdmin):
         return obj.is_accepted
 
 
-@admin.register(EmailService)
-class EmailServiceAdmin(TotoModelAdmin):
-
-    list_display = (
-        "name",
-        "email_address",
-        "host",
-        "port",
-        "created_at",
-    )
-
-    readonly_fields = ("created_at",)

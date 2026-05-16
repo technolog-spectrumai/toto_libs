@@ -11,6 +11,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('locations', '0002_initial'),
+        ('people', '0001_initial'),
         ('socialhub', '0001_initial'),
     ]
 
@@ -26,7 +27,7 @@ class Migration(migrations.Migration):
                 ('reviewed_at', models.DateTimeField(blank=True, help_text='When this visit review was submitted', null=True)),
                 ('review', models.TextField(blank=True, help_text='Optional review text', null=True)),
                 ('location', models.ForeignKey(blank=True, help_text='Location that was visited', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='visits', to='locations.address')),
-                ('participant', models.ForeignKey(help_text='Person who made the visit', on_delete=django.db.models.deletion.CASCADE, related_name='visits', to='socialhub.person')),
+                ('participant', models.ForeignKey(help_text='Person who made the visit', on_delete=django.db.models.deletion.CASCADE, related_name='visits', to='people.person')),
             ],
         ),
         migrations.CreateModel(
@@ -39,7 +40,7 @@ class Migration(migrations.Migration):
                 ('reviewed_at', models.DateTimeField(blank=True, help_text='When this travel was reviewed or scored', null=True)),
                 ('starts_at', models.DateTimeField(help_text='Travel start date and time')),
                 ('ends_at', models.DateTimeField(help_text='Travel end date and time')),
-                ('participants', models.ManyToManyField(help_text='People participating in this travel', related_name='travels', to='socialhub.person')),
+                ('participants', models.ManyToManyField(help_text='People participating in this travel', related_name='travels', to='people.person')),
                 ('route', models.ForeignKey(blank=True, help_text='Route used for this travel', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='travels', to='locations.route')),
             ],
         ),
