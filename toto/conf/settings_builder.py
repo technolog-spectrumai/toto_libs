@@ -243,13 +243,6 @@ def build_settings(base_dir: Path, config_path: str | Path | None = None) -> dic
             "CELERY_TASK_TRACK_STARTED": True,
             "CELERY_TASK_TIME_LIMIT": 60 * 30,
         }
-        if "toto.game" in installed_apps:
-            celery_settings["CELERY_BEAT_SCHEDULE"] = {
-                "toto-game-global-tick": {
-                    "task": "toto.game.tasks.run_global_game_tick",
-                    "schedule": int(os.getenv("GAME_TICK_SECONDS", "300")),
-                },
-            }
 
     # ---------------------------------------------------------- websockets
     channel_settings: dict[str, Any] = {}
