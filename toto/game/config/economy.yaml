@@ -321,7 +321,7 @@ demo_world:
       grid_size: 13
       perlin_scale: 0.0025
       perlin_octaves: 8
-      sea_level: 0.72
+      sea_level: 0.82
       climate_seed: 91317
       wind_iterations: 8
       axial_tilt: 18.5

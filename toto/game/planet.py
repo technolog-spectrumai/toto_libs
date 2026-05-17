@@ -109,7 +109,7 @@ class PlanetGenerator:
         elev_map = self.generate_elevation_map()
         temp_map = self.generate_temperature_map(elev_map)
         wind_map = self.generate_wind_map(elev_map)
-        rain_map = self.generate_rain_map(elev_map, wind_map)
+        rain_map = self.generate_rain_map(elev_map, wind_map, temp_map)
         data = PlanetData(self.cx, self.cy, self.config.radius, elev_map, temp_map, rain_map, wind_map)
         data.provinces = self.generate_provinces(data, province_count)
         return data
@@ -159,22 +159,41 @@ class PlanetGenerator:
         relief_drag = np.clip(1.1 - elev_map * 0.45, 0.2, 1.1)
         return np.clip(lat_wind * relief_drag * self.config.coriolis_factor, 0, 1)
 
-    def generate_rain_map(self, elev_map: np.ndarray, wind_map: np.ndarray) -> np.ndarray:
+    def generate_rain_map(self, elev_map: np.ndarray, wind_map: np.ndarray, temp_map: np.ndarray) -> np.ndarray:
         ocean = elev_map < self.config.sea_level
-        rain_map = ocean.astype(np.float32) * 0.65 + self.resized_noise(14) * 0.18
+        land = ~ocean
+        evaporation = ocean.astype(np.float32) * (0.025 + temp_map * 0.09) * (0.75 + self.config.sea_level * 0.5)
+        moisture = evaporation + self.resized_noise(14) * 0.025
+        rain_map = np.zeros_like(elev_map, dtype=np.float32)
         shift = 1 if self.config.coriolis_factor >= 0 else -1
+        size = self.config.size
+        latitude = np.abs(np.arange(size, dtype=np.float32) - self.cy) / max(1, self.cy)
+        equatorial_lift = np.repeat((1 - latitude)[:, None], size, axis=1)
 
-        for _ in range(max(1, self.config.wind_iterations) * 4):
-            rain_map = (
-                rain_map
-                + np.roll(rain_map, 1, axis=0)
-                + np.roll(rain_map, -1, axis=0)
-                + np.roll(rain_map, shift, axis=1) * (0.9 + wind_map * 0.4)
-            ) / 4.1
-            rain_map += ocean.astype(np.float32) * 0.035
-            rain_map -= np.clip(elev_map - 0.72, 0, 1) * 0.025
+        for _ in range(max(1, self.config.wind_iterations) * 6):
+            zonal = np.roll(moisture, shift, axis=1)
+            meridional = (np.roll(moisture, 1, axis=0) + np.roll(moisture, -1, axis=0)) * 0.5
+            advected = (
+                moisture * 0.45
+                + zonal * (0.35 + wind_map * 0.2)
+                + meridional * 0.2
+            ) / (1.0 + wind_map * 0.2)
+            uplift = np.clip(elev_map - np.roll(elev_map, shift, axis=1), 0, 1)
+            convection = np.clip(temp_map - 0.55, 0, 1) * equatorial_lift * 0.045
+            condensation = np.clip(0.025 + land.astype(np.float32) * 0.035 + uplift * 0.16 + convection, 0.02, 0.28)
+            rain = advected * condensation
+            rain_map += rain
+            moisture = np.clip(advected - rain + evaporation, 0, None)
 
-        rain_map = normalize(np.clip(rain_map, 0, None))
+        rain_ceiling = float(np.percentile(rain_map, 95))
+        if math.isclose(rain_ceiling, 0):
+            return rain_map
+        moisture_budget = np.clip(
+            0.34 + self.config.sea_level * 0.56 + self.config.wind_iterations * 0.012,
+            0.22,
+            1.0,
+        )
+        rain_map = np.clip((rain_map / rain_ceiling) * moisture_budget, 0, 1)
         return rain_map
 
     def render_satellite_planet(self, data: PlanetData) -> bytes:

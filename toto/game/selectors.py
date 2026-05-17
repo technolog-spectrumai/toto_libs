@@ -1,4 +1,5 @@
 from decimal import Decimal
+import math
 from statistics import mean
 
 from .biomes import BIOMES
@@ -6,6 +7,14 @@ from .models import BuildingStatus, Recipe, TransportLink
 
 
 BIOME_COLORS = {code: biome.color for code, biome in BIOMES.items()}
+BIOME_LEGEND = [
+    {
+        "code": code,
+        "name": biome.name,
+        "color": biome.color,
+    }
+    for code, biome in BIOMES.items()
+]
 
 BUILDING_COLORS = {
     "extraction": "#a16207",
@@ -24,6 +33,14 @@ TRANSPORT_COLORS = {
     "rail": "#f8fafc",
     "pipeline": "#38bdf8",
     "grid": "#facc15",
+}
+
+
+TRANSPORT_LABELS = {
+    "road": "Cargo Road",
+    "rail": "Mass Cargo",
+    "pipeline": "Pipeline",
+    "grid": "Power Grid",
 }
 
 
@@ -52,6 +69,52 @@ def province_production_score(province):
         if row:
             output += row["quantity_per_day"] * float(row["item"].base_market_value)
     return min(1.0, output / 1000.0)
+
+
+def infer_link_mode(source, target):
+    source_categories = {building.building_type.category for building in source.buildings.all()}
+    target_categories = {building.building_type.category for building in target.buildings.all()}
+    categories = source_categories | target_categories
+    if "energy" in source_categories and "energy" in target_categories:
+        return "grid"
+    if "industry" in categories or "high_tech" in categories:
+        return "rail"
+    if "extraction" in categories:
+        return "pipeline"
+    return "road"
+
+
+def inferred_transport_edges(provinces):
+    edges = []
+    seen = set()
+    ordered = sorted(provinces, key=lambda province: (province.y, province.x, province.id))
+
+    for province in ordered:
+        candidates = [candidate for candidate in ordered if candidate.id != province.id]
+        candidates.sort(key=lambda candidate: math.dist((province.x, province.y), (candidate.x, candidate.y)))
+        for target in candidates[:2]:
+            key = tuple(sorted((province.id, target.id)))
+            if key in seen:
+                continue
+            seen.add(key)
+            mode = infer_link_mode(province, target)
+            distance = math.dist((province.x, province.y), (target.x, target.y))
+            capacity = max(25, round(220 - min(distance, 180), 2))
+            edges.append(
+                {
+                    "id": f"inferred-{province.id}-{target.id}",
+                    "source": f"province-{province.id}",
+                    "target": f"province-{target.id}",
+                    "label": TRANSPORT_LABELS.get(mode, "Corridor"),
+                    "mode": mode,
+                    "capacity": capacity,
+                    "size": max(1, min(5, capacity / 60)),
+                    "color": TRANSPORT_COLORS.get(mode, "#cbd5e1"),
+                    "inferred": True,
+                }
+            )
+
+    return edges
 
 
 def get_planet_resource_summary(planet):
@@ -283,11 +346,14 @@ def get_planet_graph_payload(planet):
             }
         )
 
+    if not edges:
+        edges.extend(inferred_transport_edges(provinces))
+
     return {
         "nodes": nodes,
         "edges": edges,
         "legend": {
-            "biome": BIOME_COLORS,
+            "biome": BIOME_LEGEND,
             "transport": TRANSPORT_COLORS,
             "buildings": BUILDING_COLORS,
         },
