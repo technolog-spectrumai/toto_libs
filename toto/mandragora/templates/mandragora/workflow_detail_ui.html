@@ -63,7 +63,7 @@
               :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
           <span class="inline-block h-3 w-3 rounded-sm border-2"
                 :class="darkMode ? 'border-accent-dark bg-accent-dark/10' : 'border-accent-light bg-accent-light/10'"></span> lambda</span>
-        <span class="flex items-center gap-1.5"><span class="inline-block h-3 w-3 rounded-sm border-2 border-amber-500 bg-amber-500/10"></span> human</span>
+        <span class="flex items-center gap-1.5" :class="darkMode ? 'text-caution-dark' : 'text-caution-light'"><span class="inline-block h-3 w-3 rounded-sm border-2" :class="darkMode ? 'border-caution-dark bg-caution-dark/10' : 'border-caution-light bg-caution-light/10'"></span> human</span>
         <span class="flex items-center gap-1.5"><span class="inline-block h-3 w-3 rotate-45 border-2 border-purple-500 bg-purple-500/10"></span> split</span>
         <span class="flex items-center gap-1.5"
               :class="darkMode ? 'text-success-dark' : 'text-success-light'">
@@ -110,7 +110,7 @@
                       <span class="rounded-full px-2 py-0.5 text-xs font-semibold"
                             :class="darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'">lambda</span>
                     {% elif node.node_type == "human" %}
-                      <span class="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-semibold text-amber-500">human</span>
+                      <span class="rounded-full px-2 py-0.5 text-xs font-semibold" :class="darkMode ? 'bg-caution-dark/15 text-caution-dark' : 'bg-caution-light/15 text-caution-light'">human</span>
                     {% elif node.node_type == "split" %}
                       <span class="rounded-full bg-purple-500/15 px-2 py-0.5 text-xs font-semibold text-purple-500">split</span>
                     {% elif node.node_type == "join" %}
@@ -193,7 +193,7 @@
                     <i class="fa-solid fa-circle-xmark"
                        :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
                   {% elif run.status == "paused" %}
-                    <i class="fa-solid fa-circle-pause text-amber-500"></i>
+                    <i class="fa-solid fa-circle-pause" :class="darkMode ? 'text-caution-dark' : 'text-caution-light'"></i>
                   {% elif run.status == "running" %}
                     <i class="fa-solid fa-spinner fa-spin"
                        :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
@@ -210,7 +210,7 @@
                     <span class="rounded-full px-2 py-0.5 text-xs font-semibold"
                           :class="darkMode ? 'bg-warn-dark/15 text-warn-dark' : 'bg-warn-light/15 text-warn-light'">{{ run.status }}</span>
                   {% elif run.status == 'paused' %}
-                    <span class="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-semibold text-amber-500">{{ run.status }}</span>
+                    <span class="rounded-full px-2 py-0.5 text-xs font-semibold" :class="darkMode ? 'bg-caution-dark/15 text-caution-dark' : 'bg-caution-light/15 text-caution-light'">{{ run.status }}</span>
                   {% elif run.status == 'running' %}
                     <span class="rounded-full px-2 py-0.5 text-xs font-semibold"
                           :class="darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'">{{ run.status }}</span>

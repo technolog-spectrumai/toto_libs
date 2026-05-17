@@ -318,7 +318,7 @@
     </template>
     <template x-if="!hasBucket">
       <p class="text-sm opacity-60 italic">
-        <i class="fa-solid fa-triangle-exclamation mr-1 text-yellow-500"></i>
+        <i class="fa-solid fa-triangle-exclamation mr-1" :class="darkMode ? 'text-caution-dark' : 'text-caution-light'"></i>
         No bucket connected — the file will be downloaded directly to your browser.
       </p>
     </template>

@@ -33,7 +33,7 @@
             {% elif run.status == 'failed' %}
               :class="darkMode ? 'bg-warn-dark/20 text-warn-dark' : 'bg-warn-light/20 text-warn-light'"
             {% elif run.status == 'paused' %}
-              :class="'bg-amber-500/20 text-amber-500'"
+              :class="darkMode ? 'bg-caution-dark/20 text-caution-dark' : 'bg-caution-light/20 text-caution-light'"
             {% elif run.status == 'running' %}
               :class="darkMode ? 'bg-accent-dark/20 text-accent-dark' : 'bg-accent-light/20 text-accent-light'"
             {% else %}
@@ -83,8 +83,8 @@
                 :class="darkMode ? 'border-warn-dark bg-warn-dark/20' : 'border-warn-light bg-warn-light/20'"></span>
           failed
         </span>
-        <span class="flex items-center gap-1.5 text-amber-500">
-          <span class="inline-block h-3 w-3 rounded-sm border-2 border-amber-500 bg-amber-500/20"></span>
+        <span class="flex items-center gap-1.5" :class="darkMode ? 'text-caution-dark' : 'text-caution-light'">
+          <span class="inline-block h-3 w-3 rounded-sm border-2" :class="darkMode ? 'border-caution-dark bg-caution-dark/20' : 'border-caution-light bg-caution-light/20'"></span>
           waiting
         </span>
         <span class="flex items-center gap-1.5"
@@ -108,11 +108,11 @@
     <!-- Pending human tasks -->
     {% if pending_tasks %}
       <section>
-        <h2 class="mb-3 flex items-center gap-2 text-lg font-semibold text-amber-500">
+        <h2 class="mb-3 flex items-center gap-2 text-lg font-semibold" :class="darkMode ? 'text-caution-dark' : 'text-caution-light'">
           <i class="fa-solid fa-user-clock"></i> {% trans "Awaiting human input" %}
         </h2>
         {% for task in pending_tasks %}
-          <div :class="darkMode ? 'border-amber-500/40 bg-bubble-bg-dark' : 'border-amber-400/50 bg-amber-50'"
+          <div :class="darkMode ? 'border-caution-dark/40 bg-bubble-bg-dark' : 'border-caution-light/40 bg-bubble-bg-light'"
                class="rounded-xl border p-5 shadow-sm space-y-4"
                x-data="{ formData: {} }">
             <p class="text-sm font-semibold">{% trans "Human Task" %} #{{ task.id }}</p>
@@ -148,7 +148,7 @@
               {% endfor %}
 
               <button type="submit"
-                      class="mt-2 rounded-lg bg-amber-500 px-5 py-2 text-sm font-semibold text-white hover:bg-amber-600 transition-colors">
+                      class="mt-2 rounded-lg px-5 py-2 text-sm font-semibold transition-colors" :class="darkMode ? 'bg-caution-dark text-primary-bg-dark hover:bg-caution-dark/80' : 'bg-caution-light text-white hover:bg-caution-light/80'">
                 <i class="fa-solid fa-paper-plane mr-2"></i> {% trans "Submit" %}
               </button>
             </form>
@@ -193,7 +193,7 @@
                     <i class="fa-solid fa-circle-xmark"
                        :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
                   {% elif nr.status == "waiting" %}
-                    <i class="fa-solid fa-user-clock text-amber-500"></i>
+                    <i class="fa-solid fa-user-clock" :class="darkMode ? 'text-caution-dark' : 'text-caution-light'"></i>
                   {% elif nr.status == "running" %}
                     <i class="fa-solid fa-spinner fa-spin"
                        :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
@@ -207,7 +207,7 @@
                     <span class="ml-2 rounded-full px-2 py-0.5 text-xs font-medium"
                           :class="darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'">lambda</span>
                   {% elif nr.node.node_type == 'human' %}
-                    <span class="ml-2 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-500">human</span>
+                    <span class="ml-2 rounded-full px-2 py-0.5 text-xs font-medium" :class="darkMode ? 'bg-caution-dark/15 text-caution-dark' : 'bg-caution-light/15 text-caution-light'">human</span>
                   {% elif nr.node.node_type == 'split' %}
                     <span class="ml-2 rounded-full px-2 py-0.5 text-xs font-medium"
                           :class="darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'">split</span>
@@ -235,7 +235,7 @@
                       {{ nr.status }}
                     </span>
                   {% elif nr.status == 'waiting' %}
-                    <span class="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-semibold text-amber-500">{{ nr.status }}</span>
+                    <span class="rounded-full px-2 py-0.5 text-xs font-semibold" :class="darkMode ? 'bg-caution-dark/15 text-caution-dark' : 'bg-caution-light/15 text-caution-light'">{{ nr.status }}</span>
                   {% elif nr.status == 'running' %}
                     <span class="rounded-full px-2 py-0.5 text-xs font-semibold"
                           :class="darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'">{{ nr.status }}</span>

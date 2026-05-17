@@ -35,7 +35,7 @@
 
     {% if steven_debug and steven_stub_reason %}
     <!-- DEBUG stub notice -->
-    <div class="px-3 py-2 text-xs font-mono bg-yellow-50 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 border-b border-yellow-300/40">
+    <div class="px-3 py-2 text-xs font-mono border-b" :class="darkMode ? 'bg-caution-dark/10 text-caution-dark border-caution-dark/30' : 'bg-caution-light/10 text-caution-light border-caution-light/30'">
       <i class="fa-solid fa-triangle-exclamation mr-1"></i>
       {{ steven_stub_reason }}
     </div>

@@ -399,7 +399,7 @@ function updateKernelStatus(state, detail) {
         icon.className = "fa-solid fa-circle text-red-500";
         text.textContent = "Stopped";
     } else if (state === "starting") {
-        icon.className = "fa-solid fa-circle-notch fa-spin text-yellow-400";
+        icon.className = "fa-solid fa-circle-notch fa-spin text-caution-dark";
         text.textContent = detail ? `Starting… ${detail}` : "Starting…";
     } else {
         icon.className = "fa-solid fa-circle text-gray-400";
