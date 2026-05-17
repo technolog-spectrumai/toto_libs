@@ -21,7 +21,7 @@ from toto.core.auth_cooldown import (
     login_retry_cooldown_seconds,
     start_login_retry_cooldown,
 )
-from .models import SSOAccessToken, SSOAuthorizationCode, SSOClient
+from .models import SSOAccessToken, SSOAuthorizationCode, SSORelyingParty
 from .services import build_id_token, get_issuer, get_jwks, get_subject_for_user, get_user_claims, verify_pkce
 
 
@@ -124,8 +124,8 @@ def authorize(request):
         return HttpResponseBadRequest("SSO/OIDC login requires scope=openid.")
 
     try:
-        client = SSOClient.objects.get(client_id=client_id, active=True)
-    except SSOClient.DoesNotExist:
+        client = SSORelyingParty.objects.get(client_id=client_id, active=True)
+    except SSORelyingParty.DoesNotExist:
         return HttpResponseBadRequest("Invalid client_id.")
 
     if not redirect_uri or not client.is_redirect_uri_allowed(redirect_uri):
@@ -136,7 +136,7 @@ def authorize(request):
     if not requested_scopes.issubset(allowed_scopes):
         return HttpResponseBadRequest("Requested scope is not allowed for this client.")
 
-    if client.client_type == SSOClient.PUBLIC and not code_challenge:
+    if client.client_type == SSORelyingParty.PUBLIC and not code_challenge:
         return HttpResponseBadRequest("Public clients must use PKCE.")
 
     if client.trusted or consent == "approved":
@@ -211,8 +211,8 @@ def token(request):
 
     client_id, client_secret = get_client_credentials(request)
     try:
-        client = SSOClient.objects.get(client_id=client_id, active=True)
-    except SSOClient.DoesNotExist:
+        client = SSORelyingParty.objects.get(client_id=client_id, active=True)
+    except SSORelyingParty.DoesNotExist:
         return JsonResponse({"error": "invalid_client"}, status=401)
 
     if not client.verify_client_secret(client_secret):

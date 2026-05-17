@@ -57,9 +57,11 @@ Minimum required scope: `openid`.
 
 ---
 
-## Onboarding a client
+## Onboarding a relying party
 
-### What the client must provide to you
+In OIDC terms, the external application is both a **client** and a **relying party**. In code, `SSORelyingParty` is a proxy model over the existing `SSOClient` registration table, so both names use the same stored credentials.
+
+### What the relying party must provide to you
 
 | Field | Description |
 |---|---|
@@ -67,38 +69,40 @@ Minimum required scope: `openid`.
 | **Redirect URI(s)** | The exact callback URL(s) their app will receive the authorization code at. Must match exactly — no wildcards, no trailing slash differences. |
 | **Client type** | `confidential` (server-side app with a secret) or `public` (SPA / mobile app — no secret, uses PKCE) |
 
-### Register the client (your side)
+### Register the relying party (your side)
 
 Run from the `portal/` directory (env vars must point at your deployment's database):
 
 ```bash
-# Confidential client — server-side app with a secret
-python manage.py create_sso_client \
+# Confidential relying party — server-side app with a secret
+python manage.py create_sso_relying_party \
   --name "Acme HR Portal" \
   --redirect-uri "https://acme.example.com/auth/callback"
 
 # Multiple redirect URIs
-python manage.py create_sso_client \
+python manage.py create_sso_relying_party \
   --name "Acme HR Portal" \
   --redirect-uri "https://acme.example.com/auth/callback" \
   --redirect-uri "https://staging.acme.example.com/auth/callback"
 
-# Public client — SPA or mobile app (no secret, must use PKCE)
-python manage.py create_sso_client \
+# Public relying party — SPA or mobile app (no secret, must use PKCE)
+python manage.py create_sso_relying_party \
   --name "Acme Mobile App" \
   --redirect-uri "https://acme.example.com/callback" \
   --public
 
-# Trusted client — skip consent screen (internal/first-party apps only)
-python manage.py create_sso_client \
+# Trusted relying party — skip consent screen (internal/first-party apps only)
+python manage.py create_sso_relying_party \
   --name "Internal Dashboard" \
   --redirect-uri "https://internal.example.com/callback" \
   --trusted
 ```
 
-The command prints a `client_id` and (for confidential clients) a `client_secret`. **The secret is shown once and hashed immediately — store it now.**
+The command prints a `client_id` and (for confidential relying parties) a `client_secret`. **The secret is shown once and hashed immediately — store it now.**
 
-### What you hand back to the client
+`create_sso_client` is still available as a compatibility alias for older scripts.
+
+### What you hand back to the relying party
 
 | Value | Source |
 |---|---|
@@ -159,7 +163,7 @@ python manage.py create_sso_signing_key
 
 - Authorization codes expire in **5 minutes** and are single-use.
 - Access tokens expire in **1 hour**.
-- Public clients **must** use PKCE — confidential clients may also use it.
-- The consent screen is shown unless the client is marked `trusted`.
+- Public relying parties **must** use PKCE — confidential relying parties may also use it.
+- The consent screen is shown unless the relying party is marked `trusted`.
 - Login attempts are rate-limited via `LOGIN_RETRY_COOLDOWN_SECONDS`.
 - `sub` claims use a stable UUID (`SSOSubject`) — the user's database PK is never exposed.

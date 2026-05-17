@@ -14,7 +14,7 @@ class SSOClient(models.Model):
     """
     A server/application that is allowed to use this Django project as SSO.
 
-    This is the OpenID Connect client / relying party record.
+    This is the OpenID Connect relying party / client registration record.
     """
 
     CONFIDENTIAL = "confidential"
@@ -207,3 +207,18 @@ class SSOAccessToken(models.Model):
 
     def __str__(self):
         return f"Access token for {self.user} / {self.client}"
+
+
+class SSORelyingParty(SSOClient):
+    """
+    First-class relying-party name for the OIDC client registration table.
+
+    This proxy avoids duplicating client credentials while exposing the domain
+    concept used by OIDC relying-party onboarding and provisioning.
+    """
+
+    class Meta:
+        proxy = True
+        ordering = ["name"]
+        verbose_name = "SSO relying party"
+        verbose_name_plural = "SSO relying parties"

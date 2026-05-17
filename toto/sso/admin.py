@@ -1,10 +1,10 @@
 from django.contrib import admin
 
-from .models import SSOAccessToken, SSOAuthorizationCode, SSOClient, SSOSigningKey, SSOSubject
+from .models import SSOAccessToken, SSOAuthorizationCode, SSORelyingParty, SSOSigningKey, SSOSubject
 
 
-@admin.register(SSOClient)
-class SSOClientAdmin(admin.ModelAdmin):
+@admin.register(SSORelyingParty)
+class SSORelyingPartyAdmin(admin.ModelAdmin):
     list_display = ["name", "client_id", "client_type", "active", "trusted", "created_at"]
     list_filter = ["client_type", "active", "trusted"]
     search_fields = ["name", "client_id"]

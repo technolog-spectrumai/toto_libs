@@ -8,7 +8,7 @@ from toto.sso.provisioning import (
 
 
 class Command(BaseCommand):
-    help = "Create an SSO/OIDC client/relying party that can use this server for login."
+    help = "Create an SSO/OIDC relying party that can use this server for login."
 
     def add_arguments(self, parser):
         add_relying_party_arguments(parser)

@@ -28,7 +28,8 @@ from toto.gervazy.models import (
     VaultMasterKey,
     WrappedDataKey,
 )
-from toto.sso.models import SSOAuthorizationCode, SSOClient, SSOSigningKey, SSOSubject
+from toto.sso.models import SSOAuthorizationCode, SSOClient, SSORelyingParty, SSOSigningKey, SSOSubject
+from toto.sso.provisioning import RelyingPartyProvisioningError, create_relying_party
 from toto.sso.services import (
     build_id_token,
     get_issuer,
@@ -237,7 +238,7 @@ class _SSOServiceBase(TestCase):
         self.signing_key, self.session, self.wrapped_key = _setup_sso_signing_key(
             self.admin, self.private_pem, self.public_pem
         )
-        self.client_obj = SSOClient.objects.create(
+        self.client_obj = SSORelyingParty.objects.create(
             client_id="relying-party-001",
             name="Test App",
             redirect_uris="https://app.example.com/callback/",
@@ -603,13 +604,13 @@ class TestSSOViews(_SSOServiceBase):
 
 
 # ---------------------------------------------------------------------------
-# 5. SSOClient model tests
+# 5. SSORelyingParty model and provisioning tests
 # ---------------------------------------------------------------------------
 
-class TestSSOClientModel(TestCase):
+class TestSSORelyingPartyModel(TestCase):
 
     def setUp(self):
-        self.client_obj = SSOClient(
+        self.client_obj = SSORelyingParty(
             client_id="test-123",
             name="Test",
             redirect_uris="https://a.example.com/cb/\nhttps://b.example.com/cb/",
@@ -633,6 +634,35 @@ class TestSSOClientModel(TestCase):
         self.assertFalse(self.client_obj.verify_client_secret("wrong"))
 
     def test_public_client_no_secret_needed(self):
-        self.client_obj.client_type = SSOClient.PUBLIC
+        self.client_obj.client_type = SSORelyingParty.PUBLIC
         self.assertTrue(self.client_obj.verify_client_secret(None))
         self.assertTrue(self.client_obj.verify_client_secret(""))
+
+    def test_relying_party_uses_existing_client_table(self):
+        self.assertTrue(issubclass(SSORelyingParty, SSOClient))
+
+    def test_create_relying_party_provisions_confidential_credentials(self):
+        provisioned = create_relying_party(
+            name="Provisioned App",
+            client_id="provisioned-rp",
+            redirect_uris=["https://app.example.com/callback/"],
+            raw_secret="secret-for-test",
+        )
+        relying_party = provisioned.relying_party
+        self.assertEqual(relying_party.client_id, "provisioned-rp")
+        self.assertEqual(provisioned.client_secret, "secret-for-test")
+        self.assertTrue(relying_party.verify_client_secret("secret-for-test"))
+
+    def test_create_relying_party_rejects_existing_client_id(self):
+        create_relying_party(
+            name="Provisioned App",
+            client_id="duplicate-rp",
+            redirect_uris=["https://app.example.com/callback/"],
+            raw_secret="secret-for-test",
+        )
+        with self.assertRaises(RelyingPartyProvisioningError):
+            create_relying_party(
+                name="Duplicate App",
+                client_id="duplicate-rp",
+                redirect_uris=["https://app.example.com/callback/"],
+            )
