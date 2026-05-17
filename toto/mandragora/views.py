@@ -10,6 +10,7 @@ from toto.ui import PageProcessor
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
+from toto.celery_utils import celery_available
 from .forms import NotebookForm
 from .models import Cell, ComputeKernel, KernelDependency, LambdaFunction, Notebook
 from .tasks import execute_cell_task
@@ -152,16 +153,43 @@ def ensure_lambda_kernel(lambda_fn: LambdaFunction):
 
 @api_view(["POST"])
 def run_cell(request, cell_id):
-    cell = Cell.objects.get(id=cell_id)
+    if not celery_available():
+        return Response(
+            {
+                "error": (
+                    "No Celery workers are running. "
+                    "Start the kernel server AND a Celery worker before executing cells."
+                ),
+                "celery_unavailable": True,
+            },
+            status=503,
+        )
 
+    cell = Cell.objects.get(id=cell_id)
     if "content" in request.data:
         cell.content = request.data["content"]
     cell.save()
 
-    execute_cell_task(cell.id)
-    cell.refresh_from_db()
+    result = execute_cell_task.delay(cell.id)
+    return Response({"status": "queued", "task_id": result.id})
 
+
+@api_view(["GET"])
+def cell_result(request, cell_id):
+    """Poll this endpoint after run_cell returns task_id."""
+    from celery.result import AsyncResult
+
+    task_id = request.GET.get("task_id", "")
+    if not task_id:
+        return Response({"error": "task_id required"}, status=400)
+
+    ar = AsyncResult(task_id)
+    if ar.state in ("PENDING", "STARTED", "RECEIVED", "RETRY"):
+        return Response({"status": "running"})
+
+    cell = get_object_or_404(Cell, id=cell_id)
     return Response({
+        "status": "done" if ar.state == "SUCCESS" else "failed",
         "stdout": cell.stdout,
         "stderr": cell.stderr,
         "execution_count": cell.execution_count,

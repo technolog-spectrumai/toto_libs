@@ -2,6 +2,7 @@ from django.urls import path
 from .views import (
     NotebookListView, NotebookDetailView,
     notebook_create, notebook_update, notebook_delete,
+    cell_result,
     run_cell,
     start_kernel, stop_kernel, check_kernel, kernel_dependencies,
     create_cell, delete_cell, promote_cell_to_lambda,
@@ -15,6 +16,7 @@ urlpatterns = [
 
     # Cell and kernel API endpoints (ID-based, called from JS)
     path("cells/<int:cell_id>/run/", run_cell, name="run_cell"),
+    path("cells/<int:cell_id>/result/", cell_result, name="cell_result"),
     path("cells/<int:cell_id>/delete/", delete_cell, name="delete_cell"),
     path("cell/<int:cell_id>/promote/", promote_cell_to_lambda, name="promote_cell"),
     path("kernel/<int:notebook_id>/start/", start_kernel, name="start_kernel"),

@@ -24,7 +24,10 @@
   :class="darkMode
     ? 'bg-primary-bg-dark text-text-main-dark'
     : 'bg-primary-bg-light text-text-main-light'"
-  class="min-h-screen px-4 py-10 transition-colors duration-300">
+  class="min-h-screen px-4 py-10 transition-colors duration-300"
+  data-url-compile="{% url 'texlab:compile_latex' file_id=file.id %}"
+  data-url-history="{% url 'texlab:compile_history' file_id=file.id %}"
+  data-url-status-base="{% url 'texlab:compile_status' run_id=0 %}">
 
   <div class="max-w-6xl mx-auto space-y-10">
 
@@ -84,8 +87,8 @@
               {% if file.file_type == "tex" %}
               <button
                 id="compile-file"
-                class="px-3 py-1 rounded font-semibold text-sm flex items-center gap-2
-                       bg-blue-600 text-white hover:bg-blue-700 transition">
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="px-3 py-1 rounded font-semibold text-sm flex items-center gap-2 hover:opacity-90 transition">
                 <i class="fa-solid fa-gears"></i>
                 <span>Compile</span>
               </button>

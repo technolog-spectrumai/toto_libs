@@ -8,7 +8,9 @@ from django.shortcuts import get_object_or_404
 from toto.ui import PageProcessor
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from toto.texlab.models import LatexFile
+from toto.celery_utils import celery_available
+from toto.texlab.tasks import compile_latex_task
+from toto.texlab.models import CompileRun, LatexFile
 from toto.vault.models import VaultFile, Bucket
 from toto.texlab.compile import compile_tex_to_pdf
 from django.utils.text import slugify
@@ -100,6 +102,11 @@ class FileDisplayView(LoginRequiredMixin, DetailView):
         context["workspace"] = latex_file.workspace
         context["content"] = content
 
+        context["compile_runs"] = (
+            CompileRun.objects
+            .filter(latex_file=latex_file)
+            .order_by("-started_at")[:10]
+        )
         return PageProcessor().decorate(context, self.request)
 
 
@@ -133,26 +140,69 @@ def save_file(request, file_id):
 
 @csrf_exempt
 def compile_latex(request, file_id):
+    if not celery_available():
+        return JsonResponse(
+            {
+                "error": (
+                    "No Celery workers are running. "
+                    "Start a worker before compiling (see CELERY.md)."
+                ),
+                "celery_unavailable": True,
+            },
+            status=503,
+        )
+
     try:
-        lf = LatexFile.objects.select_related("vault_file", "workspace__bucket").get(id=file_id)
+        lf = LatexFile.objects.select_related(
+            "vault_file", "workspace__bucket"
+        ).get(id=file_id)
     except LatexFile.DoesNotExist:
         return JsonResponse({"error": "File not found"}, status=404)
 
+    run = CompileRun.objects.create(
+        workspace=lf.workspace,
+        latex_file=lf,
+        status=CompileRun.PENDING,
+    )
+    compile_latex_task.delay(file_id, run.id)
+
+    return JsonResponse({"status": "queued", "run_id": run.id})
+
+
+def compile_status(request, run_id):
     try:
-        pdf_vault, log = compile_tex_to_pdf(lf.vault_file, lf.workspace)
-    except RuntimeError as e:
-        return JsonResponse({
-            "error": "Compilation failed",
-            "log": str(e)
-        }, status=400)
-    except Exception as e:
-        # Unexpected error
-        return JsonResponse({"error": str(e)}, status=500)
+        run = CompileRun.objects.get(id=run_id)
+    except CompileRun.DoesNotExist:
+        return JsonResponse({"error": "Not found"}, status=404)
 
     return JsonResponse({
-        "status": "ok",
-        "pdf_url": pdf_vault.get_public_url(),
-        "log": log
+        "status": run.status,
+        "log": run.log,
+        "pdf_url": run.pdf_url,
+        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+    })
+
+
+@login_required
+def compile_history_json(request, file_id):
+    lf = get_object_or_404(
+        LatexFile,
+        id=file_id,
+        workspace__bucket__owner=request.user,
+    )
+    runs = CompileRun.objects.filter(latex_file=lf).order_by("-started_at")[:20]
+    return JsonResponse({
+        "runs": [
+            {
+                "id": r.id,
+                "status": r.status,
+                "started_at": r.started_at.isoformat(),
+                "finished_at": r.finished_at.isoformat() if r.finished_at else None,
+                "pdf_url": r.pdf_url,
+                "log_snippet": r.log[:300] if r.log else "",
+            }
+            for r in runs
+        ]
     })
 
 
