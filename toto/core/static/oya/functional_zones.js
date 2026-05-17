@@ -181,7 +181,11 @@
   }
 
   function buttonClass() {
-    return "inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-800 shadow-sm transition hover:bg-slate-100";
+    const base = "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-semibold shadow-sm transition hover:opacity-85";
+    const isDark = localStorage.getItem("darkMode") === "true";
+    return isDark
+      ? `${base} border-accent-1 bg-bubble-bg-dark text-text-main-dark`
+      : `${base} border-accent-2 bg-bubble-bg-light text-text-main-light`;
   }
 
   function createActionButton(label, iconClass, onClick) {
