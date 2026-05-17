@@ -5,6 +5,7 @@ except ImportError:  # Allows app import without Celery installed.
     group = None
 
 from .models import Planet
+from .planet import generate_planet_map
 from .services import increment_global_tick, run_planet_tick
 
 
@@ -23,6 +24,13 @@ if shared_task:
             return {"tick": tick_number, "planets": 0}
         group(run_planet_tick_task.s(planet_id, tick_number) for planet_id in planet_ids).apply_async()
         return {"tick": tick_number, "planets": len(planet_ids)}
+
+
+    @shared_task
+    def generate_planet_map_task(planet_id: int):
+        planet = Planet.objects.get(id=planet_id)
+        generate_planet_map(planet)
+        return {"planet_id": planet_id, "status": "generated"}
 else:
     # TODO: Install Celery and configure beat for production ticks.
     pass

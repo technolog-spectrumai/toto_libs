@@ -103,6 +103,7 @@ class Planet(models.Model):
     axial_tilt = models.FloatField(default=23.5)
     coriolis_factor = models.FloatField(default=1.0)
     solar_constant = models.FloatField(default=1.0)
+    map_image = models.ImageField(upload_to="game/planet_maps/", null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

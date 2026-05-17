@@ -1,5 +1,7 @@
 from django.contrib import admin
+from django.contrib import messages
 
+from .planet import generate_planet_map
 from .models import (
     Building,
     BuildingType,
@@ -34,10 +36,25 @@ class EmpireAdmin(admin.ModelAdmin):
 
 @admin.register(Planet)
 class PlanetAdmin(admin.ModelAdmin):
-    list_display = ("name", "owner", "primary_type", "secondary_trait", "size", "province_count", "habitability_display")
+    list_display = ("name", "owner", "primary_type", "secondary_trait", "size", "province_count", "habitability_display", "has_map")
     search_fields = ("name", "owner__name")
     readonly_fields = ("primary_type", "secondary_trait", "size", "habitability_display")
+    actions = ["generate_maps"]
     inlines = [ProvinceInline]
+
+    @admin.action(description="Generate planet map and provinces")
+    def generate_maps(self, request, queryset):
+        generated = 0
+        for planet in queryset:
+            generate_planet_map(planet)
+            generated += 1
+        self.message_user(request, f"Generated maps for {generated} planet(s).", messages.SUCCESS)
+
+    def has_map(self, obj):
+        return bool(obj.map_image)
+
+    has_map.boolean = True
+    has_map.short_description = "Map"
 
 
 class ProvinceDepositInline(admin.TabularInline):

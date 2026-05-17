@@ -7,6 +7,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from toto.game.engine import load_engine_config
+from toto.game.planet import generate_planet_map
 from toto.game.models import (
     Building,
     BuildingStatus,
@@ -162,22 +163,32 @@ class Command(BaseCommand):
             },
         )
 
-        for province_row in demo.get("provinces", []):
-            province, _ = Province.objects.update_or_create(
-                planet=planet,
-                name=province_row["name"],
-                defaults={
-                    "width": province_row.get("width", 1),
-                    "height": province_row.get("height", 1),
-                    "avg_elev": province_row.get("avg_elev", 0.0),
-                    "avg_temp": province_row.get("avg_temp", 0.5),
-                    "avg_rain": province_row.get("avg_rain", 0.5),
-                    "wind_speed": province_row.get("wind_speed", 0.0),
-                    "cell_count": province_row.get("cell_count", 10),
-                    "x": province_row.get("x", 0),
-                    "y": province_row.get("y", 0),
-                },
-            )
+        if planet_row.get("generate_map", True):
+            generate_planet_map(planet)
+
+        generated_provinces = list(planet.provinces.order_by("id"))
+        for index, province_row in enumerate(demo.get("provinces", [])):
+            if index < len(generated_provinces):
+                province = generated_provinces[index]
+                if province.name != province_row["name"]:
+                    province.name = province_row["name"]
+                    province.save(update_fields=["name"])
+            else:
+                province, _ = Province.objects.update_or_create(
+                    planet=planet,
+                    name=province_row["name"],
+                    defaults={
+                        "width": province_row.get("width", 1),
+                        "height": province_row.get("height", 1),
+                        "avg_elev": province_row.get("avg_elev", 0.0),
+                        "avg_temp": province_row.get("avg_temp", 0.5),
+                        "avg_rain": province_row.get("avg_rain", 0.5),
+                        "wind_speed": province_row.get("wind_speed", 0.0),
+                        "cell_count": province_row.get("cell_count", 10),
+                        "x": province_row.get("x", 0),
+                        "y": province_row.get("y", 0),
+                    },
+                )
             self.seed_demo_deposits(province, province_row.get("deposits", []), deposits)
             self.seed_demo_buildings(province, province_row.get("buildings", []), buildings)
             self.seed_demo_inventory(province, province_row.get("inventory", {}), items)

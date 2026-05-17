@@ -10,6 +10,12 @@
   #planet-graph {
     min-height: 560px;
   }
+
+  #planet-map-layer {
+    display: block;
+    transform-origin: 0 0;
+    will-change: transform, width, height;
+  }
 </style>
 {% endblock %}
 
@@ -21,16 +27,27 @@
   class="mb-4 rounded-lg border p-5 shadow-sm">
   <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
     <div>
-      <p class="text-xs font-semibold uppercase tracking-wide opacity-70">{% trans "Executive Overview" %}</p>
+      <p class="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-70">
+        <i class="fa-solid fa-chart-line"></i>
+        {% trans "Executive Overview" %}
+      </p>
       <h2 class="mt-2 text-2xl font-bold">{{ planet.name }}</h2>
       <p class="mt-2 max-w-3xl text-sm opacity-75">
-        {{ planet.primary_type }} · {{ planet.secondary_trait }} ·
+        <i class="fa-solid fa-globe"></i>
+        {{ planet.primary_type }} ·
+        <i class="fa-solid fa-dna"></i>
+        {{ planet.secondary_trait }} ·
+        <i class="fa-solid fa-expand"></i>
         {% trans "Size" %} {{ planet.size }} ·
+        <i class="fa-solid fa-seedling"></i>
         {% trans "Habitability" %} {{ planet.habitability|floatformat:2 }}
       </p>
     </div>
     <div class="text-sm lg:text-right">
-      <p class="font-semibold">{% trans "Energy" %}: {{ executive_summary.energy_balance_label }}</p>
+      <p class="inline-flex items-center gap-2 font-semibold lg:justify-end">
+        <i class="fa-solid fa-bolt"></i>
+        {% trans "Energy" %}: {{ executive_summary.energy_balance_label }}
+      </p>
       <p class="mt-1 opacity-70">
         {{ executive_summary.energy_production_per_day|floatformat:2 }} {% trans "generated" %} /
         {{ executive_summary.energy_consumption_per_day|floatformat:2 }} {% trans "used per day" %}
@@ -42,170 +59,110 @@
     <div
       :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
       class="rounded-lg border px-4 py-3">
-      <dt class="text-xs font-semibold uppercase tracking-wide opacity-65">{% trans "Money" %}</dt>
+      <dt class="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-65">
+        <i class="fa-solid fa-coins"></i>
+        {% trans "Money" %}
+      </dt>
       <dd class="mt-2 text-2xl font-bold">{{ executive_summary.credits|floatformat:2 }}</dd>
     </div>
     <div
       :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
       class="rounded-lg border px-4 py-3">
-      <dt class="text-xs font-semibold uppercase tracking-wide opacity-65">{% trans "Population" %}</dt>
+      <dt class="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-65">
+        <i class="fa-solid fa-users"></i>
+        {% trans "Population" %}
+      </dt>
       <dd class="mt-2 text-2xl font-bold">{{ executive_summary.population }}</dd>
     </div>
     <div
       :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
       class="rounded-lg border px-4 py-3">
-      <dt class="text-xs font-semibold uppercase tracking-wide opacity-65">{% trans "Satisfaction" %}</dt>
+      <dt class="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-65">
+        <i class="fa-solid fa-face-smile"></i>
+        {% trans "Satisfaction" %}
+      </dt>
       <dd class="mt-2 text-2xl font-bold">{{ executive_summary.satisfaction_percent|floatformat:1 }}%</dd>
     </div>
     <div
       :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
       class="rounded-lg border px-4 py-3">
-      <dt class="text-xs font-semibold uppercase tracking-wide opacity-65">{% trans "Energy" %}</dt>
+      <dt class="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-65">
+        <i class="fa-solid fa-bolt"></i>
+        {% trans "Energy" %}
+      </dt>
       <dd class="mt-2 text-2xl font-bold">{{ executive_summary.energy_stored|floatformat:0 }}</dd>
       <dd class="mt-1 text-sm opacity-70">{{ executive_summary.energy_net_per_day|floatformat:2 }} / {% trans "day net" %}</dd>
     </div>
   </dl>
 </section>
 
-<section class="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
-  <aside class="space-y-4">
-    <div
-      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-      class="rounded-lg border p-5 shadow-sm">
-      <p class="text-xs font-semibold uppercase tracking-wide opacity-70">{% trans "Planet" %}</p>
-      <h2 class="mt-2 text-2xl font-bold">{{ planet.name }}</h2>
-      <dl class="mt-5 grid grid-cols-2 gap-3 text-sm">
-        <div><dt class="opacity-65">{% trans "Type" %}</dt><dd class="font-semibold">{{ planet.primary_type }}</dd></div>
-        <div><dt class="opacity-65">{% trans "Trait" %}</dt><dd class="font-semibold">{{ planet.secondary_trait }}</dd></div>
-        <div><dt class="opacity-65">{% trans "Size" %}</dt><dd class="font-semibold">{{ planet.size }}</dd></div>
-        <div><dt class="opacity-65">{% trans "Habitability" %}</dt><dd class="font-semibold">{{ planet.habitability|floatformat:2 }}</dd></div>
-        <div><dt class="opacity-65">{% trans "Provinces" %}</dt><dd class="font-semibold">{{ planet.province_count }} / {{ planet.max_provinces }}</dd></div>
-      </dl>
-    </div>
+<section x-data="{ planetTab: 'map' }" class="space-y-4">
+  <nav class="flex flex-wrap gap-2">
+    <button type="button" @click="planetTab = 'map'" :class="planetTab === 'map' ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light') : (darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light')" class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm">
+      <i class="fa-solid fa-map"></i>{% trans "Map" %}
+    </button>
+    <button type="button" @click="planetTab = 'economy'" :class="planetTab === 'economy' ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light') : (darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light')" class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm">
+      <i class="fa-solid fa-coins"></i>{% trans "Economy" %}
+    </button>
+    <button type="button" @click="planetTab = 'buildings'" :class="planetTab === 'buildings' ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light') : (darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light')" class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm">
+      <i class="fa-solid fa-industry"></i>{% trans "Buildings" %}
+    </button>
+    <button type="button" @click="planetTab = 'climate'" :class="planetTab === 'climate' ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light') : (darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light')" class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm">
+      <i class="fa-solid fa-temperature-half"></i>{% trans "Climate" %}
+    </button>
+  </nav>
 
-    <details
-      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-      class="rounded-lg border p-5 shadow-sm">
-      <summary class="cursor-pointer list-none">
-        <span class="inline-flex items-center gap-2 font-bold">
-          <i class="fa-solid fa-temperature-half"></i>
-          {% trans "Climate & Geophysics" %}
-        </span>
-        <p class="mt-1 text-sm opacity-70">{% trans "Simulation inputs and province climate ranges." %}</p>
-      </summary>
-
-      <div class="mt-5 space-y-5 text-sm">
-        <section>
-          <h3 class="text-xs font-semibold uppercase tracking-wide opacity-70">{% trans "Geophysics" %}</h3>
-          <dl class="mt-3 grid grid-cols-2 gap-3">
-            <div><dt class="opacity-65">{% trans "Gravity" %}</dt><dd class="font-semibold">{{ planet.gravity|floatformat:2 }}</dd></div>
-            <div><dt class="opacity-65">{% trans "Radiation" %}</dt><dd class="font-semibold">{{ planet.radiation|floatformat:2 }}</dd></div>
-            <div><dt class="opacity-65">{% trans "Sea level" %}</dt><dd class="font-semibold">{{ planet.sea_level|floatformat:2 }}</dd></div>
-            <div><dt class="opacity-65">{% trans "Solar" %}</dt><dd class="font-semibold">{{ planet.solar_constant|floatformat:2 }}</dd></div>
-            <div><dt class="opacity-65">{% trans "Axial tilt" %}</dt><dd class="font-semibold">{{ planet.axial_tilt|floatformat:1 }}°</dd></div>
-            <div><dt class="opacity-65">{% trans "Coriolis" %}</dt><dd class="font-semibold">{{ planet.coriolis_factor|floatformat:2 }}</dd></div>
-          </dl>
-        </section>
-
-        <section>
-          <h3 class="text-xs font-semibold uppercase tracking-wide opacity-70">{% trans "Generation" %}</h3>
-          <dl class="mt-3 grid grid-cols-2 gap-3">
-            <div><dt class="opacity-65">{% trans "Canvas" %}</dt><dd class="font-semibold">{{ planet.map_size }} px</dd></div>
-            <div><dt class="opacity-65">{% trans "Radius" %}</dt><dd class="font-semibold">{{ planet.radius }} px</dd></div>
-            <div><dt class="opacity-65">{% trans "Grid" %}</dt><dd class="font-semibold">{{ planet.grid_size }}</dd></div>
-            <div><dt class="opacity-65">{% trans "Seed" %}</dt><dd class="font-semibold">{{ planet.climate_seed|default:"random" }}</dd></div>
-            <div><dt class="opacity-65">{% trans "Perlin scale" %}</dt><dd class="font-semibold">{{ planet.perlin_scale|floatformat:4 }}</dd></div>
-            <div><dt class="opacity-65">{% trans "Octaves" %}</dt><dd class="font-semibold">{{ planet.perlin_octaves }}</dd></div>
-            <div><dt class="opacity-65">{% trans "Wind passes" %}</dt><dd class="font-semibold">{{ planet.wind_iterations }}</dd></div>
-          </dl>
-        </section>
-
-        <section>
-          <h3 class="text-xs font-semibold uppercase tracking-wide opacity-70">{% trans "Province Ranges" %}</h3>
-          <div class="mt-3 overflow-x-auto">
-            <table class="w-full min-w-[320px] text-left">
-              <thead class="text-xs uppercase opacity-70">
-                <tr><th class="py-2">{% trans "Metric" %}</th><th>{% trans "Avg" %}</th><th>{% trans "Min" %}</th><th>{% trans "Max" %}</th></tr>
-              </thead>
-              <tbody>
-                <tr class="border-t" :class="darkMode ? 'border-accent-1' : 'border-accent-2'"><td class="py-2 font-semibold">{% trans "Elevation" %}</td><td>{{ climate_summary.elevation.avg }}</td><td>{{ climate_summary.elevation.min }}</td><td>{{ climate_summary.elevation.max }}</td></tr>
-                <tr class="border-t" :class="darkMode ? 'border-accent-1' : 'border-accent-2'"><td class="py-2 font-semibold">{% trans "Temperature" %}</td><td>{{ climate_summary.temperature.avg }}</td><td>{{ climate_summary.temperature.min }}</td><td>{{ climate_summary.temperature.max }}</td></tr>
-                <tr class="border-t" :class="darkMode ? 'border-accent-1' : 'border-accent-2'"><td class="py-2 font-semibold">{% trans "Rainfall" %}</td><td>{{ climate_summary.rainfall.avg }}</td><td>{{ climate_summary.rainfall.min }}</td><td>{{ climate_summary.rainfall.max }}</td></tr>
-                <tr class="border-t" :class="darkMode ? 'border-accent-1' : 'border-accent-2'"><td class="py-2 font-semibold">{% trans "Wind" %}</td><td>{{ climate_summary.wind.avg }}</td><td>{{ climate_summary.wind.min }}</td><td>{{ climate_summary.wind.max }}</td></tr>
-                <tr class="border-t" :class="darkMode ? 'border-accent-1' : 'border-accent-2'"><td class="py-2 font-semibold">{% trans "Habitability" %}</td><td>{{ climate_summary.habitability.avg }}</td><td>{{ climate_summary.habitability.min }}</td><td>{{ climate_summary.habitability.max }}</td></tr>
-                <tr class="border-t" :class="darkMode ? 'border-accent-1' : 'border-accent-2'"><td class="py-2 font-semibold">{% trans "Infrastructure" %}</td><td>{{ climate_summary.infrastructure.avg }}</td><td>{{ climate_summary.infrastructure.min }}</td><td>{{ climate_summary.infrastructure.max }}</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <section>
-          <h3 class="text-xs font-semibold uppercase tracking-wide opacity-70">{% trans "Biome Mix" %}</h3>
-          <div class="mt-3 flex flex-wrap gap-2">
-            {% for biome, count in climate_summary.biomes %}
-              <span class="rounded-md border px-2 py-1 text-xs font-semibold">{{ biome }} · {{ count }}</span>
-            {% empty %}
-              <span class="text-sm opacity-70">{% trans "No biome data." %}</span>
-            {% endfor %}
-          </div>
-        </section>
+  <section x-show="planetTab === 'map'" class="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
+    <aside class="space-y-4">
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border p-5 shadow-sm">
+        <p class="text-xs font-semibold uppercase tracking-wide opacity-70">{% trans "Planet" %}</p>
+        <h2 class="mt-2 text-2xl font-bold">{{ planet.name }}</h2>
+        <dl class="mt-5 grid grid-cols-2 gap-3 text-sm">
+          <div><dt class="opacity-65">{% trans "Type" %}</dt><dd class="font-semibold">{{ planet.primary_type }}</dd></div>
+          <div><dt class="opacity-65">{% trans "Trait" %}</dt><dd class="font-semibold">{{ planet.secondary_trait }}</dd></div>
+          <div><dt class="opacity-65">{% trans "Size" %}</dt><dd class="font-semibold">{{ planet.size }}</dd></div>
+          <div><dt class="opacity-65">{% trans "Habitability" %}</dt><dd class="font-semibold">{{ planet.habitability|floatformat:2 }}</dd></div>
+          <div><dt class="opacity-65">{% trans "Provinces" %}</dt><dd class="font-semibold">{{ planet.province_count }} / {{ planet.max_provinces }}</dd></div>
+        </dl>
       </div>
-    </details>
-
-    <div class="flex flex-wrap gap-2">
       <form method="post" action="{% url 'game:player_tick_planet' planet.id %}">
         {% csrf_token %}
-        <button
-          type="submit"
-          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-          class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm">
-          <i class="fa-solid fa-forward-step"></i>
-          {% trans "Tick" %}
+        <button type="submit" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm">
+          <i class="fa-solid fa-forward-step"></i>{% trans "Tick" %}
         </button>
       </form>
-    </div>
-  </aside>
+    </aside>
 
-  <section class="space-y-4">
-    <div
-      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-      class="rounded-lg border shadow-sm">
-      <div class="flex flex-col gap-3 border-b px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
-           :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border shadow-sm">
+      <div class="flex flex-col gap-3 border-b px-5 py-4 xl:flex-row xl:items-center xl:justify-between" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
         <div>
           <h2 class="text-xl font-bold">{% trans "Functional Planet Map" %}</h2>
           <p class="mt-1 text-sm opacity-70">{% trans "Click a province to expand or collapse its buildings." %}</p>
         </div>
         <div class="flex flex-wrap gap-2 text-xs font-semibold">
-          <label class="inline-flex items-center gap-2">
-            {% trans "Color" %}
-            <select id="planet-graph-color-mode" class="rounded-md border bg-transparent px-2 py-1">
-              <option value="biome">{% trans "Biome" %}</option>
-              <option value="habitability">{% trans "Habitability" %}</option>
-              <option value="infrastructure">{% trans "Infrastructure" %}</option>
-              <option value="population">{% trans "Population" %}</option>
-              <option value="resources">{% trans "Resources" %}</option>
-              <option value="production">{% trans "Production" %}</option>
-            </select>
-          </label>
-          <span class="inline-flex items-center gap-2"><span class="h-3 w-3 rounded-sm bg-[#facc15]"></span>{% trans "Energy/Grid" %}</span>
-          <span class="inline-flex items-center gap-2"><span class="h-3 w-3 rounded-sm bg-[#38bdf8]"></span>{% trans "Pipeline" %}</span>
-          <span class="inline-flex items-center gap-2"><span class="h-3 w-3 rounded-sm bg-[#f8fafc]"></span>{% trans "Rail" %}</span>
+          <span class="inline-flex items-center gap-2"><span class="h-3 w-3 rounded-full bg-[#5f7fc9]"></span>{% trans "Provinces" %}</span>
+          <span class="inline-flex items-center gap-2"><span class="h-3 w-3 rounded-full bg-[#5fa38c]"></span>{% trans "Buildings" %}</span>
+          <span class="inline-flex items-center gap-2"><span class="h-3 w-3 rounded-sm bg-[#facc15]"></span>{% trans "Grid" %}</span>
         </div>
       </div>
 
       <div class="grid lg:grid-cols-[minmax(0,1fr)_280px]">
-        <div id="planet-graph" class="h-[560px] w-full"></div>
-        <aside id="planet-graph-details"
-               :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
-               class="border-t p-4 text-sm lg:border-l lg:border-t-0">
+        <div id="planet-map-shell" class="relative h-[560px] w-full overflow-hidden">
+          {% if planet.map_image %}
+            <img id="planet-map-layer" src="{{ planet.map_image.url }}" alt="" class="pointer-events-none absolute left-0 top-0 z-0 max-w-none">
+          {% endif %}
+          <div id="planet-graph" data-map-size="{{ planet.map_size }}" class="absolute inset-0 z-10"></div>
+        </div>
+        <aside id="planet-graph-details" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="border-t p-4 text-sm lg:border-l lg:border-t-0">
           <p class="text-xs font-semibold uppercase tracking-wide opacity-65">{% trans "Selection" %}</p>
           <h3 class="mt-2 text-lg font-bold">{% trans "No province selected" %}</h3>
           <p class="mt-2 opacity-70">{% trans "Select a province node to inspect deposits and reveal buildings." %}</p>
         </aside>
       </div>
     </div>
+  </section>
 
+  <section x-show="planetTab === 'economy'" x-cloak class="space-y-4">
     <div class="grid gap-4 xl:grid-cols-2">
       <div
         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
@@ -253,7 +210,9 @@
         </div>
       </div>
     </div>
+  </section>
 
+  <section x-show="planetTab === 'buildings'" x-cloak>
     <div
       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
       class="rounded-lg border p-5 shadow-sm">
@@ -294,6 +253,52 @@
       </div>
     </div>
   </section>
+
+  <section x-show="planetTab === 'climate'" x-cloak class="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border p-5 shadow-sm">
+      <h2 class="text-lg font-bold">{% trans "Geophysics" %}</h2>
+      <dl class="mt-4 grid grid-cols-2 gap-3 text-sm">
+        <div><dt class="opacity-65">{% trans "Gravity" %}</dt><dd class="font-semibold">{{ planet.gravity|floatformat:2 }}</dd></div>
+        <div><dt class="opacity-65">{% trans "Radiation" %}</dt><dd class="font-semibold">{{ planet.radiation|floatformat:2 }}</dd></div>
+        <div><dt class="opacity-65">{% trans "Sea level" %}</dt><dd class="font-semibold">{{ planet.sea_level|floatformat:2 }}</dd></div>
+        <div><dt class="opacity-65">{% trans "Solar" %}</dt><dd class="font-semibold">{{ planet.solar_constant|floatformat:2 }}</dd></div>
+        <div><dt class="opacity-65">{% trans "Axial tilt" %}</dt><dd class="font-semibold">{{ planet.axial_tilt|floatformat:1 }}°</dd></div>
+        <div><dt class="opacity-65">{% trans "Coriolis" %}</dt><dd class="font-semibold">{{ planet.coriolis_factor|floatformat:2 }}</dd></div>
+        <div><dt class="opacity-65">{% trans "Canvas" %}</dt><dd class="font-semibold">{{ planet.map_size }} px</dd></div>
+        <div><dt class="opacity-65">{% trans "Seed" %}</dt><dd class="font-semibold">{{ planet.climate_seed|default:"random" }}</dd></div>
+      </dl>
+    </div>
+
+    <div class="space-y-4">
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border p-5 shadow-sm">
+        <h2 class="text-lg font-bold">{% trans "Province Ranges" %}</h2>
+        <div class="mt-4 overflow-x-auto">
+          <table class="w-full min-w-[520px] text-left text-sm">
+            <thead class="text-xs uppercase opacity-70"><tr><th class="py-2">{% trans "Metric" %}</th><th>{% trans "Avg" %}</th><th>{% trans "Min" %}</th><th>{% trans "Max" %}</th></tr></thead>
+            <tbody>
+              <tr class="border-t" :class="darkMode ? 'border-accent-1' : 'border-accent-2'"><td class="py-2 font-semibold">{% trans "Elevation" %}</td><td>{{ climate_summary.elevation.avg }}</td><td>{{ climate_summary.elevation.min }}</td><td>{{ climate_summary.elevation.max }}</td></tr>
+              <tr class="border-t" :class="darkMode ? 'border-accent-1' : 'border-accent-2'"><td class="py-2 font-semibold">{% trans "Temperature" %}</td><td>{{ climate_summary.temperature.avg }}</td><td>{{ climate_summary.temperature.min }}</td><td>{{ climate_summary.temperature.max }}</td></tr>
+              <tr class="border-t" :class="darkMode ? 'border-accent-1' : 'border-accent-2'"><td class="py-2 font-semibold">{% trans "Rainfall" %}</td><td>{{ climate_summary.rainfall.avg }}</td><td>{{ climate_summary.rainfall.min }}</td><td>{{ climate_summary.rainfall.max }}</td></tr>
+              <tr class="border-t" :class="darkMode ? 'border-accent-1' : 'border-accent-2'"><td class="py-2 font-semibold">{% trans "Wind" %}</td><td>{{ climate_summary.wind.avg }}</td><td>{{ climate_summary.wind.min }}</td><td>{{ climate_summary.wind.max }}</td></tr>
+              <tr class="border-t" :class="darkMode ? 'border-accent-1' : 'border-accent-2'"><td class="py-2 font-semibold">{% trans "Habitability" %}</td><td>{{ climate_summary.habitability.avg }}</td><td>{{ climate_summary.habitability.min }}</td><td>{{ climate_summary.habitability.max }}</td></tr>
+              <tr class="border-t" :class="darkMode ? 'border-accent-1' : 'border-accent-2'"><td class="py-2 font-semibold">{% trans "Infrastructure" %}</td><td>{{ climate_summary.infrastructure.avg }}</td><td>{{ climate_summary.infrastructure.min }}</td><td>{{ climate_summary.infrastructure.max }}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border p-5 shadow-sm">
+        <h2 class="text-lg font-bold">{% trans "Biome Mix" %}</h2>
+        <div class="mt-4 flex flex-wrap gap-2">
+          {% for biome, count in climate_summary.biomes %}
+            <span class="rounded-md border px-2 py-1 text-xs font-semibold">{{ biome }} · {{ count }}</span>
+          {% empty %}
+            <span class="text-sm opacity-70">{% trans "No biome data." %}</span>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </section>
 </section>
 {% endblock %}
 
@@ -302,8 +307,8 @@
 <script>
   (() => {
     const container = document.getElementById("planet-graph");
+    const background = document.getElementById("planet-map-layer");
     const details = document.getElementById("planet-graph-details");
-    const colorMode = document.getElementById("planet-graph-color-mode");
     const payloadElement = document.getElementById("planet-graph-payload");
     const sigmaGlobal = window.Sigma || window.sigma;
     const SigmaRenderer = typeof sigmaGlobal === "function" ? sigmaGlobal : sigmaGlobal?.Sigma;
@@ -319,16 +324,27 @@
     const payload = JSON.parse(payloadElement.textContent);
     const graph = new GraphCtor({ multi: true });
     const expanded = new Set();
+    const mapSize = Number(container.dataset.mapSize || 512);
+    const provinceColor = "#5f7fc9";
+    const buildingColor = "#5fa38c";
+
+    function mapYToGraphY(y) {
+      return mapSize - Number(y);
+    }
 
     function addProvinceNodes() {
+      graph.addNode("map-corner-nw", { x: 0, y: mapSize, size: 0.01, label: "", color: "#000000" });
+      graph.addNode("map-corner-se", { x: mapSize, y: 0, size: 0.01, label: "", color: "#000000" });
       payload.nodes.forEach((node) => {
         graph.addNode(node.id, {
           ...node,
           label: node.label,
-          x: Number(node.x) * 3,
-          y: Number(node.y) * 3,
+          x: Number(node.x),
+          y: mapYToGraphY(node.y),
+          mapX: Number(node.x),
+          mapY: Number(node.y),
           size: node.size,
-          color: node.colors?.biome || node.color,
+          color: provinceColor,
           type: "circle",
         });
       });
@@ -354,12 +370,17 @@
       }[char]));
     }
 
-    function applyColorMode(mode) {
-      graph.forEachNode((node, attributes) => {
-        if (attributes.kind === "province") {
-          graph.setNodeAttribute(node, "color", attributes.colors?.[mode] || attributes.colors?.biome || attributes.color);
-        }
-      });
+    function syncBackground() {
+      if (!background || typeof renderer?.graphToViewport !== "function") return;
+      const topLeft = renderer.graphToViewport({ x: 0, y: mapSize });
+      const bottomRight = renderer.graphToViewport({ x: mapSize, y: 0 });
+      const left = Math.min(topLeft.x, bottomRight.x);
+      const top = Math.min(topLeft.y, bottomRight.y);
+      const width = Math.abs(bottomRight.x - topLeft.x);
+      const height = Math.abs(bottomRight.y - topLeft.y);
+      background.style.transform = `translate(${left}px, ${top}px)`;
+      background.style.width = `${width}px`;
+      background.style.height = `${height}px`;
     }
 
     function toggleBuildings(provinceId) {
@@ -384,11 +405,11 @@
           x: province.x + Math.cos(angle) * radius,
           y: province.y + Math.sin(angle) * radius,
           size: 7 + building.level,
-          color: building.color,
+          color: buildingColor,
           type: "circle",
         });
         graph.addEdgeWithKey(`${provinceId}-${building.id}`, provinceId, building.id, {
-          color: building.color,
+          color: buildingColor,
           size: 1,
           type: "line",
         });
@@ -443,16 +464,23 @@
       labelDensity: 0.1,
       labelGridCellSize: 80,
       defaultEdgeType: "arrow",
+      defaultNodeColor: provinceColor,
+      defaultEdgeColor: "#94a3b8",
     });
+    const camera = typeof renderer.getCamera === "function" ? renderer.getCamera() : null;
 
     renderer.on("clickNode", ({ node }) => {
+      const attributes = graph.getNodeAttributes(node);
+      if (!["province", "building"].includes(attributes.kind)) return;
       renderDetails(node);
       toggleBuildings(node);
+      syncBackground();
     });
 
-    colorMode?.addEventListener("change", (event) => {
-      applyColorMode(event.target.value);
-    });
+    camera?.on?.("updated", syncBackground);
+    window.addEventListener("resize", syncBackground);
+    renderer.refresh();
+    setTimeout(syncBackground, 50);
   })();
 </script>
 {% endblock %}
