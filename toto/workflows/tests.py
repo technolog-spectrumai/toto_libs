@@ -10,9 +10,10 @@ from unittest.mock import MagicMock
 
 from django.test import TestCase, override_settings
 
+from toto.mandragora.models import LambdaFunction
+
 from .models import (
     HumanTask,
-    LambdaFunction,
     Workflow,
     WorkflowEdge,
     WorkflowEdgeRun,
@@ -23,12 +24,8 @@ from .models import (
 from .services.executor import WorkflowExecutor
 from .services.human_task import apply_output_mapping, submit_human_task
 from .services.validator import ValidationError, WorkflowValidator
-from .workflow_output import WorkflowOutput, normalize_workflow_output
+from .output import WorkflowOutput, normalize_workflow_output
 
-
-# ---------------------------------------------------------------------------
-#  Mock kernel helpers
-# ---------------------------------------------------------------------------
 
 def _make_kernel_mock(stdout_payload: dict):
     """Return a mock KernelClient class whose execute() returns a fixed payload."""
@@ -154,7 +151,7 @@ class ValidatorTests(TestCase):
         a = _node(wf, WorkflowNode.LAMBDA, label="A", lambda_fn=fn1)
         b = _node(wf, WorkflowNode.LAMBDA, label="B", lambda_fn=fn2)
         _edge(wf, a, b)
-        WorkflowValidator().validate(wf)  # should not raise
+        WorkflowValidator().validate(wf)
 
     def test_self_loop_fails(self):
         wf = self._workflow()
@@ -198,10 +195,8 @@ class LinearLambdaWorkflowTests(TestCase):
         self.assertEqual(b_run.input_data.get("data", {}).get("msg"), "hello")
 
     def test_kernel_error_fails_run(self):
-        MockClient = MagicMock()
         instance = MagicMock()
         instance.execute.return_value = {"error": "kernel_crash"}
-        MockClient.return_value = instance
 
         wf = Workflow.objects.create(name="Err")
         fn = _lambda("err_fn")
@@ -218,10 +213,6 @@ class LinearLambdaWorkflowTests(TestCase):
 # ---------------------------------------------------------------------------
 
 class SplitJoinWorkflowTests(TestCase):
-    """
-    Graph:
-        lambda_start → split → [branch_a (lambda), branch_b (lambda)] → join → lambda_end
-    """
 
     def setUp(self):
         self.wf = Workflow.objects.create(name="SplitJoin")
@@ -246,15 +237,13 @@ class SplitJoinWorkflowTests(TestCase):
 
     def _run(self, start_output: dict, branch_output: dict | None = None):
         branch_output = branch_output or {"data": {}, "routes": []}
-        call_count = [0]
 
         class SeqMockClient:
             def __init__(self):
                 pass
 
             def execute(self, fn_id, code):
-                call_count[0] += 1
-                if fn_id == self.fn_start_id:
+                if fn_id == SeqMockClient.fn_start_id:
                     return {"stdout": json.dumps(start_output)}
                 return {"stdout": json.dumps(branch_output)}
 
@@ -270,12 +259,8 @@ class SplitJoinWorkflowTests(TestCase):
         run = self._run({"data": {}, "routes": ["path_a", "path_b"]})
         self.assertEqual(run.status, WorkflowRun.COMPLETED)
         activated = WorkflowEdgeRun.objects.filter(workflow_run=run, activated=True)
-        self.assertTrue(
-            activated.filter(edge__branch_key="path_a").exists()
-        )
-        self.assertTrue(
-            activated.filter(edge__branch_key="path_b").exists()
-        )
+        self.assertTrue(activated.filter(edge__branch_key="path_a").exists())
+        self.assertTrue(activated.filter(edge__branch_key="path_b").exists())
 
     def test_single_route_skips_other_branch(self):
         run = self._run({"data": {}, "route": "path_a"})
@@ -284,11 +269,9 @@ class SplitJoinWorkflowTests(TestCase):
         erb = WorkflowEdgeRun.objects.get(workflow_run=run, edge=self.e_b)
         self.assertTrue(era.activated)
         self.assertFalse(erb.activated)
-        # branch_b node_run should NOT exist (join waited only for path_a)
         self.assertFalse(run.node_runs.filter(node=self.n_b).exists())
 
     def test_default_edge_fires_when_no_match(self):
-        # Replace split edge_b with a default edge
         self.e_b.branch_key = ""
         self.e_b.is_default = True
         self.e_b.save()
@@ -359,9 +342,6 @@ class ApplyOutputMappingTests(TestCase):
 
 
 class HumanTaskWorkflowTests(TestCase):
-    """
-    Graph: lambda_start → human_node → lambda_end
-    """
 
     def setUp(self):
         self.wf = Workflow.objects.create(name="HumanWF")
@@ -413,6 +393,6 @@ class HumanTaskWorkflowTests(TestCase):
         task = HumanTask.objects.get(node_run__workflow_run=run)
         with override_settings(WORKFLOW_KERNEL_CLIENT=MockClient):
             submit_human_task(task, {"approved": True})
-            submit_human_task(task, {"approved": True})  # second call is no-op
+            submit_human_task(task, {"approved": True})
 
         self.assertEqual(HumanTask.objects.filter(node_run__workflow_run=run).count(), 1)

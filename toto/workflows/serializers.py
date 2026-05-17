@@ -33,9 +33,6 @@ class WorkflowEdgeSerializer(serializers.ModelSerializer):
         if attrs.get("source") and attrs.get("target"):
             source_wf = attrs["source"].workflow_id
             target_wf = attrs["target"].workflow_id
-            workflow_id = attrs.get("workflow_id") or (
-                attrs["source"].workflow_id if attrs.get("source") else None
-            )
             if source_wf != target_wf:
                 raise serializers.ValidationError(
                     "source and target must belong to the same workflow."
@@ -61,10 +58,6 @@ class WorkflowListSerializer(serializers.ModelSerializer):
         fields = ["id", "name", "description", "created_at", "node_count"]
         read_only_fields = ["id", "created_at"]
 
-
-# ---------------------------------------------------------------------------
-#  Run serializers
-# ---------------------------------------------------------------------------
 
 class HumanTaskSerializer(serializers.ModelSerializer):
     class Meta:

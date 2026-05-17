@@ -1,21 +1,3 @@
-"""
-WorkflowValidator — structural validation of a Workflow DAG.
-
-Rules enforced
---------------
-- A Workflow must have at least one node.
-- Every WorkflowEdge must connect nodes that belong to the same Workflow.
-- Lambda nodes must have a lambda_function set.
-- Human nodes must have a non-empty config["schema"].
-- Split nodes must have exactly one incoming edge.
-- Split nodes must have at least one outgoing edge.
-- At most one outgoing edge per Split may have is_default=True.
-- No duplicate (source, target) edge pairs (already enforced at DB level,
-  but validated here too for clean API errors).
-- No self-loops (source == target).
-- The graph must be acyclic (DAG).
-"""
-
 from collections import defaultdict, deque
 
 from ..models import Workflow, WorkflowNode
@@ -48,10 +30,6 @@ class WorkflowValidator:
         if errors:
             raise ValidationError(errors)
 
-    # ------------------------------------------------------------------
-    #  Node validation
-    # ------------------------------------------------------------------
-
     def _validate_nodes(self, nodes: list, errors: list[str]) -> None:
         for node in nodes:
             if node.node_type == WorkflowNode.LAMBDA:
@@ -65,10 +43,6 @@ class WorkflowValidator:
                     errors.append(
                         f"Human node {node.id} ({node.label!r}) is missing config['schema']."
                     )
-
-    # ------------------------------------------------------------------
-    #  Edge validation
-    # ------------------------------------------------------------------
 
     def _validate_edges(self, edges: list, node_ids: set, errors: list[str]) -> None:
         seen: set[tuple] = set()
@@ -85,10 +59,6 @@ class WorkflowValidator:
                 errors.append(f"Edge {edge.id} source node {edge.source_id} not in workflow.")
             if edge.target_id not in node_ids:
                 errors.append(f"Edge {edge.id} target node {edge.target_id} not in workflow.")
-
-    # ------------------------------------------------------------------
-    #  Split-specific constraints
-    # ------------------------------------------------------------------
 
     def _validate_split_constraints(self, nodes: list, edges: list, errors: list[str]) -> None:
         incoming_count: dict[int, int] = defaultdict(int)
@@ -113,10 +83,6 @@ class WorkflowValidator:
                 errors.append(
                     f"Split node {node.id} has {default_count} default edges (max 1)."
                 )
-
-    # ------------------------------------------------------------------
-    #  Cycle detection (Kahn's algorithm)
-    # ------------------------------------------------------------------
 
     def _validate_acyclic(self, node_ids: set, edges: list, errors: list[str]) -> None:
         in_degree: dict[int, int] = {nid: 0 for nid in node_ids}

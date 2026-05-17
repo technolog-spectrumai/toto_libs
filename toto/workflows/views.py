@@ -13,10 +13,12 @@ try:
 except ImportError:
     _HAS_PAGE_PROCESSOR = False
 
+
 def _decorate(context, request):
     if _HAS_PAGE_PROCESSOR:
         return PageProcessor().decorate(context, request)
     return context
+
 
 from .models import (
     HumanTask,
@@ -26,10 +28,7 @@ from .models import (
     WorkflowNodeRun,
     WorkflowRun,
 )
-from .services.executor import WorkflowExecutor
-from .services.human_task import submit_human_task
-from .services.validator import ValidationError, WorkflowValidator
-from .workflow_serializers import (
+from .serializers import (
     StartRunSerializer,
     SubmitHumanTaskSerializer,
     WorkflowEdgeSerializer,
@@ -38,6 +37,9 @@ from .workflow_serializers import (
     WorkflowRunSerializer,
     WorkflowSerializer,
 )
+from .services.executor import WorkflowExecutor
+from .services.human_task import submit_human_task
+from .services.validator import ValidationError, WorkflowValidator
 
 
 # ---------------------------------------------------------------------------
@@ -182,7 +184,6 @@ def run_list(request, workflow_id):
     ser = StartRunSerializer(data=request.data)
     ser.is_valid(raise_exception=True)
 
-    # Validate the workflow before running
     try:
         WorkflowValidator().validate(workflow)
     except ValidationError as exc:
@@ -216,13 +217,35 @@ def run_detail(request, run_id):
 #  Human task submission
 # ---------------------------------------------------------------------------
 
+@api_view(["POST"])
+def human_task_submit(request, task_id):
+    try:
+        task = HumanTask.objects.select_related(
+            "node_run__node", "node_run__workflow_run__workflow"
+        ).get(pk=task_id)
+    except HumanTask.DoesNotExist:
+        return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if task.status == HumanTask.SUBMITTED:
+        return Response({"detail": "Task already submitted."}, status=status.HTTP_409_CONFLICT)
+
+    ser = SubmitHumanTaskSerializer(data=request.data)
+    ser.is_valid(raise_exception=True)
+
+    submit_human_task(task, ser.validated_data["submitted_data"])
+    task.refresh_from_db()
+    run = task.node_run.workflow_run
+    run.refresh_from_db()
+    return Response(WorkflowRunSerializer(run).data)
+
+
 # ---------------------------------------------------------------------------
-#  UI Views — workflow state display
+#  UI Views
 # ---------------------------------------------------------------------------
 
 class WorkflowListUIView(LoginRequiredMixin, ListView):
     model = Workflow
-    template_name = "mandragora/workflow_list.html"
+    template_name = "workflows/workflow_list.html"
     context_object_name = "workflows"
     login_url = reverse_lazy("core:login")
 
@@ -236,7 +259,7 @@ class WorkflowListUIView(LoginRequiredMixin, ListView):
 
 class WorkflowDetailUIView(LoginRequiredMixin, DetailView):
     model = Workflow
-    template_name = "mandragora/workflow_detail_ui.html"
+    template_name = "workflows/workflow_detail.html"
     context_object_name = "workflow"
     login_url = reverse_lazy("core:login")
 
@@ -275,7 +298,7 @@ class WorkflowDetailUIView(LoginRequiredMixin, DetailView):
 
 class WorkflowRunDetailUIView(LoginRequiredMixin, DetailView):
     model = WorkflowRun
-    template_name = "mandragora/workflow_run_detail.html"
+    template_name = "workflows/workflow_run_detail.html"
     context_object_name = "run"
     login_url = reverse_lazy("core:login")
 
@@ -300,7 +323,6 @@ class WorkflowRunDetailUIView(LoginRequiredMixin, DetailView):
                     pass
         context["pending_tasks"] = pending_tasks
 
-        # Graph data — all workflow nodes, with run status overlaid
         all_nodes = list(run.workflow.nodes.select_related("lambda_function").order_by("id"))
         all_edges = list(run.workflow.edges.select_related("source", "target").order_by("id"))
         node_run_by_node = {nr.node_id: nr for nr in node_runs}
@@ -326,25 +348,3 @@ class WorkflowRunDetailUIView(LoginRequiredMixin, DetailView):
             for e in all_edges
         ])
         return _decorate(context, self.request)
-
-
-@api_view(["POST"])
-def human_task_submit(request, task_id):
-    try:
-        task = HumanTask.objects.select_related(
-            "node_run__node", "node_run__workflow_run__workflow"
-        ).get(pk=task_id)
-    except HumanTask.DoesNotExist:
-        return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
-
-    if task.status == HumanTask.SUBMITTED:
-        return Response({"detail": "Task already submitted."}, status=status.HTTP_409_CONFLICT)
-
-    ser = SubmitHumanTaskSerializer(data=request.data)
-    ser.is_valid(raise_exception=True)
-
-    submit_human_task(task, ser.validated_data["submitted_data"])
-    task.refresh_from_db()
-    run = task.node_run.workflow_run
-    run.refresh_from_db()
-    return Response(WorkflowRunSerializer(run).data)

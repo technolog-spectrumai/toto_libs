@@ -5,8 +5,10 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
 
+    initial = True
+
     dependencies = [
-        ("mandragora", "0002_kerneldependency_auto_close"),
+        ("mandragora", "0001_initial"),
     ]
 
     operations = [
@@ -34,7 +36,7 @@ class Migration(migrations.Migration):
                 ("workflow", models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
                     related_name="nodes",
-                    to="mandragora.workflow",
+                    to="workflows.workflow",
                 )),
                 ("lambda_function", models.ForeignKey(
                     blank=True,
@@ -54,17 +56,17 @@ class Migration(migrations.Migration):
                 ("workflow", models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
                     related_name="edges",
-                    to="mandragora.workflow",
+                    to="workflows.workflow",
                 )),
                 ("source", models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
                     related_name="outgoing_edges",
-                    to="mandragora.workflownode",
+                    to="workflows.workflownode",
                 )),
                 ("target", models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
                     related_name="incoming_edges",
-                    to="mandragora.workflownode",
+                    to="workflows.workflownode",
                 )),
             ],
         ),
@@ -92,7 +94,7 @@ class Migration(migrations.Migration):
                 ("workflow", models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
                     related_name="runs",
-                    to="mandragora.workflow",
+                    to="workflows.workflow",
                 )),
             ],
         ),
@@ -116,12 +118,12 @@ class Migration(migrations.Migration):
                 ("workflow_run", models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
                     related_name="node_runs",
-                    to="mandragora.workflowrun",
+                    to="workflows.workflowrun",
                 )),
                 ("node", models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
                     related_name="node_runs",
-                    to="mandragora.workflownode",
+                    to="workflows.workflownode",
                 )),
             ],
         ),
@@ -138,12 +140,12 @@ class Migration(migrations.Migration):
                 ("workflow_run", models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
                     related_name="edge_runs",
-                    to="mandragora.workflowrun",
+                    to="workflows.workflowrun",
                 )),
                 ("edge", models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
                     related_name="edge_runs",
-                    to="mandragora.workflowedge",
+                    to="workflows.workflowedge",
                 )),
             ],
         ),
@@ -167,7 +169,7 @@ class Migration(migrations.Migration):
                 ("node_run", models.OneToOneField(
                     on_delete=django.db.models.deletion.CASCADE,
                     related_name="human_task",
-                    to="mandragora.workflownoderun",
+                    to="workflows.workflownoderun",
                 )),
             ],
         ),
