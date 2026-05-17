@@ -1,199 +1,211 @@
 {% extends "oya/base.html" %}
 {% load static %}
+{% load i18n %}
 
-
-{% block title %}Notebook: {{ notebook.title }}{% endblock %}
+{% block title %}{{ notebook.title }} | Mandragora | {{ platform.site_name }}{% endblock %}
 
 {% block start_script %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.3/ace.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.3/mode-python.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.3/theme-twilight.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.3/theme-textmate.min.js"></script>
-
-<link rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-
 <script>
   const darkMode = localStorage.getItem("darkMode") === "true";
 </script>
-
-<!-- Font Awesome -->
-<link rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 {% endblock %}
 
 {% block content %}
 <div
-  :class="darkMode
-    ? 'bg-primary-bg-dark text-text-main-dark'
-    : 'bg-primary-bg-light text-text-main-light'"
-  class="min-h-screen px-4 py-10 transition-colors duration-300">
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8"
+  data-notebook-id="{{ notebook.id }}"
+  data-url-deps="{% url 'mandragora:kernel_dependencies' notebook.id %}"
+  data-url-start="{% url 'mandragora:start_kernel' notebook.id %}"
+  data-url-stop="{% url 'mandragora:stop_kernel' notebook.id %}"
+  data-url-status="{% url 'mandragora:check_kernel' notebook.id %}"
+  data-url-cell-create="{% url 'mandragora:create_cell' notebook.id %}">
 
   {% csrf_token %}
-  <div class="max-w-6xl mx-auto space-y-10">
+  <div class="mx-auto max-w-6xl space-y-8">
 
     <!-- Header -->
     <section
-      :class="darkMode
-        ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
-        : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
-      class="p-6 rounded-lg border shadow-sm space-y-2">
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-2xl border p-6 shadow-sm">
 
-      <h1 class="text-2xl font-bold">{{ notebook.title }}</h1>
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div class="min-w-0 flex-1 space-y-1">
+          <a href="{% url 'mandragora:notebook_list' %}"
+             class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+            <i class="fa-solid fa-arrow-left"></i>
+            {% trans "Notebooks" %}
+          </a>
+          <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+             class="text-xs font-semibold uppercase tracking-wide">
+            {% trans "Compute workspace" %}
+          </p>
+          <h1 class="break-words text-2xl font-bold">{{ notebook.title }}</h1>
+          <p class="text-xs opacity-55">
+            <i class="fa-regular fa-clock mr-1"></i>
+            {% trans "Created" %} {{ notebook.created_at|date:"Y-m-d H:i" }}
+          </p>
+        </div>
 
-      <p class="text-sm text-gray-500 dark:text-gray-400">
-        Last updated: {{ notebook.updated_at|date:"Y-m-d H:i" }}
-      </p>
+        <!-- Notebook actions -->
+        <div class="flex shrink-0 items-center gap-2">
+          <a href="{% url 'mandragora:notebook_update' notebook.slug %}"
+             :class="darkMode ? 'border-accent-1 hover:bg-primary-bg-dark' : 'border-accent-2 hover:bg-primary-bg-light'"
+             class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-semibold transition">
+            <i class="fa-solid fa-pen text-xs"></i>
+            {% trans "Edit" %}
+          </a>
+          <a href="{% url 'mandragora:notebook_delete' notebook.slug %}"
+             :class="darkMode ? 'border-warn-dark text-warn-dark hover:bg-warn-dark/10' : 'border-warn-light text-warn-light hover:bg-warn-light/10'"
+             class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-semibold transition">
+            <i class="fa-solid fa-trash text-xs"></i>
+            {% trans "Delete" %}
+          </a>
+        </div>
+      </div>
 
-            <!-- Kernel Controls -->
-      <div class="flex items-center gap-3 mt-3">
+      <!-- Kernel controls -->
+      <div class="mt-5 flex flex-wrap items-center gap-3">
+        <button
+          onclick="startKernel()"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold transition hover:opacity-90">
+          <i class="fa-solid fa-play"></i>
+          {% trans "Start kernel" %}
+        </button>
+        <button
+          onclick="stopKernel()"
+          :class="darkMode ? 'bg-warn-dark text-primary-bg-dark' : 'bg-warn-light text-primary-bg-light'"
+          class="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold transition hover:opacity-90">
+          <i class="fa-solid fa-stop"></i>
+          {% trans "Stop kernel" %}
+        </button>
 
-          <!-- Start Kernel -->
-          <button
-              onclick="startKernel({{ notebook.id }})"
-              :class="darkMode
-                  ? 'bg-accent-dark text-primary-bg-dark'
-                  : 'bg-accent-light text-primary-bg-light'"
-              class="px-3 py-1 rounded font-semibold hover:opacity-90 transition text-sm flex items-center gap-2">
-              <i class="fa-solid fa-play"></i>
-              Start Kernel
-          </button>
-
-          <!-- Stop Kernel -->
-          <button
-              onclick="stopKernel({{ notebook.id }})"
-              :class="darkMode
-                  ? 'bg-warn-dark text-primary-bg-dark'
-                  : 'bg-warn-light text-primary-bg-light'"
-              class="px-3 py-1 rounded font-semibold hover:opacity-90 transition text-sm flex items-center gap-2">
-              <i class="fa-solid fa-stop"></i>
-              Stop Kernel
-          </button>
-
-          <!-- Status Indicator (placeholder) -->
-          <span id="kernel-status"
-              class="text-sm opacity-70 flex items-center gap-1">
-              <i class="fa-solid fa-circle text-gray-400"></i>
-              <span>Unknown</span>
-          </span>
+        <span id="kernel-status"
+              class="inline-flex items-center gap-1.5 text-sm opacity-70">
+          <i class="fa-solid fa-circle text-gray-400 text-xs"></i>
+          <span>{% trans "Unknown" %}</span>
+        </span>
       </div>
     </section>
 
     <!-- Cells -->
-    <section class="space-y-6">
-
-      <h2 class="text-xl font-bold">Cells</h2>
+    <section class="space-y-5">
+      <h2 class="flex items-center gap-2 text-xl font-bold">
+        <i class="fa-solid fa-terminal opacity-60"></i>
+        {% trans "Cells" %}
+      </h2>
 
       {% if cells %}
         {% for cell in cells %}
           <div
-            :class="darkMode
-              ? 'bg-bubble-bg-dark border-accent-1'
-              : 'bg-bubble-bg-light border-accent-2'"
-            class="p-4 rounded border shadow-sm space-y-4 transition-colors duration-300">
+            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+            class="rounded-xl border shadow-sm transition-colors duration-300"
+            data-cell-id="{{ cell.id }}"
+            data-url-run="{% url 'mandragora:run_cell' cell.id %}"
+            data-url-delete="{% url 'mandragora:delete_cell' cell.id %}"
+            data-url-promote="{% url 'mandragora:promote_cell' cell.id %}">
 
             <!-- Cell header -->
-            <div class="flex justify-between items-center">
-              <span class="text-sm font-semibold opacity-70">
-                Cell {{ forloop.counter }} — {{ cell.cell_type|title }}
+            <div class="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3"
+                 :class="darkMode ? 'border-accent-1/50' : 'border-accent-2/50'">
+              <span class="text-xs font-semibold opacity-60">
+                {% trans "Cell" %} {{ forloop.counter }}
+                <span class="ml-1 opacity-75">— {{ cell.cell_type|title }}</span>
               </span>
 
-              <button
-                  data-cell-id="{{ cell.id }}"
-                  data-run-url="{% url 'mandragora:run_cell' cell.id %}"
-                  onclick="runCell(this)"
-                  :class="darkMode
-                    ? 'bg-accent-dark text-primary-bg-dark'
-                    : 'bg-accent-light text-primary-bg-light'"
-                  class="px-3 py-1 rounded font-semibold hover:opacity-90 transition text-sm flex items-center gap-2">
+              <div class="flex items-center gap-2">
+                <span class="text-xs opacity-45">
+                  <i class="fa-solid fa-rotate-right mr-0.5"></i>
+                  <span id="exec-count-{{ cell.id }}">{{ cell.execution_count }}</span>×
+                </span>
 
-                  <i class="fa-solid fa-play"></i>
-                  Run
-              </button>
-              <button
-                  onclick="deleteCell({{ cell.id }})"
-                  :class="darkMode
-                      ? 'bg-warn-dark text-primary-bg-dark'
-                      : 'bg-warn-light text-primary-bg-light'"
-                  class="px-3 py-1 rounded font-semibold hover:opacity-90 transition text-sm flex items-center gap-2">
-                  <i class="fa-solid fa-trash"></i>
-                  Delete
-              </button>
-
-              <button
+                {% if cell.cell_type == "code" %}
+                  <button
+                    data-cell-id="{{ cell.id }}"
+                    onclick="runCell(this)"
+                    :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                    class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold transition hover:opacity-90">
+                    <i class="fa-solid fa-play"></i>
+                    {% trans "Run" %}
+                  </button>
+                  <button
                     onclick="promoteCellToLambda({{ cell.id }})"
-                    :class="darkMode
-                        ? 'bg-indigo-700 text-primary-bg-dark'
-                        : 'bg-indigo-500 text-primary-bg-light'"
-                    class="px-3 py-1 rounded font-semibold hover:opacity-90 transition text-sm flex items-center gap-2">
-
+                    :class="darkMode ? 'border-accent-1 hover:bg-primary-bg-dark' : 'border-accent-2 hover:bg-primary-bg-light'"
+                    class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1 text-xs font-semibold transition">
                     <i class="fa-solid fa-cloud-arrow-up"></i>
-                    Promote
-              </button>
-
-              <span class="text-xs opacity-60">
-                Executed {{ cell.execution_count }} time{{ cell.execution_count|pluralize }}
-              </span>
+                    {% trans "Promote" %}
+                  </button>
+                {% endif %}
+                <button
+                  onclick="deleteCell({{ cell.id }})"
+                  :class="darkMode ? 'border-warn-dark text-warn-dark hover:bg-warn-dark/10' : 'border-warn-light text-warn-light hover:bg-warn-light/10'"
+                  class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1 text-xs font-semibold transition">
+                  <i class="fa-solid fa-trash"></i>
+                  {% trans "Delete" %}
+                </button>
+              </div>
             </div>
 
-
-            {% if cell.cell_type == "code" %}
-
+            <!-- Cell body -->
+            <div class="p-4 space-y-3">
+              {% if cell.cell_type == "code" %}
                 <div id="editor-{{ cell.id }}"
-                     class="code-editor border rounded h-[40vh] overflow-hidden"
-                     :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+                     class="code-editor h-[30vh] overflow-hidden rounded-lg border"
+                     :class="darkMode ? 'border-accent-1' : 'border-accent-2'"></div>
+
+                <div id="stdout-box-{{ cell.id }}"
+                     {% if not cell.stdout %}style="display:none"{% endif %}
+                     :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                     class="rounded-lg border px-4 py-3 text-sm">
+                  <p class="mb-1 text-xs font-semibold opacity-55">{% trans "Output" %}</p>
+                  <pre id="stdout-{{ cell.id }}" class="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed">{{ cell.stdout }}</pre>
                 </div>
 
-                <div id="stdout-box-{{ cell.id }}" style="{% if not cell.stdout %}display:none{% endif %}"
-                  class="p-3 rounded border text-sm whitespace-pre-wrap">
-                  <strong>Output:</strong>
-                  <pre id="stdout-{{ cell.id }}" class="mt-1 whitespace-pre-wrap">{{ cell.stdout }}</pre>
+                <div id="stderr-box-{{ cell.id }}"
+                     {% if not cell.stderr %}style="display:none"{% endif %}
+                     :class="darkMode ? 'border-warn-dark bg-warn-dark/5' : 'border-warn-light bg-warn-light/5'"
+                     class="rounded-lg border px-4 py-3 text-sm">
+                  <p class="mb-1 text-xs font-semibold"
+                     :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{% trans "Error" %}</p>
+                  <pre id="stderr-{{ cell.id }}" class="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed"
+                       :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ cell.stderr }}</pre>
                 </div>
 
-                <div id="stderr-box-{{ cell.id }}" style="{% if not cell.stderr %}display:none{% endif %}"
-                  :class="darkMode
-                    ? 'border-warn-dark'
-                    : 'border-warn-light'"
-                  class="p-3 rounded border text-sm whitespace-pre-wrap">
-                  <strong :class="darkMode
-                    ? 'text-warn-dark'
-                    : 'text-warn-light'">Error:</strong>
-                  <pre id="stderr-{{ cell.id }}" class="mt-1 whitespace-pre-wrap">{{ cell.stderr }}</pre>
+                <div id="rich-{{ cell.id }}"></div>
+
+              {% else %}
+                <!-- Markdown cell -->
+                <div class="prose max-w-none text-sm opacity-90">
+                  {{ cell.content|linebreaks }}
                 </div>
-
-                <div id="rich-{{ cell.id }}" class="mt-3"></div>
-            {% else %}
-              <!-- Markdown cell -->
-              <div class="prose dark:prose-invert max-w-none">
-                {{ cell.content|linebreaks }}
-              </div>
-            {% endif %}
-
+              {% endif %}
+            </div>
           </div>
         {% endfor %}
       {% else %}
-        <p class="text-sm text-gray-500 dark:text-gray-400">
-          This notebook has no cells yet.
-        </p>
+        <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-xl border border-dashed p-10 text-center shadow-sm">
+          <i class="fa-solid fa-terminal text-3xl opacity-25"></i>
+          <p class="mt-4 text-sm opacity-60">{% trans "No cells yet — add the first one below." %}</p>
+        </div>
       {% endif %}
-
     </section>
-  <button
-      onclick="createNewCell({{ notebook.id }})"
-      :class="darkMode
-          ? 'bg-accent-dark text-primary-bg-dark'
-          : 'bg-accent-light text-primary-bg-light'"
-      class="px-4 py-2 rounded font-semibold hover:opacity-90 transition text-sm flex items-center gap-2">
-      <i class="fa-solid fa-plus"></i>
-      New Cell
-  </button>
-    <a href="{% url 'mandragora:notebook_list' %}"
-       :class="darkMode
-         ? 'bg-accent-dark text-primary-bg-dark'
-         : 'bg-accent-light text-primary-bg-light'"
-       class="inline-block px-4 py-2 rounded font-semibold hover:opacity-90 transition text-sm text-center">
-      Back to Notebooks
-    </a>
+
+    <!-- Add cell -->
+    <div>
+      <button
+        onclick="createNewCell()"
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-primary-bg-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-primary-bg-light'"
+        class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition">
+        <i class="fa-solid fa-plus"></i>
+        {% trans "New cell" %}
+      </button>
+    </div>
 
   </div>
 </div>
@@ -201,328 +213,208 @@
 
 {% block end_script %}
 <script>
+// ── URL helpers (all URLs resolved via Django template tags) ──────────────
+const _root = document.querySelector("[data-notebook-id]");
+const notebookId   = _root.dataset.notebookId;
+const urlDeps      = _root.dataset.urlDeps;
+const urlStart     = _root.dataset.urlStart;
+const urlStop      = _root.dataset.urlStop;
+const urlStatus    = _root.dataset.urlStatus;
+const urlCellCreate = _root.dataset.urlCellCreate;
+
+function cellRoot(cellId) {
+  return document.querySelector(`[data-cell-id="${cellId}"]`);
+}
+function cellUrl(cellId, attr) {
+  return cellRoot(cellId)?.dataset[attr];
+}
+
+function getCsrf() {
+  return document.querySelector("[name=csrfmiddlewaretoken]")?.value ?? "";
+}
+
+// ── Ace editors ──────────────────────────────────────────────────────────
 function createAceEditor(elementId, initialValue) {
-    const editor = ace.edit(elementId);
-
-    editor.setTheme(darkMode ? "ace/theme/twilight" : "ace/theme/textmate");
-    editor.session.setMode("ace/mode/python");
-
-    editor.setValue(initialValue, -1);
-
-    editor.setOptions({
-        fontSize: "14px",
-        showPrintMargin: false,
-        wrap: true,
-        readOnly: false,
-    });
-
-    return editor;
+  const editor = ace.edit(elementId);
+  editor.setTheme(darkMode ? "ace/theme/twilight" : "ace/theme/textmate");
+  editor.session.setMode("ace/mode/python");
+  editor.setValue(initialValue, -1);
+  editor.setOptions({ fontSize: "13px", showPrintMargin: false, wrap: true });
+  return editor;
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-    {% for cell in cells %}
-        {% if cell.cell_type == "code" %}
-            createAceEditor(
-                "editor-{{ cell.id }}",
-                `{{ cell.content|escapejs }}`
-            );
-        {% endif %}
-    {% endfor %}
+  {% for cell in cells %}{% if cell.cell_type == "code" %}
+  createAceEditor("editor-{{ cell.id }}", `{{ cell.content|escapejs }}`);
+  {% endif %}{% endfor %}
 });
-</script>
 
-<script>
-async function runCell(buttonEl) {
-    const url = buttonEl.dataset.runUrl;
-    const cellId = buttonEl.dataset.cellId;
+// ── Run cell ─────────────────────────────────────────────────────────────
+async function runCell(btn) {
+  const cellId = btn.dataset.cellId;
+  const url    = cellUrl(cellId, "urlRun");
+  const editor = ace.edit(`editor-${cellId}`);
 
-    const editor = ace.edit(`editor-${cellId}`);
-    const code = editor.getValue();
+  const orig = btn.innerHTML;
+  btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Running…`;
+  btn.disabled = true;
 
-    const originalHTML = buttonEl.innerHTML;
-    buttonEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Running...`;
-    buttonEl.disabled = true;
+  try {
+    const res  = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRFToken": getCsrf() },
+      body: JSON.stringify({ content: editor.getValue() }),
+    });
+    const data = await res.json();
 
-    try {
-        const response = await fetch(url, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "X-CSRFToken": getCookie("csrftoken"),
-            },
-            body: JSON.stringify({ content: code })
-        });
+    const stdoutBox = document.getElementById(`stdout-box-${cellId}`);
+    document.getElementById(`stdout-${cellId}`).textContent = data.stdout ?? "";
+    stdoutBox.style.display = data.stdout ? "block" : "none";
 
-        const data = await response.json();
+    const stderrBox = document.getElementById(`stderr-box-${cellId}`);
+    document.getElementById(`stderr-${cellId}`).textContent = data.stderr ?? "";
+    stderrBox.style.display = data.stderr ? "block" : "none";
 
-        // Update stdout
-        const stdoutBox = document.getElementById(`stdout-box-${cellId}`);
-        const stdoutEl = document.getElementById(`stdout-${cellId}`);
-        stdoutEl.textContent = data.stdout || "";
-        stdoutBox.style.display = data.stdout ? "block" : "none";
+    const execEl = document.getElementById(`exec-count-${cellId}`);
+    if (execEl) execEl.textContent = data.execution_count ?? "";
 
-        // Update stderr
-        const stderrBox = document.getElementById(`stderr-box-${cellId}`);
-        const stderrEl = document.getElementById(`stderr-${cellId}`);
-        stderrEl.textContent = data.stderr || "";
-        stderrBox.style.display = data.stderr ? "block" : "none";
-
-        // Update execution count
-        const execCountEl = document.getElementById(`exec-count-${cellId}`);
-        if (execCountEl) execCountEl.textContent = data.execution_count ?? "";
-
-        // Update rich output (if you want)
-        const richEl = document.getElementById(`rich-${cellId}`);
-        if (richEl) {
-            richEl.innerHTML = "";
-            (data.rich_output || []).forEach(item => {
-                const data = item.data;
-
-                // Matplotlib PNG
-                if (data["image/png"]) {
-                    const img = document.createElement("img");
-                    img.src = "data:image/png;base64," + data["image/png"];
-                    img.className = "rounded border mt-2";
-                    richEl.appendChild(img);
-                }
-
-                // Text or JSON output
-                if (data["text/plain"]) {
-                    const pre = document.createElement("pre");
-                    pre.textContent = data["text/plain"];
-                    richEl.appendChild(pre);
-                }
-            });
+    const richEl = document.getElementById(`rich-${cellId}`);
+    if (richEl) {
+      richEl.innerHTML = "";
+      for (const item of data.rich_output ?? []) {
+        if (item.data?.["image/png"]) {
+          const img = document.createElement("img");
+          img.src       = "data:image/png;base64," + item.data["image/png"];
+          img.className = "mt-2 rounded-lg border";
+          richEl.appendChild(img);
         }
-
-    } catch (error) {
-        console.error("Error running cell:", error);
-        alert("Failed to execute cell.");
-    } finally {
-        buttonEl.innerHTML = originalHTML;
-        buttonEl.disabled = false;
+        if (item.data?.["text/plain"]) {
+          const pre = document.createElement("pre");
+          pre.className = "mt-1 font-mono text-xs whitespace-pre-wrap";
+          pre.textContent = item.data["text/plain"];
+          richEl.appendChild(pre);
+        }
+      }
     }
+  } catch (err) {
+    console.error("runCell error:", err);
+  } finally {
+    btn.innerHTML = orig;
+    btn.disabled  = false;
+  }
 }
 
-function getCookie(name) {
-    if (name === "csrftoken") {
-        const el = document.querySelector("[name=csrfmiddlewaretoken]");
-        if (el) return el.value;
-    }
-    let cookieValue = null;
-    if (document.cookie && document.cookie !== "") {
-        const cookies = document.cookie.split(";");
-        for (let cookie of cookies) {
-            cookie = cookie.trim();
-            if (cookie.startsWith(name + "=")) {
-                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                break;
-            }
-        }
-    }
-    return cookieValue;
-}
-</script>
+// ── Kernel status indicator ───────────────────────────────────────────────
+function updateKernelStatus(state, detail) {
+  const el   = document.getElementById("kernel-status");
+  const icon = el.querySelector("i");
+  const text = el.querySelector("span");
 
-<script>
+  const states = {
+    running:  ["fa-solid fa-circle text-green-500 text-xs", "Running"],
+    stopped:  ["fa-solid fa-circle text-red-500 text-xs",   "Stopped"],
+    starting: ["fa-solid fa-circle-notch fa-spin text-caution-dark text-xs", detail ? `Starting… ${detail}` : "Starting…"],
+  };
+  const [cls, label] = states[state] ?? ["fa-solid fa-circle text-gray-400 text-xs", "Unknown"];
+  icon.className   = cls;
+  text.textContent = label;
+}
+
 let kernelAutoClose = true;
 
-async function startKernel(notebookId) {
-    updateKernelStatus("starting");
+async function startKernel() {
+  updateKernelStatus("starting");
 
-    // Fetch deps first so we can show what's being installed
-    let depsLabel = "";
-    try {
-        const depsRes = await fetch(`/mandragora/kernel/${notebookId}/dependencies/`);
-        const depsData = await depsRes.json();
-        kernelAutoClose = depsData.auto_close ?? true;
-        const deps = depsData.dependencies || [];
-        if (deps.length > 0) {
-            depsLabel = deps.map(d => d.package_name).join(", ");
-            updateKernelStatus("starting", `installing ${depsLabel}`);
-        }
-    } catch (e) {}
+  try {
+    const depsRes  = await fetch(urlDeps);
+    const depsData = await depsRes.json();
+    kernelAutoClose = depsData.auto_close ?? true;
+    const pkgs = (depsData.dependencies ?? []).map(d => d.package_name);
+    if (pkgs.length) updateKernelStatus("starting", `installing ${pkgs.join(", ")}`);
+  } catch (_) {}
 
-    try {
-        const response = await fetch(`/mandragora/kernel/${notebookId}/start/`, {
-            method: "POST",
-            headers: {
-                "X-CSRFToken": getCookie("csrftoken"),
-            }
-        });
-        const data = await response.json();
-
-        if (data.state === "started") {
-            updateKernelStatus("running");
-        } else {
-            updateKernelStatus("stopped");
-            alert("Kernel failed to start: " + (data.error || JSON.stringify(data)));
-        }
-    } catch (error) {
-        console.error("Error starting kernel:", error);
-        updateKernelStatus("stopped");
-        alert("Failed to start kernel.");
-    }
+  try {
+    const res  = await fetch(urlStart, { method: "POST", headers: { "X-CSRFToken": getCsrf() } });
+    const data = await res.json();
+    updateKernelStatus(data.state === "started" ? "running" : "stopped");
+  } catch (err) {
+    console.error("startKernel error:", err);
+    updateKernelStatus("stopped");
+  }
 }
 
-async function stopKernel(notebookId) {
-    const url = `/mandragora/kernel/${notebookId}/stop/`;
-
-    try {
-        const response = await fetch(url, {
-            method: "POST",
-            headers: {
-                "X-CSRFToken": getCookie("csrftoken"),
-            }
-        });
-
-        const data = await response.json();
-        console.log("Kernel stopped:", data);
-
-        updateKernelStatus("stopped");
-
-    } catch (error) {
-        console.error("Error stopping kernel:", error);
-        alert("Failed to stop kernel.");
-    }
+async function stopKernel() {
+  try {
+    await fetch(urlStop, { method: "POST", headers: { "X-CSRFToken": getCsrf() } });
+  } catch (err) {
+    console.error("stopKernel error:", err);
+  }
+  updateKernelStatus("stopped");
 }
 
-function updateKernelStatus(state, detail) {
-    const el = document.getElementById("kernel-status");
-    const icon = el.querySelector("i");
-    const text = el.querySelector("span");
-
-    if (state === "running") {
-        icon.className = "fa-solid fa-circle text-green-500";
-        text.textContent = "Running";
-    } else if (state === "stopped") {
-        icon.className = "fa-solid fa-circle text-red-500";
-        text.textContent = "Stopped";
-    } else if (state === "starting") {
-        icon.className = "fa-solid fa-circle-notch fa-spin text-caution-dark";
-        text.textContent = detail ? `Starting… ${detail}` : "Starting…";
-    } else {
-        icon.className = "fa-solid fa-circle text-gray-400";
-        text.textContent = "Unknown";
-    }
-}
-</script>
-<script>
-async function checkKernelStatus(notebookId) {
-    const url = `/mandragora/kernel/${notebookId}/status/`;
-
-    try {
-        const response = await fetch(url);
-        const data = await response.json();
-        updateKernelStatus(data.status);
-    } catch (e) {
-        updateKernelStatus("unknown");
-    }
+async function checkKernelStatus() {
+  try {
+    const res  = await fetch(urlStatus);
+    const data = await res.json();
+    updateKernelStatus(data.status);
+  } catch (_) {
+    updateKernelStatus("unknown");
+  }
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-    const notebookId = {{ notebook.id }};
+  checkKernelStatus();
+  setInterval(checkKernelStatus, 5000);
 
-    // Resolve auto_close setting and initial status
-    fetch(`/mandragora/kernel/${notebookId}/dependencies/`)
-        .then(r => r.json())
-        .then(d => { kernelAutoClose = d.auto_close ?? true; })
-        .catch(() => {});
-
-    checkKernelStatus(notebookId);
-    setInterval(() => checkKernelStatus(notebookId), 5000);
+  fetch(urlDeps)
+    .then(r => r.json())
+    .then(d => { kernelAutoClose = d.auto_close ?? true; })
+    .catch(() => {});
 });
 
-// Auto-close kernel on page leave if kernel.auto_close is true
 window.addEventListener("beforeunload", () => {
-    if (!kernelAutoClose) return;
-    const notebookId = {{ notebook.id }};
-    const form = new FormData();
-    form.append("csrfmiddlewaretoken", getCookie("csrftoken"));
-    navigator.sendBeacon(`/mandragora/kernel/${notebookId}/stop/`, form);
+  if (!kernelAutoClose) return;
+  const form = new FormData();
+  form.append("csrfmiddlewaretoken", getCsrf());
+  navigator.sendBeacon(urlStop, form);
 });
-</script>
-<script>
-async function createNewCell(notebookId) {
-    const url = `/mandragora/${notebookId}/cells/create/`;
 
-    try {
-        const response = await fetch(url, {
-            method: "POST",
-            headers: {
-                "X-CSRFToken": getCookie("csrftoken"),
-            }
-        });
-
-        const data = await response.json();
-        location.reload(); // only here, because new cell must appear
-
-    } catch (error) {
-        console.error("Error creating cell:", error);
-        alert("Failed to create new cell.");
-    }
+// ── Cell CRUD ─────────────────────────────────────────────────────────────
+async function createNewCell() {
+  try {
+    await fetch(urlCellCreate, { method: "POST", headers: { "X-CSRFToken": getCsrf() } });
+    location.reload();
+  } catch (err) {
+    console.error("createNewCell error:", err);
+  }
 }
-</script>
-<script>
+
 async function deleteCell(cellId) {
-    const url = `/mandragora/cells/${cellId}/delete/`;
-
-    if (!confirm("Delete this cell?")) return;
-
-    try {
-        const response = await fetch(url, {
-            method: "POST",
-            headers: {
-                "X-CSRFToken": getCookie("csrftoken"),
-            }
-        });
-
-        const data = await response.json();
-
-        if (data.status === "deleted") {
-            location.reload(); // simplest for now
-        }
-
-    } catch (error) {
-        console.error("Error deleting cell:", error);
-        alert("Failed to delete cell.");
-    }
+  if (!confirm("{% trans 'Delete this cell?' %}")) return;
+  try {
+    const res  = await fetch(cellUrl(cellId, "urlDelete"), { method: "POST", headers: { "X-CSRFToken": getCsrf() } });
+    const data = await res.json();
+    if (data.status === "deleted") location.reload();
+  } catch (err) {
+    console.error("deleteCell error:", err);
+  }
 }
-</script>
-<script>
+
 async function promoteCellToLambda(cellId) {
-    try {
-        // Get content from editor
-        const editor = ace.edit(`editor-${cellId}`);
-        const code = editor.getValue();
-
-        const response = await fetch(`/mandragora/cell/${cellId}/promote/`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "X-CSRFToken": getCookie("csrftoken"),
-            },
-            body: JSON.stringify({
-                content: code,
-                function_name: `notebook_cell_${cellId}` // optional
-            })
-        });
-
-        const data = await response.json();
-
-        if (data.status === "created" || data.status === "updated") {
-            alert(`Lambda function ${data.function_name} ${data.status}.`);
-        } else {
-            alert("Unexpected response from server.");
-        }
-
-    } catch (err) {
-        console.error(err);
-        alert("Failed to promote cell to Lambda.");
+  try {
+    const editor = ace.edit(`editor-${cellId}`);
+    const res    = await fetch(cellUrl(cellId, "urlPromote"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRFToken": getCsrf() },
+      body: JSON.stringify({ content: editor.getValue(), function_name: `notebook_cell_${cellId}` }),
+    });
+    const data = await res.json();
+    if (data.status === "created" || data.status === "updated") {
+      alert(`Lambda function "${data.function_name}" ${data.status}.`);
     }
+  } catch (err) {
+    console.error("promoteCellToLambda error:", err);
+  }
 }
 </script>
-
-
-
 {% endblock %}

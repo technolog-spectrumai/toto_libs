@@ -1,17 +1,23 @@
 from django.conf import settings
-from django.views.decorators.http import require_POST
-from django.views.generic import ListView, DetailView
-from django.shortcuts import get_object_or_404
+from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
+from django.views.generic import ListView, DetailView
 from toto.ui import PageProcessor
 
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
+from .forms import NotebookForm
 from .models import Cell, ComputeKernel, KernelDependency, LambdaFunction, Notebook
 from .tasks import execute_cell_task
 from .kernel import KernelClient
+
+
+def mandragora_render(request, template_name, context):
+    return render(request, template_name, PageProcessor().decorate(context, request))
 
 
 # ---------------------------------------------------------
@@ -51,6 +57,65 @@ class NotebookDetailView(LoginRequiredMixin, DetailView):
         notebook = self.get_object()
         context["cells"] = notebook.cells.order_by("position")
         return PageProcessor().decorate(context, self.request)
+
+
+# ---------------------------------------------------------
+#  Notebook CRUD
+# ---------------------------------------------------------
+
+@login_required
+def notebook_create(request):
+    if request.method == "POST":
+        form = NotebookForm(request.POST)
+        if form.is_valid():
+            notebook = form.save()
+            messages.success(request, "Notebook created.")
+            return redirect("mandragora:notebook_detail", slug=notebook.slug)
+    else:
+        form = NotebookForm()
+
+    return mandragora_render(request, "mandragora/notebook_form.html", {
+        "form": form,
+        "title": "New notebook",
+        "submit_label": "Create notebook",
+        "icon": "fa-solid fa-plus",
+    })
+
+
+@login_required
+def notebook_update(request, slug):
+    notebook = get_object_or_404(Notebook, slug=slug)
+
+    if request.method == "POST":
+        form = NotebookForm(request.POST, instance=notebook)
+        if form.is_valid():
+            notebook = form.save()
+            messages.success(request, "Notebook saved.")
+            return redirect("mandragora:notebook_detail", slug=notebook.slug)
+    else:
+        form = NotebookForm(instance=notebook)
+
+    return mandragora_render(request, "mandragora/notebook_form.html", {
+        "form": form,
+        "notebook": notebook,
+        "title": "Edit notebook",
+        "submit_label": "Save notebook",
+        "icon": "fa-solid fa-pen-to-square",
+    })
+
+
+@login_required
+def notebook_delete(request, slug):
+    notebook = get_object_or_404(Notebook, slug=slug)
+
+    if request.method == "POST":
+        notebook.delete()
+        messages.success(request, "Notebook deleted.")
+        return redirect("mandragora:notebook_list")
+
+    return mandragora_render(request, "mandragora/notebook_confirm_delete.html", {
+        "notebook": notebook,
+    })
 
 
 # ---------------------------------------------------------
