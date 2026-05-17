@@ -45,26 +45,96 @@ class BiomeClass:
 
 
 BIOMES = {
-    "abyssal_ocean": BiomeClass("abyssal_ocean", "Abyssal Ocean", "#0f3f66", 0.12, 0.8, 0.65, ("ocean", "wet")),
-    "kelp_shelf": BiomeClass("kelp_shelf", "Kelp Shelf", "#0e7490", 0.42, 0.9, 0.8, ("ocean", "wet", "life")),
-    "tidal_marsh": BiomeClass("tidal_marsh", "Tidal Marsh", "#2f855a", 0.58, 0.95, 0.92, ("wet", "life")),
-    "monsoon_jungle": BiomeClass("monsoon_jungle", "Monsoon Jungle", "#15803d", 0.72, 0.85, 0.95, ("wet", "hot", "life")),
-    "cloud_forest": BiomeClass("cloud_forest", "Cloud Forest", "#16a34a", 0.78, 0.9, 1.0, ("wet", "life", "highland")),
-    "temperate_mosaic": BiomeClass("temperate_mosaic", "Temperate Mosaic", "#22c55e", 0.86, 1.0, 1.05, ("temperate", "life")),
-    "savanna_arc": BiomeClass("savanna_arc", "Savanna Arc", "#84cc16", 0.66, 1.05, 1.0, ("dry", "life")),
-    "mycelial_fen": BiomeClass("mycelial_fen", "Mycelial Fen", "#65a30d", 0.7, 1.1, 0.95, ("wet", "life", "exotic")),
-    "basalt_badlands": BiomeClass("basalt_badlands", "Basalt Badlands", "#57534e", 0.28, 1.35, 0.85, ("dry", "rocky")),
-    "glass_desert": BiomeClass("glass_desert", "Glass Desert", "#facc15", 0.18, 1.15, 0.65, ("dry", "hot")),
-    "salt_pan": BiomeClass("salt_pan", "Salt Pan", "#e5e7eb", 0.24, 1.05, 0.75, ("dry", "mineral")),
-    "cryo_steppe": BiomeClass("cryo_steppe", "Cryo Steppe", "#67e8f9", 0.32, 1.0, 0.75, ("cold", "dry")),
-    "boreal_taiga": BiomeClass("boreal_taiga", "Boreal Taiga", "#166534", 0.62, 0.95, 0.9, ("cold", "life")),
-    "ash_tundra": BiomeClass("ash_tundra", "Ash Tundra", "#94a3b8", 0.2, 1.2, 0.7, ("cold", "rocky")),
-    "alpine_scree": BiomeClass("alpine_scree", "Alpine Scree", "#a8a29e", 0.36, 1.25, 0.8, ("highland", "rocky")),
-    "geothermal_oasis": BiomeClass("geothermal_oasis", "Geothermal Oasis", "#f97316", 0.64, 1.2, 1.05, ("hot", "life", "exotic")),
-    "storm_scrub": BiomeClass("storm_scrub", "Storm Scrub", "#38bdf8", 0.54, 1.0, 0.88, ("windy", "life")),
-    "unknown": BiomeClass("unknown", "Unknown", "#64748b", 0.4),
+    "deep_ocean": BiomeClass(
+        "deep_ocean", "Deep Ocean", "#071d3a",
+        0.10, 0.80, 0.65,
+        ("ocean", "deep", "water")
+    ),
+    "shallow_sea": BiomeClass(
+        "shallow_sea", "Shallow Sea", "#1f6f8b",
+        0.38, 0.90, 0.80,
+        ("ocean", "coastal", "water")
+    ),
+    "sea_ice": BiomeClass(
+        "sea_ice", "Sea Ice", "#d8eef2",
+        0.16, 0.85, 0.55,
+        ("ocean", "cold", "ice")
+    ),
+    "wetland": BiomeClass(
+        "wetland", "Wetland", "#4f7f45",
+        0.58, 0.95, 0.92,
+        ("wet", "life", "lowland")
+    ),
+    "tropical_rainforest": BiomeClass(
+        "tropical_rainforest", "Tropical Rainforest", "#1f6b2a",
+        0.78, 0.85, 1.00,
+        ("hot", "wet", "forest")
+    ),
+    "tropical_seasonal_forest": BiomeClass(
+        "tropical_seasonal_forest", "Tropical Seasonal Forest", "#4f8a2f",
+        0.70, 0.90, 0.95,
+        ("hot", "seasonal", "forest")
+    ),
+    "temperate_forest": BiomeClass(
+        "temperate_forest", "Temperate Forest", "#3f7d3a",
+        0.76, 1.00, 1.05,
+        ("temperate", "wet", "forest")
+    ),
+    "grassland": BiomeClass(
+        "grassland", "Grassland", "#9aa64a",
+        0.60, 1.02, 0.95,
+        ("temperate", "grass", "semi_dry")
+    ),
+    "savanna": BiomeClass(
+        "savanna", "Savanna", "#b6a24a",
+        0.58, 1.05, 0.95,
+        ("hot", "grass", "seasonal")
+    ),
+    "shrubland": BiomeClass(
+        "shrubland", "Shrubland", "#8f7f4a",
+        0.48, 1.08, 0.85,
+        ("dry", "scrub", "temperate")
+    ),
+    "semi_arid_steppe": BiomeClass(
+        "semi_arid_steppe", "Semi-Arid Steppe", "#c2b06b",
+        0.42, 1.10, 0.82,
+        ("dry", "grass", "steppe")
+    ),
+    "desert": BiomeClass(
+        "desert", "Desert", "#d8b56a",
+        0.22, 1.15, 0.65,
+        ("dry", "hot", "arid")
+    ),
+    "cold_desert": BiomeClass(
+        "cold_desert", "Cold Desert", "#b8aa8a",
+        0.26, 1.10, 0.70,
+        ("cold", "dry", "arid")
+    ),
+    "tundra": BiomeClass(
+        "tundra", "Tundra", "#9aa7a0",
+        0.32, 1.00, 0.75,
+        ("cold", "dry", "low_vegetation")
+    ),
+    "boreal_forest": BiomeClass(
+        "boreal_forest", "Boreal Forest", "#2f5f3a",
+        0.62, 0.95, 0.90,
+        ("cold", "forest", "conifer")
+    ),
+    "alpine": BiomeClass(
+        "alpine", "Alpine", "#9c9c94",
+        0.34, 1.22, 0.78,
+        ("highland", "cold", "rocky")
+    ),
+    "bare_rock": BiomeClass(
+        "bare_rock", "Bare Rock", "#6f6a61",
+        0.24, 1.30, 0.75,
+        ("rocky", "barren")
+    ),
+    "unknown": BiomeClass(
+        "unknown", "Unknown", "#64748b",
+        0.40
+    ),
 }
-
 
 def clamp(value: float, floor: float = 0.0, ceiling: float = 1.0) -> float:
     return max(floor, min(ceiling, value))
@@ -80,35 +150,75 @@ def classify_biome(province: Province, sea_level: float = 0.4) -> BiomeClass:
     rain = province.avg_rain
     wind = province.wind_speed
 
+    # Ocean
     if elev < sea_level - 0.18:
-        return BIOMES["abyssal_ocean"]
+        return BIOMES["deep_ocean"]
+
     if elev < sea_level:
-        return BIOMES["kelp_shelf"] if temp > 0.28 else BIOMES["cryo_steppe"]
+        if temp < 0.18:
+            return BIOMES["sea_ice"]
+        return BIOMES["shallow_sea"]
+
+    # Very low, wet coastal/inland land
     if elev < sea_level + 0.05 and rain > 0.68:
-        return BIOMES["tidal_marsh"]
-    if temp > 0.78 and rain < 0.18:
-        return BIOMES["glass_desert"]
-    if rain < 0.16 and elev < 0.48:
-        return BIOMES["salt_pan"]
-    if temp < 0.18 and rain < 0.35:
-        return BIOMES["cryo_steppe"]
-    if temp < 0.25 and elev > 0.62:
-        return BIOMES["ash_tundra"]
-    if elev > 0.76:
-        return BIOMES["alpine_scree"] if rain < 0.62 else BIOMES["cloud_forest"]
-    if temp > 0.72 and rain > 0.72:
-        return BIOMES["monsoon_jungle"]
-    if rain > 0.82 and temp < 0.58:
-        return BIOMES["mycelial_fen"]
-    if temp < 0.42 and rain > 0.42:
-        return BIOMES["boreal_taiga"]
-    if rain < 0.32 and elev > 0.52:
-        return BIOMES["basalt_badlands"]
-    if wind > 0.72 and rain > 0.35:
-        return BIOMES["storm_scrub"]
+        return BIOMES["wetland"]
+
+    # High elevation overrides most climate bands
+    if elev > 0.78:
+        if rain < 0.28:
+            return BIOMES["bare_rock"]
+        return BIOMES["alpine"]
+
+    if elev > 0.65 and temp < 0.35:
+        return BIOMES["alpine"]
+
+    # Cold climates
+    if temp < 0.18:
+        if rain < 0.28:
+            return BIOMES["cold_desert"]
+        return BIOMES["tundra"]
+
+    if temp < 0.34:
+        if rain > 0.42:
+            return BIOMES["boreal_forest"]
+        if rain < 0.25:
+            return BIOMES["cold_desert"]
+        return BIOMES["tundra"]
+
+    # Hot climates
+    if temp > 0.72:
+        if rain > 0.72:
+            return BIOMES["tropical_rainforest"]
+        if rain > 0.48:
+            return BIOMES["tropical_seasonal_forest"]
+        if rain > 0.26:
+            return BIOMES["savanna"]
+        return BIOMES["desert"]
+
+    # Warm / temperate dry climates
+    if rain < 0.18:
+        if temp < 0.42:
+            return BIOMES["cold_desert"]
+        return BIOMES["desert"]
+
+    if rain < 0.32:
+        return BIOMES["semi_arid_steppe"]
+
     if rain < 0.45:
-        return BIOMES["savanna_arc"]
-    return BIOMES["temperate_mosaic"]
+        if temp > 0.58:
+            return BIOMES["savanna"]
+        return BIOMES["grassland"]
+
+    if rain < 0.58:
+        if wind > 0.72:
+            return BIOMES["shrubland"]
+        return BIOMES["grassland"]
+
+    # Wet temperate climates
+    if temp > 0.58 and rain > 0.68:
+        return BIOMES["tropical_seasonal_forest"]
+
+    return BIOMES["temperate_forest"]
 
 
 def compute_habitability(province: Province, sea_level: float = 0.4, infrastructure_level: float = 0.0) -> float:
