@@ -336,15 +336,27 @@
       graph.addNode("map-corner-nw", { x: 0, y: mapSize, size: 0.01, label: "", color: "#000000" });
       graph.addNode("map-corner-se", { x: mapSize, y: 0, size: 0.01, label: "", color: "#000000" });
       payload.nodes.forEach((node) => {
+        const x = Number(node.x);
+        const y = mapYToGraphY(node.y);
+        graph.addNode(`${node.id}-outline`, {
+          kind: "outline",
+          target: node.id,
+          label: "",
+          x,
+          y,
+          size: node.size + 5,
+          color: "#000000",
+          type: "circle",
+        });
         graph.addNode(node.id, {
           ...node,
           label: node.label,
-          x: Number(node.x),
-          y: mapYToGraphY(node.y),
-          mapX: Number(node.x),
+          x,
+          y,
+          mapX: x,
           mapY: Number(node.y),
           size: node.size,
-          color: provinceColor,
+          color: node.colors?.biome || node.color || provinceColor,
           type: "circle",
         });
       });
@@ -389,6 +401,7 @@
 
       if (expanded.has(provinceId)) {
         province.buildings.forEach((building) => {
+          if (graph.hasNode(`${building.id}-outline`)) graph.dropNode(`${building.id}-outline`);
           if (graph.hasNode(building.id)) graph.dropNode(building.id);
         });
         expanded.delete(provinceId);
@@ -398,12 +411,24 @@
       const radius = 1.2 + province.buildings.length * 0.12;
       province.buildings.forEach((building, index) => {
         const angle = (Math.PI * 2 * index) / Math.max(1, province.buildings.length);
+        const x = province.x + Math.cos(angle) * radius;
+        const y = province.y + Math.sin(angle) * radius;
+        graph.addNode(`${building.id}-outline`, {
+          kind: "outline",
+          target: building.id,
+          label: "",
+          x,
+          y,
+          size: 10 + building.level,
+          color: "#000000",
+          type: "circle",
+        });
         graph.addNode(building.id, {
           ...building,
           kind: "building",
           label: `${building.label} L${building.level}`,
-          x: province.x + Math.cos(angle) * radius,
-          y: province.y + Math.sin(angle) * radius,
+          x,
+          y,
           size: 7 + building.level,
           color: buildingColor,
           type: "circle",
@@ -470,7 +495,11 @@
     const camera = typeof renderer.getCamera === "function" ? renderer.getCamera() : null;
 
     renderer.on("clickNode", ({ node }) => {
-      const attributes = graph.getNodeAttributes(node);
+      let attributes = graph.getNodeAttributes(node);
+      if (attributes.kind === "outline" && graph.hasNode(attributes.target)) {
+        node = attributes.target;
+        attributes = graph.getNodeAttributes(node);
+      }
       if (!["province", "building"].includes(attributes.kind)) return;
       renderDetails(node);
       toggleBuildings(node);

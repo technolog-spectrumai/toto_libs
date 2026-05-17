@@ -10,7 +10,7 @@ from django.core.files.base import ContentFile
 from django.db import transaction
 from PIL import Image
 
-from .biomes import PlanetConfig, Province as BiomeProvince, classify_biome
+from .biomes import PlanetConfig, Province as BiomeProvince, classify_biome, compute_habitability
 from .models import Planet, Province
 
 
@@ -26,6 +26,21 @@ class GeneratedProvince:
     avg_rain: float
     wind_speed: float
     cell_count: int
+
+
+@dataclass(frozen=True)
+class ProvinceCandidate:
+    score: float
+    habitability: float
+    x: int
+    y: int
+    width: int
+    height: int
+    avg_elev: float
+    avg_temp: float
+    avg_rain: float
+    wind_speed: float
+    biome_name: str
 
 
 @dataclass
@@ -214,30 +229,71 @@ class PlanetGenerator:
                 temp = float(np.mean(data.temp_map[y0:y1, x0:x1]))
                 rain = float(np.mean(data.rain_map[y0:y1, x0:x1]))
                 wind = float(np.mean(data.wind_map[y0:y1, x0:x1]))
-                biome = classify_biome(BiomeProvince(x0, y0, x1 - x0, y1 - y0, elev, temp, rain, wind_speed=wind), self.config.sea_level)
+                biome_province = BiomeProvince(x0, y0, x1 - x0, y1 - y0, elev, temp, rain, wind_speed=wind)
+                biome = classify_biome(biome_province, self.config.sea_level)
+                habitability = compute_habitability(biome_province, self.config.sea_level)
                 land_bonus = 0.18 if elev >= self.config.sea_level else -0.12
-                center_bias = 1 - (math.dist((x0 + (x1 - x0) / 2, y0 + (y1 - y0) / 2), (self.cx, self.cy)) / max(1, self.config.size)) * 0.15
-                score = biome.habitability + land_bonus + center_bias + float(self.rng.random()) * 0.08
-                candidates.append((score, x0, y0, x1 - x0, y1 - y0, elev, temp, rain, wind, biome.name))
+                center_x = x0 + (x1 - x0) / 2
+                center_y = y0 + (y1 - y0) / 2
+                center_bias = 1 - (math.dist((center_x, center_y), (self.cx, self.cy)) / max(1, self.config.size)) * 0.15
+                habitability_score = habitability * 0.7
+                score = habitability_score + land_bonus + center_bias + float(self.rng.random()) * 0.08
+                candidates.append(
+                    ProvinceCandidate(
+                        score=score,
+                        habitability=habitability,
+                        x=int(center_x),
+                        y=int(center_y),
+                        width=x1 - x0,
+                        height=y1 - y0,
+                        avg_elev=elev,
+                        avg_temp=temp,
+                        avg_rain=rain,
+                        wind_speed=wind,
+                        biome_name=biome.name,
+                    )
+                )
 
-        selected = sorted(candidates, reverse=True)[:province_count]
-        selected.sort(key=lambda row: (row[2], row[1]))
+        selected = self.select_evenly_spread_candidates(candidates, province_count)
         return [self.build_province(index, row) for index, row in enumerate(selected, start=1)]
 
-    def build_province(self, index: int, row) -> GeneratedProvince:
-        _, x, y, width, height, elev, temp, rain, wind, biome_name = row
+    def select_evenly_spread_candidates(self, candidates: list[ProvinceCandidate], province_count: int) -> list[ProvinceCandidate]:
+        selected: list[ProvinceCandidate] = []
+        remaining = sorted(candidates, key=lambda candidate: candidate.score, reverse=True)
+        min_distance = self.config.size / max(2, province_count**0.5)
+
+        while remaining and len(selected) < province_count:
+            best = max(remaining, key=lambda candidate: self.spread_score(candidate, selected, min_distance))
+            selected.append(best)
+            remaining.remove(best)
+
+        return sorted(selected, key=lambda candidate: (candidate.y, candidate.x))
+
+    def spread_score(self, candidate: ProvinceCandidate, selected: list[ProvinceCandidate], min_distance: float) -> float:
+        if not selected:
+            return candidate.score
+        nearest = min(math.dist((candidate.x, candidate.y), (row.x, row.y)) for row in selected)
+        spacing = min(1.0, nearest / max(1.0, min_distance))
+        crowding_penalty = max(0.0, (min_distance - nearest) / max(1.0, min_distance)) * 0.7
+        return candidate.score + spacing * 0.35 - crowding_penalty
+
+    def build_province(self, index: int, row: ProvinceCandidate) -> GeneratedProvince:
+        x = row.x
+        y = row.y
+        width = row.width
+        height = row.height
         province_area = max(1, width * height)
         cell_count = max(6, min(32, int(province_area / 95)))
         return GeneratedProvince(
-            name=f"{biome_name} {index}",
-            x=int(x + width / 2),
-            y=int(y + height / 2),
+            name=f"{row.biome_name} {index}",
+            x=int(x),
+            y=int(y),
             width=int(width),
             height=int(height),
-            avg_elev=round(elev, 4),
-            avg_temp=round(temp, 4),
-            avg_rain=round(rain, 4),
-            wind_speed=round(wind, 4),
+            avg_elev=round(row.avg_elev, 4),
+            avg_temp=round(row.avg_temp, 4),
+            avg_rain=round(row.avg_rain, 4),
+            wind_speed=round(row.wind_speed, 4),
             cell_count=cell_count,
         )
 
