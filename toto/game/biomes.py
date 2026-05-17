@@ -46,12 +46,12 @@ class BiomeClass:
 
 BIOMES = {
     "deep_ocean": BiomeClass(
-        "deep_ocean", "Deep Ocean", "#08192d",
+        "deep_ocean", "Deep Ocean", "#102a44",
         0.10, 0.80, 0.65,
         ("ocean", "deep", "water")
     ),
     "shallow_sea": BiomeClass(
-        "shallow_sea", "Shallow Sea", "#254d63",
+        "shallow_sea", "Shallow Sea", "#1b3f5f",
         0.38, 0.90, 0.80,
         ("ocean", "coastal", "water")
     ),
