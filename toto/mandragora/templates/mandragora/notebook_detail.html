@@ -105,6 +105,7 @@
           <div
             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
             class="rounded-xl border shadow-sm transition-colors duration-300"
+            data-functional-zone-id="notebook-cell-{{ cell.id }}"
             data-cell-id="{{ cell.id }}"
             data-url-run="{% url 'mandragora:run_cell' cell.id %}"
             data-url-delete="{% url 'mandragora:delete_cell' cell.id %}"
@@ -113,10 +114,13 @@
             <!-- Cell header -->
             <div class="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3"
                  :class="darkMode ? 'border-accent-1/50' : 'border-accent-2/50'">
-              <span class="text-xs font-semibold opacity-60">
-                {% trans "Cell" %} {{ forloop.counter }}
-                <span class="ml-1 opacity-75">— {{ cell.cell_type|title }}</span>
-              </span>
+              <div class="flex flex-wrap items-center gap-2 text-xs font-semibold">
+                <span class="opacity-70">{% trans "Cell" %} {{ forloop.counter }} — {{ cell.cell_type|title }}</span>
+                <span class="rounded border border-current/15 px-2 py-0.5 opacity-60">Python</span>
+                <span data-active-target-badge class="hidden rounded bg-accent-light px-2 py-0.5 text-[10px] uppercase text-primary-bg-light">
+                  {% trans "Active target" %}
+                </span>
+              </div>
 
               <div class="flex items-center gap-2">
                 <span class="text-xs opacity-45">
@@ -125,6 +129,7 @@
                 </span>
 
                 {% if cell.cell_type == "code" %}
+                  <span id="ai-toolbar-cell-{{ cell.id }}" class="flex items-center gap-2"></span>
                   <button
                     data-cell-id="{{ cell.id }}"
                     onclick="runCell(this)"
@@ -234,6 +239,8 @@ function getCsrf() {
 }
 
 // ── Ace editors ──────────────────────────────────────────────────────────
+window.NotebookEditors = window.NotebookEditors || {};
+
 function createAceEditor(elementId, initialValue) {
   const editor = ace.edit(elementId);
   editor.setTheme(darkMode ? "ace/theme/twilight" : "ace/theme/textmate");
@@ -245,7 +252,28 @@ function createAceEditor(elementId, initialValue) {
 
 document.addEventListener("DOMContentLoaded", () => {
   {% for cell in cells %}{% if cell.cell_type == "code" %}
-  createAceEditor("editor-{{ cell.id }}", `{{ cell.content|escapejs }}`);
+  window.NotebookEditors["{{ cell.id }}"] = createAceEditor("editor-{{ cell.id }}", `{{ cell.content|escapejs }}`);
+  if (window.FunctionalZones) {
+    const zoneId = "notebook-cell-{{ cell.id }}";
+    window.FunctionalZones.registerZone({
+      id: zoneId,
+      label: "Cell {{ forloop.counter }}",
+      kind: "notebook-cell",
+      language: "python",
+      acceptedLanguages: ["python", "text"],
+      getContent: () => window.NotebookEditors["{{ cell.id }}"].getValue(),
+      setContent: content => window.NotebookEditors["{{ cell.id }}"].setValue(content, -1),
+      insertContent: content => window.NotebookEditors["{{ cell.id }}"].insert(content),
+      appendContent: content => {
+        const editor = window.NotebookEditors["{{ cell.id }}"];
+        editor.setValue(`${editor.getValue()}\n${content}`, -1);
+      },
+      replaceSelection: content => window.NotebookEditors["{{ cell.id }}"].session.replace(window.NotebookEditors["{{ cell.id }}"].getSelectionRange(), content),
+      getSelection: () => window.NotebookEditors["{{ cell.id }}"].getSelectedText() || null,
+      metadata: { preferredImportMode: "insert", cellId: "{{ cell.id }}" },
+    });
+    window.FunctionalZones.renderZoneToolbar(document.getElementById("ai-toolbar-cell-{{ cell.id }}"), zoneId, { importLabel: "Import" });
+  }
   {% endif %}{% endfor %}
 });
 

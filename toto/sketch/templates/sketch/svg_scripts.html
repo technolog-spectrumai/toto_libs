@@ -7,10 +7,21 @@
     import(svgString, options = {}) {
         if (!svgString.trim()) return [];
 
+        const parsed = new DOMParser().parseFromString(svgString, "image/svg+xml");
+        const parserError = parsed.querySelector("parsererror");
+        const svgRoot = parsed.documentElement;
+        if (parserError || !svgRoot || svgRoot.localName.toLowerCase() !== "svg") {
+            throw new Error("Steven output is not valid SVG.");
+        }
+
         const imported = this.paper.project.importSVG(svgString, {
             expandShapes: true,
             insert: false
         });
+
+        if (!imported) {
+            throw new Error("The SVG could not be imported into the sketch canvas.");
+        }
 
         if (options.targetRect) {
             this.fitItemToRect(imported, options.targetRect);
@@ -22,6 +33,10 @@
 
         const shapes = [];
         items.forEach(item => this.walk(item, shapes));
+        imported.remove();
+        if (!shapes.length) {
+            throw new Error("The SVG did not contain editable sketch objects.");
+        }
         return shapes;
     }
 

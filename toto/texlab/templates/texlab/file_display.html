@@ -45,13 +45,29 @@
     </section>
 
     <!-- Editor -->
-    <section class="space-y-4">
+    <section class="space-y-4" data-functional-zone-id="tex-file-{{ file.id }}">
 
       <!-- Header row -->
-      <div class="flex items-center justify-between">
-        <h2 class="text-xl font-bold">Editor</h2>
+      <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+        <div class="flex flex-wrap items-center gap-2">
+          <h2 class="text-sm font-bold">{{ file.vault_file.title }}</h2>
+          <span class="rounded border border-current/15 px-2 py-0.5 text-xs opacity-60">LaTeX</span>
+          <span data-active-target-badge class="hidden rounded bg-accent-light px-2 py-0.5 text-[10px] font-semibold uppercase text-primary-bg-light">
+            Active target
+          </span>
+        </div>
 
         <div class="flex items-center gap-3">
+          <span id="ai-toolbar-tex-{{ file.id }}" class="flex items-center gap-2"></span>
+          <button
+            type="button"
+            onclick="window.FunctionalZones && window.FunctionalZones.previewLatestBlockForZone('tex-file-{{ file.id }}')"
+            :class="darkMode ? 'border-accent-1 hover:bg-primary-bg-dark' : 'border-accent-2 hover:bg-primary-bg-light'"
+            class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1 text-xs font-semibold transition">
+            <i class="fa-solid fa-code-compare"></i>
+            <span>Preview Diff</span>
+          </button>
 
           <!-- Read-only toggle -->
           <button
@@ -339,6 +355,38 @@ function createAceEditor(elementId) {
   };
 
   window.TexLabEditor = editor;
+
+  document.addEventListener("DOMContentLoaded", () => {
+    if (!window.FunctionalZones) return;
+    window.FunctionalZones.registerZone({
+      id: "tex-file-{{ file.id }}",
+      label: "{{ file.vault_file.title|escapejs }}",
+      kind: "tex-file",
+      language: "latex",
+      acceptedLanguages: ["latex", "text"],
+      getContent: () => editor.getValue(),
+      setContent: content => editor.setValue(content, -1),
+      insertContent: content => editor.insert(content),
+      appendContent: content => editor.setValue(`${editor.getValue()}\n${content}`, -1),
+      replaceSelection: content => editor.session.replace(editor.getSelectionRange(), content),
+      getSelection: () => editor.getSelectedText() || null,
+      metadata: { preferredImportMode: "insert", fileId: "{{ file.id }}" },
+    });
+    window.FunctionalZones.renderZoneToolbar(document.getElementById("ai-toolbar-tex-{{ file.id }}"), "tex-file-{{ file.id }}", { importLabel: "Import" });
+  });
+
+  async function saveFile() {
+    const formData = new FormData();
+    formData.append("content", editor.getValue());
+    const response = await fetch("{% url 'texlab:save_file' file_id=file.id %}", {
+      method: "POST",
+      body: formData,
+      headers: { "X-CSRFToken": "{{ csrf_token }}" },
+      credentials: "same-origin",
+    });
+    const data = await response.json();
+    if (data.status !== "ok") alert(data.error || "Failed to save file.");
+  }
 </script>
 <script>
   document.getElementById("delete-file").addEventListener("click", async () => {

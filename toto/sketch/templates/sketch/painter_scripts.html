@@ -56,8 +56,33 @@ mermaid.initialize({ startOnLoad: false });
 
 
     importSVG(svgString, options = {}) {
-        const shapes = this.converter.import(svgString, options);
+        let shapes = [];
+        try {
+            shapes = this.converter.import(svgString, options);
+        } catch (err) {
+            console.warn("SVG import rejected:", err);
+            alert(err.message || "The SVG could not be imported.");
+            return false;
+        }
 
+        return this.importShapes(shapes);
+    }
+
+    replaceWithSVG(svgString, options = {}) {
+        let shapes = [];
+        try {
+            shapes = this.converter.import(svgString, options);
+        } catch (err) {
+            console.warn("SVG replacement rejected:", err);
+            alert(err.message || "The SVG could not be imported.");
+            return false;
+        }
+
+        this.clearCanvas();
+        return this.importShapes(shapes);
+    }
+
+    importShapes(shapes) {
         const childIds = [];
 
         shapes.forEach(shape => {
@@ -68,6 +93,8 @@ mermaid.initialize({ startOnLoad: false });
         if (childIds.length > 1) {
             this.createGroupFromChildren(childIds);
         }
+
+        return true;
     }
 
 

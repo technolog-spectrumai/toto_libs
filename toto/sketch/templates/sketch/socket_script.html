@@ -8,6 +8,8 @@ class BoardSocketProvider {
         this.isOpen = false;
         this.enabled = true;
         this.reconnectTimer = null;
+        this.reconnectAttempts = 0;
+        this.maxReconnectAttempts = 3;
         this.connect();
 
         this.ydoc.on("update", (update, origin) => {
@@ -30,6 +32,7 @@ class BoardSocketProvider {
 
         this.socket.addEventListener("open", () => {
             this.isOpen = true;
+            this.reconnectAttempts = 0;
             this.dispatchStatus();
             this.sync();
             this.publishState();
@@ -40,6 +43,11 @@ class BoardSocketProvider {
             this.socket = null;
             this.dispatchStatus();
             this.scheduleReconnect();
+        });
+
+        this.socket.addEventListener("error", () => {
+            this.isOpen = false;
+            this.dispatchStatus();
         });
 
         this.socket.addEventListener("message", event => {
@@ -108,6 +116,13 @@ class BoardSocketProvider {
 
     scheduleReconnect() {
         if (!this.enabled || this.reconnectTimer) return;
+        if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+            this.enabled = false;
+            this.dispatchStatus();
+            console.warn("Sketch sync is unavailable; continuing in local-only mode.");
+            return;
+        }
+        this.reconnectAttempts += 1;
         this.reconnectTimer = setTimeout(() => {
             this.reconnectTimer = null;
             this.connect();

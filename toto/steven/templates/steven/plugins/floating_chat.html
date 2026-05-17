@@ -1,6 +1,14 @@
 {% if agent %}
 <div
-  x-data="{ open: false, loading: false }"
+  x-data="{ open: false, loading: false, activeTarget: 'No active target' }"
+  x-init="
+    document.addEventListener('functional-zone:active-changed', e => {
+      activeTarget = e.detail.zone ? `${e.detail.zone.label} — ${e.detail.zone.language}` : 'No active target';
+    });
+    const initialZone = window.FunctionalZones && window.FunctionalZones.getActiveZone();
+    if (initialZone) activeTarget = `${initialZone.label} — ${initialZone.language}`;
+  "
+  x-on:steven-open.window="open = true"
   class="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3"
 >
   <!-- Chat panel -->
@@ -61,6 +69,7 @@
     >
       {% csrf_token %}
       <textarea
+        data-steven-prompt
         name="user_prompt"
         rows="3"
         placeholder="Ask {{ agent.name }} something…"
@@ -81,6 +90,14 @@
         </span>
         <span x-text="loading ? 'Thinking…' : 'Ask'"></span>
       </button>
+      <div
+        :class="darkMode ? 'text-text-main-dark/55' : 'text-text-main-light/55'"
+        class="flex items-center gap-1.5 border-t border-current/10 pt-2 text-[11px] font-semibold"
+      >
+        <i class="fa-solid fa-bullseye text-[10px]"></i>
+        <span>Active target:</span>
+        <span x-text="activeTarget"></span>
+      </div>
     </form>
   </div>
 
@@ -95,6 +112,15 @@
     <span x-text="open ? 'Close' : 'Ask AI'"></span>
   </button>
 </div>
+
+<script>
+document.body.addEventListener("htmx:responseError", event => {
+  if (event.detail?.target?.id !== "steven-chat-result") return;
+  const result = event.detail.target;
+  result.textContent = "Steven could not answer. No content was imported or applied.";
+  result.dataset.functionalZoneParsed = "true";
+});
+</script>
 
 {% elif steven_debug %}
 <!-- DEBUG: agent not seeded — run manage.py ingress_steven -->

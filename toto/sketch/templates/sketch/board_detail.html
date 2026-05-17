@@ -91,11 +91,41 @@
             transition-colors
             duration-300
           "
+          data-functional-zone-id="sketch-canvas-{{ board.id }}"
           {% if background_image_url %}
             data-background-url="{{ background_image_url }}"
           {% endif %}
         >
-          <canvas id="sketch-canvas" resize class="w-full h-full"></canvas>
+          <div class="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3"
+               :class="darkMode ? 'border-accent-1/50' : 'border-accent-2/50'">
+            <div class="flex flex-wrap items-center gap-2 text-xs font-semibold">
+              <span>Sketch Canvas</span>
+              <span class="rounded border border-current/15 px-2 py-0.5 opacity-60">SVG</span>
+              <span data-active-target-badge class="hidden rounded bg-accent-light px-2 py-0.5 text-[10px] uppercase text-primary-bg-light">
+                Active target
+              </span>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <span id="ai-toolbar-sketch-{{ board.id }}" class="flex items-center gap-2"></span>
+              <button
+                type="button"
+                onclick="window.painter && window.painter.exportToSVG('{{ board.slug|default:board.id }}.svg')"
+                :class="darkMode ? 'border-accent-1 hover:bg-primary-bg-dark' : 'border-accent-2 hover:bg-primary-bg-light'"
+                class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1 text-xs font-semibold transition">
+                <i class="fa-solid fa-file-export"></i>
+                Export SVG
+              </button>
+              <button
+                type="button"
+                onclick="window.painter && window.painter.converter && window.openPreviewSvg && window.openPreviewSvg()"
+                :class="darkMode ? 'border-accent-1 hover:bg-primary-bg-dark' : 'border-accent-2 hover:bg-primary-bg-light'"
+                class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1 text-xs font-semibold transition">
+                <i class="fa-solid fa-eye"></i>
+                Preview
+              </button>
+            </div>
+          </div>
+          <canvas id="sketch-canvas" resize class="h-[calc(100%-45px)] w-full"></canvas>
         </section>
 
 
@@ -609,6 +639,37 @@ document.addEventListener("DOMContentLoaded", () => {
     let painter = new YPainter(ydoc, paper);
     window.painter = painter;
     painter.renderAll();
+
+    window.openPreviewSvg = function () {
+        const svgString = painter.converter.exportSVG({ asString: true });
+        const previewWindow = window.open("", "_blank", "noopener,noreferrer");
+        if (!previewWindow) return;
+        previewWindow.document.write(svgString);
+        previewWindow.document.close();
+    };
+
+    if (window.FunctionalZones) {
+        const zoneId = "sketch-canvas-{{ board.id }}";
+        window.FunctionalZones.registerZone({
+            id: zoneId,
+            label: "Sketch Canvas",
+            kind: "svg-sketch",
+            language: "svg",
+            acceptedLanguages: ["svg"],
+            getContent: () => painter.converter.exportSVG({ asString: true }),
+            setContent: content => painter.replaceWithSVG(content),
+            insertContent: content => painter.importSVG(content),
+            appendContent: content => painter.importSVG(content),
+            replaceSelection: content => painter.importSVG(content),
+            getSelection: () => null,
+            metadata: { preferredImportMode: "insert", boardId: "{{ board.id }}" },
+        });
+        window.FunctionalZones.renderZoneToolbar(
+            document.getElementById("ai-toolbar-sketch-{{ board.id }}"),
+            zoneId,
+            { importLabel: "Import SVG" }
+        );
+    }
 
     window.boardSocket = new BoardSocketProvider(ydoc, "{{ board.id }}", Y);
 
