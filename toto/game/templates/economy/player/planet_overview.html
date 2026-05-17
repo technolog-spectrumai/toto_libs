@@ -1,0 +1,288 @@
+{% extends "economy/player/base.html" %}
+{% load i18n %}
+
+{% block game_title %}{{ planet.name }}{% endblock %}
+
+{% block game_start_script %}
+<script src="https://cdn.jsdelivr.net/npm/graphology@0.25.4/dist/graphology.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sigma@2.4.0/build/sigma.min.js"></script>
+<style>
+  #planet-graph {
+    min-height: 560px;
+  }
+</style>
+{% endblock %}
+
+{% block game_content %}
+{{ planet_graph|json_script:"planet-graph-payload" }}
+
+<section class="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
+  <aside class="space-y-4">
+    <div
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-lg border p-5 shadow-sm">
+      <p class="text-xs font-semibold uppercase tracking-wide opacity-70">{% trans "Planet" %}</p>
+      <h2 class="mt-2 text-2xl font-bold">{{ planet.name }}</h2>
+      <dl class="mt-5 grid grid-cols-2 gap-3 text-sm">
+        <div><dt class="opacity-65">{% trans "Type" %}</dt><dd class="font-semibold">{{ planet.get_planet_type_display }}</dd></div>
+        <div><dt class="opacity-65">{% trans "Size" %}</dt><dd class="font-semibold">{{ planet.get_size_class_display }}</dd></div>
+        <div><dt class="opacity-65">{% trans "Habitability" %}</dt><dd class="font-semibold">{{ planet.habitability|floatformat:2 }}</dd></div>
+        <div><dt class="opacity-65">{% trans "Provinces" %}</dt><dd class="font-semibold">{{ planet.province_count }} / {{ planet.max_provinces }}</dd></div>
+      </dl>
+    </div>
+
+    <div
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-lg border p-5 shadow-sm">
+      <h3 class="font-bold">{% trans "Planet Policy" %}</h3>
+      <form method="post" action="{% url 'game:update_planet_policy' planet.id %}" class="game-form mt-4">
+        {% csrf_token %}
+        {{ policy_form.as_p }}
+        <button
+          type="submit"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm">
+          <i class="fa-solid fa-floppy-disk"></i>
+          {% trans "Save" %}
+        </button>
+      </form>
+    </div>
+
+    <div class="flex flex-wrap gap-2">
+      <a
+        href="{% url 'game:create_province' planet.id %}"
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm">
+        <i class="fa-solid fa-map-pin"></i>
+        {% trans "Create province" %}
+      </a>
+      <form method="post" action="{% url 'game:player_tick_planet' planet.id %}">
+        {% csrf_token %}
+        <button
+          type="submit"
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm">
+          <i class="fa-solid fa-forward-step"></i>
+          {% trans "Tick" %}
+        </button>
+      </form>
+    </div>
+  </aside>
+
+  <section class="space-y-4">
+    <div
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-lg border shadow-sm">
+      <div class="flex flex-col gap-3 border-b px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
+           :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <div>
+          <h2 class="text-xl font-bold">{% trans "Functional Planet Map" %}</h2>
+          <p class="mt-1 text-sm opacity-70">{% trans "Click a province to expand or collapse its buildings." %}</p>
+        </div>
+        <div class="flex flex-wrap gap-2 text-xs font-semibold">
+          <span class="inline-flex items-center gap-2"><span class="h-3 w-3 rounded-sm bg-[#facc15]"></span>{% trans "Energy/Grid" %}</span>
+          <span class="inline-flex items-center gap-2"><span class="h-3 w-3 rounded-sm bg-[#38bdf8]"></span>{% trans "Pipeline" %}</span>
+          <span class="inline-flex items-center gap-2"><span class="h-3 w-3 rounded-sm bg-[#f8fafc]"></span>{% trans "Rail" %}</span>
+        </div>
+      </div>
+
+      <div class="grid lg:grid-cols-[minmax(0,1fr)_280px]">
+        <div id="planet-graph" class="h-[560px] w-full"></div>
+        <aside id="planet-graph-details"
+               :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+               class="border-t p-4 text-sm lg:border-l lg:border-t-0">
+          <p class="text-xs font-semibold uppercase tracking-wide opacity-65">{% trans "Selection" %}</p>
+          <h3 class="mt-2 text-lg font-bold">{% trans "No province selected" %}</h3>
+          <p class="mt-2 opacity-70">{% trans "Select a province node to inspect deposits and reveal buildings." %}</p>
+        </aside>
+      </div>
+    </div>
+
+    <div class="grid gap-4 xl:grid-cols-2">
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-lg border p-5 shadow-sm">
+        <h2 class="text-lg font-bold">{% trans "Planet Storage" %}</h2>
+        <div class="mt-4 overflow-x-auto">
+          <table class="w-full min-w-[520px] text-left text-sm">
+            <thead class="text-xs uppercase opacity-70"><tr><th class="py-2">{% trans "Item" %}</th><th>{% trans "Tier" %}</th><th>{% trans "Quantity" %}</th><th>{% trans "Capacity" %}</th></tr></thead>
+            <tbody>
+              {% for row in resource_summary %}
+                <tr class="border-t" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+                  <td class="py-2 font-semibold">{{ row.item.name }}</td>
+                  <td>{{ row.item.get_tier_display }}</td>
+                  <td>{{ row.quantity|floatformat:2 }}</td>
+                  <td>{{ row.capacity|floatformat:0 }}</td>
+                </tr>
+              {% empty %}
+                <tr><td colspan="4" class="py-4 opacity-70">{% trans "No stored resources." %}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-lg border p-5 shadow-sm">
+        <h2 class="text-lg font-bold">{% trans "Production" %}</h2>
+        <div class="mt-4 overflow-x-auto">
+          <table class="w-full min-w-[520px] text-left text-sm">
+            <thead class="text-xs uppercase opacity-70"><tr><th class="py-2">{% trans "Province" %}</th><th>{% trans "Building" %}</th><th>{% trans "Output" %}</th><th>{% trans "Eff." %}</th></tr></thead>
+            <tbody>
+              {% for row in production_summary %}
+                <tr class="border-t" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+                  <td class="py-2">{{ row.province.name }}</td>
+                  <td><a href="{% url 'game:building_management' row.building.id %}" class="font-semibold underline-offset-4 hover:underline">{{ row.building.building_type.name }}</a></td>
+                  <td>{% if row.output %}{{ row.output.quantity_per_day|floatformat:2 }} {{ row.output.item.name }} / day{% else %}-{% endif %}</td>
+                  <td>{{ row.building.efficiency|floatformat:2 }}</td>
+                </tr>
+              {% empty %}
+                <tr><td colspan="4" class="py-4 opacity-70">{% trans "No active production." %}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+</section>
+{% endblock %}
+
+{% block end_script %}
+{{ block.super }}
+<script>
+  (() => {
+    const container = document.getElementById("planet-graph");
+    const details = document.getElementById("planet-graph-details");
+    const payloadElement = document.getElementById("planet-graph-payload");
+    const sigmaGlobal = window.Sigma || window.sigma;
+    const SigmaRenderer = typeof sigmaGlobal === "function" ? sigmaGlobal : sigmaGlobal?.Sigma;
+    const GraphCtor = window.graphology?.Graph || window.Graph;
+
+    if (!container || !payloadElement || !SigmaRenderer || !GraphCtor) {
+      if (details) {
+        details.innerHTML = "<h3 class='text-lg font-bold'>Graph unavailable</h3><p class='mt-2 opacity-70'>Sigma.js could not be loaded.</p>";
+      }
+      return;
+    }
+
+    const payload = JSON.parse(payloadElement.textContent);
+    const graph = new GraphCtor({ multi: true });
+    const expanded = new Set();
+
+    function addProvinceNodes() {
+      payload.nodes.forEach((node) => {
+        graph.addNode(node.id, {
+          ...node,
+          label: node.label,
+          x: Number(node.x) * 3,
+          y: Number(node.y) * 3,
+          size: node.size,
+          color: node.color,
+          type: "circle",
+        });
+      });
+      payload.edges.forEach((edge) => {
+        if (!graph.hasNode(edge.source) || !graph.hasNode(edge.target)) return;
+        graph.addEdgeWithKey(edge.id, edge.source, edge.target, {
+          ...edge,
+          label: `${edge.label} ${edge.capacity}/day`,
+          size: edge.size,
+          color: edge.color,
+          type: "arrow",
+        });
+      });
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      }[char]));
+    }
+
+    function toggleBuildings(provinceId) {
+      const province = graph.getNodeAttributes(provinceId);
+      if (province.kind !== "province") return;
+
+      if (expanded.has(provinceId)) {
+        province.buildings.forEach((building) => {
+          if (graph.hasNode(building.id)) graph.dropNode(building.id);
+        });
+        expanded.delete(provinceId);
+        return;
+      }
+
+      const radius = 1.2 + province.buildings.length * 0.12;
+      province.buildings.forEach((building, index) => {
+        const angle = (Math.PI * 2 * index) / Math.max(1, province.buildings.length);
+        graph.addNode(building.id, {
+          ...building,
+          kind: "building",
+          label: `${building.label} L${building.level}`,
+          x: province.x + Math.cos(angle) * radius,
+          y: province.y + Math.sin(angle) * radius,
+          size: 7 + building.level,
+          color: building.color,
+          type: "square",
+        });
+        graph.addEdgeWithKey(`${provinceId}-${building.id}`, provinceId, building.id, {
+          color: building.color,
+          size: 1,
+          type: "line",
+        });
+      });
+      expanded.add(provinceId);
+    }
+
+    function renderDetails(nodeId) {
+      const node = graph.getNodeAttributes(nodeId);
+      if (node.kind === "building") {
+        details.innerHTML = `
+          <p class="text-xs font-semibold uppercase tracking-wide opacity-65">Building</p>
+          <h3 class="mt-2 text-lg font-bold">${escapeHtml(node.label)}</h3>
+          <dl class="mt-4 grid grid-cols-2 gap-3">
+            <div><dt class="opacity-65">Category</dt><dd class="font-semibold">${escapeHtml(node.category)}</dd></div>
+            <div><dt class="opacity-65">Status</dt><dd class="font-semibold">${escapeHtml(node.status)}</dd></div>
+            <div><dt class="opacity-65">Efficiency</dt><dd class="font-semibold">${escapeHtml(node.efficiency)}</dd></div>
+          </dl>`;
+        return;
+      }
+
+      const deposits = (node.deposits || []).map((deposit) => `
+        <li class="rounded-md border px-3 py-2">
+          <span class="font-semibold">${escapeHtml(deposit.name)}</span>
+          <span class="block opacity-70">${escapeHtml(deposit.item)}, factor ${escapeHtml(deposit.factor)}</span>
+        </li>`).join("");
+      details.innerHTML = `
+        <p class="text-xs font-semibold uppercase tracking-wide opacity-65">Province</p>
+        <h3 class="mt-2 text-lg font-bold">${escapeHtml(node.label)}</h3>
+        <dl class="mt-4 grid grid-cols-2 gap-3">
+          <div><dt class="opacity-65">Terrain</dt><dd class="font-semibold">${escapeHtml(node.terrain)}</dd></div>
+          <div><dt class="opacity-65">Role</dt><dd class="font-semibold">${escapeHtml(node.specialization)}</dd></div>
+          <div><dt class="opacity-65">Cells</dt><dd class="font-semibold">${escapeHtml(node.cellUse)}</dd></div>
+          <div><dt class="opacity-65">Buildings</dt><dd class="font-semibold">${escapeHtml(node.buildings.length)}</dd></div>
+        </dl>
+        <h4 class="mt-5 font-bold">Deposits</h4>
+        <ul class="mt-2 space-y-2">${deposits || "<li class='opacity-70'>No deposits.</li>"}</ul>`;
+    }
+
+    addProvinceNodes();
+    const renderer = new SigmaRenderer(graph, container, {
+      renderEdgeLabels: true,
+      labelDensity: 0.1,
+      labelGridCellSize: 80,
+      defaultEdgeType: "arrow",
+    });
+
+    renderer.on("clickNode", ({ node }) => {
+      renderDetails(node);
+      toggleBuildings(node);
+    });
+  })();
+</script>
+{% endblock %}

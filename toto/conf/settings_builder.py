@@ -243,6 +243,13 @@ def build_settings(base_dir: Path, config_path: str | Path | None = None) -> dic
             "CELERY_TASK_TRACK_STARTED": True,
             "CELERY_TASK_TIME_LIMIT": 60 * 30,
         }
+        if "toto.game" in installed_apps:
+            celery_settings["CELERY_BEAT_SCHEDULE"] = {
+                "toto-game-global-tick": {
+                    "task": "toto.game.tasks.run_global_game_tick",
+                    "schedule": int(os.getenv("GAME_TICK_SECONDS", "300")),
+                },
+            }
 
     # ---------------------------------------------------------- websockets
     channel_settings: dict[str, Any] = {}
@@ -432,6 +439,7 @@ def build_settings(base_dir: Path, config_path: str | Path | None = None) -> dic
         "DASHBOARD_ITEMS": cfg.get("dashboard_items", []),
         "HEADER_NAV_ITEMS": cfg.get("header_nav", []),
         "TOTO_ADMIN_READONLY": cfg.get("toto_admin_readonly", False),
+        "GAME_ENGINE_CONFIG_PATH": os.getenv("GAME_ENGINE_CONFIG_PATH", cfg.get("game_engine_config_path", "")),
         "ACME_CHALLENGE_ROOT": str(base_dir / "acme-challenges"),
         # Email
         "EMAIL_BACKEND": "django.core.mail.backends.console.EmailBackend",

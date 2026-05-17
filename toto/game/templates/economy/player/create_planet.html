@@ -1,0 +1,23 @@
+{% extends "economy/player/base.html" %}
+{% load i18n %}
+
+{% block game_title %}{% trans "Create Planet" %}{% endblock %}
+
+{% block game_content %}
+<section
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="mx-auto max-w-3xl rounded-lg border p-5 shadow-sm">
+  <h2 class="text-xl font-bold">{% trans "Create Planet" %}</h2>
+  <form method="post" class="game-form mt-5">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button
+      type="submit"
+      :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+      class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm">
+      <i class="fa-solid fa-plus"></i>
+      {% trans "Create" %}
+    </button>
+  </form>
+</section>
+{% endblock %}

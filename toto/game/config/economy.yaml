@@ -1,0 +1,450 @@
+engine:
+  tick_seconds: 300
+  ticks_per_day: 288
+  default_inventory_capacity: 100000
+  deposit_output_per_day: 100
+  building_level_base_multiplier: 1.0
+  building_level_growth: 0.35
+  construction_work_base: 50
+  construction_work_per_level: 50
+  construction_work_per_tick: 1
+
+policy_modifiers:
+  balanced:
+    production: 1.0
+    construction: 1.0
+    energy: 1.0
+    food: 1.0
+    research: 1.0
+  construction:
+    production: 1.0
+    construction: 1.2
+    energy: 0.95
+    food: 1.0
+    research: 0.9
+  energy:
+    production: 1.0
+    construction: 0.95
+    energy: 1.25
+    food: 1.0
+    research: 0.95
+  food:
+    production: 1.0
+    construction: 0.95
+    energy: 0.95
+    food: 1.25
+    research: 0.95
+  research:
+    production: 0.95
+    construction: 0.9
+    energy: 1.0
+    food: 1.0
+    research: 1.25
+  export:
+    production: 1.12
+    construction: 0.95
+    energy: 1.0
+    food: 1.0
+    research: 0.95
+
+specialization_modifiers:
+  none:
+    extraction: 1.0
+    production: 1.0
+  mining:
+    extraction: 1.2
+    production: 1.0
+  energy:
+    extraction: 1.0
+    production: 1.1
+  industrial:
+    extraction: 1.0
+    production: 1.12
+  high_tech:
+    extraction: 1.0
+    production: 1.16
+  agriculture:
+    extraction: 1.0
+    production: 1.1
+  logistics:
+    extraction: 1.0
+    production: 1.05
+  research:
+    extraction: 1.0
+    production: 1.08
+
+items:
+  - code: steel
+    name: Steel
+    tier: 1
+    cargo_class: bulk
+    base_market_value: 2
+  - code: titanium
+    name: Titanium
+    tier: 1
+    cargo_class: bulk
+    base_market_value: 8
+    is_strategic: true
+  - code: crystal
+    name: Crystal
+    tier: 1
+    cargo_class: bulk
+    base_market_value: 5
+  - code: rare_minerals
+    name: Rare Minerals
+    tier: 1
+    cargo_class: bulk
+    base_market_value: 12
+    is_strategic: true
+  - code: lithium
+    name: Lithium
+    tier: 1
+    cargo_class: bulk
+    base_market_value: 6
+  - code: hydrocarbons
+    name: Hydrocarbons
+    tier: 1
+    cargo_class: liquid
+    base_market_value: 4
+  - code: chemicals
+    name: Chemicals
+    tier: 1
+    cargo_class: liquid
+    base_market_value: 7
+  - code: water
+    name: Water
+    tier: 1
+    cargo_class: liquid
+    base_market_value: 1
+  - code: food
+    name: Food
+    tier: 1
+    cargo_class: bulk
+    base_market_value: 3
+  - code: energy
+    name: Energy
+    tier: 1
+    cargo_class: energy
+    base_market_value: 1
+    is_energy: true
+  - code: prefabs
+    name: Prefabs
+    tier: 2
+    cargo_class: bulk
+    base_market_value: 10
+  - code: machinery
+    name: Machinery
+    tier: 2
+    cargo_class: bulk
+    base_market_value: 18
+  - code: electronics
+    name: Electronics
+    tier: 2
+    cargo_class: high_value
+    base_market_value: 22
+  - code: microchips
+    name: Microchips
+    tier: 2
+    cargo_class: high_value
+    base_market_value: 55
+    is_strategic: true
+  - code: batteries
+    name: Batteries
+    tier: 2
+    cargo_class: bulk
+    base_market_value: 20
+  - code: fuel
+    name: Fuel
+    tier: 2
+    cargo_class: liquid
+    base_market_value: 12
+
+deposits:
+  - code: steel
+    name: Iron-Rich Deposits
+    produces_item: steel
+  - code: titanium
+    name: Titanium Deposits
+    produces_item: titanium
+  - code: crystal
+    name: Crystal Deposits
+    produces_item: crystal
+  - code: rare_minerals
+    name: Rare Mineral Deposits
+    produces_item: rare_minerals
+  - code: lithium
+    name: Lithium Deposits
+    produces_item: lithium
+  - code: hydrocarbons
+    name: Hydrocarbon Deposits
+    produces_item: hydrocarbons
+  - code: water
+    name: Water Reserves
+    produces_item: water
+    is_renewable: true
+
+buildings:
+  - code: solar_plant
+    name: Solar Plant
+    category: energy
+    cell_cost: 2
+    base_energy_demand: 0
+    max_level: 12
+  - code: farm_complex
+    name: Farm Complex
+    category: food
+    cell_cost: 2
+    base_energy_demand: 10
+    max_level: 12
+  - code: chemical_plant
+    name: Chemical Plant
+    category: industry
+    cell_cost: 2
+    base_energy_demand: 30
+    max_level: 10
+  - code: prefab_factory
+    name: Prefab Factory
+    category: industry
+    cell_cost: 2
+    base_energy_demand: 20
+    max_level: 10
+  - code: machinery_plant
+    name: Machinery Plant
+    category: industry
+    cell_cost: 2
+    base_energy_demand: 25
+    max_level: 10
+  - code: electronics_factory
+    name: Electronics Factory
+    category: high_tech
+    cell_cost: 2
+    base_energy_demand: 30
+    max_level: 10
+  - code: microchip_fab
+    name: Microchip Fab
+    category: high_tech
+    cell_cost: 3
+    base_energy_demand: 60
+    max_level: 8
+  - code: battery_plant
+    name: Battery Plant
+    category: industry
+    cell_cost: 2
+    base_energy_demand: 20
+    max_level: 10
+  - code: fuel_refinery
+    name: Fuel Refinery
+    category: industry
+    cell_cost: 2
+    base_energy_demand: 20
+    max_level: 10
+
+recipes:
+  - code: solar_energy
+    name: Solar Energy
+    building_type: solar_plant
+    output_item: energy
+    output_quantity_per_day: 300
+    inputs: []
+  - code: basic_food
+    name: Basic Food
+    building_type: farm_complex
+    output_item: food
+    output_quantity_per_day: 80
+    inputs:
+      - item: water
+        quantity_per_day: 40
+      - item: energy
+        quantity_per_day: 10
+  - code: basic_chemicals
+    name: Basic Chemicals
+    building_type: chemical_plant
+    output_item: chemicals
+    output_quantity_per_day: 60
+    inputs:
+      - item: hydrocarbons
+        quantity_per_day: 40
+      - item: water
+        quantity_per_day: 10
+      - item: energy
+        quantity_per_day: 30
+  - code: basic_prefabs
+    name: Basic Prefabs
+    building_type: prefab_factory
+    output_item: prefabs
+    output_quantity_per_day: 50
+    inputs:
+      - item: steel
+        quantity_per_day: 60
+      - item: chemicals
+        quantity_per_day: 10
+      - item: energy
+        quantity_per_day: 20
+  - code: basic_machinery
+    name: Basic Machinery
+    building_type: machinery_plant
+    output_item: machinery
+    output_quantity_per_day: 35
+    inputs:
+      - item: steel
+        quantity_per_day: 50
+      - item: energy
+        quantity_per_day: 25
+  - code: basic_electronics
+    name: Basic Electronics
+    building_type: electronics_factory
+    output_item: electronics
+    output_quantity_per_day: 30
+    inputs:
+      - item: crystal
+        quantity_per_day: 30
+      - item: chemicals
+        quantity_per_day: 15
+      - item: energy
+        quantity_per_day: 30
+  - code: basic_microchips
+    name: Basic Microchips
+    building_type: microchip_fab
+    output_item: microchips
+    output_quantity_per_day: 18
+    inputs:
+      - item: crystal
+        quantity_per_day: 25
+      - item: rare_minerals
+        quantity_per_day: 8
+      - item: chemicals
+        quantity_per_day: 15
+      - item: electronics
+        quantity_per_day: 10
+      - item: energy
+        quantity_per_day: 60
+  - code: basic_batteries
+    name: Basic Batteries
+    building_type: battery_plant
+    output_item: batteries
+    output_quantity_per_day: 45
+    inputs:
+      - item: lithium
+        quantity_per_day: 25
+      - item: chemicals
+        quantity_per_day: 15
+      - item: steel
+        quantity_per_day: 10
+      - item: energy
+        quantity_per_day: 20
+  - code: basic_fuel
+    name: Basic Fuel
+    building_type: fuel_refinery
+    output_item: fuel
+    output_quantity_per_day: 70
+    inputs:
+      - item: hydrocarbons
+        quantity_per_day: 50
+      - item: chemicals
+        quantity_per_day: 10
+      - item: energy
+        quantity_per_day: 20
+
+demo_world:
+  planet:
+    name: New Dawn
+    planet_type: desert
+    size_class: medium
+    habitability: 0.62
+    gravity: 0.92
+    radiation: 0.12
+    max_provinces: 7
+    policy: construction
+  provinces:
+    - name: Solar Flats
+      terrain: desert
+      biome: Salt desert
+      specialization: energy
+      cell_count: 14
+      habitability: 0.45
+      infrastructure_level: 1.2
+      x: 0
+      y: 0
+      deposits:
+        - deposit_type: lithium
+          abundance: 1.2
+          richness: 1.0
+          accessibility: 1.0
+      buildings:
+        - building_type: solar_plant
+          level: 2
+          status: active
+      inventory:
+        energy: 250
+        lithium: 80
+    - name: Crystal Ridge
+      terrain: mountain
+      biome: Shield mountains
+      specialization: mining
+      cell_count: 12
+      habitability: 0.38
+      infrastructure_level: 0.9
+      x: 1
+      y: 0
+      deposits:
+        - deposit_type: crystal
+          abundance: 1.1
+          richness: 1.1
+          accessibility: 0.8
+        - deposit_type: rare_minerals
+          abundance: 0.6
+          richness: 0.9
+          accessibility: 0.6
+      inventory:
+        crystal: 120
+        rare_minerals: 20
+    - name: Industrial Basin
+      terrain: plains
+      biome: Dry savanna basin
+      specialization: industrial
+      cell_count: 16
+      habitability: 0.7
+      infrastructure_level: 1.4
+      x: 0
+      y: 1
+      deposits:
+        - deposit_type: steel
+          abundance: 1.0
+          richness: 0.9
+          accessibility: 1.0
+        - deposit_type: hydrocarbons
+          abundance: 0.8
+          richness: 0.8
+          accessibility: 0.9
+        - deposit_type: water
+          abundance: 1.0
+          richness: 1.0
+          accessibility: 1.0
+      buildings:
+        - building_type: chemical_plant
+          level: 1
+          status: active
+        - building_type: prefab_factory
+          level: 1
+          status: active
+      inventory:
+        energy: 500
+        steel: 500
+        water: 500
+        hydrocarbons: 250
+  transport_links:
+    - from: Solar Flats
+      to: Industrial Basin
+      mode: grid
+      capacity_per_day: 500
+      condition: 0.96
+    - from: Crystal Ridge
+      to: Industrial Basin
+      mode: rail
+      capacity_per_day: 260
+      condition: 0.88
+    - from: Industrial Basin
+      to: Solar Flats
+      mode: road
+      capacity_per_day: 180
+      condition: 0.92

@@ -58,6 +58,10 @@ packages = [
     "toto.bento.migrations",
     "toto.bento.management",
     "toto.bento.management.commands",
+    "toto.game",
+    "toto.game.migrations",
+    "toto.game.management",
+    "toto.game.management.commands",
     # --- formerly studio apps ---
     "toto.enigma",
     "toto.enigma.agent",
@@ -97,6 +101,9 @@ packages = [
     "toto.travels.migrations",
     "toto.travels.plugins",
 ]
+
+[tool.setuptools.package-data]
+"toto.game" = ["config/*.yaml", "templates/**/*.html"]
 
 [build-system]
 requires = ["setuptools>=61.0"]

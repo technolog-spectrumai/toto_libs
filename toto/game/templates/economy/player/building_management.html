@@ -1,0 +1,12 @@
+{% extends "economy/player/base.html" %}
+{% block game_content %}
+<div class="layout">
+<aside>
+    <div class="card"><h2>{{ building.building_type.name }}</h2><p><a href="{% url 'game:province_management' building.province.id %}">Back to {{ building.province.name }}</a></p><p>Level: {{ building.level }}</p><p>Status: {{ building.get_status_display }}</p><p>Priority: {{ building.get_priority_display }}</p><p>Efficiency: {{ building.efficiency|floatformat:2 }}</p><p>Condition: {{ building.condition|floatformat:2 }}</p></div>
+    <div class="card"><h3>Controls</h3><form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Save</button></form></div>
+</aside>
+<section>
+    <div class="card"><h2>Current Production</h2>{% if recipe %}<p>Recipe: {{ recipe.name }}</p><p>Base Output: {{ recipe.output_quantity_per_day }} {{ recipe.output_item.name }} / day</p><p>Estimated Current Output: {{ output|floatformat:2 }} {{ recipe.output_item.name }} / day</p><h3>Inputs</h3><table><tr><th>Input</th><th>Needed / day</th></tr>{% for input in recipe.inputs.all %}<tr><td>{{ input.item_type.name }}</td><td>{{ input.quantity_per_day }}</td></tr>{% empty %}<tr><td colspan="2">No inputs.</td></tr>{% endfor %}</table>{% else %}<p>No recipe selected or available.</p>{% endif %}</div>
+</section>
+</div>
+{% endblock %}
