@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from django.db import transaction
 
-from .engine import engine_value, inventory_capacity, policy_modifier, specialization_modifier, ticks_per_day
+from .engine import engine_value, inventory_capacity, ticks_per_day
 from .models import Building, BuildingStatus, ConstructionProject, GameTick, ItemType, Planet, Province, ProvinceInventory, Recipe
 
 
@@ -43,7 +43,7 @@ def get_building_recipe(building: Building):
 
 def run_deposit_tick(province: Province) -> None:
     """Base economy: deposits passively produce local raw resources."""
-    extraction_modifier = Decimal(str(specialization_modifier(province.specialization, "extraction")))
+    extraction_modifier = Decimal(str(province.biome_class.extraction_modifier))
     for deposit in province.deposits.select_related("deposit_type__produces_item"):
         item = deposit.deposit_type.produces_item
         base_output = Decimal(str(engine_value("deposit_output_per_day", 100)))
@@ -79,11 +79,9 @@ def run_building_tick(building: Building) -> None:
         building.save(update_fields=["efficiency"])
         return
 
-    category_key = "energy" if recipe.output_item.is_energy else "production"
-    planet_policy = building.province.planet.policy
-    production_modifier = Decimal(str(policy_modifier(planet_policy, category_key)))
-    specialization_bonus = Decimal(str(specialization_modifier(building.province.specialization, "production")))
-    production_multiplier = Decimal(str(building.level_multiplier)) * final_efficiency * production_modifier * specialization_bonus
+    infrastructure_bonus = Decimal(str(1 + min(0.35, building.province.infrastructure_level * 0.03)))
+    biome_bonus = Decimal(str(building.province.biome_class.production_modifier))
+    production_multiplier = Decimal(str(building.level_multiplier)) * final_efficiency * biome_bonus * infrastructure_bonus
 
     for recipe_input in inputs:
         base_needed = Decimal(str(recipe_input.quantity_per_day)) / Decimal(ticks_per_day())
@@ -101,7 +99,7 @@ def run_construction_tick(project: ConstructionProject) -> None:
     if project.status != BuildingStatus.CONSTRUCTING:
         return
     construction_speed = float(engine_value("construction_work_per_tick", 1))
-    construction_speed *= policy_modifier(project.province.planet.policy, "construction")
+    construction_speed *= 1 + min(0.5, project.province.infrastructure_level * 0.04)
     project.progress += construction_speed
     if project.progress >= project.required_work:
         Building.objects.create(

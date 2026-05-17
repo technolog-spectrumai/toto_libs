@@ -45,10 +45,3 @@ def construction_required_work(target_level: int) -> float:
     per_level = float(engine_value("construction_work_per_level", 50))
     return base + per_level * max(1, target_level)
 
-
-def policy_modifier(policy: str, modifier: str, default: float = 1.0) -> float:
-    return float(load_engine_config().get("policy_modifiers", {}).get(policy, {}).get(modifier, default))
-
-
-def specialization_modifier(specialization: str, modifier: str, default: float = 1.0) -> float:
-    return float(load_engine_config().get("specialization_modifiers", {}).get(specialization, {}).get(modifier, default))

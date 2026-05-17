@@ -9,70 +9,6 @@ engine:
   construction_work_per_level: 50
   construction_work_per_tick: 1
 
-policy_modifiers:
-  balanced:
-    production: 1.0
-    construction: 1.0
-    energy: 1.0
-    food: 1.0
-    research: 1.0
-  construction:
-    production: 1.0
-    construction: 1.2
-    energy: 0.95
-    food: 1.0
-    research: 0.9
-  energy:
-    production: 1.0
-    construction: 0.95
-    energy: 1.25
-    food: 1.0
-    research: 0.95
-  food:
-    production: 1.0
-    construction: 0.95
-    energy: 0.95
-    food: 1.25
-    research: 0.95
-  research:
-    production: 0.95
-    construction: 0.9
-    energy: 1.0
-    food: 1.0
-    research: 1.25
-  export:
-    production: 1.12
-    construction: 0.95
-    energy: 1.0
-    food: 1.0
-    research: 0.95
-
-specialization_modifiers:
-  none:
-    extraction: 1.0
-    production: 1.0
-  mining:
-    extraction: 1.2
-    production: 1.0
-  energy:
-    extraction: 1.0
-    production: 1.1
-  industrial:
-    extraction: 1.0
-    production: 1.12
-  high_tech:
-    extraction: 1.0
-    production: 1.16
-  agriculture:
-    extraction: 1.0
-    production: 1.1
-  logistics:
-    extraction: 1.0
-    production: 1.05
-  research:
-    extraction: 1.0
-    production: 1.08
-
 items:
   - code: steel
     name: Steel
@@ -184,6 +120,18 @@ deposits:
     is_renewable: true
 
 buildings:
+  - code: habitat_grid
+    name: Habitat Grid
+    category: infrastructure
+    cell_cost: 2
+    base_energy_demand: 18
+    max_level: 12
+  - code: cargo_spine
+    name: Cargo Spine
+    category: infrastructure
+    cell_cost: 2
+    base_energy_demand: 12
+    max_level: 12
   - code: solar_plant
     name: Solar Plant
     category: energy
@@ -348,21 +296,29 @@ recipes:
 demo_world:
   planet:
     name: New Dawn
-    planet_type: desert
-    size_class: medium
-    habitability: 0.62
     gravity: 0.92
     radiation: 0.12
     max_provinces: 7
-    policy: construction
+    map_size: 512
+    radius: 200
+    grid_size: 12
+    perlin_scale: 0.003
+    perlin_octaves: 8
+    sea_level: 0.38
+    climate_seed: 47721
+    wind_iterations: 5
+    axial_tilt: 21.0
+    coriolis_factor: 1.15
+    solar_constant: 1.08
   provinces:
     - name: Solar Flats
-      terrain: desert
-      biome: Salt desert
-      specialization: energy
+      width: 4
+      height: 3
+      avg_elev: 0.44
+      avg_temp: 0.86
+      avg_rain: 0.12
+      wind_speed: 0.66
       cell_count: 14
-      habitability: 0.45
-      infrastructure_level: 1.2
       x: 0
       y: 0
       deposits:
@@ -371,6 +327,9 @@ demo_world:
           richness: 1.0
           accessibility: 1.0
       buildings:
+        - building_type: habitat_grid
+          level: 1
+          status: active
         - building_type: solar_plant
           level: 2
           status: active
@@ -378,12 +337,13 @@ demo_world:
         energy: 250
         lithium: 80
     - name: Crystal Ridge
-      terrain: mountain
-      biome: Shield mountains
-      specialization: mining
+      width: 3
+      height: 4
+      avg_elev: 0.78
+      avg_temp: 0.36
+      avg_rain: 0.34
+      wind_speed: 0.74
       cell_count: 12
-      habitability: 0.38
-      infrastructure_level: 0.9
       x: 1
       y: 0
       deposits:
@@ -399,12 +359,13 @@ demo_world:
         crystal: 120
         rare_minerals: 20
     - name: Industrial Basin
-      terrain: plains
-      biome: Dry savanna basin
-      specialization: industrial
+      width: 4
+      height: 4
+      avg_elev: 0.48
+      avg_temp: 0.62
+      avg_rain: 0.42
+      wind_speed: 0.38
       cell_count: 16
-      habitability: 0.7
-      infrastructure_level: 1.4
       x: 0
       y: 1
       deposits:
@@ -421,6 +382,9 @@ demo_world:
           richness: 1.0
           accessibility: 1.0
       buildings:
+        - building_type: cargo_spine
+          level: 2
+          status: active
         - building_type: chemical_plant
           level: 1
           status: active

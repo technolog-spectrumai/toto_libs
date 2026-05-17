@@ -4,9 +4,9 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 from toto.ui.page import PageProcessor
 
-from .forms import BuildingControlForm, CreatePlanetForm, CreateProvinceForm, PlanetPolicyForm, ProvinceSpecializationForm, QuickBuildForm, RenameProvinceForm
+from .forms import BuildingControlForm, CreateProvinceForm, QuickBuildForm, RenameProvinceForm
 from .models import Building, Empire, GameTick, Planet, Province
-from .selectors import get_planet_graph_payload, get_planet_production_summary, get_planet_resource_summary, get_province_production_summary
+from .selectors import get_planet_climate_summary, get_planet_graph_payload, get_planet_production_summary, get_planet_resource_summary, get_province_production_summary
 from .services import run_planet_tick
 
 
@@ -19,22 +19,6 @@ def command_center(request):
     empire, _ = Empire.objects.get_or_create(user=request.user, defaults={"name": f"{request.user.username}'s Empire"})
     planets = empire.planets.prefetch_related("provinces", "provinces__buildings")
     return render_game(request, "economy/player/command_center.html", {"empire": empire, "planets": planets, "game_tick": GameTick.objects.first()})
-
-
-@login_required
-def create_planet(request):
-    empire, _ = Empire.objects.get_or_create(user=request.user, defaults={"name": f"{request.user.username}'s Empire"})
-    if request.method == "POST":
-        form = CreatePlanetForm(request.POST)
-        if form.is_valid():
-            planet = form.save(commit=False)
-            planet.owner = empire
-            planet.save()
-            messages.success(request, "Planet created.")
-            return redirect("game:planet_overview", planet_id=planet.id)
-    else:
-        form = CreatePlanetForm()
-    return render_game(request, "economy/player/create_planet.html", {"form": form})
 
 
 @login_required
@@ -53,23 +37,11 @@ def planet_overview(request, planet_id):
     )
     return render_game(request, "economy/player/planet_overview.html", {
         "planet": planet,
-        "policy_form": PlanetPolicyForm(instance=planet),
         "resource_summary": get_planet_resource_summary(planet),
         "production_summary": get_planet_production_summary(planet),
+        "climate_summary": get_planet_climate_summary(planet),
         "planet_graph": get_planet_graph_payload(planet),
     })
-
-
-@login_required
-@require_POST
-def update_planet_policy(request, planet_id):
-    empire = get_object_or_404(Empire, user=request.user)
-    planet = get_object_or_404(Planet, id=planet_id, owner=empire)
-    form = PlanetPolicyForm(request.POST, instance=planet)
-    if form.is_valid():
-        form.save()
-        messages.success(request, "Planet policy updated.")
-    return redirect("game:planet_overview", planet_id=planet.id)
 
 
 @login_required
@@ -105,7 +77,6 @@ def province_management(request, province_id):
     )
     return render_game(request, "economy/player/province_management.html", {
         "province": province,
-        "specialization_form": ProvinceSpecializationForm(instance=province),
         "rename_form": RenameProvinceForm(instance=province),
         "quick_build_form": QuickBuildForm(province=province),
         "production_summary": get_province_production_summary(province),
@@ -121,18 +92,6 @@ def rename_province(request, province_id):
     if form.is_valid():
         form.save()
         messages.success(request, "Province renamed.")
-    return redirect("game:province_management", province_id=province.id)
-
-
-@login_required
-@require_POST
-def update_province_specialization(request, province_id):
-    empire = get_object_or_404(Empire, user=request.user)
-    province = get_object_or_404(Province, id=province_id, planet__owner=empire)
-    form = ProvinceSpecializationForm(request.POST, instance=province)
-    if form.is_valid():
-        form.save()
-        messages.success(request, "Province role updated.")
     return redirect("game:province_management", province_id=province.id)
 
 

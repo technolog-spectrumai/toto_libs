@@ -4,6 +4,13 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 
+from .biomes import (
+    Province as BiomeProvince,
+    classify_biome,
+    compute_habitability,
+    infer_primary_planet_type,
+    infer_secondary_planet_trait,
+)
 from .engine import level_multiplier
 
 
@@ -22,55 +29,10 @@ class CargoClass(models.TextChoices):
     ORBITAL = "orbital", "Orbital"
 
 
-class PlanetType(models.TextChoices):
-    TERRAN = "terran", "Terran"
-    DESERT = "desert", "Desert"
-    VOLCANIC = "volcanic", "Volcanic"
-    OCEANIC = "oceanic", "Oceanic"
-    ICE = "ice", "Ice"
-    BARREN = "barren", "Barren"
-
-
-class PlanetSize(models.TextChoices):
-    SMALL = "small", "Small"
-    MEDIUM = "medium", "Medium"
-    LARGE = "large", "Large"
-
-
-class PlanetPolicy(models.TextChoices):
-    BALANCED = "balanced", "Balanced Economy"
-    CONSTRUCTION = "construction", "Construction Focus"
-    ENERGY = "energy", "Energy Focus"
-    FOOD = "food", "Food Security"
-    RESEARCH = "research", "Research Focus"
-    EXPORT = "export", "Export Economy"
-
-
-class Terrain(models.TextChoices):
-    DESERT = "desert", "Desert"
-    VOLCANIC = "volcanic", "Volcanic"
-    FOREST = "forest", "Forest"
-    OCEANIC = "oceanic", "Oceanic"
-    MOUNTAIN = "mountain", "Mountain"
-    TUNDRA = "tundra", "Tundra"
-    STEPPE = "steppe", "Steppe"
-    PLAINS = "plains", "Plains"
-
-
-class ProvinceSpecialization(models.TextChoices):
-    NONE = "none", "None"
-    MINING = "mining", "Mining Province"
-    ENERGY = "energy", "Energy Province"
-    INDUSTRIAL = "industrial", "Industrial Province"
-    HIGH_TECH = "high_tech", "High-Tech Province"
-    AGRICULTURE = "agriculture", "Agricultural Province"
-    LOGISTICS = "logistics", "Logistics Hub"
-    RESEARCH = "research", "Research Province"
-
-
 class BuildingCategory(models.TextChoices):
     EXTRACTION = "extraction", "Extraction"
     ENERGY = "energy", "Energy"
+    INFRASTRUCTURE = "infrastructure", "Infrastructure"
     INDUSTRY = "industry", "Industry"
     HIGH_TECH = "high_tech", "High-Tech Industry"
     FOOD = "food", "Food"
@@ -127,13 +89,20 @@ class ItemType(models.Model):
 class Planet(models.Model):
     owner = models.ForeignKey(Empire, null=True, blank=True, related_name="planets", on_delete=models.SET_NULL)
     name = models.CharField(max_length=80)
-    planet_type = models.CharField(max_length=30, choices=PlanetType.choices, default=PlanetType.TERRAN)
-    size_class = models.CharField(max_length=30, choices=PlanetSize.choices, default=PlanetSize.MEDIUM)
-    habitability = models.FloatField(default=0.5)
     gravity = models.FloatField(default=1.0)
     radiation = models.FloatField(default=0.0)
     max_provinces = models.PositiveIntegerField(default=5)
-    policy = models.CharField(max_length=40, choices=PlanetPolicy.choices, default=PlanetPolicy.BALANCED)
+    map_size = models.PositiveIntegerField(default=512)
+    radius = models.PositiveIntegerField(default=200)
+    grid_size = models.PositiveIntegerField(default=12)
+    perlin_scale = models.FloatField(default=0.003)
+    perlin_octaves = models.PositiveIntegerField(default=8)
+    sea_level = models.FloatField(default=0.4)
+    climate_seed = models.IntegerField(null=True, blank=True)
+    wind_iterations = models.PositiveIntegerField(default=5)
+    axial_tilt = models.FloatField(default=23.5)
+    coriolis_factor = models.FloatField(default=1.0)
+    solar_constant = models.FloatField(default=1.0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -146,16 +115,44 @@ class Planet(models.Model):
     def province_count(self):
         return self.provinces.count()
 
+    @property
+    def biome_provinces(self):
+        return [province.to_biome_province() for province in self.provinces.all()]
+
+    @property
+    def primary_type(self):
+        return infer_primary_planet_type(self.biome_provinces, self.sea_level, self.solar_constant)
+
+    @property
+    def secondary_trait(self):
+        return infer_secondary_planet_trait(self.biome_provinces, self.sea_level, self.coriolis_factor)
+
+    @property
+    def total_area(self):
+        return sum(province.area for province in self.provinces.all())
+
+    @property
+    def size(self):
+        return self.total_area
+
+    @property
+    def habitability(self):
+        provinces = list(self.provinces.all())
+        if not provinces:
+            return 0
+        return sum(province.habitability for province in provinces) / len(provinces)
+
 
 class Province(models.Model):
     planet = models.ForeignKey(Planet, related_name="provinces", on_delete=models.CASCADE)
     name = models.CharField(max_length=80)
-    terrain = models.CharField(max_length=30, choices=Terrain.choices, default=Terrain.PLAINS)
-    biome = models.CharField(max_length=40, blank=True)
+    width = models.PositiveIntegerField(default=1)
+    height = models.PositiveIntegerField(default=1)
+    avg_elev = models.FloatField(default=0.0)
+    avg_temp = models.FloatField(default=0.5)
+    avg_rain = models.FloatField(default=0.5)
+    wind_speed = models.FloatField(default=0.0)
     cell_count = models.PositiveIntegerField(default=10)
-    habitability = models.FloatField(default=0.5)
-    infrastructure_level = models.FloatField(default=1.0)
-    specialization = models.CharField(max_length=40, choices=ProvinceSpecialization.choices, default=ProvinceSpecialization.NONE)
     x = models.IntegerField(default=0)
     y = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -174,6 +171,54 @@ class Province(models.Model):
     @property
     def free_cells(self):
         return max(0, self.cell_count - self.used_cells)
+
+    @property
+    def area(self):
+        return self.width * self.height
+
+    def to_biome_province(self):
+        return BiomeProvince(
+            x=self.x,
+            y=self.y,
+            width=self.width,
+            height=self.height,
+            avg_elev=self.avg_elev,
+            avg_temp=self.avg_temp,
+            avg_rain=self.avg_rain,
+            wind_speed=self.wind_speed,
+        )
+
+    @property
+    def biome_class(self):
+        return classify_biome(self.to_biome_province(), self.planet.sea_level if self.planet_id else 0.4)
+
+    @property
+    def biome(self):
+        return self.biome_class.name
+
+    @property
+    def biome_code(self):
+        return self.biome_class.code
+
+    @property
+    def biome_color(self):
+        return self.biome_class.color
+
+    @property
+    def infrastructure_level(self):
+        total = 0.0
+        for building in self.buildings.select_related("building_type").all():
+            if building.status == BuildingStatus.ACTIVE and building.building_type.category == BuildingCategory.INFRASTRUCTURE:
+                total += building.level * building.condition * 0.5
+        return round(total, 3)
+
+    @property
+    def habitability(self):
+        return compute_habitability(
+            self.to_biome_province(),
+            self.planet.sea_level if self.planet_id else 0.4,
+            self.infrastructure_level,
+        )
 
     def clean(self):
         if self.planet_id and self.pk is None and self.planet.province_count >= self.planet.max_provinces:

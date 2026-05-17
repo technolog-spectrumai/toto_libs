@@ -22,7 +22,8 @@ from .models import (
 class ProvinceInline(admin.TabularInline):
     model = Province
     extra = 0
-    fields = ("name", "terrain", "specialization", "cell_count", "habitability", "x", "y")
+    fields = ("name", "biome_display", "habitability_display", "cell_count", "width", "height", "x", "y")
+    readonly_fields = ("biome_display", "habitability_display")
 
 
 @admin.register(Empire)
@@ -33,9 +34,9 @@ class EmpireAdmin(admin.ModelAdmin):
 
 @admin.register(Planet)
 class PlanetAdmin(admin.ModelAdmin):
-    list_display = ("name", "owner", "planet_type", "size_class", "policy", "province_count", "habitability")
-    list_filter = ("planet_type", "size_class", "policy")
+    list_display = ("name", "owner", "primary_type", "secondary_trait", "size", "province_count", "habitability_display")
     search_fields = ("name", "owner__name")
+    readonly_fields = ("primary_type", "secondary_trait", "size", "habitability_display")
     inlines = [ProvinceInline]
 
 
@@ -63,10 +64,26 @@ class BuildingInline(admin.TabularInline):
 
 @admin.register(Province)
 class ProvinceAdmin(admin.ModelAdmin):
-    list_display = ("name", "planet", "terrain", "specialization", "cell_count", "used_cells", "free_cells", "habitability")
-    list_filter = ("terrain", "specialization", "planet")
+    list_display = ("name", "planet", "biome_display", "cell_count", "used_cells", "free_cells", "infrastructure_level", "habitability_display")
+    list_filter = ("planet",)
     search_fields = ("name", "planet__name")
+    readonly_fields = ("biome_display", "biome_code", "biome_color", "infrastructure_level", "habitability_display", "area")
     inlines = [ProvinceDepositInline, ProvinceInventoryInline, ProvincePopulationInline, BuildingInline]
+
+
+def biome_display(obj):
+    return obj.biome
+
+
+def habitability_display(obj):
+    return round(obj.habitability, 3)
+
+
+ProvinceInline.biome_display = staticmethod(biome_display)
+ProvinceInline.habitability_display = staticmethod(habitability_display)
+ProvinceAdmin.biome_display = staticmethod(biome_display)
+ProvinceAdmin.habitability_display = staticmethod(habitability_display)
+PlanetAdmin.habitability_display = staticmethod(habitability_display)
 
 
 @admin.register(ItemType)

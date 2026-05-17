@@ -2,31 +2,24 @@ from django import forms
 from django.core.exceptions import ValidationError
 
 from .engine import construction_required_work
-from .models import Building, BuildingType, ConstructionProject, Planet, Province
-
-
-class CreatePlanetForm(forms.ModelForm):
-    class Meta:
-        model = Planet
-        fields = ["name", "planet_type", "size_class", "habitability", "gravity", "radiation", "max_provinces", "policy"]
-
-
-class PlanetPolicyForm(forms.ModelForm):
-    class Meta:
-        model = Planet
-        fields = ["policy"]
+from .models import Building, BuildingType, ConstructionProject, Province
 
 
 class CreateProvinceForm(forms.ModelForm):
     class Meta:
         model = Province
-        fields = ["name", "terrain", "biome", "specialization", "cell_count", "habitability", "infrastructure_level", "x", "y"]
-
-
-class ProvinceSpecializationForm(forms.ModelForm):
-    class Meta:
-        model = Province
-        fields = ["specialization"]
+        fields = [
+            "name",
+            "width",
+            "height",
+            "avg_elev",
+            "avg_temp",
+            "avg_rain",
+            "wind_speed",
+            "cell_count",
+            "x",
+            "y",
+        ]
 
 
 class RenameProvinceForm(forms.ModelForm):
