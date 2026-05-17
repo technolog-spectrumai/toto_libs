@@ -22,7 +22,7 @@
 
 <div class="console-box">
   <div class="console-box-body">
-    <p>Select apps and download a backup ZIP.</p>
+    <p>Select apps and create a backup ZIP. You can download it now or store it for remote API pull.</p>
     <form method="post">
       {% csrf_token %}
 
@@ -45,7 +45,10 @@
         </label>
       </div>
 
-      <input type="submit" value="Create &amp; download backup" class="default" style="margin-top:12px;">
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;">
+        <button type="submit" class="default">Create &amp; download backup</button>
+        <button type="submit" name="store_backup" value="1">Create stored backup</button>
+      </div>
     </form>
   </div>
 </div>

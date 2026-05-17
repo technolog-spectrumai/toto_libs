@@ -8,8 +8,9 @@ from django.shortcuts import redirect, render
 from django.urls import path
 
 from .forms import BackupAppsForm, ApplyBackupForm
-from .models import BackupProfile
+from .models import BackupProfile, StoredBackup
 from .services.backup_service import BackupService
+from .services.stored_backup_service import StoredBackupService
 from .services.sync_service import SyncService
 
 
@@ -22,6 +23,55 @@ class BackupProfileAdmin(admin.ModelAdmin):
     @admin.display(boolean=True, description="Verify key set")
     def has_verify_key(self, obj):
         return bool(obj.verify_key)
+
+
+@admin.register(StoredBackup)
+class StoredBackupAdmin(admin.ModelAdmin):
+    list_display = (
+        "name",
+        "platform",
+        "is_active",
+        "expires_at",
+        "size_bytes",
+        "pull_count",
+        "last_pulled_at",
+        "created_at",
+    )
+    list_filter = ("is_active", "platform", "created_at", "expires_at")
+    search_fields = ("name", "uid", "sha256", "platform__site_name")
+    readonly_fields = (
+        "uid",
+        "magic_token",
+        "api_key_hint",
+        "sha256",
+        "size_bytes",
+        "pull_count",
+        "last_pulled_at",
+        "created_at",
+        "pull_path_display",
+    )
+    autocomplete_fields = ("platform", "created_by")
+    fieldsets = (
+        (None, {
+            "fields": ("name", "platform", "file", "apps", "is_active", "expires_at", "created_by"),
+        }),
+        ("Pull API", {
+            "fields": ("pull_path_display", "uid", "magic_token", "api_key_hint"),
+            "description": "Remote clients pull with Authorization: Bearer <api key> or X-Api-Key.",
+        }),
+        ("Integrity", {
+            "fields": ("sha256", "size_bytes"),
+        }),
+        ("Audit", {
+            "fields": ("pull_count", "last_pulled_at", "created_at"),
+        }),
+    )
+
+    @admin.display(description="Pull URL path")
+    def pull_path_display(self, obj):
+        if not obj.pk:
+            return "-"
+        return obj.pull_path()
 
 
 class BackupAdminMixin:
@@ -72,9 +122,25 @@ class BackupAdminMixin:
             if backup_form.is_valid():
                 sign = request.POST.get("sign_backup") == "1"
                 try:
+                    apps_to_sync = backup_form.cleaned_data["apps"]
+                    if request.POST.get("store_backup") == "1":
+                        stored_backup, raw_api_key = StoredBackupService(
+                            platform=platform,
+                            apps_to_sync=apps_to_sync,
+                            sign=sign,
+                            created_by=request.user,
+                        ).create()
+                        self.message_user(
+                            request,
+                            "Stored backup created. "
+                            f"Pull URL: {stored_backup.pull_url(request)} "
+                            f"API key: {raw_api_key}",
+                            level=messages.SUCCESS,
+                        )
+                        return redirect(".")
                     service = BackupService(
                         platform=platform,
-                        apps_to_sync=backup_form.cleaned_data["apps"],
+                        apps_to_sync=apps_to_sync,
                         sign=sign,
                     )
                     backup_path = service.create_backup()

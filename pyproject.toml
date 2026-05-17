@@ -19,6 +19,8 @@ packages = [
     "toto.api.migrations",
     "toto.backup",
     "toto.backup.migrations",
+    "toto.backup.management",
+    "toto.backup.management.commands",
     "toto.backup.services",
     "toto.ingress",
     "toto.people",
