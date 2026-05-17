@@ -1,0 +1,81 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}Workflows | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<div
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-4xl space-y-6">
+
+    <!-- Header -->
+    <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div class="space-y-2">
+        <a href="{% url 'core:dashboard' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+          <i class="fa-solid fa-arrow-left"></i>
+          {% trans "Dashboard" %}
+        </a>
+        <div>
+          <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+             class="text-xs font-semibold uppercase tracking-wide">
+            {% trans "Automation" %}
+          </p>
+          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+            <i class="fa-solid fa-diagram-project"></i>
+            {% trans "Workflows" %}
+          </h1>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap gap-2">
+        <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm shadow-sm">
+          <i class="fa-solid fa-layer-group opacity-60"></i>
+          <span class="font-bold">{{ workflows|length }}</span>
+          <span class="opacity-65">{% trans "workflows" %}</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- List -->
+    {% if workflows %}
+      <ul class="space-y-3">
+        {% for wf in workflows %}
+          <li :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-primary-bg-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-primary-bg-light'"
+              class="rounded-xl border p-4 shadow-sm transition-colors duration-200">
+            <a href="{% url 'mandragora:workflow_detail' wf.id %}" class="group flex items-start justify-between gap-4">
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2">
+                  <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                     class="fa-solid fa-diagram-project text-sm"></i>
+                  <span class="truncate font-semibold group-hover:underline underline-offset-2">
+                    {{ wf.name }}
+                  </span>
+                </div>
+                {% if wf.description %}
+                  <p class="mt-1 truncate text-xs opacity-55">{{ wf.description }}</p>
+                {% endif %}
+                <p class="mt-1 text-xs opacity-55">
+                  <i class="fa-regular fa-clock mr-1"></i>
+                  {% trans "Created" %} {{ wf.created_at|date:"Y-m-d H:i" }}
+                </p>
+              </div>
+              <i class="fa-solid fa-chevron-right mt-1 shrink-0 text-xs opacity-40 transition-opacity group-hover:opacity-80"></i>
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-xl border border-dashed p-12 text-center shadow-sm">
+        <i class="fa-solid fa-diagram-project text-3xl opacity-25"></i>
+        <p class="mt-4 text-sm font-semibold opacity-60">{% trans "No workflows yet." %}</p>
+      </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}

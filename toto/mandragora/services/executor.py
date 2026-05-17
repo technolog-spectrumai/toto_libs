@@ -1,0 +1,369 @@
+"""
+WorkflowExecutor — synchronous DAG runner.
+
+Execution contract
+------------------
+- Lambda nodes run their LambdaFunction.content via KernelClient.
+  The kernel is expected to print a JSON object:
+      {"data": {...}, "route": "branch_name"}
+      {"data": {...}, "routes": ["a", "b"]}
+  to stdout.  Any other stdout is silently ignored.
+
+- Human nodes create a HumanTask and pause the WorkflowRun.
+  Execution resumes via WorkflowExecutor.resume(workflow_run).
+
+- Split nodes read route/routes from their input_data and activate
+  matching outgoing edges by edge.branch_key.  If no edge matches,
+  the default edge (is_default=True) fires.  Split nodes do not
+  invoke any lambda.
+
+- Join nodes wait until every *activated* upstream edge is backed by
+  a COMPLETED node_run, then merge all upstream data dicts and continue.
+"""
+
+import json
+import logging
+
+from django.conf import settings
+from django.utils import timezone
+
+from ..models import (
+    HumanTask,
+    WorkflowEdgeRun,
+    WorkflowNode,
+    WorkflowNodeRun,
+    WorkflowRun,
+)
+from ..workflow_output import normalize_workflow_output
+
+log = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+#  KernelClient resolution — real vs. mock
+# ---------------------------------------------------------------------------
+
+def _get_kernel_client():
+    """Return a KernelClient instance; patched to MockKernelClient in tests."""
+    from django.test.utils import override_settings  # noqa: F401 (unused import guard)
+    mock_cls = getattr(settings, "WORKFLOW_KERNEL_CLIENT", None)
+    if mock_cls is not None:
+        return mock_cls()
+    from ..kernel import KernelClient
+    addr = getattr(settings, "KERNEL_SERVER_ADDR", "tcp://127.0.0.1:5555")
+    return KernelClient(addr=addr)
+
+
+# ---------------------------------------------------------------------------
+#  WorkflowExecutor
+# ---------------------------------------------------------------------------
+
+class WorkflowExecutor:
+
+    # ------------------------------------------------------------------
+    #  Public entry points
+    # ------------------------------------------------------------------
+
+    def start(self, workflow_run: WorkflowRun) -> None:
+        """Begin execution of a fresh WorkflowRun."""
+        workflow_run.status = WorkflowRun.RUNNING
+        workflow_run.started_at = timezone.now()
+        workflow_run.save(update_fields=["status", "started_at"])
+
+        start_nodes = list(
+            workflow_run.workflow.nodes.filter(incoming_edges__isnull=True)
+        )
+        for node in start_nodes:
+            self._schedule_node(workflow_run, node, workflow_run.input_data or {})
+
+        self._check_completion(workflow_run)
+
+    def resume(self, workflow_run: WorkflowRun) -> None:
+        """Resume a PAUSED run (called after a HumanTask is submitted)."""
+        workflow_run.refresh_from_db()
+        if workflow_run.status != WorkflowRun.PAUSED:
+            return
+        workflow_run.status = WorkflowRun.RUNNING
+        workflow_run.save(update_fields=["status"])
+        self._advance(workflow_run)
+
+    # ------------------------------------------------------------------
+    #  Scheduling & execution
+    # ------------------------------------------------------------------
+
+    def _schedule_node(self, workflow_run: WorkflowRun, node: WorkflowNode, input_data: dict) -> None:
+        node_run, created = WorkflowNodeRun.objects.get_or_create(
+            workflow_run=workflow_run,
+            node=node,
+            defaults={
+                "status": WorkflowNodeRun.RUNNING,
+                "input_data": input_data,
+                "started_at": timezone.now(),
+            },
+        )
+        if not created:
+            return  # already started (race guard)
+        self._execute_node(node_run)
+
+    def _execute_node(self, node_run: WorkflowNodeRun) -> None:
+        node = node_run.node
+        try:
+            if node.node_type == WorkflowNode.LAMBDA:
+                output = self._run_lambda(node_run)
+            elif node.node_type == WorkflowNode.HUMAN:
+                self._run_human(node_run)
+                return  # paused — no further advancement from here
+            elif node.node_type == WorkflowNode.SPLIT:
+                output = self._run_split(node_run)
+            elif node.node_type == WorkflowNode.JOIN:
+                output = self._run_join(node_run)
+            else:
+                raise ValueError(f"Unknown node_type: {node.node_type!r}")
+        except Exception as exc:
+            log.exception("Node %s failed: %s", node_run.id, exc)
+            node_run.status = WorkflowNodeRun.FAILED
+            node_run.error = str(exc)
+            node_run.completed_at = timezone.now()
+            node_run.save(update_fields=["status", "error", "completed_at"])
+            node_run.workflow_run.status = WorkflowRun.FAILED
+            node_run.workflow_run.save(update_fields=["status"])
+            return
+
+        node_run.output_data = output if isinstance(output, dict) else {}
+        node_run.status = WorkflowNodeRun.COMPLETED
+        node_run.completed_at = timezone.now()
+        node_run.save(update_fields=["output_data", "status", "completed_at"])
+
+        self._activate_outgoing_edges(node_run)
+        self._advance(node_run.workflow_run)
+
+    # ------------------------------------------------------------------
+    #  Node-type implementations
+    # ------------------------------------------------------------------
+
+    def _run_lambda(self, node_run: WorkflowNodeRun) -> dict:
+        lambda_fn = node_run.node.lambda_function
+        if lambda_fn is None:
+            raise ValueError("Lambda node has no lambda_function configured.")
+
+        client = _get_kernel_client()
+        # Inject input as a variable prefix so the lambda code can read `_input`.
+        injected_code = (
+            f"import json as _json\n"
+            f"_input = _json.loads({json.dumps(json.dumps(node_run.input_data or {}))})\n"
+            + lambda_fn.content
+        )
+        response = client.execute(lambda_fn.id, injected_code)
+
+        if "error" in response:
+            raise RuntimeError(f"Kernel error: {response['error']}")
+
+        stdout = response.get("stdout", "").strip()
+        try:
+            raw = json.loads(stdout)
+        except (json.JSONDecodeError, ValueError):
+            raw = {}
+
+        wo = normalize_workflow_output(raw)
+        return {"data": wo.data, "routes": wo.routes}
+
+    def _run_human(self, node_run: WorkflowNodeRun) -> None:
+        node = node_run.node
+        schema = node.config.get("schema", {})
+        HumanTask.objects.create(
+            node_run=node_run,
+            form_schema=schema,
+            status=HumanTask.PENDING,
+        )
+        node_run.status = WorkflowNodeRun.WAITING
+        node_run.save(update_fields=["status"])
+
+        node_run.workflow_run.status = WorkflowRun.PAUSED
+        node_run.workflow_run.save(update_fields=["status"])
+
+    def _run_split(self, node_run: WorkflowNodeRun) -> dict:
+        # Split passes its input through unchanged; routing logic lives in
+        # _activate_outgoing_edges which reads node_run.input_data directly.
+        return node_run.input_data or {}
+
+    def _run_join(self, node_run: WorkflowNodeRun) -> dict:
+        activated_edge_runs = WorkflowEdgeRun.objects.filter(
+            workflow_run=node_run.workflow_run,
+            edge__target=node_run.node,
+            activated=True,
+        ).select_related("edge__source")
+
+        merged_data: dict = {}
+        merged_routes: list = []
+        for er in activated_edge_runs:
+            source_run = WorkflowNodeRun.objects.filter(
+                workflow_run=node_run.workflow_run,
+                node=er.edge.source,
+                status=WorkflowNodeRun.COMPLETED,
+            ).first()
+            if source_run and source_run.output_data:
+                merged_data.update(source_run.output_data.get("data", {}))
+                merged_routes.extend(source_run.output_data.get("routes", []))
+
+        return {"data": merged_data, "routes": merged_routes}
+
+    # ------------------------------------------------------------------
+    #  Edge activation
+    # ------------------------------------------------------------------
+
+    def _activate_outgoing_edges(self, node_run: WorkflowNodeRun) -> None:
+        node = node_run.node
+        workflow_run = node_run.workflow_run
+        outgoing = list(node.outgoing_edges.all())
+
+        if not outgoing:
+            return
+
+        if node.node_type == WorkflowNode.SPLIT:
+            wo = normalize_workflow_output(node_run.output_data or {})
+            routes = set(wo.routes)
+
+            default_edge = None
+            matched: list = []
+            for edge in outgoing:
+                if edge.is_default:
+                    default_edge = edge
+                elif edge.branch_key and edge.branch_key in routes:
+                    matched.append(edge)
+
+            activated_edges = matched if matched else ([default_edge] if default_edge else [])
+            activated_ids = {e.id for e in activated_edges}
+
+            now = timezone.now()
+            for edge in outgoing:
+                is_active = edge.id in activated_ids
+                WorkflowEdgeRun.objects.update_or_create(
+                    workflow_run=workflow_run,
+                    edge=edge,
+                    defaults={
+                        "activated": is_active,
+                        "activated_at": now if is_active else None,
+                    },
+                )
+        else:
+            now = timezone.now()
+            for edge in outgoing:
+                WorkflowEdgeRun.objects.update_or_create(
+                    workflow_run=workflow_run,
+                    edge=edge,
+                    defaults={"activated": True, "activated_at": now},
+                )
+
+    # ------------------------------------------------------------------
+    #  Advance — find and run all newly-ready nodes
+    # ------------------------------------------------------------------
+
+    def _advance(self, workflow_run: WorkflowRun) -> None:
+        workflow_run.refresh_from_db()
+        if workflow_run.status in (WorkflowRun.FAILED, WorkflowRun.COMPLETED):
+            return
+
+        all_nodes = list(workflow_run.workflow.nodes.prefetch_related("incoming_edges"))
+
+        started_node_ids = set(
+            WorkflowNodeRun.objects.filter(workflow_run=workflow_run)
+            .values_list("node_id", flat=True)
+        )
+        completed_node_ids = set(
+            WorkflowNodeRun.objects.filter(
+                workflow_run=workflow_run, status=WorkflowNodeRun.COMPLETED
+            ).values_list("node_id", flat=True)
+        )
+
+        # Preload edge run state for this workflow_run
+        edge_run_map: dict[int, bool] = {}  # edge_id -> activated
+        decided_edge_ids: set[int] = set()
+        for er in WorkflowEdgeRun.objects.filter(workflow_run=workflow_run):
+            edge_run_map[er.edge_id] = er.activated
+            decided_edge_ids.add(er.edge_id)
+
+        for node in all_nodes:
+            if node.id in started_node_ids:
+                continue
+
+            incoming = list(node.incoming_edges.all())
+
+            if not incoming:
+                # Start node: already started at the beginning (skip silently)
+                continue
+
+            incoming_ids = {e.id for e in incoming}
+            decided_incoming = incoming_ids & decided_edge_ids
+
+            if node.node_type == WorkflowNode.JOIN:
+                # Need all incoming edges to be *decided* first
+                if decided_incoming < incoming_ids:
+                    continue
+                activated_incoming = {eid for eid in incoming_ids if edge_run_map.get(eid)}
+                if not activated_incoming:
+                    continue
+                # All activated sources must be complete
+                source_complete = all(
+                    e.source_id in completed_node_ids
+                    for e in incoming
+                    if edge_run_map.get(e.id)
+                )
+                if not source_complete:
+                    continue
+                input_data = self._merge_inputs(workflow_run, [
+                    e for e in incoming if edge_run_map.get(e.id)
+                ], completed_node_ids)
+                self._schedule_node(workflow_run, node, input_data)
+            else:
+                # All incoming edges must be decided and activated
+                if decided_incoming < incoming_ids:
+                    continue
+                activated_incoming = {eid for eid in incoming_ids if edge_run_map.get(eid)}
+                if activated_incoming < incoming_ids:
+                    continue
+                # All source nodes must be complete
+                if not all(e.source_id in completed_node_ids for e in incoming):
+                    continue
+                input_data = self._merge_inputs(workflow_run, incoming, completed_node_ids)
+                self._schedule_node(workflow_run, node, input_data)
+
+        self._check_completion(workflow_run)
+
+    def _merge_inputs(self, workflow_run: WorkflowRun, activated_edges: list, completed_node_ids: set) -> dict:
+        merged_data: dict = {}
+        merged_routes: list = []
+        seen_nodes: set = set()
+        for edge in activated_edges:
+            if edge.source_id in seen_nodes:
+                continue
+            seen_nodes.add(edge.source_id)
+            if edge.source_id not in completed_node_ids:
+                continue
+            source_run = WorkflowNodeRun.objects.filter(
+                workflow_run=workflow_run, node_id=edge.source_id
+            ).first()
+            if source_run and source_run.output_data:
+                merged_data.update(source_run.output_data.get("data", {}))
+                merged_routes.extend(source_run.output_data.get("routes", []))
+        return {"data": merged_data, "routes": merged_routes}
+
+    # ------------------------------------------------------------------
+    #  Completion check
+    # ------------------------------------------------------------------
+
+    def _check_completion(self, workflow_run: WorkflowRun) -> None:
+        workflow_run.refresh_from_db()
+        if workflow_run.status in (WorkflowRun.FAILED, WorkflowRun.COMPLETED):
+            return
+
+        node_runs = WorkflowNodeRun.objects.filter(workflow_run=workflow_run)
+        if node_runs.filter(status=WorkflowNodeRun.WAITING).exists():
+            workflow_run.status = WorkflowRun.PAUSED
+            workflow_run.save(update_fields=["status"])
+            return
+        if node_runs.filter(status__in=[WorkflowNodeRun.RUNNING, WorkflowNodeRun.PENDING]).exists():
+            return
+        # No active or waiting work — mark complete
+        workflow_run.status = WorkflowRun.COMPLETED
+        workflow_run.completed_at = timezone.now()
+        workflow_run.save(update_fields=["status", "completed_at"])
