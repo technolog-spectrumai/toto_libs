@@ -32,6 +32,8 @@ class GeneratedProvince:
 class ProvinceCandidate:
     score: float
     habitability: float
+    land_share: float
+    capital_elev: float
     x: int
     y: int
     width: int
@@ -287,12 +289,15 @@ class PlanetGenerator:
                 temp = float(np.mean(data.temp_map[y0:y1, x0:x1]))
                 rain = float(np.mean(data.rain_map[y0:y1, x0:x1]))
                 wind = float(np.mean(data.wind_map[y0:y1, x0:x1]))
+                land_share = float(np.mean(data.elev_map[y0:y1, x0:x1] >= self.config.sea_level))
                 biome_province = BiomeProvince(x0, y0, x1 - x0, y1 - y0, elev, temp, rain, wind_speed=wind)
                 biome = classify_biome(biome_province, self.config.sea_level)
                 habitability = compute_habitability(biome_province, self.config.sea_level)
-                land_bonus = 0.18 if elev >= self.config.sea_level else -0.12
                 center_x = x0 + (x1 - x0) / 2
                 center_y = y0 + (y1 - y0) / 2
+                capital_x, capital_y = self.select_capital_point(data.elev_map, x0, y0, x1, y1, center_x, center_y)
+                capital_elev = float(data.elev_map[capital_y, capital_x])
+                land_bonus = self.land_candidate_bonus(elev, land_share, capital_elev)
                 center_bias = 1 - (math.dist((center_x, center_y), (self.cx, self.cy)) / max(1, self.config.size)) * 0.15
                 habitability_score = habitability * 0.7
                 score = habitability_score + land_bonus + center_bias + float(self.rng.random()) * 0.08
@@ -300,8 +305,10 @@ class PlanetGenerator:
                     ProvinceCandidate(
                         score=score,
                         habitability=habitability,
-                        x=int(center_x),
-                        y=int(center_y),
+                        land_share=land_share,
+                        capital_elev=capital_elev,
+                        x=capital_x,
+                        y=capital_y,
                         width=x1 - x0,
                         height=y1 - y0,
                         avg_elev=elev,
@@ -312,8 +319,108 @@ class PlanetGenerator:
                     )
                 )
 
+        if self.config.sea_level >= 0.65:
+            island_candidates = [candidate for candidate in candidates if candidate.capital_elev >= self.config.sea_level]
+            strong_island_candidates = [
+                candidate
+                for candidate in island_candidates
+                if candidate.capital_elev >= self.config.sea_level + 0.035
+            ]
+            if len(strong_island_candidates) >= province_count:
+                candidates = strong_island_candidates
+            elif len(island_candidates) >= province_count:
+                candidates = island_candidates
+
         selected = self.select_evenly_spread_candidates(candidates, province_count)
         return [self.build_province(index, row) for index, row in enumerate(selected, start=1)]
+
+    def select_capital_point(
+        self,
+        elev_map: np.ndarray,
+        x0: int,
+        y0: int,
+        x1: int,
+        y1: int,
+        center_x: float,
+        center_y: float,
+    ) -> tuple[int, int]:
+        local = self.best_land_point(elev_map, x0, y0, x1, y1, center_x, center_y)
+        if local and (self.config.sea_level < 0.65 or local[2] >= self.config.sea_level + 0.04):
+            return local[0], local[1]
+
+        fallback = local
+
+        if self.config.sea_level >= 0.65:
+            tile_width = max(1, x1 - x0)
+            tile_height = max(1, y1 - y0)
+            for multiplier in (2, 3, 5, 8, 13):
+                half_width = int(tile_width * multiplier / 2)
+                half_height = int(tile_height * multiplier / 2)
+                sx0 = max(0, int(center_x) - half_width)
+                sy0 = max(0, int(center_y) - half_height)
+                sx1 = min(self.config.size, int(center_x) + half_width + 1)
+                sy1 = min(self.config.size, int(center_y) + half_height + 1)
+                expanded = self.best_land_point(elev_map, sx0, sy0, sx1, sy1, center_x, center_y)
+                if expanded and expanded[2] >= self.config.sea_level + 0.035:
+                    return expanded[0], expanded[1]
+                if expanded and (fallback is None or expanded[2] > fallback[2]):
+                    fallback = expanded
+
+            global_land = self.best_land_point(elev_map, 0, 0, self.config.size, self.config.size, center_x, center_y)
+            if global_land:
+                return global_land[0], global_land[1]
+
+        if fallback:
+            return fallback[0], fallback[1]
+
+        return int(center_x), int(center_y)
+
+    def best_land_point(
+        self,
+        elev_map: np.ndarray,
+        x0: int,
+        y0: int,
+        x1: int,
+        y1: int,
+        target_x: float,
+        target_y: float,
+    ) -> tuple[int, int, float] | None:
+        region = elev_map[y0:y1, x0:x1]
+        land_points = np.empty((0, 2), dtype=int)
+        for margin in (0.1, 0.06, 0.035, 0.015, 0.0):
+            land_points = np.argwhere(region >= self.config.sea_level + margin)
+            if len(land_points):
+                break
+        if len(land_points) == 0:
+            return None
+
+        region_height, region_width = region.shape
+        target = np.asarray([target_y - y0, target_x - x0])
+        distances = np.sqrt(np.sum((land_points - target) ** 2, axis=1))
+        max_distance = math.hypot(max(1, region_width), max(1, region_height))
+        elevation_margin = region[land_points[:, 0], land_points[:, 1]] - self.config.sea_level
+        interior_margin = np.minimum.reduce(
+            [
+                land_points[:, 0],
+                land_points[:, 1],
+                region_height - land_points[:, 0] - 1,
+                region_width - land_points[:, 1] - 1,
+            ]
+        )
+        island_core = np.clip(interior_margin / 4, 0, 1)
+        score = elevation_margin * 6.0 + island_core * 1.15 - (distances / max_distance) * 0.45
+        row, col = land_points[int(np.argmax(score))]
+        return int(x0 + col), int(y0 + row), float(region[row, col])
+
+    def land_candidate_bonus(self, avg_elev: float, land_share: float, capital_elev: float) -> float:
+        if self.config.sea_level >= 0.65:
+            capital_margin = capital_elev - self.config.sea_level
+            if capital_margin >= 0.035:
+                return 0.9 + min(0.3, capital_margin)
+            if capital_margin >= 0:
+                return 0.55
+            return -0.45
+        return 0.18 if avg_elev >= self.config.sea_level else -0.12
 
     def select_evenly_spread_candidates(self, candidates: list[ProvinceCandidate], province_count: int) -> list[ProvinceCandidate]:
         selected: list[ProvinceCandidate] = []
