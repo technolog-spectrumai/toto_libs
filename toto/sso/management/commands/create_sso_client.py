@@ -15,11 +15,17 @@ class Command(BaseCommand):
         parser.add_argument("--public", action="store_true", help="Create a public client. Public clients must use PKCE.")
         parser.add_argument("--scopes", default="openid email profile")
         parser.add_argument("--client-id", default=None)
+        parser.add_argument("--raw-secret", default=None, help="Use a specific client secret (dev only).")
+        parser.add_argument("--force-recreate", action="store_true", help="Delete and recreate client if --client-id already exists.")
 
     def handle(self, *args, **options):
         client_id = options["client_id"] or secrets.token_urlsafe(24)
-        if SSOClient.objects.filter(client_id=client_id).exists():
-            raise CommandError(f"Client ID already exists: {client_id}")
+        existing = SSOClient.objects.filter(client_id=client_id).first()
+        if existing:
+            if options["force_recreate"]:
+                existing.delete()
+            else:
+                raise CommandError(f"Client ID already exists: {client_id}. Use --force-recreate to replace it.")
 
         client = SSOClient(
             name=options["name"],
@@ -32,7 +38,7 @@ class Command(BaseCommand):
 
         raw_secret = None
         if client.client_type == SSOClient.CONFIDENTIAL:
-            raw_secret = client.set_client_secret()
+            raw_secret = client.set_client_secret(options.get("raw_secret"))
 
         client.save()
 
