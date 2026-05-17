@@ -16,6 +16,57 @@
 {% block game_content %}
 {{ planet_graph|json_script:"planet-graph-payload" }}
 
+<section
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="mb-4 rounded-lg border p-5 shadow-sm">
+  <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <div>
+      <p class="text-xs font-semibold uppercase tracking-wide opacity-70">{% trans "Executive Overview" %}</p>
+      <h2 class="mt-2 text-2xl font-bold">{{ planet.name }}</h2>
+      <p class="mt-2 max-w-3xl text-sm opacity-75">
+        {{ planet.primary_type }} · {{ planet.secondary_trait }} ·
+        {% trans "Size" %} {{ planet.size }} ·
+        {% trans "Habitability" %} {{ planet.habitability|floatformat:2 }}
+      </p>
+    </div>
+    <div class="text-sm lg:text-right">
+      <p class="font-semibold">{% trans "Energy" %}: {{ executive_summary.energy_balance_label }}</p>
+      <p class="mt-1 opacity-70">
+        {{ executive_summary.energy_production_per_day|floatformat:2 }} {% trans "generated" %} /
+        {{ executive_summary.energy_consumption_per_day|floatformat:2 }} {% trans "used per day" %}
+      </p>
+    </div>
+  </div>
+
+  <dl class="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <div
+      :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+      class="rounded-lg border px-4 py-3">
+      <dt class="text-xs font-semibold uppercase tracking-wide opacity-65">{% trans "Money" %}</dt>
+      <dd class="mt-2 text-2xl font-bold">{{ executive_summary.credits|floatformat:2 }}</dd>
+    </div>
+    <div
+      :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+      class="rounded-lg border px-4 py-3">
+      <dt class="text-xs font-semibold uppercase tracking-wide opacity-65">{% trans "Population" %}</dt>
+      <dd class="mt-2 text-2xl font-bold">{{ executive_summary.population }}</dd>
+    </div>
+    <div
+      :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+      class="rounded-lg border px-4 py-3">
+      <dt class="text-xs font-semibold uppercase tracking-wide opacity-65">{% trans "Satisfaction" %}</dt>
+      <dd class="mt-2 text-2xl font-bold">{{ executive_summary.satisfaction_percent|floatformat:1 }}%</dd>
+    </div>
+    <div
+      :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+      class="rounded-lg border px-4 py-3">
+      <dt class="text-xs font-semibold uppercase tracking-wide opacity-65">{% trans "Energy" %}</dt>
+      <dd class="mt-2 text-2xl font-bold">{{ executive_summary.energy_stored|floatformat:0 }}</dd>
+      <dd class="mt-1 text-sm opacity-70">{{ executive_summary.energy_net_per_day|floatformat:2 }} / {% trans "day net" %}</dd>
+    </div>
+  </dl>
+</section>
+
 <section class="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
   <aside class="space-y-4">
     <div
@@ -102,13 +153,6 @@
     </details>
 
     <div class="flex flex-wrap gap-2">
-      <a
-        href="{% url 'game:create_province' planet.id %}"
-        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-        class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm">
-        <i class="fa-solid fa-map-pin"></i>
-        {% trans "Create province" %}
-      </a>
       <form method="post" action="{% url 'game:player_tick_planet' planet.id %}">
         {% csrf_token %}
         <button
@@ -207,6 +251,46 @@
             </tbody>
           </table>
         </div>
+      </div>
+    </div>
+
+    <div
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-lg border p-5 shadow-sm">
+      <h2 class="text-lg font-bold">{% trans "Buildings" %}</h2>
+      <div class="mt-4 overflow-x-auto">
+        <table class="w-full min-w-[780px] text-left text-sm">
+          <thead class="text-xs uppercase opacity-70">
+            <tr>
+              <th class="py-2">{% trans "Building" %}</th>
+              <th>{% trans "Province" %}</th>
+              <th>{% trans "Category" %}</th>
+              <th>{% trans "Level" %}</th>
+              <th>{% trans "Status" %}</th>
+              <th>{% trans "Priority" %}</th>
+              <th>{% trans "Efficiency" %}</th>
+              <th>{% trans "Output" %}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in building_summary %}
+              <tr class="border-t" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+                <td class="py-2">
+                  <a href="{% url 'game:building_management' row.building.id %}" class="font-semibold underline-offset-4 hover:underline">{{ row.building.building_type.name }}</a>
+                </td>
+                <td><a href="{% url 'game:province_management' row.province.id %}" class="underline-offset-4 hover:underline">{{ row.province.name }}</a></td>
+                <td>{{ row.building.building_type.get_category_display }}</td>
+                <td>{{ row.building.level }}</td>
+                <td>{{ row.building.get_status_display }}</td>
+                <td>{{ row.building.get_priority_display }}</td>
+                <td>{{ row.building.efficiency|floatformat:2 }}</td>
+                <td>{% if row.output %}{{ row.output.quantity_per_day|floatformat:2 }} {{ row.output.item.name }} / day{% else %}-{% endif %}</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="8" class="py-4 opacity-70">{% trans "No buildings yet." %}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
       </div>
     </div>
   </section>

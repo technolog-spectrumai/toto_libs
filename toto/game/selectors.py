@@ -2,7 +2,7 @@ from decimal import Decimal
 from statistics import mean
 
 from .biomes import BIOMES
-from .models import Recipe, TransportLink
+from .models import BuildingStatus, Recipe, TransportLink
 
 
 BIOME_COLORS = {code: biome.color for code, biome in BIOMES.items()}
@@ -65,8 +65,13 @@ def get_planet_resource_summary(planet):
     return sorted(summary.values(), key=lambda x: (x["item"].tier, x["item"].name))
 
 
-def get_building_daily_output(building):
+def get_recipe_for_building(building):
     recipe = building.selected_recipe or Recipe.objects.filter(building_type=building.building_type, is_default=True, is_active=True).first()
+    return recipe
+
+
+def get_building_daily_output(building):
+    recipe = get_recipe_for_building(building)
     if not recipe:
         return None
     return {
@@ -87,6 +92,74 @@ def get_planet_production_summary(planet):
             row["province"] = province
             rows.append(row)
     return rows
+
+
+def get_planet_building_summary(planet):
+    rows = []
+    for province in planet.provinces.all():
+        for building in province.buildings.select_related("building_type", "selected_recipe"):
+            rows.append(
+                {
+                    "province": province,
+                    "building": building,
+                    "output": get_building_daily_output(building),
+                }
+            )
+    return sorted(rows, key=lambda row: (row["province"].name, row["building"].building_type.category, row["building"].building_type.name))
+
+
+def get_planet_executive_summary(planet):
+    provinces = list(planet.provinces.all())
+    populations = [getattr(province, "population", None) for province in provinces]
+    populations = [population for population in populations if population is not None]
+    total_population = sum(population.total_population for population in populations)
+
+    if total_population:
+        satisfaction = sum(population.total_population * population.happiness for population in populations) / total_population
+    elif populations:
+        satisfaction = mean(population.happiness for population in populations)
+    else:
+        satisfaction = 0
+
+    energy_stored = Decimal("0.0000")
+    energy_production = Decimal("0.0000")
+    energy_consumption = Decimal("0.0000")
+
+    for province in provinces:
+        for row in province.inventory.all():
+            if row.item_type.is_energy:
+                energy_stored += row.quantity
+
+        for building in province.buildings.select_related("building_type", "selected_recipe"):
+            if building.status != BuildingStatus.ACTIVE:
+                continue
+
+            recipe = get_recipe_for_building(building)
+            multiplier = building.level_multiplier * building.efficiency
+            energy_consumption += Decimal(str(building.building_type.base_energy_demand * multiplier))
+
+            if not recipe:
+                continue
+
+            if recipe.output_item.is_energy:
+                energy_production += Decimal(str(recipe.output_quantity_per_day * multiplier))
+
+            for recipe_input in recipe.inputs.select_related("item_type"):
+                if recipe_input.item_type.is_energy:
+                    energy_consumption += Decimal(str(recipe_input.quantity_per_day * multiplier))
+
+    energy_net = energy_production - energy_consumption
+    return {
+        "credits": planet.owner.credits if planet.owner_id else Decimal("0.00"),
+        "population": total_population,
+        "satisfaction": satisfaction,
+        "satisfaction_percent": round(satisfaction * 100, 1),
+        "energy_stored": energy_stored,
+        "energy_production_per_day": energy_production,
+        "energy_consumption_per_day": energy_consumption,
+        "energy_net_per_day": energy_net,
+        "energy_balance_label": "Surplus" if energy_net >= 0 else "Deficit",
+    }
 
 
 def metric_summary(values):

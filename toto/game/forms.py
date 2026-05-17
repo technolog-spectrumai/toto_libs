@@ -5,23 +5,6 @@ from .engine import construction_required_work
 from .models import Building, BuildingType, ConstructionProject, Province
 
 
-class CreateProvinceForm(forms.ModelForm):
-    class Meta:
-        model = Province
-        fields = [
-            "name",
-            "width",
-            "height",
-            "avg_elev",
-            "avg_temp",
-            "avg_rain",
-            "wind_speed",
-            "cell_count",
-            "x",
-            "y",
-        ]
-
-
 class RenameProvinceForm(forms.ModelForm):
     class Meta:
         model = Province

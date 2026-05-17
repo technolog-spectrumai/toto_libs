@@ -4,9 +4,17 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 from toto.ui.page import PageProcessor
 
-from .forms import BuildingControlForm, CreateProvinceForm, QuickBuildForm, RenameProvinceForm
+from .forms import BuildingControlForm, QuickBuildForm, RenameProvinceForm
 from .models import Building, Empire, GameTick, Planet, Province
-from .selectors import get_planet_climate_summary, get_planet_graph_payload, get_planet_production_summary, get_planet_resource_summary, get_province_production_summary
+from .selectors import (
+    get_planet_building_summary,
+    get_planet_climate_summary,
+    get_planet_executive_summary,
+    get_planet_graph_payload,
+    get_planet_production_summary,
+    get_planet_resource_summary,
+    get_province_production_summary,
+)
 from .services import run_planet_tick
 
 
@@ -25,10 +33,13 @@ def command_center(request):
 def planet_overview(request, planet_id):
     empire = get_object_or_404(Empire, user=request.user)
     planet = get_object_or_404(
-        Planet.objects.prefetch_related(
+        Planet.objects.select_related("owner").prefetch_related(
             "provinces__inventory__item_type",
+            "provinces__population",
             "provinces__buildings__building_type",
             "provinces__buildings__selected_recipe",
+            "provinces__buildings__selected_recipe__inputs__item_type",
+            "provinces__buildings__selected_recipe__output_item",
             "provinces__deposits__deposit_type__produces_item",
             "provinces__construction_projects__building_type",
         ),
@@ -37,28 +48,13 @@ def planet_overview(request, planet_id):
     )
     return render_game(request, "economy/player/planet_overview.html", {
         "planet": planet,
+        "executive_summary": get_planet_executive_summary(planet),
         "resource_summary": get_planet_resource_summary(planet),
         "production_summary": get_planet_production_summary(planet),
+        "building_summary": get_planet_building_summary(planet),
         "climate_summary": get_planet_climate_summary(planet),
         "planet_graph": get_planet_graph_payload(planet),
     })
-
-
-@login_required
-def create_province(request, planet_id):
-    empire = get_object_or_404(Empire, user=request.user)
-    planet = get_object_or_404(Planet, id=planet_id, owner=empire)
-    if request.method == "POST":
-        form = CreateProvinceForm(request.POST)
-        if form.is_valid():
-            province = form.save(commit=False)
-            province.planet = planet
-            province.save()
-            messages.success(request, "Province created.")
-            return redirect("game:province_management", province_id=province.id)
-    else:
-        form = CreateProvinceForm()
-    return render_game(request, "economy/player/create_province.html", {"planet": planet, "form": form})
 
 
 @login_required
