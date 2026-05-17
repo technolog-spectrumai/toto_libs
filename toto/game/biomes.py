@@ -46,92 +46,92 @@ class BiomeClass:
 
 BIOMES = {
     "deep_ocean": BiomeClass(
-        "deep_ocean", "Deep Ocean", "#071d3a",
+        "deep_ocean", "Deep Ocean", "#061426",
         0.10, 0.80, 0.65,
         ("ocean", "deep", "water")
     ),
     "shallow_sea": BiomeClass(
-        "shallow_sea", "Shallow Sea", "#1f6f8b",
+        "shallow_sea", "Shallow Sea", "#1d5f73",
         0.38, 0.90, 0.80,
         ("ocean", "coastal", "water")
     ),
     "sea_ice": BiomeClass(
-        "sea_ice", "Sea Ice", "#d8eef2",
+        "sea_ice", "Sea Ice", "#d7e5e8",
         0.16, 0.85, 0.55,
         ("ocean", "cold", "ice")
     ),
     "wetland": BiomeClass(
-        "wetland", "Wetland", "#4f7f45",
+        "wetland", "Wetland", "#3f5f32",
         0.58, 0.95, 0.92,
         ("wet", "life", "lowland")
     ),
     "tropical_rainforest": BiomeClass(
-        "tropical_rainforest", "Tropical Rainforest", "#1f6b2a",
+        "tropical_rainforest", "Tropical Rainforest", "#143f1d",
         0.78, 0.85, 1.00,
         ("hot", "wet", "forest")
     ),
     "tropical_seasonal_forest": BiomeClass(
-        "tropical_seasonal_forest", "Tropical Seasonal Forest", "#4f8a2f",
+        "tropical_seasonal_forest", "Tropical Seasonal Forest", "#315728",
         0.70, 0.90, 0.95,
         ("hot", "seasonal", "forest")
     ),
     "temperate_forest": BiomeClass(
-        "temperate_forest", "Temperate Forest", "#3f7d3a",
+        "temperate_forest", "Temperate Forest", "#2f4f2f",
         0.76, 1.00, 1.05,
         ("temperate", "wet", "forest")
     ),
     "grassland": BiomeClass(
-        "grassland", "Grassland", "#9aa64a",
+        "grassland", "Grassland", "#8b8a54",
         0.60, 1.02, 0.95,
         ("temperate", "grass", "semi_dry")
     ),
     "savanna": BiomeClass(
-        "savanna", "Savanna", "#b6a24a",
+        "savanna", "Savanna", "#a08b4f",
         0.58, 1.05, 0.95,
         ("hot", "grass", "seasonal")
     ),
     "shrubland": BiomeClass(
-        "shrubland", "Shrubland", "#8f7f4a",
+        "shrubland", "Shrubland", "#7a6f4f",
         0.48, 1.08, 0.85,
         ("dry", "scrub", "temperate")
     ),
     "semi_arid_steppe": BiomeClass(
-        "semi_arid_steppe", "Semi-Arid Steppe", "#c2b06b",
+        "semi_arid_steppe", "Semi-Arid Steppe", "#b39a63",
         0.42, 1.10, 0.82,
         ("dry", "grass", "steppe")
     ),
     "desert": BiomeClass(
-        "desert", "Desert", "#d8b56a",
+        "desert", "Desert", "#c49a5c",
         0.22, 1.15, 0.65,
         ("dry", "hot", "arid")
     ),
     "cold_desert": BiomeClass(
-        "cold_desert", "Cold Desert", "#b8aa8a",
+        "cold_desert", "Cold Desert", "#9f927c",
         0.26, 1.10, 0.70,
         ("cold", "dry", "arid")
     ),
     "tundra": BiomeClass(
-        "tundra", "Tundra", "#9aa7a0",
+        "tundra", "Tundra", "#8a9385",
         0.32, 1.00, 0.75,
         ("cold", "dry", "low_vegetation")
     ),
     "boreal_forest": BiomeClass(
-        "boreal_forest", "Boreal Forest", "#2f5f3a",
+        "boreal_forest", "Boreal Forest", "#213f2c",
         0.62, 0.95, 0.90,
         ("cold", "forest", "conifer")
     ),
     "alpine": BiomeClass(
-        "alpine", "Alpine", "#9c9c94",
+        "alpine", "Alpine", "#8f8e86",
         0.34, 1.22, 0.78,
         ("highland", "cold", "rocky")
     ),
     "bare_rock": BiomeClass(
-        "bare_rock", "Bare Rock", "#6f6a61",
+        "bare_rock", "Bare Rock", "#625f58",
         0.24, 1.30, 0.75,
         ("rocky", "barren")
     ),
     "unknown": BiomeClass(
-        "unknown", "Unknown", "#64748b",
+        "unknown", "Unknown", "#4f5963",
         0.40
     ),
 }
