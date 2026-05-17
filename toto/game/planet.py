@@ -52,6 +52,7 @@ class PlanetData:
     temp_map: np.ndarray = field(default_factory=lambda: np.zeros((0, 0)))
     rain_map: np.ndarray = field(default_factory=lambda: np.zeros((0, 0)))
     wind_map: np.ndarray = field(default_factory=lambda: np.zeros((0, 0)))
+    ice_map: np.ndarray = field(default_factory=lambda: np.zeros((0, 0)))
     provinces: list[GeneratedProvince] = field(default_factory=list)
 
 
@@ -108,9 +109,10 @@ class PlanetGenerator:
     def create_planet(self, province_count: int) -> PlanetData:
         elev_map = self.generate_elevation_map()
         temp_map = self.generate_temperature_map(elev_map)
+        temp_map, ice_map = self.simulate_ice_and_snow(elev_map, temp_map)
         wind_map = self.generate_wind_map(elev_map)
         rain_map = self.generate_rain_map(elev_map, wind_map, temp_map)
-        data = PlanetData(self.cx, self.cy, self.config.radius, elev_map, temp_map, rain_map, wind_map)
+        data = PlanetData(self.cx, self.cy, self.config.radius, elev_map, temp_map, rain_map, wind_map, ice_map)
         data.provinces = self.generate_provinces(data, province_count)
         return data
 
@@ -150,6 +152,27 @@ class PlanetGenerator:
         temp_map = (lat_temp + seasonal_band + self.resized_noise(18) * 0.08) * self.config.solar_constant
         temp_map -= np.clip(elev_map - self.config.sea_level, 0, 1) * 0.25
         return np.clip(temp_map, 0, 1)
+
+    def simulate_ice_and_snow(
+        self,
+        elev_map: np.ndarray,
+        temp_map: np.ndarray,
+        iterations: int = 5,
+        albedo_effect: float = 0.1,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        ice_map = np.zeros_like(elev_map, dtype=np.float32)
+        cooled_temp = temp_map.copy()
+        tilt_factor = abs(self.config.axial_tilt) / 23.5
+        ice_threshold = 0.18 + min(0.12, tilt_factor * 0.045)
+
+        for _ in range(max(1, iterations)):
+            polar_or_cold = cooled_temp < ice_threshold
+            high_snowpack = (elev_map > 0.84) & (cooled_temp < ice_threshold + 0.18)
+            new_ice = polar_or_cold | high_snowpack
+            ice_map[new_ice] = 1.0
+            cooled_temp = np.clip(cooled_temp - ice_map * (albedo_effect / max(1, iterations)), 0, 1)
+
+        return cooled_temp, ice_map
 
     def generate_wind_map(self, elev_map: np.ndarray) -> np.ndarray:
         size = self.config.size
@@ -216,7 +239,11 @@ class PlanetGenerator:
                     ),
                     self.config.sea_level,
                 )
-                pixels[x, y] = hex_to_rgb(biome.color)
+                color = np.asarray(hex_to_rgb(biome.color), dtype=np.float32)
+                if data.ice_map[y, x] > 0:
+                    ice_color = np.asarray((226, 236, 238), dtype=np.float32)
+                    color = color * 0.25 + ice_color * 0.75
+                pixels[x, y] = tuple(int(part) for part in np.clip(color, 0, 255))
 
         output = BytesIO()
         image.save(output, format="PNG", optimize=True)

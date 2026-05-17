@@ -100,10 +100,13 @@
   <div class="mx-auto max-w-7xl space-y-6">
     <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
       <div class="space-y-2">
-        <a href="{% url 'core:dashboard' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
-          <i class="fa-solid fa-arrow-left"></i>
-          {% trans "Dashboard" %}
-        </a>
+        <nav class="flex flex-wrap items-center gap-3 text-sm">
+          <a href="{% url 'core:dashboard' %}" class="inline-flex items-center gap-2 underline hover:opacity-80">
+            <i class="fa-solid fa-arrow-left"></i>
+            {% trans "Dashboard" %}
+          </a>
+          {% block game_header_nav %}{% endblock %}
+        </nav>
         <div>
           <p
             :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
