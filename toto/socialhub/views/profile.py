@@ -7,6 +7,7 @@ from toto.ui import PageProcessor
 from django.shortcuts import redirect
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
+from django.urls import NoReverseMatch
 
 
 class ProfileListView(ListView):
@@ -67,7 +68,10 @@ def my_profile_redirect(request):
     profile = getattr(request.user, "community_profile", None)
     if profile is None:
         return redirect("core:dashboard")
-    return redirect("socialhub:profile_details", slug=profile.slug)
+    try:
+        return redirect("socialhub:profile_details", slug=profile.slug)
+    except NoReverseMatch:
+        return redirect("core:dashboard")
 
 
 
