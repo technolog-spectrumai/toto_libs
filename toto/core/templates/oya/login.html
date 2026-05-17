@@ -220,7 +220,7 @@
               {% trans "Log In" %}
             </button>
 
-            {% url 'socialhub:my_profile' as my_profile_url %}
+            {% url 'sso:my_profile' as my_profile_url %}
             {% if user.is_authenticated and my_profile_url %}
             <div
               :class="darkMode

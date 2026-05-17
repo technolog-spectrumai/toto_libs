@@ -98,7 +98,7 @@ class CommunityNewsPostAdmin(TotoModelAdmin):
     list_filter = ("community", "topics", "visibility")
     search_fields = ("title", "content", "community__name", "author__display_name")
     filter_horizontal = ("topics",)
-    autocomplete_fields = ("author", "community", "source_page")
+    autocomplete_fields = ("author", "community")
     date_hierarchy = "created_at"
 
     def get_form(self, request, obj=None, **kwargs):

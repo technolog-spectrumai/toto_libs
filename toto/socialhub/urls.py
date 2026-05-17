@@ -1,5 +1,5 @@
 from django.urls import path
-from toto.socialhub.views.profile import ProfileListView, ProfileDetailView, my_profile_redirect
+from toto.socialhub.views.profile import ProfileListView, ProfileDetailView
 from toto.socialhub.views.community import CommunityListView, CommunityDetailView, community_org_chart_data_by_slug
 from toto.socialhub.views.community_news import (
     community_news_create,
@@ -23,7 +23,6 @@ urlpatterns = [
     path("community-news/<int:pk>/delete/", community_news_delete, name="community_news_delete"),
     path("community/org-chart/data/<slug:company_slug>/", community_org_chart_data_by_slug,
          name="community_org_chart_data_by_slug"),
-    path("my-profile/", my_profile_redirect, name="my_profile"),
     path("apply/membership/", membership_application_view, name="membership_application"),
     path("apply/success/<str:username>/", application_success_view, name="application_success"),
     path("verify/user/<str:username>/", verify_application_view, name="membership_verification"),

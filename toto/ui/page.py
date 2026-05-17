@@ -24,7 +24,7 @@ class PageProcessor:
             try:
                 url = reverse(url_name)
             except NoReverseMatch:
-                url = url_name
+                continue
             items.append({"label": item["label"], "icon": item.get("icon", ""), "url": url})
         return items
 

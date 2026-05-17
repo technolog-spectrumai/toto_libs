@@ -7,7 +7,6 @@ from toto.ui import PageProcessor
 from django.shortcuts import redirect
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
-from django.urls import NoReverseMatch
 
 
 class ProfileListView(ListView):
@@ -27,13 +26,14 @@ class ProfileDetailView(LoginRequiredMixin, DetailView):
     context_object_name = "profile"
 
     def get_queryset(self):
+        from django.apps import apps
+        prefetches = ["communities"]
+        if apps.is_installed("toto.competence"):
+            prefetches.append("experiences")
         return (
             super()
             .get_queryset()
-            .prefetch_related(
-                "communities",
-                "experiences",
-            )
+            .prefetch_related(*prefetches)
             .select_related(
                 "address",
                 "user",
@@ -63,15 +63,6 @@ class ProfileDetailView(LoginRequiredMixin, DetailView):
         return context
 
 
-@login_required
-def my_profile_redirect(request):
-    profile = getattr(request.user, "community_profile", None)
-    if profile is None:
-        return redirect("core:dashboard")
-    try:
-        return redirect("socialhub:profile_details", slug=profile.slug)
-    except NoReverseMatch:
-        return redirect("core:dashboard")
 
 
 

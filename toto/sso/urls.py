@@ -13,4 +13,5 @@ urlpatterns = [
     path("sso/userinfo/", views.userinfo, name="userinfo"),
     path("sso/login/", views.login_view, name="login"),
     path("sso/logout/", views.logout_view, name="logout"),
+    path("sso/my-profile/", views.my_profile, name="my_profile"),
 ]

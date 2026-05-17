@@ -11,6 +11,8 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
+from django.urls import NoReverseMatch
+
 from toto.core.forms import LoginForm
 from toto.ui import PageProcessor
 from toto.core.auth_cooldown import (
@@ -265,3 +267,14 @@ def userinfo(request):
         return JsonResponse({"error": "invalid_token"}, status=401)
 
     return JsonResponse(get_user_claims(token.user, token.scope.split()))
+
+
+@login_required
+def my_profile(request):
+    profile = getattr(request.user, "community_profile", None)
+    if profile is not None:
+        try:
+            return redirect("socialhub:profile_details", slug=profile.slug)
+        except NoReverseMatch:
+            pass
+    return redirect("core:dashboard")

@@ -3,7 +3,6 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404, redirect, render
 
-from toto.palimpsest.models import Page
 from toto.socialhub.forms import CommunityNewsPostForm
 from toto.socialhub.models import Community, CommunityNewsPost
 from toto.socialhub.permissions import can_manage_community_news, current_person
@@ -27,9 +26,13 @@ def community_news_create(request, community_slug):
     initial = {"author": current_person(request)}
     source_page_id = request.GET.get("source_page")
     if source_page_id:
-        page = Page.objects.filter(pk=source_page_id).first()
-        if page:
-            initial["source_page"] = page
+        try:
+            from toto.palimpsest.models import Page
+            page = Page.objects.filter(pk=source_page_id).first()
+            if page:
+                initial["source_page"] = page
+        except ImportError:
+            pass
 
     if request.method == "POST":
         form = CommunityNewsPostForm(request.POST)
