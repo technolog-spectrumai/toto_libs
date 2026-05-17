@@ -140,8 +140,20 @@ class PlanetGenerator:
 
         elev_map = normalize(elev_map / total_weight)
         elev_map = normalize(elev_map)
-        elev_map = np.clip(elev_map - (self.config.sea_level - 0.4), 0, 1)
+        elev_map = self.apply_ocean_world_islands(elev_map, base_cells)
         return elev_map
+
+    def apply_ocean_world_islands(self, elev_map: np.ndarray, base_cells: int) -> np.ndarray:
+        if self.config.sea_level < 0.65:
+            return elev_map
+
+        island_noise = self.resized_noise(base_cells * 8)
+        reef_noise = self.resized_noise(base_cells * 18)
+        island_field = normalize(island_noise * 0.7 + reef_noise * 0.3)
+        threshold = 0.6 + min(0.08, (self.config.sea_level - 0.65) * 0.18)
+        island_peaks = np.clip((island_field - threshold) / max(0.01, 1 - threshold), 0, 1)
+        chain_lift = island_peaks ** 0.42
+        return np.clip(elev_map * 0.86 + chain_lift * 0.38, 0, 1)
 
     def generate_temperature_map(self, elev_map: np.ndarray) -> np.ndarray:
         size = self.config.size
