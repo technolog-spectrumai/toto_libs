@@ -19,11 +19,9 @@ def _cfg():
 
 
 def oidc_logout(request):
-    cfg = _cfg()
-    next_url = request.GET.get("next", "")
     logout(request)
-    portal_logout = f"{cfg['portal_url'].rstrip('/')}/sso/logout/"
-    return redirect(next_url or portal_logout)
+    next_url = request.GET.get("next", "") or reverse("core:welcome")
+    return redirect(next_url)
 
 
 def oidc_login(request):
