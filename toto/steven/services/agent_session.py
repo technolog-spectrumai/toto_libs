@@ -61,8 +61,12 @@ class AgentSession(ABC):
         return agent_run
 
     @abstractmethod
-    def invoke(self, user_prompt: str) -> str:
-        """Run the agent and return displayable text."""
+    def invoke(self, user_prompt: str, history=None) -> str:
+        """Run the agent and return displayable text.
+
+        history: list of {"role": "user"|"assistant", "content": str} dicts,
+        ordered oldest-first. Pass None (default) for single-shot runs.
+        """
         raise NotImplementedError
 
 
@@ -74,7 +78,7 @@ class RealAgentSession(AgentSession):
         import contextlib
         return contextlib.nullcontext()
 
-    def invoke(self, user_prompt: str) -> str:
+    def invoke(self, user_prompt: str, history=None) -> str:
         from langchain.agents import create_agent
         from langchain.chat_models import init_chat_model
 
@@ -98,13 +102,10 @@ class RealAgentSession(AgentSession):
                 system_prompt=self.profile.system_prompt or "",
             )
 
-            response = agent.invoke(
-                {
-                    "messages": [
-                        ("user", user_prompt),
-                    ],
-                }
-            )
+            messages = [(m["role"], m["content"]) for m in (history or [])]
+            messages.append(("user", user_prompt))
+
+            response = agent.invoke({"messages": messages})
 
         return extract_text(response)
 
@@ -116,7 +117,7 @@ class StubAgentSession(AgentSession):
         super().__init__(profile)
         self.reason = reason
 
-    def invoke(self, user_prompt: str) -> str:
+    def invoke(self, user_prompt: str, history=None) -> str:
         from django.conf import settings
 
         if settings.DEBUG:
@@ -171,7 +172,7 @@ class RuleBasedAgentSession(AgentSession):
         "system prompt (Admin → Steven → Agents → system_prompt JSON)."
     )
 
-    def invoke(self, user_prompt: str) -> str:
+    def invoke(self, user_prompt: str, history=None) -> str:
         from .nlp import parse_system_prompt, spacy_available
 
         text = user_prompt.strip()

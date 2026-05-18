@@ -6,7 +6,7 @@ from django.views.decorators.http import require_POST
 from toto.ui import PageProcessor
 
 from .forms import AgentRunForm
-from .models import AgentProfile, AgentRun
+from .models import AgentProfile, AgentRun, ChatMessage, Conversation
 from toto.steven.services.agent_session import create_agent_session
 
 
@@ -87,6 +87,68 @@ def run_detail(request, pk):
         "steven/run_detail.html",
         {
             "run": agent_run,
+        },
+    )
+
+
+def conversation_new(request, slug):
+    agent = get_object_or_404(AgentProfile, slug=slug, is_active=True)
+
+    if request.method != "POST":
+        return redirect("steven:agent_detail", slug=slug)
+
+    user_prompt = request.POST.get("user_prompt", "").strip()
+    if not user_prompt:
+        return redirect("steven:agent_detail", slug=slug)
+
+    conversation = Conversation.objects.create(
+        agent=agent,
+        title=user_prompt[:80],
+    )
+    ChatMessage.objects.create(conversation=conversation, role=ChatMessage.ROLE_USER, content=user_prompt)
+
+    session = create_agent_session(agent)
+    try:
+        result = session.invoke(user_prompt)
+    except Exception as exc:
+        result = f"[Error] {exc}"
+
+    ChatMessage.objects.create(conversation=conversation, role=ChatMessage.ROLE_ASSISTANT, content=result)
+    return redirect("steven:conversation_detail", slug=slug, pk=conversation.pk)
+
+
+def conversation_detail(request, slug, pk):
+    agent = get_object_or_404(AgentProfile, slug=slug, is_active=True)
+    conversation = get_object_or_404(Conversation, pk=pk, agent=agent)
+
+    if request.method == "POST":
+        user_prompt = request.POST.get("user_prompt", "").strip()
+        if user_prompt:
+            history = [
+                {"role": msg.role, "content": msg.content}
+                for msg in conversation.messages.all()
+            ]
+            ChatMessage.objects.create(
+                conversation=conversation, role=ChatMessage.ROLE_USER, content=user_prompt
+            )
+            session = create_agent_session(agent)
+            try:
+                result = session.invoke(user_prompt, history=history)
+            except Exception as exc:
+                result = f"[Error] {exc}"
+            ChatMessage.objects.create(
+                conversation=conversation, role=ChatMessage.ROLE_ASSISTANT, content=result
+            )
+            conversation.save()
+        return redirect("steven:conversation_detail", slug=slug, pk=pk)
+
+    return render_steven(
+        request,
+        "steven/chat.html",
+        {
+            "agent": agent,
+            "conversation": conversation,
+            "chat_messages": conversation.messages.all(),
         },
     )
 

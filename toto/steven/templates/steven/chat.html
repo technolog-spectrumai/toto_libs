@@ -1,0 +1,108 @@
+{% extends 'steven/base.html' %}
+{% block steven_title %}Chat · {{ agent.name }}{% endblock %}
+{% block steven_content %}
+
+{# Header #}
+<section
+  :class="darkMode
+    ? 'bg-bubble-bg-dark border-accent-1'
+    : 'bg-bubble-bg-light border-accent-2'"
+  class="rounded-lg border p-5 shadow-md">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div class="flex items-center gap-3">
+      <a href="{% url 'steven:agent_detail' agent.slug %}" class="text-sm underline hover:opacity-80">
+        {{ agent.name }}
+      </a>
+      <span class="opacity-40">/</span>
+      <span class="text-sm opacity-70 line-clamp-1 max-w-xs">{{ conversation.title|default:"Chat" }}</span>
+    </div>
+    <a
+      href="{% url 'steven:agent_detail' agent.slug %}"
+      :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2 text-text-main-light'"
+      class="inline-flex items-center gap-2 rounded border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80">
+      <i class="fa-solid fa-plus"></i>
+      New chat
+    </a>
+  </div>
+</section>
+
+{# Message thread #}
+<section
+  :class="darkMode
+    ? 'bg-bubble-bg-dark border-accent-1'
+    : 'bg-bubble-bg-light border-accent-2'"
+  class="rounded-lg border p-5 shadow-md">
+
+  <div class="space-y-4" id="chat-thread">
+    {% for msg in chat_messages %}
+      {% if msg.role == 'user' %}
+        <div class="flex justify-end">
+          <div
+            :class="darkMode
+              ? 'bg-accent-dark text-primary-bg-dark'
+              : 'bg-accent-light text-primary-bg-light'"
+            class="max-w-[75%] rounded-2xl rounded-br-sm px-4 py-3 text-sm leading-6 whitespace-pre-wrap shadow-sm">
+            {{ msg.content }}
+          </div>
+        </div>
+      {% else %}
+        <div class="flex justify-start gap-3">
+          <div
+            :class="darkMode
+              ? 'bg-primary-bg-dark text-accent-dark border-accent-1'
+              : 'bg-primary-bg-light text-accent-light border-accent-2'"
+            class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-xs font-bold shadow-sm mt-1">
+            {{ agent.name|first|upper }}
+          </div>
+          <div
+            :class="darkMode
+              ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark'
+              : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+            class="max-w-[75%] rounded-2xl rounded-bl-sm border px-4 py-3 text-sm leading-6 whitespace-pre-wrap shadow-sm">
+            {{ msg.content }}
+          </div>
+        </div>
+      {% endif %}
+    {% empty %}
+      <p class="text-sm opacity-50 text-center py-6">No messages yet.</p>
+    {% endfor %}
+  </div>
+</section>
+
+{# Input form #}
+<section
+  :class="darkMode
+    ? 'bg-bubble-bg-dark border-accent-1'
+    : 'bg-bubble-bg-light border-accent-2'"
+  class="rounded-lg border p-5 shadow-md">
+  <form method="post" class="flex flex-col gap-3">
+    {% csrf_token %}
+    <textarea
+      name="user_prompt"
+      rows="3"
+      required
+      placeholder="Continue the conversation…"
+      :class="darkMode
+        ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark focus:border-accent-dark'
+        : 'border-accent-2 bg-primary-bg-light text-text-main-light focus:border-accent-light'"
+      class="w-full resize-y rounded-2xl border px-4 py-3 text-sm leading-6 shadow-sm outline-none transition duration-300 placeholder:opacity-50 focus:ring-4 focus:ring-current/10"
+    ></textarea>
+    <div class="flex justify-end">
+      <button
+        type="submit"
+        :class="darkMode
+          ? 'bg-accent-dark text-primary-bg-dark'
+          : 'bg-accent-light text-primary-bg-light'"
+        class="inline-flex items-center gap-2 rounded px-4 py-2 text-sm font-semibold transition hover:opacity-90">
+        <i class="fa-solid fa-paper-plane"></i>
+        Send
+      </button>
+    </div>
+  </form>
+</section>
+
+<script>
+  document.getElementById("chat-thread").scrollIntoView({behavior: "smooth", block: "end"});
+</script>
+
+{% endblock %}

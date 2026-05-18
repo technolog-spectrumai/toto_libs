@@ -59,28 +59,43 @@
       </div>
     </div>
 
-    <form method="post" class="space-y-4">
-      {% csrf_token %}
-      <div class="space-y-2">
-        <label for="{{ form.user_prompt.id_for_label }}" class="block text-sm font-semibold">
-          {{ form.user_prompt.label }}
-        </label>
-        {{ form.user_prompt }}
-        {% if form.user_prompt.errors %}
-          <div class="text-sm text-red-500">{{ form.user_prompt.errors }}</div>
-        {% endif %}
-      </div>
+    <div class="space-y-4">
+      <form method="post" class="space-y-4">
+        {% csrf_token %}
+        <div class="space-y-2">
+          <label for="{{ form.user_prompt.id_for_label }}" class="block text-sm font-semibold">
+            {{ form.user_prompt.label }}
+          </label>
+          {{ form.user_prompt }}
+          {% if form.user_prompt.errors %}
+            <div class="text-sm text-red-500">{{ form.user_prompt.errors }}</div>
+          {% endif %}
+        </div>
 
-      <button
-        type="submit"
-        :class="darkMode
-          ? 'bg-accent-dark text-primary-bg-dark'
-          : 'bg-accent-light text-primary-bg-light'"
-        class="inline-flex items-center justify-center gap-2 rounded px-4 py-2 text-sm font-semibold transition hover:opacity-90">
-        <i class="fa-solid fa-play"></i>
-        Run Agent
-      </button>
-    </form>
+        <div class="flex flex-wrap gap-3">
+          <button
+            type="submit"
+            :class="darkMode
+              ? 'bg-accent-dark text-primary-bg-dark'
+              : 'bg-accent-light text-primary-bg-light'"
+            class="inline-flex items-center justify-center gap-2 rounded px-4 py-2 text-sm font-semibold transition hover:opacity-90">
+            <i class="fa-solid fa-play"></i>
+            Run Agent
+          </button>
+
+          <button
+            type="submit"
+            formaction="{% url 'steven:conversation_new' agent.slug %}"
+            :class="darkMode
+              ? 'border-accent-1 text-text-main-dark'
+              : 'border-accent-2 text-text-main-light'"
+            class="inline-flex items-center justify-center gap-2 rounded border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+            <i class="fa-solid fa-comments"></i>
+            Start Chat
+          </button>
+        </div>
+      </form>
+    </div>
   </div>
 </section>
 
