@@ -352,6 +352,25 @@ def delete_file(request, file_id):
         return JsonResponse({"error": str(e)}, status=500)
 
 
+@login_required
+def bucket_images_json(request, workspace_slug):
+    workspace = get_object_or_404(
+        LatexWorkspace,
+        slug=workspace_slug,
+        bucket__owner=request.user,
+    )
+    images = VaultFile.objects.filter(
+        bucket=workspace.bucket,
+        file_type="image",
+    ).order_by("title")
+    return JsonResponse({
+        "images": [
+            {"title": img.title or img.key}
+            for img in images
+        ]
+    })
+
+
 @csrf_exempt
 @login_required
 def delete_workspace(request, slug):

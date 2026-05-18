@@ -8,10 +8,10 @@ from toto.texlab.views import (
     save_file,
     compile_latex,
     create_workspace,
-    #delete_workspace,
     create_file,
     delete_file,
-    delete_workspace
+    delete_workspace,
+    bucket_images_json,
 )
 
 app_name = "texlab"
@@ -31,4 +31,5 @@ urlpatterns = [
     path("api/<slug:workspace_slug>/file/create/", create_file, name="create_file"),
     path("file/<int:file_id>/delete/", delete_file, name="delete_file"),
     path("api/workspace/<slug:slug>/delete/", delete_workspace, name="workspace_delete_json"),
+    path("workspace/<slug:workspace_slug>/images/", bucket_images_json, name="bucket_images"),
 ]

@@ -1,502 +1,525 @@
 {% extends "oya/base.html" %}
 {% load static %}
 
-{% block title %}Editing {{ file.vault_file.title }} – {{ workspace.name }}{% endblock %}
+{% block title %}{{ file.vault_file.title }} – {{ workspace.name }}{% endblock %}
 
 {% block start_script %}
-<!-- Ace Editor CDN -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.3/ace.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.3/mode-latex.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.3/theme-twilight.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.3/theme-textmate.min.js"></script>
 <script src="{% static 'oya/diff_match_patch.js' %}"></script>
-
-<!-- Font Awesome -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-
-<script>
-  const darkMode = localStorage.getItem("darkMode") === "true";
-</script>
+<script>const darkMode = localStorage.getItem("darkMode") === "true";</script>
 {% endblock %}
 
 {% block content %}
 <div
-  :class="darkMode
-    ? 'bg-primary-bg-dark text-text-main-dark'
-    : 'bg-primary-bg-light text-text-main-light'"
-  class="min-h-screen px-4 py-10 transition-colors duration-300"
-  data-url-compile="{% url 'texlab:compile_latex' file_id=file.id %}"
-  data-url-history="{% url 'texlab:compile_history' file_id=file.id %}"
-  data-url-status-base="{% url 'texlab:compile_status' run_id=0 %}">
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="flex flex-col min-h-screen px-4 pt-6 pb-10 transition-colors duration-300">
 
-  <div class="max-w-6xl mx-auto space-y-10">
+  <div class="max-w-7xl w-full mx-auto flex flex-col gap-3 flex-1"
+       data-url-compile="{% url 'texlab:compile_latex' file_id=file.id %}"
+       data-url-history="{% url 'texlab:compile_history' file_id=file.id %}"
+       data-url-status-base="{% url 'texlab:compile_status' run_id=0 %}">
 
-    <!-- Header -->
-    <section
-      :class="darkMode
-        ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
-        : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
-      class="p-6 rounded-lg border shadow-sm space-y-2">
+    <!-- ── Breadcrumb ──────────────────────────────────────── -->
+    <nav class="flex items-center gap-2 text-xs opacity-60 select-none">
+      <a href="{% url 'texlab:workspace_list' %}" class="hover:opacity-90 underline underline-offset-2">Workspaces</a>
+      <i class="fa-solid fa-chevron-right text-[9px]"></i>
+      <a href="{% url 'texlab:workspace_detail' workspace.slug %}" class="hover:opacity-90 underline underline-offset-2">{{ workspace.name }}</a>
+      <i class="fa-solid fa-chevron-right text-[9px]"></i>
+      <span class="font-semibold opacity-100">{{ file.vault_file.title }}</span>
+    </nav>
 
-      <h1 class="text-2xl font-bold">{{ file.vault_file.title }}</h1>
-      <p class="text-sm text-gray-500 dark:text-gray-400">
-        Workspace: {{ workspace.name }}
-      </p>
-    </section>
+    <!-- ── Toolbar ─────────────────────────────────────────── -->
+    <div class="flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2 shadow-sm"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
 
-    <!-- Editor -->
-    <section class="space-y-4" data-functional-zone-id="tex-file-{{ file.id }}">
-
-      <!-- Header row -->
-      <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3"
-           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
-        <div class="flex flex-wrap items-center gap-2">
-          <h2 class="text-sm font-bold">{{ file.vault_file.title }}</h2>
-          <span class="rounded border border-current/15 px-2 py-0.5 text-xs opacity-60">LaTeX</span>
-          <span data-active-target-badge class="hidden rounded bg-accent-light px-2 py-0.5 text-[10px] font-semibold uppercase text-primary-bg-light">
-            Active target
-          </span>
-        </div>
-
-        <div class="flex items-center gap-3">
-          <span id="ai-toolbar-tex-{{ file.id }}" class="flex items-center gap-2"></span>
-          <button
-            type="button"
-            onclick="window.FunctionalZones && window.FunctionalZones.previewLatestBlockForZone('tex-file-{{ file.id }}')"
-            :class="darkMode ? 'border-accent-1 hover:bg-primary-bg-dark' : 'border-accent-2 hover:bg-primary-bg-light'"
-            class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1 text-xs font-semibold transition">
-            <i class="fa-solid fa-code-compare"></i>
-            <span>Preview Diff</span>
-          </button>
-
-          <!-- Read-only toggle -->
-          <button
-            id="toggle-readonly"
-            class="px-3 py-1 rounded font-semibold text-sm flex items-center gap-2
-                   bg-accent-light text-primary-bg-light dark:bg-accent-dark dark:text-primary-bg-dark
-                   hover:opacity-90 transition">
-            <i id="lock-icon" class="fa-solid fa-lock-open"></i>
-            <span id="lock-label">Read‑Write</span>
-          </button>
-
-          <!-- Sync toggle -->
-          <button
-            id="toggle-sync"
-            class="px-3 py-1 rounded font-semibold text-sm flex items-center gap-2
-                   bg-accent-light text-primary-bg-light dark:bg-accent-dark dark:text-primary-bg-dark
-                   hover:opacity-90 transition">
-            <i id="sync-icon" class="fa-solid fa-arrows-rotate"></i>
-            <span id="sync-label">Sync ON</span>
-          </button>
-
-              <button
-                id="save-file"
-                onclick="saveFile()"
-                :class="darkMode
-                  ? 'bg-success-dark text-primary-bg-dark'
-                  : 'bg-success-light text-primary-bg-light'"
-                class="px-3 py-1 rounded font-semibold text-sm flex items-center gap-2 hover:opacity-90 transition"
-              >
-                <i class="fa-solid fa-floppy-disk"></i>
-                <span>Save</span>
-              </button>
-              {% if file.file_type == "tex" %}
-              <button
-                id="compile-file"
-                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-                class="px-3 py-1 rounded font-semibold text-sm flex items-center gap-2 hover:opacity-90 transition">
-                <i class="fa-solid fa-gears"></i>
-                <span>Compile</span>
-              </button>
-              {% endif %}
-              <button
-                id="delete-file"
-                :class="darkMode
-                  ? 'bg-warn-dark text-primary-bg-dark'
-                  : 'bg-warn-light text-primary-bg-light'"
-                class="px-3 py-1 rounded font-semibold text-sm flex items-center gap-2 hover:opacity-90 transition"
-              >
-                <i class="fa-solid fa-trash"></i>
-                <span>Delete</span>
-              </button>
-        </div>
+      <!-- Left: file label + AI zone toolbar -->
+      <div class="flex items-center gap-2 min-w-0 flex-1">
+        <i class="fa-solid fa-file-code opacity-50 shrink-0"></i>
+        <span class="font-mono text-sm font-semibold truncate">{{ file.vault_file.title }}</span>
+        <span class="shrink-0 rounded border border-current/15 px-1.5 py-px text-[10px] uppercase tracking-wide opacity-50">
+          {{ file.file_type }}
+        </span>
+        <span data-active-target-badge
+              class="hidden shrink-0 rounded px-1.5 py-px text-[10px] font-bold uppercase tracking-wide
+                     bg-accent-light text-primary-bg-light">live</span>
+        <span id="ai-toolbar-tex-{{ file.id }}" class="flex items-center gap-1 ml-1"></span>
       </div>
 
-      <!-- Editor container -->
+      <!-- Divider -->
+      <div class="h-5 w-px opacity-20 bg-current hidden sm:block"></div>
+
+      <!-- Right: action buttons -->
+      <div class="flex items-center gap-1.5 flex-wrap">
+
+        <!-- Diff preview -->
+        <button type="button"
+          title="Preview Diff"
+          onclick="window.FunctionalZones && window.FunctionalZones.previewLatestBlockForZone('tex-file-{{ file.id }}')"
+          class="toolbar-btn border">
+          <i class="fa-solid fa-code-compare"></i>
+        </button>
+
+        <!-- Read-only toggle -->
+        <button id="toggle-readonly" title="Toggle read-only" class="toolbar-btn border">
+          <i id="lock-icon" class="fa-solid fa-lock-open"></i>
+        </button>
+
+        <!-- Sync toggle -->
+        <button id="toggle-sync" title="Toggle live sync" class="toolbar-btn border">
+          <i id="sync-icon" class="fa-solid fa-arrows-rotate"></i>
+        </button>
+
+        {% if file.file_type == "tex" %}
+        <!-- Images picker -->
+        <button id="open-images-modal" title="Bucket images" class="toolbar-btn border">
+          <i class="fa-solid fa-images"></i>
+        </button>
+        {% endif %}
+
+        <div class="h-5 w-px opacity-20 bg-current"></div>
+
+        <!-- Save -->
+        <button id="save-file" title="Save"
+          :class="darkMode ? 'bg-success-dark text-primary-bg-dark' : 'bg-success-light text-primary-bg-light'"
+          class="toolbar-btn-primary">
+          <i class="fa-solid fa-floppy-disk"></i>
+          <span class="hidden sm:inline">Save</span>
+        </button>
+
+        {% if file.file_type == "tex" %}
+        <!-- Compile -->
+        <button id="compile-file" title="Compile to PDF"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="toolbar-btn-primary">
+          <i class="fa-solid fa-gears"></i>
+          <span class="hidden sm:inline">Compile</span>
+        </button>
+        {% endif %}
+
+        <!-- Delete -->
+        <button id="delete-file" title="Delete file"
+          :class="darkMode ? 'bg-warn-dark text-primary-bg-dark' : 'bg-warn-light text-primary-bg-light'"
+          class="toolbar-btn-primary">
+          <i class="fa-solid fa-trash"></i>
+        </button>
+
+      </div>
+    </div>
+
+    <!-- ── Editor ──────────────────────────────────────────── -->
+    <div class="flex-1 relative" data-functional-zone-id="tex-file-{{ file.id }}">
       <div id="editor"
-           class="border rounded h-[75vh]"
+           class="w-full rounded-xl border"
+           style="height: calc(100vh - 14rem);"
            :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
       </div>
+    </div>
 
-    <div id="compile-errors"
-         class="hidden mt-4 p-4 rounded border text-sm whitespace-pre-wrap"
-         :class="darkMode
-            ? 'border-warn-dark text-text-main-dark'
-            : 'border-warn-light text-text-main-light'">
+    <!-- ── Status bar ──────────────────────────────────────── -->
+    <div id="status-bar" class="hidden rounded-xl border px-4 py-3 text-sm"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
 
-      <div id="compile-errors-title" class="font-bold mb-2"
-           :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">
-
+      <!-- Success -->
+      <div id="status-success" class="hidden items-center gap-3">
+        <i class="fa-solid fa-circle-check shrink-0"
+           :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+        <span class="font-semibold" :class="darkMode ? 'text-success-dark' : 'text-success-light'">Compiled</span>
+        <a id="status-pdf-link" href="#" target="_blank"
+           :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+           class="underline underline-offset-2 hover:opacity-80">Open PDF</a>
       </div>
 
-      <pre id="compile-errors-text" class="whitespace-pre-wrap"></pre>
+      <!-- Error -->
+      <div id="status-error" class="hidden gap-3">
+        <div class="flex items-center gap-3 cursor-pointer" id="status-error-header">
+          <i class="fa-solid fa-circle-xmark shrink-0"
+             :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
+          <span class="font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">Compile error</span>
+          <span class="text-xs opacity-60">click to expand log</span>
+          <i id="status-chevron" class="fa-solid fa-chevron-down text-xs opacity-60 ml-auto transition-transform"></i>
+        </div>
+        <pre id="status-error-log"
+             class="hidden mt-2 max-h-64 overflow-auto rounded-lg border border-current/10 p-3 text-xs whitespace-pre-wrap opacity-75"></pre>
+      </div>
+
     </div>
-
-    <div id="compile-success"
-         class="hidden mt-4 p-4 rounded border text-sm"
-         :class="darkMode
-            ? 'border-accent-1 text-text-main-dark'
-            : 'border-accent-2 text-text-main-light'">
-
-      <h3 class="font-bold mb-2"
-          :class="darkMode ? 'text-accent-1' : 'text-accent-2'">
-        Success
-      </h3>
-
-      <div id="compile-success-text"></div>
-    </div>
-
-    </section>
-
-    <a href="{% url 'texlab:workspace_detail' workspace.slug %}"
-       :class="darkMode
-         ? 'bg-accent-dark text-primary-bg-dark'
-         : 'bg-accent-light text-primary-bg-light'"
-       class="inline-block px-4 py-2 rounded font-semibold hover:opacity-90 transition text-sm text-center">
-      Back to Workspace
-    </a>
 
   </div>
 </div>
+
+<!-- ── Images Modal ───────────────────────────────────────── -->
+{% if file.file_type == "tex" %}
+<div id="images-modal"
+     class="fixed inset-0 z-50 hidden items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
+  <div class="w-full max-w-2xl rounded-2xl border shadow-2xl"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark' : 'border-accent-2 bg-bubble-bg-light text-text-main-light'">
+
+    <!-- Modal header -->
+    <div class="flex items-center justify-between gap-4 border-b border-current/10 px-6 py-4">
+      <div>
+        <p class="text-[10px] font-semibold uppercase tracking-widest opacity-50">Bucket · {{ workspace.bucket.name }}</p>
+        <h2 class="mt-0.5 flex items-center gap-2 text-lg font-bold">
+          <i class="fa-solid fa-images opacity-70"></i>
+          Images
+        </h2>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="refresh-images"
+                class="inline-flex items-center gap-1.5 rounded-lg border border-current/20 px-3 py-1.5 text-xs font-semibold transition hover:opacity-75">
+          <i class="fa-solid fa-arrows-rotate text-[10px]"></i>
+          Refresh
+        </button>
+        <button id="close-images-modal"
+                class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-current/15 transition hover:opacity-75">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Hint -->
+    <p class="px-6 pt-3 text-xs opacity-55">
+      Click an image to insert <code class="font-mono">\includegraphics[width=\linewidth]{…}</code> at cursor.
+      Add <code class="font-mono">\usepackage{graphicx}</code> to your preamble.
+    </p>
+
+    <!-- List -->
+    <div id="images-grid"
+         class="flex flex-col overflow-y-auto px-6 py-2 divide-y divide-current/10"
+         style="max-height: 55vh;">
+      <span class="text-center text-xs opacity-40 italic py-8">Loading…</span>
+    </div>
+
+    <!-- Footer -->
+    <div class="border-t border-current/10 px-6 py-3 flex justify-between items-center">
+      <span id="images-count" class="text-xs opacity-50"></span>
+      <button id="close-images-modal-footer"
+              :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+              class="rounded-lg border px-4 py-1.5 text-sm font-semibold transition hover:opacity-80">
+        Close
+      </button>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<style>
+.toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.5rem;
+  font-size: 0.8rem;
+  transition: opacity 0.15s;
+  border-color: color-mix(in srgb, currentColor 20%, transparent);
+}
+.toolbar-btn:hover { opacity: 0.7; }
+
+.toolbar-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition: opacity 0.15s;
+}
+.toolbar-btn-primary:hover { opacity: 0.85; }
+</style>
 {% endblock %}
 
 {% block end_script %}
 <script>
-// ======================================================
-//  Reusable Sync Module for Ace + diff-match-patch
-// ======================================================
+// ── Sync module ────────────────────────────────────────────
 const TexSync = (() => {
-
   const dmp = new diff_match_patch();
-
-  // Internal state
   let lastContent = "";
   let suppress = false;
 
-  // Initialize baseline
-  function initBaseline(editor) {
-    lastContent = editor.getValue();
-  }
+  function initBaseline(editor) { lastContent = editor.getValue(); }
 
-  // ------------------------------------------------------
-  // Send full document + patch
-  // ------------------------------------------------------
   function sendFullAndPatch(editor, socket) {
     const newContent = editor.getValue();
-
     const patches = dmp.patch_make(lastContent, newContent);
-    const patchText = dmp.patch_toText(patches);
-
     lastContent = newContent;
-
-    socket.send(JSON.stringify({
-      type: "full+patch",
-      content: newContent,
-      patch: patchText
-    }));
+    socket.send(JSON.stringify({ type: "full+patch", content: newContent, patch: dmp.patch_toText(patches) }));
   }
 
-  // ------------------------------------------------------
-  // Handle local editor changes
-  // ------------------------------------------------------
   function onLocalChange(editor, socket, syncEnabled) {
-    if (!syncEnabled) return;
-    if (suppress) return;
-
+    if (!syncEnabled || suppress) return;
     sendFullAndPatch(editor, socket);
   }
 
-  // ------------------------------------------------------
-  // Apply incoming patch or full content
-  // ------------------------------------------------------
   function applyIncomingContent(editor, data) {
     suppress = true;
-
     if (data.patch) {
-      const current = editor.getValue();
-      const [patched] = dmp.patch_apply(
-        dmp.patch_fromText(data.patch),
-        current
-      );
+      const [patched] = dmp.patch_apply(dmp.patch_fromText(data.patch), editor.getValue());
       editor.setValue(patched, -1);
       lastContent = patched;
-
     } else if (data.content) {
       editor.setValue(data.content, -1);
       lastContent = data.content;
     }
-
     suppress = false;
   }
 
-  // ------------------------------------------------------
-  // Handle server → client WebSocket messages
-  // ------------------------------------------------------
   function onServerMessage(editor, syncEnabled, event) {
     if (!syncEnabled) return;
-
-    const data = JSON.parse(event.data);
-    applyIncomingContent(editor, data);
+    applyIncomingContent(editor, JSON.parse(event.data));
   }
 
-  // Public API
-  return {
-    initBaseline,
-    onLocalChange,
-    onServerMessage
-  };
-
+  return { initBaseline, onLocalChange, onServerMessage };
 })();
-
-
 </script>
+
 <script>
-function createAceEditor(elementId) {
-  const editor = ace.edit(elementId);
+// ── Editor setup ───────────────────────────────────────────
+const editor = ace.edit("editor");
+editor.setTheme(darkMode ? "ace/theme/twilight" : "ace/theme/textmate");
+editor.session.setMode("ace/mode/latex");
+editor.setValue(`{{ content|escapejs }}`, -1);
+editor.setOptions({ fontSize: "14px", showPrintMargin: false, wrap: true, readOnly: false });
+window.TexLabEditor = editor;
 
-  // Theme
-  editor.setTheme(darkMode ? "ace/theme/twilight" : "ace/theme/textmate");
+TexSync.initBaseline(editor);
 
-  // Mode
-  editor.session.setMode("ace/mode/latex");
+// ── Read-only toggle ───────────────────────────────────────
+let isReadOnly = false;
+document.getElementById("toggle-readonly").addEventListener("click", function () {
+  isReadOnly = !isReadOnly;
+  editor.setReadOnly(isReadOnly);
+  const icon = document.getElementById("lock-icon");
+  icon.classList.toggle("fa-lock-open", !isReadOnly);
+  icon.classList.toggle("fa-lock",      isReadOnly);
+  editor.container.style.opacity = isReadOnly ? "0.65" : "1";
+  this.title = isReadOnly ? "Read-only (click to unlock)" : "Toggle read-only";
+});
 
-  // Load content
-  editor.setValue(`{{ content|escapejs }}`, -1);
+// ── Sync toggle ────────────────────────────────────────────
+let syncEnabled = true;
+document.getElementById("toggle-sync").addEventListener("click", function () {
+  syncEnabled = !syncEnabled;
+  const icon = document.getElementById("sync-icon");
+  icon.classList.toggle("fa-arrows-rotate", syncEnabled);
+  icon.classList.toggle("fa-ban",           !syncEnabled);
+  this.style.opacity = syncEnabled ? "1" : "0.5";
+  this.title = syncEnabled ? "Toggle live sync" : "Sync off (click to enable)";
+});
 
-  // Default options
-  editor.setOptions({
-    fontSize: "14px",
-    showPrintMargin: false,
-    wrap: true,
-    readOnly: false,
+// ── WebSocket ──────────────────────────────────────────────
+const fileId = "{{ file.id }}";
+const wsScheme = window.location.protocol === "https:" ? "wss" : "ws";
+const socket = new WebSocket(`${wsScheme}://${window.location.host}/ws/texlab/file/${fileId}/`);
+editor.session.on("change", () => TexSync.onLocalChange(editor, socket, syncEnabled));
+socket.onmessage = event => TexSync.onServerMessage(editor, syncEnabled, event);
+
+// ── FunctionalZones ────────────────────────────────────────
+document.addEventListener("DOMContentLoaded", () => {
+  if (!window.FunctionalZones) return;
+  window.FunctionalZones.registerZone({
+    id: "tex-file-{{ file.id }}",
+    label: "{{ file.vault_file.title|escapejs }}",
+    kind: "tex-file",
+    language: "latex",
+    acceptedLanguages: ["latex", "text"],
+    getContent:       () => editor.getValue(),
+    setContent:       c  => editor.setValue(c, -1),
+    insertContent:    c  => editor.insert(c),
+    appendContent:    c  => editor.setValue(`${editor.getValue()}\n${c}`, -1),
+    replaceSelection: c  => editor.session.replace(editor.getSelectionRange(), c),
+    getSelection:     () => editor.getSelectedText() || null,
+    metadata: { preferredImportMode: "insert", fileId: "{{ file.id }}" },
   });
+  window.FunctionalZones.renderZoneToolbar(
+    document.getElementById("ai-toolbar-tex-{{ file.id }}"),
+    "tex-file-{{ file.id }}",
+    { importLabel: "Import" }
+  );
+});
 
-  return editor;
-}
-</script>
-<script>
-  const editor = createAceEditor("editor");
-
-  // Initialize baseline for diff-match-patch
-  TexSync.initBaseline(editor);
-
-  // ----------------------------
-  // READ-ONLY TOGGLE
-  // ----------------------------
-  const toggleBtn = document.getElementById("toggle-readonly");
-  const lockIcon = document.getElementById("lock-icon");
-  const lockLabel = document.getElementById("lock-label");
-
-  let isReadOnly = false;
-
-  toggleBtn.addEventListener("click", () => {
-    isReadOnly = !isReadOnly;
-    editor.setReadOnly(isReadOnly);
-
-    if (isReadOnly) {
-      lockIcon.classList.replace("fa-lock-open", "fa-lock");
-      lockLabel.textContent = "Read‑Only";
-      editor.container.style.opacity = "0.7";
-    } else {
-      lockIcon.classList.replace("fa-lock", "fa-lock-open");
-      lockLabel.textContent = "Read‑Write";
-      editor.container.style.opacity = "1";
-    }
-  });
-
-  // ----------------------------
-  // SYNC TOGGLE
-  // ----------------------------
-  const syncBtn = document.getElementById("toggle-sync");
-  const syncIcon = document.getElementById("sync-icon");
-  const syncLabel = document.getElementById("sync-label");
-
-  let syncEnabled = true;
-
-  syncBtn.addEventListener("click", () => {
-    syncEnabled = !syncEnabled;
-
-    if (syncEnabled) {
-      syncIcon.classList.replace("fa-ban", "fa-arrows-rotate");
-      syncLabel.textContent = "Sync ON";
-      syncBtn.style.opacity = "1";
-    } else {
-      syncIcon.classList.replace("fa-arrows-rotate", "fa-ban");
-      syncLabel.textContent = "Sync OFF";
-      syncBtn.style.opacity = "0.7";
-    }
-  });
-
-  // ----------------------------
-  // WEBSOCKET SYNC
-  // ----------------------------
-  const fileId = "{{ file.id }}";
-  const wsScheme = window.location.protocol === "https:" ? "wss" : "ws";
-  const socket = new WebSocket(`${wsScheme}://${window.location.host}/ws/texlab/file/${fileId}/`);
-
-  // Local → Server
-  editor.session.on("change", () => {
-    TexSync.onLocalChange(editor, socket, syncEnabled);
-  });
-
-  // Server → Local
-  socket.onmessage = (event) => {
-    TexSync.onServerMessage(editor, syncEnabled, event);
-  };
-
-  window.TexLabEditor = editor;
-
-  document.addEventListener("DOMContentLoaded", () => {
-    if (!window.FunctionalZones) return;
-    window.FunctionalZones.registerZone({
-      id: "tex-file-{{ file.id }}",
-      label: "{{ file.vault_file.title|escapejs }}",
-      kind: "tex-file",
-      language: "latex",
-      acceptedLanguages: ["latex", "text"],
-      getContent: () => editor.getValue(),
-      setContent: content => editor.setValue(content, -1),
-      insertContent: content => editor.insert(content),
-      appendContent: content => editor.setValue(`${editor.getValue()}\n${content}`, -1),
-      replaceSelection: content => editor.session.replace(editor.getSelectionRange(), content),
-      getSelection: () => editor.getSelectedText() || null,
-      metadata: { preferredImportMode: "insert", fileId: "{{ file.id }}" },
-    });
-    window.FunctionalZones.renderZoneToolbar(document.getElementById("ai-toolbar-tex-{{ file.id }}"), "tex-file-{{ file.id }}", { importLabel: "Import" });
-  });
-
-  async function saveFile() {
-    const formData = new FormData();
-    formData.append("content", editor.getValue());
-    const response = await fetch("{% url 'texlab:save_file' file_id=file.id %}", {
-      method: "POST",
-      body: formData,
+// ── Save ───────────────────────────────────────────────────
+async function saveFile() {
+  const btn = document.getElementById("save-file");
+  const formData = new FormData();
+  formData.append("content", editor.getValue());
+  btn.style.opacity = "0.5";
+  try {
+    const res = await fetch("{% url 'texlab:save_file' file_id=file.id %}", {
+      method: "POST", body: formData,
       headers: { "X-CSRFToken": "{{ csrf_token }}" },
       credentials: "same-origin",
     });
-    const data = await response.json();
+    const data = await res.json();
     if (data.status !== "ok") alert(data.error || "Failed to save file.");
+  } finally {
+    btn.style.opacity = "1";
   }
-</script>
-<script>
-  document.getElementById("delete-file").addEventListener("click", async () => {
-  if (!confirm("Are you sure you want to delete this file? This cannot be undone.")) {
-    return;
-  }
+}
+document.getElementById("save-file").addEventListener("click", saveFile);
 
-  const fileId = "{{ file.id }}";
-  const deleteUrlBase = "{% url 'texlab:delete_file' file_id=0 %}";
-  const deleteUrl = deleteUrlBase.replace("0", "{{ file.id }}");
-
+// ── Delete ─────────────────────────────────────────────────
+document.getElementById("delete-file").addEventListener("click", async () => {
+  if (!confirm("Delete this file? This cannot be undone.")) return;
+  const url = "{% url 'texlab:delete_file' file_id=0 %}".replace("0", "{{ file.id }}");
   try {
-    const response = await fetch(deleteUrl, {
+    const res = await fetch(url, {
       method: "POST",
-      headers: {
-        "X-CSRFToken": "{{ csrf_token }}",
-      },
+      headers: { "X-CSRFToken": "{{ csrf_token }}" },
     });
-
-    const data = await response.json();
-
+    const data = await res.json();
     if (data.status === "ok") {
-      // Redirect back to workspace
       window.location.href = "{% url 'texlab:workspace_detail' workspace.slug %}";
     } else {
       alert("Error: " + (data.error || "Unknown error"));
     }
-
   } catch (err) {
     alert("Request failed: " + err);
   }
 });
 </script>
+
+{% if file.file_type == "tex" %}
 <script>
-  const compileBtn = document.getElementById("compile-file");
+// ── Compile ────────────────────────────────────────────────
+const compileBtn  = document.getElementById("compile-file");
+const statusBar   = document.getElementById("status-bar");
+const statusOk    = document.getElementById("status-success");
+const statusErr   = document.getElementById("status-error");
+const statusLog   = document.getElementById("status-error-log");
+const statusPdf   = document.getElementById("status-pdf-link");
+const statusCount = document.getElementById("images-count");
 
-  const errorBox = document.getElementById("compile-errors");
-  const errorTitle = document.getElementById("compile-errors-title");
-  const errorText = document.getElementById("compile-errors-text");
+function showStatus(mode) {
+  statusBar.classList.remove("hidden");
+  statusBar.classList.add("flex");
+  statusOk.classList.toggle("hidden",  mode !== "ok");
+  statusOk.classList.toggle("flex",    mode === "ok");
+  statusErr.classList.toggle("hidden", mode !== "err");
+  statusErr.classList.toggle("flex",   mode === "err");
+}
 
-  const successBox = document.getElementById("compile-success");
-  const successText = document.getElementById("compile-success-text");
+// Expandable log
+document.getElementById("status-error-header").addEventListener("click", () => {
+  const open = !statusLog.classList.contains("hidden");
+  statusLog.classList.toggle("hidden", open);
+  document.getElementById("status-chevron").style.transform = open ? "" : "rotate(180deg)";
+});
 
-  const blinkDelayMs = 800;
+compileBtn.addEventListener("click", async () => {
+  statusBar.classList.add("hidden");
+  statusBar.classList.remove("flex");
+  statusLog.classList.add("hidden");
 
-  compileBtn.addEventListener("click", async () => {
-    // Reset panels
-    errorBox.classList.add("hidden");
-    errorTitle.textContent = "";
-    errorText.textContent = "";
+  compileBtn.disabled = true;
+  compileBtn.style.opacity = "0.5";
+  compileBtn.style.filter  = "hue-rotate(40deg)";
 
-    successBox.classList.add("hidden");
-    successText.textContent = "";
+  try {
+    const res  = await fetch("{% url 'texlab:compile_latex' file_id=file.id %}", { method: "POST" });
+    const data = await res.json();
 
-    // PROCESSING → yellow
-    compileBtn.disabled = true;
-    compileBtn.style.opacity = "0.6";
-    compileBtn.style.backgroundColor = "#eab308";   // yellow-500
-
-    try {
-      const response = await fetch("{% url 'texlab:compile_latex' file_id=file.id %}", {
-        method: "POST"
-      });
-
-      const data = await response.json();
-      console.log("Compile response:", data);
-
-      if (data.status === "ok") {
-        // SUCCESS → green blink
-        compileBtn.style.backgroundColor = "#16a34a";   // green-600
-        setTimeout(() => compileBtn.style.backgroundColor = "", blinkDelayMs);
-
-        // Show success box with PDF link
-        if (data.pdf_url) {
-          successText.innerHTML = `
-            <a href="${data.pdf_url}" target="_blank"
-               class="underline hover:opacity-80">
-               Open generated PDF
-            </a>
-          `;
-          successBox.classList.remove("hidden");
-        }
-
-      } else {
-        // SERVER ERROR → red blink + show log
-        compileBtn.style.backgroundColor = "#dc2626";   // red-600
-        setTimeout(() => compileBtn.style.backgroundColor = "", blinkDelayMs);
-
-        if (data.log) {
-          errorTitle.textContent = "Error";
-          errorText.textContent = data.log;
-          errorBox.classList.remove("hidden");
-        }
-      }
-
-    } catch (err) {
-      console.error("Compile error:", err);
-
-      // NETWORK/JS ERROR → longer red blink
-      compileBtn.style.backgroundColor = "#dc2626";
-      setTimeout(() => compileBtn.style.backgroundColor = "", Math.ceil(1.5 * blinkDelayMs));
-
-      errorTitle.textContent = "Unexpected Error";
-      errorText.textContent = err;
-      errorBox.classList.remove("hidden");
-
-    } finally {
-      compileBtn.disabled = false;
-      compileBtn.style.opacity = "1";
+    if (data.status === "ok" || data.pdf_url) {
+      if (data.pdf_url) statusPdf.href = data.pdf_url;
+      showStatus("ok");
+    } else {
+      statusLog.textContent = data.log || data.error || "Unknown error.";
+      showStatus("err");
     }
-  });
+  } catch (err) {
+    statusLog.textContent = String(err);
+    showStatus("err");
+  } finally {
+    compileBtn.disabled = false;
+    compileBtn.style.opacity = "1";
+    compileBtn.style.filter  = "";
+  }
+});
+
+// ── Images modal ───────────────────────────────────────────
+const imagesModal   = document.getElementById("images-modal");
+const imagesGrid    = document.getElementById("images-grid");
+const imagesUrl     = "{% url 'texlab:bucket_images' workspace_slug=workspace.slug %}";
+let imagesLoaded    = false;
+
+function openModal()  { imagesModal.classList.replace("hidden", "flex"); if (!imagesLoaded) loadImages(); }
+function closeModal() { imagesModal.classList.replace("flex", "hidden"); }
+
+document.getElementById("open-images-modal").addEventListener("click", openModal);
+document.getElementById("close-images-modal").addEventListener("click", closeModal);
+document.getElementById("close-images-modal-footer").addEventListener("click", closeModal);
+imagesModal.addEventListener("click", e => { if (e.target === imagesModal) closeModal(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
+
+async function loadImages() {
+  imagesLoaded = false;
+  imagesGrid.innerHTML = '<span class="col-span-full text-center text-xs opacity-40 italic py-8">Loading…</span>';
+  document.getElementById("images-count").textContent = "";
+
+  let data;
+  try {
+    const res = await fetch(imagesUrl, { credentials: "same-origin" });
+    data = await res.json();
+  } catch {
+    imagesGrid.innerHTML = '<span class="col-span-full text-center text-xs text-red-400 py-8">Failed to load images.</span>';
+    return;
+  }
+
+  const images = (data.images || []).slice(0, 20);
+
+  if (images.length === 0) {
+    imagesGrid.innerHTML = '<span class="col-span-full text-center text-xs opacity-40 italic py-8">No images in this bucket yet.</span>';
+    return;
+  }
+
+  const total = data.images.length;
+  const countEl = document.getElementById("images-count");
+  countEl.textContent = total > 20
+    ? `Showing 20 of ${total} images`
+    : `${total} image${total === 1 ? "" : "s"}`;
+
+  imagesGrid.innerHTML = "";
+
+  for (const img of images) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "flex items-center gap-3 w-full px-1 py-2.5 text-left transition hover:opacity-70 active:scale-[0.99]";
+
+    const icon = document.createElement("i");
+    icon.className = "fa-solid fa-image text-sm opacity-40 shrink-0";
+    row.appendChild(icon);
+
+    const name = document.createElement("span");
+    name.textContent = img.title;
+    name.className = "font-mono text-sm flex-1 min-w-0 truncate";
+    row.appendChild(name);
+
+    const hint = document.createElement("span");
+    hint.textContent = "insert";
+    hint.className = "text-[10px] opacity-35 shrink-0";
+    row.appendChild(hint);
+
+    row.addEventListener("click", () => {
+      const snippet = `\\includegraphics[width=\\linewidth]{${img.title}}`;
+      if (window.TexLabEditor) {
+        window.TexLabEditor.insert(snippet);
+        window.TexLabEditor.focus();
+      }
+      closeModal();
+    });
+
+    imagesGrid.appendChild(row);
+  }
+
+  imagesLoaded = true;
+}
+
+document.getElementById("refresh-images").addEventListener("click", loadImages);
 </script>
+{% endif %}
 {% endblock %}

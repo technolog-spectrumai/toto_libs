@@ -15,15 +15,35 @@ def run_pdflatex(tex_source, workspace):
         with open(tex_path, "w") as f:
             f.write(tex_source)
 
+        placed = set()  # track filenames already written
+
         # Copy all workspace files into tmpdir
         for lf in LatexFile.objects.filter(workspace=workspace).select_related("vault_file"):
             src = lf.vault_file.file
             filename = lf.vault_file.key  # real filename
             dst_path = os.path.join(tmpdir, filename)
-
-            # Read and write file
             with src.open("rb") as fsrc, open(dst_path, "wb") as fdst:
                 fdst.write(fsrc.read())
+            placed.add(filename)
+
+        # Also copy all images from the workspace bucket so that
+        # \includegraphics{filename} resolves without manual workspace entry.
+        # Files are placed using their title (which preserves the extension).
+        bucket_images = VaultFile.objects.filter(
+            bucket=workspace.bucket,
+            file_type="image",
+        )
+        for img in bucket_images:
+            filename = os.path.basename(img.title or img.key)
+            if not filename or filename in placed:
+                continue
+            dst_path = os.path.join(tmpdir, filename)
+            try:
+                with img.file.open("rb") as fsrc, open(dst_path, "wb") as fdst:
+                    fdst.write(fsrc.read())
+                placed.add(filename)
+            except Exception:
+                pass  # don't fail the compile if one image is unreadable
 
         # Compile
         proc = subprocess.run(
