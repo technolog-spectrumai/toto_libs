@@ -83,10 +83,9 @@ class Command(BaseCommand):
         )
 
     def run(self, admin_password):
-        # with Neo4jHelper() as neo4j:
-        #     neo4j.flush_db_batch()
-        #     self.stdout.write(self.style.SUCCESS("Neo4j cleaned."))
-        domain = "spectrumai.pl"
+        site_name = os.environ.get("PLATFORM_NAME", "Toto Platform")
+        domain = os.environ.get("PLATFORM_DOMAIN", "localhost")
+        author = os.environ.get("PLATFORM_AUTHOR", "")
 
         self.stdout.write(self.style.NOTICE("Creating superuser..."))
         call_command("create_user", "admin", admin_password, admin=True)
@@ -96,9 +95,6 @@ class Command(BaseCommand):
         self.create_fonts()
         self.stdout.write(self.style.SUCCESS("Fonts created."))
 
-        site_name = "Spectrum Platform"
-        self.stdout.write(self.style.NOTICE("Creating platform..."))
-
         self.stdout.write(self.style.NOTICE("Creating fonts and theme..."))
         THEMES_DIR = os.path.join(os.path.dirname(__file__), '../../../../../data/themes')
         self.create_theme_from_file(os.path.join(THEMES_DIR, "amazing.json"))
@@ -107,7 +103,6 @@ class Command(BaseCommand):
         if theme is None:
             self.stderr.write(self.style.ERROR("Theme not found. Initialization aborted."))
             return
-        author = "www.spectrumAi.pl"
 
         create_platform_args = [
             site_name,
