@@ -24,15 +24,6 @@ def community_news_create(request, community_slug):
     require_news_manager(request, community)
 
     initial = {"author": current_person(request)}
-    source_page_id = request.GET.get("source_page")
-    if source_page_id:
-        try:
-            from toto.palimpsest.models import Page
-            page = Page.objects.filter(pk=source_page_id).first()
-            if page:
-                initial["source_page"] = page
-        except ImportError:
-            pass
 
     if request.method == "POST":
         form = CommunityNewsPostForm(request.POST)

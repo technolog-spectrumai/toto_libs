@@ -139,14 +139,6 @@ class CommunityNewsPost(AbstractSection):
         related_name="news_posts",
         on_delete=models.CASCADE,
     )
-    source_page = models.ForeignKey(
-        "palimpsest.Page",
-        related_name="community_news_posts",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        help_text="Optional long-form Palimpsest page this post points to.",
-    )
     topics = models.ManyToManyField(
         CommunityNewsTopic,
         related_name="posts",

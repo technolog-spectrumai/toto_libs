@@ -71,11 +71,7 @@ class ReferenceRequestForm(forms.ModelForm):
 
 
 def _community_news_fields():
-    from django.apps import apps
-    fields = ["title", "content", "author", "topics", "visibility"]
-    if apps.is_installed("toto.palimpsest"):
-        fields.insert(3, "source_page")
-    return fields
+    return ["title", "content", "author", "topics", "visibility"]
 
 
 class CommunityNewsPostForm(forms.ModelForm):

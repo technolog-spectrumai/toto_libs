@@ -46,7 +46,7 @@ class CommunityNewsPlugin(CommunityPlugin):
         posts = (
             CommunityNewsPost.objects
             .filter(community=community)
-            .select_related("author", "community", "source_page")
+            .select_related("author", "community")
             .prefetch_related("topics")[:8]
         )
         context.update({

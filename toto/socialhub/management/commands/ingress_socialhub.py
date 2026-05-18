@@ -6,7 +6,7 @@ from toto.ingress import IngressCommand
 from toto.people.models import Person
 from toto.socialhub.models import Community, CommunityNewsPost, CommunityNewsTopic
 from toto.locations.models import Address
-from toto.palimpsest.models import Page
+
 
 
 class Command(IngressCommand):
@@ -227,7 +227,6 @@ class Command(IngressCommand):
         self.stdout.write(self.style.SUCCESS("✔ Assigned senior community members."))
 
     def create_community_news(self, community, author):
-        page = Page.objects.order_by("-created_at").first()
         topics = self.create_news_topics()
 
         samples = [
@@ -235,7 +234,6 @@ class Command(IngressCommand):
                 "title": "Friday notes are open",
                 "content": "<div>Drop short updates, blockers, and tiny wins here. Longer reflections can still move into Palimpsest.</div>",
                 "topics": ["announcements", "community"],
-                "source_page": page,
             },
             {
                 "title": "",
@@ -246,7 +244,6 @@ class Command(IngressCommand):
                 "title": "Community publishing rhythm",
                 "content": "<div>News is for the pulse. Palimpsest is for the piece.</div>",
                 "topics": ["announcements", "craft"],
-                "source_page": page,
             },
         ]
 
@@ -257,7 +254,6 @@ class Command(IngressCommand):
                 content=data["content"],
                 defaults={
                     "author": author,
-                    "source_page": data.get("source_page"),
                 },
             )
             if created:
