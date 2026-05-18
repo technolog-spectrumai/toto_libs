@@ -7,11 +7,10 @@ Usage:
     python manage.py import_oidc_manifest manifest.json --force-recreate
     python manage.py import_oidc_manifest manifest.json --raw-secret mysecret
 """
-import json
-
 from django.core.management.base import BaseCommand, CommandError
 
-from toto.sso.provisioning import RelyingPartyProvisioningError, create_relying_party
+from toto.sso_core.manifest import ManifestBundle
+from toto.sso_master.provisioning import RelyingPartyProvisioningError, create_relying_party
 
 
 class Command(BaseCommand):
@@ -33,26 +32,23 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         try:
             with open(options["manifest"]) as f:
-                manifest = json.load(f)
-        except (OSError, json.JSONDecodeError) as exc:
+                manifest = ManifestBundle.from_json(f.read())
+        except (OSError, KeyError, ValueError) as exc:
             raise CommandError(f"Cannot read manifest: {exc}") from exc
 
-        version = manifest.get("schema_version")
-        if version != 1:
-            raise CommandError(f"Unsupported manifest schema_version: {version!r}")
+        if manifest.schema_version != 1:
+            raise CommandError(f"Unsupported manifest schema_version: {manifest.schema_version!r}")
 
-        client_cfg = manifest.get("oidc_client")
-        if not client_cfg:
-            raise CommandError("Manifest is missing the 'oidc_client' section.")
+        client_cfg = manifest.oidc_client
 
         try:
             provisioned = create_relying_party(
-                name=client_cfg["name"],
-                redirect_uris=client_cfg.get("redirect_uris", []),
-                trusted=client_cfg.get("trusted", False),
-                public=client_cfg.get("client_type") == "public",
-                scopes=client_cfg.get("scopes", "openid email profile"),
-                client_id=client_cfg.get("client_id"),
+                name=client_cfg.name,
+                redirect_uris=client_cfg.redirect_uris,
+                trusted=client_cfg.trusted,
+                public=client_cfg.client_type == "public",
+                scopes=client_cfg.scopes,
+                client_id=client_cfg.client_id,
                 raw_secret=options["raw_secret"],
                 force_recreate=options["force_recreate"],
             )

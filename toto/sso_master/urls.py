@@ -1,8 +1,7 @@
 from django.urls import path
-
 from . import views
 
-app_name = "sso"
+app_name = "sso"  # keep namespace "sso" for portal backwards compat
 
 urlpatterns = [
     path(".well-known/openid-configuration", views.openid_configuration, name="openid_configuration"),

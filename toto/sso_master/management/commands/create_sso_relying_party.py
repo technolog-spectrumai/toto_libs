@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand, CommandError
 
-from toto.sso.provisioning import (
+from toto.sso_master.provisioning import (
     RelyingPartyProvisioningError,
     add_relying_party_arguments,
     create_relying_party_from_options,

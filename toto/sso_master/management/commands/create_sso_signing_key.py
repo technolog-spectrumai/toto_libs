@@ -18,7 +18,7 @@ from django.core.management.base import BaseCommand, CommandError
 
 from toto.gervazy.crypto import GervazyCryptoSession
 from toto.gervazy.models import UserStrongbox, WrappedDataKey
-from toto.sso.models import SSOSigningKey
+from toto.sso_master.models import SSOSigningKey
 
 User = get_user_model()
 
@@ -68,7 +68,7 @@ class Command(BaseCommand):
                 raise CommandError("SSO strongbox has no active WrappedDataKey. The strongbox may be corrupt.")
 
         # Generate RSA key pair
-        self.stdout.write(f"Generating RSA-{options['key_size']} key pair…")
+        self.stdout.write(f"Generating RSA-{options['key_size']} key pair...")
         private_key = rsa.generate_private_key(public_exponent=65537, key_size=options["key_size"])
 
         private_pem = private_key.private_bytes(

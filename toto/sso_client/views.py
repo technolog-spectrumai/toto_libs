@@ -3,7 +3,7 @@ from urllib.parse import urlencode
 
 import requests as http_requests
 from django.apps import apps
-from django.contrib.auth import get_user_model, login
+from django.contrib.auth import get_user_model, login, logout
 from django.http import HttpResponseBadRequest
 from django.shortcuts import redirect
 from django.urls import reverse
@@ -12,7 +12,17 @@ User = get_user_model()
 
 
 def _cfg():
-    return apps.get_app_config("oidc_auth").get_config()
+    return apps.get_app_config("sso_client").get_config()
+
+
+def oidc_logout(request):
+    cfg = _cfg()
+    next_url = request.GET.get("next", "")
+    logout(request)
+    # Optionally redirect to the portal's logout so the portal session is also cleared
+    portal_logout = f"{cfg['portal_url'].rstrip('/')}/sso/logout/"
+    target = next_url or portal_logout
+    return redirect(target)
 
 
 def oidc_login(request):
@@ -86,7 +96,7 @@ def oidc_callback(request):
 
 
 def _callback_uri(request):
-    return request.build_absolute_uri(reverse("oidc_auth:callback"))
+    return request.build_absolute_uri(reverse("sso:callback"))
 
 
 def _get_or_sync_user(claims):
