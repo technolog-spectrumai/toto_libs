@@ -10,6 +10,9 @@ from django.urls import reverse
 
 User = get_user_model()
 
+_COOKIE_SALT = "oidc"
+_COOKIE_MAX_AGE = 300  # 5 minutes — enough to survive the portal round-trip
+
 
 def _cfg():
     return apps.get_app_config("sso_client").get_config()
@@ -19,20 +22,14 @@ def oidc_logout(request):
     cfg = _cfg()
     next_url = request.GET.get("next", "")
     logout(request)
-    # Optionally redirect to the portal's logout so the portal session is also cleared
     portal_logout = f"{cfg['portal_url'].rstrip('/')}/sso/logout/"
-    target = next_url or portal_logout
-    return redirect(target)
+    return redirect(next_url or portal_logout)
 
 
 def oidc_login(request):
     cfg = _cfg()
     state = secrets.token_urlsafe(32)
-    request.session["oidc_state"] = state
-
     next_url = request.GET.get("next", "")
-    if next_url:
-        request.session["oidc_next"] = next_url
 
     params = {
         "response_type": "code",
@@ -41,7 +38,15 @@ def oidc_login(request):
         "scope": cfg["scopes"],
         "state": state,
     }
-    return redirect(f"{cfg['portal_url'].rstrip('/')}/sso/authorize/?{urlencode(params)}")
+    response = redirect(f"{cfg['portal_url'].rstrip('/')}/sso/authorize/?{urlencode(params)}")
+    # Store state in a signed cookie — survives the browser round-trip to the
+    # portal without depending on the session being saved before the redirect.
+    response.set_signed_cookie("oidc_state", state, salt=_COOKIE_SALT,
+                               max_age=_COOKIE_MAX_AGE, httponly=True, samesite="Lax")
+    if next_url:
+        response.set_cookie("oidc_next", next_url, max_age=_COOKIE_MAX_AGE,
+                            httponly=True, samesite="Lax")
+    return response
 
 
 def oidc_callback(request):
@@ -52,7 +57,13 @@ def oidc_callback(request):
         return HttpResponseBadRequest(f"Portal SSO error: {error}")
 
     state = request.GET.get("state")
-    if not state or state != request.session.pop("oidc_state", None):
+    try:
+        stored_state = request.get_signed_cookie("oidc_state", salt=_COOKIE_SALT,
+                                                 max_age=_COOKIE_MAX_AGE)
+    except Exception:
+        stored_state = None
+
+    if not state or state != stored_state:
         return HttpResponseBadRequest("Invalid OIDC state. Please try logging in again.")
 
     code = request.GET.get("code")
@@ -91,11 +102,18 @@ def oidc_callback(request):
 
     login(request, user, backend="django.contrib.auth.backends.ModelBackend")
 
-    next_url = request.session.pop("oidc_next", "") or reverse("core:dashboard")
-    return redirect(next_url)
+    next_url = request.COOKIES.get("oidc_next", "") or reverse("core:dashboard")
+    response = redirect(next_url)
+    response.delete_cookie("oidc_state")
+    response.delete_cookie("oidc_next")
+    return response
 
 
 def _callback_uri(request):
+    cfg = _cfg()
+    for uri in cfg.get("redirect_uris", []):
+        if uri.startswith("http://") or uri.startswith("https://"):
+            return uri
     return request.build_absolute_uri(reverse("sso:callback"))
 
 

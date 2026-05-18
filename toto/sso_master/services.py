@@ -46,15 +46,30 @@ def get_active_signing_key() -> SSOSigningKey:
     return key
 
 
+def _load_vault_password() -> str:
+    password = getattr(settings, "SSO_VAULT_PASSWORD", "").strip()
+    if password:
+        return password
+    # Dev fallback: read from run/sso_*.json bundle written by portal reset.
+    import json
+    from pathlib import Path
+    run_dir = Path(settings.BASE_DIR).parent / "run"
+    for bundle_path in run_dir.glob("sso_*.json"):
+        try:
+            vp = json.loads(bundle_path.read_text()).get("vault_password", "")
+            if vp:
+                return vp
+        except Exception:
+            pass
+    raise RuntimeError(
+        "SSO_VAULT_PASSWORD is not set. "
+        "Configure this environment variable with the SSO system vault password."
+    )
+
+
 def _open_sso_vault(epk) -> GervazyCryptoSession:
     """Open a GervazyCryptoSession for the strongbox that owns *epk*."""
-    password = getattr(settings, "SSO_VAULT_PASSWORD", "").strip()
-    if not password:
-        raise RuntimeError(
-            "SSO_VAULT_PASSWORD is not set. "
-            "Configure this environment variable with the SSO system vault password."
-        )
-    return GervazyCryptoSession(epk.strongbox, password)
+    return GervazyCryptoSession(epk.strongbox, _load_vault_password())
 
 
 def get_signing_private_key_pem() -> str:
