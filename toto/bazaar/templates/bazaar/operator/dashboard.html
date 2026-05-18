@@ -1,0 +1,13 @@
+{% extends "bazaar/base.html" %}
+{% block bazaar_title %}Bazaar operator{% endblock %}
+{% block bazaar_heading %}Bazaar operator{% endblock %}
+{% block bazaar_subtitle %}<p class="mt-2 max-w-2xl text-sm opacity-70">Platform-level commerce operations, moderation, and suspicious order review.</p>{% endblock %}
+{% block bazaar_content %}
+<section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">Total sales</p><p class="mt-2 text-3xl font-bold">{{ total_sales }}</p></article>
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">Active vendors</p><p class="mt-2 text-3xl font-bold">{{ active_vendors }}</p></article>
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">Pending vendors</p><p class="mt-2 text-3xl font-bold">{{ pending_vendors }}</p></article>
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">Pending products</p><p class="mt-2 text-3xl font-bold">{{ pending_products }}</p></article>
+</section>
+<div class="flex flex-wrap gap-2"><a href="{% url 'bazaar:operator-product-moderation' %}" class="rounded-lg border border-current/20 px-4 py-2 text-sm font-semibold">Product moderation</a><a href="{% url 'bazaar:operator-orders' %}" class="rounded-lg border border-current/20 px-4 py-2 text-sm font-semibold">Order management</a></div>
+{% endblock %}

@@ -1,0 +1,31 @@
+{% extends "bazaar/base.html" %}
+{% block bazaar_title %}Bazaar{% endblock %}
+{% block bazaar_heading %}{{ shop.name|default:"Bazaar" }}{% endblock %}
+{% block bazaar_subtitle %}<p class="mt-2 max-w-2xl text-sm opacity-70">{{ shop.description|default:"Browse featured products, vendors, local services, bookings, and digital resources." }}</p>{% endblock %}
+{% block bazaar_content %}
+<section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">Featured</p><p class="mt-2 text-3xl font-bold">{{ featured_products|length }}</p></article>
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">Categories</p><p class="mt-2 text-3xl font-bold">{{ categories|length }}</p></article>
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">Vendors</p><p class="mt-2 text-3xl font-bold">{{ vendors|length }}</p></article>
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">Currency</p><p class="mt-2 text-3xl font-bold">{{ shop.currency|default:"PLN" }}</p></article>
+</section>
+
+<section class="space-y-4">
+  <div class="flex items-center justify-between gap-3"><h2 class="text-xl font-bold">Featured products</h2><a href="{% url 'bazaar:product-list' %}" class="text-sm font-semibold underline hover:opacity-80">All products</a></div>
+  <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{% for product in featured_products %}{% include "bazaar/partials/product_card.html" %}{% empty %}{% include "bazaar/partials/empty_state.html" with icon="fa-solid fa-box-open" message="No featured products yet." %}{% endfor %}</div>
+</section>
+
+<section class="space-y-4">
+  <h2 class="text-xl font-bold">Categories</h2>
+  <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    {% for category in categories %}
+      <a href="{% url 'bazaar:category-detail' category.slug %}" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-xl border p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"><p class="font-bold">{{ category.name }}</p><p class="mt-1 text-sm opacity-65">{{ category.description|truncatechars:80 }}</p></a>
+    {% empty %}{% include "bazaar/partials/empty_state.html" with icon="fa-solid fa-shapes" message="No categories yet." %}{% endfor %}
+  </div>
+</section>
+
+<section class="space-y-4">
+  <h2 class="text-xl font-bold">New arrivals</h2>
+  <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{% for product in new_products %}{% include "bazaar/partials/product_card.html" %}{% empty %}{% include "bazaar/partials/empty_state.html" with icon="fa-solid fa-box-open" message="No published products yet." %}{% endfor %}</div>
+</section>
+{% endblock %}

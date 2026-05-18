@@ -1,0 +1,14 @@
+{% extends "bazaar/base.html" %}
+{% block bazaar_title %}Products{% endblock %}
+{% block bazaar_heading %}Products{% endblock %}
+{% block bazaar_subtitle %}<p class="mt-2 max-w-2xl text-sm opacity-70">Search the catalog by category, vendor, type, and price.</p>{% endblock %}
+{% block bazaar_content %}
+<form method="get" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="grid gap-3 rounded-2xl border p-4 shadow-sm md:grid-cols-[minmax(0,1fr)_180px_180px_160px_auto]">
+  <input name="q" value="{{ filters.q }}" placeholder="Search products..." :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="rounded-lg border px-3 py-2 text-sm outline-none">
+  <select name="category" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="rounded-lg border px-3 py-2 text-sm"><option value="">All categories</option>{% for category in categories %}<option value="{{ category.slug }}" {% if filters.category == category.slug %}selected{% endif %}>{{ category.name }}</option>{% endfor %}</select>
+  <select name="vendor" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="rounded-lg border px-3 py-2 text-sm"><option value="">All vendors</option>{% for vendor in vendors %}<option value="{{ vendor.slug }}" {% if filters.vendor == vendor.slug %}selected{% endif %}>{{ vendor.display_name }}</option>{% endfor %}</select>
+  <select name="sort" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="rounded-lg border px-3 py-2 text-sm"><option value="newest">Newest</option><option value="popular" {% if filters.sort == 'popular' %}selected{% endif %}>Popular</option><option value="price_asc" {% if filters.sort == 'price_asc' %}selected{% endif %}>Price ↑</option><option value="price_desc" {% if filters.sort == 'price_desc' %}selected{% endif %}>Price ↓</option></select>
+  <button :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'" class="rounded-lg px-4 py-2 text-sm font-semibold shadow-sm"><i class="fa-solid fa-filter"></i> Filter</button>
+</form>
+<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{% for product in products %}{% include "bazaar/partials/product_card.html" %}{% empty %}{% include "bazaar/partials/empty_state.html" with icon="fa-solid fa-magnifying-glass" message="No products match your filters." %}{% endfor %}</div>
+{% endblock %}

@@ -1,0 +1,29 @@
+{% extends "bazaar/base.html" %}
+{% block bazaar_title %}{{ product.name }}{% endblock %}
+{% block bazaar_heading %}{{ product.name }}{% endblock %}
+{% block bazaar_subtitle %}<p class="mt-2 max-w-2xl text-sm opacity-70">{{ product.summary|default:product.get_product_type_display }}</p>{% endblock %}
+{% block bazaar_content %}
+<section class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_24rem]">
+  <div class="space-y-4">
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="overflow-hidden rounded-2xl border shadow-sm">
+      {% with image=product.images.first %}{% if image %}<img src="{{ image.image.url }}" alt="{{ image.alt_text|default:product.name }}" class="max-h-[34rem] w-full object-cover">{% else %}<div :class="darkMode ? 'bg-sunken-dark' : 'bg-sunken-light'" class="flex h-80 items-center justify-center opacity-40"><i class="fa-solid fa-box-open text-5xl"></i></div>{% endif %}{% endwith %}
+    </div>
+    <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><h2 class="text-lg font-bold">Description</h2><div class="prose mt-3 max-w-none opacity-85">{{ product.description|linebreaks }}</div></article>
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><div class="flex items-center justify-between"><h2 class="text-lg font-bold">Reviews</h2><span class="text-sm font-semibold opacity-70">{{ review_metrics.avg_rating }}/5 · {{ review_metrics.review_count }}</span></div>{% for review in reviews %}<article class="mt-4 border-t border-current/10 pt-4"><p class="font-bold">{{ review.title|default:"Review" }} <span class="text-sm opacity-60">{{ review.rating }}/5</span></p><p class="mt-1 text-sm opacity-75">{{ review.body }}</p></article>{% empty %}<p class="mt-3 text-sm opacity-60">No published reviews yet.</p>{% endfor %}</section>
+  </div>
+  <aside class="space-y-4">
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm">
+      <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Price</p>
+      <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="mt-1 text-3xl font-bold">{{ product.price }} {{ product.currency }}</p>
+      {% if product.vendor %}<a href="{% url 'bazaar:vendor-detail' product.vendor.slug %}" class="mt-3 inline-flex items-center gap-2 text-sm font-semibold underline hover:opacity-80"><i class="fa-solid fa-user-tag"></i> {{ product.vendor.display_name }}</a>{% endif %}
+      <form method="post" action="{% url 'bazaar:cart-add' %}" class="mt-5 space-y-3">{% csrf_token %}<input type="hidden" name="product_id" value="{{ product.pk }}"><input type="hidden" name="next" value="{{ request.path }}">
+        {% if product.variants.all %}<select name="variant_id" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="w-full rounded-lg border px-3 py-2 text-sm">{% for variant in product.variants.all %}<option value="{{ variant.pk }}">{{ variant.name }}{% if variant.price %} · {{ variant.price }} {{ product.currency }}{% endif %}</option>{% endfor %}</select>{% endif %}
+        <input name="quantity" value="1" type="number" min="1" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="w-full rounded-lg border px-3 py-2 text-sm">
+        <button :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'" class="inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90"><i class="fa-solid fa-cart-plus"></i> Add to cart</button>
+      </form>
+    </section>
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><h2 class="text-lg font-bold">Details</h2><dl class="mt-3 space-y-2 text-sm"><div class="flex justify-between gap-4"><dt class="opacity-60">Type</dt><dd class="font-semibold">{{ product.get_product_type_display }}</dd></div><div class="flex justify-between gap-4"><dt class="opacity-60">Stock</dt><dd class="font-semibold">{% if product.stock_tracking_enabled %}{{ product.stock_quantity }}{% else %}Available{% endif %}</dd></div>{% if product.pickup_available %}<div class="flex justify-between gap-4"><dt class="opacity-60">Pickup</dt><dd class="font-semibold">Available</dd></div>{% endif %}</dl></section>
+  </aside>
+</section>
+{% if related_products %}<section class="space-y-4"><h2 class="text-xl font-bold">Related products</h2><div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{% for product in related_products %}{% include "bazaar/partials/product_card.html" %}{% endfor %}</div></section>{% endif %}
+{% endblock %}

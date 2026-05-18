@@ -1,0 +1,5 @@
+{% extends "bazaar/base.html" %}
+{% block bazaar_title %}{{ category.name }}{% endblock %}
+{% block bazaar_heading %}{{ category.name }}{% endblock %}
+{% block bazaar_subtitle %}<p class="mt-2 max-w-2xl text-sm opacity-70">{{ category.description|default:"Products in this category." }}</p>{% endblock %}
+{% block bazaar_content %}<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{% for product in products %}{% include "bazaar/partials/product_card.html" %}{% empty %}{% include "bazaar/partials/empty_state.html" with icon="fa-solid fa-box-open" message="No products in this category yet." %}{% endfor %}</div>{% endblock %}

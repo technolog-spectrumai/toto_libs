@@ -1,0 +1,13 @@
+{% extends "bazaar/base.html" %}
+{% block bazaar_title %}Checkout{% endblock %}
+{% block bazaar_heading %}Checkout{% endblock %}
+{% block bazaar_subtitle %}<p class="mt-2 max-w-2xl text-sm opacity-70">Confirm contact details and payment method.</p>{% endblock %}
+{% block bazaar_content %}
+<form method="post" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="mx-auto max-w-3xl space-y-5 rounded-2xl border p-5 shadow-sm">{% csrf_token %}
+  {{ form.non_field_errors }}
+  {% for field in form %}
+    <label class="block"><span class="mb-1 block text-sm font-semibold">{{ field.label }}</span>{{ field }}{% if field.errors %}<span class="mt-1 block text-xs text-red-500">{{ field.errors|join:", " }}</span>{% endif %}</label>
+  {% endfor %}
+  <div class="flex justify-end gap-2"><a href="{% url 'bazaar:cart' %}" class="rounded-lg border border-current/20 px-4 py-2 text-sm font-semibold">Back to cart</a><button :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'" class="rounded-lg px-5 py-2 text-sm font-semibold shadow-sm"><i class="fa-solid fa-paper-plane"></i> Place order</button></div>
+</form>
+{% endblock %}

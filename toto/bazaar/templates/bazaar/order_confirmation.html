@@ -1,0 +1,11 @@
+{% extends "bazaar/base.html" %}
+{% block bazaar_title %}Order {{ order.order_number }}{% endblock %}
+{% block bazaar_heading %}Order placed{% endblock %}
+{% block bazaar_subtitle %}<p class="mt-2 max-w-2xl text-sm opacity-70">{{ order.order_number }}</p>{% endblock %}
+{% block bazaar_content %}
+<section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm">
+  {% include "bazaar/partials/order_status_badges.html" %}
+  <div class="mt-5 space-y-3">{% for item in order.items.all %}<div class="flex justify-between gap-4 border-t border-current/10 pt-3"><span>{{ item.quantity }} × {{ item.product_name_snapshot }}</span><strong>{{ item.total_price }} {{ order.currency }}</strong></div>{% endfor %}</div>
+  <div class="mt-5 flex justify-between border-t border-current/10 pt-4 text-lg font-bold"><span>Total</span><span>{{ order.total_amount }} {{ order.currency }}</span></div>
+</section>
+{% endblock %}
