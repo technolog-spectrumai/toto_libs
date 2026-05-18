@@ -1,34 +1,32 @@
+import os
+
 from django.apps import AppConfig
 
 
-class SSOAuthConfig(AppConfig):
+class SSOClientConfig(AppConfig):
     name = "toto.sso_client"
-    verbose_name = "SSO Auth (Consumer)"
+    verbose_name = "SSO Client (Consumer)"
     default_auto_field = "django.db.models.BigAutoField"
 
     def get_config(self):
         """
-        Return the active OIDC consumer config.
-        Priority: env vars > active OIDCProviderConfig DB record > OIDC_AUTH_CONFIG settings > sso.yaml
+        Read OIDC consumer config from the active OIDCProviderConfig DB record.
+        SSO_CLIENT_SECRET env var overrides the stored secret (production safety).
         """
-        import os
-        from django.conf import settings
-
-        cfg = getattr(settings, "OIDC_AUTH_CONFIG", {})
-        # Try DB record
-        db_record = None
-        try:
-            from toto.sso_client.models import OIDCProviderConfig
-            db_record = OIDCProviderConfig.objects.filter(active=True).order_by("-imported_at").first()
-        except Exception:
-            pass
-
+        from toto.sso_client.models import OIDCProviderConfig
+        record = OIDCProviderConfig.objects.filter(active=True).order_by("-imported_at").first()
+        if not record:
+            return {
+                "portal_url": "", "client_id": "", "client_secret": "",
+                "scopes": "openid email profile", "app_name": "",
+                "trusted": False, "redirect_uris": [],
+            }
         return {
-            "portal_url": os.environ.get("SSO_PORTAL_URL") or cfg.get("portal_url") or (db_record.portal_url if db_record else ""),
-            "client_id": os.environ.get("SSO_CLIENT_ID") or cfg.get("client_id") or (db_record.client_id if db_record else ""),
-            "client_secret": os.environ.get("SSO_CLIENT_SECRET") or (db_record.client_secret if db_record else cfg.get("client_secret", "")),
-            "scopes": cfg.get("scopes") or (db_record.scopes if db_record else "openid email profile"),
-            "app_name": cfg.get("app_name", ""),
-            "trusted": cfg.get("trusted", False),
-            "redirect_uris": cfg.get("redirect_uris", []),
+            "portal_url": record.portal_url,
+            "client_id": record.client_id,
+            "client_secret": os.environ.get("SSO_CLIENT_SECRET") or record.client_secret,
+            "scopes": record.scopes,
+            "app_name": record.app_name,
+            "trusted": record.trusted,
+            "redirect_uris": record.redirect_uris_list(),
         }

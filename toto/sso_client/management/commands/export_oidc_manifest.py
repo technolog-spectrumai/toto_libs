@@ -1,7 +1,6 @@
-import json
-from django.apps import apps
 from django.core.management.base import BaseCommand, CommandError
 from toto.sso_core.manifest import ManifestBundle, OIDCClientSpec
+from toto.sso_client.models import OIDCProviderConfig
 
 
 class Command(BaseCommand):
@@ -11,26 +10,28 @@ class Command(BaseCommand):
         parser.add_argument("--output", "-o", default="-", help="Path to write manifest JSON (default: stdout).")
 
     def handle(self, *args, **options):
-        try:
-            cfg = apps.get_app_config("sso_client").get_config()
-        except LookupError:
-            raise CommandError("toto.sso_client is not in INSTALLED_APPS.")
+        record = OIDCProviderConfig.objects.filter(active=True).order_by("-imported_at").first()
+        if not record:
+            raise CommandError(
+                "No active OIDCProviderConfig found. "
+                "Run ingress_sso_client or import a connection bundle first."
+            )
 
-        missing = [k for k in ("app_name", "client_id") if not cfg.get(k)]
+        missing = [f for f, v in [("app_name", record.app_name), ("client_id", record.client_id)] if not v]
         if missing:
-            raise CommandError(f"OIDC_AUTH_CONFIG missing keys for manifest export: {missing}")
+            raise CommandError(f"OIDCProviderConfig is missing: {missing}")
 
         bundle = ManifestBundle(
             schema_version=1,
-            app=cfg["client_id"],
-            display_name=cfg["app_name"],
+            app=record.client_id,
+            display_name=record.app_name,
             oidc_client=OIDCClientSpec(
-                name=cfg["app_name"],
-                client_id=cfg["client_id"],
+                name=record.app_name,
+                client_id=record.client_id,
                 client_type="confidential",
-                trusted=cfg["trusted"],
-                redirect_uris=cfg["redirect_uris"],
-                scopes=cfg["scopes"],
+                trusted=record.trusted,
+                redirect_uris=record.redirect_uris_list(),
+                scopes=record.scopes,
             ),
         )
 
