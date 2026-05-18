@@ -67,6 +67,11 @@ packages = [
     "toto.bento.migrations",
     "toto.bento.management",
     "toto.bento.management.commands",
+    "toto.assets",
+    "toto.assets.migrations",
+    "toto.assets.services",
+    "toto.assets.management",
+    "toto.assets.management.commands",
     # --- formerly studio apps ---
     "toto.enigma",
     "toto.enigma.agent",

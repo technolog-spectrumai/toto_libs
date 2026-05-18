@@ -1,0 +1,82 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% block assets_title %}Assets{% endblock %} | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+<style>
+  [x-cloak] { display: none !important; }
+</style>
+{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-7xl space-y-6">
+
+    <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div class="space-y-2">
+        <a href="{% url 'core:dashboard' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+          <i class="fa-solid fa-arrow-left"></i>
+          {% trans "Dashboard" %}
+        </a>
+        <div>
+          <p
+            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+            class="text-xs font-semibold uppercase tracking-wide">
+            {% trans "Toto Studio" %}
+          </p>
+          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+            <i class="fa-solid fa-coins"></i>
+            {% trans "Assets" %}
+          </h1>
+        </div>
+      </div>
+
+      <nav class="flex flex-wrap gap-2">
+        <a
+          href="{% url 'assets:asset_list' %}"
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-layer-group"></i>
+          {% trans "Assets" %}
+        </a>
+        <a
+          href="{% url 'assets:account_list' %}"
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-users"></i>
+          {% trans "Accounts" %}
+        </a>
+        <a
+          href="{% url 'assets:transaction_list' %}"
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-list"></i>
+          {% trans "Transactions" %}
+        </a>
+        <a
+          href="{% url 'assets:chain_verify' %}"
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-link"></i>
+          {% trans "Chain" %}
+        </a>
+        <a
+          href="{% url 'assets:ledger_flow' %}"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-diagram-project"></i>
+          {% trans "Flow" %}
+        </a>
+      </nav>
+    </header>
+
+    {% block assets_content %}{% endblock %}
+
+  </div>
+</section>
+{% endblock %}
