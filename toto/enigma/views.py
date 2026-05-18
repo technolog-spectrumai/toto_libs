@@ -73,7 +73,9 @@ class RoomDetailView(DetailView):
             if current_chat_participant
             else current_person.full_name
             if current_person
-            else self.request.user.get_full_name() or self.request.user.username or "Guest"
+            else (self.request.user.get_full_name() or self.request.user.username)
+            if self.request.user.is_authenticated
+            else "Guest"
         )
         context["current_chat_avatar_url"] = (
             current_chat_participant.avatar_url
