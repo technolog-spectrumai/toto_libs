@@ -26,6 +26,16 @@ def oidc_logout(request):
 
 def oidc_login(request):
     cfg = _cfg()
+
+    if not cfg.get("portal_url") or not cfg.get("client_id"):
+        # No OIDC config in DB — fall back to the local username/password login.
+        from django.urls import reverse as _reverse
+        next_url = request.GET.get("next", "")
+        fallback = _reverse("core:login")
+        if next_url:
+            fallback += f"?next={next_url}"
+        return redirect(fallback)
+
     state = secrets.token_urlsafe(32)
     next_url = request.GET.get("next", "")
 
