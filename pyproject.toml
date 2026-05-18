@@ -74,6 +74,8 @@ packages = [
     "toto.assets.management.commands",
     "toto.bazaar",
     "toto.bazaar.migrations",
+    "toto.bazaar.management",
+    "toto.bazaar.management.commands",
     # --- formerly studio apps ---
     "toto.enigma",
     "toto.enigma.agent",
