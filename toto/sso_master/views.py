@@ -128,7 +128,9 @@ def authorize(request):
     except SSORelyingParty.DoesNotExist:
         return HttpResponseBadRequest("Invalid client_id.")
 
-    if not redirect_uri or not client.is_redirect_uri_allowed(redirect_uri):
+    admin_test_uri = request.build_absolute_uri(reverse("sso:admin_test_callback"))
+    is_admin_test = (redirect_uri == admin_test_uri and request.user.is_staff)
+    if not redirect_uri or (not client.is_redirect_uri_allowed(redirect_uri) and not is_admin_test):
         return HttpResponseBadRequest("Invalid redirect_uri.")
 
     requested_scopes = set(scope.split())
@@ -267,6 +269,78 @@ def userinfo(request):
         return JsonResponse({"error": "invalid_token"}, status=401)
 
     return JsonResponse(get_user_claims(token.user, token.scope.split()))
+
+
+@login_required
+def admin_test_login(request, pk):
+    """Initiate an OIDC test flow for a relying party from the Django admin."""
+    if not request.user.is_staff:
+        return HttpResponseForbidden("Staff only.")
+    try:
+        client = SSORelyingParty.objects.get(pk=pk, active=True)
+    except SSORelyingParty.DoesNotExist:
+        return HttpResponseBadRequest("Client not found or inactive.")
+
+    import secrets as _secrets
+    state = _secrets.token_urlsafe(16)
+    request.session["sso_admin_test_state"] = state
+    request.session["sso_admin_test_client_pk"] = str(pk)
+
+    callback_uri = request.build_absolute_uri(reverse("sso:admin_test_callback"))
+    params = {
+        "response_type": "code",
+        "client_id": client.client_id,
+        "redirect_uri": callback_uri,
+        "scope": client.allowed_scopes,
+        "state": state,
+    }
+    return redirect(f"{reverse('sso:authorize')}?{urlencode(params)}")
+
+
+@login_required
+def admin_test_callback(request):
+    """Receive the code from the admin test OIDC flow and display the resulting claims."""
+    if not request.user.is_staff:
+        return HttpResponseForbidden("Staff only.")
+
+    error = request.GET.get("error")
+    if error:
+        return render(request, "sso/admin_test_result.html", {"error": error})
+
+    state = request.GET.get("state")
+    stored_state = request.session.pop("sso_admin_test_state", None)
+    client_pk = request.session.pop("sso_admin_test_client_pk", None)
+
+    if not state or state != stored_state:
+        return render(request, "sso/admin_test_result.html", {"error": "State mismatch — possible CSRF."})
+
+    code_value = request.GET.get("code")
+    if not code_value:
+        return render(request, "sso/admin_test_result.html", {"error": "Missing code."})
+
+    try:
+        auth_code = SSOAuthorizationCode.objects.select_related("client", "user").get(
+            code=code_value, client__pk=client_pk
+        )
+    except SSOAuthorizationCode.DoesNotExist:
+        return render(request, "sso/admin_test_result.html", {"error": "Authorization code not found."})
+
+    if auth_code.is_used or auth_code.is_expired:
+        return render(request, "sso/admin_test_result.html", {"error": "Code already used or expired."})
+
+    auth_code.mark_used()
+    access_token = SSOAccessToken.objects.create(
+        client=auth_code.client, user=auth_code.user, scope=auth_code.scope
+    )
+    claims = get_user_claims(auth_code.user, auth_code.scope.split())
+
+    return render(request, "sso/admin_test_result.html", {
+        "client": auth_code.client,
+        "user": auth_code.user,
+        "claims": claims,
+        "scope": auth_code.scope,
+        "access_token": access_token.token,
+    })
 
 
 @login_required

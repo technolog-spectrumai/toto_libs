@@ -13,4 +13,6 @@ urlpatterns = [
     path("sso/login/", views.login_view, name="login"),
     path("sso/logout/", views.logout_view, name="logout"),
     path("sso/my-profile/", views.my_profile, name="my_profile"),
+    path("sso/admin-test/<uuid:pk>/", views.admin_test_login, name="admin_test_login"),
+    path("sso/admin-test-callback/", views.admin_test_callback, name="admin_test_callback"),
 ]

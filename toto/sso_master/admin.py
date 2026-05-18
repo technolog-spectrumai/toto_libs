@@ -37,6 +37,12 @@ class SSORelyingPartyAdmin(admin.ModelAdmin):
     readonly_fields = ["created_at", "updated_at"]
     actions = [generate_connection_bundle]
 
+    def change_view(self, request, object_id, form_url="", extra_context=None):
+        extra_context = extra_context or {}
+        from django.urls import reverse as _reverse
+        extra_context["test_login_url"] = _reverse("sso:admin_test_login", args=[object_id])
+        return super().change_view(request, object_id, form_url, extra_context)
+
 
 @admin.register(SSOSigningKey)
 class SSOSigningKeyAdmin(admin.ModelAdmin):
