@@ -1,3 +1,4 @@
+from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
@@ -57,6 +58,8 @@ def account_list(request):
 
 
 def account_detail(request, pk):
+    from django.utils import timezone
+    from .models import Obligation, ObligationStatus
     account = get_object_or_404(LedgerAccount, pk=pk)
     holdings = AssetHolding.objects.filter(account=account).select_related("asset")
     recent_entries = (
@@ -64,12 +67,20 @@ def account_detail(request, pk):
         .select_related("transaction", "asset")
         .order_by("-created_at")[:30]
     )
+    obligations = (
+        Obligation.objects
+        .filter(debtor_account=account, status=ObligationStatus.PENDING)
+        .select_related('creditor_account', 'asset')
+        .order_by('due_at')
+    )
     flow_data_url = reverse("assets:ledger_flow_data") + f"?account={account.code}"
     flow_full_url = reverse("assets:ledger_flow") + f"?account={account.code}"
     return assets_render(request, "assets/account_detail.html", {
         "account": account,
         "holdings": holdings,
         "recent_entries": recent_entries,
+        "obligations": obligations,
+        "now": timezone.now(),
         "account_flow_url": flow_data_url,
         "account_flow_full_url": flow_full_url,
     })
@@ -147,6 +158,46 @@ def ledger_flow(request):
         "date_to": request.GET.get("date_to", ""),
         "asset_filter": request.GET.get("asset", ""),
         "tx_type_filter": request.GET.get("type", ""),
+    })
+
+
+@login_required
+def wallet(request):
+    from django.utils import timezone
+    from .models import Currency, AssetHolding, Obligation, ObligationStatus
+    accounts = (
+        LedgerAccount.objects.filter(user=request.user, active=True)
+        .prefetch_related('holdings__asset')
+    )
+    account_pks = list(accounts.values_list('pk', flat=True))
+    recent_entries = (
+        LedgerEntry.objects
+        .filter(account__user=request.user)
+        .select_related('transaction', 'asset', 'account')
+        .order_by('-created_at')[:30]
+    )
+    currencies = Currency.objects.filter(is_active=True).select_related('asset')
+    total_holdings = []
+    for account in accounts:
+        for h in account.holdings.all():
+            if h.balance_base_units > 0:
+                total_holdings.append(h)
+
+    now = timezone.now()
+    obligations = (
+        Obligation.objects
+        .filter(debtor_account__in=account_pks, status=ObligationStatus.PENDING)
+        .select_related('debtor_account', 'creditor_account', 'asset')
+        .order_by('due_at')
+    )
+    # Mark overdue in Python so template can use is_overdue property
+    return assets_render(request, 'assets/wallet.html', {
+        'wallet_accounts': accounts,
+        'total_holdings': total_holdings,
+        'recent_entries': recent_entries,
+        'currencies': currencies,
+        'obligations': obligations,
+        'now': now,
     })
 
 

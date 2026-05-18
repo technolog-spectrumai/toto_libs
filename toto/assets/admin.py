@@ -1,7 +1,7 @@
 from django.contrib import admin
 
 from .hashing import verify_hash_chain
-from .models import Asset, AssetHolding, LedgerAccount, LedgerEntry, LedgerHash, LedgerTransaction
+from .models import Asset, AssetHolding, Currency, LedgerAccount, LedgerEntry, LedgerHash, LedgerTransaction, Obligation
 
 
 class AssetHoldingInline(admin.TabularInline):
@@ -141,3 +141,32 @@ class LedgerHashAdmin(admin.ModelAdmin):
         return verify_hash_chain()
     chain_valid.boolean = True
     chain_valid.short_description = "Chain valid"
+
+
+@admin.register(Currency)
+class CurrencyAdmin(admin.ModelAdmin):
+    list_display = ('code', 'name', 'symbol', 'asset', 'is_active')
+    list_filter = ('is_active',)
+    search_fields = ('code', 'name')
+    raw_id_fields = ('asset',)
+
+
+@admin.register(Obligation)
+class ObligationAdmin(admin.ModelAdmin):
+    list_display = ('reference', 'debtor_account', 'creditor_account', 'asset', 'amount_display', 'due_at', 'status')
+    list_filter = ('status', 'asset')
+    search_fields = ('reference', 'order_reference', 'debtor_account__code', 'creditor_account__code')
+    readonly_fields = ('created_at', 'updated_at', 'fulfilled_at', 'amount_display', 'collateral_display')
+    raw_id_fields = ('debtor_account', 'creditor_account', 'asset', 'collateral_account', 'collateral_asset')
+
+    @staticmethod
+    def amount_display(obj):
+        return f"{obj.amount_display} {obj.asset.unit_name}"
+    amount_display.short_description = "Amount"
+
+    @staticmethod
+    def collateral_display(obj):
+        if obj.collateral_asset:
+            return f"{obj.collateral_display} {obj.collateral_asset.unit_name}"
+        return "—"
+    collateral_display.short_description = "Collateral"

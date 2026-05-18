@@ -1,10 +1,127 @@
 {% extends "bazaar/base.html" %}
+{% load i18n %}
 {% block bazaar_title %}{{ order.order_number }}{% endblock %}
 {% block bazaar_heading %}{{ order.order_number }}{% endblock %}
-{% block bazaar_subtitle %}<p class="mt-2 max-w-2xl text-sm opacity-70">Placed {{ order.created_at|date:"F j, Y H:i" }}</p>{% endblock %}
+{% block bazaar_subtitle %}<p class="mt-2 max-w-2xl text-sm opacity-70">{% trans "Placed" %} {{ order.created_at|date:"F j, Y H:i" }}</p>{% endblock %}
 {% block bazaar_content %}
 <section class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
-  <div class="space-y-3">{% for item in order.items.all %}<article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><div class="flex justify-between gap-4"><div><p class="font-bold">{{ item.product_name_snapshot }}</p><p class="text-xs opacity-60">{{ item.sku_snapshot|default:"No SKU" }}</p></div><p class="font-bold">{{ item.total_price }} {{ order.currency }}</p></div></article>{% endfor %}</div>
-  <aside :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="h-fit rounded-2xl border p-5 shadow-sm"><h2 class="text-lg font-bold">Status</h2><div class="mt-4">{% include "bazaar/partials/order_status_badges.html" %}</div><div class="mt-5 space-y-2 border-t border-current/10 pt-4 text-sm"><div class="flex justify-between"><span>Subtotal</span><strong>{{ order.subtotal_amount }}</strong></div><div class="flex justify-between"><span>Discount</span><strong>{{ order.discount_amount }}</strong></div><div class="flex justify-between"><span>Shipping</span><strong>{{ order.shipping_amount }}</strong></div><div class="flex justify-between text-lg"><span>Total</span><strong>{{ order.total_amount }} {{ order.currency }}</strong></div></div></aside>
+
+  <!-- Items -->
+  <div class="space-y-3">
+    {% for item in order.items.all %}
+    <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm">
+      <div class="flex justify-between gap-4">
+        <div>
+          <p class="font-bold">{{ item.product_name_snapshot }}</p>
+          <p class="text-xs opacity-60">{{ item.sku_snapshot|default:"—" }}</p>
+        </div>
+        <p class="font-mono font-bold shrink-0">{{ item.total_price }} {{ order.currency }}</p>
+      </div>
+    </article>
+    {% endfor %}
+
+    <!-- Shipments -->
+    {% if shipments %}
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-2xl border p-5 shadow-sm space-y-3">
+      <h3 class="font-bold flex items-center gap-2">
+        <i class="fa-solid fa-truck"></i> {% trans "Shipments" %}
+      </h3>
+      {% for shipment in shipments %}
+      <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+           class="rounded-xl px-4 py-3 text-sm space-y-2">
+        <div class="flex items-center justify-between gap-2">
+          <span class="font-semibold">{{ shipment.carrier|default:"—" }}</span>
+          <span class="rounded-full border border-current/20 px-2 py-0.5 text-xs">{{ shipment.get_status_display }}</span>
+        </div>
+        {% if shipment.tracking_number %}
+        <p class="font-mono text-xs opacity-70">{% trans "Tracking" %}: {{ shipment.tracking_number }}</p>
+        {% endif %}
+        {% if shipment.shipping_method %}
+        <p class="text-xs opacity-60">{{ shipment.shipping_method.name }}</p>
+        {% endif %}
+        {% if shipment.shipped_at %}<p class="text-xs opacity-50">{% trans "Shipped" %}: {{ shipment.shipped_at|date:"M d, Y H:i" }}</p>{% endif %}
+        {% if shipment.delivered_at %}<p class="text-xs opacity-50">{% trans "Delivered" %}: {{ shipment.delivered_at|date:"M d, Y H:i" }}</p>{% endif %}
+      </div>
+      {% endfor %}
+    </section>
+    {% endif %}
+  </div>
+
+  <!-- Sidebar -->
+  <aside class="space-y-4">
+    <!-- Status + totals -->
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="h-fit rounded-2xl border p-5 shadow-sm space-y-4">
+      <h2 class="text-lg font-bold">{% trans "Status" %}</h2>
+      {% include "bazaar/partials/order_status_badges.html" %}
+      <div class="space-y-2 border-t border-current/10 pt-4 text-sm">
+        <div class="flex justify-between"><span>{% trans "Subtotal" %}</span><strong class="font-mono">{{ order.subtotal_amount }}</strong></div>
+        <div class="flex justify-between"><span>{% trans "Discount" %}</span><strong class="font-mono">{{ order.discount_amount }}</strong></div>
+        <div class="flex justify-between"><span>{% trans "Shipping" %}</span><strong class="font-mono">{{ order.shipping_amount }}</strong></div>
+        <div class="flex justify-between text-lg"><span>{% trans "Total" %}</span><strong class="font-mono">{{ order.total_amount }} {{ order.currency }}</strong></div>
+      </div>
+      {% if shipments %}
+      <a href="{% url 'bazaar:order-tracking' order_number=order.order_number %}"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="flex items-center justify-center gap-2 rounded-xl border py-2.5 text-sm font-semibold transition hover:opacity-85">
+        <i class="fa-solid fa-truck text-sm"></i> {% trans "Track shipment" %}
+      </a>
+      {% endif %}
+    </div>
+
+    <!-- Ledger payment receipt -->
+    {% if order.ledger_tx_reference and order.payment_status == 'paid' %}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-2xl border p-5 shadow-sm text-sm space-y-1">
+      <p class="font-semibold text-green-500"><i class="fa-solid fa-circle-check mr-1"></i>{% trans "Paid via asset ledger" %}</p>
+      <p class="opacity-60">
+        {% trans "Asset" %}: <span class="font-mono">{{ order.ledger_asset.unit_name }}</span>
+        · {% trans "Account" %}: <span class="font-mono">{{ order.ledger_account.code }}</span>
+      </p>
+      <p class="opacity-50 text-xs break-all">{% trans "Ref" %}: {{ order.ledger_tx_reference }}</p>
+    </div>
+    {% endif %}
+
+    <!-- On-delivery obligation -->
+    {% if order.obligation %}
+    {% with order.obligation as ob %}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-2xl border p-5 shadow-sm text-sm space-y-2 {% if ob.is_overdue %}ring-2 ring-red-500/60{% endif %}">
+      <p class="font-semibold {% if ob.is_overdue %}text-red-500{% else %}text-amber-500{% endif %}">
+        <i class="fa-solid fa-{% if ob.is_overdue %}circle-exclamation{% else %}clock{% endif %} mr-1"></i>
+        {% if ob.is_overdue %}{% trans "Obligation overdue!" %}{% elif ob.status == 'fulfilled' %}{% trans "Obligation fulfilled" %}{% else %}{% trans "On-delivery obligation pending" %}{% endif %}
+      </p>
+      <p class="opacity-60">
+        {{ ob.amount_display }} {{ ob.asset.unit_name }} — {% trans "due" %} {{ ob.due_at|date:"M d, Y" }}
+      </p>
+      {% if ob.status == 'pending' %}
+      <form method="post" action="{% url 'bazaar:order-fulfill-obligation' order_number=order.order_number %}">
+        {% csrf_token %}
+        <button type="submit"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="w-full rounded-xl py-2 text-sm font-bold transition hover:opacity-85">
+          <i class="fa-solid fa-bolt mr-1"></i> {% trans "Pay obligation now" %}
+        </button>
+      </form>
+      {% endif %}
+    </div>
+    {% endwith %}
+    {% endif %}
+
+    <!-- Pay widget if unpaid and no obligation -->
+    {% if order.payment_status != 'paid' and not order.obligation %}
+    {% include "bazaar/partials/ledger_pay.html" %}
+    {% endif %}
+
+    <!-- Map link if shipments exist -->
+    {% if shipments %}
+    <a href="{% url 'bazaar:order-tracking-map' order_number=order.order_number %}"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="flex items-center justify-center gap-2 rounded-xl border py-2.5 text-sm font-semibold transition hover:opacity-85">
+      <i class="fa-solid fa-map-location-dot text-sm"></i> {% trans "View route on map" %}
+    </a>
+    {% endif %}
+  </aside>
+
 </section>
 {% endblock %}

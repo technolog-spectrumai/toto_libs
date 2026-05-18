@@ -97,6 +97,42 @@
 
   </div>
 
+  <!-- Obligations -->
+  {% if obligations %}
+  <section
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="rounded-lg border p-5 shadow-sm col-span-2">
+    <h3 class="flex items-center gap-2 text-lg font-bold mb-4">
+      <i class="fa-solid fa-file-contract"></i>
+      {% trans "Outstanding obligations" %}
+    </h3>
+    <div class="space-y-2">
+      {% for ob in obligations %}
+      {% with ob.is_overdue as overdue %}
+      <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+           class="flex items-center justify-between rounded-lg px-4 py-3 text-sm {% if overdue %}ring-2 ring-red-500/60{% endif %}">
+        <div class="space-y-0.5">
+          <p class="font-semibold {% if overdue %}text-red-500{% endif %}">
+            {% if overdue %}<i class="fa-solid fa-circle-exclamation mr-1"></i>{% trans "OVERDUE" %} — {% endif %}
+            {{ ob.amount_display }} {{ ob.asset.unit_name }}
+          </p>
+          <p class="text-xs opacity-60">{% trans "To" %}: {{ ob.creditor_account.code }}</p>
+          {% if ob.order_reference %}<p class="text-xs opacity-50">{% trans "Order" %}: {{ ob.order_reference }}</p>{% endif %}
+        </div>
+        <div class="text-right text-xs">
+          <p class="{% if overdue %}text-red-500 font-semibold{% else %}opacity-60{% endif %}">
+            {% trans "Due" %}: {{ ob.due_at|date:"M d, Y" }}
+          </p>
+        </div>
+      </div>
+      {% endwith %}
+      {% empty %}
+      <p class="text-sm opacity-60">{% trans "No outstanding obligations." %}</p>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
   {% include "assets/partials/mini_flow.html" with mini_id="account" mini_fetch_url=account_flow_url mini_full_url=account_flow_full_url %}
 
 </div>

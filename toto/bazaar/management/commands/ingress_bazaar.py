@@ -25,6 +25,8 @@ class Command(IngressCommand):
         products = self._seed_products(shops, categories, vendors)
         self._seed_variants(products)
         self._seed_coupons(shops)
+        self._link_ledger_accounts(shops)
+        self._seed_user_ledger_accounts()
 
         if self.full:
             self._seed_orders(shops, vendors, products)
@@ -333,6 +335,97 @@ class Command(IngressCommand):
             )
             if created:
                 self.stdout.write(f"  + coupon '{spec['code']}' in '{spec['shop'].name}'")
+
+    # ------------------------------------------------------------------ #
+    # Ledger account linkage                                              #
+    # ------------------------------------------------------------------ #
+
+    def _link_ledger_accounts(self, shops: dict):
+        """
+        Create LedgerAccounts for each active shop and link them.
+        Also sets accepted_currencies to all active is_currency assets.
+        """
+        from toto.assets.models import LedgerAccount
+
+        mapping = {
+            "greenleaf-market": ("shop-greenleaf",  "GreenLeaf Market Shop Account",  "reserve"),
+            "digital-horizons": ("shop-digital",    "Digital Horizons Shop Account",  "reserve"),
+        }
+        for shop_slug, (code, name, atype) in mapping.items():
+            shop = shops.get(shop_slug)
+            if not shop:
+                continue
+            account, created = LedgerAccount.objects.get_or_create(
+                code=code,
+                defaults={"name": name, "account_type": atype, "active": True},
+            )
+            if created:
+                self.stdout.write(f"  + ledger account '{code}' for shop '{shop.name}'")
+            if shop.ledger_account_id != account.pk:
+                shop.ledger_account = account
+                shop.save(update_fields=["ledger_account"])
+                self.stdout.write(f"  ↔ linked '{code}' → shop '{shop.name}'")
+
+    # ------------------------------------------------------------------ #
+    # User Ledger Accounts                                                #
+    # ------------------------------------------------------------------ #
+
+    def _seed_user_ledger_accounts(self):
+        """
+        Try to link the first 3 superusers to ledger accounts
+        named user-<username>, funded with TPLN and TUSD from reserves.
+        """
+        from django.contrib.auth import get_user_model
+        from toto.assets.models import LedgerAccount, Asset, LedgerTransaction
+        from toto.assets.services.assets import transfer_asset
+        from decimal import Decimal
+
+        User = get_user_model()
+        tpln = Asset.objects.filter(unit_name='TPLN', active=True).first()
+        tusd = Asset.objects.filter(unit_name='TUSD', active=True).first()
+        reserve = LedgerAccount.objects.filter(code='reserve_main', active=True).first()
+
+        if not reserve:
+            self.stdout.write(self.style.WARNING("  ⚠ reserve_main not found, skipping user wallet seeding"))
+            return
+
+        for user in User.objects.filter(is_staff=True)[:3]:
+            code = f"user-{user.username}"
+            account, created = LedgerAccount.objects.get_or_create(
+                code=code,
+                defaults={
+                    'name': f"{user.get_full_name() or user.username} Wallet",
+                    'account_type': 'user',
+                    'active': True,
+                    'user': user,
+                },
+            )
+            if not created and account.user_id != user.pk:
+                account.user = user
+                account.save(update_fields=['user'])
+            if created:
+                self.stdout.write(f"  + user wallet '{code}' for {user.username}")
+
+            for asset, ref, amount in [
+                (tpln, f"wallet-tpln-{user.username}", Decimal("10000.00")),
+                (tusd, f"wallet-tusd-{user.username}", Decimal("5000.00")),
+            ]:
+                if not asset:
+                    continue
+                if LedgerTransaction.objects.filter(reference=ref).exists():
+                    continue
+                try:
+                    transfer_asset(
+                        asset=asset,
+                        sender_account=reserve,
+                        receiver_account=account,
+                        amount=amount,
+                        reference=ref,
+                        description=f"Initial wallet funding for {user.username}",
+                    )
+                    self.stdout.write(f"  + funded {user.username}: {amount} {asset.unit_name}")
+                except Exception as exc:
+                    self.stdout.write(self.style.ERROR(f"  ✗ {ref}: {exc}"))
 
     # ------------------------------------------------------------------ #
     # Orders (only with --full)                                            #

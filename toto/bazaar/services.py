@@ -5,6 +5,172 @@ from .models import Cart, CartItem, Order, OrderItem, InventoryMovement, Payment
 from .selectors import active_shop
 
 
+def get_user_ledger_sources(user):
+    """Return holdings the user can pay with — is_currency assets only."""
+    from toto.assets.models import AssetHolding, LedgerAccount
+    accounts = LedgerAccount.objects.filter(user=user, active=True)
+    return (
+        AssetHolding.objects
+        .filter(account__in=accounts, balance_base_units__gt=0, asset__is_currency=True, asset__active=True)
+        .select_related('account', 'asset')
+        .order_by('asset__unit_name')
+    )
+
+
+def get_stablecoin_for_order_currency(order):
+    """Return the pegged stablecoin Asset for the order's fiat currency, or None."""
+    from toto.assets.services.assets import get_stablecoin_for_currency
+    return get_stablecoin_for_currency(order.currency)
+
+
+def get_wallet_payment_sources(user, order):
+    """
+    Return a list of dicts for the payment widget.
+    Each dict: {account, holding, can_pay, is_preferred}
+    """
+    preferred = get_stablecoin_for_order_currency(order)
+    result = []
+    for holding in get_user_ledger_sources(user):
+        result.append({
+            'account': holding.account,
+            'holding': holding,
+            'can_pay': holding.balance_display >= order.total_amount,
+            'is_preferred': preferred is not None and holding.asset_id == preferred.pk,
+        })
+    # Sort: preferred first, then by can_pay desc
+    result.sort(key=lambda x: (not x['is_preferred'], not x['can_pay']))
+    return result, preferred
+
+
+@transaction.atomic
+def pay_order_with_ledger(order, buyer_account, asset):
+    from toto.assets.services.assets import transfer_asset
+    from toto.assets.queries import get_asset_balance_display
+
+    # Lock the order row — prevents concurrent double-payment
+    order = Order.objects.select_for_update().get(pk=order.pk)
+
+    if order.payment_status == 'paid':
+        raise ValueError('Order is already paid.')
+    if not order.shop.ledger_account:
+        raise ValueError('This shop has no ledger account configured for asset payments.')
+
+    balance = get_asset_balance_display(asset, buyer_account)
+    if balance < order.total_amount:
+        raise ValueError(
+            f'Insufficient balance. You have {balance} {asset.unit_name}, '
+            f'order total is {order.total_amount} {order.currency}.'
+        )
+
+    reference = f'bazaar-{order.order_number}'
+    tx = transfer_asset(
+        asset=asset,
+        sender_account=buyer_account,
+        receiver_account=order.shop.ledger_account,
+        amount=order.total_amount,
+        reference=reference,
+        description=f'Payment for Bazaar order {order.order_number}',
+        metadata={'bazaar_order': order.order_number, 'shop': order.shop.slug},
+    )
+
+    PaymentIntent.objects.create(
+        order=order,
+        provider='internal_credit',
+        provider_reference=reference,
+        status='succeeded',
+        amount=order.total_amount,
+        currency=order.currency,
+        metadata={'ledger_tx_reference': reference, 'asset': asset.unit_name},
+    )
+
+    order.payment_status = 'paid'
+    order.status = 'confirmed'
+    order.paid_at = timezone.now()
+    order.ledger_account = buyer_account
+    order.ledger_asset = asset
+    order.ledger_tx_reference = reference
+    order.payment_method = 'transfer'
+    order.save(update_fields=[
+        'payment_status', 'status', 'paid_at', 'updated_at',
+        'ledger_account', 'ledger_asset', 'ledger_tx_reference', 'payment_method',
+    ])
+    return tx
+
+
+@transaction.atomic
+def create_obligation_for_order(order, debtor_account, asset, due_at,
+                                collateral_account=None, collateral_asset=None,
+                                collateral_amount=Decimal('0')):
+    """Create an on-delivery payment obligation for an order."""
+    from toto.assets.services.assets import create_obligation
+
+    order = Order.objects.select_for_update().get(pk=order.pk)
+    if order.payment_status == 'paid':
+        raise ValueError('Order is already paid.')
+    if not order.shop.ledger_account:
+        raise ValueError('This shop has no ledger account configured.')
+
+    reference = f'oblig-{order.order_number}'
+    obligation = create_obligation(
+        reference=reference,
+        debtor_account=debtor_account,
+        creditor_account=order.shop.ledger_account,
+        asset=asset,
+        amount=order.total_amount,
+        due_at=due_at,
+        order_reference=order.order_number,
+        collateral_account=collateral_account,
+        collateral_asset=collateral_asset,
+        collateral_amount=collateral_amount,
+    )
+
+    PaymentIntent.objects.create(
+        order=order,
+        provider='internal_credit',
+        provider_reference=reference,
+        status='created',
+        amount=order.total_amount,
+        currency=order.currency,
+        metadata={'obligation_reference': reference, 'asset': asset.unit_name, 'due_at': str(due_at)},
+    )
+
+    order.payment_status = 'pending'
+    order.payment_method = 'on_delivery'
+    order.obligation = obligation
+    order.ledger_account = debtor_account
+    order.ledger_asset = asset
+    order.save(update_fields=[
+        'payment_status', 'payment_method', 'obligation', 'ledger_account', 'ledger_asset', 'updated_at',
+    ])
+    return obligation
+
+
+@transaction.atomic
+def fulfill_order_obligation(order):
+    """Fulfill the pending obligation tied to an order, marking the order as paid."""
+    from toto.assets.services.assets import fulfill_obligation
+
+    order = Order.objects.select_for_update().get(pk=order.pk)
+    if not order.obligation:
+        raise ValueError('This order has no obligation to fulfill.')
+    if order.payment_status == 'paid':
+        raise ValueError('Order is already paid.')
+
+    reference = f'fulfill-{order.order_number}'
+    tx = fulfill_obligation(
+        obligation=order.obligation,
+        reference=reference,
+        description=f'Fulfilling on-delivery payment for order {order.order_number}',
+    )
+
+    order.payment_status = 'paid'
+    order.status = 'confirmed'
+    order.paid_at = timezone.now()
+    order.ledger_tx_reference = reference
+    order.save(update_fields=['payment_status', 'status', 'paid_at', 'ledger_tx_reference', 'updated_at'])
+    return tx
+
+
 def product_unit_price(product, variant=None):
     if variant and variant.price is not None:
         return variant.price

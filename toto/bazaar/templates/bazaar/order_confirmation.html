@@ -1,11 +1,55 @@
 {% extends "bazaar/base.html" %}
-{% block bazaar_title %}Order {{ order.order_number }}{% endblock %}
-{% block bazaar_heading %}Order placed{% endblock %}
+{% load i18n %}
+{% block bazaar_title %}{% trans "Order" %} {{ order.order_number }}{% endblock %}
+{% block bazaar_heading %}{% trans "Order placed" %}{% endblock %}
 {% block bazaar_subtitle %}<p class="mt-2 max-w-2xl text-sm opacity-70">{{ order.order_number }}</p>{% endblock %}
 {% block bazaar_content %}
-<section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm">
-  {% include "bazaar/partials/order_status_badges.html" %}
-  <div class="mt-5 space-y-3">{% for item in order.items.all %}<div class="flex justify-between gap-4 border-t border-current/10 pt-3"><span>{{ item.quantity }} × {{ item.product_name_snapshot }}</span><strong>{{ item.total_price }} {{ order.currency }}</strong></div>{% endfor %}</div>
-  <div class="mt-5 flex justify-between border-t border-current/10 pt-4 text-lg font-bold"><span>Total</span><span>{{ order.total_amount }} {{ order.currency }}</span></div>
-</section>
+<div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+
+  <!-- Order summary -->
+  <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm space-y-4">
+    {% include "bazaar/partials/order_status_badges.html" %}
+
+    <div class="space-y-2 pt-1">
+      {% for item in order.items.all %}
+      <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+           class="flex justify-between gap-4 rounded-xl px-4 py-3 text-sm">
+        <span>{{ item.quantity }} × {{ item.product_name_snapshot }}</span>
+        <strong class="font-mono shrink-0">{{ item.total_price }} {{ order.currency }}</strong>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="flex justify-between border-t border-current/10 pt-4 text-lg font-bold">
+      <span>{% trans "Total" %}</span>
+      <span class="font-mono">{{ order.total_amount }} {{ order.currency }}</span>
+    </div>
+
+    {% if order.ledger_tx_reference %}
+    <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+         class="rounded-xl px-4 py-3 text-sm space-y-1">
+      <p class="font-semibold text-green-500"><i class="fa-solid fa-circle-check mr-1"></i>{% trans "Paid via asset ledger" %}</p>
+      <p class="text-xs opacity-60">
+        {% trans "Asset" %}: <span class="font-mono">{{ order.ledger_asset.unit_name }}</span>
+        · {% trans "Account" %}: <span class="font-mono">{{ order.ledger_account.code }}</span>
+      </p>
+      <p class="text-xs opacity-50 break-all">{% trans "Ref" %}: {{ order.ledger_tx_reference }}</p>
+    </div>
+    {% endif %}
+  </section>
+
+  <!-- Right column: pay widget or paid notice -->
+  <aside class="space-y-4">
+    {% if order.payment_status == 'paid' %}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-2xl border p-5 shadow-sm text-sm space-y-2">
+      <p class="font-bold text-green-500"><i class="fa-solid fa-circle-check mr-1"></i>{% trans "Payment received" %}</p>
+      <p class="opacity-60">{% trans "Paid at" %} {{ order.paid_at|date:"F j, Y H:i" }}</p>
+    </div>
+    {% else %}
+    {% include "bazaar/partials/ledger_pay.html" %}
+    {% endif %}
+  </aside>
+
+</div>
 {% endblock %}

@@ -11,7 +11,12 @@ class AddToCartForm(forms.Form):
 class CheckoutForm(forms.Form):
     email = forms.EmailField()
     customer_note = forms.CharField(required=False, widget=forms.Textarea(attrs={'rows': 3}))
-    payment_method = forms.ChoiceField(choices=[('manual','Manual'),('bank_transfer','Bank transfer'),('cash_on_delivery','Cash on delivery')])
+    payment_method = forms.ChoiceField(choices=[
+        ('transfer', 'Transfer (asset balance)'),
+        ('on_delivery', 'On Delivery (pay later)'),
+        ('bank_transfer', 'Bank transfer'),
+        ('manual', 'Manual'),
+    ])
 
 
 class ProductForm(forms.ModelForm):

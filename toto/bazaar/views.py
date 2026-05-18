@@ -10,7 +10,11 @@ from toto.core.page import PageProcessor
 from .forms import AddToCartForm, CheckoutForm, ProductForm, ReviewForm, ShipmentForm
 from .models import Product, ProductCategory, Vendor, CartItem, Order, OrderItem, Shipment, ProductReview
 from .selectors import active_shop, published_products, get_current_cart, customer_orders, product_review_metrics, vendor_inventory_metrics
-from .services import add_product_to_cart, create_order_from_cart, apply_coupon
+from .services import (
+    add_product_to_cart, create_order_from_cart, apply_coupon,
+    pay_order_with_ledger, get_user_ledger_sources, get_stablecoin_for_order_currency,
+    get_wallet_payment_sources, create_obligation_for_order, fulfill_order_obligation,
+)
 from .permissions import require_vendor
 
 
@@ -172,6 +176,21 @@ class OrderConfirmationView(BazaarContextMixin, DetailView):
     slug_field = 'order_number'
     slug_url_kwarg = 'order_number'
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        if self.request.user.is_authenticated and self.object.payment_status != 'paid':
+            sources, preferred = get_wallet_payment_sources(self.request.user, self.object)
+            context['wallet_payment_sources'] = sources
+            context['preferred_asset'] = preferred
+        if self.request.user.is_authenticated:
+            from toto.assets.models import LedgerAccount
+            context['wallet_accounts'] = (
+                LedgerAccount.objects
+                .filter(user=self.request.user, active=True)
+                .prefetch_related('holdings__asset')
+            )
+        return context
+
 
 class CustomerOrderListView(BazaarContextMixin, LoginRequiredMixin, ListView):
     model = Order
@@ -190,6 +209,23 @@ class CustomerOrderDetailView(BazaarContextMixin, LoginRequiredMixin, DetailView
     slug_url_kwarg = 'order_number'
     def get_queryset(self):
         return customer_orders(self.request.user)
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['shipments'] = self.object.shipments.select_related(
+            'shipping_method', 'vendor', 'origin_address', 'destination_address'
+        ).order_by('-id')
+        if self.object.payment_status != 'paid':
+            sources, preferred = get_wallet_payment_sources(self.request.user, self.object)
+            context['wallet_payment_sources'] = sources
+            context['preferred_asset'] = preferred
+        if self.request.user.is_authenticated:
+            from toto.assets.models import LedgerAccount
+            context['wallet_accounts'] = (
+                LedgerAccount.objects
+                .filter(user=self.request.user, active=True)
+                .prefetch_related('holdings__asset')
+            )
+        return context
 
 
 class WishlistView(BazaarContextMixin, LoginRequiredMixin, TemplateView):
@@ -313,3 +349,148 @@ class OrderManagementView(BazaarContextMixin, PermissionRequiredMixin, ListView)
         if q:
             qs = qs.filter(Q(order_number__icontains=q) | Q(email__icontains=q))
         return qs
+
+
+class ShipmentCreateView(BazaarContextMixin, LoginRequiredMixin, CreateView):
+    model = Shipment
+    form_class = ShipmentForm
+    template_name = 'bazaar/vendor/shipment_form.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['order'] = get_object_or_404(Order, order_number=self.kwargs['order_number'])
+        context['creating'] = True
+        return context
+
+    def form_valid(self, form):
+        order = get_object_or_404(Order, order_number=self.kwargs['order_number'])
+        vendor = require_vendor(self.request.user)
+        form.instance.order = order
+        form.instance.vendor = vendor
+        return super().form_valid(form)
+
+    def get_success_url(self):
+        return reverse('bazaar:vendor-orders')
+
+
+class ShipmentTrackingView(BazaarContextMixin, DetailView):
+    model = Order
+    template_name = 'bazaar/customer/shipment_tracking.html'
+    context_object_name = 'order'
+    slug_field = 'order_number'
+    slug_url_kwarg = 'order_number'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['shipments'] = self.object.shipments.select_related(
+            'vendor', 'shipping_method', 'origin_address', 'destination_address'
+        ).order_by('-id')
+        return context
+
+
+class LedgerPaymentView(LoginRequiredMixin, View):
+    def post(self, request, order_number):
+        order = get_object_or_404(Order, order_number=order_number)
+        if order.user and order.user != request.user:
+            messages.error(request, 'You do not have permission to pay this order.')
+            return redirect('bazaar:order-confirmation', order_number=order_number)
+
+        from toto.assets.models import LedgerAccount, Asset
+        account_id = request.POST.get('account_id')
+        asset_id   = request.POST.get('asset_id')
+
+        try:
+            account = LedgerAccount.objects.get(pk=account_id, user=request.user, active=True)
+            asset   = Asset.objects.get(pk=asset_id, active=True)
+            pay_order_with_ledger(order, account, asset)
+            messages.success(request, f'Payment of {order.total_amount} {asset.unit_name} confirmed.')
+        except (LedgerAccount.DoesNotExist, Asset.DoesNotExist):
+            messages.error(request, 'Invalid account or asset selection.')
+        except ValueError as exc:
+            messages.error(request, str(exc))
+
+        next_url = request.POST.get('next') or reverse('bazaar:order-confirmation', kwargs={'order_number': order_number})
+        return redirect(next_url)
+
+
+class OnDeliveryPaymentView(LoginRequiredMixin, View):
+    """Create an Obligation for on-delivery deferred payment."""
+    def post(self, request, order_number):
+        order = get_object_or_404(Order, order_number=order_number)
+        if order.user and order.user != request.user:
+            messages.error(request, 'You do not have permission to do this.')
+            return redirect('bazaar:order-confirmation', order_number=order_number)
+
+        from toto.assets.models import LedgerAccount, Asset
+        from django.utils import timezone as tz
+        from datetime import timedelta
+
+        account_id = request.POST.get('account_id')
+        asset_id   = request.POST.get('asset_id')
+        days = int(request.POST.get('due_days', 14))
+
+        try:
+            account = LedgerAccount.objects.get(pk=account_id, user=request.user, active=True)
+            asset   = Asset.objects.get(pk=asset_id, active=True, is_currency=True)
+            due_at  = tz.now() + timedelta(days=days)
+            create_obligation_for_order(order, account, asset, due_at)
+            messages.success(request, f'On-delivery obligation created. Due by {due_at.strftime("%Y-%m-%d")}.')
+        except (LedgerAccount.DoesNotExist, Asset.DoesNotExist):
+            messages.error(request, 'Invalid account or asset selection.')
+        except ValueError as exc:
+            messages.error(request, str(exc))
+
+        next_url = request.POST.get('next') or reverse('bazaar:order-detail', kwargs={'order_number': order_number})
+        return redirect(next_url)
+
+
+class FulfillObligationView(LoginRequiredMixin, View):
+    """Pay off an outstanding on-delivery obligation."""
+    def post(self, request, order_number):
+        order = get_object_or_404(Order, order_number=order_number)
+        if order.user and order.user != request.user:
+            messages.error(request, 'You do not have permission to do this.')
+            return redirect('bazaar:order-detail', order_number=order_number)
+
+        try:
+            fulfill_order_obligation(order)
+            messages.success(request, 'Payment fulfilled successfully.')
+        except ValueError as exc:
+            messages.error(request, str(exc))
+
+        return redirect('bazaar:order-detail', order_number=order_number)
+
+
+class ShipmentMapView(BazaarContextMixin, DetailView):
+    """Geographic shipment route modal view."""
+    model = Order
+    template_name = 'bazaar/customer/shipment_map.html'
+    context_object_name = 'order'
+    slug_field = 'order_number'
+    slug_url_kwarg = 'order_number'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        shipments = self.object.shipments.select_related(
+            'origin_address', 'destination_address', 'vendor', 'shipping_method'
+        ).order_by('-id')
+        context['shipments'] = shipments
+
+        waypoints = []
+        for s in shipments:
+            if s.origin_address and s.origin_address.geometry:
+                g = s.origin_address.geometry
+                waypoints.append({
+                    'lat': g.y, 'lng': g.x,
+                    'label': str(s.origin_address),
+                    'type': 'origin',
+                })
+            if s.destination_address and s.destination_address.geometry:
+                g = s.destination_address.geometry
+                waypoints.append({
+                    'lat': g.y, 'lng': g.x,
+                    'label': str(s.destination_address),
+                    'type': 'destination',
+                })
+        context['waypoints_json'] = waypoints
+        return context

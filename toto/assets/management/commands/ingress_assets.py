@@ -15,9 +15,11 @@ class Command(IngressCommand):
 
         accounts = self._seed_accounts()
         assets = self._seed_assets(accounts)
+        currencies = self._seed_currencies(accounts, assets)
 
         if self.full:
             self._seed_transfers(assets, accounts)
+            self._seed_user_wallets(accounts, assets)
 
         self.stdout.write(self.style.SUCCESS("✅  Asset ledger ingress complete."))
 
@@ -226,3 +228,139 @@ class Command(IngressCommand):
                 self.stdout.write(f"  + reversal {rev_ref}")
             except (ValidationError, Exception) as exc:
                 self.stdout.write(self.style.ERROR(f"  ✗ {rev_ref}: {exc}"))
+
+    # ------------------------------------------------------------------ #
+    # Stablecoins & Currencies                                            #
+    # ------------------------------------------------------------------ #
+
+    def _seed_currencies(self, accounts: dict, assets: dict) -> dict:
+        from toto.assets.models import Currency
+        stablecoin_specs = [
+            dict(
+                name="Toto PLN",
+                unit_name="TPLN",
+                total_supply=Decimal("10000000"),
+                decimals=2,
+                reserve_account=accounts["reserve_main"],
+                reference="create-tpln",
+                description="Internal PLN stablecoin, 1:1 pegged to Polish Zloty.",
+                backing_document="1:1 backed by PLN reserves held in the Toto Platform Reserve account. Redeemable at par.",
+                minting_authority="Toto Platform Operations",
+            ),
+            dict(
+                name="Toto USD",
+                unit_name="TUSD",
+                total_supply=Decimal("10000000"),
+                decimals=2,
+                reserve_account=accounts["reserve_main"],
+                reference="create-tusd",
+                description="Internal USD stablecoin, 1:1 pegged to US Dollar.",
+                backing_document="1:1 backed by USD reserves held in the Toto Platform Reserve account. Redeemable at par.",
+                minting_authority="Toto Platform Operations",
+            ),
+            dict(
+                name="Toto EUR",
+                unit_name="TEUR",
+                total_supply=Decimal("5000000"),
+                decimals=2,
+                reserve_account=accounts["reserve_main"],
+                reference="create-teur",
+                description="Internal EUR stablecoin, 1:1 pegged to Euro.",
+                backing_document="1:1 backed by EUR reserves held in the Toto Platform Reserve account. Redeemable at par.",
+                minting_authority="Toto Platform Operations",
+            ),
+        ]
+        for spec in stablecoin_specs:
+            ref = spec["reference"]
+            backing_document = spec.pop("backing_document", "")
+            minting_authority = spec.pop("minting_authority", "")
+            if LedgerTransaction.objects.filter(reference=ref).exists():
+                from toto.assets.models import Asset
+                asset = Asset.objects.get(unit_name=spec["unit_name"])
+                assets[spec["unit_name"]] = asset
+                # Ensure is_currency flag is set on existing assets
+                if not asset.is_currency:
+                    asset.is_currency = True
+                    asset.backing_document = backing_document
+                    asset.minting_authority = minting_authority
+                    asset.save(update_fields=['is_currency', 'backing_document', 'minting_authority'])
+                self.stdout.write(self.style.WARNING(f"  ⚠ skipped existing stablecoin {spec['unit_name']}"))
+            else:
+                try:
+                    asset = create_asset(**spec)
+                    asset.is_currency = True
+                    asset.backing_document = backing_document
+                    asset.minting_authority = minting_authority
+                    asset.save(update_fields=['is_currency', 'backing_document', 'minting_authority'])
+                    assets[spec["unit_name"]] = asset
+                    self.stdout.write(f"  + stablecoin {spec['unit_name']}")
+                except Exception as exc:
+                    self.stdout.write(self.style.ERROR(f"  ✗ {spec['unit_name']}: {exc}"))
+                    continue
+
+        currency_specs = [
+            dict(code="PLN", name="Polish Zloty",   symbol="zł",  unit_name="TPLN"),
+            dict(code="USD", name="US Dollar",       symbol="$",   unit_name="TUSD"),
+            dict(code="EUR", name="Euro",            symbol="€",   unit_name="TEUR"),
+        ]
+        currencies = {}
+        for spec in currency_specs:
+            unit = spec.pop("unit_name")
+            asset = assets.get(unit)
+            cur, created = Currency.objects.update_or_create(
+                code=spec["code"],
+                defaults={**spec, "asset": asset, "is_active": True},
+            )
+            currencies[spec["code"]] = cur
+            if created:
+                self.stdout.write(f"  + currency {spec['code']} → {unit}")
+        return currencies
+
+    # ------------------------------------------------------------------ #
+    # User wallet funding (only with --full)                              #
+    # ------------------------------------------------------------------ #
+
+    def _seed_user_wallets(self, accounts: dict, assets: dict):
+        """Fund user-type accounts with stablecoins for wallet demo."""
+        tpln = assets.get("TPLN")
+        tusd = assets.get("TUSD")
+
+        distributions = []
+        if tpln:
+            distributions += [
+                dict(asset=tpln, sender_account=accounts["reserve_main"],
+                     receiver_account=accounts["alice"],
+                     amount=Decimal("5000.00"), reference="dist-tpln-alice-001",
+                     description="TPLN allocation to Alice"),
+                dict(asset=tpln, sender_account=accounts["reserve_main"],
+                     receiver_account=accounts["bob"],
+                     amount=Decimal("3000.00"), reference="dist-tpln-bob-001",
+                     description="TPLN allocation to Bob"),
+                dict(asset=tpln, sender_account=accounts["reserve_main"],
+                     receiver_account=accounts["carol"],
+                     amount=Decimal("2000.00"), reference="dist-tpln-carol-001",
+                     description="TPLN allocation to Carol"),
+            ]
+        if tusd:
+            distributions += [
+                dict(asset=tusd, sender_account=accounts["reserve_main"],
+                     receiver_account=accounts["alice"],
+                     amount=Decimal("1500.00"), reference="dist-tusd-alice-001",
+                     description="TUSD allocation to Alice"),
+                dict(asset=tusd, sender_account=accounts["reserve_main"],
+                     receiver_account=accounts["bob"],
+                     amount=Decimal("800.00"), reference="dist-tusd-bob-001",
+                     description="TUSD allocation to Bob"),
+            ]
+
+        for spec in distributions:
+            ref = spec["reference"]
+            if LedgerTransaction.objects.filter(reference=ref).exists():
+                self.stdout.write(self.style.WARNING(f"  ⚠ skipped existing distribution {ref}"))
+                continue
+            try:
+                transfer_asset(**spec)
+                self.stdout.write(f"  + distribution {ref}")
+            except Exception as exc:
+                self.stdout.write(self.style.ERROR(f"  ✗ {ref}: {exc}"))
+

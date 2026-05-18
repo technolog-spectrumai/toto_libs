@@ -47,6 +47,9 @@ class Asset(models.Model):
     decimals = models.PositiveSmallIntegerField()
     total_supply_base_units = models.PositiveBigIntegerField()
     active = models.BooleanField(default=True)
+    is_currency = models.BooleanField(default=False, help_text="Accepted as a payment currency in the bazaar")
+    backing_document = models.TextField(blank=True, help_text="What this asset is backed by (e.g. 1:1 PLN reserve held by …)")
+    minting_authority = models.CharField(max_length=255, blank=True, help_text="Entity authorised to mint this asset")
     metadata = models.JSONField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -216,3 +219,89 @@ class LedgerHash(models.Model):
 
     def __str__(self):
         return f"{self.transaction.reference}: {self.hash[:16]}…"
+
+
+# ---------------------------------------------------------------------------
+# Currency
+# ---------------------------------------------------------------------------
+
+class Currency(models.Model):
+    code = models.CharField(max_length=10, unique=True)
+    name = models.CharField(max_length=100)
+    symbol = models.CharField(max_length=5, blank=True)
+    asset = models.OneToOneField(
+        'Asset',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='currency_peg',
+    )
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name_plural = 'currencies'
+        ordering = ['code']
+
+    def __str__(self):
+        return f"{self.code} — {self.name}"
+
+
+# ---------------------------------------------------------------------------
+# Obligation
+# ---------------------------------------------------------------------------
+
+class ObligationStatus(models.TextChoices):
+    PENDING = "pending", "Pending"
+    OVERDUE = "overdue", "Overdue"
+    FULFILLED = "fulfilled", "Fulfilled"
+    DEFAULTED = "defaulted", "Defaulted"
+
+
+class Obligation(models.Model):
+    reference = models.CharField(max_length=255, unique=True)
+    order_reference = models.CharField(max_length=255, blank=True)
+    debtor_account = models.ForeignKey(
+        LedgerAccount, on_delete=models.PROTECT, related_name='debtor_obligations'
+    )
+    creditor_account = models.ForeignKey(
+        LedgerAccount, on_delete=models.PROTECT, related_name='creditor_obligations'
+    )
+    asset = models.ForeignKey(Asset, on_delete=models.PROTECT, related_name='obligations')
+    amount_base_units = models.BigIntegerField()
+    due_at = models.DateTimeField()
+    collateral_account = models.ForeignKey(
+        LedgerAccount, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='collateral_obligations'
+    )
+    collateral_asset = models.ForeignKey(
+        Asset, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='collateral_obligations'
+    )
+    collateral_amount_base_units = models.BigIntegerField(default=0)
+    fulfilled_at = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(
+        max_length=20, choices=ObligationStatus.choices, default=ObligationStatus.PENDING
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['due_at']
+
+    def __str__(self):
+        return f"{self.reference} — {self.debtor_account.code} owes {self.amount_display} {self.asset.unit_name}"
+
+    @property
+    def amount_display(self) -> Decimal:
+        return from_base_units(self.amount_base_units, self.asset.decimals)
+
+    @property
+    def collateral_display(self) -> Decimal:
+        if self.collateral_asset:
+            return from_base_units(self.collateral_amount_base_units, self.collateral_asset.decimals)
+        return Decimal(0)
+
+    @property
+    def is_overdue(self) -> bool:
+        from django.utils import timezone
+        return self.status == ObligationStatus.PENDING and timezone.now() > self.due_at

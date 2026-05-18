@@ -1,0 +1,121 @@
+{% extends "bazaar/base.html" %}
+{% load i18n %}
+{% block bazaar_title %}{% trans "Shipment Map" %} — {{ order.order_number }}{% endblock %}
+{% block bazaar_heading %}{% trans "Shipment Route" %}{% endblock %}
+{% block bazaar_subtitle %}<p class="mt-2 max-w-2xl text-sm opacity-70">{{ order.order_number }}</p>{% endblock %}
+
+{% block bazaar_content %}
+<div class="space-y-4 max-w-3xl">
+
+  <div class="flex items-center gap-4">
+    <a href="{% url 'bazaar:order-detail' order_number=order.order_number %}"
+       class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+      <i class="fa-solid fa-arrow-left"></i> {% trans "Back to order" %}
+    </a>
+    <a href="{% url 'bazaar:order-tracking' order_number=order.order_number %}"
+       class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+      <i class="fa-solid fa-list"></i> {% trans "Tracking details" %}
+    </a>
+  </div>
+
+  {% if waypoints_json %}
+  <!-- Map container -->
+  <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+       class="rounded-2xl border overflow-hidden shadow-sm">
+    <div id="shipment-map" style="height:480px;width:100%;"></div>
+  </div>
+
+  <!-- Waypoint list -->
+  <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-2xl border p-5 shadow-sm space-y-2">
+    <h3 class="font-bold text-sm flex items-center gap-2">
+      <i class="fa-solid fa-location-dot"></i> {% trans "Route waypoints" %}
+    </h3>
+    {% for wp in waypoints_json %}
+    <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+         class="flex items-center gap-3 rounded-xl px-4 py-2 text-sm">
+      <span class="text-xs font-semibold rounded-full px-2 py-0.5
+        {% if wp.type == 'origin' %}bg-blue-500/20 text-blue-400{% else %}bg-green-500/20 text-green-400{% endif %}">
+        {{ wp.type }}
+      </span>
+      <span>{{ wp.label }}</span>
+      <span class="ml-auto font-mono text-xs opacity-50">{{ wp.lat|floatformat:4 }}, {{ wp.lng|floatformat:4 }}</span>
+    </div>
+    {% endfor %}
+  </section>
+
+  {% else %}
+  <!-- No geodata — show shipment list with addresses -->
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-2xl border p-10 text-center shadow-sm">
+    <i class="fa-solid fa-map text-4xl opacity-20 mb-4"></i>
+    <p class="font-semibold opacity-60">{% trans "No geographic data available for this shipment." %}</p>
+    <p class="text-sm opacity-50 mt-1">{% trans "Addresses without GPS coordinates cannot be shown on the map." %}</p>
+  </div>
+
+  {% if shipments %}
+  <div class="space-y-3">
+    {% for s in shipments %}
+    <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-2xl border p-5 shadow-sm text-sm space-y-2">
+      <p class="font-semibold">{% trans "Shipment" %} #{{ forloop.counter }} — {{ s.get_status_display }}</p>
+      {% if s.origin_address %}<p class="opacity-60"><i class="fa-solid fa-circle-dot mr-1"></i>{% trans "From" %}: {{ s.origin_address }}</p>{% endif %}
+      {% if s.destination_address %}<p class="opacity-60"><i class="fa-solid fa-location-dot mr-1"></i>{% trans "To" %}: {{ s.destination_address }}</p>{% endif %}
+    </article>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block end_script %}
+{% if waypoints_json %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function () {
+  const waypoints = {{ waypoints_json|safe }};
+  if (!waypoints.length) return;
+
+  const isDark = document.documentElement.classList.contains('dark') ||
+                 localStorage.getItem('darkMode') === 'true';
+
+  const tileUrl = isDark
+    ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+    : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+
+  const map = L.map('shipment-map');
+  L.tileLayer(tileUrl, { maxZoom: 18, attribution: '© OpenStreetMap © CARTO' }).addTo(map);
+
+  const originIcon = L.divIcon({
+    className: '',
+    html: '<div style="width:12px;height:12px;border-radius:50%;background:#3b82f6;border:2px solid #fff;box-shadow:0 0 4px rgba(0,0,0,.4)"></div>',
+    iconSize: [12, 12], iconAnchor: [6, 6],
+  });
+  const destIcon = L.divIcon({
+    className: '',
+    html: '<div style="width:14px;height:14px;border-radius:50%;background:#22c55e;border:2px solid #fff;box-shadow:0 0 4px rgba(0,0,0,.4)"></div>',
+    iconSize: [14, 14], iconAnchor: [7, 7],
+  });
+
+  const latlngs = [];
+  waypoints.forEach(wp => {
+    const ll = [wp.lat, wp.lng];
+    latlngs.push(ll);
+    L.marker(ll, { icon: wp.type === 'origin' ? originIcon : destIcon })
+      .bindPopup(`<strong>${wp.type}</strong><br>${wp.label}`)
+      .addTo(map);
+  });
+
+  if (latlngs.length > 1) {
+    L.polyline(latlngs, { color: '#6366f1', weight: 3, dashArray: '8 6', opacity: 0.8 }).addTo(map);
+  }
+
+  const bounds = L.latLngBounds(latlngs);
+  map.fitBounds(bounds, { padding: [40, 40] });
+})();
+</script>
+{% endif %}
+{% endblock %}

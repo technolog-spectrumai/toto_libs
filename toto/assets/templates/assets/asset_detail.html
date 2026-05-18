@@ -30,7 +30,20 @@
           <span><i class="fa-solid fa-circle-nodes mr-1"></i>{% trans "Decimals" %}: {{ asset.decimals }}</span>
           <span><i class="fa-solid fa-database mr-1"></i>{% trans "Total supply" %}: {{ asset.total_supply_display }} {{ asset.unit_name }}</span>
           <span><i class="fa-solid fa-calendar mr-1"></i>{{ asset.created_at|date:"M d, Y H:i" }}</span>
+          {% if asset.is_currency %}
+          <span class="text-green-500 font-semibold"><i class="fa-solid fa-coins mr-1"></i>{% trans "Payment currency" %}</span>
+          {% endif %}
         </div>
+        {% if asset.is_currency %}
+        <div class="space-y-1 text-sm mt-2">
+          {% if asset.minting_authority %}
+          <p class="opacity-70"><i class="fa-solid fa-stamp mr-1"></i><strong>{% trans "Minting authority" %}:</strong> {{ asset.minting_authority }}</p>
+          {% endif %}
+          {% if asset.backing_document %}
+          <p class="opacity-60 text-xs"><i class="fa-solid fa-file-lines mr-1"></i>{{ asset.backing_document }}</p>
+          {% endif %}
+        </div>
+        {% endif %}
       </div>
       <div class="flex flex-col gap-2 text-sm">
         <div

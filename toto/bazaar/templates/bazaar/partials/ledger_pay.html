@@ -1,0 +1,135 @@
+{% load i18n %}
+{% if wallet_accounts or wallet_payment_sources %}
+<div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     class="rounded-2xl border p-5 shadow-sm space-y-4" x-data="{ payMode: 'transfer' }">
+
+  <div class="flex items-center justify-between gap-3">
+    <div class="flex items-center gap-2">
+      <i class="fa-solid fa-coins" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+      <h3 class="font-bold">{% trans "Pay with Asset Balance" %}</h3>
+    </div>
+    {% include "bazaar/partials/wallet_drawer.html" %}
+  </div>
+
+  {% if preferred_asset %}
+  <p class="text-xs opacity-60">
+    <i class="fa-solid fa-circle-info mr-1"></i>
+    {% trans "This order can be paid with" %} <strong>{{ preferred_asset.unit_name }}</strong>
+    ({{ preferred_asset.name }}) {% trans "— the internal stablecoin pegged to" %} {{ order.currency }}.
+    {% if preferred_asset.minting_authority %}
+    {% trans "Minted by" %}: {{ preferred_asset.minting_authority }}.
+    {% endif %}
+  </p>
+  {% endif %}
+
+  <!-- Payment mode tabs -->
+  <div class="flex gap-2 text-xs font-semibold">
+    <button @click="payMode = 'transfer'"
+      :class="payMode === 'transfer' ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light') : 'opacity-50'"
+      class="rounded-lg px-3 py-1.5 transition">
+      <i class="fa-solid fa-bolt mr-1"></i>{% trans "Transfer now" %}
+    </button>
+    <button @click="payMode = 'on_delivery'"
+      :class="payMode === 'on_delivery' ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light') : 'opacity-50'"
+      class="rounded-lg px-3 py-1.5 transition">
+      <i class="fa-solid fa-truck mr-1"></i>{% trans "On delivery" %}
+    </button>
+  </div>
+
+  <!-- Transfer: immediate payment -->
+  <div x-show="payMode === 'transfer'">
+    {% if wallet_payment_sources %}
+    <div class="space-y-2">
+      {% for src in wallet_payment_sources %}
+      <form method="post" action="{% url 'bazaar:order-ledger-pay' order_number=order.order_number %}">
+        {% csrf_token %}
+        <input type="hidden" name="account_id" value="{{ src.account.pk }}">
+        <input type="hidden" name="asset_id"   value="{{ src.holding.asset.pk }}">
+        <input type="hidden" name="next"        value="{{ request.path }}">
+        <button type="submit"
+          :class="darkMode ? 'bg-primary-bg-dark hover:border-accent-1' : 'bg-primary-bg-light hover:border-accent-2'"
+          class="w-full rounded-xl border {% if src.is_preferred %}border-green-500/60{% else %}border-current/10{% endif %}
+                 px-4 py-3 text-left text-sm transition hover:shadow-md
+                 {% if not src.can_pay %}opacity-50 cursor-not-allowed{% endif %}"
+          {% if not src.can_pay %}disabled{% endif %}>
+          <div class="flex items-center justify-between gap-4">
+            <div class="space-y-0.5">
+              <p class="font-bold flex items-center gap-2">
+                {{ src.holding.asset.unit_name }}
+                {% if src.is_preferred %}<span class="text-[10px] text-green-500 font-normal">{% trans "recommended" %}</span>{% endif %}
+                {% if not src.can_pay %}<span class="text-[10px] text-red-500 font-normal">{% trans "insufficient" %}</span>{% endif %}
+              </p>
+              <p class="text-xs opacity-60">{{ src.account.code }}</p>
+            </div>
+            <div class="text-right shrink-0">
+              <p class="font-mono font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+                {{ src.holding.balance_display }}
+              </p>
+              <p class="text-[10px] opacity-50">{% trans "available" %}</p>
+            </div>
+          </div>
+          {% if src.can_pay %}
+          <div class="mt-2 flex items-center justify-between gap-2 border-t border-current/10 pt-2">
+            <span class="text-xs opacity-60">{% trans "Pay" %} {{ order.total_amount }} {{ order.currency }}</span>
+            <span :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                  class="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-bold">
+              <i class="fa-solid fa-bolt text-[10px]"></i> {% trans "Pay now" %}
+            </span>
+          </div>
+          {% endif %}
+        </button>
+      </form>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-xs opacity-50">{% trans "No accepted currency assets in your wallet." %}</p>
+    {% endif %}
+  </div>
+
+  <!-- On delivery: create obligation -->
+  <div x-show="payMode === 'on_delivery'" class="space-y-3">
+    <p class="text-xs opacity-60">
+      <i class="fa-solid fa-circle-info mr-1"></i>
+      {% trans "Creates a payment obligation due within 14 days upon delivery." %}
+    </p>
+    {% if wallet_payment_sources %}
+    {% for src in wallet_payment_sources %}
+    <form method="post" action="{% url 'bazaar:order-on-delivery-pay' order_number=order.order_number %}" class="space-y-2">
+      {% csrf_token %}
+      <input type="hidden" name="account_id" value="{{ src.account.pk }}">
+      <input type="hidden" name="asset_id"   value="{{ src.holding.asset.pk }}">
+      <input type="hidden" name="due_days"   value="14">
+      <input type="hidden" name="next"       value="{{ request.path }}">
+      <button type="submit"
+        :class="darkMode ? 'bg-primary-bg-dark hover:border-accent-1' : 'bg-primary-bg-light hover:border-accent-2'"
+        class="w-full rounded-xl border {% if src.is_preferred %}border-amber-500/60{% else %}border-current/10{% endif %}
+               px-4 py-3 text-left text-sm transition hover:shadow-md">
+        <div class="flex items-center justify-between gap-4">
+          <div class="space-y-0.5">
+            <p class="font-bold flex items-center gap-2">
+              {{ src.holding.asset.unit_name }}
+              {% if src.is_preferred %}<span class="text-[10px] text-amber-500 font-normal">{% trans "recommended" %}</span>{% endif %}
+            </p>
+            <p class="text-xs opacity-60">{{ src.account.code }}</p>
+          </div>
+          <span :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-bold shrink-0">
+            <i class="fa-solid fa-truck text-[10px]"></i> {% trans "Commit" %}
+          </span>
+        </div>
+      </button>
+    </form>
+    {% endfor %}
+    {% else %}
+    <p class="text-xs opacity-50">{% trans "No accepted currency assets in your wallet." %}</p>
+    {% endif %}
+  </div>
+
+  {% if not order.shop.ledger_account %}
+  <p class="text-xs opacity-50 italic">
+    <i class="fa-solid fa-triangle-exclamation mr-1"></i>
+    {% trans "This shop has not configured a ledger receiving account." %}
+  </p>
+  {% endif %}
+</div>
+{% endif %}

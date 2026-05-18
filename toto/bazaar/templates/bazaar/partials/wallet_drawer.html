@@ -1,0 +1,130 @@
+{% load i18n %}
+{% if wallet_accounts %}
+<div x-data="{ walletOpen: false }">
+
+  <button @click="walletOpen = true"
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold shadow-sm transition hover:opacity-85">
+    <i class="fa-solid fa-wallet"></i>
+    {% trans "My Wallet" %}
+  </button>
+
+  <!-- Backdrop -->
+  <div x-show="walletOpen" x-cloak
+       @click="walletOpen = false"
+       x-transition:enter="ease-out duration-200"
+       x-transition:enter-start="opacity-0"
+       x-transition:enter-end="opacity-100"
+       x-transition:leave="ease-in duration-150"
+       x-transition:leave-start="opacity-100"
+       x-transition:leave-end="opacity-0"
+       class="fixed inset-0 z-40 bg-black/50">
+  </div>
+
+  <!-- Drawer panel -->
+  <div x-show="walletOpen" x-cloak
+       @click.stop
+       x-transition:enter="transition ease-out duration-300 transform"
+       x-transition:enter-start="translate-x-full"
+       x-transition:enter-end="translate-x-0"
+       x-transition:leave="transition ease-in duration-200 transform"
+       x-transition:leave-start="translate-x-0"
+       x-transition:leave-end="translate-x-full"
+       :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+       class="fixed right-0 top-0 z-50 h-full w-full max-w-sm overflow-y-auto shadow-2xl">
+
+    <div class="p-5 space-y-4">
+
+      <!-- Header -->
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-bold flex items-center gap-2">
+          <i class="fa-solid fa-wallet" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+          {% trans "My Wallet" %}
+        </h2>
+        <button @click="walletOpen = false"
+                class="rounded-lg p-2 opacity-60 hover:opacity-100 transition">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      {% if order and order.payment_status != 'paid' %}
+      <!-- Order amount reminder -->
+      <div :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+           class="rounded-xl border p-4 text-sm">
+        <p class="opacity-60 text-xs uppercase font-semibold tracking-wide">{% trans "Paying for" %}</p>
+        <p class="font-semibold mt-0.5">{{ order.order_number }}</p>
+        <p class="font-mono font-bold text-xl mt-1">{{ order.total_amount }} {{ order.currency }}</p>
+      </div>
+      {% endif %}
+
+      <!-- Holdings per account -->
+      {% for account in wallet_accounts %}
+      <div class="space-y-2">
+        <p class="text-[11px] font-bold uppercase tracking-widest opacity-50">{{ account.code }}</p>
+        {% for holding in account.holdings.all %}
+        {% if holding.balance_base_units > 0 %}
+        <div :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'"
+             class="rounded-xl p-4 space-y-3
+             {% if preferred_asset and holding.asset.pk == preferred_asset.pk %}ring-2 ring-green-500{% else %}border border-current/10{% endif %}">
+          <div class="flex items-start justify-between gap-2">
+            <div>
+              <p class="font-bold text-sm">
+                {{ holding.asset.unit_name }}
+                {% if preferred_asset and holding.asset.pk == preferred_asset.pk %}
+                <span class="ml-1 text-[10px] text-green-500 bg-green-500/10 px-1.5 py-0.5 rounded">{% trans "recommended" %}</span>
+                {% endif %}
+              </p>
+              <p class="text-xs opacity-60">{{ holding.asset.name }}</p>
+            </div>
+            <p class="font-mono font-bold text-lg shrink-0">{{ holding.balance_display }}</p>
+          </div>
+
+          {% if order and order.payment_status != 'paid' %}
+          {% if order.shop.ledger_account %}
+          <form method="post" action="{% url 'bazaar:order-ledger-pay' order_number=order.order_number %}">
+            {% csrf_token %}
+            <input type="hidden" name="account_id" value="{{ account.pk }}">
+            <input type="hidden" name="asset_id"   value="{{ holding.asset.pk }}">
+            <input type="hidden" name="next"        value="{{ request.path }}">
+            {% for src in wallet_payment_sources %}
+              {% if src.holding.pk == holding.pk %}
+              {% if src.can_pay %}
+              <button type="submit"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="w-full rounded-lg py-2 text-xs font-bold shadow-sm transition hover:opacity-90">
+                <i class="fa-solid fa-bolt mr-1"></i>
+                {% trans "Pay" %} {{ order.total_amount }} {{ order.currency }} {% trans "with" %} {{ holding.asset.unit_name }}
+              </button>
+              {% else %}
+              <p class="text-center text-xs text-red-500">
+                <i class="fa-solid fa-triangle-exclamation mr-1"></i>{% trans "Insufficient balance" %}
+              </p>
+              {% endif %}
+              {% endif %}
+            {% endfor %}
+          </form>
+          {% else %}
+          <p class="text-xs opacity-50 italic text-center">{% trans "Shop ledger not configured" %}</p>
+          {% endif %}
+          {% endif %}
+        </div>
+        {% endif %}
+        {% empty %}
+        <p class="text-sm opacity-50 text-center py-2">{% trans "No holdings in this account." %}</p>
+        {% endfor %}
+      </div>
+      {% empty %}
+      <p class="text-sm opacity-60 text-center py-4">{% trans "No accounts linked to your profile." %}</p>
+      {% endfor %}
+
+      <a href="{% url 'assets:wallet' %}"
+         :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+         class="flex items-center justify-center gap-2 rounded-xl border py-3 text-sm font-semibold opacity-70 hover:opacity-100 transition">
+        <i class="fa-solid fa-arrow-up-right-from-square text-xs"></i>
+        {% trans "Open full wallet" %}
+      </a>
+
+    </div>
+  </div>
+</div>
+{% endif %}

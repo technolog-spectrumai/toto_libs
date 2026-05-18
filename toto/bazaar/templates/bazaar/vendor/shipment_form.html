@@ -1,5 +1,28 @@
 {% extends "bazaar/base.html" %}
-{% block bazaar_title %}Shipment{% endblock %}
-{% block bazaar_heading %}Shipment{% endblock %}
-{% block bazaar_subtitle %}<p class="mt-2 max-w-2xl text-sm opacity-70">Update carrier, tracking, and fulfillment status.</p>{% endblock %}
-{% block bazaar_content %}<form method="post" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="mx-auto max-w-3xl space-y-4 rounded-2xl border p-5 shadow-sm">{% csrf_token %}{{ form.as_p }}<button :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'" class="rounded-lg px-5 py-2 text-sm font-semibold shadow-sm">Save shipment</button></form>{% endblock %}
+{% load i18n %}
+{% block bazaar_title %}{% if creating %}{% trans "Create Shipment" %}{% else %}{% trans "Update Shipment" %}{% endif %}{% endblock %}
+{% block bazaar_heading %}{% if creating %}{% trans "Create Shipment" %}{% else %}{% trans "Update Shipment" %}{% endif %}{% endblock %}
+{% block bazaar_subtitle %}
+  {% if order %}<p class="mt-2 max-w-2xl text-sm opacity-70">{% trans "For order" %} {{ order.order_number }}</p>{% else %}<p class="mt-2 max-w-2xl text-sm opacity-70">{% trans "Update carrier, tracking, and fulfillment status." %}</p>{% endif %}
+{% endblock %}
+{% block bazaar_content %}
+<div class="mx-auto max-w-3xl space-y-4">
+  {% if order %}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-2xl border p-4 text-sm">
+    <p class="font-semibold">{% trans "Order" %}: {{ order.order_number }}</p>
+    <p class="opacity-60 mt-0.5">{{ order.email }} · {{ order.total_amount }} {{ order.currency }}</p>
+  </div>
+  {% endif %}
+  <form method="post"
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="space-y-4 rounded-2xl border p-5 shadow-sm">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="rounded-lg px-5 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+      {% if creating %}{% trans "Create shipment" %}{% else %}{% trans "Save shipment" %}{% endif %}
+    </button>
+  </form>
+</div>
+{% endblock %}

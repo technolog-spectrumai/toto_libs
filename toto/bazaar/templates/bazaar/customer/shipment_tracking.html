@@ -1,0 +1,95 @@
+{% extends "bazaar/base.html" %}
+{% load i18n %}
+{% block bazaar_title %}{% trans "Track Shipment" %} — {{ order.order_number }}{% endblock %}
+{% block bazaar_heading %}{% trans "Shipment Tracking" %}{% endblock %}
+{% block bazaar_subtitle %}<p class="mt-2 max-w-2xl text-sm opacity-70">{{ order.order_number }}</p>{% endblock %}
+{% block bazaar_content %}
+<div class="space-y-6 max-w-2xl">
+
+  <a href="{% url 'bazaar:order-detail' order_number=order.order_number %}"
+     class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+    <i class="fa-solid fa-arrow-left"></i> {% trans "Back to order" %}
+  </a>
+
+  {% if shipments %}
+  {% for shipment in shipments %}
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-2xl border p-6 shadow-sm space-y-4">
+
+    <div class="flex items-start justify-between gap-4">
+      <div>
+        <p class="text-xs opacity-60 font-semibold uppercase">{% trans "Shipment" %} #{{ forloop.counter }}</p>
+        {% if shipment.carrier %}<p class="text-xl font-bold mt-0.5">{{ shipment.carrier }}</p>{% endif %}
+        {% if shipment.tracking_number %}
+        <p class="font-mono text-sm opacity-70 mt-0.5">{% trans "Tracking" %}: {{ shipment.tracking_number }}</p>
+        {% endif %}
+      </div>
+      <span :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+            class="rounded-full px-3 py-1.5 text-sm font-semibold">
+        {{ shipment.get_status_display }}
+      </span>
+    </div>
+
+    <!-- Status progress dots -->
+    <div class="flex items-center gap-1">
+      {% for step_label, step_key in shipment.STATUS_CHOICES %}
+      {% if step_key != 'failed' and step_key != 'returned' %}
+      <div class="flex-1 flex flex-col items-center gap-1">
+        <div class="h-2.5 w-2.5 rounded-full
+          {% if step_key == shipment.status %}bg-current scale-125
+          {% elif shipment.status == 'delivered' or shipment.status == 'shipped' and step_key == 'packed' or shipment.status == 'shipped' and step_key == 'pending' or shipment.status == 'packed' and step_key == 'pending' %}bg-green-500
+          {% else %}bg-current/20{% endif %}"></div>
+        <span class="text-[9px] opacity-50">{{ step_label }}</span>
+      </div>
+      {% if not forloop.last %}<div class="flex-1 h-px bg-current/20 mb-3"></div>{% endif %}
+      {% endif %}
+      {% endfor %}
+    </div>
+
+    <div class="grid grid-cols-2 gap-3 text-sm">
+      {% if shipment.shipping_method %}
+      <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-xl px-4 py-3">
+        <p class="opacity-60 text-xs">{% trans "Method" %}</p>
+        <p class="font-semibold mt-0.5">{{ shipment.shipping_method.name }}</p>
+      </div>
+      {% endif %}
+      {% if shipment.vendor %}
+      <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-xl px-4 py-3">
+        <p class="opacity-60 text-xs">{% trans "Vendor" %}</p>
+        <p class="font-semibold mt-0.5">{{ shipment.vendor.display_name }}</p>
+      </div>
+      {% endif %}
+      {% if shipment.shipped_at %}
+      <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-xl px-4 py-3">
+        <p class="opacity-60 text-xs">{% trans "Shipped" %}</p>
+        <p class="font-semibold mt-0.5">{{ shipment.shipped_at|date:"M d, Y H:i" }}</p>
+      </div>
+      {% endif %}
+      {% if shipment.delivered_at %}
+      <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-xl px-4 py-3">
+        <p class="opacity-60 text-xs">{% trans "Delivered" %}</p>
+        <p class="font-semibold mt-0.5">{{ shipment.delivered_at|date:"M d, Y H:i" }}</p>
+      </div>
+      {% endif %}
+      {% if shipment.destination_address %}
+      <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-xl px-4 py-3 col-span-2">
+        <p class="opacity-60 text-xs">{% trans "Destination" %}</p>
+        <p class="mt-0.5">{{ shipment.destination_address }}</p>
+      </div>
+      {% endif %}
+    </div>
+
+  </article>
+  {% endfor %}
+
+  {% else %}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-2xl border p-10 text-center shadow-sm">
+    <i class="fa-solid fa-truck-fast text-4xl opacity-20 mb-4"></i>
+    <p class="font-semibold opacity-60">{% trans "No shipments yet." %}</p>
+    <p class="text-sm opacity-50 mt-1">{% trans "You will be notified when your order is dispatched." %}</p>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

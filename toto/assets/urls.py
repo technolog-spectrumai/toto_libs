@@ -14,4 +14,5 @@ urlpatterns = [
     path("chain/", views.chain_verify, name="chain_verify"),
     path("flow/", views.ledger_flow, name="ledger_flow"),
     path("flow/data/", views.ledger_flow_data, name="ledger_flow_data"),
+    path("wallet/", views.wallet, name="wallet"),
 ]
