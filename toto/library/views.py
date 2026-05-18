@@ -13,13 +13,14 @@ class BookListView(ListView):
     paginate_by = 24
 
     def get_queryset(self):
-        qs = Book.objects.prefetch_related("authors", "tags")
+        qs = Book.objects.prefetch_related("tags")
 
         q = self.request.GET.get("q")
         if q:
             qs = qs.filter(
                 models.Q(title__icontains=q) |
                 models.Q(abstract__icontains=q) |
+                models.Q(authors__icontains=q) |
                 models.Q(isbn__icontains=q)
             )
 
@@ -59,13 +60,14 @@ class ArticleListView(ListView):
     paginate_by = 24
 
     def get_queryset(self):
-        qs = Article.objects.prefetch_related("authors", "tags")
+        qs = Article.objects.prefetch_related("tags")
 
         q = self.request.GET.get("q")
         if q:
             qs = qs.filter(
                 models.Q(title__icontains=q) |
                 models.Q(abstract__icontains=q) |
+                models.Q(authors__icontains=q) |
                 models.Q(journal__icontains=q)
             )
 

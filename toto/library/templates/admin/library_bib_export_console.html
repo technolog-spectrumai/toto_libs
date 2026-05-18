@@ -1,0 +1,35 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+  <div id="content-main">
+    <p>
+      Export <strong>{{ collection.title }}</strong> as a BibTeX <code>.bib</code> file and save it into a Vault bucket.
+    </p>
+
+    <form method="post" novalidate>
+      {% csrf_token %}
+      <fieldset class="module aligned">
+        {% for field in form %}
+          <div class="form-row{% if field.errors %} errors{% endif %}">
+            {{ field.errors }}
+            <div>
+              {{ field.label_tag }}
+              {{ field }}
+              {% if field.help_text %}
+                <div class="help">{{ field.help_text }}</div>
+              {% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      </fieldset>
+
+      <div class="submit-row">
+        <input type="submit" class="default" value="Export to Vault">
+        <a href="{{ back_url }}" class="button cancel-link">Back to collection</a>
+      </div>
+    </form>
+
+    <h2>Preview</h2>
+    <pre style="white-space: pre-wrap; max-height: 34rem; overflow: auto; padding: 1rem; border: 1px solid var(--border-color); background: var(--darkened-bg);">{{ preview }}</pre>
+  </div>
+{% endblock %}
