@@ -116,25 +116,34 @@ def _callback_uri(request):
 
 
 def _get_or_sync_user(claims):
-    username = f"oidc_{claims['sub']}"
-    user, created = User.objects.get_or_create(
-        username=username,
-        defaults={
-            "email": claims.get("email", ""),
-            "first_name": claims.get("given_name", ""),
-            "last_name": claims.get("family_name", ""),
-        },
-    )
-    if not created:
-        changed = False
-        for field, key in [("email", "email"), ("first_name", "given_name"), ("last_name", "family_name")]:
-            val = claims.get(key, "")
-            if getattr(user, field) != val:
-                setattr(user, field, val)
-                changed = True
-        if changed:
-            user.save(update_fields=["email", "first_name", "last_name"])
+    user = _find_existing_user_for_claims(claims)
+    if user is None:
+        username = f"oidc_{claims['sub']}"
+        user, _ = User.objects.get_or_create(username=username)
+
+    changed = False
+    for field, key in [("email", "email"), ("first_name", "given_name"), ("last_name", "family_name")]:
+        val = claims.get(key, "")
+        if getattr(user, field) != val:
+            setattr(user, field, val)
+            changed = True
+    if changed:
+        user.save(update_fields=["email", "first_name", "last_name"])
     return user
+
+
+def _find_existing_user_for_claims(claims):
+    preferred_username = claims.get("preferred_username", "").strip()
+    if preferred_username:
+        user = User.objects.filter(username=preferred_username).first()
+        if user:
+            return user
+
+    email = claims.get("email", "").strip()
+    if email:
+        return User.objects.filter(email__iexact=email).first()
+
+    return None
 
 
 def _link_person(user, person_slug):
