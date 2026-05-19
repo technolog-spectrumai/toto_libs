@@ -19,6 +19,19 @@
   <div class="tribunal-stat"><div class="label">{% trans "Rulings" %}</div><div class="value">{{ metrics.ruling_count }}</div></div>
   <div class="tribunal-stat"><div class="label">{% trans "Case Age" %}</div><div class="value">{{ metrics.age_days|default:"—" }}</div></div>
   <div class="tribunal-stat"><div class="label">{% trans "Readiness" %}</div><div class="value">{{ metrics.readiness_score }}%</div></div>
+  <div class="tribunal-stat">
+    <div class="label">{% trans "Jury" %}</div>
+    <div class="value">
+      {% if metrics.active_jury %}
+        <a href="{% url 'tribunal:jury_session_detail' metrics.active_jury.id %}" :class="darkMode ? 'text-success-dark' : 'text-success-light'" class="flex items-center gap-1">
+          <i class="fa-solid fa-circle-dot text-lg"></i>
+          <span>{{ metrics.jury_session_count }}</span>
+        </a>
+      {% else %}
+        {{ metrics.jury_session_count }}
+      {% endif %}
+    </div>
+  </div>
 </section>
 
 <section class="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -76,6 +89,105 @@
     </div>
 
     <div class="tribunal-card"><h2 class="text-lg font-bold">{% trans "Evidence" %}</h2><table class="tribunal-table mt-4"><thead><tr><th>{% trans "Title" %}</th><th>{% trans "Type" %}</th><th>{% trans "Submitted" %}</th><th>{% trans "Actions" %}</th></tr></thead><tbody>{% for evidence in case.evidence.all %}<tr><td>{{ evidence.title }}</td><td>{{ evidence.evidence_type|default:"—" }}</td><td>{{ evidence.submitted_at|date:"Y-m-d" }}</td><td><a class="tribunal-button" href="{% url 'tribunal:evidence_update' evidence.id %}">{% trans "Edit" %}</a></td></tr>{% empty %}<tr><td colspan="4" class="opacity-70">{% trans "No evidence yet." %}</td></tr>{% endfor %}</tbody></table></div>
+
+    <div class="tribunal-card">
+      <h2 class="text-lg font-bold"><i class="fa-solid fa-users-viewfinder mr-1"></i>{% trans "Jury Sessions" %}</h2>
+
+      {% if request.user.is_staff %}
+      <details class="mt-4">
+        <summary class="tribunal-button cursor-pointer select-none">
+          <i class="fa-solid fa-plus"></i>{% trans "Open Jury Session" %}
+        </summary>
+        <form class="tribunal-form mt-3" method="post" action="{% url 'tribunal:jury_session_open' case.id %}">
+          {% csrf_token %}
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label for="{{ jury_session_form.closes_date.id_for_label }}">{% trans "Closes date" %}</label>
+              {{ jury_session_form.closes_date }}
+            </div>
+            <div>
+              <label for="{{ jury_session_form.closes_time.id_for_label }}">{% trans "Closes time" %}</label>
+              {{ jury_session_form.closes_time }}
+            </div>
+          </div>
+          <p>
+            <label for="{{ jury_session_form.required_votes.id_for_label }}">{% trans "Required votes" %}</label>
+            {{ jury_session_form.required_votes }}
+          </p>
+          <div>
+            <label class="block text-xs font-bold uppercase tracking-wide opacity-75 mb-2">{% trans "Invite jurors" %}</label>
+            <div class="max-h-48 overflow-y-auto rounded-lg border p-2 space-y-1 text-sm"
+                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'">
+              {% for checkbox in jury_session_form.jurors %}
+              <label class="flex items-center gap-2 cursor-pointer rounded px-2 py-1 hover:opacity-80">
+                {{ checkbox.tag }} <span>{{ checkbox.choice_label }}</span>
+              </label>
+              {% empty %}
+              <p class="opacity-50 text-xs px-2">{% trans "No persons available." %}</p>
+              {% endfor %}
+            </div>
+            <p class="mt-1 text-xs opacity-50">{% trans "Leave empty to allow anyone to vote." %}</p>
+          </div>
+          <p>
+            <label for="{{ jury_session_form.note.id_for_label }}">{% trans "Note / instructions" %}</label>
+            {{ jury_session_form.note }}
+          </p>
+          {% if jury_session_form.non_field_errors %}
+            <p class="text-sm" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ jury_session_form.non_field_errors }}</p>
+          {% endif %}
+          <button class="tribunal-button" type="submit">{% trans "Open Session" %}</button>
+        </form>
+      </details>
+      {% endif %}
+
+      {% if jury_sessions %}
+      <table class="tribunal-table mt-4">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>{% trans "Status" %}</th>
+            <th>{% trans "Closes" %}</th>
+            <th>{% trans "Votes" %}</th>
+            <th>{% trans "Outcome" %}</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for js in jury_sessions %}
+          <tr>
+            <td class="opacity-60">{{ js.pk }}</td>
+            <td>
+              {% if js.is_open %}
+                <span class="tribunal-pill text-xs" :class="darkMode ? 'text-success-dark' : 'text-success-light'">
+                  <i class="fa-solid fa-circle-dot"></i>{% trans "Open" %}
+                </span>
+              {% else %}
+                <span class="tribunal-pill text-xs">{{ js.status }}</span>
+              {% endif %}
+            </td>
+            <td class="text-xs opacity-70">{{ js.closes_at|date:"M d, H:i" }}</td>
+            <td class="font-bold">{{ js.votes.count }}</td>
+            <td>
+              {% if js.outcome and js.outcome != 'pending' %}
+                <span class="tribunal-pill text-xs
+                  {% if js.outcome == 'guilty' %}{% verbatim %}{% endverbatim %}{% endif %}">
+                  {{ js.get_outcome_display }}
+                </span>
+              {% else %}—{% endif %}
+            </td>
+            <td>
+              <a class="tribunal-button text-xs" href="{% url 'tribunal:jury_session_detail' js.id %}">
+                {% trans "View" %}
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="mt-4 text-sm opacity-60">{% trans "No jury sessions yet." %}</p>
+      {% endif %}
+    </div>
 
     <div class="tribunal-card">
       <h2 class="text-lg font-bold">{% trans "Record Ruling" %}</h2>

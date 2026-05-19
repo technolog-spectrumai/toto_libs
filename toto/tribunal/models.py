@@ -254,6 +254,121 @@ class TribunalEvidence(DomainEntity):
         return self.title
 
 
+class JurySession(DomainEntity):
+    STATUS_CHOICES = [
+        ('open', 'Open'),
+        ('closed', 'Closed'),
+        ('cancelled', 'Cancelled'),
+    ]
+    OUTCOME_CHOICES = [
+        ('pending', 'Pending'),
+        ('guilty', 'Guilty'),
+        ('not_guilty', 'Not Guilty'),
+        ('hung', 'Hung Jury'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    case = models.ForeignKey(
+        TribunalCase,
+        on_delete=models.CASCADE,
+        related_name='jury_sessions',
+    )
+    created_by = models.ForeignKey(
+        'people.Person',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_jury_sessions',
+    )
+    jurors = models.ManyToManyField(
+        'people.Person',
+        blank=True,
+        related_name='jury_session_invites',
+        help_text='People invited to vote. Leave empty to allow any member to vote.',
+    )
+    opens_at = models.DateTimeField()
+    closes_at = models.DateTimeField()
+    required_votes = models.PositiveIntegerField(
+        default=0,
+        help_text='Minimum votes needed for a valid outcome (0 = no minimum).',
+    )
+    status = models.CharField(max_length=32, choices=STATUS_CHOICES, default='open')
+    outcome = models.CharField(max_length=32, choices=OUTCOME_CHOICES, default='pending', blank=True)
+    note = models.TextField(blank=True, help_text='Instructions or context for jurors.')
+    created_at = models.DateTimeField(auto_now_add=True)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['case']),
+            models.Index(fields=['status']),
+            models.Index(fields=['closes_at']),
+        ]
+
+    def __str__(self):
+        return f'Jury session #{self.pk} for {self.case} ({self.status})'
+
+    @property
+    def is_open(self):
+        from django.utils import timezone
+        return self.status == 'open' and timezone.now() < self.closes_at
+
+    def tally(self):
+        counts = {'guilty': 0, 'not_guilty': 0, 'abstain': 0}
+        for v in self.votes.values_list('vote', flat=True):
+            counts[v] = counts.get(v, 0) + 1
+        return counts
+
+    def compute_outcome(self):
+        counts = self.tally()
+        g, ng = counts['guilty'], counts['not_guilty']
+        if g == 0 and ng == 0:
+            return 'pending'
+        if g > ng:
+            return 'guilty'
+        if ng > g:
+            return 'not_guilty'
+        return 'hung'
+
+
+class JuryVote(DomainEntity):
+    VOTE_CHOICES = [
+        ('guilty', 'Guilty'),
+        ('not_guilty', 'Not Guilty'),
+        ('abstain', 'Abstain'),
+    ]
+
+    session = models.ForeignKey(
+        JurySession,
+        on_delete=models.CASCADE,
+        related_name='votes',
+    )
+    juror = models.ForeignKey(
+        'people.Person',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='jury_votes',
+    )
+    vote = models.CharField(max_length=16, choices=VOTE_CHOICES)
+    reason = models.TextField(blank=True)
+    voted_at = models.DateTimeField(auto_now_add=True)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ['voted_at']
+        unique_together = [('session', 'juror')]
+        indexes = [
+            models.Index(fields=['session']),
+            models.Index(fields=['juror']),
+            models.Index(fields=['vote']),
+        ]
+
+    def __str__(self):
+        return f'{self.juror} → {self.vote}'
+
+
 class TribunalRuling(DomainEntity):
     case = models.ForeignKey(
         TribunalCase,

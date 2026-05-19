@@ -1,6 +1,8 @@
 from django import forms
 
 from toto.tribunal.models import (
+    JurySession,
+    JuryVote,
     TribunalCase,
     TribunalClaim,
     TribunalEvidence,
@@ -123,6 +125,55 @@ class TribunalRulingForm(forms.ModelForm):
             self.fields["fine_creditor_account"].initial = getattr(order.shop, "ledger_account_id", None)
             self.fields["fine_asset"].initial = order.ledger_asset_id
             self.fields["fine_amount"].initial = order.total_amount
+
+class JurySessionForm(forms.ModelForm):
+    closes_date = forms.DateField(
+        widget=forms.DateInput(attrs={'type': 'date'}),
+        label='Closes date',
+    )
+    closes_time = forms.TimeField(
+        widget=forms.TimeInput(attrs={'type': 'time'}),
+        label='Closes time',
+        initial='23:59',
+    )
+
+    class Meta:
+        model = JurySession
+        fields = ['jurors', 'required_votes', 'note']
+        widgets = {
+            'jurors': forms.CheckboxSelectMultiple(),
+            'note': forms.Textarea(attrs={'rows': 3}),
+        }
+
+    def clean(self):
+        cleaned = super().clean()
+        d = cleaned.get('closes_date')
+        t = cleaned.get('closes_time')
+        if d and t:
+            import datetime
+            from django.utils import timezone as tz
+            naive = datetime.datetime.combine(d, t)
+            cleaned['closes_at'] = tz.make_aware(naive)
+        elif not self.errors:
+            raise forms.ValidationError('Closing date and time are required.')
+        return cleaned
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        instance.closes_at = self.cleaned_data['closes_at']
+        if commit:
+            instance.save()
+        return instance
+
+
+class JuryVoteForm(forms.ModelForm):
+    class Meta:
+        model = JuryVote
+        fields = ['vote', 'reason']
+        widgets = {
+            'reason': forms.Textarea(attrs={'rows': 3}),
+        }
+
 
     def clean(self):
         cleaned = super().clean()

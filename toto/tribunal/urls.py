@@ -30,4 +30,9 @@ urlpatterns = [
     path("cases/<int:case_id>/rulings/add/", views.ruling_create, name="ruling_create"),
     path("rulings/<int:ruling_id>/edit/", views.ruling_update, name="ruling_update"),
     path("rulings/<int:ruling_id>/delete/", views.ruling_delete, name="ruling_delete"),
+
+    path("cases/<int:case_id>/jury/open/", views.jury_session_open, name="jury_session_open"),
+    path("jury/<int:session_id>/", views.jury_session_detail, name="jury_session_detail"),
+    path("jury/<int:session_id>/vote/", views.jury_vote, name="jury_vote"),
+    path("jury/<int:session_id>/close/", views.jury_session_close, name="jury_session_close"),
 ]

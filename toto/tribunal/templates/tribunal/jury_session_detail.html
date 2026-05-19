@@ -1,0 +1,210 @@
+{% extends "tribunal/base.html" %}
+{% load i18n %}
+{% block tribunal_title %}{% trans "Jury Session" %} #{{ session.pk }}{% endblock %}
+{% block tribunal_heading %}{% trans "Jury Session" %}{% endblock %}
+{% block tribunal_header_nav %}
+  <a href="{% url 'tribunal:case_detail' session.case.id %}" class="inline-flex items-center gap-2 underline hover:opacity-80">
+    <i class="fa-solid fa-scale-balanced"></i>{{ session.case.case_number }}
+  </a>
+{% endblock %}
+{% block tribunal_header_actions %}
+  {% if request.user.is_staff and session.status == 'open' %}
+    <form method="post" action="{% url 'tribunal:jury_session_close' session.id %}">
+      {% csrf_token %}
+      <button class="tribunal-button" type="submit">
+        <i class="fa-solid fa-gavel"></i>{% trans "Close Session" %}
+      </button>
+    </form>
+  {% endif %}
+{% endblock %}
+
+{% block tribunal_content %}
+<div class="tribunal-layout">
+  <aside>
+    <div class="tribunal-card">
+      <h2 class="text-lg font-bold"><i class="fa-solid fa-users-viewfinder mr-1"></i>{% trans "Session" %}</h2>
+      <dl class="mt-4 space-y-2 text-sm">
+        <div class="border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+          <dt class="opacity-65">{% trans "Case" %}</dt>
+          <dd><a class="underline hover:opacity-80" href="{% url 'tribunal:case_detail' session.case.id %}">{{ session.case.case_number }}</a></dd>
+        </div>
+        <div class="border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+          <dt class="opacity-65">{% trans "Status" %}</dt>
+          <dd>
+            {% if session.is_open %}
+              <span class="tribunal-pill" :class="darkMode ? 'text-success-dark' : 'text-success-light'">
+                <i class="fa-solid fa-circle-dot"></i>{% trans "Open" %}
+              </span>
+            {% elif session.status == 'closed' %}
+              <span class="tribunal-pill">{% trans "Closed" %}</span>
+            {% else %}
+              <span class="tribunal-pill">{{ session.status }}</span>
+            {% endif %}
+          </dd>
+        </div>
+        <div class="border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+          <dt class="opacity-65">{% trans "Opens" %}</dt>
+          <dd>{{ session.opens_at|date:"M d, Y H:i" }}</dd>
+        </div>
+        <div class="border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+          <dt class="opacity-65">{% trans "Closes" %}</dt>
+          <dd>{{ session.closes_at|date:"M d, Y H:i" }}</dd>
+        </div>
+        {% if session.required_votes %}
+        <div class="border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+          <dt class="opacity-65">{% trans "Required votes" %}</dt>
+          <dd>{{ session.required_votes }}</dd>
+        </div>
+        {% endif %}
+        <div class="border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+          <dt class="opacity-65">{% trans "Total votes" %}</dt>
+          <dd class="text-xl font-black">{{ total }}</dd>
+        </div>
+        {% if session.status == 'closed' %}
+        <div class="border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+          <dt class="opacity-65">{% trans "Outcome" %}</dt>
+          <dd>
+            <span class="tribunal-pill font-black
+              {% if session.outcome == 'guilty' %}text-warn-dark{% elif session.outcome == 'not_guilty' %}text-success-dark{% endif %}">
+              {{ session.get_outcome_display }}
+            </span>
+          </dd>
+        </div>
+        {% endif %}
+        {% if session.created_by %}
+        <div class="border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+          <dt class="opacity-65">{% trans "Opened by" %}</dt>
+          <dd>{{ session.created_by }}</dd>
+        </div>
+        {% endif %}
+      </dl>
+    </div>
+
+    <div class="tribunal-card">
+      <h2 class="text-lg font-bold"><i class="fa-solid fa-user-group mr-1"></i>{% trans "Jury Members" %}</h2>
+      {% if juror_rows %}
+      <ul class="mt-3 text-sm">
+        {% for juror, vote in juror_rows %}
+        <li class="flex items-center justify-between gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+          <span>{{ juror }}</span>
+          {% if vote %}
+            {% if vote.vote == 'guilty' %}
+              <span class="tribunal-pill text-xs" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">
+                <i class="fa-solid fa-check-to-slot"></i>{{ vote.get_vote_display }}
+              </span>
+            {% elif vote.vote == 'not_guilty' %}
+              <span class="tribunal-pill text-xs" :class="darkMode ? 'text-success-dark' : 'text-success-light'">
+                <i class="fa-solid fa-check-to-slot"></i>{{ vote.get_vote_display }}
+              </span>
+            {% else %}
+              <span class="tribunal-pill text-xs">
+                <i class="fa-solid fa-minus"></i>{{ vote.get_vote_display }}
+              </span>
+            {% endif %}
+          {% else %}
+            <span class="text-xs opacity-50"><i class="fa-regular fa-clock mr-1"></i>{% trans "pending" %}</span>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="mt-3 text-sm opacity-60">{% trans "Open to all — no specific jurors invited." %}</p>
+      {% endif %}
+    </div>
+
+    {% if session.note %}
+    <div class="tribunal-card">
+      <h2 class="text-lg font-bold"><i class="fa-solid fa-circle-info mr-1"></i>{% trans "Instructions" %}</h2>
+      <p class="mt-3 whitespace-pre-line text-sm opacity-80">{{ session.note }}</p>
+    </div>
+    {% endif %}
+
+    {% if vote_form %}
+    <div class="tribunal-card">
+      <h2 class="text-lg font-bold"><i class="fa-solid fa-vote-yea mr-1"></i>{% trans "Cast Your Vote" %}</h2>
+      <form class="tribunal-form mt-4" method="post" action="{% url 'tribunal:jury_vote' session.id %}">
+        {% csrf_token %}
+        {{ vote_form.as_p }}
+        <button class="tribunal-button mt-2 w-full justify-center" type="submit">
+          <i class="fa-solid fa-check"></i>{% trans "Submit Vote" %}
+        </button>
+      </form>
+    </div>
+    {% elif user_vote %}
+    <div class="tribunal-card">
+      <h2 class="text-lg font-bold"><i class="fa-solid fa-circle-check mr-1"></i>{% trans "Your Vote" %}</h2>
+      <p class="mt-3 text-sm">
+        <span class="tribunal-pill font-bold">{{ user_vote.get_vote_display }}</span>
+      </p>
+      {% if user_vote.reason %}
+      <p class="mt-2 text-sm opacity-70">{{ user_vote.reason }}</p>
+      {% endif %}
+    </div>
+    {% elif not session.is_open and session.status == 'open' %}
+    <div class="tribunal-card">
+      <p class="text-sm opacity-70"><i class="fa-solid fa-lock mr-1"></i>{% trans "Voting has closed (time expired)." %}</p>
+    </div>
+    {% endif %}
+  </aside>
+
+  <section>
+    <div class="tribunal-card">
+      <h2 class="mb-4 text-lg font-bold"><i class="fa-solid fa-chart-pie mr-1"></i>{% trans "Vote Split" %}</h2>
+
+      <div class="grid grid-cols-3 gap-3 mb-6 text-center">
+        <div class="rounded-xl border p-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+          <div class="text-3xl font-black" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ tally.guilty }}</div>
+          <div class="mt-1 text-xs font-bold uppercase tracking-wide opacity-65">{% trans "Guilty" %}</div>
+        </div>
+        <div class="rounded-xl border p-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+          <div class="text-3xl font-black" :class="darkMode ? 'text-success-dark' : 'text-success-light'">{{ tally.not_guilty }}</div>
+          <div class="mt-1 text-xs font-bold uppercase tracking-wide opacity-65">{% trans "Not Guilty" %}</div>
+        </div>
+        <div class="rounded-xl border p-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+          <div class="text-3xl font-black">{{ tally.abstain }}</div>
+          <div class="mt-1 text-xs font-bold uppercase tracking-wide opacity-65">{% trans "Abstain" %}</div>
+        </div>
+      </div>
+
+      {% if total > 0 %}
+        {% include "oya/partials/chart.html" with chart_id="juryVoteChart" data=chart_data %}
+      {% else %}
+        <p class="py-8 text-center text-sm opacity-60">{% trans "No votes cast yet." %}</p>
+      {% endif %}
+    </div>
+
+    <div class="tribunal-card">
+      <h2 class="text-lg font-bold"><i class="fa-solid fa-list-check mr-1"></i>{% trans "Votes" %}</h2>
+      <table class="tribunal-table mt-4">
+        <thead>
+          <tr>
+            <th>{% trans "Juror" %}</th>
+            <th>{% trans "Vote" %}</th>
+            <th>{% trans "Time" %}</th>
+            {% if request.user.is_staff %}<th>{% trans "Reason" %}</th>{% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for vote in session.votes.all %}
+          <tr>
+            <td>{{ vote.juror|default:"—" }}</td>
+            <td>
+              <span class="tribunal-pill text-xs
+                {% if vote.vote == 'guilty' %}{% if darkMode %}text-warn-dark{% else %}text-warn-light{% endif %}
+                {% elif vote.vote == 'not_guilty' %}{% if darkMode %}text-success-dark{% else %}text-success-light{% endif %}
+                {% endif %}">
+                {{ vote.get_vote_display }}
+              </span>
+            </td>
+            <td class="opacity-70">{{ vote.voted_at|date:"M d, H:i" }}</td>
+            {% if request.user.is_staff %}<td class="opacity-70 text-xs">{{ vote.reason|default:"—" }}</td>{% endif %}
+          </tr>
+          {% empty %}
+          <tr><td colspan="{% if request.user.is_staff %}4{% else %}3{% endif %}" class="opacity-60">{% trans "No votes yet." %}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+{% endblock %}
