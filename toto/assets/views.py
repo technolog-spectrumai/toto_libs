@@ -1,9 +1,12 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import ValidationError
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.translation import gettext_lazy as _
+from django.views.decorators.http import require_POST
 from toto.ui import PageProcessor
 
 from .hashing import verify_hash_chain
@@ -61,6 +64,7 @@ def account_list(request):
 def account_detail(request, pk):
     from django.utils import timezone
     from .models import Obligation, ObligationStatus
+    from toto.bazaar.wallet_pin import has_wallet_pin
     account = get_object_or_404(LedgerAccount, pk=pk)
     holdings = AssetHolding.objects.filter(account=account).select_related("asset")
     recent_entries = (
@@ -84,6 +88,7 @@ def account_detail(request, pk):
         "now": timezone.now(),
         "account_flow_url": flow_data_url,
         "account_flow_full_url": flow_full_url,
+        "has_wallet_pin": has_wallet_pin(request.user) if request.user.is_authenticated else False,
     })
 
 
@@ -202,6 +207,51 @@ def wallet(request):
         'now': now,
         'has_wallet_pin': has_wallet_pin(request.user),
     })
+
+
+@require_POST
+@login_required
+def obligation_fulfill(request, pk):
+    from .models import Obligation, ObligationStatus
+    from .services.assets import fulfill_obligation
+    from toto.bazaar.wallet_pin import has_wallet_pin, session_is_verified
+
+    obligation = get_object_or_404(
+        Obligation.objects.select_related('debtor_account', 'creditor_account', 'asset'),
+        pk=pk,
+        status=ObligationStatus.PENDING,
+    )
+
+    if obligation.debtor_account.user_id != request.user.id:
+        messages.error(request, _("You can only fulfill obligations from your own wallet."))
+        return redirect('assets:wallet')
+
+    if not has_wallet_pin(request.user):
+        messages.error(request, _("Set a wallet PIN before fulfilling obligations."))
+        return redirect('assets:wallet_pin_set')
+
+    next_url = request.POST.get("next") or reverse("assets:wallet")
+    if not url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
+        next_url = reverse("assets:wallet")
+
+    if not session_is_verified(request.session):
+        messages.error(request, _("Verify your wallet PIN before fulfilling obligations."))
+        return redirect(next_url)
+
+    try:
+        tx = fulfill_obligation(
+            obligation=obligation,
+            reference=f"fulfill-obligation-{obligation.pk}",
+            description=f"Fulfilling obligation {obligation.reference}",
+        )
+        messages.success(
+            request,
+            _("Obligation fulfilled. Transfer %(reference)s posted.") % {"reference": tx.reference},
+        )
+    except ValidationError as exc:
+        messages.error(request, "; ".join(exc.messages))
+
+    return redirect(next_url)
 
 
 def ledger_flow_data(request):
