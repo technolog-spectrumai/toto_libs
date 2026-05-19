@@ -74,7 +74,8 @@
                 {{ tx.get_transaction_type_display }}
               </span>
               {% if tx.posted %}
-                <span class="shrink-0 rounded bg-green-500/10 px-2 py-0.5 text-xs font-semibold text-green-600">{% trans "Posted" %}</span>
+                <span class="shrink-0 rounded px-2 py-0.5 text-xs font-semibold"
+                      :class="darkMode ? 'bg-success-dark/10 text-success-dark' : 'bg-success-light/10 text-success-light'">{% trans "Posted" %}</span>
               {% endif %}
             </div>
             <div class="flex flex-wrap gap-3 text-xs opacity-70">

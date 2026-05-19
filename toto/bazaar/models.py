@@ -388,3 +388,33 @@ class WishlistItem(DomainEntity):
     variant = models.ForeignKey(ProductVariant, on_delete=models.SET_NULL, null=True, blank=True, related_name='wishlist_items')
     added_at = models.DateTimeField(auto_now_add=True)
     class Meta: unique_together = [('wishlist', 'product', 'variant')]
+
+
+class ShipmentLocation(DomainEntity):
+    """A user-saved delivery address for quick reuse at checkout."""
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='shipment_locations',
+    )
+    address = models.ForeignKey(
+        'locations.Address',
+        on_delete=models.CASCADE,
+        related_name='shipment_locations',
+    )
+    label = models.CharField(max_length=100, blank=True, help_text="e.g. Home, Work, Mum's")
+    is_default = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-is_default', '-created_at']
+
+    def __str__(self):
+        name = self.label or self.address.locality_name or str(self.address)
+        return f"{name} ({self.user})"
+
+    def save(self, *args, **kwargs):
+        if self.is_default:
+            ShipmentLocation.objects.filter(user=self.user, is_default=True).exclude(pk=self.pk).update(is_default=False)
+        super().save(*args, **kwargs)
+

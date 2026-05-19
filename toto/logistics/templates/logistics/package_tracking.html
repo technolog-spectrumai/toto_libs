@@ -88,7 +88,7 @@
           <h2 class="font-bold">{% trans "Route" %}</h2>
           {% if package.origin %}
           <div class="flex items-start gap-2">
-            <span class="mt-1 h-2 w-2 shrink-0 rounded-full bg-blue-400"></span>
+            <span class="mt-1 h-2 w-2 shrink-0 rounded-full" :class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'"></span>
             <div>
               <p class="text-xs opacity-50 uppercase tracking-wide">{% trans "Origin" %}</p>
               <p class="font-semibold">{{ package.origin }}</p>
@@ -97,7 +97,7 @@
           {% endif %}
           {% if package.destination %}
           <div class="flex items-start gap-2">
-            <span class="mt-1 h-2 w-2 shrink-0 rounded-full bg-green-400"></span>
+            <span class="mt-1 h-2 w-2 shrink-0 rounded-full" :class="darkMode ? 'bg-success-dark' : 'bg-success-light'"></span>
             <div>
               <p class="text-xs opacity-50 uppercase tracking-wide">{% trans "Destination" %}</p>
               <p class="font-semibold">{{ package.destination }}</p>

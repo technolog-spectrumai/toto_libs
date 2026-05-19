@@ -3,7 +3,14 @@
 {% block bazaar_title %}{{ order.order_number }}{% endblock %}
 {% block bazaar_heading %}{{ order.order_number }}{% endblock %}
 {% block bazaar_subtitle %}<p class="mt-2 max-w-2xl text-sm opacity-70">{% trans "Placed" %} {{ order.created_at|date:"F j, Y H:i" }}</p>{% endblock %}
+
+{% block start_script %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+{% endblock %}
+
 {% block bazaar_content %}
+<script>window.orderMapPayload = JSON.parse(`{{ payload_json|escapejs }}`);</script>
 <section class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
 
   <!-- Items -->
@@ -19,6 +26,12 @@
       </div>
     </article>
     {% endfor %}
+
+    <!-- Shipment map -->
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="overflow-hidden rounded-2xl border shadow-sm">
+      <div id="order-detail-map" class="h-[320px] w-full"></div>
+    </div>
 
     <!-- Shipments -->
     {% if shipments %}
@@ -73,7 +86,7 @@
     {% if order.ledger_tx_reference and order.payment_status == 'paid' %}
     <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
          class="rounded-2xl border p-5 shadow-sm text-sm space-y-1">
-      <p class="font-semibold text-green-500"><i class="fa-solid fa-circle-check mr-1"></i>{% trans "Paid via asset ledger" %}</p>
+      <p class="font-semibold" :class="darkMode ? 'text-success-dark' : 'text-success-light'"><i class="fa-solid fa-circle-check mr-1"></i>{% trans "Paid via asset ledger" %}</p>
       <p class="opacity-60">
         {% trans "Asset" %}: <span class="font-mono">{{ order.ledger_asset.unit_name }}</span>
         · {% trans "Account" %}: <span class="font-mono">{{ order.ledger_account.code }}</span>
@@ -86,8 +99,9 @@
     {% if order.obligation %}
     {% with order.obligation as ob %}
     <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-         class="rounded-2xl border p-5 shadow-sm text-sm space-y-2 {% if ob.is_overdue %}ring-2 ring-red-500/60{% endif %}">
-      <p class="font-semibold {% if ob.is_overdue %}text-red-500{% else %}text-amber-500{% endif %}">
+         class="rounded-2xl border p-5 shadow-sm text-sm space-y-2 {% if ob.is_overdue %}ring-2{% endif %}"
+         :class="{% if ob.is_overdue %}(darkMode ? 'ring-warn-dark/60' : 'ring-warn-light/60'){% endif %}">
+      <p class="font-semibold" :class="{% if ob.is_overdue %}(darkMode ? 'text-warn-dark' : 'text-warn-light'){% else %}(darkMode ? 'text-accent-dark' : 'text-accent-light'){% endif %}">
         <i class="fa-solid fa-{% if ob.is_overdue %}circle-exclamation{% else %}clock{% endif %} mr-1"></i>
         {% if ob.is_overdue %}{% trans "Obligation overdue!" %}{% elif ob.status == 'fulfilled' %}{% trans "Obligation fulfilled" %}{% else %}{% trans "On-delivery obligation pending" %}{% endif %}
       </p>
@@ -124,4 +138,99 @@
   </aside>
 
 </section>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const payload = window.orderMapPayload;
+  if (!payload) return;
+
+  const isDark = localStorage.getItem('darkMode') === 'true';
+  const map = L.map('order-detail-map', { zoomControl: false }).setView([52.0, 19.0], 6);
+  L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+  L.tileLayer(
+    isDark
+      ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+      : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    { maxZoom: 19, attribution: '© OpenStreetMap' + (isDark ? ' © CARTO' : '') }
+  ).addTo(map);
+
+  function dot(color, size) {
+    size = size || 12;
+    return L.divIcon({
+      className: '',
+      html: '<div style="width:' + size + 'px;height:' + size + 'px;border-radius:50%;background:' + color + ';border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>',
+      iconSize: [size, size], iconAnchor: [size / 2, size / 2],
+    });
+  }
+
+  function truckIcon(color) {
+    return L.divIcon({
+      className: '',
+      html: '<div style="background:' + color + ';color:#fff;border-radius:8px;padding:3px 5px;font-size:13px;box-shadow:0 1px 4px rgba(0,0,0,.4);line-height:1">🚚</div>',
+      iconSize: [28, 24], iconAnchor: [14, 12],
+    });
+  }
+
+  function houseIcon(color) {
+    return L.divIcon({
+      className: '',
+      html: '<div style="background:' + color + ';color:#fff;border-radius:8px;padding:3px 5px;font-size:13px;box-shadow:0 1px 4px rgba(0,0,0,.4);line-height:1">🏠</div>',
+      iconSize: [28, 24], iconAnchor: [14, 12],
+    });
+  }
+
+  const allPoints = [];
+
+  // Delivery address pin
+  if (payload.delivery && payload.delivery.geometry) {
+    var dc = payload.delivery.geometry.coordinates;
+    L.marker([dc[1], dc[0]], { icon: houseIcon(isDark ? '#f59e0b' : '#d97706'), zIndexOffset: 1000 })
+      .bindPopup('<strong>Delivery address</strong><br>' + payload.delivery.label)
+      .addTo(map);
+    allPoints.push([dc[1], dc[0]]);
+  }
+
+  payload.shipments.forEach(function (s, i) {
+    var num = i + 1;
+    if (s.origin && s.origin.geometry) {
+      var coords = s.origin.geometry.coordinates;
+      L.marker([coords[1], coords[0]], { icon: dot('#60a5fa', 13) })
+        .bindPopup('<strong>Origin #' + num + '</strong><br>' + s.origin.label)
+        .addTo(map);
+      allPoints.push([coords[1], coords[0]]);
+    }
+    if (s.destination && s.destination.geometry) {
+      var coords = s.destination.geometry.coordinates;
+      L.marker([coords[1], coords[0]], { icon: dot('#4ade80', 13) })
+        .bindPopup('<strong>Destination #' + num + '</strong><br>' + s.destination.label)
+        .addTo(map);
+      allPoints.push([coords[1], coords[0]]);
+    }
+    if (s.current_location && s.current_location.geometry) {
+      var coords = s.current_location.geometry.coordinates;
+      L.marker([coords[1], coords[0]], { icon: truckIcon(isDark ? '#818cf8' : '#4f46e5'), zIndexOffset: 900 })
+        .bindPopup('<strong>Package location</strong><br>' + s.current_location.label)
+        .addTo(map);
+      allPoints.push([coords[1], coords[0]]);
+    }
+    if (s.origin && s.origin.geometry && s.destination && s.destination.geometry) {
+      var o = s.origin.geometry.coordinates;
+      var d = s.destination.geometry.coordinates;
+      L.polyline([[o[1], o[0]], [d[1], d[0]]], {
+        color: isDark ? '#818cf8' : '#4f46e5',
+        weight: 3,
+        dashArray: '8 6',
+        opacity: 0.75,
+      }).addTo(map);
+    }
+  });
+
+  if (allPoints.length === 1) {
+    map.setView(allPoints[0], 12);
+  } else if (allPoints.length > 1) {
+    map.fitBounds(L.latLngBounds(allPoints), { padding: [36, 36], maxZoom: 14 });
+  }
+});
+</script>
 {% endblock %}

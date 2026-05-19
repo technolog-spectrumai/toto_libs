@@ -37,8 +37,8 @@
       <div class="flex-1 flex flex-col items-center gap-1">
         <div class="h-2.5 w-2.5 rounded-full
           {% if step_key == shipment.status %}bg-current scale-125
-          {% elif shipment.status == 'delivered' or shipment.status == 'shipped' and step_key == 'packed' or shipment.status == 'shipped' and step_key == 'pending' or shipment.status == 'packed' and step_key == 'pending' %}bg-green-500
-          {% else %}bg-current/20{% endif %}"></div>
+          {% elif shipment.status == 'delivered' or shipment.status == 'shipped' and step_key == 'packed' or shipment.status == 'shipped' and step_key == 'pending' or shipment.status == 'packed' and step_key == 'pending' %}{% else %}bg-current/20{% endif %}"
+          {% if shipment.status == 'delivered' or shipment.status == 'shipped' and step_key == 'packed' or shipment.status == 'shipped' and step_key == 'pending' or shipment.status == 'packed' and step_key == 'pending' %}:class="darkMode ? 'bg-success-dark' : 'bg-success-light'"{% endif %"></div>
         <span class="text-[9px] opacity-50">{{ step_label }}</span>
       </div>
       {% if not forloop.last %}<div class="flex-1 h-px bg-current/20 mb-3"></div>{% endif %}

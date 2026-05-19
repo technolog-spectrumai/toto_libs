@@ -32,7 +32,10 @@ class CheckoutForm(forms.Form):
             'x-bind:class': _XBIND,
         }),
     )
-    # Existing saved address PK (profile default or selected from list)
+
+    # Saved ShipmentLocation PK — set when user picks a saved location card
+    selected_location = forms.IntegerField(required=False, widget=forms.HiddenInput)
+    # Profile address PK fallback
     shipping_address = forms.IntegerField(required=False, widget=forms.HiddenInput)
 
     # New address fields — all optional; if any are filled a new Address is created
@@ -44,6 +47,8 @@ class CheckoutForm(forms.Form):
     new_apartment = forms.CharField(required=False, label='Apartment', widget=_text('Apartment (optional)'))
     new_latitude  = forms.FloatField(required=False, widget=forms.HiddenInput)
     new_longitude = forms.FloatField(required=False, widget=forms.HiddenInput)
+    save_location = forms.BooleanField(required=False, label='Save this address for later')
+    location_label = forms.CharField(required=False, label='Label', widget=_text('Home, Work, Mum\'s…'))
 
     payment_method = forms.ChoiceField(choices=[
         ('transfer', 'Transfer (asset balance)'),

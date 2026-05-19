@@ -39,7 +39,8 @@
                 {{ asset.unit_name }}
               </span>
               {% if not asset.active %}
-                <span class="rounded bg-red-500/10 px-2 py-0.5 text-xs font-semibold text-red-500">
+                <span class="rounded px-2 py-0.5 text-xs font-semibold"
+                    :class="darkMode ? 'bg-warn-dark/10 text-warn-dark' : 'bg-warn-light/10 text-warn-light'">
                   {% trans "Inactive" %}
                 </span>
               {% endif %}

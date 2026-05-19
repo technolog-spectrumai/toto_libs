@@ -8,7 +8,7 @@ from django.views import View
 from django.views.generic import TemplateView, ListView, DetailView, FormView, CreateView, UpdateView
 from toto.core.page import PageProcessor
 from .forms import AddToCartForm, CheckoutForm, ProductForm, ReviewForm, ShipmentForm
-from .models import Product, ProductCategory, Vendor, CartItem, Order, OrderItem, Shipment, ProductReview
+from .models import Product, ProductCategory, Vendor, CartItem, Order, OrderItem, Shipment, ProductReview, ShipmentLocation
 from .selectors import active_shop, published_products, get_current_cart, customer_orders, product_review_metrics, vendor_inventory_metrics
 from .services import (
     add_product_to_cart, create_order_from_cart, apply_coupon,
@@ -156,7 +156,7 @@ class UpdateCartItemView(View):
         return redirect('bazaar:cart')
 
 
-class CheckoutView(BazaarContextMixin, FormView):
+class CheckoutView(BazaarContextMixin, LoginRequiredMixin, FormView):
     template_name = 'bazaar/checkout.html'
     form_class = CheckoutForm
 
@@ -179,16 +179,15 @@ class CheckoutView(BazaarContextMixin, FormView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context['default_address'] = self._user_default_address()
-        if self.request.user.is_authenticated:
-            from toto.locations.models import Address
-            person = getattr(self.request.user, 'community_profile', None)
-            if person and person.address_id:
-                # Surface the profile address; user can override via radio if more exist
-                context['user_addresses'] = Address.objects.filter(
-                    pk=person.address_id
-                )
-            else:
-                context['user_addresses'] = Address.objects.none()
+        user = self.request.user
+        if user.is_authenticated:
+            context['saved_locations'] = (
+                ShipmentLocation.objects
+                .filter(user=user)
+                .select_related('address')
+            )
+        else:
+            context['saved_locations'] = ShipmentLocation.objects.none()
         return context
 
     def form_valid(self, form):
@@ -200,6 +199,8 @@ class CheckoutView(BazaarContextMixin, FormView):
         email = user.email if user.is_authenticated else ''
 
         d = form.cleaned_data
+        shipping_address = None
+
         if form.has_new_address():
             addr = Address(
                 country_name=(d.get('new_country') or '').upper()[:2],
@@ -213,7 +214,18 @@ class CheckoutView(BazaarContextMixin, FormView):
             if lat is not None and lng is not None:
                 addr.geometry = Point(lng, lat, srid=4326)
             addr.save()
+            if user.is_authenticated and d.get('save_location'):
+                ShipmentLocation.objects.create(
+                    user=user,
+                    address=addr,
+                    label=d.get('location_label') or '',
+                    is_default=not ShipmentLocation.objects.filter(user=user).exists(),
+                )
             shipping_address = addr
+        elif d.get('selected_location') and user.is_authenticated:
+            loc = ShipmentLocation.objects.filter(pk=d['selected_location'], user=user).select_related('address').first()
+            if loc:
+                shipping_address = loc.address
         else:
             addr_pk = d.get('shipping_address')
             shipping_address = Address.objects.filter(pk=addr_pk).first() if addr_pk else None
@@ -273,10 +285,47 @@ class CustomerOrderDetailView(BazaarContextMixin, LoginRequiredMixin, DetailView
     def get_queryset(self):
         return customer_orders(self.request.user)
     def get_context_data(self, **kwargs):
+        import json as _json
         context = super().get_context_data(**kwargs)
-        context['shipments'] = self.object.shipments.select_related(
-            'shipping_method', 'vendor', 'origin_address', 'destination_address'
-        ).order_by('-id')
+        shipments = self.object.shipments.select_related(
+            'shipping_method', 'vendor', 'origin_address', 'destination_address',
+            'logistics_package',
+        ).order_by('id')
+        context['shipments'] = shipments
+
+        def _geom(addr):
+            if addr and addr.geometry:
+                return _json.loads(addr.geometry.geojson)
+            return None
+
+        shipping_addr = self.object.shipping_address
+
+        def _pkg_location(shipment):
+            pkg = getattr(shipment, 'logistics_package', None)
+            if not pkg:
+                return None
+            last = pkg.events.select_related('location').order_by('-occurred_at').first()
+            if last and last.location:
+                return {'label': str(last.location), 'geometry': _geom(last.location)}
+            return None
+
+        payload = {
+            'order_number': self.object.order_number,
+            'delivery': {'label': str(shipping_addr), 'geometry': _geom(shipping_addr)} if shipping_addr else None,
+            'shipments': [
+                {
+                    'id': s.pk,
+                    'carrier': s.carrier,
+                    'status_display': s.get_status_display(),
+                    'origin': {'label': str(s.origin_address), 'geometry': _geom(s.origin_address)} if s.origin_address else None,
+                    'destination': {'label': str(s.destination_address), 'geometry': _geom(s.destination_address)} if s.destination_address else None,
+                    'current_location': _pkg_location(s),
+                }
+                for s in shipments
+            ],
+        }
+        context['payload_json'] = _json.dumps(payload)
+
         if self.object.payment_status != 'paid':
             sources, preferred = get_wallet_payment_sources(self.request.user, self.object)
             context['wallet_payment_sources'] = sources

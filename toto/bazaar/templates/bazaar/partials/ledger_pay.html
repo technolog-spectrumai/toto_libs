@@ -48,7 +48,8 @@
         <input type="hidden" name="next"        value="{{ request.path }}">
         <button type="submit"
           :class="darkMode ? 'bg-primary-bg-dark hover:border-accent-1' : 'bg-primary-bg-light hover:border-accent-2'"
-          class="w-full rounded-xl border {% if src.is_preferred %}border-green-500/60{% else %}border-current/10{% endif %}
+          :class="darkMode ? '{% if src.is_preferred %}border-accent-1{% else %}border-current/10{% endif %}' : '{% if src.is_preferred %}border-accent-2{% else %}border-current/10{% endif %}'"
+          class="w-full rounded-xl border
                  px-4 py-3 text-left text-sm transition hover:shadow-md
                  {% if not src.can_pay %}opacity-50 cursor-not-allowed{% endif %}"
           {% if not src.can_pay %}disabled{% endif %}>
@@ -56,8 +57,8 @@
             <div class="space-y-0.5">
               <p class="font-bold flex items-center gap-2">
                 {{ src.holding.asset.unit_name }}
-                {% if src.is_preferred %}<span class="text-[10px] text-green-500 font-normal">{% trans "recommended" %}</span>{% endif %}
-                {% if not src.can_pay %}<span class="text-[10px] text-red-500 font-normal">{% trans "insufficient" %}</span>{% endif %}
+                {% if src.is_preferred %}<span class="text-[10px] font-normal" :class="darkMode ? 'text-success-dark' : 'text-success-light'">{% trans "recommended" %}</span>{% endif %}
+                {% if not src.can_pay %}<span class="text-[10px] font-normal" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{% trans "insufficient" %}</span>{% endif %}
               </p>
               <p class="text-xs opacity-60">{{ src.account.code }}</p>
             </div>
@@ -102,13 +103,14 @@
       <input type="hidden" name="next"       value="{{ request.path }}">
       <button type="submit"
         :class="darkMode ? 'bg-primary-bg-dark hover:border-accent-1' : 'bg-primary-bg-light hover:border-accent-2'"
-        class="w-full rounded-xl border {% if src.is_preferred %}border-amber-500/60{% else %}border-current/10{% endif %}
+        :class="darkMode ? '{% if src.is_preferred %}border-accent-1{% else %}border-current/10{% endif %}' : '{% if src.is_preferred %}border-accent-2{% else %}border-current/10{% endif %}'"
+        class="w-full rounded-xl border
                px-4 py-3 text-left text-sm transition hover:shadow-md">
         <div class="flex items-center justify-between gap-4">
           <div class="space-y-0.5">
             <p class="font-bold flex items-center gap-2">
               {{ src.holding.asset.unit_name }}
-              {% if src.is_preferred %}<span class="text-[10px] text-amber-500 font-normal">{% trans "recommended" %}</span>{% endif %}
+              {% if src.is_preferred %}<span class="text-[10px] font-normal" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{% trans "recommended" %}</span>{% endif %}
             </p>
             <p class="text-xs opacity-60">{{ src.account.code }}</p>
           </div>

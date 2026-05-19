@@ -10,14 +10,14 @@
     :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
     class="rounded-lg border p-8 shadow-sm text-center">
     {% if chain_valid %}
-      <i class="fa-solid fa-circle-check text-6xl text-green-500"></i>
-      <h2 class="mt-4 text-2xl font-bold text-green-500">{% trans "Chain is valid" %}</h2>
+      <i class="fa-solid fa-circle-check text-6xl" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+      <h2 class="mt-4 text-2xl font-bold" :class="darkMode ? 'text-success-dark' : 'text-success-light'">{% trans "Chain is valid" %}</h2>
       <p class="mt-2 text-sm opacity-70">
         {% blocktrans with count=hash_count %}All {{ count }} hash records verified successfully.{% endblocktrans %}
       </p>
     {% else %}
-      <i class="fa-solid fa-circle-exclamation text-6xl text-red-500"></i>
-      <h2 class="mt-4 text-2xl font-bold text-red-500">{% trans "Chain integrity failure" %}</h2>
+      <i class="fa-solid fa-circle-exclamation text-6xl" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
+      <h2 class="mt-4 text-2xl font-bold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{% trans "Chain integrity failure" %}</h2>
       <p class="mt-2 text-sm opacity-70">
         {% trans "One or more hash records do not match. The ledger may have been tampered with." %}
       </p>
@@ -31,7 +31,7 @@
       <div
         :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
         class="rounded-lg p-4">
-        <div class="text-3xl font-bold {% if chain_valid %}text-green-500{% else %}text-red-500{% endif %}">
+        <div class="text-3xl font-bold" :class="{% if chain_valid %}(darkMode ? 'text-success-dark' : 'text-success-light'){% else %}(darkMode ? 'text-warn-dark' : 'text-warn-light'){% endif %}">
           {% if chain_valid %}✓{% else %}✗{% endif %}
         </div>
         <div class="text-xs opacity-65">{% trans "Status" %}</div>

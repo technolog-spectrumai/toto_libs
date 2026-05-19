@@ -64,14 +64,14 @@
 
         {% if s.origin_address %}
         <div class="flex items-start gap-2 text-xs">
-          <span class="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-blue-400"></span>
+          <span class="mt-0.5 h-2 w-2 shrink-0 rounded-full" :class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'"></span>
           <span class="opacity-70">{{ s.origin_address }}</span>
         </div>
         {% endif %}
 
         {% if s.destination_address %}
         <div class="flex items-start gap-2 text-xs">
-          <span class="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-green-400"></span>
+          <span class="mt-0.5 h-2 w-2 shrink-0 rounded-full" :class="darkMode ? 'bg-success-dark' : 'bg-success-light'"></span>
           <span class="opacity-70">{{ s.destination_address }}</span>
         </div>
         {% endif %}

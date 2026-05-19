@@ -23,7 +23,8 @@
           </h2>
           <span class="rounded border border-current/20 px-2 py-1 text-sm font-semibold">{{ asset.unit_name }}</span>
           {% if not asset.active %}
-            <span class="rounded bg-red-500/10 px-2 py-1 text-sm font-semibold text-red-500">{% trans "Inactive" %}</span>
+            <span class="rounded px-2 py-1 text-sm font-semibold"
+                  :class="darkMode ? 'bg-warn-dark/10 text-warn-dark' : 'bg-warn-light/10 text-warn-light'">{% trans "Inactive" %}</span>
           {% endif %}
         </div>
         <div class="flex flex-wrap gap-4 text-sm opacity-70">
@@ -31,7 +32,7 @@
           <span><i class="fa-solid fa-database mr-1"></i>{% trans "Total supply" %}: {{ asset.total_supply_display }} {{ asset.unit_name }}</span>
           <span><i class="fa-solid fa-calendar mr-1"></i>{{ asset.created_at|date:"M d, Y H:i" }}</span>
           {% if asset.is_currency %}
-          <span class="text-green-500 font-semibold"><i class="fa-solid fa-coins mr-1"></i>{% trans "Payment currency" %}</span>
+          <span class="font-semibold" :class="darkMode ? 'text-success-dark' : 'text-success-light'"><i class="fa-solid fa-coins mr-1"></i>{% trans "Payment currency" %}</span>
           {% endif %}
         </div>
         {% if asset.is_currency %}
@@ -50,22 +51,22 @@
           :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
           class="rounded-lg px-4 py-3 text-center">
           {% if ledger_status.total_supply_matches %}
-            <i class="fa-solid fa-circle-check text-green-500"></i>
-            <span class="ml-1 font-semibold text-green-500">{% trans "Supply verified" %}</span>
+            <i class="fa-solid fa-circle-check" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+            <span class="ml-1 font-semibold" :class="darkMode ? 'text-success-dark' : 'text-success-light'">{% trans "Supply verified" %}</span>
           {% else %}
-            <i class="fa-solid fa-circle-exclamation text-red-500"></i>
-            <span class="ml-1 font-semibold text-red-500">{% trans "Supply mismatch" %}</span>
+            <i class="fa-solid fa-circle-exclamation" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
+            <span class="ml-1 font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{% trans "Supply mismatch" %}</span>
           {% endif %}
         </div>
         <div
           :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
           class="rounded-lg px-4 py-3 text-center">
           {% if ledger_status.entries_balanced %}
-            <i class="fa-solid fa-circle-check text-green-500"></i>
-            <span class="ml-1 font-semibold text-green-500">{% trans "Entries balanced" %}</span>
+            <i class="fa-solid fa-circle-check" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+            <span class="ml-1 font-semibold" :class="darkMode ? 'text-success-dark' : 'text-success-light'">{% trans "Entries balanced" %}</span>
           {% else %}
-            <i class="fa-solid fa-circle-exclamation text-red-500"></i>
-            <span class="ml-1 font-semibold text-red-500">{% trans "Entries unbalanced" %}</span>
+            <i class="fa-solid fa-circle-exclamation" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
+            <span class="ml-1 font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{% trans "Entries unbalanced" %}</span>
           {% endif %}
         </div>
       </div>
