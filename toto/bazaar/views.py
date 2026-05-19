@@ -159,10 +159,73 @@ class UpdateCartItemView(View):
 class CheckoutView(BazaarContextMixin, FormView):
     template_name = 'bazaar/checkout.html'
     form_class = CheckoutForm
+
+    def _user_default_address(self):
+        user = self.request.user
+        if not user.is_authenticated:
+            return None
+        person = getattr(user, 'community_profile', None)
+        if person and person.address_id:
+            return person.address
+        return None
+
+    def get_initial(self):
+        initial = super().get_initial()
+        addr = self._user_default_address()
+        if addr:
+            initial['shipping_address'] = addr.pk
+        return initial
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['default_address'] = self._user_default_address()
+        if self.request.user.is_authenticated:
+            from toto.locations.models import Address
+            person = getattr(self.request.user, 'community_profile', None)
+            if person and person.address_id:
+                # Surface the profile address; user can override via radio if more exist
+                context['user_addresses'] = Address.objects.filter(
+                    pk=person.address_id
+                )
+            else:
+                context['user_addresses'] = Address.objects.none()
+        return context
+
     def form_valid(self, form):
+        from toto.locations.models import Address
+        from django.contrib.gis.geos import Point
+
         cart = get_current_cart(self.request)
+        user = self.request.user
+        email = user.email if user.is_authenticated else ''
+
+        d = form.cleaned_data
+        if form.has_new_address():
+            addr = Address(
+                country_name=(d.get('new_country') or '').upper()[:2],
+                state_or_province_name=d.get('new_state') or '',
+                locality_name=d.get('new_locality') or '',
+                street=d.get('new_street') or '',
+                building=d.get('new_building') or '',
+                apartment=d.get('new_apartment') or None,
+            )
+            lat, lng = d.get('new_latitude'), d.get('new_longitude')
+            if lat is not None and lng is not None:
+                addr.geometry = Point(lng, lat, srid=4326)
+            addr.save()
+            shipping_address = addr
+        else:
+            addr_pk = d.get('shipping_address')
+            shipping_address = Address.objects.filter(pk=addr_pk).first() if addr_pk else None
+
+        checkout_data = {
+            **d,
+            'email': email,
+            'shipping_address': shipping_address,
+            'billing_address': shipping_address,
+        }
         try:
-            order = create_order_from_cart(cart, form.cleaned_data)
+            order = create_order_from_cart(cart, checkout_data)
         except ValueError as exc:
             form.add_error(None, str(exc))
             return self.form_invalid(form)
@@ -462,7 +525,7 @@ class FulfillObligationView(LoginRequiredMixin, View):
 
 
 class ShipmentMapView(BazaarContextMixin, DetailView):
-    """Geographic shipment route modal view."""
+    """Shipment route map — mirrors the travels/travel_review style."""
     model = Order
     template_name = 'bazaar/customer/shipment_map.html'
     context_object_name = 'order'
@@ -470,27 +533,32 @@ class ShipmentMapView(BazaarContextMixin, DetailView):
     slug_url_kwarg = 'order_number'
 
     def get_context_data(self, **kwargs):
+        import json as _json
         context = super().get_context_data(**kwargs)
         shipments = self.object.shipments.select_related(
             'origin_address', 'destination_address', 'vendor', 'shipping_method'
-        ).order_by('-id')
+        ).order_by('id')
         context['shipments'] = shipments
 
-        waypoints = []
-        for s in shipments:
-            if s.origin_address and s.origin_address.geometry:
-                g = s.origin_address.geometry
-                waypoints.append({
-                    'lat': g.y, 'lng': g.x,
-                    'label': str(s.origin_address),
-                    'type': 'origin',
-                })
-            if s.destination_address and s.destination_address.geometry:
-                g = s.destination_address.geometry
-                waypoints.append({
-                    'lat': g.y, 'lng': g.x,
-                    'label': str(s.destination_address),
-                    'type': 'destination',
-                })
-        context['waypoints_json'] = waypoints
+        def geom(address):
+            if address and address.geometry:
+                return _json.loads(address.geometry.geojson)
+            return None
+
+        payload = {
+            'order_number': self.object.order_number,
+            'shipments': [
+                {
+                    'id': s.pk,
+                    'carrier': s.carrier,
+                    'status': s.status,
+                    'status_display': s.get_status_display(),
+                    'tracking_number': s.tracking_number,
+                    'origin': {'label': str(s.origin_address), 'geometry': geom(s.origin_address)} if s.origin_address else None,
+                    'destination': {'label': str(s.destination_address), 'geometry': geom(s.destination_address)} if s.destination_address else None,
+                }
+                for s in shipments
+            ],
+        }
+        context['payload_json'] = _json.dumps(payload)
         return context

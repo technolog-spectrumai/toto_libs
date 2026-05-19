@@ -141,6 +141,18 @@ class Command(IngressCommand):
             vendors[spec["slug"]] = vendor
             if created:
                 self.stdout.write(f"  + vendor '{vendor.display_name}'")
+
+        # Link the first two staff users to the first active vendor in each shop
+        staff = list(User.objects.filter(is_staff=True)[:2])
+        active_gl = [v for v in vendors.values() if v.shop.slug == "greenleaf-market" and v.status == "active"]
+        active_dh = [v for v in vendors.values() if v.shop.slug == "digital-horizons" and v.status == "active"]
+        pairs = list(zip(staff, (active_gl + active_dh)[:len(staff)]))
+        for user, vendor in pairs:
+            if not vendor.user_id:
+                vendor.user = user
+                vendor.save(update_fields=["user"])
+                self.stdout.write(f"  ↔ vendor '{vendor.display_name}' → user '{user.username}'")
+
         return vendors
 
     # ------------------------------------------------------------------ #

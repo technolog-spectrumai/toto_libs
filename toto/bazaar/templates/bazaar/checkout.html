@@ -1,13 +1,182 @@
 {% extends "bazaar/base.html" %}
-{% block bazaar_title %}Checkout{% endblock %}
-{% block bazaar_heading %}Checkout{% endblock %}
-{% block bazaar_subtitle %}<p class="mt-2 max-w-2xl text-sm opacity-70">Confirm contact details and payment method.</p>{% endblock %}
+{% load i18n %}
+
+{% block bazaar_title %}{% trans "Checkout" %}{% endblock %}
+{% block bazaar_heading %}{% trans "Checkout" %}{% endblock %}
+{% block bazaar_subtitle %}<p class="mt-2 max-w-2xl text-sm opacity-70">{% trans "Review your order and choose how to pay." %}</p>{% endblock %}
+
+{% block start_script %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+{% endblock %}
+
 {% block bazaar_content %}
-<form method="post" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="mx-auto max-w-3xl space-y-5 rounded-2xl border p-5 shadow-sm">{% csrf_token %}
-  {{ form.non_field_errors }}
-  {% for field in form %}
-    <label class="block"><span class="mb-1 block text-sm font-semibold">{{ field.label }}</span>{{ field }}{% if field.errors %}<span class="mt-1 block text-xs text-red-500">{{ field.errors|join:", " }}</span>{% endif %}</label>
-  {% endfor %}
-  <div class="flex justify-end gap-2"><a href="{% url 'bazaar:cart' %}" class="rounded-lg border border-current/20 px-4 py-2 text-sm font-semibold">Back to cart</a><button :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'" class="rounded-lg px-5 py-2 text-sm font-semibold shadow-sm"><i class="fa-solid fa-paper-plane"></i> Place order</button></div>
-</form>
+<div class="mx-auto max-w-2xl space-y-5"
+     x-data="{
+       newAddr: false,
+       lat: {{ form.new_latitude.value|default:'null' }},
+       lng: {{ form.new_longitude.value|default:'null' }},
+       initMap() {
+         const isDark = localStorage.getItem('darkMode') === 'true';
+         const map = L.map('checkout-map').setView([52.0, 19.0], 6);
+         L.tileLayer(
+           isDark
+             ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+             : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+           { maxZoom: 19, attribution: '© OpenStreetMap' }
+         ).addTo(map);
+
+         let marker = null;
+         {% if default_address and default_address.geometry %}
+         const defLat = {{ default_address.geometry.y }};
+         const defLng = {{ default_address.geometry.x }};
+         map.setView([defLat, defLng], 14);
+         marker = L.marker([defLat, defLng]).addTo(map)
+           .bindPopup('{{ default_address|escapejs }}').openPopup();
+         {% endif %}
+
+         map.on('click', (e) => {
+           this.lat = parseFloat(e.latlng.lat.toFixed(6));
+           this.lng = parseFloat(e.latlng.lng.toFixed(6));
+           if (marker) map.removeLayer(marker);
+           marker = L.marker([this.lat, this.lng]).addTo(map)
+             .bindPopup(\`\${this.lat}, \${this.lng}\`).openPopup();
+         });
+
+         // slight delay so the map renders after x-show makes it visible
+         setTimeout(() => map.invalidateSize(), 50);
+       }
+     }">
+
+  <form method="post">
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+
+    <!-- Contact (read-only) -->
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-2xl border p-5 shadow-sm space-y-1">
+      <p class="text-xs font-semibold opacity-60 uppercase tracking-wide">{% trans "Contact" %}</p>
+      <p class="font-semibold">{{ request.user.email|default:request.user.username }}</p>
+    </div>
+
+    <!-- Delivery address -->
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-2xl border p-5 shadow-sm space-y-4">
+      <p class="text-xs font-semibold opacity-60 uppercase tracking-wide">{% trans "Delivery address" %}</p>
+
+      <!-- Saved profile address -->
+      {% if default_address %}
+      <div x-show="!newAddr" class="space-y-3">
+        <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+             class="flex items-start gap-3 rounded-xl px-4 py-3 text-sm">
+          <i class="fa-solid fa-location-dot mt-0.5 opacity-60"></i>
+          <div>
+            <p class="font-semibold">{{ default_address }}</p>
+            {% if default_address.locality_name %}
+            <p class="text-xs opacity-60">{{ default_address.locality_name }}{% if default_address.state_or_province_name %}, {{ default_address.state_or_province_name }}{% endif %}</p>
+            {% endif %}
+          </div>
+        </div>
+        <input type="hidden" name="shipping_address" value="{{ default_address.pk }}">
+        <button type="button" @click="newAddr = true; $nextTick(() => initMap())"
+                :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                class="text-xs underline opacity-60 hover:opacity-100 transition">
+          {% trans "Use a different address" %} →
+        </button>
+      </div>
+      {% else %}
+      <p x-show="!newAddr" class="text-sm opacity-50">{% trans "No saved address." %}
+        <button type="button" @click="newAddr = true; $nextTick(() => initMap())"
+                class="underline ml-1">{% trans "Add one now" %}</button>
+      </p>
+      {% endif %}
+
+      <!-- New address panel -->
+      <div x-show="newAddr" x-cloak class="space-y-4">
+        <button type="button" @click="newAddr = false"
+                class="text-xs underline opacity-60 hover:opacity-100 transition">
+          ← {% trans "Use saved address" %}
+        </button>
+
+        <!-- Map -->
+        <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+             class="rounded-xl border overflow-hidden">
+          <div id="checkout-map" style="height:300px;width:100%;"></div>
+        </div>
+        <p class="text-xs opacity-50"><i class="fa-solid fa-hand-pointer mr-1"></i>{% trans "Click the map to pin your delivery location." %}</p>
+
+        <!-- Hidden lat/lng populated by map click -->
+        <input type="hidden" name="new_latitude"  :value="lat">
+        <input type="hidden" name="new_longitude" :value="lng">
+
+        <!-- Text fields -->
+        <div class="grid grid-cols-2 gap-3">
+          <div class="space-y-1">
+            <label class="block text-xs font-semibold opacity-70">{{ form.new_country.label }}</label>
+            {{ form.new_country }}
+          </div>
+          <div class="space-y-1">
+            <label class="block text-xs font-semibold opacity-70">{{ form.new_state.label }}</label>
+            {{ form.new_state }}
+          </div>
+          <div class="space-y-1 col-span-2">
+            <label class="block text-xs font-semibold opacity-70">{{ form.new_locality.label }}</label>
+            {{ form.new_locality }}
+          </div>
+          <div class="space-y-1">
+            <label class="block text-xs font-semibold opacity-70">{{ form.new_street.label }}</label>
+            {{ form.new_street }}
+          </div>
+          <div class="space-y-1">
+            <label class="block text-xs font-semibold opacity-70">{{ form.new_building.label }}</label>
+            {{ form.new_building }}
+          </div>
+          <div class="space-y-1 col-span-2">
+            <label class="block text-xs font-semibold opacity-70">{{ form.new_apartment.label }}</label>
+            {{ form.new_apartment }}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Delivery note -->
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-2xl border p-5 shadow-sm space-y-2">
+      <label class="block">
+        <p class="text-xs font-semibold opacity-60 uppercase tracking-wide mb-2">{{ form.customer_note.label }}</p>
+        {{ form.customer_note }}
+      </label>
+    </div>
+
+    <!-- Payment method -->
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-2xl border p-5 shadow-sm space-y-3">
+      <p class="text-xs font-semibold opacity-60 uppercase tracking-wide">{% trans "Payment method" %}</p>
+      <div class="space-y-2">
+        {% for value, label in form.payment_method.field.choices %}
+        <label class="flex items-center gap-3 cursor-pointer text-sm">
+          <input type="radio" name="payment_method" value="{{ value }}"
+                 {% if forloop.first %}checked{% endif %}
+                 class="accent-current">
+          <span>{{ label }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="flex justify-end gap-3">
+      <a href="{% url 'bazaar:cart' %}"
+         :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+         class="rounded-xl border px-5 py-2.5 text-sm font-semibold transition hover:opacity-80">
+        {% trans "Back to cart" %}
+      </a>
+      <button type="submit"
+        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+        class="rounded-xl px-6 py-2.5 text-sm font-bold shadow-sm transition hover:opacity-85">
+        <i class="fa-solid fa-paper-plane mr-1"></i> {% trans "Place order" %}
+      </button>
+    </div>
+  </form>
+
+</div>
 {% endblock %}

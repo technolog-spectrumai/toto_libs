@@ -1,0 +1,51 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Packages" %} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<div :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+     class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-5xl space-y-6">
+
+    <header class="flex items-center justify-between gap-4">
+      <div>
+        <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+           class="text-xs font-semibold uppercase tracking-wide">{% trans "Logistics" %}</p>
+        <h1 class="mt-1 text-3xl font-bold">{% trans "Packages" %}</h1>
+      </div>
+    </header>
+
+    {% if packages %}
+    <div class="space-y-3">
+      {% for pkg in packages %}
+      <a href="{% url 'logistics:package-tracking' tracking_number=pkg.tracking_number %}"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-primary-bg-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-primary-bg-light'"
+         class="flex items-center gap-4 rounded-2xl border p-4 shadow-sm transition">
+        <div class="flex-1 min-w-0 space-y-0.5">
+          <p class="font-mono font-bold text-sm truncate">{{ pkg.tracking_number }}</p>
+          {% if pkg.carrier %}<p class="text-xs opacity-60">{{ pkg.carrier }}</p>{% endif %}
+          <div class="flex items-center gap-3 text-xs opacity-50 mt-1">
+            {% if pkg.origin %}<span><i class="fa-solid fa-circle-dot mr-1 text-blue-400"></i>{{ pkg.origin.locality_name|default:pkg.origin }}</span>{% endif %}
+            {% if pkg.destination %}<span><i class="fa-solid fa-location-dot mr-1 text-green-400"></i>{{ pkg.destination.locality_name|default:pkg.destination }}</span>{% endif %}
+          </div>
+        </div>
+        <span :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+              class="rounded-full px-2.5 py-1 text-xs font-semibold shrink-0">
+          {{ pkg.get_status_display }}
+        </span>
+        <i class="fa-solid fa-arrow-right opacity-30 shrink-0"></i>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-2xl border p-12 text-center shadow-sm">
+      <i class="fa-solid fa-box text-4xl opacity-20 mb-4"></i>
+      <p class="font-semibold opacity-60">{% trans "No packages yet." %}</p>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}
