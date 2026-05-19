@@ -13,6 +13,7 @@ urlpatterns = [
     path('bazaar/cart/add/', views.AddToCartView.as_view(), name='cart-add'),
     path('bazaar/cart/item/<int:pk>/update/', views.UpdateCartItemView.as_view(), name='cart-item-update'),
     path('bazaar/checkout/', views.CheckoutView.as_view(), name='checkout'),
+    path('bazaar/checkout/reverse-geocode/', views.CheckoutReverseGeocodeView.as_view(), name='checkout-reverse-geocode'),
     path('bazaar/confirmation/<str:order_number>/', views.OrderConfirmationView.as_view(), name='order-confirmation'),
     path('bazaar/confirmation/<str:order_number>/pay/ledger/', views.LedgerPaymentView.as_view(), name='order-ledger-pay'),
     path('bazaar/orders/', views.CustomerOrderListView.as_view(), name='customer-orders'),

@@ -21,6 +21,7 @@ document.addEventListener('alpine:init', () => {
     newMode: false,
     addressOpen: false,
     locating: false,
+    geocoding: false,
     saveAddr: false,
     lat: null,
     lng: null,
@@ -62,17 +63,9 @@ document.addEventListener('alpine:init', () => {
           .addTo(this._map);
       }
 
-      // Map click → switch to new-address mode and move pin
+      // Map click -> switch to new-address mode, move pin, and fill address fields.
       this._map.on('click', (e) => {
-        this.lat = parseFloat(e.latlng.lat.toFixed(6));
-        this.lng = parseFloat(e.latlng.lng.toFixed(6));
-        this.selectedLoc = null;
-        this.newMode = true;
-        if (this._marker) this._map.removeLayer(this._marker);
-        this._marker = L.marker([this.lat, this.lng])
-          .bindPopup(this.lat.toFixed(4) + ', ' + this.lng.toFixed(4))
-          .openPopup()
-          .addTo(this._map);
+        this.useCoordinates(e.latlng.lat, e.latlng.lng);
       });
 
       setTimeout(() => this._map.invalidateSize(), 80);
@@ -97,24 +90,64 @@ document.addEventListener('alpine:init', () => {
       if (loc) this.moveTo(loc.coords, loc.label || loc.address);
     },
 
+    _setInput(name, value) {
+      const input = this.$root.querySelector(`[name="${name}"]`);
+      if (!input || value === undefined || value === null) return;
+      input.value = value;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    },
+
+    _setNewAddressFields(address) {
+      const data = address || {};
+      this._setInput('new_country', data.country_name || '');
+      this._setInput('new_state', data.state_or_province_name || '');
+      this._setInput('new_locality', data.locality_name || '');
+      this._setInput('new_street', data.street || '');
+      this._setInput('new_building', data.building || '');
+      this._setInput('new_apartment', '');
+    },
+
+    async reverseGeocode() {
+      if (this.lat === null || this.lng === null) return;
+      this.geocoding = true;
+      try {
+        const url = new URL('{% url "bazaar:checkout-reverse-geocode" %}', window.location.origin);
+        url.searchParams.set('lat', this.lat);
+        url.searchParams.set('lng', this.lng);
+        const res = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+        const data = await res.json();
+        if (data.ok) this._setNewAddressFields(data.address);
+      } catch {
+      } finally {
+        this.geocoding = false;
+      }
+    },
+
+    useCoordinates(latitude, longitude, zoom = null) {
+      this.lat = parseFloat(Number(latitude).toFixed(6));
+      this.lng = parseFloat(Number(longitude).toFixed(6));
+      this.selectedLoc = null;
+      this.newMode = true;
+      this._setNewAddressFields({});
+      if (this._map) {
+        if (zoom) this._map.setView([this.lat, this.lng], zoom);
+        if (this._marker) this._map.removeLayer(this._marker);
+        this._marker = L.marker([this.lat, this.lng])
+          .bindPopup(this.lat.toFixed(4) + ', ' + this.lng.toFixed(4))
+          .openPopup()
+          .addTo(this._map);
+      }
+      this.reverseGeocode();
+    },
+
     locateMe() {
       if (!navigator.geolocation) return;
       this.locating = true;
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           this.locating = false;
-          this.lat = parseFloat(pos.coords.latitude.toFixed(6));
-          this.lng = parseFloat(pos.coords.longitude.toFixed(6));
-          this.selectedLoc = null;
-          this.newMode = true;
-          if (this._map) {
-            this._map.setView([this.lat, this.lng], 15);
-            if (this._marker) this._map.removeLayer(this._marker);
-            this._marker = L.marker([this.lat, this.lng])
-              .bindPopup(this.lat.toFixed(4) + ', ' + this.lng.toFixed(4))
-              .openPopup()
-              .addTo(this._map);
-          }
+          this.useCoordinates(pos.coords.latitude, pos.coords.longitude, 15);
         },
         () => { this.locating = false; }
       );
@@ -276,8 +309,12 @@ document.addEventListener('alpine:init', () => {
            x-transition:enter-end="opacity-100 translate-y-0"
            x-cloak class="space-y-3">
         <p class="text-xs font-semibold opacity-50 uppercase tracking-wide flex items-center gap-1.5">
-          <i class="fa-solid fa-location-crosshairs" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
-          {% trans "New location selected — fill in the details" %}
+          <i class="fa-solid"
+             :class="[
+               geocoding ? 'fa-spinner fa-spin' : 'fa-location-crosshairs',
+               darkMode ? 'text-accent-dark' : 'text-accent-light'
+             ]"></i>
+          <span x-text="geocoding ? '{% trans "Finding address…" %}' : '{% trans "New location selected — fill in the details" %}'"></span>
         </p>
         <div class="grid grid-cols-2 gap-3">
           <div class="space-y-1">

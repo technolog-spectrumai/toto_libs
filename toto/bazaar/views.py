@@ -278,6 +278,19 @@ class CheckoutView(BazaarContextMixin, LoginRequiredMixin, FormView):
         return redirect('bazaar:order-detail', order_number=order.order_number)
 
 
+class CheckoutReverseGeocodeView(LoginRequiredMixin, View):
+    def get(self, request, *args, **kwargs):
+        from toto.locations.geocode import reverse_geocode_address
+
+        lat = request.GET.get('lat')
+        lng = request.GET.get('lng')
+        if lat in (None, '') or lng in (None, ''):
+            return JsonResponse({'ok': False, 'error': 'Coordinates are required.'}, status=400)
+
+        address = reverse_geocode_address(lat, lng)
+        return JsonResponse({'ok': True, 'address': address})
+
+
 class OrderConfirmationView(BazaarContextMixin, DetailView):
     model = Order
     template_name = 'bazaar/order_confirmation.html'
