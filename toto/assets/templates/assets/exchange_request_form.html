@@ -1,0 +1,45 @@
+{% extends "assets/base.html" %}
+{% load i18n %}
+
+{% block assets_title %}{% trans "Request Exchange" %}{% endblock %}
+
+{% block assets_content %}
+<div class="space-y-6">
+  <a href="{% url 'assets:exchange_center' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+    <i class="fa-solid fa-arrow-left"></i>
+    {% trans "Exchange" %}
+  </a>
+
+  <form method="post"
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="max-w-3xl rounded-lg border p-5 shadow-sm">
+    {% csrf_token %}
+    <h2 class="mb-4 flex items-center gap-2 text-lg font-bold">
+      <i class="fa-solid fa-right-left"></i>
+      {% trans "New exchange request" %}
+    </h2>
+    {% if form.non_field_errors %}
+    <div class="mb-4 rounded-lg border px-4 py-3 text-sm font-semibold" :class="darkMode ? 'border-warn-dark text-warn-dark' : 'border-warn-light text-warn-light'">
+      {{ form.non_field_errors }}
+    </div>
+    {% endif %}
+    <div class="grid gap-4 sm:grid-cols-2">
+      {% for field in form %}
+      <div class="{% if field.name == 'note' %}sm:col-span-2{% endif %}">
+        <label for="{{ field.id_for_label }}" class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-70">{{ field.label }}</label>
+        {{ field }}
+        {% for error in field.errors %}
+        <p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ error }}</p>
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+    <div class="mt-5 flex flex-wrap gap-2">
+      <button type="submit" :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'" class="rounded-lg px-4 py-2 text-sm font-bold shadow-sm transition hover:opacity-90">
+        <i class="fa-solid fa-paper-plane mr-1"></i>{% trans "Send request" %}
+      </button>
+      <a href="{% url 'assets:exchange_center' %}" class="rounded-lg border border-current/20 px-4 py-2 text-sm font-semibold">{% trans "Cancel" %}</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

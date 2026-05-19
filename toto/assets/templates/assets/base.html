@@ -66,6 +66,13 @@
           {% trans "Chain" %}
         </a>
         <a
+          href="{% url 'assets:exchange_center' %}"
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-right-left"></i>
+          {% trans "Exchange" %}
+        </a>
+        <a
           href="{% url 'assets:wallet' %}"
           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">

@@ -1,4 +1,5 @@
-from decimal import Decimal
+from dataclasses import dataclass
+from decimal import Decimal, ROUND_UP
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
@@ -241,6 +242,196 @@ def get_stablecoin_for_currency(currency_code: str):
         ).asset
     except Currency.DoesNotExist:
         return None
+
+
+@dataclass(frozen=True)
+class ExchangeQuote:
+    from_asset: Asset
+    to_asset: Asset
+    source_amount: Decimal
+    converted_amount: Decimal
+    commission_amount: Decimal
+    gross_amount: Decimal
+    rate: Decimal
+    commission_percent: Decimal
+    rate_source: str
+
+
+def _display_quantum(asset: Asset) -> Decimal:
+    return Decimal(1).scaleb(-asset.decimals)
+
+
+def _round_display_amount(amount: Decimal, asset: Asset) -> Decimal:
+    return Decimal(amount).quantize(_display_quantum(asset), rounding=ROUND_UP)
+
+
+def get_exchange_rate(from_asset: Asset, to_asset: Asset):
+    from toto.assets.models import AssetExchangeRate
+
+    if from_asset.pk == to_asset.pk:
+        return None, Decimal("1"), Decimal("0"), "same_asset"
+
+    direct = (
+        AssetExchangeRate.objects
+        .filter(from_asset=from_asset, to_asset=to_asset, active=True)
+        .order_by("-updated_at")
+        .first()
+    )
+    if direct:
+        return direct, direct.rate, direct.commission_percent, "direct"
+
+    reverse = (
+        AssetExchangeRate.objects
+        .filter(from_asset=to_asset, to_asset=from_asset, active=True)
+        .order_by("-updated_at")
+        .first()
+    )
+    if reverse:
+        return reverse, Decimal("1") / reverse.rate, reverse.commission_percent, "reverse"
+
+    raise ValidationError(f"No fixed exchange rate from {from_asset.unit_name} to {to_asset.unit_name}.")
+
+
+def quote_exchange(*, from_asset: Asset, to_asset: Asset, amount: Decimal) -> ExchangeQuote:
+    if amount <= 0:
+        raise ValidationError("Exchange amount must be positive.")
+
+    _, rate, commission_percent, rate_source = get_exchange_rate(from_asset, to_asset)
+    converted = _round_display_amount(Decimal(amount) * rate, to_asset)
+    commission = _round_display_amount(converted * (commission_percent / Decimal("100")), to_asset)
+    gross = converted + commission
+    return ExchangeQuote(
+        from_asset=from_asset,
+        to_asset=to_asset,
+        source_amount=Decimal(amount),
+        converted_amount=converted,
+        commission_amount=commission,
+        gross_amount=gross,
+        rate=rate,
+        commission_percent=commission_percent,
+        rate_source=rate_source,
+    )
+
+
+def quote_currency_payment(*, currency_code: str, payment_asset: Asset, amount: Decimal) -> ExchangeQuote:
+    source_asset = get_stablecoin_for_currency(currency_code)
+    if not source_asset:
+        raise ValidationError(f"No asset is pegged to {currency_code}.")
+    return quote_exchange(from_asset=source_asset, to_asset=payment_asset, amount=amount)
+
+
+def get_exchange_fee_account() -> LedgerAccount:
+    account, _ = LedgerAccount.objects.get_or_create(
+        code="platform_exchange_fees",
+        defaults={
+            "name": "Platform Exchange Fees",
+            "account_type": AccountType.SYSTEM,
+            "active": True,
+        },
+    )
+    return account
+
+
+def accept_exchange_request(*, exchange_request, counterparty_account, response_note: str = ""):
+    from django.utils import timezone
+    from toto.assets.queries import get_asset_balance_display
+    from toto.assets.models import AssetExchangeRequest, ExchangeRequestStatus
+
+    with transaction.atomic():
+        req = AssetExchangeRequest.objects.select_for_update().select_related(
+            "requester_account",
+            "counterparty_account",
+            "offer_asset",
+            "request_asset",
+        ).get(pk=exchange_request.pk)
+
+        if req.status != ExchangeRequestStatus.PENDING:
+            raise ValidationError("This exchange request is no longer pending.")
+        if counterparty_account.user_id != req.counterparty_id:
+            raise ValidationError("Counterparty account does not belong to the recipient.")
+
+        requester_total = req.requester_total_display
+        requester_balance = get_asset_balance_display(req.offer_asset, req.requester_account)
+        if requester_balance < requester_total:
+            raise ValidationError(
+                f"Requester has insufficient {req.offer_asset.unit_name}. "
+                f"Needs {requester_total}, has {requester_balance}."
+            )
+
+        counterparty_balance = get_asset_balance_display(req.request_asset, counterparty_account)
+        if counterparty_balance < req.request_amount_display:
+            raise ValidationError(
+                f"You have insufficient {req.request_asset.unit_name}. "
+                f"Needs {req.request_amount_display}, has {counterparty_balance}."
+            )
+
+        offer_ref = f"exchange-{req.pk}-offer"
+        request_ref = f"exchange-{req.pk}-request"
+        transfer_asset(
+            asset=req.offer_asset,
+            sender_account=req.requester_account,
+            receiver_account=counterparty_account,
+            amount=req.offer_amount_display,
+            reference=offer_ref,
+            description=f"Exchange request {req.pk}: offered asset transfer",
+            metadata={"exchange_request": req.pk},
+        )
+        transfer_asset(
+            asset=req.request_asset,
+            sender_account=counterparty_account,
+            receiver_account=req.requester_account,
+            amount=req.request_amount_display,
+            reference=request_ref,
+            description=f"Exchange request {req.pk}: requested asset transfer",
+            metadata={"exchange_request": req.pk},
+        )
+
+        fee_ref = ""
+        if req.commission_amount_display > 0:
+            fee_ref = f"exchange-{req.pk}-fee"
+            transfer_asset(
+                asset=req.offer_asset,
+                sender_account=req.requester_account,
+                receiver_account=get_exchange_fee_account(),
+                amount=req.commission_amount_display,
+                reference=fee_ref,
+                description=f"Exchange request {req.pk}: commission",
+                metadata={"exchange_request": req.pk, "commission_percent": str(req.commission_percent)},
+            )
+
+        req.counterparty_account = counterparty_account
+        req.status = ExchangeRequestStatus.ACCEPTED
+        req.offer_tx_reference = offer_ref
+        req.request_tx_reference = request_ref
+        req.commission_tx_reference = fee_ref
+        req.response_note = response_note
+        req.responded_at = timezone.now()
+        req.save(update_fields=[
+            "counterparty_account",
+            "status",
+            "offer_tx_reference",
+            "request_tx_reference",
+            "commission_tx_reference",
+            "response_note",
+            "responded_at",
+            "updated_at",
+        ])
+        return req
+
+
+def reject_exchange_request(*, exchange_request, response_note: str = ""):
+    from django.utils import timezone
+    from toto.assets.models import AssetExchangeRequest, ExchangeRequestStatus
+
+    with transaction.atomic():
+        req = AssetExchangeRequest.objects.select_for_update().get(pk=exchange_request.pk)
+        if req.status != ExchangeRequestStatus.PENDING:
+            raise ValidationError("This exchange request is no longer pending.")
+        req.status = ExchangeRequestStatus.REJECTED
+        req.response_note = response_note
+        req.responded_at = timezone.now()
+        req.save(update_fields=["status", "response_note", "responded_at", "updated_at"])
+        return req
 
 
 def create_obligation(

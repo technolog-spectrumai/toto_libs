@@ -24,17 +24,32 @@ def get_stablecoin_for_order_currency(order):
 
 
 def get_wallet_payment_sources(user, order):
-    """
-    Return a list of dicts for the payment widget.
-    Each dict: {account, holding, can_pay, is_preferred}
-    """
+    """Return wallet assets with fixed exchange quotes for this order."""
     preferred = get_stablecoin_for_order_currency(order)
     result = []
     for holding in get_user_ledger_sources(user):
+        quote = None
+        error = ""
+        try:
+            from toto.assets.services.assets import quote_currency_payment
+            quote = quote_currency_payment(
+                currency_code=order.currency,
+                payment_asset=holding.asset,
+                amount=order.total_amount,
+            )
+            can_pay = holding.balance_display >= quote.gross_amount
+        except Exception as exc:
+            can_pay = False
+            error = str(exc)
         result.append({
             'account': holding.account,
             'holding': holding,
-            'can_pay': holding.balance_display >= order.total_amount,
+            'quote': quote,
+            'payment_amount': quote.gross_amount if quote else None,
+            'converted_amount': quote.converted_amount if quote else None,
+            'commission_amount': quote.commission_amount if quote else None,
+            'can_pay': can_pay,
+            'exchange_error': error,
             'is_preferred': preferred is not None and holding.asset_id == preferred.pk,
         })
     # Sort: preferred first, then by can_pay desc
@@ -44,7 +59,7 @@ def get_wallet_payment_sources(user, order):
 
 @transaction.atomic
 def pay_order_with_ledger(order, buyer_account, asset):
-    from toto.assets.services.assets import transfer_asset
+    from toto.assets.services.assets import get_exchange_fee_account, quote_currency_payment, transfer_asset
     from toto.assets.queries import get_asset_balance_display
 
     # Lock the order row — prevents concurrent double-payment
@@ -55,11 +70,17 @@ def pay_order_with_ledger(order, buyer_account, asset):
     if not order.shop.ledger_account:
         raise ValueError('This shop has no ledger account configured for asset payments.')
 
+    quote = quote_currency_payment(
+        currency_code=order.currency,
+        payment_asset=asset,
+        amount=order.total_amount,
+    )
+
     balance = get_asset_balance_display(asset, buyer_account)
-    if balance < order.total_amount:
+    if balance < quote.gross_amount:
         raise ValueError(
             f'Insufficient balance. You have {balance} {asset.unit_name}, '
-            f'order total is {order.total_amount} {order.currency}.'
+            f'payment total is {quote.gross_amount} {asset.unit_name}.'
         )
 
     reference = f'bazaar-{order.order_number}'
@@ -67,20 +88,58 @@ def pay_order_with_ledger(order, buyer_account, asset):
         asset=asset,
         sender_account=buyer_account,
         receiver_account=order.shop.ledger_account,
-        amount=order.total_amount,
+        amount=quote.converted_amount,
         reference=reference,
         description=f'Payment for Bazaar order {order.order_number}',
-        metadata={'bazaar_order': order.order_number, 'shop': order.shop.slug},
+        metadata={
+            'bazaar_order': order.order_number,
+            'shop': order.shop.slug,
+            'order_amount': str(order.total_amount),
+            'order_currency': order.currency,
+            'payment_asset': asset.unit_name,
+            'payment_amount': str(quote.gross_amount),
+            'converted_amount': str(quote.converted_amount),
+            'commission_amount': str(quote.commission_amount),
+            'exchange_rate': str(quote.rate),
+            'exchange_rate_source': quote.rate_source,
+        },
     )
+    fee_reference = ""
+    if quote.commission_amount > 0:
+        fee_reference = f'bazaar-fee-{order.order_number}'
+        transfer_asset(
+            asset=asset,
+            sender_account=buyer_account,
+            receiver_account=get_exchange_fee_account(),
+            amount=quote.commission_amount,
+            reference=fee_reference,
+            description=f'Exchange commission for Bazaar order {order.order_number}',
+            metadata={
+                'bazaar_order': order.order_number,
+                'shop': order.shop.slug,
+                'payment_reference': reference,
+                'commission_percent': str(quote.commission_percent),
+            },
+        )
 
     PaymentIntent.objects.create(
         order=order,
         provider='internal_credit',
         provider_reference=reference,
         status='succeeded',
-        amount=order.total_amount,
-        currency=order.currency,
-        metadata={'ledger_tx_reference': reference, 'asset': asset.unit_name},
+        amount=quote.gross_amount,
+        currency=asset.unit_name,
+        metadata={
+            'ledger_tx_reference': reference,
+            'fee_tx_reference': fee_reference,
+            'asset': asset.unit_name,
+            'order_amount': str(order.total_amount),
+            'order_currency': order.currency,
+            'converted_amount': str(quote.converted_amount),
+            'commission_amount': str(quote.commission_amount),
+            'exchange_rate': str(quote.rate),
+            'exchange_rate_source': quote.rate_source,
+        },
     )
 
     order.payment_status = 'paid'
@@ -90,9 +149,19 @@ def pay_order_with_ledger(order, buyer_account, asset):
     order.ledger_asset = asset
     order.ledger_tx_reference = reference
     order.payment_method = 'transfer'
+    order.metadata = {
+        **(order.metadata or {}),
+        'payment_amount': str(quote.gross_amount),
+        'payment_asset': asset.unit_name,
+        'shop_received_amount': str(quote.converted_amount),
+        'commission_amount': str(quote.commission_amount),
+        'fee_tx_reference': fee_reference,
+        'exchange_rate': str(quote.rate),
+        'exchange_rate_source': quote.rate_source,
+    }
     order.save(update_fields=[
         'payment_status', 'status', 'paid_at', 'updated_at',
-        'ledger_account', 'ledger_asset', 'ledger_tx_reference', 'payment_method',
+        'ledger_account', 'ledger_asset', 'ledger_tx_reference', 'payment_method', 'metadata',
     ])
     return tx
 
@@ -102,7 +171,7 @@ def create_obligation_for_order(order, debtor_account, asset, due_at,
                                 collateral_account=None, collateral_asset=None,
                                 collateral_amount=Decimal('0')):
     """Create an on-delivery payment obligation for an order."""
-    from toto.assets.services.assets import create_obligation
+    from toto.assets.services.assets import create_obligation, quote_currency_payment
 
     order = Order.objects.select_for_update().get(pk=order.pk)
     if order.payment_status == 'paid':
@@ -110,13 +179,19 @@ def create_obligation_for_order(order, debtor_account, asset, due_at,
     if not order.shop.ledger_account:
         raise ValueError('This shop has no ledger account configured.')
 
+    quote = quote_currency_payment(
+        currency_code=order.currency,
+        payment_asset=asset,
+        amount=order.total_amount,
+    )
+
     reference = f'oblig-{order.order_number}'
     obligation = create_obligation(
         reference=reference,
         debtor_account=debtor_account,
         creditor_account=order.shop.ledger_account,
         asset=asset,
-        amount=order.total_amount,
+        amount=quote.gross_amount,
         due_at=due_at,
         order_reference=order.order_number,
         collateral_account=collateral_account,
@@ -129,9 +204,19 @@ def create_obligation_for_order(order, debtor_account, asset, due_at,
         provider='internal_credit',
         provider_reference=reference,
         status='created',
-        amount=order.total_amount,
-        currency=order.currency,
-        metadata={'obligation_reference': reference, 'asset': asset.unit_name, 'due_at': str(due_at)},
+        amount=quote.gross_amount,
+        currency=asset.unit_name,
+        metadata={
+            'obligation_reference': reference,
+            'asset': asset.unit_name,
+            'due_at': str(due_at),
+            'order_amount': str(order.total_amount),
+            'order_currency': order.currency,
+            'converted_amount': str(quote.converted_amount),
+            'commission_amount': str(quote.commission_amount),
+            'exchange_rate': str(quote.rate),
+            'exchange_rate_source': quote.rate_source,
+        },
     )
 
     order.payment_status = 'pending'
@@ -139,8 +224,17 @@ def create_obligation_for_order(order, debtor_account, asset, due_at,
     order.obligation = obligation
     order.ledger_account = debtor_account
     order.ledger_asset = asset
+    order.metadata = {
+        **(order.metadata or {}),
+        'obligation_amount': str(quote.gross_amount),
+        'obligation_asset': asset.unit_name,
+        'shop_receivable_amount': str(quote.converted_amount),
+        'commission_amount': str(quote.commission_amount),
+        'exchange_rate': str(quote.rate),
+        'exchange_rate_source': quote.rate_source,
+    }
     order.save(update_fields=[
-        'payment_status', 'payment_method', 'obligation', 'ledger_account', 'ledger_asset', 'updated_at',
+        'payment_status', 'payment_method', 'obligation', 'ledger_account', 'ledger_asset', 'metadata', 'updated_at',
     ])
     return obligation
 
@@ -148,7 +242,7 @@ def create_obligation_for_order(order, debtor_account, asset, due_at,
 @transaction.atomic
 def fulfill_order_obligation(order):
     """Fulfill the pending obligation tied to an order, marking the order as paid."""
-    from toto.assets.services.assets import fulfill_obligation
+    from toto.assets.services.assets import fulfill_obligation, get_exchange_fee_account, transfer_asset
 
     order = Order.objects.select_for_update().get(pk=order.pk)
     if not order.obligation:
@@ -162,19 +256,46 @@ def fulfill_order_obligation(order):
         reference=reference,
         description=f'Fulfilling on-delivery payment for order {order.order_number}',
     )
+    fee_reference = ""
+    commission_amount = Decimal((order.metadata or {}).get("commission_amount", "0"))
+    if commission_amount > 0 and order.ledger_asset and order.shop.ledger_account:
+        fee_reference = f"fulfill-fee-{order.order_number}"
+        transfer_asset(
+            asset=order.ledger_asset,
+            sender_account=order.shop.ledger_account,
+            receiver_account=get_exchange_fee_account(),
+            amount=commission_amount,
+            reference=fee_reference,
+            description=f"Exchange commission for fulfilled Bazaar obligation {order.order_number}",
+            metadata={"bazaar_order": order.order_number, "obligation_reference": order.obligation.reference},
+        )
 
     order.payment_status = 'paid'
     order.status = 'confirmed'
     order.paid_at = timezone.now()
     order.ledger_tx_reference = reference
-    order.save(update_fields=['payment_status', 'status', 'paid_at', 'ledger_tx_reference', 'updated_at'])
+    order.metadata = {**(order.metadata or {}), "fee_tx_reference": fee_reference}
+    order.save(update_fields=['payment_status', 'status', 'paid_at', 'ledger_tx_reference', 'metadata', 'updated_at'])
     return tx
 
 
-def product_unit_price(product, variant=None):
+def product_unit_price(product, variant=None, target_currency=None):
     if variant and variant.price is not None:
-        return variant.price
-    return product.price
+        price = variant.price
+    else:
+        price = product.price
+
+    target_currency = target_currency or product.currency
+    if product.currency == target_currency:
+        return price
+
+    from toto.assets.services.assets import get_stablecoin_for_currency, quote_exchange
+    source_asset = get_stablecoin_for_currency(product.currency)
+    target_asset = get_stablecoin_for_currency(target_currency)
+    if not source_asset or not target_asset:
+        raise ValueError(f'Cannot convert {product.currency} to {target_currency}: missing currency asset peg.')
+    quote = quote_exchange(from_asset=source_asset, to_asset=target_asset, amount=price)
+    return quote.converted_amount
 
 
 def get_or_create_cart(request, shop=None):
@@ -192,17 +313,23 @@ def get_or_create_cart(request, shop=None):
 
 def add_product_to_cart(request, product, variant=None, quantity=1, metadata=None):
     cart = get_or_create_cart(request, product.shop)
-    price = product_unit_price(product, variant)
+    price = product_unit_price(product, variant, target_currency=cart.currency)
+    original_price = variant.price if variant and variant.price is not None else product.price
+    item_metadata = {
+        'priced_currency': product.currency,
+        'cart_currency': cart.currency,
+        'original_unit_price': str(original_price),
+        **(metadata or {}),
+    }
     item, created = CartItem.objects.get_or_create(
         cart=cart,
         product=product,
         variant=variant,
-        defaults={'quantity': quantity, 'unit_price_snapshot': price, 'metadata': metadata or {}},
+        defaults={'quantity': quantity, 'unit_price_snapshot': price, 'metadata': item_metadata},
     )
     if not created:
         item.quantity += quantity
-        if metadata:
-            item.metadata.update(metadata)
+        item.metadata.update(item_metadata)
         item.save(update_fields=['quantity', 'metadata', 'updated_at'])
     return cart, item
 

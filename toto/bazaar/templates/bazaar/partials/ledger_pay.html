@@ -206,7 +206,7 @@
               <p class="font-bold flex items-center gap-2">
                 {{ src.holding.asset.unit_name }}
                 {% if src.is_preferred %}<span class="text-[10px] font-normal" :class="darkMode ? 'text-success-dark' : 'text-success-light'">{% trans "recommended" %}</span>{% endif %}
-                {% if not src.can_pay %}<span class="text-[10px] font-normal" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{% trans "insufficient" %}</span>{% endif %}
+                {% if src.exchange_error %}<span class="text-[10px] font-normal" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{% trans "no rate" %}</span>{% elif not src.can_pay %}<span class="text-[10px] font-normal" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{% trans "insufficient" %}</span>{% endif %}
               </p>
               <p class="text-xs opacity-60">{{ src.account.code }}</p>
             </div>
@@ -219,13 +219,18 @@
           </div>
           {% if src.can_pay %}
           <div class="mt-2 flex items-center justify-between gap-2 border-t border-current/10 pt-2">
-            <span class="text-xs opacity-60">{% trans "Pay" %} {{ order.total_amount }} {{ order.currency }}</span>
+            <span class="text-xs opacity-60">
+              {% trans "Pay" %} {{ src.payment_amount }} {{ src.holding.asset.unit_name }}
+              {% if src.commission_amount %}<span class="opacity-50">({% trans "fee" %} {{ src.commission_amount }})</span>{% endif %}
+            </span>
             <span :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
                   class="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-bold">
               <i class="fa-solid text-[10px]" :class="payLoading ? 'fa-spinner fa-spin' : 'fa-bolt'"></i>
               <span x-text="payLoading ? '{% trans "Processing…" %}' : '{% trans "Pay now" %}'"></span>
             </span>
           </div>
+          {% elif src.exchange_error %}
+          <p class="mt-2 border-t border-current/10 pt-2 text-xs opacity-60">{{ src.exchange_error }}</p>
           {% endif %}
         </button>
       </form>
@@ -261,8 +266,12 @@
             <p class="font-bold flex items-center gap-2">
               {{ src.holding.asset.unit_name }}
               {% if src.is_preferred %}<span class="text-[10px] font-normal" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{% trans "recommended" %}</span>{% endif %}
+              {% if src.exchange_error %}<span class="text-[10px] font-normal" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{% trans "no rate" %}</span>{% endif %}
             </p>
-            <p class="text-xs opacity-60">{{ src.account.code }}</p>
+            <p class="text-xs opacity-60">
+              {{ src.account.code }}
+              {% if src.payment_amount %}· {{ src.payment_amount }} {{ src.holding.asset.unit_name }}{% endif %}
+            </p>
           </div>
           <span :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
                 class="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-bold shrink-0">
@@ -270,6 +279,7 @@
             <span x-text="payLoading ? '{% trans "Processing…" %}' : '{% trans "Commit" %}'"></span>
           </span>
         </div>
+        {% if src.exchange_error %}<p class="mt-2 text-xs opacity-60">{{ src.exchange_error }}</p>{% endif %}
       </button>
     </form>
     {% endfor %}

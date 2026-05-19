@@ -1,3 +1,5 @@
+import json
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
@@ -10,9 +12,21 @@ from django.utils.translation import gettext_lazy as _
 from django.views.decorators.http import require_POST
 from toto.ui import PageProcessor
 
-from .forms import TokenizationCreateForm
+from .forms import ExchangeRequestCreateForm, ExchangeRequestResponseForm, TokenizationCreateForm
 from .hashing import verify_hash_chain
-from .models import Asset, AssetHolding, LedgerAccount, LedgerEntry, LedgerTransaction, Tokenization, TransactionType
+from .models import (
+    Asset,
+    AssetExchangeRate,
+    AssetExchangeRateHistory,
+    AssetExchangeRequest,
+    AssetHolding,
+    ExchangeRequestStatus,
+    LedgerAccount,
+    LedgerEntry,
+    LedgerTransaction,
+    Tokenization,
+    TransactionType,
+)
 from .queries import list_asset_holders, verify_asset_ledger
 from .services.assets import create_asset
 
@@ -226,6 +240,139 @@ def chain_verify(request):
         "chain_valid": valid,
         "hash_count": hash_count,
     })
+
+
+# ---------------------------------------------------------------------------
+# Exchange rates and peer exchange requests
+# ---------------------------------------------------------------------------
+
+@login_required
+def exchange_center(request):
+    pair_ids = request.GET.getlist("pairs")
+    rates = (
+        AssetExchangeRate.objects
+        .filter(active=True)
+        .select_related("from_asset", "to_asset")
+        .order_by("from_asset__unit_name", "to_asset__unit_name")
+    )
+    if not pair_ids:
+        pair_ids = [str(pk) for pk in rates.values_list("pk", flat=True)[:3]]
+
+    selected_rates = rates.filter(pk__in=pair_ids)
+    histories = (
+        AssetExchangeRateHistory.objects
+        .filter(exchange_rate__in=selected_rates)
+        .select_related("exchange_rate", "from_asset", "to_asset")
+        .order_by("recorded_at")
+    )
+    labels = sorted({row.recorded_at.strftime("%Y-%m-%d %H:%M") for row in histories})
+    colors = ["#4f5fa1", "#5fa38c", "#ff4455", "#d94a4a", "#2f3d63", "#4a8f7a"]
+    datasets = []
+    for index, rate in enumerate(selected_rates):
+        rows = [row for row in histories if row.exchange_rate_id == rate.pk]
+        by_label = {row.recorded_at.strftime("%Y-%m-%d %H:%M"): float(row.rate) for row in rows}
+        color = colors[index % len(colors)]
+        datasets.append({
+            "label": f"{rate.from_asset.unit_name}/{rate.to_asset.unit_name}",
+            "data": [by_label.get(label) for label in labels],
+            "borderColor": color,
+            "backgroundColor": color,
+            "tension": 0.25,
+            "spanGaps": True,
+        })
+
+    incoming = (
+        AssetExchangeRequest.objects
+        .filter(counterparty=request.user)
+        .select_related("requester", "requester_account", "counterparty_account", "offer_asset", "request_asset")
+        .order_by("-created_at")[:30]
+    )
+    outgoing = (
+        AssetExchangeRequest.objects
+        .filter(requester=request.user)
+        .select_related("counterparty", "requester_account", "counterparty_account", "offer_asset", "request_asset")
+        .order_by("-created_at")[:30]
+    )
+
+    return assets_render(request, "assets/exchange_center.html", {
+        "rates": rates,
+        "selected_pair_ids": set(pair_ids),
+        "chart_json": json.dumps({
+            "chart_type": "line",
+            "labels": labels,
+            "datasets": datasets,
+            "options": {
+                "interaction": {"mode": "index", "intersect": False},
+                "scales": {"y": {"beginAtZero": False}},
+            },
+        }),
+        "incoming_requests": incoming,
+        "outgoing_requests": outgoing,
+        "pending_status": ExchangeRequestStatus.PENDING,
+    })
+
+
+@login_required
+def exchange_request_create(request):
+    if request.method == "POST":
+        form = ExchangeRequestCreateForm(request.POST, user=request.user)
+        if form.is_valid():
+            exchange_request = form.save()
+            messages.success(request, "Exchange request sent.")
+            return redirect("assets:exchange_center")
+    else:
+        form = ExchangeRequestCreateForm(user=request.user)
+    return assets_render(request, "assets/exchange_request_form.html", {"form": form})
+
+
+@login_required
+def exchange_request_accept(request, pk):
+    exchange_request = get_object_or_404(
+        AssetExchangeRequest.objects.select_related("counterparty", "offer_asset", "request_asset"),
+        pk=pk,
+        counterparty=request.user,
+        status=ExchangeRequestStatus.PENDING,
+    )
+    if request.method == "POST":
+        form = ExchangeRequestResponseForm(request.POST, user=request.user, exchange_request=exchange_request)
+        if form.is_valid():
+            try:
+                from toto.assets.services.assets import accept_exchange_request
+                accept_exchange_request(
+                    exchange_request=exchange_request,
+                    counterparty_account=form.cleaned_data["counterparty_account"],
+                    response_note=form.cleaned_data.get("response_note", ""),
+                )
+            except ValidationError as exc:
+                form.add_error(None, exc.messages[0] if hasattr(exc, "messages") else str(exc))
+            else:
+                messages.success(request, "Exchange request accepted and settled.")
+                return redirect("assets:exchange_center")
+    else:
+        form = ExchangeRequestResponseForm(user=request.user, exchange_request=exchange_request)
+    return assets_render(request, "assets/exchange_request_response.html", {
+        "form": form,
+        "exchange_request": exchange_request,
+        "mode": "accept",
+    })
+
+
+@require_POST
+@login_required
+def exchange_request_reject(request, pk):
+    exchange_request = get_object_or_404(
+        AssetExchangeRequest,
+        pk=pk,
+        counterparty=request.user,
+        status=ExchangeRequestStatus.PENDING,
+    )
+    from toto.assets.services.assets import reject_exchange_request
+    reject_exchange_request(
+        exchange_request=exchange_request,
+        response_note=request.POST.get("response_note", ""),
+    )
+    messages.success(request, "Exchange request rejected.")
+    return redirect("assets:exchange_center")
 
 
 # ---------------------------------------------------------------------------

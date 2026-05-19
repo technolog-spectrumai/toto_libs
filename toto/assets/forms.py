@@ -1,8 +1,10 @@
 from decimal import Decimal
 
 from django import forms
+from django.contrib.auth import get_user_model
 
-from toto.assets.models import Asset, LedgerAccount, Tokenization
+from toto.assets.models import Asset, AssetExchangeRequest, LedgerAccount, Tokenization, to_base_units
+from toto.assets.services.assets import quote_exchange
 
 
 class TokenizationCreateForm(forms.Form):
@@ -51,3 +53,86 @@ class TokenizationCreateForm(forms.Form):
         if self.real_world_object and Tokenization.objects.filter(real_world_object=self.real_world_object).exists():
             raise forms.ValidationError("This object is already tokenized and cannot be tokenized again.")
         return cleaned
+
+
+class ExchangeRequestCreateForm(forms.Form):
+    requester_account = forms.ModelChoiceField(queryset=LedgerAccount.objects.none())
+    counterparty = forms.ModelChoiceField(queryset=None)
+    offer_asset = forms.ModelChoiceField(queryset=Asset.objects.filter(active=True, is_currency=True).order_by("unit_name"))
+    offer_amount = forms.DecimalField(max_digits=24, decimal_places=8, min_value=Decimal("0.00000001"))
+    request_asset = forms.ModelChoiceField(queryset=Asset.objects.filter(active=True, is_currency=True).order_by("unit_name"))
+    note = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 3}))
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user = user
+        user_model = get_user_model()
+        self.fields["counterparty"].queryset = user_model.objects.exclude(pk=getattr(user, "pk", None)).order_by("username")
+        if user and user.is_authenticated:
+            self.fields["requester_account"].queryset = LedgerAccount.objects.filter(user=user, active=True).order_by("code")
+        self._style_fields()
+
+    def _style_fields(self):
+        css_class = "w-full rounded-lg border px-3 py-2 text-sm outline-none transition focus:ring-2 focus:ring-current/20 border-accent-2 bg-primary-bg-light text-text-main-light"
+        for field in self.fields.values():
+            existing = field.widget.attrs.get("class", "")
+            field.widget.attrs["class"] = f"{existing} {css_class}".strip()
+
+    def clean(self):
+        cleaned = super().clean()
+        offer_asset = cleaned.get("offer_asset")
+        request_asset = cleaned.get("request_asset")
+        offer_amount = cleaned.get("offer_amount")
+        account = cleaned.get("requester_account")
+        if account and self.user and account.user_id != self.user.id:
+            self.add_error("requester_account", "Choose one of your own active accounts.")
+        if offer_asset and request_asset and offer_asset.pk == request_asset.pk:
+            self.add_error("request_asset", "Choose a different requested asset.")
+        if offer_asset and request_asset and offer_amount:
+            try:
+                quote = quote_exchange(from_asset=offer_asset, to_asset=request_asset, amount=offer_amount)
+            except Exception as exc:
+                raise forms.ValidationError(str(exc))
+            cleaned["quote"] = quote
+        return cleaned
+
+    def save(self):
+        data = self.cleaned_data
+        quote = data["quote"]
+        fee_in_offer_asset = data["offer_amount"] * (quote.commission_percent / Decimal("100"))
+        return AssetExchangeRequest.objects.create(
+            requester=self.user,
+            counterparty=data["counterparty"],
+            requester_account=data["requester_account"],
+            offer_asset=data["offer_asset"],
+            request_asset=data["request_asset"],
+            offer_amount_base_units=to_base_units(data["offer_amount"], data["offer_asset"].decimals),
+            request_amount_base_units=to_base_units(quote.converted_amount, data["request_asset"].decimals),
+            commission_amount_base_units=to_base_units(fee_in_offer_asset, data["offer_asset"].decimals),
+            exchange_rate=quote.rate,
+            commission_percent=quote.commission_percent,
+            note=data.get("note", ""),
+            metadata={"rate_source": quote.rate_source},
+        )
+
+
+class ExchangeRequestResponseForm(forms.Form):
+    counterparty_account = forms.ModelChoiceField(queryset=LedgerAccount.objects.none())
+    response_note = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 3}))
+
+    def __init__(self, *args, user=None, exchange_request=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user = user
+        self.exchange_request = exchange_request
+        if user and user.is_authenticated:
+            self.fields["counterparty_account"].queryset = LedgerAccount.objects.filter(user=user, active=True).order_by("code")
+        css_class = "w-full rounded-lg border px-3 py-2 text-sm outline-none transition focus:ring-2 focus:ring-current/20 border-accent-2 bg-primary-bg-light text-text-main-light"
+        for field in self.fields.values():
+            existing = field.widget.attrs.get("class", "")
+            field.widget.attrs["class"] = f"{existing} {css_class}".strip()
+
+    def clean_counterparty_account(self):
+        account = self.cleaned_data["counterparty_account"]
+        if self.user and account.user_id != self.user.id:
+            raise forms.ValidationError("Choose one of your own active accounts.")
+        return account

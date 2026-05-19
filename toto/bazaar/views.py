@@ -1,5 +1,6 @@
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
+from django.core.exceptions import ValidationError
 from django.db.models import Count, Sum, Avg, Q
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect
@@ -136,7 +137,13 @@ class AddToCartView(View):
         product = get_object_or_404(Product.objects.published(), pk=request.POST.get('product_id'))
         variant = product.variants.filter(pk=request.POST.get('variant_id')).first() if request.POST.get('variant_id') else None
         quantity = int(request.POST.get('quantity') or 1)
-        add_product_to_cart(request, product, variant, quantity)
+        try:
+            add_product_to_cart(request, product, variant, quantity)
+        except ValueError as exc:
+            if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+                return JsonResponse({'ok': False, 'error': str(exc)}, status=400)
+            messages.error(request, str(exc))
+            return redirect(request.POST.get('next') or 'bazaar:product-list')
         if request.headers.get('x-requested-with') == 'XMLHttpRequest':
             return JsonResponse({'ok': True})
         messages.success(request, f'Added {product.name} to cart.')
@@ -570,10 +577,12 @@ class LedgerPaymentView(LoginRequiredMixin, View):
             account = LedgerAccount.objects.get(pk=account_id, user=request.user, active=True)
             asset   = Asset.objects.get(pk=asset_id, active=True)
             pay_order_with_ledger(order, account, asset)
-            return JsonResponse({'ok': True, 'redirect': next_url, 'message': f'Payment of {order.total_amount} {asset.unit_name} confirmed.'})
+            order.refresh_from_db()
+            paid_amount = (order.metadata or {}).get('payment_amount', order.total_amount)
+            return JsonResponse({'ok': True, 'redirect': next_url, 'message': f'Payment of {paid_amount} {asset.unit_name} confirmed.'})
         except (LedgerAccount.DoesNotExist, Asset.DoesNotExist):
             return JsonResponse({'ok': False, 'error': 'Invalid account or asset. Please try again.'}, status=400)
-        except ValueError as exc:
+        except (ValueError, ValidationError) as exc:
             return JsonResponse({'ok': False, 'error': str(exc)}, status=400)
 
 
@@ -607,7 +616,7 @@ class OnDeliveryPaymentView(LoginRequiredMixin, View):
             return JsonResponse({'ok': True, 'redirect': next_url, 'message': f'On-delivery obligation created. Due by {due_at.strftime("%Y-%m-%d")}.'})
         except (LedgerAccount.DoesNotExist, Asset.DoesNotExist):
             return JsonResponse({'ok': False, 'error': 'Invalid account or asset. Please try again.'}, status=400)
-        except ValueError as exc:
+        except (ValueError, ValidationError) as exc:
             return JsonResponse({'ok': False, 'error': str(exc)}, status=400)
 
 

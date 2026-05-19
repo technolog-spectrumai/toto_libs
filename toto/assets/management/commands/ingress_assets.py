@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 
-from toto.assets.models import LedgerAccount, LedgerTransaction
+from toto.assets.models import AssetExchangeRate, LedgerAccount, LedgerTransaction
 from toto.assets.services.assets import create_asset, reverse_transaction, transfer_asset
 from toto.ingress import IngressCommand
 
@@ -16,6 +16,7 @@ class Command(IngressCommand):
         accounts = self._seed_accounts()
         assets = self._seed_assets(accounts)
         currencies = self._seed_currencies(accounts, assets)
+        self._seed_exchange_rates(assets)
 
         if self.full:
             self._seed_transfers(assets, accounts)
@@ -316,6 +317,31 @@ class Command(IngressCommand):
                 self.stdout.write(f"  + currency {spec['code']} → {unit}")
         return currencies
 
+    def _seed_exchange_rates(self, assets: dict):
+        """Fixed demo exchange rates used by Bazaar asset payments."""
+        specs = [
+            ("TUSD", "TPLN", Decimal("4.000000000000")),
+            ("TEUR", "TPLN", Decimal("4.300000000000")),
+            ("TEUR", "TUSD", Decimal("1.080000000000")),
+        ]
+        for from_unit, to_unit, rate in specs:
+            from_asset = assets.get(from_unit)
+            to_asset = assets.get(to_unit)
+            if not from_asset or not to_asset:
+                continue
+            _, created = AssetExchangeRate.objects.update_or_create(
+                from_asset=from_asset,
+                to_asset=to_asset,
+                defaults={
+                    "rate": rate,
+                    "commission_percent": Decimal("1.5000"),
+                    "active": True,
+                    "metadata": {"source": "ingress_fixed_demo"},
+                },
+            )
+            if created:
+                self.stdout.write(f"  + fixed rate 1 {from_unit} = {rate} {to_unit}")
+
     # ------------------------------------------------------------------ #
     # User wallet funding (only with --full)                              #
     # ------------------------------------------------------------------ #
@@ -363,4 +389,3 @@ class Command(IngressCommand):
                 self.stdout.write(f"  + distribution {ref}")
             except Exception as exc:
                 self.stdout.write(self.style.ERROR(f"  ✗ {ref}: {exc}"))
-

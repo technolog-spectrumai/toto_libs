@@ -128,6 +128,202 @@ class Tokenization(models.Model):
 
 
 # ---------------------------------------------------------------------------
+# Exchange rates
+# ---------------------------------------------------------------------------
+
+class AssetExchangeRate(models.Model):
+    from_asset = models.ForeignKey(
+        Asset,
+        on_delete=models.PROTECT,
+        related_name="exchange_rates_from",
+    )
+    to_asset = models.ForeignKey(
+        Asset,
+        on_delete=models.PROTECT,
+        related_name="exchange_rates_to",
+    )
+    rate = models.DecimalField(
+        max_digits=24,
+        decimal_places=12,
+        help_text="Fixed amount of to_asset received for 1 unit of from_asset.",
+    )
+    commission_percent = models.DecimalField(
+        max_digits=7,
+        decimal_places=4,
+        default=Decimal("0.0000"),
+        help_text="Commission charged in the payment asset on top of the converted amount.",
+    )
+    active = models.BooleanField(default=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["from_asset__unit_name", "to_asset__unit_name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["from_asset", "to_asset"],
+                name="unique_asset_exchange_rate_pair",
+            ),
+            models.CheckConstraint(
+                check=~models.Q(from_asset=models.F("to_asset")),
+                name="exchange_rate_distinct_assets",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["from_asset", "to_asset"]),
+            models.Index(fields=["active"]),
+        ]
+
+    def __str__(self):
+        return f"1 {self.from_asset.unit_name} = {self.rate} {self.to_asset.unit_name}"
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        AssetExchangeRateHistory.objects.create(
+            exchange_rate=self,
+            from_asset=self.from_asset,
+            to_asset=self.to_asset,
+            rate=self.rate,
+            commission_percent=self.commission_percent,
+            metadata={"active": self.active, **(self.metadata or {})},
+        )
+
+    def clean(self):
+        if self.rate is not None and self.rate <= 0:
+            raise ValidationError({"rate": "Exchange rate must be positive."})
+        if self.commission_percent is not None and self.commission_percent < 0:
+            raise ValidationError({"commission_percent": "Commission cannot be negative."})
+        if self.from_asset_id and self.from_asset_id == self.to_asset_id:
+            raise ValidationError("Exchange rate assets must be different.")
+
+
+class AssetExchangeRateHistory(models.Model):
+    exchange_rate = models.ForeignKey(
+        AssetExchangeRate,
+        on_delete=models.CASCADE,
+        related_name="history",
+    )
+    from_asset = models.ForeignKey(
+        Asset,
+        on_delete=models.PROTECT,
+        related_name="exchange_rate_history_from",
+    )
+    to_asset = models.ForeignKey(
+        Asset,
+        on_delete=models.PROTECT,
+        related_name="exchange_rate_history_to",
+    )
+    rate = models.DecimalField(max_digits=24, decimal_places=12)
+    commission_percent = models.DecimalField(max_digits=7, decimal_places=4, default=Decimal("0.0000"))
+    recorded_at = models.DateTimeField(auto_now_add=True)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["recorded_at"]
+        verbose_name_plural = "asset exchange rate history"
+        indexes = [
+            models.Index(fields=["from_asset", "to_asset", "recorded_at"]),
+            models.Index(fields=["exchange_rate", "recorded_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.recorded_at:%Y-%m-%d %H:%M} · 1 {self.from_asset.unit_name} = {self.rate} {self.to_asset.unit_name}"
+
+
+class ExchangeRequestStatus(models.TextChoices):
+    PENDING = "pending", "Pending"
+    ACCEPTED = "accepted", "Accepted"
+    REJECTED = "rejected", "Rejected"
+    CANCELLED = "cancelled", "Cancelled"
+
+
+class AssetExchangeRequest(models.Model):
+    requester = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="asset_exchange_requests_made",
+    )
+    counterparty = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="asset_exchange_requests_received",
+    )
+    requester_account = models.ForeignKey(
+        "LedgerAccount",
+        on_delete=models.PROTECT,
+        related_name="exchange_requests_made",
+    )
+    counterparty_account = models.ForeignKey(
+        "LedgerAccount",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="exchange_requests_received",
+    )
+    offer_asset = models.ForeignKey(
+        Asset,
+        on_delete=models.PROTECT,
+        related_name="exchange_requests_offered",
+    )
+    request_asset = models.ForeignKey(
+        Asset,
+        on_delete=models.PROTECT,
+        related_name="exchange_requests_requested",
+    )
+    offer_amount_base_units = models.BigIntegerField()
+    request_amount_base_units = models.BigIntegerField()
+    commission_amount_base_units = models.BigIntegerField(default=0)
+    exchange_rate = models.DecimalField(max_digits=24, decimal_places=12)
+    commission_percent = models.DecimalField(max_digits=7, decimal_places=4, default=Decimal("0.0000"))
+    status = models.CharField(
+        max_length=20,
+        choices=ExchangeRequestStatus.choices,
+        default=ExchangeRequestStatus.PENDING,
+    )
+    offer_tx_reference = models.CharField(max_length=255, blank=True)
+    request_tx_reference = models.CharField(max_length=255, blank=True)
+    commission_tx_reference = models.CharField(max_length=255, blank=True)
+    note = models.TextField(blank=True)
+    response_note = models.TextField(blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    responded_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["requester", "status"]),
+            models.Index(fields=["counterparty", "status"]),
+            models.Index(fields=["offer_asset", "request_asset"]),
+            models.Index(fields=["created_at"]),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.requester} offers {self.offer_amount_display} {self.offer_asset.unit_name} "
+            f"for {self.request_amount_display} {self.request_asset.unit_name}"
+        )
+
+    @property
+    def offer_amount_display(self) -> Decimal:
+        return from_base_units(self.offer_amount_base_units, self.offer_asset.decimals)
+
+    @property
+    def request_amount_display(self) -> Decimal:
+        return from_base_units(self.request_amount_base_units, self.request_asset.decimals)
+
+    @property
+    def commission_amount_display(self) -> Decimal:
+        return from_base_units(self.commission_amount_base_units, self.offer_asset.decimals)
+
+    @property
+    def requester_total_display(self) -> Decimal:
+        return self.offer_amount_display + self.commission_amount_display
+
+
+# ---------------------------------------------------------------------------
 # LedgerAccount
 # ---------------------------------------------------------------------------
 
