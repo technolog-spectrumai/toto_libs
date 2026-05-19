@@ -118,9 +118,18 @@ def object_detail(request, object_id):
         id=object_id,
     )
 
-    return render_inventory(request, "inventory/object_detail.html", {
+    context = {
         "object": obj,
-    })
+    }
+    from toto.inventory.plugins.inventory_object_plugins import InventoryObjectPlugin
+    context["object_plugin_sections"] = InventoryObjectPlugin.render_all(
+        request=request,
+        object=obj,
+        inventory_object=obj,
+        base_context=context,
+    )
+
+    return render_inventory(request, "inventory/object_detail.html", context)
 
 
 @login_required

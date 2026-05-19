@@ -73,6 +73,10 @@
     </div>
   </article>
 
+  {% for section in asset_plugin_sections %}
+    {{ section.html }}
+  {% endfor %}
+
   <div class="grid gap-5 xl:grid-cols-2">
 
     <!-- Holders -->

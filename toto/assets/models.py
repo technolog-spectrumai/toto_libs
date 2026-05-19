@@ -70,6 +70,64 @@ class Asset(models.Model):
 
 
 # ---------------------------------------------------------------------------
+# Tokenization
+# ---------------------------------------------------------------------------
+
+class TokenizationQuerySet(models.QuerySet):
+    def delete(self):
+        raise ValidationError("Tokenization records are permanent and cannot be reverted.")
+
+
+class Tokenization(models.Model):
+    objects = TokenizationQuerySet.as_manager()
+
+    real_world_object = models.ForeignKey(
+        "inventory.RealWorldObject",
+        on_delete=models.PROTECT,
+        related_name="tokenizations",
+    )
+    asset = models.ForeignKey(
+        Asset,
+        on_delete=models.PROTECT,
+        related_name="tokenizations",
+    )
+    supervisor = models.ForeignKey(
+        "people.Person",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="supervised_tokenizations",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["real_world_object"],
+                name="unique_tokenization_object",
+            ),
+            models.UniqueConstraint(
+                fields=["asset"],
+                name="unique_tokenization_asset",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["real_world_object"]),
+            models.Index(fields=["asset"]),
+            models.Index(fields=["supervisor"]),
+            models.Index(fields=["created_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.real_world_object} tokenized as {self.asset.unit_name}"
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Tokenization records are permanent and cannot be reverted.")
+
+
+# ---------------------------------------------------------------------------
 # LedgerAccount
 # ---------------------------------------------------------------------------
 

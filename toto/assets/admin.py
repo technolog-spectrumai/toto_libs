@@ -1,7 +1,17 @@
 from django.contrib import admin
 
 from .hashing import verify_hash_chain
-from .models import Asset, AssetHolding, Currency, LedgerAccount, LedgerEntry, LedgerHash, LedgerTransaction, Obligation
+from .models import (
+    Asset,
+    AssetHolding,
+    Currency,
+    LedgerAccount,
+    LedgerEntry,
+    LedgerHash,
+    LedgerTransaction,
+    Obligation,
+    Tokenization,
+)
 
 
 class AssetHoldingInline(admin.TabularInline):
@@ -21,18 +31,47 @@ class AssetHoldingInline(admin.TabularInline):
         return obj.balance_display
 
 
+class TokenizationInline(admin.TabularInline):
+    model = Tokenization
+    extra = 0
+    readonly_fields = ("created_at",)
+    raw_id_fields = ("real_world_object", "supervisor")
+    fields = ("real_world_object", "supervisor", "created_at", "metadata")
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
 @admin.register(Asset)
 class AssetAdmin(admin.ModelAdmin):
     list_display = ("name", "unit_name", "decimals", "total_supply_display", "active", "created_at")
     list_filter = ("active",)
     search_fields = ("name", "unit_name")
     readonly_fields = ("created_at", "updated_at", "total_supply_display")
-    inlines = [AssetHoldingInline]
+    inlines = [AssetHoldingInline, TokenizationInline]
 
     @staticmethod
     def total_supply_display(obj):
         return f"{obj.total_supply_display} {obj.unit_name}"
     total_supply_display.short_description = "Total supply"
+
+
+@admin.register(Tokenization)
+class TokenizationAdmin(admin.ModelAdmin):
+    list_display = ("real_world_object", "asset", "supervisor", "created_at")
+    list_filter = ("asset", "created_at")
+    search_fields = (
+        "real_world_object__name",
+        "real_world_object__slug",
+        "asset__name",
+        "asset__unit_name",
+        "supervisor__display_name",
+    )
+    readonly_fields = ("created_at",)
+    raw_id_fields = ("real_world_object", "asset", "supervisor")
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(LedgerAccount)

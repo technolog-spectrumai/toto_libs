@@ -1,0 +1,41 @@
+{% load i18n %}
+
+<section
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-lg border p-5 shadow-sm">
+  <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <div>
+      <h3 class="flex items-center gap-2 text-lg font-bold">
+        <i class="{{ asset_plugin_icon }}"></i>
+        {% trans "Underlying object" %}
+      </h3>
+      <p class="mt-1 text-sm opacity-70">
+        {% trans "The inventory object permanently represented by this asset." %}
+      </p>
+    </div>
+  </div>
+
+  <div class="mt-4 space-y-2">
+    {% for tokenization in tokenizations %}
+      <div
+        :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+        class="rounded-lg px-4 py-3 text-sm">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <a
+            href="{% url 'inventory:object_detail' tokenization.real_world_object.pk %}"
+            class="font-semibold underline-offset-4 hover:underline">
+            {{ tokenization.real_world_object.name }}
+          </a>
+          <span class="shrink-0 rounded border border-current/20 px-2 py-0.5 text-xs">
+            {{ tokenization.created_at|date:"M d, Y" }}
+          </span>
+        </div>
+        <div class="mt-1 text-xs opacity-60">
+          {% trans "Supervisor" %}: {{ tokenization.supervisor|default:"—" }}
+        </div>
+      </div>
+    {% empty %}
+      <p class="text-sm opacity-60">{% trans "This asset is not a tokenization asset." %}</p>
+    {% endfor %}
+  </div>
+</section>

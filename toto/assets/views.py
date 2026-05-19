@@ -1,6 +1,7 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -9,9 +10,11 @@ from django.utils.translation import gettext_lazy as _
 from django.views.decorators.http import require_POST
 from toto.ui import PageProcessor
 
+from .forms import TokenizationCreateForm
 from .hashing import verify_hash_chain
-from .models import Asset, AssetHolding, LedgerAccount, LedgerEntry, LedgerTransaction, TransactionType
+from .models import Asset, AssetHolding, LedgerAccount, LedgerEntry, LedgerTransaction, Tokenization, TransactionType
 from .queries import list_asset_holders, verify_asset_ledger
+from .services.assets import create_asset
 
 
 def assets_render(request, template_name, context):
@@ -38,13 +41,88 @@ def asset_detail(request, pk):
     ledger_status = verify_asset_ledger(asset)
     flow_data_url = reverse("assets:ledger_flow_data") + f"?asset={asset.unit_name}"
     flow_full_url = reverse("assets:ledger_flow") + f"?asset={asset.unit_name}"
-    return assets_render(request, "assets/asset_detail.html", {
+    context = {
         "asset": asset,
         "holders": holders,
         "recent_txs": recent_txs,
         "ledger_status": ledger_status,
         "asset_flow_url": flow_data_url,
         "asset_flow_full_url": flow_full_url,
+    }
+    from toto.assets.plugins.asset_plugins import AssetPlugin
+    context["asset_plugin_sections"] = AssetPlugin.render_all(
+        request=request,
+        asset=asset,
+        base_context=context,
+    )
+    return assets_render(request, "assets/asset_detail.html", context)
+
+
+@login_required
+def tokenization_create_for_object(request, object_id):
+    from toto.inventory.models import RealWorldObject
+
+    obj = get_object_or_404(
+        RealWorldObject.objects.select_related("object_type", "owner", "custodian"),
+        id=object_id,
+    )
+    existing = obj.tokenizations.select_related("asset").first()
+    if existing:
+        messages.info(request, "This object is already tokenized and cannot be tokenized again.")
+        return redirect("assets:asset_detail", pk=existing.asset_id)
+
+    if request.method == "POST":
+        form = TokenizationCreateForm(request.POST, real_world_object=obj)
+        if form.is_valid():
+            data = form.cleaned_data
+            metadata = data.get("metadata") or {}
+            try:
+                with transaction.atomic():
+                    asset = create_asset(
+                        name=data["asset_name"],
+                        unit_name=data["unit_name"],
+                        total_supply=data["total_supply"],
+                        decimals=data["decimals"],
+                        reserve_account=data["reserve_account"],
+                        reference=f"tokenize-{obj.pk}-{data['unit_name'].lower()}",
+                        description=f"Tokenization asset for inventory object {obj.name}",
+                        metadata={
+                            **metadata,
+                            "tokenized_object_id": obj.pk,
+                            "tokenized_object_name": obj.name,
+                        },
+                    )
+                    asset.is_currency = data.get("is_currency", False)
+                    asset.backing_document = data.get("backing_document", "")
+                    asset.minting_authority = data.get("minting_authority", "")
+                    asset.save(update_fields=["is_currency", "backing_document", "minting_authority", "updated_at"])
+                    Tokenization.objects.create(
+                        real_world_object=obj,
+                        asset=asset,
+                        supervisor=data.get("supervisor"),
+                        metadata=metadata,
+                    )
+            except ValidationError as exc:
+                form.add_error(None, exc.messages[0] if hasattr(exc, "messages") else str(exc))
+            else:
+                messages.success(request, f"{obj.name} tokenized as {asset.unit_name}.")
+                return redirect("assets:asset_detail", pk=asset.pk)
+    else:
+        initial_name = f"{obj.name} Token"
+        form = TokenizationCreateForm(
+            real_world_object=obj,
+            initial={
+                "asset_name": initial_name,
+                "unit_name": "".join(ch for ch in obj.name.upper() if ch.isalnum())[:12] or f"OBJ{obj.pk}",
+                "decimals": 0,
+                "total_supply": obj.quantity or 1,
+                "backing_document": obj.description,
+            },
+        )
+
+    return assets_render(request, "assets/tokenization_form.html", {
+        "form": form,
+        "object": obj,
     })
 
 

@@ -99,6 +99,10 @@
       </div>
     </div>
 
+    {% for section in object_plugin_sections %}
+      {{ section.html }}
+    {% endfor %}
+
     {% if object.metadata %}
     <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
          class="rounded-2xl border p-5 shadow-sm">
