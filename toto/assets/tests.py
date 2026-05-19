@@ -471,6 +471,7 @@ class ExchangeRequestTests(TestCase):
         form = ExchangeRequestCreateForm(
             data={
                 "requester_account": self.requester_account.pk,
+                "visibility": "direct",
                 "counterparty": self.counterparty.pk,
                 "offer_asset": self.offer_asset.pk,
                 "offer_amount": "10.00",
@@ -494,6 +495,7 @@ class ExchangeRequestTests(TestCase):
         form = ExchangeRequestCreateForm(
             data={
                 "requester_account": self.counterparty_account.pk,
+                "visibility": "direct",
                 "counterparty": self.counterparty.pk,
                 "offer_asset": self.offer_asset.pk,
                 "offer_amount": "10.00",
@@ -510,6 +512,7 @@ class ExchangeRequestTests(TestCase):
         form = ExchangeRequestCreateForm(
             data={
                 "requester_account": self.requester_account.pk,
+                "visibility": "public",
                 "counterparty": "",
                 "offer_asset": self.offer_asset.pk,
                 "offer_amount": "12.00",
@@ -524,6 +527,24 @@ class ExchangeRequestTests(TestCase):
         self.assertIsNone(req.counterparty)
         self.assertEqual(req.offer_amount_display, Decimal("12.00"))
         self.assertEqual(req.request_amount_display, Decimal("10.00"))
+        self.assertEqual(req.metadata["visibility"], "public")
+
+    def test_direct_proposal_requires_counterparty(self):
+        form = ExchangeRequestCreateForm(
+            data={
+                "requester_account": self.requester_account.pk,
+                "visibility": "direct",
+                "counterparty": "",
+                "offer_asset": self.offer_asset.pk,
+                "offer_amount": "12.00",
+                "request_asset": self.request_asset.pk,
+                "expected_amount": "10.00",
+            },
+            user=self.requester,
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("counterparty", form.errors)
 
     def test_public_ask_is_visible_and_can_be_accepted_by_other_user(self):
         req = AssetExchangeRequest.objects.create(

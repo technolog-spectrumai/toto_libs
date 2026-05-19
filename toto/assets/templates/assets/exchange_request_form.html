@@ -12,6 +12,7 @@
 
   <form method="post"
         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        x-data="{ visibility: '{{ form.visibility.value|default:"public" }}' }"
         class="max-w-4xl rounded-lg border p-5 shadow-sm">
     {% csrf_token %}
     <div class="mb-5 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -58,8 +59,33 @@
         {% endfor %}
       </div>
 
+      <div>
+        <label class="mb-2 block text-xs font-semibold uppercase tracking-wide opacity-70">{{ form.visibility.label }}</label>
+        {% with selected_visibility=form.visibility.value|default:"public" %}
+        <div class="grid gap-3 sm:grid-cols-2">
+          <label :class="visibility === 'public' ? (darkMode ? 'border-accent-dark bg-primary-bg-dark' : 'border-accent-light bg-primary-bg-light') : (darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light')" class="flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3 text-sm transition">
+            <input type="radio" name="{{ form.visibility.html_name }}" value="public" x-model="visibility" class="mt-1 h-4 w-4 accent-current" {% if selected_visibility == "public" %}checked{% endif %}>
+            <span>
+              <span class="block font-bold">{% trans "Public ask" %}</span>
+              <span class="block text-xs opacity-60">{% trans "Anyone can review and accept this proposal." %}</span>
+            </span>
+          </label>
+          <label :class="visibility === 'direct' ? (darkMode ? 'border-accent-dark bg-primary-bg-dark' : 'border-accent-light bg-primary-bg-light') : (darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light')" class="flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3 text-sm transition">
+            <input type="radio" name="{{ form.visibility.html_name }}" value="direct" x-model="visibility" class="mt-1 h-4 w-4 accent-current" {% if selected_visibility == "direct" %}checked{% endif %}>
+            <span>
+              <span class="block font-bold">{% trans "Send to a person" %}</span>
+              <span class="block text-xs opacity-60">{% trans "Only the selected recipient can accept." %}</span>
+            </span>
+          </label>
+        </div>
+        {% endwith %}
+        {% for error in form.visibility.errors %}
+        <p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ error }}</p>
+        {% endfor %}
+      </div>
+
       <div class="grid gap-4 sm:grid-cols-2">
-        <div>
+        <div x-show="visibility === 'direct'">
           <label for="{{ form.counterparty.id_for_label }}" class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-70">{{ form.counterparty.label }}</label>
           {{ form.counterparty }}
           {% if form.counterparty.help_text %}

@@ -55,10 +55,24 @@ class TokenizationCreateForm(forms.Form):
 
 
 class ExchangeRequestCreateForm(forms.Form):
+    VISIBILITY_PUBLIC = "public"
+    VISIBILITY_DIRECT = "direct"
+    VISIBILITY_CHOICES = (
+        (VISIBILITY_PUBLIC, "Public ask"),
+        (VISIBILITY_DIRECT, "Send to a person"),
+    )
+
     requester_account = forms.ModelChoiceField(
         queryset=LedgerAccount.objects.none(),
         widget=forms.RadioSelect,
         label="Pay from",
+    )
+    visibility = forms.ChoiceField(
+        choices=VISIBILITY_CHOICES,
+        widget=forms.RadioSelect,
+        required=False,
+        initial=VISIBILITY_PUBLIC,
+        label="Proposal type",
     )
     counterparty = forms.ModelChoiceField(
         queryset=None,
@@ -93,7 +107,7 @@ class ExchangeRequestCreateForm(forms.Form):
         css_class = "w-full rounded-lg border px-3 py-2 text-sm outline-none transition focus:ring-2 focus:ring-current/20 border-accent-2 bg-primary-bg-light text-text-main-light"
         for name, field in self.fields.items():
             existing = field.widget.attrs.get("class", "")
-            if name == "requester_account":
+            if name in {"requester_account", "visibility"}:
                 field.widget.attrs["class"] = f"{existing} h-4 w-4 accent-current".strip()
                 continue
             field.widget.attrs["class"] = f"{existing} {css_class}".strip()
@@ -125,12 +139,19 @@ class ExchangeRequestCreateForm(forms.Form):
         offer_amount = cleaned.get("offer_amount")
         expected_amount = cleaned.get("expected_amount")
         account = cleaned.get("requester_account")
+        counterparty = cleaned.get("counterparty")
+        visibility = cleaned.get("visibility") or (self.VISIBILITY_DIRECT if counterparty else self.VISIBILITY_PUBLIC)
         if account and self.user and account.user_id != self.user.id:
             self.add_error("requester_account", "Choose one of your own active accounts.")
+        if visibility == self.VISIBILITY_DIRECT and not counterparty:
+            self.add_error("counterparty", "Choose a recipient or publish this as a public ask.")
+        if visibility == self.VISIBILITY_PUBLIC:
+            cleaned["counterparty"] = None
         if offer_asset and request_asset and offer_asset.pk == request_asset.pk:
             self.add_error("request_asset", "Choose a different requested asset.")
         if offer_amount and expected_amount:
             cleaned["implied_rate"] = expected_amount / offer_amount
+        cleaned["visibility"] = visibility
         return cleaned
 
     def save(self):
@@ -147,7 +168,7 @@ class ExchangeRequestCreateForm(forms.Form):
             exchange_rate=data["implied_rate"],
             commission_percent=Decimal("0"),
             note=data.get("note", ""),
-            metadata={"rate_source": "proposal"},
+            metadata={"rate_source": "proposal", "visibility": data["visibility"]},
         )
 
 
