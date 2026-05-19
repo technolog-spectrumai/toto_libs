@@ -1,0 +1,77 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% block tribunal_title %}{% trans "Tribunal" %}{% endblock %} | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% include "oya/partials/dim.html" %}
+<style>
+  [x-cloak] { display: none !important; }
+  .tribunal-form p { display:grid; gap:.35rem; margin-bottom:.85rem; }
+  .tribunal-form label { font-size:.78rem; font-weight:700; letter-spacing:.02em; text-transform:uppercase; opacity:.75; }
+  .tribunal-form input, .tribunal-form select, .tribunal-form textarea, .tribunal-shell input, .tribunal-shell select, .tribunal-shell textarea {
+    width:100%; border:1px solid currentColor; border-radius:8px; background:transparent; padding:.55rem .7rem;
+  }
+  .tribunal-layout { display:grid; grid-template-columns:minmax(260px, 340px) minmax(0, 1fr); gap:1rem; }
+  .tribunal-card { border:1px solid currentColor; border-radius:12px; padding:1rem; margin-bottom:1rem; }
+  .tribunal-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:1rem; }
+  .tribunal-stat { border:1px solid currentColor; border-radius:12px; padding:.9rem; }
+  .tribunal-stat .value { font-size:1.6rem; font-weight:900; }
+  .tribunal-stat .label { font-size:.72rem; opacity:.65; text-transform:uppercase; letter-spacing:.06em; }
+  .tribunal-pill { display:inline-flex; align-items:center; gap:.35rem; border:1px solid currentColor; border-radius:999px; padding:.15rem .55rem; font-size:.78rem; font-weight:700; }
+  .tribunal-table { width:100%; border-collapse:collapse; }
+  .tribunal-table th, .tribunal-table td { border-bottom:1px solid currentColor; padding:.6rem .5rem; text-align:left; vertical-align:top; }
+  .tribunal-actions { display:flex; flex-wrap:wrap; gap:.5rem; }
+  .tribunal-button { display:inline-flex; align-items:center; gap:.4rem; border:1px solid currentColor; border-radius:8px; padding:.5rem .75rem; font-weight:700; text-decoration:none; }
+  .chart-container { min-height:260px; }
+  @media (max-width: 900px) { .tribunal-layout { grid-template-columns:1fr; } }
+</style>
+{% block tribunal_start_script %}{% endblock %}
+{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8 tribunal-shell">
+  <div class="mx-auto max-w-7xl space-y-6">
+    <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div class="space-y-2">
+        <nav class="flex flex-wrap items-center gap-3 text-sm">
+          <a href="{% url 'core:dashboard' %}" class="inline-flex items-center gap-2 underline hover:opacity-80">
+            <i class="fa-solid fa-arrow-left"></i>{% trans "Dashboard" %}
+          </a>
+          <a href="{% url 'tribunal:dashboard' %}" class="inline-flex items-center gap-2 underline hover:opacity-80">
+            <i class="fa-solid fa-scale-balanced"></i>{% trans "Tribunal" %}
+          </a>
+          {% block tribunal_header_nav %}{% endblock %}
+        </nav>
+        <div>
+          <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-xs font-semibold uppercase tracking-wide">
+            {% trans "Reason & Resolution" %}
+          </p>
+          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+            {% block tribunal_heading_icon %}<i class="fa-solid fa-scale-balanced"></i>{% endblock %}
+            {% block tribunal_heading %}{% trans "Tribunal" %}{% endblock %}
+          </h1>
+        </div>
+      </div>
+      <div class="tribunal-actions">{% block tribunal_header_actions %}{% endblock %}</div>
+    </header>
+
+    {% if messages %}
+      <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border p-4 shadow-sm">
+        <div class="space-y-2">
+          {% for message in messages %}
+            <div :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="rounded-lg border px-4 py-3 text-sm font-semibold">
+              {{ message }}
+            </div>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+
+    {% block tribunal_content %}{% endblock %}
+  </div>
+</section>
+{% endblock %}

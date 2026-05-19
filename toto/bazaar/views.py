@@ -372,6 +372,7 @@ class CustomerOrderDetailView(BazaarContextMixin, LoginRequiredMixin, DetailView
             ],
         }
         context['payload_json'] = _json.dumps(payload)
+        context['tribunal_cases'] = self.object.tribunal_cases.order_by('-opened_at')
 
         if self.object.payment_status != 'paid':
             sources, preferred = get_wallet_payment_sources(self.request.user, self.object)

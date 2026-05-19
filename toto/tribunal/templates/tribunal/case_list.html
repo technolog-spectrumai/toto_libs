@@ -1,0 +1,30 @@
+{% extends "tribunal/base.html" %}
+{% load i18n %}
+{% block tribunal_title %}{% trans "Cases" %}{% endblock %}
+{% block tribunal_heading %}{% trans "Cases" %}{% endblock %}
+{% block tribunal_header_actions %}<a href="{% url 'tribunal:case_create' %}" class="tribunal-button"><i class="fa-solid fa-plus"></i>{% trans "Open Case" %}</a>{% endblock %}
+{% block tribunal_content %}
+<section class="tribunal-grid">
+  <div class="tribunal-stat"><div class="label">{% trans "Results" %}</div><div class="value">{{ metrics.result_count }}</div></div>
+  <div class="tribunal-stat"><div class="label">{% trans "Open" %}</div><div class="value">{{ metrics.open_count }}</div></div>
+  <div class="tribunal-stat"><div class="label">{% trans "Resolved" %}</div><div class="value">{{ metrics.resolved_count }}</div></div>
+  <div class="tribunal-stat"><div class="label">{% trans "Urgent / High" %}</div><div class="value">{{ metrics.urgent_count }}</div></div>
+</section>
+<div class="tribunal-card">
+  <form method="get" class="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px_180px_auto]">
+    <input type="search" name="q" value="{{ query }}" placeholder="{% trans 'Search cases' %}">
+    <input type="text" name="status" value="{{ selected_status }}" placeholder="{% trans 'Status' %}">
+    <input type="text" name="priority" value="{{ selected_priority }}" placeholder="{% trans 'Priority' %}">
+    <button type="submit" class="tribunal-button"><i class="fa-solid fa-magnifying-glass"></i>{% trans "Filter" %}</button>
+  </form>
+</div>
+<div class="tribunal-card">
+  <div class="overflow-x-auto"><table class="tribunal-table"><thead><tr><th>{% trans "Case" %}</th><th>{% trans "Reason" %}</th><th>{% trans "Status" %}</th><th>{% trans "Priority" %}</th><th>{% trans "Assigned" %}</th><th>{% trans "Opened" %}</th></tr></thead><tbody>
+  {% for case in cases %}
+    <tr><td><a href="{% url 'tribunal:case_detail' case.id %}" class="font-semibold underline">{{ case.case_number }} · {{ case.title }}</a></td><td>{{ case.reason|default:"—" }}</td><td><span class="tribunal-pill">{{ case.status }}</span></td><td><span class="tribunal-pill">{{ case.priority }}</span></td><td>{% if case.assigned_to %}{{ case.assigned_to }}{% else %}—{% endif %}</td><td>{{ case.opened_at|date:"Y-m-d" }}</td></tr>
+  {% empty %}
+    <tr><td colspan="6" class="opacity-70">{% trans "No cases found." %}</td></tr>
+  {% endfor %}
+  </tbody></table></div>
+</div>
+{% endblock %}

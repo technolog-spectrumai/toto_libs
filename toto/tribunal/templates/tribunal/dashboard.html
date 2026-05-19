@@ -1,0 +1,63 @@
+{% extends "tribunal/base.html" %}
+{% load i18n %}
+{% block tribunal_title %}{% trans "Tribunal Dashboard" %}{% endblock %}
+{% block tribunal_heading %}{% trans "Tribunal Dashboard" %}{% endblock %}
+{% block tribunal_header_actions %}
+<a href="{% url 'tribunal:case_create' %}" class="tribunal-button"><i class="fa-solid fa-plus"></i>{% trans "Open Case" %}</a>
+<a href="{% url 'tribunal:case_list' %}" class="tribunal-button"><i class="fa-solid fa-list"></i>{% trans "All Cases" %}</a>
+{% endblock %}
+{% block tribunal_content %}
+<section class="tribunal-grid">
+  <div class="tribunal-stat"><div class="label">{% trans "Total Cases" %}</div><div class="value">{{ metrics.total_cases }}</div></div>
+  <div class="tribunal-stat"><div class="label">{% trans "Open Cases" %}</div><div class="value">{{ metrics.open_cases }}</div></div>
+  <div class="tribunal-stat"><div class="label">{% trans "Resolved" %}</div><div class="value">{{ metrics.resolved_cases }}</div></div>
+  <div class="tribunal-stat"><div class="label">{% trans "Resolution Rate" %}</div><div class="value">{{ metrics.resolution_rate }}%</div></div>
+  <div class="tribunal-stat"><div class="label">{% trans "Urgent / High" %}</div><div class="value">{{ metrics.urgent_cases }}</div></div>
+  <div class="tribunal-stat"><div class="label">{% trans "Stale Cases" %}</div><div class="value">{{ metrics.stale_cases }}</div></div>
+  <div class="tribunal-stat"><div class="label">{% trans "Evidence Coverage" %}</div><div class="value">{{ metrics.evidence_coverage }}%</div></div>
+  <div class="tribunal-stat"><div class="label">{% trans "Ruling Coverage" %}</div><div class="value">{{ metrics.ruling_coverage }}%</div></div>
+</section>
+
+<section class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm">
+    <h2 class="mb-4 flex items-center gap-2 text-lg font-bold"><i class="fa-solid fa-chart-pie"></i>{% trans "Cases by status" %}</h2>
+    {% include "oya/partials/chart.html" with chart_id="caseStatusChart" data=case_status_chart_json %}
+  </article>
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm">
+    <h2 class="mb-4 flex items-center gap-2 text-lg font-bold"><i class="fa-solid fa-signal"></i>{% trans "Cases by priority" %}</h2>
+    {% include "oya/partials/chart.html" with chart_id="casePriorityChart" data=case_priority_chart_json %}
+  </article>
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm">
+    <h2 class="mb-4 flex items-center gap-2 text-lg font-bold"><i class="fa-solid fa-file-signature"></i>{% trans "Claims by type" %}</h2>
+    {% include "oya/partials/chart.html" with chart_id="claimTypeChart" data=claim_type_chart_json %}
+  </article>
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm">
+    <h2 class="mb-4 flex items-center gap-2 text-lg font-bold"><i class="fa-solid fa-gavel"></i>{% trans "Rulings by resolution" %}</h2>
+    {% include "oya/partials/chart.html" with chart_id="resolutionTypeChart" data=resolution_type_chart_json %}
+  </article>
+</section>
+
+<div class="tribunal-card">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <h2 class="text-lg font-bold"><i class="fa-solid fa-folder-open"></i>{% trans "Recent Cases" %}</h2>
+    <a href="{% url 'tribunal:case_list' %}" class="underline">{% trans "View all" %}</a>
+  </div>
+  <div class="mt-4 overflow-x-auto">
+    <table class="tribunal-table">
+      <thead><tr><th>{% trans "Case" %}</th><th>{% trans "Status" %}</th><th>{% trans "Priority" %}</th><th>{% trans "Parties" %}</th><th>{% trans "Claims" %}</th><th>{% trans "Evidence" %}</th></tr></thead>
+      <tbody>
+      {% for case in cases %}
+        <tr>
+          <td><a href="{% url 'tribunal:case_detail' case.id %}" class="font-semibold underline">{{ case.case_number }} · {{ case.title }}</a></td>
+          <td><span class="tribunal-pill">{{ case.status }}</span></td>
+          <td><span class="tribunal-pill">{{ case.priority }}</span></td>
+          <td>{{ case.party_count }}</td><td>{{ case.claim_count }}</td><td>{{ case.evidence_count }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="6" class="opacity-70">{% trans "No cases yet." %}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

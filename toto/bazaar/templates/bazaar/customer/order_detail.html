@@ -82,6 +82,43 @@
       {% endif %}
     </div>
 
+    <!-- Tribunal dispute -->
+    <div :class="darkMode ? 'border-warn-dark/70 bg-bubble-bg-dark' : 'border-warn-light/70 bg-bubble-bg-light'"
+         class="rounded-2xl border p-5 shadow-sm text-sm space-y-3">
+      <div class="flex items-start gap-3">
+        <i class="fa-solid fa-scale-balanced mt-0.5" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
+        <div>
+          <h2 class="font-bold">{% trans "Order dispute" %}</h2>
+          <p class="mt-1 opacity-70">
+            {% trans "Opening a dispute starts a formal tribunal process. It can affect both sides and may end with asset obligations, fines, dismissal, or a binding resolution." %}
+          </p>
+        </div>
+      </div>
+
+      {% if tribunal_cases %}
+      <div class="space-y-2">
+        {% for tribunal_case in tribunal_cases %}
+        <a href="{% url 'tribunal:case_detail' tribunal_case.id %}"
+           :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+           class="flex items-center justify-between gap-3 rounded-xl border px-3 py-2 transition hover:opacity-85">
+          <span class="font-semibold">{{ tribunal_case.case_number|default:tribunal_case.title }}</span>
+          <span class="rounded-full border border-current/20 px-2 py-0.5 text-xs">{{ tribunal_case.status }}</span>
+        </a>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <form method="post" action="{% url 'tribunal:open_order_dispute' order_number=order.order_number %}"
+            onsubmit="return confirm('Opening a dispute starts a formal tribunal process and may have consequences for both sides. Continue?');">
+        {% csrf_token %}
+        <button type="submit"
+          :class="darkMode ? 'bg-warn-dark text-primary-bg-dark' : 'bg-warn-light text-primary-bg-light'"
+          class="flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold transition hover:opacity-85">
+          <i class="fa-solid fa-triangle-exclamation"></i> {% trans "Open dispute" %}
+        </button>
+      </form>
+    </div>
+
     <!-- Ledger payment receipt -->
     {% if order.ledger_tx_reference and order.payment_status == 'paid' %}
     <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"

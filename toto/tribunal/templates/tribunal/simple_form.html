@@ -1,0 +1,19 @@
+{% extends "tribunal/base.html" %}
+{% load i18n %}
+{% block tribunal_title %}{{ title }}{% endblock %}
+{% block tribunal_heading %}{{ title }}{% endblock %}
+{% block tribunal_header_nav %}
+{% if case %}<a href="{% url 'tribunal:case_detail' case.id %}" class="inline-flex items-center gap-2 underline hover:opacity-80"><i class="fa-solid fa-arrow-left"></i>{{ case.case_number }}</a>{% endif %}
+{% endblock %}
+{% block tribunal_content %}
+<div class="tribunal-card">
+  <form method="post" enctype="multipart/form-data" class="tribunal-form">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <div class="tribunal-actions mt-4">
+      <button type="submit" class="tribunal-button"><i class="fa-solid fa-floppy-disk"></i>{% trans "Save" %}</button>
+      {% if case %}<a href="{% url 'tribunal:case_detail' case.id %}" class="tribunal-button"><i class="fa-solid fa-xmark"></i>{% trans "Cancel" %}</a>{% endif %}
+    </div>
+  </form>
+</div>
+{% endblock %}

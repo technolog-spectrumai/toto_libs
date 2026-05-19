@@ -1,0 +1,10 @@
+{% extends "tribunal/base.html" %}
+{% load i18n %}
+{% block tribunal_title %}{% if mode == "create" %}{% trans "Open Case" %}{% else %}{% trans "Edit Case" %}{% endif %}{% endblock %}
+{% block tribunal_heading %}{% if mode == "create" %}{% trans "Open Case" %}{% else %}{% trans "Edit Case" %}{% endif %}{% endblock %}
+{% block tribunal_content %}
+<div class="tribunal-layout">
+  <aside><div class="tribunal-card"><h2 class="text-lg font-bold"><i class="fa-solid fa-circle-info"></i>{% trans "Guidance" %}</h2><p class="mt-3 text-sm opacity-75">{% trans "Open a case when ownership, custody, evidence, valuation, or responsibility is disputed." %}</p></div></aside>
+  <section><div class="tribunal-card"><form method="post" class="tribunal-form">{% csrf_token %}{{ form.as_p }}<div class="tribunal-actions mt-4"><button type="submit" class="tribunal-button"><i class="fa-solid fa-floppy-disk"></i>{% trans "Save" %}</button><a href="{% url 'tribunal:case_list' %}" class="tribunal-button"><i class="fa-solid fa-xmark"></i>{% trans "Cancel" %}</a></div></form></div></section>
+</div>
+{% endblock %}
