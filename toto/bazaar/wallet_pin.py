@@ -23,28 +23,43 @@ def has_wallet_pin(user) -> bool:
 
 def set_wallet_pin(user, raw_pin: str) -> None:
     from toto.bazaar.models import WalletPin
-    from toto.gervazy.models import UserStrongbox
+    from toto.gervazy.models import (
+        EncryptedFile,
+        EncryptedPrivateKey,
+        EncryptedSecret,
+        UserStrongbox,
+        VaultMasterKey,
+        WrappedDataKey,
+    )
     from toto.gervazy.crypto import GervazyCryptoSession
+    from django.db import transaction
 
     password = _vault_password(user)
 
-    # Wipe any previous WalletPin + strongbox entirely so there are no
-    # stale keys or EncryptedSecrets that would cause InvalidTag or
-    # UniqueConstraint errors on re-use.
-    WalletPin.objects.filter(user=user).delete()
-    UserStrongbox.objects.filter(owner=user, name=_STRONGBOX_NAME).delete()
+    # Wipe the dedicated wallet-PIN strongbox. Gervazy protects parent key
+    # rows, so delete children first instead of relying on a parent cascade.
+    with transaction.atomic():
+        WalletPin.objects.filter(user=user).delete()
+        strongboxes = UserStrongbox.objects.filter(owner=user, name=_STRONGBOX_NAME)
+        for strongbox in strongboxes:
+            EncryptedSecret.objects.filter(strongbox=strongbox).delete()
+            EncryptedFile.objects.filter(strongbox=strongbox).delete()
+            EncryptedPrivateKey.objects.filter(strongbox=strongbox).delete()
+            WrappedDataKey.objects.filter(strongbox=strongbox).delete()
+            VaultMasterKey.objects.filter(strongbox=strongbox).delete()
+            strongbox.delete()
 
-    session, wrapped_key = GervazyCryptoSession.initialize_strongbox(
-        user, _STRONGBOX_NAME, password
-    )
+        session, wrapped_key = GervazyCryptoSession.initialize_strongbox(
+            user, _STRONGBOX_NAME, password
+        )
 
-    secret = session.encrypt_secret(
-        wrapped_key,
-        raw_pin,
-        name=_PIN_SECRET_NAME,
-        purpose="wallet_pin",
-    )
-    WalletPin.objects.create(user=user, secret=secret)
+        secret = session.encrypt_secret(
+            wrapped_key,
+            raw_pin,
+            name=_PIN_SECRET_NAME,
+            purpose="wallet_pin",
+        )
+        WalletPin.objects.create(user=user, secret=secret)
 
 
 def check_wallet_pin(user, raw_pin: str) -> bool:

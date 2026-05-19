@@ -365,10 +365,14 @@ def build_settings(base_dir: Path, config_path: str | Path | None = None) -> dic
 
     migration_modules = cfg.get("migration_modules", {})
 
+    secret_key = os.getenv("SECRET_KEY") or (
+        "toto-dev-secret-key-change-me" if django_env != "PROD" else secrets.token_urlsafe(50)
+    )
+
     # ----------------------------------------------------------- assemble
     result: dict[str, Any] = {
         # Security
-        "SECRET_KEY": os.getenv("SECRET_KEY") or secrets.token_urlsafe(50),
+        "SECRET_KEY": secret_key,
         "DEBUG": debug,
         "ALLOWED_HOSTS": allowed_hosts,
         "CSRF_TRUSTED_ORIGINS": csrf_origins,
@@ -423,6 +427,7 @@ def build_settings(base_dir: Path, config_path: str | Path | None = None) -> dic
         # Secrets
         "FIELD_ENCRYPTION_KEY": os.getenv("FIELD_ENCRYPTION_KEY") or _generated_fernet_key(),
         "SSO_VAULT_PASSWORD": os.getenv("SSO_VAULT_PASSWORD", ""),
+        "WALLET_VAULT_SECRET": os.getenv("WALLET_VAULT_SECRET", secret_key),
         # Toto-specific
         "FULL_INGRESS": os.getenv("FULL_INGRESS", "0") == "1",
         "LOGIN_RETRY_COOLDOWN_SECONDS": int(os.getenv("LOGIN_RETRY_COOLDOWN_SECONDS", "3")),

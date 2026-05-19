@@ -445,23 +445,22 @@ class Command(IngressCommand):
     # ------------------------------------------------------------------ #
 
     def _seed_wallet_pin(self):
-        """Set wallet PIN "1111" for the first superuser (Founder / admin)."""
-        from toto.bazaar.wallet_pin import has_wallet_pin, set_wallet_pin
+        """Reset demo wallet PINs to "1111" for users with seeded wallets."""
+        from toto.bazaar.wallet_pin import set_wallet_pin
 
-        user = User.objects.filter(is_superuser=True).order_by("pk").first()
-        if not user:
-            self.stdout.write(self.style.WARNING("  ⚠ no superuser found, skipping wallet PIN"))
+        users = list(User.objects.filter(is_staff=True).order_by("pk")[:3])
+        if not users:
+            users = list(User.objects.filter(is_superuser=True).order_by("pk")[:1])
+        if not users:
+            self.stdout.write(self.style.WARNING("  ⚠ no staff/superuser found, skipping wallet PIN"))
             return
 
-        if has_wallet_pin(user):
-            self.stdout.write(self.style.WARNING(f"  ⚠ wallet PIN already set for {user.username}"))
-            return
-
-        try:
-            set_wallet_pin(user, "1111")
-            self.stdout.write(f"  + wallet PIN set for {user.username} (PIN: 1111)")
-        except Exception as exc:
-            self.stdout.write(self.style.ERROR(f"  ✗ wallet PIN failed for {user.username}: {exc}"))
+        for user in users:
+            try:
+                set_wallet_pin(user, "1111")
+                self.stdout.write(f"  + wallet PIN reset for {user.username} (PIN: 1111)")
+            except Exception as exc:
+                self.stdout.write(self.style.ERROR(f"  ✗ wallet PIN failed for {user.username}: {exc}"))
 
     # ------------------------------------------------------------------ #
     # Orders (only with --full)                                            #
