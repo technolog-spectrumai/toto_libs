@@ -1,14 +1,145 @@
-{% load i18n %}
+{% load i18n bazaar_tags %}
+{% get_has_wallet_pin as has_pin %}
 {% if wallet_accounts or wallet_payment_sources %}
 <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-     class="rounded-2xl border p-5 shadow-sm space-y-4" x-data="{ payMode: 'transfer' }">
+     class="rounded-2xl border p-5 shadow-sm space-y-4"
+     @wallet-pay.window="maybeRequirePin($event.detail.formEl)"
+     x-data="{
+       payMode: 'transfer',
+       pinOpen: false,
+       pinValue: '',
+       pinError: '',
+       pinLoading: false,
+       payError: '',
+       payLoading: false,
+       _pendingForm: null,
+
+       maybeRequirePin(formEl) {
+         this.payError = '';
+         {% if has_pin %}
+           this._pendingForm = formEl;
+           this.pinValue = '';
+           this.pinError = '';
+           this.pinOpen = true;
+           this.$nextTick(() => { const el = document.getElementById('wallet-pin-input'); if (el) el.focus(); });
+         {% else %}
+           this.payError = '__no_pin__';
+         {% endif %}
+       },
+
+       async submitPin() {
+         if (!this.pinValue) { this.pinError = '{% trans "Enter your PIN." %}'; return; }
+         this.pinLoading = true;
+         this.pinError = '';
+         try {
+           const res = await fetch('{% url "assets:wallet_pin_verify" %}', {
+             method: 'POST',
+             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+             body: JSON.stringify({ pin: this.pinValue }),
+           });
+           const data = await res.json();
+           if (data.ok) {
+             this.pinOpen = false;
+             await this.doPayment(this._pendingForm);
+           } else {
+             this.pinError = data.error || '{% trans "Incorrect PIN." %}';
+           }
+         } catch {
+           this.pinError = '{% trans "Network error. Try again." %}';
+         } finally {
+           this.pinLoading = false;
+         }
+       },
+
+       async doPayment(formEl) {
+         this.payLoading = true;
+         this.payError = '';
+         try {
+           const fd = new FormData(formEl);
+           const res = await fetch(formEl.action, {
+             method: 'POST',
+             headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+             body: fd,
+           });
+           const data = await res.json();
+           if (data.ok) {
+             window.location.href = data.redirect;
+           } else if (data.setup_url) {
+             window.location.href = data.setup_url;
+           } else {
+             this.payError = data.error || '{% trans "Payment failed." %}';
+           }
+         } catch {
+           this.payError = '{% trans "Network error. Please try again." %}';
+         } finally {
+           this.payLoading = false;
+         }
+       }
+     }">
+
+  <!-- PIN modal -->
+  <div x-show="pinOpen"
+       x-transition:enter="transition ease-out duration-150"
+       x-transition:enter-start="opacity-0 scale-95"
+       x-transition:enter-end="opacity-100 scale-100"
+       x-cloak
+       class="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+       @keydown.escape.window="pinOpen = false">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="pinOpen = false"></div>
+    <div :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+         class="relative z-10 w-full max-w-sm rounded-2xl border p-6 shadow-2xl space-y-4">
+
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <h3 class="font-bold text-lg">{% trans "Wallet PIN" %}</h3>
+          <p class="text-xs opacity-50 mt-0.5">{% trans "Enter your PIN to authorise this payment." %}</p>
+        </div>
+        <button type="button" @click="pinOpen = false" class="opacity-40 hover:opacity-80 transition text-xl leading-none">&times;</button>
+      </div>
+
+      <div class="space-y-1">
+        <label class="block text-xs font-semibold opacity-60 uppercase tracking-wide">{% trans "PIN" %}</label>
+        <input id="wallet-pin-input"
+               type="password"
+               inputmode="numeric"
+               autocomplete="current-password"
+               x-model="pinValue"
+               @keydown.enter="submitPin()"
+               :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+               class="w-full rounded-xl border px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] outline-none transition focus:ring-2 focus:ring-current/20"
+               placeholder="••••">
+        <p x-show="pinError" x-text="pinError"
+           :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
+           class="text-xs mt-1 font-semibold"></p>
+      </div>
+
+      <button type="button" @click="submitPin()"
+              :disabled="pinLoading"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="w-full rounded-xl py-3 font-bold text-sm transition hover:opacity-85 disabled:opacity-50 flex items-center justify-center gap-2">
+        <i class="fa-solid" :class="pinLoading ? 'fa-spinner fa-spin' : 'fa-bolt'"></i>
+        <span x-text="pinLoading ? '{% trans "Verifying…" %}' : '{% trans "Confirm payment" %}'"></span>
+      </button>
+
+      <p class="text-center text-xs opacity-40">
+        <a href="{% url 'assets:wallet_pin_set' %}" class="underline hover:opacity-80 transition">{% trans "Change PIN" %}</a>
+      </p>
+    </div>
+  </div>
 
   <div class="flex items-center justify-between gap-3">
     <div class="flex items-center gap-2">
       <i class="fa-solid fa-coins" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
       <h3 class="font-bold">{% trans "Pay with Asset Balance" %}</h3>
     </div>
-    {% include "bazaar/partials/wallet_drawer.html" %}
+    <div class="flex items-center gap-2">
+      {% if has_pin %}
+      <span class="inline-flex items-center gap-1 text-xs opacity-40">
+        <i class="fa-solid fa-lock text-[10px]"></i> {% trans "PIN protected" %}
+      </span>
+      {% endif %}
+      {% include "bazaar/partials/wallet_drawer.html" %}
+    </div>
   </div>
 
   {% if preferred_asset %}
@@ -36,6 +167,22 @@
     </button>
   </div>
 
+  <!-- Payment error banner -->
+  <div x-show="payError"
+       x-transition:enter="transition ease-out duration-150"
+       x-transition:enter-start="opacity-0 -translate-y-1"
+       x-transition:enter-end="opacity-100 translate-y-0"
+       x-cloak
+       :class="darkMode ? 'bg-warn-dark/10 border-warn-dark/30 text-warn-dark' : 'bg-warn-light/10 border-warn-light/30 text-warn-light'"
+       class="rounded-xl border px-4 py-3 text-sm font-semibold flex items-start gap-2">
+    <i class="fa-solid fa-circle-exclamation mt-0.5 shrink-0"></i>
+    <span x-show="payError !== '__no_pin__'" x-text="payError"></span>
+    <span x-show="payError === '__no_pin__'">
+      {% trans "Wallet not secured." %}
+      <a href="{% url 'assets:wallet' %}" class="underline hover:opacity-80 transition">{% trans "Set up your PIN in your wallet." %}</a>
+    </span>
+  </div>
+
   <!-- Transfer: immediate payment -->
   <div x-show="payMode === 'transfer'">
     {% if wallet_payment_sources %}
@@ -46,7 +193,8 @@
         <input type="hidden" name="account_id" value="{{ src.account.pk }}">
         <input type="hidden" name="asset_id"   value="{{ src.holding.asset.pk }}">
         <input type="hidden" name="next"        value="{{ request.path }}">
-        <button type="submit"
+        <button type="button"
+          @click="maybeRequirePin($el.closest('form'))"
           :class="darkMode ? 'bg-primary-bg-dark hover:border-accent-1' : 'bg-primary-bg-light hover:border-accent-2'"
           :class="darkMode ? '{% if src.is_preferred %}border-accent-1{% else %}border-current/10{% endif %}' : '{% if src.is_preferred %}border-accent-2{% else %}border-current/10{% endif %}'"
           class="w-full rounded-xl border
@@ -74,7 +222,8 @@
             <span class="text-xs opacity-60">{% trans "Pay" %} {{ order.total_amount }} {{ order.currency }}</span>
             <span :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
                   class="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-bold">
-              <i class="fa-solid fa-bolt text-[10px]"></i> {% trans "Pay now" %}
+              <i class="fa-solid text-[10px]" :class="payLoading ? 'fa-spinner fa-spin' : 'fa-bolt'"></i>
+              <span x-text="payLoading ? '{% trans "Processing…" %}' : '{% trans "Pay now" %}'"></span>
             </span>
           </div>
           {% endif %}
@@ -101,7 +250,8 @@
       <input type="hidden" name="asset_id"   value="{{ src.holding.asset.pk }}">
       <input type="hidden" name="due_days"   value="14">
       <input type="hidden" name="next"       value="{{ request.path }}">
-      <button type="submit"
+      <button type="button"
+        @click="maybeRequirePin($el.closest('form'))"
         :class="darkMode ? 'bg-primary-bg-dark hover:border-accent-1' : 'bg-primary-bg-light hover:border-accent-2'"
         :class="darkMode ? '{% if src.is_preferred %}border-accent-1{% else %}border-current/10{% endif %}' : '{% if src.is_preferred %}border-accent-2{% else %}border-current/10{% endif %}'"
         class="w-full rounded-xl border
@@ -116,7 +266,8 @@
           </div>
           <span :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
                 class="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-bold shrink-0">
-            <i class="fa-solid fa-truck text-[10px]"></i> {% trans "Commit" %}
+            <i class="fa-solid text-[10px]" :class="payLoading ? 'fa-spinner fa-spin' : 'fa-truck'"></i>
+            <span x-text="payLoading ? '{% trans "Processing…" %}' : '{% trans "Commit" %}'"></span>
           </span>
         </div>
       </button>

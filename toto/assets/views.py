@@ -1,6 +1,7 @@
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 from toto.ui import PageProcessor
@@ -191,6 +192,7 @@ def wallet(request):
         .order_by('due_at')
     )
     # Mark overdue in Python so template can use is_overdue property
+    from toto.bazaar.wallet_pin import has_wallet_pin
     return assets_render(request, 'assets/wallet.html', {
         'wallet_accounts': accounts,
         'total_holdings': total_holdings,
@@ -198,6 +200,7 @@ def wallet(request):
         'currencies': currencies,
         'obligations': obligations,
         'now': now,
+        'has_wallet_pin': has_wallet_pin(request.user),
     })
 
 
@@ -282,3 +285,45 @@ def ledger_flow_data(request):
         "nodes": list(nodes.values()),
         "edges": edges,
     })
+
+
+@login_required
+def wallet_pin_set(request):
+    from toto.bazaar.wallet_pin import set_wallet_pin, has_wallet_pin
+    has_pin = has_wallet_pin(request.user)
+    if request.method == 'POST':
+        pin = request.POST.get('pin', '').strip()
+        confirm = request.POST.get('pin_confirm', '').strip()
+        if not pin:
+            messages.error(request, 'PIN cannot be empty.')
+        elif len(pin) < 4:
+            messages.error(request, 'PIN must be at least 4 characters.')
+        elif pin != confirm:
+            messages.error(request, 'PINs do not match.')
+        else:
+            try:
+                set_wallet_pin(request.user, pin)
+                messages.success(request, 'Wallet PIN set successfully.')
+                return redirect('assets:wallet_pin_set')
+            except Exception:
+                messages.error(request, 'Could not save PIN. Please try again.')
+    return assets_render(request, 'assets/wallet_pin_set.html', {'has_pin': has_pin})
+
+
+@login_required
+def wallet_pin_verify(request):
+    import json as _json
+    from toto.bazaar.wallet_pin import check_wallet_pin, mark_session_verified
+    if request.method != 'POST':
+        return JsonResponse({'ok': False}, status=405)
+    try:
+        data = _json.loads(request.body)
+        raw_pin = data.get('pin', '')
+    except Exception:
+        return JsonResponse({'ok': False, 'error': 'Invalid request.'}, status=400)
+    if not raw_pin:
+        return JsonResponse({'ok': False, 'error': 'PIN is required.'})
+    if check_wallet_pin(request.user, raw_pin):
+        mark_session_verified(request.session)
+        return JsonResponse({'ok': True})
+    return JsonResponse({'ok': False, 'error': 'Incorrect PIN.'})

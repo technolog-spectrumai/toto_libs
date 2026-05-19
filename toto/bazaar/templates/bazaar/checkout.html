@@ -138,7 +138,8 @@ document.addEventListener('alpine:init', () => {
     {% csrf_token %}
     {{ form.non_field_errors }}
 
-    <!-- Hidden address fields -->
+    <!-- Hidden fields -->
+    <input type="hidden" name="payment_method"    value="transfer">
     <input type="hidden" name="selected_location" :value="selectedLoc !== null ? selectedLoc : ''">
     <input type="hidden" name="new_latitude"      :value="lat !== null ? lat : ''">
     <input type="hidden" name="new_longitude"     :value="lng !== null ? lng : ''">
@@ -146,8 +147,27 @@ document.addEventListener('alpine:init', () => {
     <!-- Contact -->
     <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
          class="rounded-2xl border p-5 shadow-sm">
-      <p class="text-xs font-semibold opacity-60 uppercase tracking-wide mb-2">{% trans "Contact" %}</p>
-      <p class="font-semibold">{{ request.user.email|default:request.user.username }}</p>
+      <p class="text-xs font-semibold opacity-60 uppercase tracking-wide mb-3">{% trans "Order placed by" %}</p>
+      <div class="flex items-center gap-3">
+        {% if person and person.avatar %}
+        <img src="{{ person.avatar.url }}" alt="{{ person.display_name }}"
+             class="h-10 w-10 rounded-full object-cover shrink-0">
+        {% else %}
+        <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+             class="h-10 w-10 rounded-full flex items-center justify-center shrink-0">
+          <i class="fa-solid fa-user text-sm opacity-40"></i>
+        </div>
+        {% endif %}
+        <div class="min-w-0">
+          <p class="font-semibold truncate">
+            {% if person %}{{ person.display_name }}{% else %}{{ request.user.get_full_name|default:request.user.username }}{% endif %}
+          </p>
+          <p class="text-xs opacity-50 truncate">
+            {% if person and person.email %}{{ person.email }}{% elif request.user.email %}{{ request.user.email }}{% else %}{{ request.user.username }}{% endif %}
+            {% if person and person.phone %} · {{ person.phone }}{% endif %}
+          </p>
+        </div>
+      </div>
     </div>
 
     <!-- Delivery address -->
@@ -313,21 +333,19 @@ document.addEventListener('alpine:init', () => {
       </label>
     </div>
 
-    <!-- Payment method -->
-    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-         class="rounded-2xl border p-5 shadow-sm space-y-3">
-      <p class="text-xs font-semibold opacity-60 uppercase tracking-wide">{% trans "Payment method" %}</p>
-      <div class="space-y-2">
-        {% for value, label in form.payment_method.field.choices %}
-        <label class="flex items-center gap-3 cursor-pointer text-sm select-none">
-          <input type="radio" name="payment_method" value="{{ value }}"
-                 {% if forloop.first %}checked{% endif %}
-                 class="accent-current">
-          <span>{{ label }}</span>
-        </label>
-        {% endfor %}
+    <!-- Wallet security warning -->
+    {% if not wallet_secured %}
+    <a href="{% url 'assets:wallet_pin_set' %}"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-primary-bg-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-primary-bg-light'"
+       class="flex items-center gap-3 rounded-2xl border p-4 shadow-sm transition">
+      <i class="fa-solid fa-lock-open text-xl shrink-0" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
+      <div class="min-w-0 flex-1">
+        <p class="font-semibold text-sm" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{% trans "Wallet not protected" %}</p>
+        <p class="text-xs opacity-60 mt-0.5">{% trans "Set a wallet PIN before placing orders. Tap to configure." %}</p>
       </div>
-    </div>
+      <i class="fa-solid fa-chevron-right text-xs opacity-30 shrink-0"></i>
+    </a>
+    {% endif %}
 
     <!-- Actions -->
     <div class="flex justify-end gap-3 pt-2 pb-10">
@@ -336,11 +354,19 @@ document.addEventListener('alpine:init', () => {
          class="rounded-xl border px-5 py-2.5 text-sm font-semibold transition hover:opacity-80">
         {% trans "Back to cart" %}
       </a>
+      {% if wallet_secured %}
       <button type="submit"
         :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
         class="rounded-xl px-6 py-2.5 text-sm font-bold shadow-sm transition hover:opacity-85">
         <i class="fa-solid fa-paper-plane mr-1"></i> {% trans "Place order" %}
       </button>
+      {% else %}
+      <button type="button" disabled
+        class="rounded-xl px-6 py-2.5 text-sm font-bold shadow-sm opacity-30 cursor-not-allowed"
+        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'">
+        <i class="fa-solid fa-lock mr-1"></i> {% trans "Place order" %}
+      </button>
+      {% endif %}
     </div>
 
   </form>

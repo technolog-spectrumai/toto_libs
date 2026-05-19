@@ -91,7 +91,8 @@
             {% for src in wallet_payment_sources %}
               {% if src.holding.pk == holding.pk %}
               {% if src.can_pay %}
-              <button type="submit"
+              <button type="button"
+                @click="$dispatch('wallet-pay', { formEl: $el.closest('form') })"
                 :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
                 class="w-full rounded-lg py-2 text-xs font-bold shadow-sm transition hover:opacity-90">
                 <i class="fa-solid fa-bolt mr-1"></i>

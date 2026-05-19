@@ -418,3 +418,22 @@ class ShipmentLocation(DomainEntity):
             ShipmentLocation.objects.filter(user=self.user, is_default=True).exclude(pk=self.pk).update(is_default=False)
         super().save(*args, **kwargs)
 
+
+class WalletPin(DomainEntity):
+    """Per-user wallet PIN stored as a Gervazy EncryptedSecret."""
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='wallet_pin',
+    )
+    secret = models.OneToOneField(
+        'gervazy.EncryptedSecret',
+        on_delete=models.CASCADE,
+        related_name='wallet_pin',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"WalletPin({self.user})"
+

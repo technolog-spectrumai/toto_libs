@@ -15,4 +15,6 @@ urlpatterns = [
     path("flow/", views.ledger_flow, name="ledger_flow"),
     path("flow/data/", views.ledger_flow_data, name="ledger_flow_data"),
     path("wallet/", views.wallet, name="wallet"),
+    path("wallet/pin/", views.wallet_pin_set, name="wallet_pin_set"),
+    path("wallet/pin/verify/", views.wallet_pin_verify, name="wallet_pin_verify"),
 ]

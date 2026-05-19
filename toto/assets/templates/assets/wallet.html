@@ -6,6 +6,29 @@
 {% block assets_content %}
 <div class="space-y-6">
 
+  <!-- PIN status banner -->
+  {% if not has_wallet_pin %}
+  <a href="{% url 'assets:wallet_pin_set' %}"
+     :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-primary-bg-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-primary-bg-light'"
+     class="flex items-center gap-3 rounded-2xl border p-4 shadow-sm transition">
+    <i class="fa-solid fa-lock-open text-xl shrink-0" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
+    <div class="min-w-0">
+      <p class="font-semibold text-sm" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{% trans "Wallet not protected" %}</p>
+      <p class="text-xs opacity-60 mt-0.5">{% trans "Set a PIN to enable transactions. Tap to configure." %}</p>
+    </div>
+    <i class="fa-solid fa-chevron-right text-xs opacity-30 ml-auto shrink-0"></i>
+  </a>
+  {% else %}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="flex items-center justify-between gap-3 rounded-2xl border p-4 shadow-sm text-sm">
+    <div class="flex items-center gap-2">
+      <i class="fa-solid fa-lock shrink-0" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+      <span class="font-semibold">{% trans "PIN protected" %}</span>
+    </div>
+    <a href="{% url 'assets:wallet_pin_set' %}" class="text-xs opacity-50 hover:opacity-80 transition underline">{% trans "Change PIN" %}</a>
+  </div>
+  {% endif %}
+
   <!-- Balance cards -->
   {% if total_holdings %}
   <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

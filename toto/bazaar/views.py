@@ -8,7 +8,7 @@ from django.views import View
 from django.views.generic import TemplateView, ListView, DetailView, FormView, CreateView, UpdateView
 from toto.core.page import PageProcessor
 from .forms import AddToCartForm, CheckoutForm, ProductForm, ReviewForm, ShipmentForm
-from .models import Product, ProductCategory, Vendor, CartItem, Order, OrderItem, Shipment, ProductReview, ShipmentLocation
+from .models import Product, ProductCategory, Vendor, CartItem, Order, OrderItem, Shipment, ProductReview, ShipmentLocation, WalletPin
 from .selectors import active_shop, published_products, get_current_cart, customer_orders, product_review_metrics, vendor_inventory_metrics
 from .services import (
     add_product_to_cart, create_order_from_cart, apply_coupon,
@@ -192,6 +192,10 @@ class CheckoutView(BazaarContextMixin, LoginRequiredMixin, FormView):
             saved_locations = ShipmentLocation.objects.none()
         context['saved_locations'] = saved_locations
 
+        from .wallet_pin import has_wallet_pin
+        context['wallet_secured'] = has_wallet_pin(user) if user.is_authenticated else False
+        context['person'] = getattr(user, 'community_profile', None) if user.is_authenticated else None
+
         def _geom(addr):
             if addr and addr.geometry:
                 return {'lat': addr.geometry.y, 'lng': addr.geometry.x}
@@ -217,6 +221,11 @@ class CheckoutView(BazaarContextMixin, LoginRequiredMixin, FormView):
     def form_valid(self, form):
         from toto.locations.models import Address
         from django.contrib.gis.geos import Point
+
+        from .wallet_pin import has_wallet_pin
+        from django.http import HttpResponseForbidden
+        if not has_wallet_pin(self.request.user):
+            return HttpResponseForbidden('Wallet PIN not set. Please secure your wallet before placing orders.')
 
         cart = get_current_cart(self.request)
         user = self.request.user
@@ -260,12 +269,13 @@ class CheckoutView(BazaarContextMixin, LoginRequiredMixin, FormView):
             'shipping_address': shipping_address,
             'billing_address': shipping_address,
         }
+        checkout_data['payment_method'] = 'transfer'
         try:
             order = create_order_from_cart(cart, checkout_data)
         except ValueError as exc:
             form.add_error(None, str(exc))
             return self.form_invalid(form)
-        return redirect('bazaar:order-confirmation', order_number=order.order_number)
+        return redirect('bazaar:order-detail', order_number=order.order_number)
 
 
 class OrderConfirmationView(BazaarContextMixin, DetailView):
@@ -526,10 +536,17 @@ class ShipmentTrackingView(BazaarContextMixin, DetailView):
 
 class LedgerPaymentView(LoginRequiredMixin, View):
     def post(self, request, order_number):
+        from .wallet_pin import has_wallet_pin, session_is_verified
+        next_url = request.POST.get('next') or reverse('bazaar:order-detail', kwargs={'order_number': order_number})
+
+        if not has_wallet_pin(request.user):
+            return JsonResponse({'ok': False, 'error': 'No wallet PIN set. Please set a PIN before making payments.', 'setup_url': reverse('assets:wallet_pin_set')}, status=403)
+        if not session_is_verified(request.session):
+            return JsonResponse({'ok': False, 'error': 'Wallet PIN required. Please verify your PIN.'}, status=403)
+
         order = get_object_or_404(Order, order_number=order_number)
         if order.user and order.user != request.user:
-            messages.error(request, 'You do not have permission to pay this order.')
-            return redirect('bazaar:order-confirmation', order_number=order_number)
+            return JsonResponse({'ok': False, 'error': 'You do not have permission to pay this order.'}, status=403)
 
         from toto.assets.models import LedgerAccount, Asset
         account_id = request.POST.get('account_id')
@@ -539,28 +556,31 @@ class LedgerPaymentView(LoginRequiredMixin, View):
             account = LedgerAccount.objects.get(pk=account_id, user=request.user, active=True)
             asset   = Asset.objects.get(pk=asset_id, active=True)
             pay_order_with_ledger(order, account, asset)
-            messages.success(request, f'Payment of {order.total_amount} {asset.unit_name} confirmed.')
+            return JsonResponse({'ok': True, 'redirect': next_url, 'message': f'Payment of {order.total_amount} {asset.unit_name} confirmed.'})
         except (LedgerAccount.DoesNotExist, Asset.DoesNotExist):
-            messages.error(request, 'Invalid account or asset selection.')
+            return JsonResponse({'ok': False, 'error': 'Invalid account or asset. Please try again.'}, status=400)
         except ValueError as exc:
-            messages.error(request, str(exc))
-
-        next_url = request.POST.get('next') or reverse('bazaar:order-confirmation', kwargs={'order_number': order_number})
-        return redirect(next_url)
+            return JsonResponse({'ok': False, 'error': str(exc)}, status=400)
 
 
 class OnDeliveryPaymentView(LoginRequiredMixin, View):
     """Create an Obligation for on-delivery deferred payment."""
     def post(self, request, order_number):
-        order = get_object_or_404(Order, order_number=order_number)
-        if order.user and order.user != request.user:
-            messages.error(request, 'You do not have permission to do this.')
-            return redirect('bazaar:order-confirmation', order_number=order_number)
-
-        from toto.assets.models import LedgerAccount, Asset
+        from .wallet_pin import has_wallet_pin, session_is_verified
         from django.utils import timezone as tz
         from datetime import timedelta
+        next_url = request.POST.get('next') or reverse('bazaar:order-detail', kwargs={'order_number': order_number})
 
+        if not has_wallet_pin(request.user):
+            return JsonResponse({'ok': False, 'error': 'No wallet PIN set. Please set a PIN before making payments.', 'setup_url': reverse('assets:wallet_pin_set')}, status=403)
+        if not session_is_verified(request.session):
+            return JsonResponse({'ok': False, 'error': 'Wallet PIN required. Please verify your PIN.'}, status=403)
+
+        order = get_object_or_404(Order, order_number=order_number)
+        if order.user and order.user != request.user:
+            return JsonResponse({'ok': False, 'error': 'You do not have permission to do this.'}, status=403)
+
+        from toto.assets.models import LedgerAccount, Asset
         account_id = request.POST.get('account_id')
         asset_id   = request.POST.get('asset_id')
         days = int(request.POST.get('due_days', 14))
@@ -570,14 +590,11 @@ class OnDeliveryPaymentView(LoginRequiredMixin, View):
             asset   = Asset.objects.get(pk=asset_id, active=True, is_currency=True)
             due_at  = tz.now() + timedelta(days=days)
             create_obligation_for_order(order, account, asset, due_at)
-            messages.success(request, f'On-delivery obligation created. Due by {due_at.strftime("%Y-%m-%d")}.')
+            return JsonResponse({'ok': True, 'redirect': next_url, 'message': f'On-delivery obligation created. Due by {due_at.strftime("%Y-%m-%d")}.'})
         except (LedgerAccount.DoesNotExist, Asset.DoesNotExist):
-            messages.error(request, 'Invalid account or asset selection.')
+            return JsonResponse({'ok': False, 'error': 'Invalid account or asset. Please try again.'}, status=400)
         except ValueError as exc:
-            messages.error(request, str(exc))
-
-        next_url = request.POST.get('next') or reverse('bazaar:order-detail', kwargs={'order_number': order_number})
-        return redirect(next_url)
+            return JsonResponse({'ok': False, 'error': str(exc)}, status=400)
 
 
 class FulfillObligationView(LoginRequiredMixin, View):
@@ -635,3 +652,48 @@ class ShipmentMapView(BazaarContextMixin, DetailView):
         }
         context['payload_json'] = _json.dumps(payload)
         return context
+
+
+class WalletPinVerifyView(LoginRequiredMixin, View):
+    """AJAX endpoint — verifies wallet PIN and stamps the session."""
+    def post(self, request):
+        import json as _json
+        from .wallet_pin import check_wallet_pin, mark_session_verified
+        try:
+            data = _json.loads(request.body)
+            raw_pin = data.get('pin', '')
+        except Exception:
+            return JsonResponse({'ok': False, 'error': 'Invalid request.'}, status=400)
+
+        if not raw_pin:
+            return JsonResponse({'ok': False, 'error': 'PIN is required.'})
+
+        if check_wallet_pin(request.user, raw_pin):
+            mark_session_verified(request.session)
+            return JsonResponse({'ok': True})
+        return JsonResponse({'ok': False, 'error': 'Incorrect PIN.'})
+
+
+class WalletPinSetView(LoginRequiredMixin, BazaarContextMixin, TemplateView):
+    """Set or update the wallet PIN."""
+    template_name = 'bazaar/wallet_pin_set.html'
+
+    def post(self, request):
+        from .wallet_pin import set_wallet_pin
+        pin = request.POST.get('pin', '').strip()
+        confirm = request.POST.get('pin_confirm', '').strip()
+        if not pin:
+            messages.error(request, 'PIN cannot be empty.')
+            return self.get(request)
+        if len(pin) < 4:
+            messages.error(request, 'PIN must be at least 4 characters.')
+            return self.get(request)
+        if pin != confirm:
+            messages.error(request, 'PINs do not match.')
+            return self.get(request)
+        try:
+            set_wallet_pin(request.user, pin)
+            messages.success(request, 'Wallet PIN set successfully.')
+        except Exception as exc:
+            messages.error(request, f'Could not save PIN: {exc}')
+        return redirect('bazaar:wallet-pin-set')
