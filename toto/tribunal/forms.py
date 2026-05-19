@@ -173,27 +173,3 @@ class JuryVoteForm(forms.ModelForm):
         widgets = {
             'reason': forms.Textarea(attrs={'rows': 3}),
         }
-
-
-    def clean(self):
-        cleaned = super().clean()
-        fine_fields = [
-            "fine_debtor_account",
-            "fine_creditor_account",
-            "fine_asset",
-            "fine_amount",
-        ]
-        has_fine_value = any(cleaned.get(field) for field in fine_fields) or cleaned.get("fine_due_at")
-        if not has_fine_value:
-            return cleaned
-
-        missing = [field for field in fine_fields if not cleaned.get(field)]
-        if missing:
-            raise forms.ValidationError(
-                "A fine needs a debtor account, creditor account, asset, and amount."
-            )
-
-        if cleaned["fine_amount"] <= 0:
-            self.add_error("fine_amount", "Fine amount must be greater than zero.")
-
-        return cleaned

@@ -1,0 +1,151 @@
+{% load i18n %}
+{# Primary swap target: #jury-right — right column (vote split + log) #}
+<section id="jury-right" class="space-y-4">
+
+  {# Vote split card #}
+  <div class="tribunal-card">
+    <h2 class="mb-4 text-base font-bold"><i class="fa-solid fa-chart-pie mr-1"></i>{% trans "Vote Split" %}</h2>
+    <div class="grid grid-cols-3 gap-3 mb-5 text-center">
+      <div class="rounded-xl border py-4" :class="darkMode ? 'border-warn-dark/30 bg-warn-dark/5' : 'border-warn-light/30 bg-warn-light/5'">
+        <div class="text-3xl font-black" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ tally.guilty }}</div>
+        <div class="mt-1 text-xs font-bold uppercase tracking-wide opacity-60">{% trans "Guilty" %}</div>
+      </div>
+      <div class="rounded-xl border py-4" :class="darkMode ? 'border-success-dark/30 bg-success-dark/5' : 'border-success-light/30 bg-success-light/5'">
+        <div class="text-3xl font-black" :class="darkMode ? 'text-success-dark' : 'text-success-light'">{{ tally.not_guilty }}</div>
+        <div class="mt-1 text-xs font-bold uppercase tracking-wide opacity-60">{% trans "Not Guilty" %}</div>
+      </div>
+      <div class="rounded-xl border py-4" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <div class="text-3xl font-black opacity-60">{{ tally.abstain }}</div>
+        <div class="mt-1 text-xs font-bold uppercase tracking-wide opacity-60">{% trans "Abstain" %}</div>
+      </div>
+    </div>
+    {% if total > 0 %}
+      <script>
+        {# Destroy old Chart.js instance before HTMX re-inserts the canvas #}
+        (function() {
+          const old = typeof Chart !== 'undefined' && Chart.getChart('juryVoteChart');
+          if (old) old.destroy();
+        })();
+      </script>
+      {% include "oya/partials/chart.html" with chart_id="juryVoteChart" data=chart_data %}
+    {% else %}
+      <p class="py-8 text-center text-sm opacity-40"><i class="fa-solid fa-chart-pie mr-1"></i>{% trans "No votes cast yet." %}</p>
+    {% endif %}
+  </div>
+
+  {# Vote log — auto-open when votes exist #}
+  <div class="tribunal-card" x-data="{open: {{ total|yesno:'true,false' }}}">
+    <button type="button" @click="open=!open" class="flex w-full cursor-pointer items-center justify-between">
+      <h2 class="text-base font-bold"><i class="fa-solid fa-list-check mr-1"></i>{% trans "Vote Log" %} <span class="opacity-40 font-normal text-sm">({{ total }})</span></h2>
+      <i class="fa-solid fa-chevron-down text-xs opacity-40 transition" :class="open ? 'rotate-180' : ''"></i>
+    </button>
+    <div x-show="open" class="mt-4">
+      <table class="tribunal-table">
+        <thead>
+          <tr>
+            <th>{% trans "Juror" %}</th>
+            <th>{% trans "Vote" %}</th>
+            <th>{% trans "Time" %}</th>
+            {% if request.user.is_staff %}<th>{% trans "Reason" %}</th>{% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for vote in session.votes.all %}
+          <tr>
+            <td class="font-medium">{{ vote.juror|default:"—" }}</td>
+            <td>
+              {% if vote.vote == 'guilty' %}
+                <span class="tribunal-pill text-xs" :class="darkMode ? 'text-warn-dark border-warn-dark/40' : 'text-warn-light border-warn-light/40'">{{ vote.get_vote_display }}</span>
+              {% elif vote.vote == 'not_guilty' %}
+                <span class="tribunal-pill text-xs" :class="darkMode ? 'text-success-dark border-success-dark/40' : 'text-success-light border-success-light/40'">{{ vote.get_vote_display }}</span>
+              {% else %}
+                <span class="tribunal-pill text-xs opacity-60">{{ vote.get_vote_display }}</span>
+              {% endif %}
+            </td>
+            <td class="text-xs opacity-60">{{ vote.voted_at|date:"M d, H:i" }}</td>
+            {% if request.user.is_staff %}<td class="text-xs opacity-60 max-w-xs">{{ vote.reason|default:"—" }}</td>{% endif %}
+          </tr>
+          {% empty %}
+          <tr><td colspan="{% if request.user.is_staff %}4{% else %}3{% endif %}" class="opacity-40 text-sm py-4 text-center">{% trans "No votes yet." %}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</section>
+
+{# OOB swap: vote panel (form → your vote) #}
+<div id="vote-panel" hx-swap-oob="true">
+  {% if vote_form %}
+  <div class="tribunal-card">
+    <h2 class="text-base font-bold"><i class="fa-solid fa-vote-yea mr-1"></i>{% trans "Cast Your Vote" %}</h2>
+    <form id="jury-vote-form" class="tribunal-form mt-4" method="post"
+          action="{% url 'tribunal:jury_vote' session.id %}"
+          hx-post="{% url 'tribunal:jury_vote' session.id %}"
+          hx-target="#jury-right"
+          hx-swap="outerHTML">
+      {% csrf_token %}
+      {{ vote_form.as_p }}
+      <button class="tribunal-button mt-1 w-full justify-center" type="submit">
+        <i class="fa-solid fa-check"></i>{% trans "Submit Vote" %}
+      </button>
+    </form>
+  </div>
+  {% elif user_vote %}
+  <div class="tribunal-card">
+    <h2 class="text-base font-bold"><i class="fa-solid fa-circle-check mr-1"></i>{% trans "Your Vote" %}</h2>
+    <div class="mt-3">
+      {% if user_vote.vote == 'guilty' %}
+        <span class="tribunal-pill font-black" :class="darkMode ? 'text-warn-dark border-warn-dark/40' : 'text-warn-light border-warn-light/40'">
+          <i class="fa-solid fa-gavel"></i>{{ user_vote.get_vote_display }}
+        </span>
+      {% elif user_vote.vote == 'not_guilty' %}
+        <span class="tribunal-pill font-black" :class="darkMode ? 'text-success-dark border-success-dark/40' : 'text-success-light border-success-light/40'">
+          <i class="fa-solid fa-circle-check"></i>{{ user_vote.get_vote_display }}
+        </span>
+      {% else %}
+        <span class="tribunal-pill font-bold opacity-70">{{ user_vote.get_vote_display }}</span>
+      {% endif %}
+      {% if user_vote.reason %}
+      <p class="mt-2 text-sm opacity-60">{{ user_vote.reason }}</p>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+{# OOB swap: juror list (updates pending → voted badge) #}
+<div id="jury-members" hx-swap-oob="true">
+  <div class="tribunal-card">
+    <h2 class="text-base font-bold"><i class="fa-solid fa-user-group mr-1"></i>{% trans "Jurors" %}</h2>
+    {% if juror_rows %}
+    <ul class="mt-3 text-sm">
+      {% for juror, vote in juror_rows %}
+      <li class="flex items-center justify-between gap-2 border-t py-2.5" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <span class="font-medium">{{ juror }}</span>
+        {% if vote %}
+          {% if vote.vote == 'guilty' %}
+            <span class="tribunal-pill text-xs font-bold" :class="darkMode ? 'text-warn-dark border-warn-dark/40' : 'text-warn-light border-warn-light/40'">
+              <i class="fa-solid fa-gavel"></i>{{ vote.get_vote_display }}
+            </span>
+          {% elif vote.vote == 'not_guilty' %}
+            <span class="tribunal-pill text-xs font-bold" :class="darkMode ? 'text-success-dark border-success-dark/40' : 'text-success-light border-success-light/40'">
+              <i class="fa-solid fa-circle-check"></i>{{ vote.get_vote_display }}
+            </span>
+          {% else %}
+            <span class="tribunal-pill text-xs opacity-60">
+              <i class="fa-solid fa-minus"></i>{{ vote.get_vote_display }}
+            </span>
+          {% endif %}
+        {% else %}
+          <span class="text-xs opacity-40"><i class="fa-regular fa-clock mr-0.5"></i>{% trans "pending" %}</span>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="mt-3 text-sm opacity-50">{% trans "Open to all members." %}</p>
+    {% endif %}
+  </div>
+</div>

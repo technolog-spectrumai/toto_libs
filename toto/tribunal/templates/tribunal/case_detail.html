@@ -11,223 +11,434 @@
 <form method="post" action="{% url 'tribunal:case_resolve' case.id %}">{% csrf_token %}<button class="tribunal-button" type="submit"><i class="fa-solid fa-check"></i>{% trans "Resolve" %}</button></form>
 {% endif %}
 {% endblock %}
+
 {% block tribunal_content %}
+
+{# Stats strip #}
 <section class="tribunal-grid">
   <div class="tribunal-stat"><div class="label">{% trans "Parties" %}</div><div class="value">{{ metrics.party_count }}</div></div>
   <div class="tribunal-stat"><div class="label">{% trans "Claims" %}</div><div class="value">{{ metrics.claim_count }}</div></div>
   <div class="tribunal-stat"><div class="label">{% trans "Evidence" %}</div><div class="value">{{ metrics.evidence_count }}</div></div>
   <div class="tribunal-stat"><div class="label">{% trans "Rulings" %}</div><div class="value">{{ metrics.ruling_count }}</div></div>
-  <div class="tribunal-stat"><div class="label">{% trans "Case Age" %}</div><div class="value">{{ metrics.age_days|default:"—" }}</div></div>
+  <div class="tribunal-stat"><div class="label">{% trans "Age (days)" %}</div><div class="value">{{ metrics.age_days|default:"—" }}</div></div>
   <div class="tribunal-stat"><div class="label">{% trans "Readiness" %}</div><div class="value">{{ metrics.readiness_score }}%</div></div>
   <div class="tribunal-stat">
     <div class="label">{% trans "Jury" %}</div>
     <div class="value">
       {% if metrics.active_jury %}
         <a href="{% url 'tribunal:jury_session_detail' metrics.active_jury.id %}" :class="darkMode ? 'text-success-dark' : 'text-success-light'" class="flex items-center gap-1">
-          <i class="fa-solid fa-circle-dot text-lg"></i>
-          <span>{{ metrics.jury_session_count }}</span>
+          <i class="fa-solid fa-circle-dot"></i><span>{{ metrics.jury_session_count }}</span>
         </a>
-      {% else %}
-        {{ metrics.jury_session_count }}
-      {% endif %}
+      {% else %}{{ metrics.jury_session_count }}{% endif %}
     </div>
   </div>
 </section>
 
-<section class="grid grid-cols-1 gap-6 lg:grid-cols-3">
-  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm">
-    <h2 class="mb-4 flex items-center gap-2 text-lg font-bold"><i class="fa-solid fa-chart-column"></i>{% trans "Case activity" %}</h2>
-    {% include "oya/partials/chart.html" with chart_id="caseActivityChart" data=case_activity_chart_json %}
-  </article>
-  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm">
-    <h2 class="mb-4 flex items-center gap-2 text-lg font-bold"><i class="fa-solid fa-file-signature"></i>{% trans "Claim types" %}</h2>
-    {% include "oya/partials/chart.html" with chart_id="caseClaimTypeChart" data=case_claim_type_chart_json %}
-  </article>
-  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm">
-    <h2 class="mb-4 flex items-center gap-2 text-lg font-bold"><i class="fa-solid fa-folder-tree"></i>{% trans "Evidence types" %}</h2>
-    {% include "oya/partials/chart.html" with chart_id="caseEvidenceTypeChart" data=case_evidence_type_chart_json %}
-  </article>
-</section>
+{# Main layout: sidebar + tabbed content #}
+<div x-data="{tab: 'overview'}" class="tribunal-layout">
 
-<div class="tribunal-layout">
-  <aside>
+  {# ── Sidebar ── #}
+  <aside class="space-y-4">
     <div class="tribunal-card">
-      <h2 class="text-lg font-bold"><i class="fa-solid fa-circle-info"></i>{% trans "Case" %}</h2>
-      <dl class="mt-4 space-y-2 text-sm">
-        <div class="border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'"><dt class="opacity-65">{% trans "Number" %}</dt><dd class="font-semibold">{{ case.case_number }}</dd></div>
-        <div class="border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'"><dt class="opacity-65">{% trans "Status" %}</dt><dd><span class="tribunal-pill">{{ case.status }}</span></dd></div>
-        <div class="border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'"><dt class="opacity-65">{% trans "Priority" %}</dt><dd><span class="tribunal-pill">{{ case.priority }}</span></dd></div>
-        <div class="border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'"><dt class="opacity-65">{% trans "Related object" %}</dt><dd>{% if case.related_object %}{{ case.related_object }}{% else %}—{% endif %}</dd></div>
+      <h2 class="text-lg font-bold"><i class="fa-solid fa-circle-info mr-1"></i>{% trans "Case" %}</h2>
+      <dl class="mt-3 space-y-0 text-sm">
+        <div class="flex justify-between border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+          <dt class="opacity-60">{% trans "Number" %}</dt><dd class="font-semibold">{{ case.case_number }}</dd>
+        </div>
+        <div class="flex justify-between border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+          <dt class="opacity-60">{% trans "Status" %}</dt><dd><span class="tribunal-pill text-xs">{{ case.status }}</span></dd>
+        </div>
+        <div class="flex justify-between border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+          <dt class="opacity-60">{% trans "Priority" %}</dt><dd><span class="tribunal-pill text-xs">{{ case.priority }}</span></dd>
+        </div>
+        {% if case.related_order %}
         <div class="border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
-          <dt class="opacity-65">{% trans "Bazaar order" %}</dt>
-          <dd>
-            {% if case.related_order %}
-              <a class="underline hover:opacity-80" href="{% url 'bazaar:order-detail' order_number=case.related_order.order_number %}">{{ case.related_order.order_number }}</a>
-              <div class="mt-1 text-xs opacity-60">{{ case.related_order.total_amount }} {{ case.related_order.currency }} · {{ case.related_order.shop.name }}</div>
-            {% else %}
-              —
-            {% endif %}
+          <dt class="opacity-60">{% trans "Order" %}</dt>
+          <dd class="mt-0.5">
+            <a class="underline hover:opacity-80" href="{% url 'bazaar:order-detail' order_number=case.related_order.order_number %}">{{ case.related_order.order_number }}</a>
+            <span class="ml-1 text-xs opacity-60">{{ case.related_order.total_amount }} {{ case.related_order.currency }}</span>
           </dd>
         </div>
+        {% endif %}
+        {% if case.related_object %}
+        <div class="border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+          <dt class="opacity-60">{% trans "Object" %}</dt><dd>{{ case.related_object }}</dd>
+        </div>
+        {% endif %}
+        {% if case.opened_by %}
+        <div class="border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+          <dt class="opacity-60">{% trans "Opened by" %}</dt><dd>{{ case.opened_by }}</dd>
+        </div>
+        {% endif %}
+        {% if case.assigned_to %}
+        <div class="border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+          <dt class="opacity-60">{% trans "Assigned to" %}</dt><dd>{{ case.assigned_to }}</dd>
+        </div>
+        {% endif %}
       </dl>
     </div>
 
-    <div class="tribunal-card"><h2 class="text-lg font-bold">{% trans "Add Party" %}</h2><form class="tribunal-form mt-4" method="post" action="{% url 'tribunal:party_create' case.id %}">{% csrf_token %}{{ party_form.as_p }}<button class="tribunal-button" type="submit">{% trans "Add Party" %}</button></form></div>
-    <div class="tribunal-card"><h2 class="text-lg font-bold">{% trans "Add Claim" %}</h2><form class="tribunal-form mt-4" method="post" action="{% url 'tribunal:claim_create' case.id %}">{% csrf_token %}{{ claim_form.as_p }}<button class="tribunal-button" type="submit">{% trans "Add Claim" %}</button></form></div>
+    {% if case.description %}
+    <div class="tribunal-card">
+      <h2 class="text-sm font-bold uppercase tracking-wide opacity-60">{% trans "Description" %}</h2>
+      <p class="mt-2 whitespace-pre-line text-sm opacity-80">{{ case.description }}</p>
+    </div>
+    {% endif %}
+
+    {# Tab nav on mobile becomes a vertical list in sidebar on desktop #}
+    <nav class="tribunal-card space-y-1 text-sm font-semibold">
+      <button @click="tab='overview'" class="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-left transition"
+        :class="tab==='overview' ? (darkMode ? 'bg-bubble-bg-dark text-accent-dark' : 'bg-bubble-bg-light text-accent-light') : 'opacity-60 hover:opacity-100'">
+        <i class="fa-solid fa-layer-group w-4"></i>{% trans "Overview" %}
+      </button>
+      <button @click="tab='evidence'" class="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-left transition"
+        :class="tab==='evidence' ? (darkMode ? 'bg-bubble-bg-dark text-accent-dark' : 'bg-bubble-bg-light text-accent-light') : 'opacity-60 hover:opacity-100'">
+        <i class="fa-solid fa-folder-open w-4"></i>{% trans "Evidence" %}
+        {% if metrics.evidence_count %}<span class="ml-auto text-xs opacity-60">{{ metrics.evidence_count }}</span>{% endif %}
+      </button>
+      <button @click="tab='jury'" class="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-left transition"
+        :class="tab==='jury' ? (darkMode ? 'bg-bubble-bg-dark text-accent-dark' : 'bg-bubble-bg-light text-accent-light') : 'opacity-60 hover:opacity-100'">
+        <i class="fa-solid fa-users-viewfinder w-4"></i>{% trans "Jury" %}
+        {% if metrics.active_jury %}<span class="ml-auto h-2 w-2 rounded-full" :class="darkMode ? 'bg-success-dark' : 'bg-success-light'"></span>{% endif %}
+      </button>
+      <button @click="tab='rulings'" class="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-left transition"
+        :class="tab==='rulings' ? (darkMode ? 'bg-bubble-bg-dark text-accent-dark' : 'bg-bubble-bg-light text-accent-light') : 'opacity-60 hover:opacity-100'">
+        <i class="fa-solid fa-gavel w-4"></i>{% trans "Rulings" %}
+        {% if metrics.ruling_count %}<span class="ml-auto text-xs opacity-60">{{ metrics.ruling_count }}</span>{% endif %}
+      </button>
+    </nav>
   </aside>
 
-  <section>
-    <div class="tribunal-card"><h2 class="text-lg font-bold">{% trans "Description" %}</h2><p class="mt-3 whitespace-pre-line opacity-80">{{ case.description|default:"—" }}</p></div>
+  {# ── Tab panels ── #}
+  <section class="space-y-4 min-w-0">
 
-    <div class="tribunal-card"><h2 class="text-lg font-bold">{% trans "Parties" %}</h2><table class="tribunal-table mt-4"><thead><tr><th>{% trans "Person" %}</th><th>{% trans "Role" %}</th><th>{% trans "Actions" %}</th></tr></thead><tbody>{% for party in case.parties.all %}<tr><td>{% if party.person %}{{ party.person }}{% else %}—{% endif %}</td><td>{{ party.role|default:"—" }}</td><td><a class="tribunal-button" href="{% url 'tribunal:party_update' party.id %}">{% trans "Edit" %}</a></td></tr>{% empty %}<tr><td colspan="3" class="opacity-70">{% trans "No parties yet." %}</td></tr>{% endfor %}</tbody></table></div>
+    {# ─ Overview ─ #}
+    <div x-show="tab==='overview'" x-cloak>
+      {# Charts #}
+      <div class="grid grid-cols-1 gap-4 lg:grid-cols-3 mb-4">
+        <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-4 shadow-sm">
+          <h3 class="mb-3 text-sm font-bold"><i class="fa-solid fa-chart-column mr-1"></i>{% trans "Activity" %}</h3>
+          {% include "oya/partials/chart.html" with chart_id="caseActivityChart" data=case_activity_chart_json %}
+        </article>
+        <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-4 shadow-sm">
+          <h3 class="mb-3 text-sm font-bold"><i class="fa-solid fa-file-signature mr-1"></i>{% trans "Claim types" %}</h3>
+          {% include "oya/partials/chart.html" with chart_id="caseClaimTypeChart" data=case_claim_type_chart_json %}
+        </article>
+        <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-4 shadow-sm">
+          <h3 class="mb-3 text-sm font-bold"><i class="fa-solid fa-folder-tree mr-1"></i>{% trans "Evidence types" %}</h3>
+          {% include "oya/partials/chart.html" with chart_id="caseEvidenceTypeChart" data=case_evidence_type_chart_json %}
+        </article>
+      </div>
 
-    <div class="tribunal-card"><h2 class="text-lg font-bold">{% trans "Claims" %}</h2><table class="tribunal-table mt-4"><thead><tr><th>{% trans "Summary" %}</th><th>{% trans "Type" %}</th><th>{% trans "Amount" %}</th><th>{% trans "Actions" %}</th></tr></thead><tbody>{% for claim in case.claims.all %}<tr><td>{{ claim.summary }}</td><td>{{ claim.claim_type|default:"—" }}</td><td>{% if claim.amount %}{{ claim.amount }} {% if claim.currency %}{{ claim.currency.code }}{% endif %}{% else %}—{% endif %}</td><td><a class="tribunal-button" href="{% url 'tribunal:claim_update' claim.id %}">{% trans "Edit" %}</a></td></tr>{% empty %}<tr><td colspan="4" class="opacity-70">{% trans "No claims yet." %}</td></tr>{% endfor %}</tbody></table></div>
+      {# Parties #}
+      <div class="tribunal-card">
+        <div class="flex items-center justify-between gap-3">
+          <h2 class="text-lg font-bold"><i class="fa-solid fa-users mr-1"></i>{% trans "Parties" %}</h2>
+          <div class="relative" x-data="{open:false}" @click.outside="open=false">
+            <button type="button" @click="open=!open" class="tribunal-button text-sm">
+              <i class="fa-solid fa-plus"></i>{% trans "Add" %}
+            </button>
+            <div x-show="open" x-cloak class="absolute right-0 top-full z-10 mt-2 w-80 rounded-xl border p-4 shadow-xl"
+                 :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+              <h3 class="mb-3 text-sm font-bold">{% trans "Add Party" %}</h3>
+              <form class="tribunal-form" method="post" action="{% url 'tribunal:party_create' case.id %}">
+                {% csrf_token %}{{ party_form.as_p }}
+                <button class="tribunal-button" type="submit">{% trans "Add Party" %}</button>
+              </form>
+            </div>
+          </div>
+        </div>
+        <table class="tribunal-table mt-4">
+          <thead><tr><th>{% trans "Person" %}</th><th>{% trans "Role" %}</th><th>{% trans "Statement" %}</th><th></th></tr></thead>
+          <tbody>
+            {% for party in case.parties.all %}
+            <tr>
+              <td>{{ party.person|default:"—" }}</td>
+              <td><span class="tribunal-pill text-xs">{{ party.role|default:"—" }}</span></td>
+              <td class="text-xs opacity-60 max-w-xs truncate">{{ party.statement|default:"—" }}</td>
+              <td><a class="tribunal-button text-xs" href="{% url 'tribunal:party_update' party.id %}"><i class="fa-solid fa-pen"></i></a></td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="4" class="opacity-50 text-sm py-3">{% trans "No parties yet." %}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
 
-    <div class="tribunal-card">
-      <h2 class="text-lg font-bold">{% trans "Submit Evidence" %}</h2>
-      <form class="tribunal-form mt-4" method="post" enctype="multipart/form-data" action="{% url 'tribunal:evidence_create' case.id %}">{% csrf_token %}{{ evidence_form.as_p }}<button class="tribunal-button" type="submit">{% trans "Submit Evidence" %}</button></form>
+      {# Claims #}
+      <div class="tribunal-card">
+        <div class="flex items-center justify-between gap-3">
+          <h2 class="text-lg font-bold"><i class="fa-solid fa-file-signature mr-1"></i>{% trans "Claims" %}</h2>
+          <div class="relative" x-data="{open:false}" @click.outside="open=false">
+            <button type="button" @click="open=!open" class="tribunal-button text-sm">
+              <i class="fa-solid fa-plus"></i>{% trans "Add" %}
+            </button>
+            <div x-show="open" x-cloak class="absolute right-0 top-full z-10 mt-2 w-80 rounded-xl border p-4 shadow-xl"
+                 :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+              <h3 class="mb-3 text-sm font-bold">{% trans "Add Claim" %}</h3>
+              <form class="tribunal-form" method="post" action="{% url 'tribunal:claim_create' case.id %}">
+                {% csrf_token %}{{ claim_form.as_p }}
+                <button class="tribunal-button" type="submit">{% trans "Add Claim" %}</button>
+              </form>
+            </div>
+          </div>
+        </div>
+        <table class="tribunal-table mt-4">
+          <thead><tr><th>{% trans "Summary" %}</th><th>{% trans "Type" %}</th><th>{% trans "Amount" %}</th><th></th></tr></thead>
+          <tbody>
+            {% for claim in case.claims.all %}
+            <tr>
+              <td>{{ claim.summary }}</td>
+              <td class="text-xs">{{ claim.claim_type|default:"—" }}</td>
+              <td class="text-xs">{% if claim.amount %}{{ claim.amount }} {% if claim.currency %}{{ claim.currency.code }}{% endif %}{% else %}—{% endif %}</td>
+              <td><a class="tribunal-button text-xs" href="{% url 'tribunal:claim_update' claim.id %}"><i class="fa-solid fa-pen"></i></a></td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="4" class="opacity-50 text-sm py-3">{% trans "No claims yet." %}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
 
-    <div class="tribunal-card"><h2 class="text-lg font-bold">{% trans "Evidence" %}</h2><table class="tribunal-table mt-4"><thead><tr><th>{% trans "Title" %}</th><th>{% trans "Type" %}</th><th>{% trans "Submitted" %}</th><th>{% trans "Actions" %}</th></tr></thead><tbody>{% for evidence in case.evidence.all %}<tr><td>{{ evidence.title }}</td><td>{{ evidence.evidence_type|default:"—" }}</td><td>{{ evidence.submitted_at|date:"Y-m-d" }}</td><td><a class="tribunal-button" href="{% url 'tribunal:evidence_update' evidence.id %}">{% trans "Edit" %}</a></td></tr>{% empty %}<tr><td colspan="4" class="opacity-70">{% trans "No evidence yet." %}</td></tr>{% endfor %}</tbody></table></div>
-
-    <div class="tribunal-card">
-      <h2 class="text-lg font-bold"><i class="fa-solid fa-users-viewfinder mr-1"></i>{% trans "Jury Sessions" %}</h2>
-
-      {% if request.user.is_staff %}
-      <details class="mt-4">
-        <summary class="tribunal-button cursor-pointer select-none">
-          <i class="fa-solid fa-plus"></i>{% trans "Open Jury Session" %}
-        </summary>
-        <form class="tribunal-form mt-3" method="post" action="{% url 'tribunal:jury_session_open' case.id %}">
-          {% csrf_token %}
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label for="{{ jury_session_form.closes_date.id_for_label }}">{% trans "Closes date" %}</label>
-              {{ jury_session_form.closes_date }}
-            </div>
-            <div>
-              <label for="{{ jury_session_form.closes_time.id_for_label }}">{% trans "Closes time" %}</label>
-              {{ jury_session_form.closes_time }}
+    {# ─ Evidence ─ #}
+    <div x-show="tab==='evidence'" x-cloak>
+      <div class="tribunal-card">
+        <div class="flex items-center justify-between gap-3 mb-4">
+          <h2 class="text-lg font-bold"><i class="fa-solid fa-folder-open mr-1"></i>{% trans "Evidence" %}</h2>
+          <div class="relative" x-data="{open:false}" @click.outside="open=false">
+            <button type="button" @click="open=!open" class="tribunal-button text-sm">
+              <i class="fa-solid fa-upload"></i>{% trans "Submit Evidence" %}
+            </button>
+            <div x-show="open" x-cloak class="absolute right-0 top-full z-10 mt-2 w-80 rounded-xl border p-4 shadow-xl"
+                 :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+              <h3 class="mb-3 text-sm font-bold">{% trans "Submit Evidence" %}</h3>
+              <form class="tribunal-form" method="post" enctype="multipart/form-data" action="{% url 'tribunal:evidence_create' case.id %}">
+                {% csrf_token %}{{ evidence_form.as_p }}
+                <button class="tribunal-button" type="submit">{% trans "Submit" %}</button>
+              </form>
             </div>
           </div>
-          <p>
-            <label for="{{ jury_session_form.required_votes.id_for_label }}">{% trans "Required votes" %}</label>
-            {{ jury_session_form.required_votes }}
-          </p>
-          <div>
-            <label class="block text-xs font-bold uppercase tracking-wide opacity-75 mb-2">{% trans "Invite jurors" %}</label>
-            <div class="max-h-48 overflow-y-auto rounded-lg border p-2 space-y-1 text-sm"
-                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'">
-              {% for checkbox in jury_session_form.jurors %}
-              <label class="flex items-center gap-2 cursor-pointer rounded px-2 py-1 hover:opacity-80">
-                {{ checkbox.tag }} <span>{{ checkbox.choice_label }}</span>
-              </label>
-              {% empty %}
-              <p class="opacity-50 text-xs px-2">{% trans "No persons available." %}</p>
-              {% endfor %}
+        </div>
+        <table class="tribunal-table">
+          <thead><tr><th>{% trans "Title" %}</th><th>{% trans "Type" %}</th><th>{% trans "Submitted" %}</th><th>{% trans "By" %}</th><th></th></tr></thead>
+          <tbody>
+            {% for ev in case.evidence.all %}
+            <tr>
+              <td class="font-medium">{{ ev.title }}</td>
+              <td class="text-xs">{{ ev.evidence_type|default:"—" }}</td>
+              <td class="text-xs opacity-60">{{ ev.submitted_at|date:"M d, Y" }}</td>
+              <td class="text-xs opacity-60">{{ ev.submitted_by|default:"—" }}</td>
+              <td>
+                <div class="flex gap-1">
+                  {% if ev.file %}<a class="tribunal-button text-xs" href="{{ ev.file.url }}" target="_blank"><i class="fa-solid fa-download"></i></a>{% endif %}
+                  <a class="tribunal-button text-xs" href="{% url 'tribunal:evidence_update' ev.id %}"><i class="fa-solid fa-pen"></i></a>
+                </div>
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="5" class="opacity-50 text-sm py-6 text-center">{% trans "No evidence submitted yet." %}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {# ─ Jury ─ #}
+    <div x-show="tab==='jury'" x-cloak>
+      <div class="tribunal-card">
+        <div class="flex items-center justify-between gap-3 mb-4">
+          <h2 class="text-lg font-bold"><i class="fa-solid fa-users-viewfinder mr-1"></i>{% trans "Jury Sessions" %}</h2>
+          {% if request.user.is_staff %}
+          <div class="relative" x-data="{open:false}" @click.outside="open=false">
+            <button type="button" @click="open=!open" class="tribunal-button text-sm">
+              <i class="fa-solid fa-plus"></i>{% trans "Open Session" %}
+            </button>
+            <div x-show="open" x-cloak class="absolute right-0 top-full z-10 mt-2 w-96 rounded-xl border p-5 shadow-xl"
+                 :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+              <h3 class="mb-4 text-sm font-bold">{% trans "Open Jury Session" %}</h3>
+              <form class="tribunal-form" method="post" action="{% url 'tribunal:jury_session_open' case.id %}">
+                {% csrf_token %}
+                <div class="grid grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <label for="{{ jury_session_form.closes_date.id_for_label }}" class="block text-xs font-bold uppercase tracking-wide opacity-70 mb-1">{% trans "Closes date" %}</label>
+                    {{ jury_session_form.closes_date }}
+                  </div>
+                  <div>
+                    <label for="{{ jury_session_form.closes_time.id_for_label }}" class="block text-xs font-bold uppercase tracking-wide opacity-70 mb-1">{% trans "Closes time" %}</label>
+                    {{ jury_session_form.closes_time }}
+                  </div>
+                </div>
+                <div class="mb-3">
+                  <label for="{{ jury_session_form.required_votes.id_for_label }}" class="block text-xs font-bold uppercase tracking-wide opacity-70 mb-1">{% trans "Required votes" %}</label>
+                  {{ jury_session_form.required_votes }}
+                </div>
+
+                {# Modernized juror picker #}
+                <div class="mb-3">
+                  <label class="block text-xs font-bold uppercase tracking-wide opacity-70 mb-2">{% trans "Invite jurors" %}</label>
+                  <div class="flex flex-wrap gap-2">
+                    {% for checkbox in jury_session_form.jurors %}
+                    <label class="relative cursor-pointer select-none">
+                      <input type="checkbox" name="{{ checkbox.data.name }}" value="{{ checkbox.data.value }}"
+                             class="peer sr-only" {% if checkbox.data.selected %}checked{% endif %}>
+                      <span class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-all
+                        peer-checked:border-transparent
+                        peer-checked:shadow-sm"
+                        :class="darkMode
+                          ? 'border-accent-1 peer-checked:bg-accent-dark peer-checked:text-primary-bg-dark hover:border-accent-dark'
+                          : 'border-accent-2 peer-checked:bg-accent-light peer-checked:text-white hover:border-accent-light'">
+                        <i class="fa-solid fa-user text-[10px] opacity-60"></i>
+                        {{ checkbox.choice_label }}
+                      </span>
+                    </label>
+                    {% empty %}
+                    <p class="text-xs opacity-50">{% trans "No persons available." %}</p>
+                    {% endfor %}
+                  </div>
+                  <p class="mt-1.5 text-xs opacity-40">{% trans "Leave empty to allow anyone to vote." %}</p>
+                </div>
+
+                <div class="mb-3">
+                  <label for="{{ jury_session_form.note.id_for_label }}" class="block text-xs font-bold uppercase tracking-wide opacity-70 mb-1">{% trans "Note / instructions" %}</label>
+                  {{ jury_session_form.note }}
+                </div>
+                {% if jury_session_form.non_field_errors %}
+                <p class="mb-2 text-xs" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ jury_session_form.non_field_errors }}</p>
+                {% endif %}
+                <button class="tribunal-button w-full justify-center" type="submit">{% trans "Open Session" %}</button>
+              </form>
             </div>
-            <p class="mt-1 text-xs opacity-50">{% trans "Leave empty to allow anyone to vote." %}</p>
           </div>
-          <p>
-            <label for="{{ jury_session_form.note.id_for_label }}">{% trans "Note / instructions" %}</label>
-            {{ jury_session_form.note }}
-          </p>
-          {% if jury_session_form.non_field_errors %}
-            <p class="text-sm" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ jury_session_form.non_field_errors }}</p>
           {% endif %}
-          <button class="tribunal-button" type="submit">{% trans "Open Session" %}</button>
-        </form>
-      </details>
-      {% endif %}
+        </div>
 
-      {% if jury_sessions %}
-      <table class="tribunal-table mt-4">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>{% trans "Status" %}</th>
-            <th>{% trans "Closes" %}</th>
-            <th>{% trans "Votes" %}</th>
-            <th>{% trans "Outcome" %}</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
+        {% if jury_sessions %}
+        <div class="space-y-3">
           {% for js in jury_sessions %}
-          <tr>
-            <td class="opacity-60">{{ js.pk }}</td>
-            <td>
+          <a href="{% url 'tribunal:jury_session_detail' js.id %}"
+             class="flex items-center gap-4 rounded-xl border p-4 transition hover:opacity-90 no-underline"
+             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+            <div class="shrink-0">
               {% if js.is_open %}
-                <span class="tribunal-pill text-xs" :class="darkMode ? 'text-success-dark' : 'text-success-light'">
-                  <i class="fa-solid fa-circle-dot"></i>{% trans "Open" %}
+                <span class="flex h-9 w-9 items-center justify-center rounded-full" :class="darkMode ? 'bg-success-dark/20 text-success-dark' : 'bg-success-light/20 text-success-light'">
+                  <i class="fa-solid fa-circle-dot"></i>
+                </span>
+              {% elif js.outcome == 'guilty' %}
+                <span class="flex h-9 w-9 items-center justify-center rounded-full" :class="darkMode ? 'bg-warn-dark/20 text-warn-dark' : 'bg-warn-light/20 text-warn-light'">
+                  <i class="fa-solid fa-gavel"></i>
+                </span>
+              {% elif js.outcome == 'not_guilty' %}
+                <span class="flex h-9 w-9 items-center justify-center rounded-full" :class="darkMode ? 'bg-success-dark/20 text-success-dark' : 'bg-success-light/20 text-success-light'">
+                  <i class="fa-solid fa-circle-check"></i>
                 </span>
               {% else %}
-                <span class="tribunal-pill text-xs">{{ js.status }}</span>
-              {% endif %}
-            </td>
-            <td class="text-xs opacity-70">{{ js.closes_at|date:"M d, H:i" }}</td>
-            <td class="font-bold">{{ js.votes.count }}</td>
-            <td>
-              {% if js.outcome and js.outcome != 'pending' %}
-                <span class="tribunal-pill text-xs
-                  {% if js.outcome == 'guilty' %}{% verbatim %}{% endverbatim %}{% endif %}">
-                  {{ js.get_outcome_display }}
+                <span class="flex h-9 w-9 items-center justify-center rounded-full opacity-40">
+                  <i class="fa-solid fa-lock"></i>
                 </span>
-              {% else %}—{% endif %}
-            </td>
-            <td>
-              <a class="tribunal-button text-xs" href="{% url 'tribunal:jury_session_detail' js.id %}">
-                {% trans "View" %}
-              </a>
-            </td>
-          </tr>
+              {% endif %}
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="font-semibold text-sm">{% trans "Session" %} #{{ js.pk }}</span>
+                <span class="tribunal-pill text-xs">{{ js.status }}</span>
+                {% if js.outcome and js.outcome != 'pending' %}
+                  <span class="tribunal-pill text-xs font-bold
+                    {% if js.outcome == 'guilty' %}" :class="darkMode ? 'text-warn-dark border-warn-dark/40' : 'text-warn-light border-warn-light/40'"
+                    {% elif js.outcome == 'not_guilty' %}" :class="darkMode ? 'text-success-dark border-success-dark/40' : 'text-success-light border-success-light/40'"
+                    {% else %}"{% endif %}>
+                    {{ js.get_outcome_display }}
+                  </span>
+                {% endif %}
+              </div>
+              <div class="mt-0.5 flex gap-3 text-xs opacity-60">
+                <span><i class="fa-regular fa-clock mr-0.5"></i>{% trans "closes" %} {{ js.closes_at|date:"M d, H:i" }}</span>
+                <span><i class="fa-solid fa-check-to-slot mr-0.5"></i>{{ js.votes.count }} {% trans "votes" %}</span>
+                {% if js.jurors.count %}<span><i class="fa-solid fa-user-group mr-0.5"></i>{{ js.jurors.count }} {% trans "jurors" %}</span>{% endif %}
+              </div>
+            </div>
+            <i class="fa-solid fa-chevron-right opacity-30 shrink-0"></i>
+          </a>
           {% endfor %}
-        </tbody>
-      </table>
-      {% else %}
-      <p class="mt-4 text-sm opacity-60">{% trans "No jury sessions yet." %}</p>
-      {% endif %}
+        </div>
+        {% else %}
+        <p class="py-8 text-center text-sm opacity-50"><i class="fa-solid fa-users-viewfinder mr-1"></i>{% trans "No jury sessions yet." %}</p>
+        {% endif %}
+      </div>
     </div>
 
-    <div class="tribunal-card">
-      <h2 class="text-lg font-bold">{% trans "Record Ruling" %}</h2>
-      <p class="mt-2 rounded-lg border px-3 py-2 text-sm opacity-80" :class="darkMode ? 'border-warn-dark/60 bg-primary-bg-dark' : 'border-warn-light/60 bg-primary-bg-light'">
-        <i class="fa-solid fa-triangle-exclamation mr-1"></i>
-        {% trans "Adding a fine creates an asset obligation and resolves the dispute for every side." %}
-      </p>
-      <form class="tribunal-form mt-4" method="post" action="{% url 'tribunal:ruling_create' case.id %}">{% csrf_token %}{{ ruling_form.as_p }}<button class="tribunal-button" type="submit">{% trans "Record Ruling" %}</button></form>
-    </div>
+    {# ─ Rulings ─ #}
+    <div x-show="tab==='rulings'" x-cloak>
+      <div class="tribunal-card">
+        <div class="flex items-center justify-between gap-3 mb-4">
+          <h2 class="text-lg font-bold"><i class="fa-solid fa-gavel mr-1"></i>{% trans "Rulings" %}</h2>
+          {% if has_jury_verdict and request.user.is_staff %}
+          <div class="relative" x-data="{open:false}" @click.outside="open=false">
+            <button type="button" @click="open=!open" class="tribunal-button text-sm">
+              <i class="fa-solid fa-plus"></i>{% trans "Record Ruling" %}
+            </button>
+            <div x-show="open" x-cloak class="absolute right-0 top-full z-10 mt-2 w-96 rounded-xl border p-5 shadow-xl"
+                 :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+              <h3 class="mb-1 text-sm font-bold">{% trans "Record Ruling" %}</h3>
+              <p class="mb-3 rounded-lg border px-3 py-2 text-xs opacity-80" :class="darkMode ? 'border-warn-dark/40 bg-primary-bg-dark' : 'border-warn-light/40 bg-primary-bg-light'">
+                <i class="fa-solid fa-triangle-exclamation mr-1"></i>{% trans "A fine creates an asset obligation and resolves the dispute." %}
+              </p>
+              <form class="tribunal-form" method="post" action="{% url 'tribunal:ruling_create' case.id %}">
+                {% csrf_token %}{{ ruling_form.as_p }}
+                <button class="tribunal-button" type="submit">{% trans "Record Ruling" %}</button>
+              </form>
+            </div>
+          </div>
+          {% endif %}
+        </div>
 
-    <div class="tribunal-card">
-      <h2 class="text-lg font-bold">{% trans "Rulings" %}</h2>
-      {% for ruling in case.rulings.all %}
-      <article class="mt-4 border-t pt-4" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <h3 class="font-bold">{{ ruling.title }}</h3>
-          <a class="tribunal-button" href="{% url 'tribunal:ruling_update' ruling.id %}">{% trans "Edit" %}</a>
-        </div>
-        <p class="mt-2 whitespace-pre-line">{{ ruling.decision }}</p>
-        <p class="mt-2 text-sm opacity-70">{{ ruling.resolution_type|default:"—" }}</p>
-        {% if ruling.fine_obligation %}
-        <div class="mt-3 rounded-lg border px-3 py-2 text-sm" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'">
-          <p class="font-semibold"><i class="fa-solid fa-coins mr-1"></i>{% trans "Fine obligation" %}: {{ ruling.fine_obligation.reference }}</p>
-          <p class="mt-1 opacity-70">
-            {{ ruling.fine_obligation.amount_display }} {{ ruling.fine_obligation.asset.unit_name }}
-            · {% trans "due" %} {{ ruling.fine_obligation.due_at|date:"M d, Y" }}
-            · {{ ruling.fine_obligation.get_status_display }}
-          </p>
-        </div>
-        {% elif ruling.fine_amount %}
-        <div class="mt-3 rounded-lg border px-3 py-2 text-sm" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'">
-          <p class="font-semibold"><i class="fa-solid fa-coins mr-1"></i>{% trans "Fine" %}</p>
-          <p class="mt-1 opacity-70">{{ ruling.fine_amount }} {% if ruling.fine_asset %}{{ ruling.fine_asset.unit_name }}{% endif %}</p>
+        {% if not has_jury_verdict %}
+        <div class="rounded-xl border px-4 py-5 text-center text-sm"
+             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+          <i class="fa-solid fa-users-viewfinder mb-2 text-2xl opacity-30"></i>
+          <p class="font-semibold opacity-60">{% trans "No jury verdict yet." %}</p>
+          <p class="mt-1 text-xs opacity-40">{% trans "A completed jury session with an outcome is required before recording a ruling." %}</p>
+          <button @click="tab='jury'" class="tribunal-button mt-3 text-xs">
+            <i class="fa-solid fa-arrow-right"></i>{% trans "Go to Jury" %}
+          </button>
         </div>
         {% endif %}
-      </article>
-      {% empty %}
-      <p class="mt-4 opacity-70">{% trans "No rulings yet." %}</p>
-      {% endfor %}
+
+        {% for ruling in case.rulings.all %}
+        <article class="rounded-xl border p-4 {% if not forloop.first %}mt-3{% endif %}"
+                 :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 class="font-bold">{{ ruling.title }}</h3>
+              <span class="tribunal-pill text-xs mt-1">{{ ruling.resolution_type|default:"—" }}</span>
+            </div>
+            <a class="tribunal-button text-xs" href="{% url 'tribunal:ruling_update' ruling.id %}"><i class="fa-solid fa-pen"></i></a>
+          </div>
+          <p class="mt-3 whitespace-pre-line text-sm opacity-80">{{ ruling.decision }}</p>
+          {% if ruling.fine_obligation %}
+          <div class="mt-3 rounded-lg border px-3 py-2 text-sm" :class="darkMode ? 'border-warn-dark/40 bg-primary-bg-dark' : 'border-warn-light/40 bg-primary-bg-light'">
+            <p class="font-semibold"><i class="fa-solid fa-coins mr-1"></i>{{ ruling.fine_obligation.reference }}</p>
+            <p class="mt-1 text-xs opacity-70">
+              {{ ruling.fine_obligation.amount_display }} {{ ruling.fine_obligation.asset.unit_name }}
+              · {% trans "due" %} {{ ruling.fine_obligation.due_at|date:"M d, Y" }}
+              · {{ ruling.fine_obligation.get_status_display }}
+            </p>
+          </div>
+          {% elif ruling.fine_amount %}
+          <div class="mt-3 rounded-lg border px-3 py-2 text-sm" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'">
+            <p class="font-semibold"><i class="fa-solid fa-coins mr-1"></i>{% trans "Fine" %}</p>
+            <p class="mt-1 text-xs opacity-70">{{ ruling.fine_amount }}{% if ruling.fine_asset %} {{ ruling.fine_asset.unit_name }}{% endif %}</p>
+          </div>
+          {% endif %}
+        </article>
+        {% empty %}
+        {% if has_jury_verdict %}
+        <p class="py-6 text-center text-sm opacity-50">{% trans "No rulings recorded yet." %}</p>
+        {% endif %}
+        {% endfor %}
+      </div>
     </div>
+
   </section>
 </div>
 {% endblock %}
