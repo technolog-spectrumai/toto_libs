@@ -1,0 +1,68 @@
+{% extends "inventory/base.html" %}
+{% load i18n %}
+
+{% block inventory_title %}{% trans "Object Types" %}{% endblock %}
+{% block inventory_heading %}{% trans "Object Types" %}{% endblock %}
+{% block inventory_heading_icon %}<i class="fa-solid fa-tags"></i>{% endblock %}
+
+{% block inventory_content %}
+<div class="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-2xl border p-5 shadow-sm h-fit space-y-4">
+    <h2 class="font-bold flex items-center gap-2">
+      <i class="fa-solid fa-plus" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+      {% trans "New Type" %}
+    </h2>
+    <form method="post" class="inv-form">
+      {% csrf_token %}
+      {{ form.as_p }}
+      <button type="submit"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="w-full rounded-xl py-2.5 text-sm font-bold shadow-sm transition hover:opacity-90">
+        <i class="fa-solid fa-floppy-disk mr-1"></i> {% trans "Create" %}
+      </button>
+    </form>
+  </div>
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-2xl border shadow-sm overflow-hidden">
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+              class="border-b text-xs font-semibold uppercase tracking-wide opacity-50">
+            <th class="px-5 py-3 text-left">{% trans "Name" %}</th>
+            <th class="px-5 py-3 text-left hidden sm:table-cell">{% trans "Slug" %}</th>
+            <th class="px-5 py-3 text-center">{% trans "Objects" %}</th>
+            <th class="px-5 py-3 text-right">{% trans "Actions" %}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for ot in object_types %}
+          <tr :class="darkMode ? 'border-accent-1 hover:bg-primary-bg-dark' : 'border-accent-2 hover:bg-primary-bg-light'"
+              class="border-b last:border-0 transition">
+            <td class="px-5 py-3 font-semibold">{{ ot.name }}</td>
+            <td class="px-5 py-3 opacity-50 font-mono text-xs hidden sm:table-cell">{{ ot.slug }}</td>
+            <td class="px-5 py-3 text-center">
+              <span :class="darkMode ? 'bg-accent-dark/10 text-accent-dark' : 'bg-accent-light/10 text-accent-light'"
+                    class="rounded-full px-2 py-0.5 text-xs font-bold">{{ ot.object_count }}</span>
+            </td>
+            <td class="px-5 py-3 text-right">
+              <a href="{% url 'inventory:object_type_update' ot.id %}"
+                 :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                 class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1 text-xs font-semibold transition hover:opacity-85">
+                <i class="fa-solid fa-pen"></i> {% trans "Edit" %}
+              </a>
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="4" class="px-5 py-8 text-center opacity-50">{% trans "No object types yet." %}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

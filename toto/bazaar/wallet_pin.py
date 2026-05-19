@@ -61,7 +61,9 @@ def check_wallet_pin(user, raw_pin: str) -> bool:
         session = GervazyCryptoSession(wp.secret.strongbox, password)
         stored = session.decrypt_secret(wp.secret)
         return stored == raw_pin
-    except Exception:
+    except Exception as exc:
+        import traceback, logging
+        logging.getLogger(__name__).error("check_wallet_pin failed: %s", traceback.format_exc())
         return False
 
 

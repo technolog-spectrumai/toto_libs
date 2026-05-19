@@ -1,0 +1,41 @@
+{% extends "inventory/base.html" %}
+{% load i18n %}
+
+{% block inventory_title %}{% trans "Edit Storage Location" %}{% endblock %}
+{% block inventory_heading %}{% trans "Edit Storage Location" %}{% endblock %}
+{% block inventory_heading_icon %}<i class="fa-solid fa-box-archive"></i>{% endblock %}
+
+{% block inventory_content %}
+<div class="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-2xl border p-5 shadow-sm h-fit space-y-3">
+    <h2 class="font-bold">{{ location.name }}</h2>
+    <a href="{% url 'inventory:site_detail' location.site.id %}"
+       class="inline-flex items-center gap-2 text-sm underline opacity-60 hover:opacity-100">
+      <i class="fa-solid fa-arrow-left text-xs"></i> {{ location.site.name }}
+    </a>
+  </div>
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-2xl border p-5 shadow-sm">
+    <form method="post" class="inv-form">
+      {% csrf_token %}
+      {{ form.as_p }}
+      <div class="flex flex-wrap gap-3 mt-6">
+        <button type="submit"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-floppy-disk"></i> {% trans "Save" %}
+        </button>
+        <a href="{% url 'inventory:site_detail' location.site.id %}"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="inline-flex items-center gap-2 rounded-xl border px-5 py-2.5 text-sm font-semibold transition hover:opacity-85">
+          <i class="fa-solid fa-xmark"></i> {% trans "Cancel" %}
+        </a>
+      </div>
+    </form>
+  </div>
+
+</div>
+{% endblock %}

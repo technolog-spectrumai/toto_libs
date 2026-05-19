@@ -222,6 +222,7 @@ def validate_cart(cart):
     errors = []
     if not cart or not cart.items.exists():
         errors.append('Your cart is empty.')
+        return errors
     for item in cart.items.select_related('product', 'variant'):
         if item.product.status != 'published' or not item.product.is_public:
             errors.append(f'{item.product.name} is no longer available.')

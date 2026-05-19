@@ -1,0 +1,83 @@
+{% extends "inventory/base.html" %}
+{% load i18n %}
+
+{% block inventory_title %}{% trans "Objects" %}{% endblock %}
+{% block inventory_heading %}{% trans "Real-World Objects" %}{% endblock %}
+
+{% block inventory_header_actions %}
+<a href="{% url 'inventory:object_create' %}"
+   :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+   class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+  <i class="fa-solid fa-plus"></i> {% trans "New Object" %}
+</a>
+{% endblock %}
+
+{% block inventory_content %}
+
+<div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     class="rounded-2xl border p-5 shadow-sm">
+  <form method="get" class="flex flex-wrap gap-3">
+    <input type="search" name="q" value="{{ query }}"
+           placeholder="{% trans 'Search objects…' %}"
+           :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+           class="flex-1 min-w-[180px] rounded-xl border px-4 py-2.5 text-sm outline-none transition focus:ring-2 focus:ring-current/20">
+    <select name="type"
+            :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+            class="rounded-xl border px-4 py-2.5 text-sm outline-none transition focus:ring-2 focus:ring-current/20">
+      <option value="">{% trans "All types" %}</option>
+      {% for ot in object_types %}
+      <option value="{{ ot.id }}" {% if selected_object_type_id == ot.id|stringformat:"s" %}selected{% endif %}>{{ ot.name }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit"
+            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+            class="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition hover:opacity-85">
+      <i class="fa-solid fa-magnifying-glass"></i> {% trans "Search" %}
+    </button>
+  </form>
+</div>
+
+<div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     class="rounded-2xl border shadow-sm overflow-hidden">
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+            class="border-b text-xs font-semibold uppercase tracking-wide opacity-50">
+          <th class="px-5 py-3 text-left">{% trans "Name" %}</th>
+          <th class="px-5 py-3 text-left">{% trans "Type" %}</th>
+          <th class="px-5 py-3 text-left hidden sm:table-cell">{% trans "Quantity" %}</th>
+          <th class="px-5 py-3 text-left hidden md:table-cell">{% trans "Owner" %}</th>
+          <th class="px-5 py-3 text-left hidden md:table-cell">{% trans "Custodian" %}</th>
+          <th class="px-5 py-3 text-right">{% trans "Verified" %}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for obj in objects %}
+        <tr :class="darkMode ? 'border-accent-1 hover:bg-primary-bg-dark' : 'border-accent-2 hover:bg-primary-bg-light'"
+            class="border-b last:border-0 transition">
+          <td class="px-5 py-3">
+            <a href="{% url 'inventory:object_detail' obj.id %}" class="font-semibold underline hover:opacity-80">{{ obj.name }}</a>
+          </td>
+          <td class="px-5 py-3 opacity-60">{{ obj.object_type.name|default:"—" }}</td>
+          <td class="px-5 py-3 opacity-60 hidden sm:table-cell font-mono">
+            {% if obj.quantity %}{{ obj.quantity|floatformat:2 }} {{ obj.unit }}{% else %}—{% endif %}
+          </td>
+          <td class="px-5 py-3 opacity-60 hidden md:table-cell">{{ obj.owner|default:"—" }}</td>
+          <td class="px-5 py-3 opacity-60 hidden md:table-cell">{{ obj.custodian|default:"—" }}</td>
+          <td class="px-5 py-3 text-right">
+            {% if obj.verified_at %}
+            <span :class="darkMode ? 'text-success-dark' : 'text-success-light'" class="text-xs font-semibold">
+              <i class="fa-solid fa-check mr-1"></i>{{ obj.verified_at|date:"Y-m-d" }}
+            </span>
+            {% else %}<span class="opacity-30">—</span>{% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="px-5 py-8 text-center opacity-50">{% trans "No objects found." %}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

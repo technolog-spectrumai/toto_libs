@@ -1,0 +1,116 @@
+{% extends "inventory/base.html" %}
+{% load i18n %}
+
+{% block inventory_title %}{{ object.name }}{% endblock %}
+{% block inventory_heading %}{{ object.name }}{% endblock %}
+
+{% block inventory_header_actions %}
+<a href="{% url 'inventory:object_update' object.id %}"
+   :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+   class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+  <i class="fa-solid fa-pen"></i> {% trans "Edit" %}
+</a>
+{% endblock %}
+
+{% block inventory_content %}
+<div class="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+
+  <div class="space-y-4">
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-2xl border p-5 shadow-sm space-y-1 text-sm">
+      <h2 class="font-bold flex items-center gap-2 mb-3">
+        <i class="fa-solid fa-circle-info" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+        {% trans "Object" %}
+      </h2>
+      <div class="flex justify-between gap-3 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <span class="opacity-60">{% trans "Type" %}</span>
+        <span class="font-semibold">{{ object.object_type.name|default:"—" }}</span>
+      </div>
+      <div class="flex justify-between gap-3 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <span class="opacity-60">{% trans "Quantity" %}</span>
+        <span class="font-semibold font-mono">{% if object.quantity %}{{ object.quantity|floatformat:2 }} {{ object.unit }}{% else %}—{% endif %}</span>
+      </div>
+      <div class="flex justify-between gap-3 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <span class="opacity-60">{% trans "Verified" %}</span>
+        <span class="font-semibold">
+          {% if object.verified_at %}
+          <span :class="darkMode ? 'text-success-dark' : 'text-success-light'">
+            <i class="fa-solid fa-check mr-1"></i>{{ object.verified_at|date:"Y-m-d" }}
+          </span>
+          {% else %}—{% endif %}
+        </span>
+      </div>
+    </div>
+
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-2xl border p-5 shadow-sm space-y-1 text-sm">
+      <h2 class="font-bold flex items-center gap-2 mb-3">
+        <i class="fa-solid fa-users" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+        {% trans "Responsibility" %}
+      </h2>
+      <div class="border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <p class="opacity-60 text-xs mb-0.5">{% trans "Owner" %}</p>
+        <p class="font-semibold">{{ object.owner|default:"—" }}</p>
+      </div>
+      <div class="border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <p class="opacity-60 text-xs mb-0.5">{% trans "Custodian" %}</p>
+        <p class="font-semibold">{{ object.custodian|default:"—" }}</p>
+      </div>
+      <div class="border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <p class="opacity-60 text-xs mb-0.5">{% trans "Verified by" %}</p>
+        <p class="font-semibold">{{ object.verified_by|default:"—" }}</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="space-y-4">
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-2xl border p-5 shadow-sm">
+      <h2 class="font-bold flex items-center gap-2 mb-3">
+        <i class="fa-solid fa-align-left" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+        {% trans "Description" %}
+      </h2>
+      <p class="text-sm whitespace-pre-line opacity-80">{{ object.description|default:"—" }}</p>
+    </div>
+
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-2xl border p-5 shadow-sm">
+      <h2 class="font-bold flex items-center gap-2 mb-4">
+        <i class="fa-solid fa-location-dot" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+        {% trans "Location & Valuation" %}
+      </h2>
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-xl p-4">
+          <p class="text-xs font-semibold uppercase tracking-wide opacity-50">{% trans "Location" %}</p>
+          <p class="mt-1 font-bold text-sm">{{ object.location|default:"—" }}</p>
+        </div>
+        <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-xl p-4">
+          <p class="text-xs font-semibold uppercase tracking-wide opacity-50">{% trans "Estimated Value" %}</p>
+          <p class="mt-1 font-black text-xl font-mono">
+            {% if object.estimated_value %}
+            {{ object.estimated_value|floatformat:2 }}
+            {% if object.estimated_value_currency %} {{ object.estimated_value_currency.code }}{% endif %}
+            {% else %}—{% endif %}
+          </p>
+          <p class="mt-0.5 text-xs opacity-50">
+            {% if object.valuation_date %}{{ object.valuation_date|date:"Y-m-d" }}{% else %}{% trans "No valuation date" %}{% endif %}
+          </p>
+        </div>
+      </div>
+    </div>
+
+    {% if object.metadata %}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-2xl border p-5 shadow-sm">
+      <h2 class="font-bold flex items-center gap-2 mb-3">
+        <i class="fa-solid fa-code" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+        {% trans "Metadata" %}
+      </h2>
+      <pre :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+           class="overflow-x-auto rounded-xl p-4 text-xs font-mono">{{ object.metadata|pprint }}</pre>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

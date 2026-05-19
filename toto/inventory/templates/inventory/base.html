@@ -1,0 +1,83 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% block inventory_title %}{% trans "Inventory" %}{% endblock %} | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+<style>
+  [x-cloak]{display:none!important}
+  .inv-form p{display:grid;gap:.35rem;margin-bottom:.9rem}
+  .inv-form label{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;opacity:.6}
+  .inv-form input,.inv-form select,.inv-form textarea{width:100%;border-radius:.75rem;border:1px solid;background:transparent;padding:.6rem .75rem;outline:none;transition:box-shadow .15s}
+  .inv-form input:focus,.inv-form select:focus,.inv-form textarea:focus{box-shadow:0 0 0 2px currentColor}
+  .inv-form ul.errorlist{margin:0;padding:0;list-style:none;font-size:.75rem;font-weight:600}
+</style>
+{% block inventory_start_script %}{% endblock %}
+{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-7xl space-y-6">
+
+    <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div class="space-y-2">
+        <a href="{% url 'core:dashboard' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+          <i class="fa-solid fa-arrow-left"></i> Dashboard
+        </a>
+        <div>
+          <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-xs font-semibold uppercase tracking-wide">
+            {% trans "Toto Inventory" %}
+          </p>
+          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+            {% block inventory_heading_icon %}<i class="fa-solid fa-boxes-stacked"></i>{% endblock %}
+            {% block inventory_heading %}{% trans "Inventory" %}{% endblock %}
+          </h1>
+          {% block inventory_subtitle %}{% endblock %}
+        </div>
+      </div>
+
+      <nav class="flex flex-wrap gap-2">
+        <a href="{% url 'inventory:dashboard' %}"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-gauge-high"></i> {% trans "Dashboard" %}
+        </a>
+        <a href="{% url 'inventory:object_list' %}"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-box-open"></i> {% trans "Objects" %}
+        </a>
+        <a href="{% url 'inventory:site_list' %}"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-warehouse"></i> {% trans "Sites" %}
+        </a>
+        <a href="{% url 'inventory:location_list' %}"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-box-archive"></i> {% trans "Locations" %}
+        </a>
+        <a href="{% url 'inventory:object_type_list' %}"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-tags"></i> {% trans "Types" %}
+        </a>
+        {% block inventory_header_actions %}{% endblock %}
+      </nav>
+    </header>
+
+    {% if messages %}
+    <div class="space-y-2">
+      {% for message in messages %}
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-xl border px-4 py-3 text-sm font-semibold shadow-sm">{{ message }}</div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% block inventory_content %}{% endblock %}
+  </div>
+</section>
+{% endblock %}

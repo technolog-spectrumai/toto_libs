@@ -1,0 +1,144 @@
+{% extends "inventory/base.html" %}
+{% load i18n %}
+
+{% block inventory_title %}{{ site.name }}{% endblock %}
+{% block inventory_heading %}{{ site.name }}{% endblock %}
+{% block inventory_heading_icon %}<i class="fa-solid fa-warehouse"></i>{% endblock %}
+
+{% block inventory_header_actions %}
+<a href="{% url 'inventory:site_update' site.id %}"
+   :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+   class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+  <i class="fa-solid fa-pen"></i> {% trans "Edit" %}
+</a>
+<form method="post" action="{% url 'inventory:site_toggle_active' site.id %}">
+  {% csrf_token %}
+  <button type="submit"
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+    {% if site.is_active %}
+    <i class="fa-solid fa-pause"></i> {% trans "Deactivate" %}
+    {% else %}
+    <i class="fa-solid fa-play"></i> {% trans "Activate" %}
+    {% endif %}
+  </button>
+</form>
+{% endblock %}
+
+{% block inventory_content %}
+<div class="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+
+  <div class="space-y-4">
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-2xl border p-5 shadow-sm space-y-1 text-sm">
+      <h2 class="font-bold flex items-center gap-2 mb-3">
+        <i class="fa-solid fa-circle-info" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+        {% trans "Site Info" %}
+      </h2>
+      <div class="border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <p class="opacity-60 text-xs">{% trans "Type" %}</p>
+        <p class="font-semibold">{{ site.site_type|default:"—" }}</p>
+      </div>
+      <div class="border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <p class="opacity-60 text-xs">{% trans "Operator" %}</p>
+        <p class="font-semibold">{% if site.operator %}{{ site.operator }}{% else %}—{% endif %}</p>
+      </div>
+      <div class="border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <p class="opacity-60 text-xs">{% trans "Address" %}</p>
+        <p class="font-semibold">{% if site.address %}{{ site.address }}{% else %}—{% endif %}</p>
+      </div>
+      <div class="border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <p class="opacity-60 text-xs">{% trans "Status" %}</p>
+        {% if site.is_active %}
+        <span :class="darkMode ? 'text-success-dark' : 'text-success-light'" class="font-semibold">
+          <i class="fa-solid fa-check mr-1"></i>{% trans "Active" %}
+        </span>
+        {% else %}
+        <span :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" class="font-semibold">
+          <i class="fa-solid fa-pause mr-1"></i>{% trans "Inactive" %}
+        </span>
+        {% endif %}
+      </div>
+    </div>
+
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-2xl border p-5 shadow-sm space-y-4">
+      <h2 class="font-bold flex items-center gap-2">
+        <i class="fa-solid fa-plus" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+        {% trans "Add Storage Location" %}
+      </h2>
+      <form method="post" class="inv-form">
+        {% csrf_token %}
+        {{ location_form.as_p }}
+        <button type="submit"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="w-full rounded-xl py-2.5 text-sm font-bold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-floppy-disk mr-1"></i> {% trans "Create Location" %}
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-2xl border shadow-sm overflow-hidden h-fit">
+    <div class="p-5 border-b" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+      <h2 class="font-bold flex items-center gap-2">
+        <i class="fa-solid fa-box-archive" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+        {% trans "Storage Locations" %}
+      </h2>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+              class="border-b text-xs font-semibold uppercase tracking-wide opacity-50">
+            <th class="px-5 py-3 text-left">{% trans "Code" %}</th>
+            <th class="px-5 py-3 text-left">{% trans "Name" %}</th>
+            <th class="px-5 py-3 text-left hidden sm:table-cell">{% trans "Type" %}</th>
+            <th class="px-5 py-3 text-center">{% trans "Status" %}</th>
+            <th class="px-5 py-3 text-right">{% trans "Actions" %}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for loc in locations %}
+          <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-b last:border-0">
+            <td class="px-5 py-3 font-mono font-semibold">{{ loc.code|default:"—" }}</td>
+            <td class="px-5 py-3">{{ loc.name }}</td>
+            <td class="px-5 py-3 opacity-60 hidden sm:table-cell">{{ loc.location_type|default:"—" }}</td>
+            <td class="px-5 py-3 text-center">
+              {% if loc.is_active %}
+              <span :class="darkMode ? 'text-success-dark bg-success-dark/10' : 'text-success-light bg-success-light/10'"
+                    class="text-[10px] font-bold rounded-full px-2 py-0.5">{% trans "Active" %}</span>
+              {% else %}
+              <span :class="darkMode ? 'text-warn-dark bg-warn-dark/10' : 'text-warn-light bg-warn-light/10'"
+                    class="text-[10px] font-bold rounded-full px-2 py-0.5">{% trans "Inactive" %}</span>
+              {% endif %}
+            </td>
+            <td class="px-5 py-3 text-right">
+              <div class="flex items-center justify-end gap-2">
+                <a href="{% url 'inventory:location_update' loc.id %}"
+                   :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                   class="inline-flex items-center gap-1 rounded-lg border px-3 py-1 text-xs font-semibold transition hover:opacity-85">
+                  <i class="fa-solid fa-pen"></i>
+                </a>
+                <form method="post" action="{% url 'inventory:location_toggle_active' loc.id %}">
+                  {% csrf_token %}
+                  <button type="submit"
+                          :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                          class="inline-flex items-center gap-1 rounded-lg border px-3 py-1 text-xs font-semibold transition hover:opacity-85">
+                    <i class="fa-solid fa-toggle-on"></i>
+                  </button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="5" class="px-5 py-8 text-center opacity-50">{% trans "No storage locations yet." %}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

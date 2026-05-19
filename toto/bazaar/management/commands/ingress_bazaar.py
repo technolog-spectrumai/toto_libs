@@ -27,6 +27,7 @@ class Command(IngressCommand):
         self._seed_coupons(shops)
         self._link_ledger_accounts(shops)
         self._seed_user_ledger_accounts()
+        self._seed_wallet_pin()
 
         if self.full:
             self._seed_orders(shops, vendors, products)
@@ -438,6 +439,29 @@ class Command(IngressCommand):
                     self.stdout.write(f"  + funded {user.username}: {amount} {asset.unit_name}")
                 except Exception as exc:
                     self.stdout.write(self.style.ERROR(f"  ✗ {ref}: {exc}"))
+
+    # ------------------------------------------------------------------ #
+    # Wallet PIN                                                           #
+    # ------------------------------------------------------------------ #
+
+    def _seed_wallet_pin(self):
+        """Set wallet PIN "1111" for the first superuser (Founder / admin)."""
+        from toto.bazaar.wallet_pin import has_wallet_pin, set_wallet_pin
+
+        user = User.objects.filter(is_superuser=True).order_by("pk").first()
+        if not user:
+            self.stdout.write(self.style.WARNING("  ⚠ no superuser found, skipping wallet PIN"))
+            return
+
+        if has_wallet_pin(user):
+            self.stdout.write(self.style.WARNING(f"  ⚠ wallet PIN already set for {user.username}"))
+            return
+
+        try:
+            set_wallet_pin(user, "1111")
+            self.stdout.write(f"  + wallet PIN set for {user.username} (PIN: 1111)")
+        except Exception as exc:
+            self.stdout.write(self.style.ERROR(f"  ✗ wallet PIN failed for {user.username}: {exc}"))
 
     # ------------------------------------------------------------------ #
     # Orders (only with --full)                                            #
