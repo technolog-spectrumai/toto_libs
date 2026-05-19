@@ -79,6 +79,8 @@ packages = [
     "toto.bazaar.templatetags",
     "toto.logistics",
     "toto.logistics.migrations",
+    "toto.logistics.management",
+    "toto.logistics.management.commands",
     # --- formerly studio apps ---
     "toto.enigma",
     "toto.enigma.agent",
