@@ -1,9 +1,8 @@
-import json
-
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -16,8 +15,6 @@ from .forms import ExchangeRequestCreateForm, ExchangeRequestResponseForm, Token
 from .hashing import verify_hash_chain
 from .models import (
     Asset,
-    AssetExchangeRate,
-    AssetExchangeRateHistory,
     AssetExchangeRequest,
     AssetHolding,
     ExchangeRequestStatus,
@@ -243,71 +240,87 @@ def chain_verify(request):
 
 
 # ---------------------------------------------------------------------------
-# Exchange rates and peer exchange requests
+# Peer exchange proposals
 # ---------------------------------------------------------------------------
 
 @login_required
 def exchange_center(request):
-    pair_ids = request.GET.getlist("pairs")
-    rates = (
-        AssetExchangeRate.objects
-        .filter(active=True)
-        .select_related("from_asset", "to_asset")
-        .order_by("from_asset__unit_name", "to_asset__unit_name")
-    )
-    if not pair_ids:
-        pair_ids = [str(pk) for pk in rates.values_list("pk", flat=True)[:3]]
-
-    selected_rates = rates.filter(pk__in=pair_ids)
-    histories = (
-        AssetExchangeRateHistory.objects
-        .filter(exchange_rate__in=selected_rates)
-        .select_related("exchange_rate", "from_asset", "to_asset")
-        .order_by("recorded_at")
-    )
-    labels = sorted({row.recorded_at.strftime("%Y-%m-%d %H:%M") for row in histories})
-    colors = ["#4f5fa1", "#5fa38c", "#ff4455", "#d94a4a", "#2f3d63", "#4a8f7a"]
-    datasets = []
-    for index, rate in enumerate(selected_rates):
-        rows = [row for row in histories if row.exchange_rate_id == rate.pk]
-        by_label = {row.recorded_at.strftime("%Y-%m-%d %H:%M"): float(row.rate) for row in rows}
-        color = colors[index % len(colors)]
-        datasets.append({
-            "label": f"{rate.from_asset.unit_name}/{rate.to_asset.unit_name}",
-            "data": [by_label.get(label) for label in labels],
-            "borderColor": color,
-            "backgroundColor": color,
-            "tension": 0.25,
-            "spanGaps": True,
-        })
-
-    incoming = (
+    incoming_qs = (
         AssetExchangeRequest.objects
         .filter(counterparty=request.user)
         .select_related("requester", "requester_account", "counterparty_account", "offer_asset", "request_asset")
-        .order_by("-created_at")[:30]
+        .order_by("-created_at")
     )
-    outgoing = (
+    outgoing_qs = (
         AssetExchangeRequest.objects
         .filter(requester=request.user)
         .select_related("counterparty", "requester_account", "counterparty_account", "offer_asset", "request_asset")
-        .order_by("-created_at")[:30]
+        .order_by("-created_at")
     )
+    public_asks_qs = (
+        AssetExchangeRequest.objects
+        .filter(counterparty__isnull=True, status=ExchangeRequestStatus.PENDING)
+        .exclude(requester=request.user)
+        .select_related("requester", "requester_account", "offer_asset", "request_asset")
+        .order_by("-created_at")
+    )
+    incoming = incoming_qs[:30]
+    outgoing = outgoing_qs[:30]
+    public_asks = public_asks_qs[:20]
+    proposals = sorted(
+        list(incoming) + list(outgoing),
+        key=lambda proposal: proposal.created_at,
+        reverse=True,
+    )
+    for proposal in proposals:
+        proposal.direction = "incoming" if proposal.counterparty_id == request.user.id else "outgoing"
+
+    recent_trades = list(
+        AssetExchangeRequest.objects
+        .filter(
+            Q(requester=request.user) | Q(counterparty=request.user),
+            status=ExchangeRequestStatus.ACCEPTED,
+        )
+        .select_related("requester", "counterparty", "offer_asset", "request_asset")
+        .order_by("-responded_at", "-updated_at")[:12]
+    )
+    trade_refs = []
+    for trade in recent_trades:
+        trade.direction = "incoming" if trade.counterparty_id == request.user.id else "outgoing"
+        trade_ref_items = [
+            ("Offer", trade.offer_tx_reference),
+            ("Expected", trade.request_tx_reference),
+            ("Fee", trade.commission_tx_reference),
+        ]
+        trade.trade_ref_items = [(label, ref) for label, ref in trade_ref_items if ref]
+        trade_refs.extend(ref for _, ref in trade.trade_ref_items)
+
+    tx_by_ref = {
+        tx.reference: tx
+        for tx in LedgerTransaction.objects
+        .filter(reference__in=trade_refs)
+        .select_related("asset", "hash_record")
+    }
+    for trade in recent_trades:
+        trade.trade_transactions = [
+            {
+                "label": label,
+                "tx": tx_by_ref.get(ref),
+                "reference": ref,
+                "hash_record": getattr(tx_by_ref.get(ref), "hash_record", None),
+            }
+            for label, ref in trade.trade_ref_items
+        ]
 
     return assets_render(request, "assets/exchange_center.html", {
-        "rates": rates,
-        "selected_pair_ids": set(pair_ids),
-        "chart_json": json.dumps({
-            "chart_type": "line",
-            "labels": labels,
-            "datasets": datasets,
-            "options": {
-                "interaction": {"mode": "index", "intersect": False},
-                "scales": {"y": {"beginAtZero": False}},
-            },
-        }),
+        "proposals": proposals,
+        "public_asks": public_asks,
+        "recent_trades": recent_trades,
         "incoming_requests": incoming,
         "outgoing_requests": outgoing,
+        "pending_incoming_count": incoming_qs.filter(status=ExchangeRequestStatus.PENDING).count(),
+        "pending_outgoing_count": outgoing_qs.filter(status=ExchangeRequestStatus.PENDING).count(),
+        "public_ask_count": public_asks_qs.count(),
         "pending_status": ExchangeRequestStatus.PENDING,
     })
 
@@ -329,8 +342,8 @@ def exchange_request_create(request):
 def exchange_request_accept(request, pk):
     exchange_request = get_object_or_404(
         AssetExchangeRequest.objects.select_related("counterparty", "offer_asset", "request_asset"),
+        Q(counterparty=request.user) | (Q(counterparty__isnull=True) & ~Q(requester=request.user)),
         pk=pk,
-        counterparty=request.user,
         status=ExchangeRequestStatus.PENDING,
     )
     if request.method == "POST":

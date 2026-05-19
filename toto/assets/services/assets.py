@@ -266,30 +266,13 @@ def _round_display_amount(amount: Decimal, asset: Asset) -> Decimal:
 
 
 def get_exchange_rate(from_asset: Asset, to_asset: Asset):
-    from toto.assets.models import AssetExchangeRate
-
     if from_asset.pk == to_asset.pk:
         return None, Decimal("1"), Decimal("0"), "same_asset"
 
-    direct = (
-        AssetExchangeRate.objects
-        .filter(from_asset=from_asset, to_asset=to_asset, active=True)
-        .order_by("-updated_at")
-        .first()
+    raise ValidationError(
+        f"No automatic exchange rate from {from_asset.unit_name} to {to_asset.unit_name}. "
+        "Create a direct exchange proposal instead."
     )
-    if direct:
-        return direct, direct.rate, direct.commission_percent, "direct"
-
-    reverse = (
-        AssetExchangeRate.objects
-        .filter(from_asset=to_asset, to_asset=from_asset, active=True)
-        .order_by("-updated_at")
-        .first()
-    )
-    if reverse:
-        return reverse, Decimal("1") / reverse.rate, reverse.commission_percent, "reverse"
-
-    raise ValidationError(f"No fixed exchange rate from {from_asset.unit_name} to {to_asset.unit_name}.")
 
 
 def quote_exchange(*, from_asset: Asset, to_asset: Asset, amount: Decimal) -> ExchangeQuote:
@@ -347,7 +330,11 @@ def accept_exchange_request(*, exchange_request, counterparty_account, response_
 
         if req.status != ExchangeRequestStatus.PENDING:
             raise ValidationError("This exchange request is no longer pending.")
-        if counterparty_account.user_id != req.counterparty_id:
+        if not counterparty_account.user_id:
+            raise ValidationError("Counterparty account must belong to a user.")
+        if counterparty_account.user_id == req.requester_id:
+            raise ValidationError("You cannot accept your own exchange proposal.")
+        if req.counterparty_id and counterparty_account.user_id != req.counterparty_id:
             raise ValidationError("Counterparty account does not belong to the recipient.")
 
         requester_total = req.requester_total_display
@@ -400,6 +387,8 @@ def accept_exchange_request(*, exchange_request, counterparty_account, response_
             )
 
         req.counterparty_account = counterparty_account
+        if req.counterparty_id is None:
+            req.counterparty_id = counterparty_account.user_id
         req.status = ExchangeRequestStatus.ACCEPTED
         req.offer_tx_reference = offer_ref
         req.request_tx_reference = request_ref
@@ -408,6 +397,7 @@ def accept_exchange_request(*, exchange_request, counterparty_account, response_
         req.responded_at = timezone.now()
         req.save(update_fields=[
             "counterparty_account",
+            "counterparty",
             "status",
             "offer_tx_reference",
             "request_tx_reference",

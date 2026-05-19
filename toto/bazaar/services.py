@@ -24,7 +24,7 @@ def get_stablecoin_for_order_currency(order):
 
 
 def get_wallet_payment_sources(user, order):
-    """Return wallet assets with fixed exchange quotes for this order."""
+    """Return wallet assets that can pay this order directly or through an available quote."""
     preferred = get_stablecoin_for_order_currency(order)
     result = []
     for holding in get_user_ledger_sources(user):

@@ -1,12 +1,17 @@
 from decimal import Decimal
 
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
-from django.test import TestCase
+from django.test import TestCase, override_settings
+from django.urls import reverse
 
 from .hashing import attach_hash, calculate_transaction_hash, verify_hash_chain
+from .forms import ExchangeRequestCreateForm
 from .models import (
     Asset,
+    AssetExchangeRequest,
     AssetHolding,
+    ExchangeRequestStatus,
     LedgerAccount,
     LedgerEntry,
     LedgerHash,
@@ -24,6 +29,8 @@ from .queries import (
     verify_asset_ledger,
 )
 from .services.assets import create_asset, reverse_transaction, transfer_asset
+from .services.assets import accept_exchange_request
+from toto.core.models import Platform
 
 
 # ---------------------------------------------------------------------------
@@ -413,6 +420,190 @@ class HashChainTests(TestCase):
     def test_hash_chain_still_valid_after_reversal(self):
         reverse_transaction(transaction=self.tx, reference="rev-hch-02")
         self.assertTrue(verify_hash_chain())
+
+
+@override_settings(STORAGES={
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+})
+class ExchangeRequestTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        Platform.objects.create(
+            site_name="Test Platform",
+            author="Tests",
+            publication_year=2026,
+            active=True,
+        )
+        self.requester = User.objects.create_user(username="requester", password="pass")
+        self.counterparty = User.objects.create_user(username="counterparty", password="pass")
+        self.requester_account = LedgerAccount.objects.create(
+            code="requester-wallet",
+            name="Requester Wallet",
+            account_type="user",
+            active=True,
+            user=self.requester,
+        )
+        self.counterparty_account = LedgerAccount.objects.create(
+            code="counterparty-wallet",
+            name="Counterparty Wallet",
+            account_type="user",
+            active=True,
+            user=self.counterparty,
+        )
+        self.offer_asset = make_asset_direct(unit_name="OFR", supply=20000)
+        self.request_asset = make_asset_direct(unit_name="REQ", supply=20000)
+        Asset.objects.filter(pk__in=[self.offer_asset.pk, self.request_asset.pk]).update(is_currency=True)
+        self.offer_asset.refresh_from_db()
+        self.request_asset.refresh_from_db()
+        AssetHolding.objects.create(
+            asset=self.offer_asset,
+            account=self.requester_account,
+            balance_base_units=to_base_units(Decimal("100.00"), self.offer_asset.decimals),
+        )
+        AssetHolding.objects.create(
+            asset=self.request_asset,
+            account=self.counterparty_account,
+            balance_base_units=to_base_units(Decimal("50.00"), self.request_asset.decimals),
+        )
+
+    def test_create_form_records_requested_expected_amount(self):
+        form = ExchangeRequestCreateForm(
+            data={
+                "requester_account": self.requester_account.pk,
+                "counterparty": self.counterparty.pk,
+                "offer_asset": self.offer_asset.pk,
+                "offer_amount": "10.00",
+                "request_asset": self.request_asset.pk,
+                "expected_amount": "20.00",
+                "note": "proposal terms",
+            },
+            user=self.requester,
+        )
+
+        self.assertTrue(form.is_valid(), form.errors)
+        req = form.save()
+
+        self.assertEqual(req.requester_account, self.requester_account)
+        self.assertEqual(req.offer_amount_display, Decimal("10.00"))
+        self.assertEqual(req.request_amount_display, Decimal("20.00"))
+        self.assertEqual(req.exchange_rate, Decimal("2.000000000000"))
+        self.assertEqual(req.commission_amount_base_units, 0)
+
+    def test_create_form_rejects_account_not_owned_by_user(self):
+        form = ExchangeRequestCreateForm(
+            data={
+                "requester_account": self.counterparty_account.pk,
+                "counterparty": self.counterparty.pk,
+                "offer_asset": self.offer_asset.pk,
+                "offer_amount": "10.00",
+                "request_asset": self.request_asset.pk,
+                "expected_amount": "20.00",
+            },
+            user=self.requester,
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("requester_account", form.errors)
+
+    def test_create_form_allows_public_ask_without_counterparty(self):
+        form = ExchangeRequestCreateForm(
+            data={
+                "requester_account": self.requester_account.pk,
+                "counterparty": "",
+                "offer_asset": self.offer_asset.pk,
+                "offer_amount": "12.00",
+                "request_asset": self.request_asset.pk,
+                "expected_amount": "10.00",
+            },
+            user=self.requester,
+        )
+
+        self.assertTrue(form.is_valid(), form.errors)
+        req = form.save()
+        self.assertIsNone(req.counterparty)
+        self.assertEqual(req.offer_amount_display, Decimal("12.00"))
+        self.assertEqual(req.request_amount_display, Decimal("10.00"))
+
+    def test_public_ask_is_visible_and_can_be_accepted_by_other_user(self):
+        req = AssetExchangeRequest.objects.create(
+            requester=self.requester,
+            counterparty=None,
+            requester_account=self.requester_account,
+            offer_asset=self.offer_asset,
+            request_asset=self.request_asset,
+            offer_amount_base_units=to_base_units(Decimal("12.00"), self.offer_asset.decimals),
+            request_amount_base_units=to_base_units(Decimal("10.00"), self.request_asset.decimals),
+            commission_amount_base_units=0,
+            exchange_rate=Decimal("0.833333333333"),
+            commission_percent=Decimal("0"),
+        )
+
+        self.client.force_login(self.counterparty)
+        response = self.client.get(reverse("assets:exchange_center"))
+        self.assertContains(response, "I will trade 12.00 OFR for 10.00 REQ")
+
+        accepted = accept_exchange_request(
+            exchange_request=req,
+            counterparty_account=self.counterparty_account,
+        )
+        self.assertEqual(accepted.status, ExchangeRequestStatus.ACCEPTED)
+        self.assertEqual(accepted.counterparty, self.counterparty)
+        self.assertEqual(get_asset_balance_display(self.offer_asset, self.counterparty_account), Decimal("12.00"))
+        self.assertEqual(get_asset_balance_display(self.request_asset, self.requester_account), Decimal("10.00"))
+
+    def test_accept_exchange_request_settles_assets(self):
+        req = AssetExchangeRequest.objects.create(
+            requester=self.requester,
+            counterparty=self.counterparty,
+            requester_account=self.requester_account,
+            offer_asset=self.offer_asset,
+            request_asset=self.request_asset,
+            offer_amount_base_units=to_base_units(Decimal("10.00"), self.offer_asset.decimals),
+            request_amount_base_units=to_base_units(Decimal("20.00"), self.request_asset.decimals),
+            commission_amount_base_units=0,
+            exchange_rate=Decimal("2.000000000000"),
+            commission_percent=Decimal("0"),
+        )
+
+        accepted = accept_exchange_request(
+            exchange_request=req,
+            counterparty_account=self.counterparty_account,
+        )
+
+        self.assertEqual(accepted.status, ExchangeRequestStatus.ACCEPTED)
+        self.assertEqual(get_asset_balance_display(self.offer_asset, self.requester_account), Decimal("90.00"))
+        self.assertEqual(get_asset_balance_display(self.offer_asset, self.counterparty_account), Decimal("10.00"))
+        self.assertEqual(get_asset_balance_display(self.request_asset, self.requester_account), Decimal("20.00"))
+        self.assertEqual(get_asset_balance_display(self.request_asset, self.counterparty_account), Decimal("30.00"))
+
+    def test_exchange_center_shows_recent_trade_hashes(self):
+        req = AssetExchangeRequest.objects.create(
+            requester=self.requester,
+            counterparty=self.counterparty,
+            requester_account=self.requester_account,
+            offer_asset=self.offer_asset,
+            request_asset=self.request_asset,
+            offer_amount_base_units=to_base_units(Decimal("10.00"), self.offer_asset.decimals),
+            request_amount_base_units=to_base_units(Decimal("20.00"), self.request_asset.decimals),
+            commission_amount_base_units=0,
+            exchange_rate=Decimal("2.000000000000"),
+            commission_percent=Decimal("0"),
+        )
+        accept_exchange_request(
+            exchange_request=req,
+            counterparty_account=self.counterparty_account,
+        )
+        offer_tx = LedgerTransaction.objects.get(reference=f"exchange-{req.pk}-offer")
+        request_tx = LedgerTransaction.objects.get(reference=f"exchange-{req.pk}-request")
+
+        self.client.force_login(self.requester)
+        response = self.client.get(reverse("assets:exchange_center"))
+
+        self.assertContains(response, offer_tx.reference)
+        self.assertContains(response, request_tx.reference)
+        self.assertContains(response, offer_tx.hash_record.hash)
+        self.assertContains(response, request_tx.hash_record.hash)
 
 
 # ---------------------------------------------------------------------------

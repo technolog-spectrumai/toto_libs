@@ -3,8 +3,6 @@ from django.contrib import admin
 from .hashing import verify_hash_chain
 from .models import (
     Asset,
-    AssetExchangeRate,
-    AssetExchangeRateHistory,
     AssetExchangeRequest,
     AssetHolding,
     Currency,
@@ -74,30 +72,6 @@ class TokenizationAdmin(admin.ModelAdmin):
     raw_id_fields = ("real_world_object", "asset", "supervisor")
 
     def has_delete_permission(self, request, obj=None):
-        return False
-
-
-@admin.register(AssetExchangeRate)
-class AssetExchangeRateAdmin(admin.ModelAdmin):
-    list_display = ("from_asset", "to_asset", "rate", "commission_percent", "active", "updated_at")
-    list_filter = ("active", "from_asset", "to_asset")
-    search_fields = ("from_asset__unit_name", "from_asset__name", "to_asset__unit_name", "to_asset__name")
-    readonly_fields = ("created_at", "updated_at")
-    raw_id_fields = ("from_asset", "to_asset")
-
-
-@admin.register(AssetExchangeRateHistory)
-class AssetExchangeRateHistoryAdmin(admin.ModelAdmin):
-    list_display = ("from_asset", "to_asset", "rate", "commission_percent", "recorded_at")
-    list_filter = ("from_asset", "to_asset", "recorded_at")
-    search_fields = ("from_asset__unit_name", "to_asset__unit_name")
-    readonly_fields = ("exchange_rate", "from_asset", "to_asset", "rate", "commission_percent", "recorded_at", "metadata")
-    raw_id_fields = ("exchange_rate", "from_asset", "to_asset")
-
-    def has_add_permission(self, request):
-        return False
-
-    def has_change_permission(self, request, obj=None):
         return False
 
 

@@ -127,110 +127,6 @@ class Tokenization(models.Model):
         raise ValidationError("Tokenization records are permanent and cannot be reverted.")
 
 
-# ---------------------------------------------------------------------------
-# Exchange rates
-# ---------------------------------------------------------------------------
-
-class AssetExchangeRate(models.Model):
-    from_asset = models.ForeignKey(
-        Asset,
-        on_delete=models.PROTECT,
-        related_name="exchange_rates_from",
-    )
-    to_asset = models.ForeignKey(
-        Asset,
-        on_delete=models.PROTECT,
-        related_name="exchange_rates_to",
-    )
-    rate = models.DecimalField(
-        max_digits=24,
-        decimal_places=12,
-        help_text="Fixed amount of to_asset received for 1 unit of from_asset.",
-    )
-    commission_percent = models.DecimalField(
-        max_digits=7,
-        decimal_places=4,
-        default=Decimal("0.0000"),
-        help_text="Commission charged in the payment asset on top of the converted amount.",
-    )
-    active = models.BooleanField(default=True)
-    metadata = models.JSONField(default=dict, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ["from_asset__unit_name", "to_asset__unit_name"]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["from_asset", "to_asset"],
-                name="unique_asset_exchange_rate_pair",
-            ),
-            models.CheckConstraint(
-                check=~models.Q(from_asset=models.F("to_asset")),
-                name="exchange_rate_distinct_assets",
-            ),
-        ]
-        indexes = [
-            models.Index(fields=["from_asset", "to_asset"]),
-            models.Index(fields=["active"]),
-        ]
-
-    def __str__(self):
-        return f"1 {self.from_asset.unit_name} = {self.rate} {self.to_asset.unit_name}"
-
-    def save(self, *args, **kwargs):
-        super().save(*args, **kwargs)
-        AssetExchangeRateHistory.objects.create(
-            exchange_rate=self,
-            from_asset=self.from_asset,
-            to_asset=self.to_asset,
-            rate=self.rate,
-            commission_percent=self.commission_percent,
-            metadata={"active": self.active, **(self.metadata or {})},
-        )
-
-    def clean(self):
-        if self.rate is not None and self.rate <= 0:
-            raise ValidationError({"rate": "Exchange rate must be positive."})
-        if self.commission_percent is not None and self.commission_percent < 0:
-            raise ValidationError({"commission_percent": "Commission cannot be negative."})
-        if self.from_asset_id and self.from_asset_id == self.to_asset_id:
-            raise ValidationError("Exchange rate assets must be different.")
-
-
-class AssetExchangeRateHistory(models.Model):
-    exchange_rate = models.ForeignKey(
-        AssetExchangeRate,
-        on_delete=models.CASCADE,
-        related_name="history",
-    )
-    from_asset = models.ForeignKey(
-        Asset,
-        on_delete=models.PROTECT,
-        related_name="exchange_rate_history_from",
-    )
-    to_asset = models.ForeignKey(
-        Asset,
-        on_delete=models.PROTECT,
-        related_name="exchange_rate_history_to",
-    )
-    rate = models.DecimalField(max_digits=24, decimal_places=12)
-    commission_percent = models.DecimalField(max_digits=7, decimal_places=4, default=Decimal("0.0000"))
-    recorded_at = models.DateTimeField(auto_now_add=True)
-    metadata = models.JSONField(default=dict, blank=True)
-
-    class Meta:
-        ordering = ["recorded_at"]
-        verbose_name_plural = "asset exchange rate history"
-        indexes = [
-            models.Index(fields=["from_asset", "to_asset", "recorded_at"]),
-            models.Index(fields=["exchange_rate", "recorded_at"]),
-        ]
-
-    def __str__(self):
-        return f"{self.recorded_at:%Y-%m-%d %H:%M} · 1 {self.from_asset.unit_name} = {self.rate} {self.to_asset.unit_name}"
-
-
 class ExchangeRequestStatus(models.TextChoices):
     PENDING = "pending", "Pending"
     ACCEPTED = "accepted", "Accepted"
@@ -246,7 +142,9 @@ class AssetExchangeRequest(models.Model):
     )
     counterparty = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name="asset_exchange_requests_received",
     )
     requester_account = models.ForeignKey(
