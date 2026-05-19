@@ -177,17 +177,41 @@ class CheckoutView(BazaarContextMixin, LoginRequiredMixin, FormView):
         return initial
 
     def get_context_data(self, **kwargs):
+        import json as _json
         context = super().get_context_data(**kwargs)
-        context['default_address'] = self._user_default_address()
+        default_address = self._user_default_address()
+        context['default_address'] = default_address
         user = self.request.user
         if user.is_authenticated:
-            context['saved_locations'] = (
+            saved_locations = (
                 ShipmentLocation.objects
                 .filter(user=user)
                 .select_related('address')
             )
         else:
-            context['saved_locations'] = ShipmentLocation.objects.none()
+            saved_locations = ShipmentLocation.objects.none()
+        context['saved_locations'] = saved_locations
+
+        def _geom(addr):
+            if addr and addr.geometry:
+                return {'lat': addr.geometry.y, 'lng': addr.geometry.x}
+            return None
+
+        context['checkout_payload_json'] = _json.dumps({
+            'default': {
+                'label': str(default_address),
+                'coords': _geom(default_address),
+            } if default_address else None,
+            'saved': [
+                {
+                    'pk': loc.pk,
+                    'label': loc.label or str(loc.address),
+                    'address': str(loc.address),
+                    'coords': _geom(loc.address),
+                }
+                for loc in saved_locations
+            ],
+        })
         return context
 
     def form_valid(self, form):
