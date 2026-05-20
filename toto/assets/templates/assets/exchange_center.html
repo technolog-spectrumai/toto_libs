@@ -106,6 +106,13 @@
               <button class="rounded-lg border border-current/20 px-3 py-1.5 text-xs font-bold" type="submit">{% trans "Reject" %}</button>
             </form>
           </div>
+          {% elif req.direction == "outgoing" and req.status == pending_status %}
+          <form method="post" action="{% url 'assets:exchange_request_cancel' req.pk %}">
+            {% csrf_token %}
+            <button class="rounded-lg border border-current/20 px-3 py-1.5 text-xs font-bold" type="submit">
+              <i class="fa-solid fa-ban mr-1"></i>{% trans "Cancel proposal" %}
+            </button>
+          </form>
           {% endif %}
         </div>
       </article>

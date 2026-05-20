@@ -598,6 +598,54 @@ class ExchangeRequestTests(TestCase):
         self.assertEqual(get_asset_balance_display(self.request_asset, self.requester_account), Decimal("20.00"))
         self.assertEqual(get_asset_balance_display(self.request_asset, self.counterparty_account), Decimal("30.00"))
 
+    def test_requester_can_cancel_pending_proposal(self):
+        req = AssetExchangeRequest.objects.create(
+            requester=self.requester,
+            counterparty=self.counterparty,
+            requester_account=self.requester_account,
+            offer_asset=self.offer_asset,
+            request_asset=self.request_asset,
+            offer_amount_base_units=to_base_units(Decimal("10.00"), self.offer_asset.decimals),
+            request_amount_base_units=to_base_units(Decimal("20.00"), self.request_asset.decimals),
+            commission_amount_base_units=0,
+            exchange_rate=Decimal("2.000000000000"),
+            commission_percent=Decimal("0"),
+        )
+        self.client.force_login(self.requester)
+
+        response = self.client.get(reverse("assets:exchange_center"))
+        self.assertContains(response, "Cancel proposal")
+
+        response = self.client.post(reverse("assets:exchange_request_cancel", args=[req.pk]))
+        self.assertRedirects(response, reverse("assets:exchange_center"))
+        req.refresh_from_db()
+        self.assertEqual(req.status, ExchangeRequestStatus.CANCELLED)
+
+    def test_fulfilled_proposal_cannot_be_cancelled(self):
+        req = AssetExchangeRequest.objects.create(
+            requester=self.requester,
+            counterparty=self.counterparty,
+            requester_account=self.requester_account,
+            offer_asset=self.offer_asset,
+            request_asset=self.request_asset,
+            offer_amount_base_units=to_base_units(Decimal("10.00"), self.offer_asset.decimals),
+            request_amount_base_units=to_base_units(Decimal("20.00"), self.request_asset.decimals),
+            commission_amount_base_units=0,
+            exchange_rate=Decimal("2.000000000000"),
+            commission_percent=Decimal("0"),
+        )
+        accept_exchange_request(
+            exchange_request=req,
+            counterparty_account=self.counterparty_account,
+        )
+        self.client.force_login(self.requester)
+
+        response = self.client.post(reverse("assets:exchange_request_cancel", args=[req.pk]))
+
+        self.assertEqual(response.status_code, 404)
+        req.refresh_from_db()
+        self.assertEqual(req.status, ExchangeRequestStatus.ACCEPTED)
+
     def test_exchange_center_shows_recent_trade_hashes(self):
         req = AssetExchangeRequest.objects.create(
             requester=self.requester,

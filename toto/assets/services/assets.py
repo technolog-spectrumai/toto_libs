@@ -424,6 +424,21 @@ def reject_exchange_request(*, exchange_request, response_note: str = ""):
         return req
 
 
+def cancel_exchange_request(*, exchange_request, response_note: str = ""):
+    from django.utils import timezone
+    from toto.assets.models import AssetExchangeRequest, ExchangeRequestStatus
+
+    with transaction.atomic():
+        req = AssetExchangeRequest.objects.select_for_update().get(pk=exchange_request.pk)
+        if req.status != ExchangeRequestStatus.PENDING:
+            raise ValidationError("This exchange request is no longer pending.")
+        req.status = ExchangeRequestStatus.CANCELLED
+        req.response_note = response_note
+        req.responded_at = timezone.now()
+        req.save(update_fields=["status", "response_note", "responded_at", "updated_at"])
+        return req
+
+
 def create_obligation(
     *,
     reference: str,

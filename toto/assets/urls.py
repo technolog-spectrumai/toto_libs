@@ -17,6 +17,7 @@ urlpatterns = [
     path("exchange/requests/new/", views.exchange_request_create, name="exchange_request_create"),
     path("exchange/requests/<int:pk>/accept/", views.exchange_request_accept, name="exchange_request_accept"),
     path("exchange/requests/<int:pk>/reject/", views.exchange_request_reject, name="exchange_request_reject"),
+    path("exchange/requests/<int:pk>/cancel/", views.exchange_request_cancel, name="exchange_request_cancel"),
     path("flow/", views.ledger_flow, name="ledger_flow"),
     path("flow/data/", views.ledger_flow_data, name="ledger_flow_data"),
     path("obligations/<int:pk>/fulfill/", views.obligation_fulfill, name="obligation_fulfill"),

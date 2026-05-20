@@ -385,8 +385,8 @@ class Command(IngressCommand):
 
     def _seed_user_ledger_accounts(self):
         """
-        Try to link the first 3 superusers to ledger accounts
-        named user-<username>, funded with TPLN and TUSD from reserves.
+        Link demo staff users and tester to ledger accounts named
+        user-<username>, funded with TPLN and TUSD from reserves.
         """
         from django.contrib.auth import get_user_model
         from toto.assets.models import LedgerAccount, Asset, LedgerTransaction
@@ -402,7 +402,12 @@ class Command(IngressCommand):
             self.stdout.write(self.style.WARNING("  ⚠ reserve_main not found, skipping user wallet seeding"))
             return
 
-        for user in User.objects.filter(is_staff=True)[:3]:
+        users = list(User.objects.filter(is_staff=True).order_by("pk")[:3])
+        tester = User.objects.filter(username="tester").first()
+        if tester and tester.pk not in {user.pk for user in users}:
+            users.append(tester)
+
+        for user in users:
             code = f"user-{user.username}"
             account, created = LedgerAccount.objects.get_or_create(
                 code=code,
@@ -445,10 +450,13 @@ class Command(IngressCommand):
     # ------------------------------------------------------------------ #
 
     def _seed_wallet_pin(self):
-        """Reset demo wallet PINs to "1111" for users with seeded wallets."""
+        """Reset demo wallet PINs to "1111" for staff and tester wallets."""
         from toto.bazaar.wallet_pin import set_wallet_pin
 
         users = list(User.objects.filter(is_staff=True).order_by("pk")[:3])
+        tester = User.objects.filter(username="tester").first()
+        if tester and tester.pk not in {user.pk for user in users}:
+            users.append(tester)
         if not users:
             users = list(User.objects.filter(is_superuser=True).order_by("pk")[:1])
         if not users:

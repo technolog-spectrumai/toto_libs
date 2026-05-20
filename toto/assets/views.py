@@ -388,6 +388,24 @@ def exchange_request_reject(request, pk):
     return redirect("assets:exchange_center")
 
 
+@require_POST
+@login_required
+def exchange_request_cancel(request, pk):
+    exchange_request = get_object_or_404(
+        AssetExchangeRequest,
+        pk=pk,
+        requester=request.user,
+        status=ExchangeRequestStatus.PENDING,
+    )
+    from toto.assets.services.assets import cancel_exchange_request
+    cancel_exchange_request(
+        exchange_request=exchange_request,
+        response_note=request.POST.get("response_note", ""),
+    )
+    messages.success(request, "Exchange proposal cancelled.")
+    return redirect("assets:exchange_center")
+
+
 # ---------------------------------------------------------------------------
 # Ledger flow graph
 # ---------------------------------------------------------------------------
