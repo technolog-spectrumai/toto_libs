@@ -7,7 +7,7 @@ from django.utils.timezone import now
 
 from .models import Project, Column, Task, Sprint, Mission, Campaign, DocumentationPage, DocumentationSection
 from toto.core.batch import BatchAction
-from toto.events.models import Event
+from toto.events.models import ScheduledEvent
 from toto.verbena.admin import SectionInlineMixin, PageAdminMixin
 
 
@@ -197,13 +197,11 @@ class TaskAdmin(admin.ModelAdmin):
                     f"Task '{task.title}' has no venture via its mission/campaign/project."
                 )
 
-            return Event.objects.create(
+            return ScheduledEvent.objects.create(
                 title=task.title,
-                description=task.description,
-                location=f"Column: {task.column.name}",
+                description=task.description or "",
                 start_time=task.sprint.start_time if task.sprint else now(),
                 end_time=task.due_date if task.due_date else now() + timedelta(days=1),
-                venture=venture,
                 organizer=task.assignee,
                 category=None,
                 public=False,
@@ -248,13 +246,11 @@ class SprintAdmin(admin.ModelAdmin):
                     f"Sprint '{sprint.name}' has no venture via its project."
                 )
 
-            return Event.objects.create(
+            return ScheduledEvent.objects.create(
                 title=f"Sprint: {sprint.name}",
                 description=f"Linked to project: {sprint.project.name}",
-                location="Kanban Board",
                 start_time=sprint.start_time or now(),
                 end_time=sprint.end_time or now() + timedelta(days=7),
-                venture=venture,
                 organizer=sprint.project.owner,
                 category=None,
                 public=False,

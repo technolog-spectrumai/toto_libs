@@ -1,14 +1,15 @@
-from django.views.generic import ListView, DetailView
-from django.core.serializers.json import DjangoJSONEncoder
-from django.utils.timezone import localtime, now
-from django.shortcuts import get_object_or_404, redirect, render
-from django.urls import reverse, reverse_lazy
-from django.contrib.auth.mixins import LoginRequiredMixin
-from django.utils.translation import gettext_lazy as _
 import json
 
-from .forms import EventForm
-from .models import Event
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.core.serializers.json import DjangoJSONEncoder
+from django.shortcuts import redirect, render
+from django.urls import reverse, reverse_lazy
+from django.utils.timezone import localtime, now
+from django.utils.translation import gettext_lazy as _
+from django.views.generic import DetailView, ListView
+
+from .forms import ScheduledEventForm
+from .models import ScheduledEvent
 from toto.ui import PageProcessor
 
 
@@ -17,15 +18,15 @@ def events_render(request, template_name, context):
 
 
 class EventCalendarView(ListView):
-    model = Event
+    model = ScheduledEvent
     template_name = 'events/calendar.html'
     context_object_name = 'events'
     ordering = ['start_time']
 
     def get_queryset(self):
         if not self.request.user.is_authenticated:
-            return Event.objects.filter(public=True).order_by('start_time')
-        return Event.objects.all().order_by('start_time')
+            return ScheduledEvent.objects.filter(public=True).order_by('start_time')
+        return ScheduledEvent.objects.all().order_by('start_time')
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -59,7 +60,7 @@ class EventCalendarView(ListView):
 
 
 class EventDetailView(LoginRequiredMixin, DetailView):
-    model = Event
+    model = ScheduledEvent
     template_name = 'events/event_detail.html'
     context_object_name = 'event'
     login_url = reverse_lazy('core:login')
@@ -73,12 +74,12 @@ class EventDetailView(LoginRequiredMixin, DetailView):
 
 def event_create(request):
     if request.method == "POST":
-        form = EventForm(request.POST)
+        form = ScheduledEventForm(request.POST)
         if form.is_valid():
             event = form.save()
             return redirect("events:event_detail", pk=event.pk)
     else:
-        form = EventForm()
+        form = ScheduledEventForm()
 
     return events_render(request, "events/event_form.html", {
         "form": form,

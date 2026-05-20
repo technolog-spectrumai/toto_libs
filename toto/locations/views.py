@@ -14,7 +14,7 @@ from django.views.decorators.http import require_POST
 from toto.ui import PageProcessor
 from toto.people.models import Person
 from toto.kanban.models import Campaign, Mission, Task
-from toto.events.models import Event
+from toto.events.models import ScheduledEvent
 from django.contrib.gis.geos import LineString, MultiLineString
 from .models import (
     Address,
@@ -343,13 +343,6 @@ def zone_detail(request, pk):
         .order_by("route_chain__name", "sequence", "name")
     )
 
-    events = (
-        Event.objects
-        .filter(zone=zone)
-        .select_related("organizer", "category", "address", "route")
-        .order_by("-start_time")
-    )
-
     context = {
         "zone": zone,
         "zone_payload_json": json.dumps(zone_payload(zone)),
@@ -359,7 +352,6 @@ def zone_detail(request, pk):
         "tasks": tasks,
         "addresses": addresses,
         "routes": routes,
-        "events": events,
     }
 
     return render(
@@ -380,19 +372,11 @@ def route_detail(request, pk):
         pk=pk,
     )
 
-    events = (
-        Event.objects
-        .filter(route=route)
-        .select_related("organizer", "category", "address", "zone")
-        .order_by("-start_time")
-    )
-
     from toto.locations.plugins.url_plugins import LocationUrlPlugin
 
     context = {
         "route": route,
         "route_payload_json": json.dumps(route_payload(route)),
-        "events": events,
         "travel_create_url": LocationUrlPlugin.get_url("travel_create"),
     }
 

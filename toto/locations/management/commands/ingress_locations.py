@@ -4,7 +4,7 @@ from django.contrib.gis.geos import LineString, MultiLineString, MultiPolygon, P
 from django.utils import timezone
 
 from toto.ingress import IngressCommand
-from toto.events.models import Event, EventCategory
+from toto.events.models import EventCategory, ScheduledEvent
 from toto.locations.models import (
     Address,
     MapLayer,
@@ -169,11 +169,9 @@ class Command(IngressCommand):
         organizer_key,
         category_name,
         address_key=None,
-        route_name=None,
-        zone_name=None,
         public=True,
     ):
-        event, _ = Event.objects.update_or_create(
+        event, _ = ScheduledEvent.objects.update_or_create(
             title=title,
             start_time=start_time,
             defaults={
@@ -182,8 +180,6 @@ class Command(IngressCommand):
                 "organizer": self.people.get(organizer_key),
                 "category": self.event_categories.get(category_name),
                 "address": self.addresses.get(address_key) if address_key else None,
-                "route": self.routes.get(route_name) if route_name else None,
-                "zone": self.zones.get(zone_name) if zone_name else None,
                 "public": public,
             },
         )

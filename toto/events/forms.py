@@ -1,5 +1,6 @@
 from django import forms
-from .models import Event, EventCategory
+
+from .models import ScheduledEvent
 
 FIELD_CLASS = (
     "w-full rounded-lg border px-3 py-2 text-sm outline-none "
@@ -23,7 +24,7 @@ CHECKBOX_THEME_CLASS = (
 SPLIT_FIELDS = {"start_time", "end_time"}
 
 
-class EventForm(forms.ModelForm):
+class ScheduledEventForm(forms.ModelForm):
     start_time = forms.SplitDateTimeField(
         widget=forms.SplitDateTimeWidget(
             date_attrs={"type": "date"},
@@ -42,7 +43,7 @@ class EventForm(forms.ModelForm):
     )
 
     class Meta:
-        model = Event
+        model = ScheduledEvent
         fields = [
             "title",
             "description",
@@ -51,8 +52,8 @@ class EventForm(forms.ModelForm):
             "category",
             "organizer",
             "address",
-            "route",
-            "zone",
+            "capacity",
+            "requires_registration",
             "public",
         ]
         widgets = {
@@ -61,8 +62,7 @@ class EventForm(forms.ModelForm):
             "category": forms.Select(),
             "organizer": forms.Select(),
             "address": forms.Select(),
-            "route": forms.Select(),
-            "zone": forms.Select(),
+            "capacity": forms.NumberInput(attrs={"placeholder": "Leave blank for unlimited"}),
         }
 
     def __init__(self, *args, **kwargs):
@@ -72,7 +72,7 @@ class EventForm(forms.ModelForm):
                 for w in field.widget.widgets:
                     w.attrs.setdefault("class", FIELD_CLASS)
                     w.attrs.setdefault("x-bind:class", FIELD_THEME_CLASS)
-            elif name == "public":
+            elif name in ("public", "requires_registration"):
                 field.widget.attrs.setdefault("class", CHECKBOX_CLASS)
                 field.widget.attrs.setdefault("x-bind:class", CHECKBOX_THEME_CLASS)
             else:

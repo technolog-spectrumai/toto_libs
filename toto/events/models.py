@@ -1,7 +1,10 @@
 from uuid import uuid4
+
+from django.core.exceptions import ValidationError
 from django.db import models
-from toto.people.models import Person
+
 from toto.core.domain import DomainEntity
+from toto.people.models import Person
 
 
 class EventCategory(DomainEntity):
@@ -12,57 +15,21 @@ class EventCategory(DomainEntity):
         return self.name
 
 
-class Event(DomainEntity):
+class EventBase(DomainEntity):
     id = models.UUIDField(primary_key=True, default=uuid4, editable=False)
+
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
 
     start_time = models.DateTimeField()
     end_time = models.DateTimeField()
-
-    title = models.CharField(max_length=200)
-    description = models.TextField()
-
-    # Structured location links.
-    address = models.ForeignKey(
-        "locations.Address",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="events",
-        help_text="Specific address for this event, if applicable.",
-    )
-
-    route = models.ForeignKey(
-        "locations.Route",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="events",
-        help_text="Route connected to this event, if movement is involved.",
-    )
-
-    zone = models.ForeignKey(
-        "locations.Zone",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="events",
-        help_text="Zone for this event, if it is geographically scoped.",
-    )
-
-    organizer = models.ForeignKey(
-        Person,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="organized_events",
-    )
 
     category = models.ForeignKey(
         EventCategory,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="events",
+        related_name="%(class)s_events",
     )
 
     public = models.BooleanField(
@@ -70,9 +37,97 @@ class Event(DomainEntity):
         help_text="Check if this event is publicly visible.",
     )
 
-    @property
-    def effective_location(self):
-        return self.address or self.route or self.zone or self.location
+    class Meta:
+        abstract = True
+
+    def clean(self):
+        if self.start_time and self.end_time and self.end_time <= self.start_time:
+            raise ValidationError("end_time must be after start_time.")
 
     def __str__(self):
         return self.title
+
+
+class ScheduledEvent(EventBase):
+    """
+    A planned event people may attend: meeting, gathering, appointment,
+    workshop, ceremony, etc.
+    """
+
+    organizer = models.ForeignKey(
+        Person,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="organized_scheduled_events",
+    )
+
+    address = models.ForeignKey(
+        "locations.Address",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="scheduled_events",
+        help_text="Specific address for this event, if applicable.",
+    )
+
+    capacity = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Maximum number of participants, if limited.",
+    )
+
+    requires_registration = models.BooleanField(default=False)
+
+    class Meta:
+        verbose_name = "scheduled event"
+        verbose_name_plural = "scheduled events"
+        ordering = ["-start_time"]
+
+
+class Availability(DomainEntity):
+    """
+    Availability information used when scheduling events.
+    """
+
+    class AvailabilityType(models.TextChoices):
+        AVAILABLE = "available", "Available"
+        UNAVAILABLE = "unavailable", "Unavailable"
+        BUSY = "busy", "Busy"
+        RESERVED = "reserved", "Reserved"
+        OUT_OF_OFFICE = "out_of_office", "Out of office"
+
+    id = models.UUIDField(primary_key=True, default=uuid4, editable=False)
+
+    person = models.ForeignKey(
+        Person,
+        on_delete=models.CASCADE,
+        related_name="availabilities",
+    )
+
+    start_time = models.DateTimeField()
+    end_time = models.DateTimeField()
+
+    availability_type = models.CharField(
+        max_length=30,
+        choices=AvailabilityType.choices,
+    )
+
+    reason = models.CharField(max_length=200, blank=True)
+
+    blocks_scheduling = models.BooleanField(
+        default=True,
+        help_text="Whether this availability blocks scheduling.",
+    )
+
+    class Meta:
+        verbose_name = "availability"
+        verbose_name_plural = "availabilities"
+        ordering = ["start_time"]
+
+    def clean(self):
+        if self.start_time and self.end_time and self.end_time <= self.start_time:
+            raise ValidationError("end_time must be after start_time.")
+
+    def __str__(self):
+        return f"{self.person} — {self.availability_type} — {self.start_time:%Y-%m-%d %H:%M}"

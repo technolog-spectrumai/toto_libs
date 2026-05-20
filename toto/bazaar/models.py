@@ -126,7 +126,7 @@ class Product(DomainEntity):
     pickup_address = models.ForeignKey('locations.Address', on_delete=models.SET_NULL, null=True, blank=True, related_name='pickup_products')
     pickup_available = models.BooleanField(default=False)
     delivery_zones = models.ManyToManyField('locations.Zone', blank=True, related_name='bazaar_products')
-    event = models.ForeignKey('events.Event', on_delete=models.SET_NULL, null=True, blank=True, related_name='bazaar_products')
+    event = models.ForeignKey('events.ScheduledEvent', on_delete=models.SET_NULL, null=True, blank=True, related_name='bazaar_products')
     asset = models.ForeignKey('assets.Asset', on_delete=models.SET_NULL, null=True, blank=True, related_name='bazaar_products')
     is_featured = models.BooleanField(default=False)
     is_public = models.BooleanField(default=True)
