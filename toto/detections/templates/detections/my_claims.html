@@ -10,6 +10,9 @@
         <div>
           <a href="{% url 'detections:bounty-detail' claim.bounty.board.slug claim.bounty.slug %}" class="font-bold underline hover:opacity-80">{{ claim.bounty.title }}</a>
           <p class="mt-0.5 text-xs opacity-60">{{ claim.bounty.board.name }} · {{ claim.created_at|date:"d M Y" }}</p>
+          {% if claim.bounty.task %}
+            <a href="{% url 'kanban:mission_detail' claim.bounty.task.mission.pk %}" :class="darkMode ? 'text-caution-dark' : 'text-caution-light'" class="mt-1 block text-xs font-semibold underline hover:opacity-80"><i class="fa-solid fa-list-check"></i> {{ claim.bounty.task.title }} - {{ claim.bounty.task.column.name }}</a>
+          {% endif %}
         </div>
         <span :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 text-xs font-semibold">{{ claim.get_status_display }}</span>
       </div>

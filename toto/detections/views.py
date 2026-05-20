@@ -9,13 +9,17 @@ from django.views.generic import ListView, DetailView, TemplateView
 
 from toto.core.page import PageProcessor
 from toto.assets.models import LedgerAccount
-
 from .forms import DetectionMapCreateForm
 from .models import (
     Detection, DetectionCategory, DetectionHandle,
     BountyBoard, Bounty, BountyClaim, BountySubmission, BountyPayment,
 )
-from .services import detection_map_feature, person_for_user, settle_bounty_payment
+from .services import (
+    detection_map_feature,
+    ensure_detection_mitigation_task,
+    person_for_user,
+    settle_bounty_payment,
+)
 
 
 class DetectionsContextMixin:
@@ -35,7 +39,7 @@ class DetectionListView(DetectionsContextMixin, ListView):
     paginate_by = 30
 
     def get_queryset(self):
-        qs = Detection.objects.select_related('category', 'address', 'zone', 'route', 'reported_by')
+        qs = Detection.objects.select_related('category', 'address', 'zone', 'route', 'reported_by', 'mitigation_task')
         q = self.request.GET.get('q')
         status = self.request.GET.get('status')
         severity = self.request.GET.get('severity')
@@ -72,10 +76,29 @@ class DetectionDetailView(DetectionsContextMixin, DetailView):
     template_name = 'detections/detection_detail.html'
     context_object_name = 'detection'
 
+    def get_queryset(self):
+        return Detection.objects.select_related(
+            'category',
+            'address',
+            'zone',
+            'route',
+            'reported_by',
+            'mitigation_task',
+            'mitigation_task__column',
+            'mitigation_task__mission',
+            'mitigation_task__assignee',
+            'mitigation_task__reviewer',
+        )
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context['handles'] = self.object.handles.select_related('assigned_to')
-        context['bounties'] = Bounty.objects.filter(handle__detection=self.object)
+        bounty_filter = Q(handle__detection=self.object)
+        if self.object.mitigation_task_id:
+            bounty_filter |= Q(task=self.object.mitigation_task)
+        context['bounties'] = Bounty.objects.filter(
+            bounty_filter
+        ).select_related('board', 'reward_currency', 'task', 'task__column').distinct()
         return context
 
 
@@ -90,6 +113,8 @@ class DetectionCreateView(LoginRequiredMixin, DetectionsContextMixin, View):
         form = DetectionMapCreateForm(request.POST, reporter=person_for_user(request.user))
         if form.is_valid():
             detection = form.save()
+            reporter = person_for_user(request.user)
+            ensure_detection_mitigation_task(detection, owner=reporter)
             messages.success(request, 'Detection added from the map.')
             return redirect('detections:detection-detail', pk=detection.pk)
         messages.error(request, 'Check the detection details and map location.')
@@ -134,11 +159,16 @@ class BountyListView(DetectionsContextMixin, ListView):
     def get_queryset(self):
         board = get_object_or_404(BountyBoard, slug=self.kwargs['board_slug'])
         self._board = board
-        qs = Bounty.objects.open().filter(board=board)
+        qs = Bounty.objects.open().filter(board=board).select_related('task', 'task__column', 'reward_currency')
         q = self.request.GET.get('q')
         bounty_type = self.request.GET.get('type')
         if q:
-            qs = qs.filter(Q(title__icontains=q) | Q(summary__icontains=q) | Q(description__icontains=q))
+            qs = qs.filter(
+                Q(title__icontains=q)
+                | Q(summary__icontains=q)
+                | Q(description__icontains=q)
+                | Q(task__title__icontains=q)
+            )
         if bounty_type:
             qs = qs.filter(bounty_type=bounty_type)
         sort = self.request.GET.get('sort', 'newest')
@@ -165,7 +195,17 @@ class BountyDetailView(DetectionsContextMixin, DetailView):
 
     def get_object(self):
         return get_object_or_404(
-            Bounty,
+            Bounty.objects.select_related(
+                'board',
+                'task',
+                'task__column',
+                'task__mission',
+                'task__assignee',
+                'task__reviewer',
+                'reward_currency',
+                'reward_asset',
+                'reward_ledger_account',
+            ),
             board__slug=self.kwargs['board_slug'],
             slug=self.kwargs['slug'],
         )
@@ -175,6 +215,7 @@ class BountyDetailView(DetectionsContextMixin, DetailView):
         bounty = self.object
         context['board'] = bounty.board
         context['reviews'] = bounty.reviews.select_related('reviewer', 'hunter')[:10]
+        context['kanban_task'] = bounty.task
         user_claim = None
         if self.request.user.is_authenticated:
             user_claim = BountyClaim.objects.filter(bounty=bounty, user=self.request.user).first()
@@ -219,7 +260,13 @@ class BountyMyClaimsView(LoginRequiredMixin, DetectionsContextMixin, ListView):
     paginate_by = 20
 
     def get_queryset(self):
-        return BountyClaim.objects.filter(user=self.request.user).select_related('bounty', 'bounty__board')
+        return BountyClaim.objects.filter(user=self.request.user).select_related(
+            'bounty',
+            'bounty__board',
+            'bounty__task',
+            'bounty__task__mission',
+            'bounty__task__column',
+        )
 
 
 class BountySubmissionCreateView(LoginRequiredMixin, View):
@@ -263,7 +310,7 @@ class BountyDashboardView(LoginRequiredMixin, DetectionsContextMixin, TemplateVi
         ).select_related('category', 'reported_by')[:20]
         context['pending_claims'] = BountyClaim.objects.filter(
             bounty__board__in=boards, status='pending',
-        ).select_related('bounty', 'hunter')[:50]
+        ).select_related('bounty', 'bounty__task', 'bounty__task__column', 'hunter')[:50]
         context['pending_submissions'] = BountySubmission.objects.filter(
             claim__bounty__board__in=boards, status='submitted',
         ).select_related('claim__bounty', 'claim__hunter')[:50]
@@ -284,6 +331,18 @@ class BountyClaimActionView(LoginRequiredMixin, View):
             if claim.bounty.status == 'open':
                 claim.bounty.status = 'claimed'
                 claim.bounty.save(update_fields=['status', 'updated_at'])
+            if claim.bounty.task:
+                task = claim.bounty.task
+                update_fields = []
+                if task.assignee_id != claim.hunter_id:
+                    task.assignee = claim.hunter
+                    update_fields.append('assignee')
+                reviewer = person_for_user(request.user)
+                if reviewer and not task.reviewer_id:
+                    task.reviewer = reviewer
+                    update_fields.append('reviewer')
+                if update_fields:
+                    task.save(update_fields=update_fields)
             messages.success(request, f'Claim by {claim.hunter} accepted.')
         elif action == 'reject' and claim.status in ('pending', 'submitted'):
             claim.status = 'rejected'
@@ -312,6 +371,9 @@ class BountySubmissionActionView(LoginRequiredMixin, View):
             if all(c.status in ('approved', 'paid', 'rejected', 'cancelled') for c in bounty.claims.all()):
                 bounty.status = 'completed'
                 bounty.save(update_fields=['status', 'updated_at'])
+            if bounty.task and not bounty.task.completed_at:
+                bounty.task.completed_at = timezone.now()
+                bounty.task.save(update_fields=['completed_at'])
             # Auto-create payment skeleton so the board operator can settle it
             BountyPayment.objects.get_or_create(
                 claim=claim,

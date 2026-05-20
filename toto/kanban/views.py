@@ -9,6 +9,7 @@ from django.contrib import messages
 from django.db.models import Q, Sum
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
+from django.utils import timezone
 
 from toto.ui import PageProcessor
 from toto.kanban.forms import TaskCreateForm
@@ -109,8 +110,11 @@ class ProjectDetailView(LoginRequiredMixin, DetailView):
                 "tasks__mission__location",
                 "tasks__mission__route",
                 "tasks__assignee",
+                "tasks__reviewer",
                 "tasks__sprint",
                 "tasks__column",
+                "tasks__bounties",
+                "tasks__detection_mitigations",
             )
         )
 
@@ -408,7 +412,7 @@ def promote_task(request, project_id, task_id):
     project = get_object_or_404(Project, id=project_id)
 
     task = get_object_or_404(
-        Task.objects.select_related("column", "mission", "mission__campaign"),
+        Task.objects.select_related("column", "mission", "mission__campaign", "reviewer__user"),
         id=task_id,
         mission__campaign__project=project,
     )
@@ -426,8 +430,34 @@ def promote_task(request, project_id, task_id):
         )
         return redirect("kanban:project_detail", pk=project_id)
 
+    is_terminal_column = not Column.objects.filter(
+        project=project,
+        position__gt=next_column.position,
+    ).exists()
+    reviewer_user_id = getattr(getattr(task.reviewer, "user", None), "id", None)
+    if is_terminal_column and reviewer_user_id and reviewer_user_id != request.user.id:
+        messages.error(
+            request,
+            "This task has an assigned reviewer and only that reviewer can complete it.",
+        )
+        return redirect("kanban:project_detail", pk=project_id)
+
     task.column = next_column
-    task.save(update_fields=["column"])
+    update_fields = ["column"]
+    if is_terminal_column and not task.completed_at:
+        task.completed_at = timezone.now()
+        update_fields.append("completed_at")
+    task.save(update_fields=update_fields)
+    if is_terminal_column:
+        try:
+            from toto.detections.services import complete_task_bounties, person_for_user
+
+            reviewer = person_for_user(request.user)
+            payments = complete_task_bounties(task, reviewer=reviewer)
+            if payments:
+                messages.success(request, f"{len(payments)} bounty payment record(s) created.")
+        except Exception as exc:
+            messages.warning(request, f"Task completed, but bounty payout preparation failed: {exc}")
 
     messages.success(request, f"Task promoted to {next_column.name}.")
     return redirect("kanban:project_detail", pk=project_id)
@@ -457,7 +487,11 @@ def demote_task(request, project_id, task_id):
         return redirect("kanban:project_detail", pk=project_id)
 
     task.column = previous_column
-    task.save(update_fields=["column"])
+    update_fields = ["column"]
+    if task.completed_at:
+        task.completed_at = None
+        update_fields.append("completed_at")
+    task.save(update_fields=update_fields)
 
     messages.success(request, f"Task moved back to {previous_column.name}.")
     return redirect("kanban:project_detail", pk=project_id)

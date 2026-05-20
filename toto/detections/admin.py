@@ -21,7 +21,7 @@ class DetectionHandleInline(admin.TabularInline):
 
 @admin.register(Detection)
 class DetectionAdmin(admin.ModelAdmin):
-    list_display = ('title', 'detection_type', 'severity', 'status', 'reported_by', 'start_time', 'location_label')
+    list_display = ('title', 'detection_type', 'severity', 'status', 'reported_by', 'mitigation_task', 'start_time', 'location_label')
     list_filter = ('detection_type', 'severity', 'status', 'category')
     search_fields = ('title', 'description')
     filter_horizontal = ('involved_persons',)
@@ -48,7 +48,7 @@ class BountyBoardAdmin(admin.ModelAdmin):
 
 @admin.register(Bounty)
 class BountyAdmin(admin.ModelAdmin):
-    list_display = ('title', 'board', 'bounty_type', 'status', 'reward_amount', 'deadline', 'is_public')
+    list_display = ('title', 'board', 'task', 'bounty_type', 'status', 'reward_amount', 'deadline', 'is_public')
     list_filter = ('board', 'bounty_type', 'status', 'is_public')
     search_fields = ('title', 'summary', 'description')
     prepopulated_fields = {'slug': ('title',)}

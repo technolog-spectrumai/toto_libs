@@ -147,6 +147,14 @@ class Task(DomainEntity):
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     assignee = models.ForeignKey(Person, on_delete=models.SET_NULL, null=True, blank=True)
+    reviewer = models.ForeignKey(
+        Person,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="review_tasks",
+        help_text="Optional reviewer who signs off the task before it is completed.",
+    )
     due_date = models.DateField(null=True, blank=True)
     position = models.PositiveIntegerField(default=0)
 

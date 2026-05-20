@@ -28,12 +28,13 @@
       </div>
       <div class="mt-1 flex flex-wrap gap-1">
         <span :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-2 py-0.5 text-[11px] font-semibold">{{ bounty.get_bounty_type_display }}</span>
-        {% if bounty.reward_currency %}<span class="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">{{ bounty.reward_currency.code }}</span>{% endif %}
-        {% if bounty.handle %}<span class="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700"><i class="fa-solid fa-triangle-exclamation"></i> Detection</span>{% endif %}
+        {% if bounty.reward_currency %}<span :class="darkMode ? 'bg-success-dark/20 text-success-dark' : 'bg-success-light/20 text-success-light'" class="rounded-full px-2 py-0.5 text-[11px] font-semibold">{{ bounty.reward_currency.code }}</span>{% endif %}
+        {% if bounty.task %}<span :class="darkMode ? 'bg-caution-dark/20 text-caution-dark' : 'bg-caution-light/20 text-caution-light'" class="rounded-full px-2 py-0.5 text-[11px] font-semibold"><i class="fa-solid fa-list-check"></i> Kanban</span>{% endif %}
       </div>
       {% if bounty.summary %}<p class="mt-2 flex-1 text-sm opacity-70">{{ bounty.summary|truncatechars:100 }}</p>{% endif %}
       <div class="mt-3 flex flex-wrap gap-3 text-xs opacity-55">
         <span><i class="fa-solid fa-circle-dot"></i> {{ bounty.slots_available }} slot{{ bounty.slots_available|pluralize }}</span>
+        {% if bounty.task %}<span><i class="fa-solid fa-table-columns"></i> {{ bounty.task.column.name }}</span>{% endif %}
         {% if bounty.deadline %}<span><i class="fa-regular fa-clock"></i> {{ bounty.deadline|date:"d M Y" }}</span>{% endif %}
         {% if bounty.territory %}<span><i class="fa-solid fa-map-location-dot"></i> {{ bounty.territory.name }}</span>{% endif %}
       </div>

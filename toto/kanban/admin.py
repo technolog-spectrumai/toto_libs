@@ -173,6 +173,7 @@ class TaskAdmin(admin.ModelAdmin):
         "sprint",
         "mission",
         "assignee",
+        "reviewer",
         "due_date",
         "position",
         "weight",

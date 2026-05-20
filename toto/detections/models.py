@@ -98,6 +98,14 @@ class Detection(EventBase):
         'people.Person', blank=True,
         related_name='involved_detections',
     )
+    mitigation_task = models.ForeignKey(
+        'kanban.Task',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='detection_mitigations',
+        help_text='Kanban task that mitigates or resolves this detection.',
+    )
 
     severity = models.CharField(max_length=16, choices=SEVERITY_CHOICES, default='medium')
     detection_type = models.CharField(max_length=24, choices=TYPE_CHOICES, default='incident')
@@ -245,8 +253,9 @@ class BountyQuerySet(models.QuerySet):
 
 class Bounty(ClaimableWork):
     """
-    A regulated work task on a bounty board.
-    Optionally linked to a DetectionHandle (detection → handle → bounty pipeline).
+    A regulated reward attached to a Kanban task on a bounty board.
+    Detection mitigation and review flow through Kanban; the bounty supplies
+    the reward and settlement details.
     """
     BOUNTY_TYPE_CHOICES = [
         ('task', 'Task'), ('bug_fix', 'Bug Fix'), ('research', 'Research'),
@@ -267,7 +276,15 @@ class Bounty(ClaimableWork):
     handle = models.ForeignKey(
         DetectionHandle, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='bounties',
-        help_text='The detection handle this bounty resolves, if any.',
+        help_text='Legacy detection handle this bounty resolves, if any.',
+    )
+    task = models.ForeignKey(
+        'kanban.Task',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='bounties',
+        help_text='Kanban task that carries the work/review flow for this bounty.',
     )
     product = models.OneToOneField(
         'bazaar.Product', on_delete=models.SET_NULL, null=True, blank=True,

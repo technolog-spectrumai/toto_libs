@@ -10,6 +10,7 @@ from toto.assets.models import AccountType, Asset, Currency, LedgerAccount, Ledg
 from toto.assets.services.assets import create_asset, transfer_asset
 from toto.bazaar.models import MarketCustodian, Shop
 from toto.ingress import IngressCommand
+from toto.kanban.models import Campaign, Column, Mission, Project, Task
 from toto.locations.models import Address, Territory
 from toto.people.models import Person
 
@@ -21,8 +22,8 @@ from ...models import (
     BountySubmission,
     Detection,
     DetectionCategory,
-    DetectionHandle,
 )
+from ...services import first_or_create
 
 
 class Command(IngressCommand):
@@ -37,8 +38,8 @@ class Command(IngressCommand):
         board = self._ensure_board(accounts)
         self._fund_board_escrow(asset, accounts)
         detections = self._ensure_detections(categories, addresses, people)
-        handles = self._ensure_handles(detections, people)
-        bounties = self._ensure_bounties(board, handles, addresses, people, asset, currency, accounts)
+        tasks = self._ensure_kanban_tasks(detections, people)
+        bounties = self._ensure_bounties(board, tasks, addresses, people, asset, currency, accounts)
         if self.full:
             self._ensure_claim_and_payment(bounties[0], people["tester"], asset, currency, accounts)
         self.stdout.write(self.style.SUCCESS("Detections ingress complete."))
@@ -298,39 +299,119 @@ class Command(IngressCommand):
             detections.append(detection)
         return detections
 
-    def _ensure_handles(self, detections, people):
-        handles = []
-        for detection in detections:
-            handle, created = DetectionHandle.objects.get_or_create(
-                detection=detection,
+    def _ensure_kanban_tasks(self, detections, people):
+        project, created = first_or_create(
+            Project,
+            name="Detection Mitigation",
+            defaults={
+                "description": "Kanban project for detection mitigation and bounty-backed field response.",
+                "owner": people["response-lead-piotr"],
+            },
+        )
+        if created:
+            self.stdout.write("  + kanban project Detection Mitigation")
+
+        if people["tester"].user_id:
+            project.collaborators.add(people["tester"].user)
+
+        auditor_users = [
+            person.user for person in (people["response-lead-piotr"], people["tester"])
+            if person.user_id
+        ]
+        columns = {}
+        for name, position, can_add in [
+            ("To Do", 1, True),
+            ("In Progress", 2, False),
+            ("Review", 3, False),
+            ("Done", 4, False),
+        ]:
+            column, created = first_or_create(
+                Column,
+                project=project,
+                name=name,
                 defaults={
-                    "assigned_to": people["response-lead-piotr"],
-                    "status": "assigned",
-                    "note": "Seeded response handle for local bounty testing.",
+                    "position": position,
+                    "can_add_task": can_add,
                 },
             )
             if created:
-                self.stdout.write(f"  + handle for {detection.title}")
-            handles.append(handle)
-        return handles
+                self.stdout.write(f"  + kanban column {name}")
+            if auditor_users:
+                column.auditors.set(auditor_users)
+            columns[name] = column
 
-    def _ensure_bounties(self, board, handles, addresses, people, asset, currency, accounts):
+        campaign, _ = first_or_create(
+            Campaign,
+            project=project,
+            name="Field Response",
+            defaults={
+                "description": "Mitigation campaign generated from detections.",
+                "start_date": timezone.now().date(),
+                "end_date": (timezone.now() + timedelta(days=30)).date(),
+                "owner": people["response-lead-piotr"],
+                "metadata": {"source": "detections_ingress"},
+            },
+        )
+        mission, _ = first_or_create(
+            Mission,
+            campaign=campaign,
+            title="Mitigate Active Detections",
+            defaults={
+                "description": "Resolve active detection incidents through normal Kanban task flow.",
+                "urgency": 3,
+                "impact": 3,
+                "owner": people["response-lead-piotr"],
+                "metadata": {"source": "detections_ingress"},
+            },
+        )
+
+        tasks = []
+        for position, detection in enumerate(detections, start=1):
+            task, created = first_or_create(
+                Task,
+                mission=mission,
+                title=f"Mitigate: {detection.title}",
+                defaults={
+                    "description": detection.description,
+                    "column": columns["To Do"],
+                    "assignee": None,
+                    "reviewer": people["response-lead-piotr"],
+                    "due_date": (timezone.now() + timedelta(days=3)).date(),
+                    "position": position,
+                    "weight": 3 if detection.severity in ("high", "critical") else 2,
+                    "metadata": {
+                        "source": "detection",
+                        "detection_id": str(detection.pk),
+                        "severity": detection.severity,
+                    },
+                },
+            )
+            if created:
+                self.stdout.write(f"  + kanban task {task.title}")
+            if detection.mitigation_task_id != task.pk:
+                detection.mitigation_task = task
+                detection.save(update_fields=["mitigation_task", "updated_at"])
+            tasks.append(task)
+        return tasks
+
+    def _ensure_bounties(self, board, tasks, addresses, people, asset, currency, accounts):
         specs = [
-            ("Repair badge reader and verify entry logs", handles[0], addresses["warsaw-north-gate"], Decimal("450.00"), "high-priority field response"),
-            ("Inspect and document river yard crack", handles[1], addresses["krakow-river-yard"], Decimal("220.00"), "inspection with photos and recommendation"),
-            ("Reset dock barrier and submit safety photo", handles[2], addresses["gdansk-dock-seven"], Decimal("120.00"), "short on-site safety task"),
+            ("Repair badge reader and verify entry logs", tasks[0], addresses["warsaw-north-gate"], Decimal("450.00"), "high-priority field response"),
+            ("Inspect and document river yard crack", tasks[1], addresses["krakow-river-yard"], Decimal("220.00"), "inspection with photos and recommendation"),
+            ("Reset dock barrier and submit safety photo", tasks[2], addresses["gdansk-dock-seven"], Decimal("120.00"), "short on-site safety task"),
         ]
         bounties = []
-        for title, handle, address, amount, summary in specs:
+        for title, task, address, amount, summary in specs:
+            detection = task.detection_mitigations.first()
             bounty, created = Bounty.objects.get_or_create(
                 board=board,
                 title=title,
                 defaults={
-                    "category": handle.detection.category,
-                    "handle": handle,
+                    "category": detection.category if detection else None,
+                    "task": task,
                     "created_by": people["response-lead-piotr"],
                     "summary": summary,
-                    "description": f"Resolve detection: {handle.detection.title}. Submit evidence and notes for custodian approval.",
+                    "description": f"Complete Kanban task: {task.title}. Move it through review before reward release.",
                     "bounty_type": "task",
                     "status": "open",
                     "reward_amount": amount,
@@ -344,6 +425,9 @@ class Command(IngressCommand):
             )
             if created:
                 self.stdout.write(f"  + bounty {title}")
+            elif bounty.task_id != task.pk:
+                bounty.task = task
+                bounty.save(update_fields=["task", "updated_at"])
             bounties.append(bounty)
         return bounties
 
@@ -364,6 +448,18 @@ class Command(IngressCommand):
             claim.save(update_fields=["user", "updated_at"])
         if created:
             self.stdout.write("  + approved bounty claim")
+
+        if bounty.task:
+            task = bounty.task
+            update_fields = []
+            if task.assignee_id != hunter.pk:
+                task.assignee = hunter
+                update_fields.append("assignee")
+            if not task.completed_at:
+                task.completed_at = timezone.now() - timedelta(hours=1)
+                update_fields.append("completed_at")
+            if update_fields:
+                task.save(update_fields=update_fields)
 
         BountySubmission.objects.get_or_create(
             claim=claim,

@@ -44,16 +44,18 @@
     <a href="{% url 'detections:detection-detail' detection.pk %}"
        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-sunken-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-sunken-light'"
        class="group flex items-start gap-4 rounded-2xl border p-4 shadow-sm transition hover:-translate-y-px hover:shadow-md">
-      <span class="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold
-        {% if sev == 'critical' %}bg-red-100 text-red-700{% elif sev == 'high' %}bg-orange-100 text-orange-700{% elif sev == 'medium' %}bg-yellow-100 text-yellow-700{% else %}bg-blue-100 text-blue-700{% endif %}">
+      <span
+        :class="darkMode ? '{% if sev == 'critical' %}bg-warn-dark/20 text-warn-dark{% elif sev == 'high' %}bg-warn-dark/10 text-warn-dark{% elif sev == 'medium' %}bg-caution-dark/20 text-caution-dark{% else %}bg-success-dark/20 text-success-dark{% endif %}' : '{% if sev == 'critical' %}bg-warn-light/20 text-warn-light{% elif sev == 'high' %}bg-warn-light/10 text-warn-light{% elif sev == 'medium' %}bg-caution-light/20 text-caution-light{% else %}bg-success-light/20 text-success-light{% endif %}'"
+        class="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold">
         <i class="fa-solid fa-triangle-exclamation"></i>
       </span>
       <div class="min-w-0 flex-1">
         <div class="flex flex-wrap items-center gap-2">
           <span class="font-bold group-hover:underline">{{ detection.title }}</span>
           <span :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-2 py-0.5 text-[11px] font-semibold">{{ detection.get_detection_type_display }}</span>
-          <span class="rounded-full px-2 py-0.5 text-[11px] font-semibold
-            {% if sev == 'critical' %}bg-red-100 text-red-700{% elif sev == 'high' %}bg-orange-100 text-orange-700{% elif sev == 'medium' %}bg-yellow-100 text-yellow-700{% else %}bg-blue-100 text-blue-700{% endif %}">
+          <span
+            :class="darkMode ? '{% if sev == 'critical' %}bg-warn-dark/20 text-warn-dark{% elif sev == 'high' %}bg-warn-dark/10 text-warn-dark{% elif sev == 'medium' %}bg-caution-dark/20 text-caution-dark{% else %}bg-success-dark/20 text-success-dark{% endif %}' : '{% if sev == 'critical' %}bg-warn-light/20 text-warn-light{% elif sev == 'high' %}bg-warn-light/10 text-warn-light{% elif sev == 'medium' %}bg-caution-light/20 text-caution-light{% else %}bg-success-light/20 text-success-light{% endif %}'"
+            class="rounded-full px-2 py-0.5 text-[11px] font-semibold">
             {{ detection.get_severity_display }}
           </span>
           <span :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-2 py-0.5 text-[11px]">{{ detection.get_status_display }}</span>
@@ -90,22 +92,30 @@
   const features = JSON.parse(document.getElementById("detection-features").textContent || "[]");
   const map = L.map(el).setView([52.1, 19.4], 6);
   const isDark = localStorage.getItem("darkMode") === "true";
+  const themeColors = {{ theme.theme.colors|safe }};
   const tiles = isDark
     ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
     : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
   L.tileLayer(tiles, { maxZoom: 19 }).addTo(map);
 
-  const severityColor = { critical: "#dc2626", high: "#ea580c", medium: "#ca8a04", low: "#2563eb" };
+  const severityColor = {
+    critical: isDark ? themeColors["warn-dark"] : themeColors["warn-light"],
+    high: isDark ? themeColors["warn-dark"] : themeColors["warn-light"],
+    medium: isDark ? themeColors["caution-dark"] : themeColors["caution-light"],
+    low: isDark ? themeColors["success-dark"] : themeColors["success-light"],
+  };
+  const fallbackColor = isDark ? themeColors["accent-dark"] : themeColors["accent-light"];
+  const markerStrokeColor = isDark ? themeColors["text-main-dark"] : themeColors["text-main-light"];
   const layers = [];
   features.forEach((item) => {
     if (!item.geometry) return;
     const layer = L.geoJSON(item.geometry, {
-      style: { color: severityColor[item.severity] || "#2563eb", weight: 3 },
+      style: { color: severityColor[item.severity] || fallbackColor, weight: 3 },
       pointToLayer: (_feature, latlng) => L.circleMarker(latlng, {
         radius: 8,
-        color: "#111827",
+        color: markerStrokeColor,
         weight: 1,
-        fillColor: severityColor[item.severity] || "#2563eb",
+        fillColor: severityColor[item.severity] || fallbackColor,
         fillOpacity: 0.9,
       }),
     });

@@ -17,7 +17,9 @@
   <h2 class="text-xl font-bold">New Detections</h2>
   {% for detection in recent_detections %}
     <a href="{% url 'detections:detection-detail' detection.pk %}" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-sunken-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-sunken-light'" class="flex items-center gap-3 rounded-xl border p-3 shadow-sm transition hover:opacity-90">
-      <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold {% if detection.severity == 'critical' %}bg-red-100 text-red-700{% elif detection.severity == 'high' %}bg-orange-100 text-orange-700{% elif detection.severity == 'medium' %}bg-yellow-100 text-yellow-700{% else %}bg-blue-100 text-blue-700{% endif %}"><i class="fa-solid fa-triangle-exclamation"></i></span>
+      <span
+        :class="darkMode ? '{% if detection.severity == 'critical' %}bg-warn-dark/20 text-warn-dark{% elif detection.severity == 'high' %}bg-warn-dark/10 text-warn-dark{% elif detection.severity == 'medium' %}bg-caution-dark/20 text-caution-dark{% else %}bg-success-dark/20 text-success-dark{% endif %}' : '{% if detection.severity == 'critical' %}bg-warn-light/20 text-warn-light{% elif detection.severity == 'high' %}bg-warn-light/10 text-warn-light{% elif detection.severity == 'medium' %}bg-caution-light/20 text-caution-light{% else %}bg-success-light/20 text-success-light{% endif %}'"
+        class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold"><i class="fa-solid fa-triangle-exclamation"></i></span>
       <div class="min-w-0 flex-1">
         <p class="truncate font-semibold text-sm">{{ detection.title }}</p>
         <p class="text-xs opacity-55">{{ detection.get_severity_display }} · {{ detection.get_status_display }}{% if detection.location_label %} · {{ detection.location_label }}{% endif %}</p>
@@ -37,6 +39,7 @@
         <div>
           <p class="font-bold">{{ claim.bounty.title }}</p>
           <p class="mt-0.5 text-xs opacity-60">{{ claim.hunter }} · {{ claim.created_at|date:"d M Y" }}</p>
+          {% if claim.bounty.task %}<p :class="darkMode ? 'text-caution-dark' : 'text-caution-light'" class="mt-1 text-xs font-semibold"><i class="fa-solid fa-list-check"></i> {{ claim.bounty.task.title }} - {{ claim.bounty.task.column.name }}</p>{% endif %}
           {% if claim.proposal %}<p class="mt-2 text-sm opacity-70">{{ claim.proposal|truncatechars:200 }}</p>{% endif %}
         </div>
         <form method="post" action="{% url 'detections:claim-action' claim.pk %}" class="flex gap-2">{% csrf_token %}

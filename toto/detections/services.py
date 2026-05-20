@@ -1,11 +1,23 @@
 import json
+from datetime import timedelta
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.utils import timezone
 
 from toto.assets.models import Asset, LedgerAccount, LedgerTransaction
 from toto.assets.services.assets import transfer_asset
+from toto.kanban.models import Campaign, Column, Mission, Project, Task
+from toto.people.models import Person
+
+
+def first_or_create(model, defaults=None, **lookup):
+    obj = model.objects.filter(**lookup).order_by("pk").first()
+    if obj:
+        return obj, False
+    params = {**lookup, **(defaults or {})}
+    return model.objects.create(**params), True
 
 
 def person_for_user(user):
@@ -37,6 +49,89 @@ def detection_map_feature(detection):
         "url": detection.get_absolute_url() if hasattr(detection, "get_absolute_url") else "",
         "geometry": geometry_json(geometry),
     }
+
+
+def ensure_detection_mitigation_task(detection, *, owner=None, reviewer=None):
+    if detection.mitigation_task_id:
+        return detection.mitigation_task
+
+    owner = owner or detection.reported_by or Person.objects.order_by("pk").first()
+    if not owner:
+        return None
+
+    project, _ = first_or_create(
+        Project,
+        name="Detection Mitigation",
+        defaults={
+            "description": "Kanban project for detection mitigation and bounty-backed response work.",
+            "owner": owner,
+        },
+    )
+    if owner.user_id:
+        project.collaborators.add(owner.user)
+
+    columns = {}
+    for name, position, can_add in [
+        ("To Do", 1, True),
+        ("In Progress", 2, False),
+        ("Review", 3, False),
+        ("Done", 4, False),
+    ]:
+        column, _ = first_or_create(
+            Column,
+            project=project,
+            name=name,
+            defaults={
+                "position": position,
+                "can_add_task": can_add,
+            },
+        )
+        if owner.user_id:
+            column.auditors.add(owner.user)
+        columns[name] = column
+
+    campaign, _ = first_or_create(
+        Campaign,
+        project=project,
+        name="Field Response",
+        defaults={
+            "description": "Mitigation campaign generated from detections.",
+            "start_date": timezone.now().date(),
+            "end_date": (timezone.now() + timedelta(days=30)).date(),
+            "owner": owner,
+            "metadata": {"source": "detections"},
+        },
+    )
+    mission, _ = first_or_create(
+        Mission,
+        campaign=campaign,
+        title="Mitigate Active Detections",
+        defaults={
+            "description": "Resolve active detection incidents through normal Kanban task flow.",
+            "urgency": 3,
+            "impact": 3,
+            "owner": owner,
+            "metadata": {"source": "detections"},
+        },
+    )
+
+    task = Task.objects.create(
+        mission=mission,
+        column=columns["To Do"],
+        title=f"Mitigate: {detection.title}",
+        description=detection.description,
+        reviewer=reviewer,
+        due_date=(timezone.now() + timedelta(days=3)).date(),
+        weight=3 if detection.severity in ("high", "critical") else 2,
+        metadata={
+            "source": "detection",
+            "detection_id": str(detection.pk),
+            "severity": detection.severity,
+        },
+    )
+    detection.mitigation_task = task
+    detection.save(update_fields=["mitigation_task", "updated_at"])
+    return task
 
 
 def get_payment_asset(payment):
@@ -141,3 +236,51 @@ def settle_bounty_payment(*, payment, receiver_account=None, reference="", note=
         payment.claim.status = "paid"
         payment.claim.save(update_fields=["status", "updated_at"])
         return tx
+
+
+def complete_task_bounties(task, *, reviewer=None):
+    from toto.detections.models import BountyPayment
+
+    payments = []
+    for bounty in task.bounties.select_related(
+        "board__ledger_account",
+        "reward_asset",
+        "reward_currency__asset",
+        "reward_ledger_account",
+    ).all():
+        claims = list(bounty.claims.filter(
+            status__in=["accepted", "working", "submitted"]
+        ).select_related("user", "hunter"))
+        for claim in claims:
+            if claim.status != "approved":
+                claim.status = "approved"
+                claim.completed_at = timezone.now()
+                claim.save(update_fields=["status", "completed_at", "updated_at"])
+
+            receiver = (
+                LedgerAccount.objects
+                .filter(user=claim.user, active=True)
+                .order_by("pk")
+                .first()
+                if claim.user_id else None
+            )
+            payment, _ = BountyPayment.objects.get_or_create(
+                claim=claim,
+                defaults={
+                    "amount": bounty.reward_amount,
+                    "currency": bounty.reward_currency,
+                    "asset": bounty.reward_asset or (bounty.reward_currency.asset if bounty.reward_currency_id else None),
+                    "ledger_account": bounty.reward_ledger_account or bounty.board.ledger_account,
+                    "receiver_ledger_account": receiver,
+                    "paid_by": reviewer,
+                    "note": f"Auto-created when Kanban task #{task.pk} completed.",
+                    "is_settled": False,
+                },
+            )
+            payments.append(payment)
+
+        if claims and bounty.status != "completed":
+            bounty.status = "completed"
+            bounty.save(update_fields=["status", "updated_at"])
+
+    return payments

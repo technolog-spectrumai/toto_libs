@@ -22,7 +22,7 @@
 
   <aside :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm">
     <div class="space-y-4">
-      {% if form.non_field_errors %}<div class="rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{{ form.non_field_errors }}</div>{% endif %}
+      {% if form.non_field_errors %}<div :class="darkMode ? 'border-warn-dark bg-warn-dark/10 text-warn-dark' : 'border-warn-light bg-warn-light/10 text-warn-light'" class="rounded-lg border px-3 py-2 text-sm font-semibold">{{ form.non_field_errors }}</div>{% endif %}
 
       <input type="hidden" id="id_latitude" name="latitude" value="{{ form.latitude.value|default_if_none:'' }}">
       <input type="hidden" id="id_longitude" name="longitude" value="{{ form.longitude.value|default_if_none:'' }}">
@@ -30,13 +30,13 @@
       <label class="block">
         <span class="text-xs font-semibold uppercase tracking-wide opacity-60">Title</span>
         <input name="title" value="{{ form.title.value|default_if_none:'' }}" required :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm outline-none">
-        {% if form.title.errors %}<span class="mt-1 block text-xs text-red-600">{{ form.title.errors|join:", " }}</span>{% endif %}
+        {% if form.title.errors %}<span :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" class="mt-1 block text-xs">{{ form.title.errors|join:", " }}</span>{% endif %}
       </label>
 
       <label class="block">
         <span class="text-xs font-semibold uppercase tracking-wide opacity-60">Location label</span>
         <input id="id_location_label" name="location_label" value="{{ form.location_label.value|default_if_none:'' }}" placeholder="Gate B, warehouse yard, route marker..." :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm outline-none">
-        {% if form.latitude.errors or form.longitude.errors %}<span class="mt-1 block text-xs text-red-600">Choose a map point.</span>{% endif %}
+        {% if form.latitude.errors or form.longitude.errors %}<span :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" class="mt-1 block text-xs">Choose a map point.</span>{% endif %}
       </label>
 
       <div class="grid gap-3 sm:grid-cols-2">
@@ -64,7 +64,7 @@
         <label class="block">
           <span class="text-xs font-semibold uppercase tracking-wide opacity-60">Detected at</span>
           <input type="datetime-local" name="start_time" value="{{ form.start_time.value|default_if_none:'' }}" required :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm outline-none">
-          {% if form.start_time.errors %}<span class="mt-1 block text-xs text-red-600">{{ form.start_time.errors|join:", " }}</span>{% endif %}
+          {% if form.start_time.errors %}<span :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" class="mt-1 block text-xs">{{ form.start_time.errors|join:", " }}</span>{% endif %}
         </label>
       </div>
 
@@ -97,6 +97,8 @@
   const features = JSON.parse(document.getElementById("detection-features").textContent || "[]");
   const map = L.map(el).setView([52.1, 19.4], 6);
   const isDark = localStorage.getItem("darkMode") === "true";
+  const themeColors = {{ theme.theme.colors|safe }};
+  const markerStrokeColor = isDark ? themeColors["text-main-dark"] : themeColors["text-main-light"];
   const tiles = isDark
     ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
     : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
@@ -129,12 +131,12 @@
   features.forEach((item) => {
     if (!item.geometry) return;
     const layer = L.geoJSON(item.geometry, {
-      style: { color: "#64748b", weight: 2 },
+      style: { color: isDark ? themeColors["accent-dark"] : themeColors["accent-light"], weight: 2 },
       pointToLayer: (_feature, latlng) => L.circleMarker(latlng, {
         radius: 5,
-        color: "#111827",
+        color: markerStrokeColor,
         weight: 1,
-        fillColor: "#64748b",
+        fillColor: isDark ? themeColors["accent-dark"] : themeColors["accent-light"],
         fillOpacity: 0.75,
       }),
     }).bindPopup(`<strong>${item.title}</strong><br>${item.type} - ${item.status}`);
