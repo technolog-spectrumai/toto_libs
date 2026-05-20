@@ -72,6 +72,8 @@ packages = [
     "toto.assets.services",
     "toto.assets.management",
     "toto.assets.management.commands",
+    "toto.bourse",
+    "toto.bourse.migrations",
     "toto.bazaar",
     "toto.bazaar.migrations",
     "toto.bazaar.management",

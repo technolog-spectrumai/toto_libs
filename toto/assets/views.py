@@ -2,7 +2,6 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -11,13 +10,11 @@ from django.utils.translation import gettext_lazy as _
 from django.views.decorators.http import require_POST
 from toto.ui import PageProcessor
 
-from .forms import ExchangeRequestCreateForm, ExchangeRequestResponseForm, TokenizationCreateForm
+from .forms import TokenizationCreateForm
 from .hashing import verify_hash_chain
 from .models import (
     Asset,
-    AssetExchangeRequest,
     AssetHolding,
-    ExchangeRequestStatus,
     LedgerAccount,
     LedgerEntry,
     LedgerTransaction,
@@ -237,182 +234,6 @@ def chain_verify(request):
         "chain_valid": valid,
         "hash_count": hash_count,
     })
-
-
-# ---------------------------------------------------------------------------
-# Peer exchange proposals
-# ---------------------------------------------------------------------------
-
-@login_required
-def exchange_center(request):
-    incoming_qs = (
-        AssetExchangeRequest.objects
-        .filter(counterparty=request.user)
-        .select_related("requester", "requester_account", "counterparty_account", "offer_asset", "request_asset")
-        .order_by("-created_at")
-    )
-    outgoing_qs = (
-        AssetExchangeRequest.objects
-        .filter(requester=request.user)
-        .select_related("counterparty", "requester_account", "counterparty_account", "offer_asset", "request_asset")
-        .order_by("-created_at")
-    )
-    public_asks_qs = (
-        AssetExchangeRequest.objects
-        .filter(counterparty__isnull=True, status=ExchangeRequestStatus.PENDING)
-        .exclude(requester=request.user)
-        .select_related("requester", "requester_account", "offer_asset", "request_asset")
-        .order_by("-created_at")
-    )
-    incoming = incoming_qs[:30]
-    outgoing = outgoing_qs[:30]
-    public_asks = public_asks_qs[:20]
-    proposals = sorted(
-        list(incoming) + list(outgoing),
-        key=lambda proposal: proposal.created_at,
-        reverse=True,
-    )
-    for proposal in proposals:
-        proposal.direction = "incoming" if proposal.counterparty_id == request.user.id else "outgoing"
-
-    recent_trades = list(
-        AssetExchangeRequest.objects
-        .filter(
-            Q(requester=request.user) | Q(counterparty=request.user),
-            status=ExchangeRequestStatus.ACCEPTED,
-        )
-        .select_related("requester", "counterparty", "offer_asset", "request_asset")
-        .order_by("-responded_at", "-updated_at")[:12]
-    )
-    trade_refs = []
-    for trade in recent_trades:
-        trade.direction = "incoming" if trade.counterparty_id == request.user.id else "outgoing"
-        trade_ref_items = [
-            ("Offer", trade.offer_tx_reference),
-            ("Expected", trade.request_tx_reference),
-            ("Fee", trade.commission_tx_reference),
-        ]
-        trade.trade_ref_items = [(label, ref) for label, ref in trade_ref_items if ref]
-        trade_refs.extend(ref for _, ref in trade.trade_ref_items)
-
-    tx_by_ref = {
-        tx.reference: tx
-        for tx in LedgerTransaction.objects
-        .filter(reference__in=trade_refs)
-        .select_related("asset", "hash_record")
-    }
-    for trade in recent_trades:
-        trade.trade_transactions = [
-            {
-                "label": label,
-                "tx": tx_by_ref.get(ref),
-                "reference": ref,
-                "hash_record": getattr(tx_by_ref.get(ref), "hash_record", None),
-            }
-            for label, ref in trade.trade_ref_items
-        ]
-
-    return assets_render(request, "assets/exchange_center.html", {
-        "proposals": proposals,
-        "public_asks": public_asks,
-        "recent_trades": recent_trades,
-        "incoming_requests": incoming,
-        "outgoing_requests": outgoing,
-        "pending_incoming_count": incoming_qs.filter(status=ExchangeRequestStatus.PENDING).count(),
-        "pending_outgoing_count": outgoing_qs.filter(status=ExchangeRequestStatus.PENDING).count(),
-        "public_ask_count": public_asks_qs.count(),
-        "pending_status": ExchangeRequestStatus.PENDING,
-    })
-
-
-@login_required
-def exchange_request_create(request):
-    if request.method == "POST":
-        form = ExchangeRequestCreateForm(request.POST, user=request.user)
-        if form.is_valid():
-            exchange_request = form.save()
-            messages.success(request, "Exchange request sent.")
-            return redirect("assets:exchange_center")
-    else:
-        form = ExchangeRequestCreateForm(user=request.user)
-    return assets_render(request, "assets/exchange_request_form.html", {"form": form})
-
-
-@login_required
-def exchange_request_accept(request, pk):
-    from toto.bazaar.wallet_pin import has_wallet_pin, session_is_verified
-
-    exchange_request = get_object_or_404(
-        AssetExchangeRequest.objects.select_related("counterparty", "offer_asset", "request_asset"),
-        Q(counterparty=request.user) | (Q(counterparty__isnull=True) & ~Q(requester=request.user)),
-        pk=pk,
-        status=ExchangeRequestStatus.PENDING,
-    )
-    if request.method == "POST":
-        form = ExchangeRequestResponseForm(request.POST, user=request.user, exchange_request=exchange_request)
-        if form.is_valid():
-            if not has_wallet_pin(request.user):
-                messages.error(request, "Set a wallet PIN before accepting trades.")
-                return redirect("assets:wallet_pin_set")
-            if not session_is_verified(request.session):
-                form.add_error(None, "Wallet PIN required. Please verify your PIN.")
-            else:
-                try:
-                    from toto.assets.services.assets import accept_exchange_request
-                    accept_exchange_request(
-                        exchange_request=exchange_request,
-                        counterparty_account=form.cleaned_data["counterparty_account"],
-                        response_note=form.cleaned_data.get("response_note", ""),
-                    )
-                except ValidationError as exc:
-                    form.add_error(None, exc.messages[0] if hasattr(exc, "messages") else str(exc))
-                else:
-                    messages.success(request, "Exchange request accepted and settled.")
-                    return redirect("assets:exchange_center")
-    else:
-        form = ExchangeRequestResponseForm(user=request.user, exchange_request=exchange_request)
-    return assets_render(request, "assets/exchange_request_response.html", {
-        "form": form,
-        "exchange_request": exchange_request,
-        "mode": "accept",
-        "has_wallet_pin": has_wallet_pin(request.user) if request.user.is_authenticated else False,
-    })
-
-
-@require_POST
-@login_required
-def exchange_request_reject(request, pk):
-    exchange_request = get_object_or_404(
-        AssetExchangeRequest,
-        Q(counterparty=request.user) | (Q(counterparty__isnull=True) & ~Q(requester=request.user)),
-        pk=pk,
-        status=ExchangeRequestStatus.PENDING,
-    )
-    from toto.assets.services.assets import reject_exchange_request
-    reject_exchange_request(
-        exchange_request=exchange_request,
-        response_note=request.POST.get("response_note", ""),
-    )
-    messages.success(request, "Exchange request rejected.")
-    return redirect("assets:exchange_center")
-
-
-@require_POST
-@login_required
-def exchange_request_cancel(request, pk):
-    exchange_request = get_object_or_404(
-        AssetExchangeRequest,
-        pk=pk,
-        requester=request.user,
-        status=ExchangeRequestStatus.PENDING,
-    )
-    from toto.assets.services.assets import cancel_exchange_request
-    cancel_exchange_request(
-        exchange_request=exchange_request,
-        response_note=request.POST.get("response_note", ""),
-    )
-    messages.success(request, "Exchange proposal cancelled.")
-    return redirect("assets:exchange_center")
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,85 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% block bourse_title %}Bourse{% endblock %} | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+<style>
+  [x-cloak] { display: none !important; }
+</style>
+{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-7xl space-y-6">
+    <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div class="space-y-2">
+        <nav class="flex flex-wrap items-center gap-3 text-sm">
+          <a href="{% url 'core:dashboard' %}" class="inline-flex items-center gap-2 underline hover:opacity-80">
+            <i class="fa-solid fa-arrow-left"></i>
+            {% trans "Dashboard" %}
+          </a>
+          <a href="{% url 'assets:wallet' %}" class="inline-flex items-center gap-2 underline hover:opacity-80">
+            <i class="fa-solid fa-wallet"></i>
+            {% trans "Wallet" %}
+          </a>
+          <a href="{% url 'assets:asset_list' %}" class="inline-flex items-center gap-2 underline hover:opacity-80">
+            <i class="fa-solid fa-coins"></i>
+            {% trans "Assets" %}
+          </a>
+        </nav>
+        <div>
+          <p
+            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+            class="text-xs font-semibold uppercase tracking-wide">
+            {% trans "Ledger Market" %}
+          </p>
+          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+            <i class="fa-solid fa-chart-line"></i>
+            {% trans "Bourse" %}
+          </h1>
+        </div>
+      </div>
+
+      <nav class="flex flex-wrap gap-2">
+        <a
+          href="{% url 'bourse:exchange_center' %}"
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-table-columns"></i>
+          {% trans "Desk" %}
+        </a>
+        <a
+          href="{% url 'bourse:exchange_request_create' %}"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-plus"></i>
+          {% trans "New ask" %}
+        </a>
+      </nav>
+    </header>
+
+    {% if messages %}
+      <section
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-lg border p-4 shadow-sm">
+        <div class="space-y-2">
+          {% for message in messages %}
+            <div
+              :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+              class="rounded-lg border px-4 py-3 text-sm font-semibold">
+              {{ message }}
+            </div>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+
+    {% block bourse_content %}{% endblock %}
+  </div>
+</section>
+{% endblock %}

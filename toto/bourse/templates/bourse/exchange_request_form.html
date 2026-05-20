@@ -1,0 +1,170 @@
+{% extends "bourse/base.html" %}
+{% load i18n %}
+
+{% block bourse_title %}{% trans "New Ask" %}{% endblock %}
+
+{% block bourse_content %}
+<div class="space-y-6">
+  <a href="{% url 'bourse:exchange_center' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+    <i class="fa-solid fa-arrow-left"></i>
+    {% trans "Trading desk" %}
+  </a>
+
+  <form method="post"
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        x-data="{ visibility: '{{ form.visibility.value|default:'public' }}', offerAmount: '{{ form.offer_amount.value|default_if_none:'' }}', expectedAmount: '{{ form.expected_amount.value|default_if_none:'' }}', rate() { const offer = parseFloat(this.offerAmount); const expected = parseFloat(this.expectedAmount); if (!offer || !expected) return '-'; return (expected / offer).toFixed(6); } }"
+        class="rounded-lg border p-5 shadow-sm">
+    {% csrf_token %}
+    <div class="mb-5 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Order ticket" %}</p>
+        <h2 class="mt-1 flex items-center gap-2 text-2xl font-bold">
+          <i class="fa-solid fa-right-left"></i>
+          {% trans "Open a bourse proposal" %}
+        </h2>
+      </div>
+      <div class="grid min-w-[260px] grid-cols-2 gap-2 text-sm">
+        <div class="rounded-lg border border-current/15 px-3 py-2">
+          <p class="text-xs opacity-60">{% trans "Implied rate" %}</p>
+          <p class="mt-1 font-mono text-lg font-bold" x-text="rate()"></p>
+        </div>
+        <div class="rounded-lg border border-current/15 px-3 py-2">
+          <p class="text-xs opacity-60">{% trans "Visibility" %}</p>
+          <p class="mt-1 text-lg font-bold" x-text="visibility === 'public' ? 'Public' : 'Direct'"></p>
+        </div>
+      </div>
+    </div>
+
+    {% if form.non_field_errors %}
+      <div class="mb-4 rounded-lg border px-4 py-3 text-sm font-semibold" :class="darkMode ? 'border-warn-dark text-warn-dark' : 'border-warn-light text-warn-light'">
+        {{ form.non_field_errors }}
+      </div>
+    {% endif %}
+
+    <div class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <section class="space-y-5">
+        <div>
+          <label class="mb-2 block text-xs font-semibold uppercase tracking-wide opacity-70">{{ form.requester_account.label }}</label>
+          <div class="grid gap-3 md:grid-cols-2">
+            {% for option in form.requester_account_options %}
+              <label :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="flex cursor-pointer items-start gap-3 rounded-lg border border-current/15 px-4 py-3 text-sm transition hover:border-current/35">
+                <input type="radio" name="{{ form.requester_account.html_name }}" value="{{ option.account.pk }}" class="mt-1 h-4 w-4 accent-current" {% if option.selected %}checked{% endif %}>
+                <span class="min-w-0 flex-1">
+                  <span class="block font-bold">{{ option.account.code }}</span>
+                  <span class="block text-xs opacity-60">{{ option.account.name }}</span>
+                  <span class="mt-2 flex flex-wrap gap-1">
+                    {% for holding in option.holdings %}
+                      <span class="rounded-md border border-current/15 px-2 py-0.5 text-xs">{{ holding.balance_display }} {{ holding.asset.unit_name }}</span>
+                    {% empty %}
+                      <span class="text-xs opacity-50">{% trans "No currency balance" %}</span>
+                    {% endfor %}
+                  </span>
+                </span>
+              </label>
+            {% empty %}
+              <p class="text-sm opacity-60">{% trans "No active ledger account is attached to your user." %}</p>
+            {% endfor %}
+          </div>
+          {% for error in form.requester_account.errors %}
+            <p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ error }}</p>
+          {% endfor %}
+        </div>
+
+        <div>
+          <label class="mb-2 block text-xs font-semibold uppercase tracking-wide opacity-70">{{ form.visibility.label }}</label>
+          {% with selected_visibility=form.visibility.value|default:"public" %}
+            <div class="grid gap-3 sm:grid-cols-2">
+              <label :class="visibility === 'public' ? (darkMode ? 'border-accent-dark bg-primary-bg-dark' : 'border-accent-light bg-primary-bg-light') : (darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light')" class="flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3 text-sm transition">
+                <input type="radio" name="{{ form.visibility.html_name }}" value="public" x-model="visibility" class="mt-1 h-4 w-4 accent-current" {% if selected_visibility == "public" %}checked{% endif %}>
+                <span>
+                  <span class="block font-bold">{% trans "Public ask" %}</span>
+                  <span class="block text-xs opacity-60">{% trans "Anyone can review and accept this proposal." %}</span>
+                </span>
+              </label>
+              <label :class="visibility === 'direct' ? (darkMode ? 'border-accent-dark bg-primary-bg-dark' : 'border-accent-light bg-primary-bg-light') : (darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light')" class="flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3 text-sm transition">
+                <input type="radio" name="{{ form.visibility.html_name }}" value="direct" x-model="visibility" class="mt-1 h-4 w-4 accent-current" {% if selected_visibility == "direct" %}checked{% endif %}>
+                <span>
+                  <span class="block font-bold">{% trans "Send to a person" %}</span>
+                  <span class="block text-xs opacity-60">{% trans "Only the selected recipient can accept." %}</span>
+                </span>
+              </label>
+            </div>
+          {% endwith %}
+          {% for error in form.visibility.errors %}
+            <p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ error }}</p>
+          {% endfor %}
+        </div>
+
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div x-show="visibility === 'direct'">
+            <label for="{{ form.counterparty.id_for_label }}" class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-70">{{ form.counterparty.label }}</label>
+            {{ form.counterparty }}
+            {% for error in form.counterparty.errors %}
+              <p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ error }}</p>
+            {% endfor %}
+          </div>
+          <div>
+            <label for="{{ form.offer_asset.id_for_label }}" class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-70">{{ form.offer_asset.label }}</label>
+            {{ form.offer_asset }}
+            {% for error in form.offer_asset.errors %}
+              <p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ error }}</p>
+            {% endfor %}
+          </div>
+          <div>
+            <label for="{{ form.offer_amount.id_for_label }}" class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-70">{{ form.offer_amount.label }}</label>
+            {{ form.offer_amount }}
+            {% for error in form.offer_amount.errors %}
+              <p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ error }}</p>
+            {% endfor %}
+          </div>
+          <div>
+            <label for="{{ form.request_asset.id_for_label }}" class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-70">{{ form.request_asset.label }}</label>
+            {{ form.request_asset }}
+            {% for error in form.request_asset.errors %}
+              <p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ error }}</p>
+            {% endfor %}
+          </div>
+          <div>
+            <label for="{{ form.expected_amount.id_for_label }}" class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-70">{{ form.expected_amount.label }}</label>
+            {{ form.expected_amount }}
+            {% for error in form.expected_amount.errors %}
+              <p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ error }}</p>
+            {% endfor %}
+          </div>
+          <div class="sm:col-span-2">
+            <label for="{{ form.note.id_for_label }}" class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-70">{{ form.note.label }}</label>
+            {{ form.note }}
+            {% for error in form.note.errors %}
+              <p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ error }}</p>
+            {% endfor %}
+          </div>
+        </div>
+      </section>
+
+      <aside class="space-y-3">
+        <section :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg border border-current/15 p-4">
+          <h3 class="flex items-center gap-2 text-base font-bold"><i class="fa-solid fa-receipt"></i>{% trans "Ticket" %}</h3>
+          <dl class="mt-4 space-y-2 text-sm">
+            <div class="flex justify-between gap-3 border-t border-current/10 pt-2">
+              <dt class="opacity-60">{% trans "Offer" %}</dt>
+              <dd class="font-mono font-semibold" x-text="offerAmount || '-'"></dd>
+            </div>
+            <div class="flex justify-between gap-3 border-t border-current/10 pt-2">
+              <dt class="opacity-60">{% trans "Expected" %}</dt>
+              <dd class="font-mono font-semibold" x-text="expectedAmount || '-'"></dd>
+            </div>
+            <div class="flex justify-between gap-3 border-t border-current/10 pt-2">
+              <dt class="opacity-60">{% trans "Rate" %}</dt>
+              <dd class="font-mono font-semibold" x-text="rate()"></dd>
+            </div>
+          </dl>
+        </section>
+        <button type="submit" :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'" class="inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-bold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-paper-plane"></i>{% trans "Send proposal" %}
+        </button>
+        <a href="{% url 'bourse:exchange_center' %}" class="inline-flex w-full items-center justify-center rounded-lg border border-current/20 px-4 py-3 text-sm font-semibold transition hover:opacity-80">{% trans "Cancel" %}</a>
+      </aside>
+    </div>
+  </form>
+</div>
+{% endblock %}

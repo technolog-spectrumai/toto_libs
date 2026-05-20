@@ -1,0 +1,129 @@
+{% extends "bourse/base.html" %}
+{% load i18n %}
+
+{% block bourse_title %}{% trans "Review Trade" %}{% endblock %}
+
+{% block bourse_content %}
+<div class="space-y-6">
+  <a href="{% url 'bourse:exchange_center' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+    <i class="fa-solid fa-arrow-left"></i>
+    {% trans "Trading desk" %}
+  </a>
+
+  <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="max-w-4xl rounded-lg border p-5 shadow-sm"
+           x-data="{
+             pinOpen: false,
+             pinValue: '',
+             pinError: '',
+             pinLoading: false,
+             pendingForm: null,
+             walletPinReady: {{ has_wallet_pin|yesno:'true,false' }},
+             requirePin(form) {
+               if (!this.walletPinReady) {
+                 window.location.href = '{% url 'assets:wallet_pin_set' %}';
+                 return;
+               }
+               this.pendingForm = form;
+               this.pinValue = '';
+               this.pinError = '';
+               this.pinOpen = true;
+               this.$nextTick(() => {
+                 const input = this.$el.querySelector('input[type=password]');
+                 if (input) input.focus();
+               });
+             },
+             async submitPin() {
+               if (!this.pinValue) { this.pinError = 'Enter your PIN.'; return; }
+               this.pinLoading = true;
+               this.pinError = '';
+               try {
+                 const res = await fetch('{% url 'assets:wallet_pin_verify' %}', {
+                   method: 'POST',
+                   headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+                   body: JSON.stringify({ pin: this.pinValue }),
+                 });
+                 const data = await res.json();
+                 if (data.ok) {
+                   this.pinOpen = false;
+                   if (this.pendingForm) HTMLFormElement.prototype.submit.call(this.pendingForm);
+                 } else {
+                   this.pinError = data.error || 'Incorrect PIN.';
+                 }
+               } catch {
+                 this.pinError = 'Network error. Try again.';
+               } finally {
+                 this.pinLoading = false;
+               }
+             },
+           }">
+    <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Execution ticket" %}</p>
+        <h2 class="mt-1 flex items-center gap-2 text-2xl font-bold"><i class="fa-solid fa-clipboard-check"></i>{% trans "Review trade" %}</h2>
+      </div>
+      <span class="rounded-lg border border-current/20 px-3 py-2 text-xs font-bold uppercase tracking-wide">{{ exchange_request.get_status_display }}</span>
+    </div>
+
+    <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="mt-5 rounded-lg border border-current/10 p-4 text-sm">
+      <div class="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
+        <div>
+          <p class="font-bold">{{ exchange_request.requester }}</p>
+          <p class="mt-2 text-2xl font-bold">
+            {{ exchange_request.offer_amount_display }} {{ exchange_request.offer_asset.unit_name }}
+            <i class="fa-solid fa-arrow-right mx-2 text-sm opacity-60"></i>
+            {{ exchange_request.request_amount_display }} {{ exchange_request.request_asset.unit_name }}
+          </p>
+          {% if exchange_request.note %}<p class="mt-3 whitespace-pre-line opacity-75">{{ exchange_request.note }}</p>{% endif %}
+        </div>
+        <dl class="space-y-2">
+          <div class="flex justify-between gap-3 border-t border-current/10 pt-2">
+            <dt class="opacity-60">{% trans "Rate" %}</dt>
+            <dd class="font-mono font-bold">{{ exchange_request.exchange_rate }}</dd>
+          </div>
+          <div class="flex justify-between gap-3 border-t border-current/10 pt-2">
+            <dt class="opacity-60">{% trans "Offer" %}</dt>
+            <dd class="font-mono font-bold">{{ exchange_request.offer_asset.unit_name }}</dd>
+          </div>
+          <div class="flex justify-between gap-3 border-t border-current/10 pt-2">
+            <dt class="opacity-60">{% trans "Expected" %}</dt>
+            <dd class="font-mono font-bold">{{ exchange_request.request_asset.unit_name }}</dd>
+          </div>
+        </dl>
+      </div>
+    </div>
+
+    <form method="post" class="mt-5" @submit.prevent="requirePin($el)">
+      {% csrf_token %}
+      {% if form.non_field_errors %}
+        <div class="mb-4 rounded-lg border px-4 py-3 text-sm font-semibold" :class="darkMode ? 'border-warn-dark text-warn-dark' : 'border-warn-light text-warn-light'">
+          {{ form.non_field_errors }}
+        </div>
+      {% endif %}
+      <div class="grid gap-4 md:grid-cols-2">
+        {% for field in form %}
+          <div {% if field.name == "response_note" %}class="md:col-span-2"{% endif %}>
+            <label for="{{ field.id_for_label }}" class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-70">{{ field.label }}</label>
+            {{ field }}
+            {% for error in field.errors %}
+              <p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ error }}</p>
+            {% endfor %}
+          </div>
+        {% endfor %}
+      </div>
+      <div class="mt-5 flex flex-wrap gap-2">
+        <button type="submit" :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'" class="rounded-lg px-4 py-2 text-sm font-bold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-bolt mr-1"></i>{% trans "Accept and settle" %}
+        </button>
+      </div>
+    </form>
+    <form method="post" action="{% url 'bourse:exchange_request_reject' exchange_request.pk %}" class="mt-2">
+      {% csrf_token %}
+      <button type="submit" class="rounded-lg border border-current/20 px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+        <i class="fa-solid fa-xmark mr-1"></i>{% trans "Deny" %}
+      </button>
+    </form>
+    {% include "assets/partials/wallet_pin_modal.html" %}
+  </section>
+</div>
+{% endblock %}
