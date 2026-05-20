@@ -15,6 +15,7 @@ from toto.ui import PageProcessor
 from toto.kanban.forms import TaskCreateForm
 from toto.kanban.metrics import SprintMetricsCalculator, MissionMetricsCalculator
 from toto.kanban.models import Project, Column, Task, Sprint, Mission, DocumentationPage
+from toto.kanban.plugins.mission_plugins import MissionPlugin
 from toto.verbena.views import PageDetailMixin
 
 
@@ -113,7 +114,6 @@ class ProjectDetailView(LoginRequiredMixin, DetailView):
                 "tasks__reviewer",
                 "tasks__sprint",
                 "tasks__column",
-                "tasks__bounties",
                 "tasks__detection_mitigations",
             )
         )
@@ -448,17 +448,6 @@ def promote_task(request, project_id, task_id):
         task.completed_at = timezone.now()
         update_fields.append("completed_at")
     task.save(update_fields=update_fields)
-    if is_terminal_column:
-        try:
-            from toto.detections.services import complete_task_bounties, person_for_user
-
-            reviewer = person_for_user(request.user)
-            payments = complete_task_bounties(task, reviewer=reviewer)
-            if payments:
-                messages.success(request, f"{len(payments)} bounty payment record(s) created.")
-        except Exception as exc:
-            messages.warning(request, f"Task completed, but bounty payout preparation failed: {exc}")
-
     messages.success(request, f"Task promoted to {next_column.name}.")
     return redirect("kanban:project_detail", pk=project_id)
 
@@ -716,6 +705,10 @@ class MissionDetailView(LoginRequiredMixin, DetailView):
                 "tasks__column",
                 "tasks__sprint",
                 "tasks__assignee",
+                "tasks__reviewer",
+                "tasks__detection_mitigations",
+                "tasks__detection_mitigations__category",
+                "tasks__detection_mitigations__address",
             )
         )
 
@@ -772,6 +765,13 @@ class MissionDetailView(LoginRequiredMixin, DetailView):
             "completion_rate": completion_rate,
             "weight_completion_rate": weight_completion_rate,
         })
+        context["mission_plugin_sections"] = MissionPlugin.render_all(
+            request=self.request,
+            mission=mission,
+            project=project,
+            tasks=tasks,
+            base_context=context,
+        )
 
         return context
 

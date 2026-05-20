@@ -1,0 +1,56 @@
+<section
+  :class="darkMode ? 'border-caution-dark/40 bg-caution-dark/10' : 'border-caution-light/40 bg-caution-light/10'"
+  class="rounded-2xl border p-5 shadow-sm">
+  <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div>
+      <h2 class="flex items-center gap-2 text-lg font-bold">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+        Detections
+      </h2>
+      <p class="mt-1 text-sm opacity-70">Detection work attached to this mission.</p>
+    </div>
+    <span
+      :class="darkMode ? 'bg-caution-dark/20 text-caution-dark' : 'bg-caution-light/20 text-caution-light'"
+      class="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold">
+      {{ mission_detections|length }} linked
+    </span>
+  </div>
+
+  <div class="grid gap-3 md:grid-cols-2">
+    {% for detection in mission_detections %}
+      <a
+        href="{% url 'detections:detection-detail' detection.pk %}"
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-sunken-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-sunken-light'"
+        class="rounded-xl border p-4 transition hover:opacity-90">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <p class="truncate font-bold">{{ detection.title }}</p>
+            <p class="mt-1 text-xs opacity-60">
+              {{ detection.get_severity_display }} - {{ detection.get_status_display }}
+              {% if detection.location_label %} - {{ detection.location_label }}{% endif %}
+            </p>
+          </div>
+          <span
+            :class="darkMode
+              ? '{% if detection.severity == 'critical' or detection.severity == 'high' %}text-warn-dark{% elif detection.severity == 'medium' %}text-caution-dark{% else %}text-success-dark{% endif %}'
+              : '{% if detection.severity == 'critical' or detection.severity == 'high' %}text-warn-light{% elif detection.severity == 'medium' %}text-caution-light{% else %}text-success-light{% endif %}'"
+            class="shrink-0 text-sm font-bold">
+            {{ detection.get_severity_display }}
+          </span>
+        </div>
+        <div class="mt-3 flex flex-wrap gap-2 text-[11px] font-semibold">
+          {% if detection.mitigation_task %}
+            <span :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-2 py-0.5">
+              {{ detection.mitigation_task.column.name }}
+            </span>
+          {% endif %}
+          {% if detection.outsourced_service %}
+            <span :class="darkMode ? 'bg-success-dark/20 text-success-dark' : 'bg-success-light/20 text-success-light'" class="rounded-full px-2 py-0.5">
+              Bazaar service
+            </span>
+          {% endif %}
+        </div>
+      </a>
+    {% endfor %}
+  </div>
+</section>

@@ -1,5 +1,6 @@
 {% load static %}
 {% load static yaml_filters %}
+{% load kanban_plugin_tags %}
 
 <article
   x-data="{ open: false }"
@@ -46,15 +47,6 @@
             {{ task.mission.title }}
           </span>
         </a>
-
-        {% if task.bounties.all %}
-          <span
-            :class="darkMode ? 'bg-success-dark/20 text-success-dark' : 'bg-success-light/20 text-success-light'"
-            class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold">
-            <i class="fa-solid fa-coins text-[10px]"></i>
-            Bounty
-          </span>
-        {% endif %}
 
         {% if task.detection_mitigations.all %}
           <span
@@ -215,37 +207,7 @@
       </section>
     {% endif %}
 
-    {% if task.bounties.all or task.detection_mitigations.all %}
-      <section
-        :class="darkMode
-          ? 'border-accent-1 bg-sunken-dark'
-          : 'border-accent-2 bg-sunken-light'"
-        class="rounded-lg border p-3">
-        <p class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-60">
-          Linked Work
-        </p>
-        <div class="space-y-2 text-xs">
-          {% for bounty in task.bounties.all %}
-            <a
-              href="{% url 'detections:bounty-detail' bounty.board.slug bounty.slug %}"
-              :class="darkMode ? 'text-success-dark' : 'text-success-light'"
-              class="block font-semibold underline-offset-4 hover:underline">
-              <i class="fa-solid fa-coins"></i>
-              {{ bounty.title }} - {{ bounty.reward_amount }}{% if bounty.reward_currency %} {{ bounty.reward_currency.code }}{% endif %}
-            </a>
-          {% endfor %}
-          {% for detection in task.detection_mitigations.all %}
-            <a
-              href="{% url 'detections:detection-detail' detection.pk %}"
-              :class="darkMode ? 'text-caution-dark' : 'text-caution-light'"
-              class="block font-semibold underline-offset-4 hover:underline">
-              <i class="fa-solid fa-triangle-exclamation"></i>
-              {{ detection.title }}
-            </a>
-          {% endfor %}
-        </div>
-      </section>
-    {% endif %}
+    {% render_task_plugins task %}
 
     {% if column.is_auditor or column.can_add_task %}
       <section class="flex flex-wrap gap-2 pt-1">

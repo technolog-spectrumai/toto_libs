@@ -3,124 +3,46 @@ from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.contrib.gis.geos import Point
-from django.core.exceptions import ValidationError
 from django.utils import timezone
 
-from toto.assets.models import AccountType, Asset, Currency, LedgerAccount, LedgerTransaction
-from toto.assets.services.assets import create_asset, transfer_asset
-from toto.bazaar.models import MarketCustodian, Shop
 from toto.ingress import IngressCommand
 from toto.kanban.models import Campaign, Column, Mission, Project, Task
-from toto.locations.models import Address, Territory
+from toto.locations.models import Address
 from toto.people.models import Person
 
-from ...models import (
-    Bounty,
-    BountyBoard,
-    BountyClaim,
-    BountyPayment,
-    BountySubmission,
-    Detection,
-    DetectionCategory,
-)
-from ...services import first_or_create
+from ...models import Detection, DetectionCategory
+from ...services import create_detection_service_request, first_or_create
 
 
 class Command(IngressCommand):
-    help = "Seed demo detections, map points, bounty boards, and asset-backed bounty payments."
+    help = "Seed demo detections, map points, Kanban mitigation tasks, and Bazaar service help."
 
     def process(self):
-        self.stdout.write("Seeding detections and bounties...")
-        accounts, asset, currency = self._ensure_payment_asset()
+        self.stdout.write("Seeding detections...")
         people = self._ensure_people()
         addresses = self._ensure_addresses()
         categories = self._ensure_categories()
-        board = self._ensure_board(accounts)
-        self._fund_board_escrow(asset, accounts)
         detections = self._ensure_detections(categories, addresses, people)
         tasks = self._ensure_kanban_tasks(detections, people)
-        bounties = self._ensure_bounties(board, tasks, addresses, people, asset, currency, accounts)
         if self.full:
-            self._ensure_claim_and_payment(bounties[0], people["tester"], asset, currency, accounts)
-        self.stdout.write(self.style.SUCCESS("Detections ingress complete."))
+            self._ensure_service_request(detections[1], people["tester"])
+        self.stdout.write(self.style.SUCCESS(f"Detections ingress complete ({len(tasks)} tasks)."))
 
     def _point(self, longitude, latitude):
         point = Point(longitude, latitude)
         point.srid = 4326
         return point
 
-    def _ensure_payment_asset(self):
-        reserve, _ = LedgerAccount.objects.get_or_create(
-            code="reserve_main",
-            defaults={
-                "name": "Main Reserve",
-                "account_type": AccountType.RESERVE,
-                "active": True,
-            },
-        )
-        escrow, _ = LedgerAccount.objects.get_or_create(
-            code="detections-bounty-escrow",
-            defaults={
-                "name": "Detections Bounty Escrow",
-                "account_type": AccountType.RESERVE,
-                "active": True,
-            },
-        )
-        asset = Asset.objects.filter(unit_name="TPLN").first()
-        if not asset:
-            asset = create_asset(
-                name="Toto PLN",
-                unit_name="TPLN",
-                total_supply=Decimal("1000000.00"),
-                decimals=2,
-                reserve_account=reserve,
-                reference="create-tpln-detections",
-                description="Internal PLN stablecoin for detections bounty testing.",
-                metadata={"ingress": "detections"},
-            )
-            asset.is_currency = True
-            asset.backing_document = "Demo PLN reserve for local testing."
-            asset.minting_authority = "Toto Platform Operations"
-            asset.save(update_fields=["is_currency", "backing_document", "minting_authority"])
-            self.stdout.write("  + asset TPLN")
-
-        currency, _ = Currency.objects.update_or_create(
-            code="PLN",
-            defaults={
-                "name": "Polish Zloty",
-                "symbol": "PLN",
-                "asset": asset,
-                "is_active": True,
-            },
-        )
-        return {"reserve": reserve, "escrow": escrow}, asset, currency
-
     def _ensure_people(self):
         User = get_user_model()
         tester, created = User.objects.get_or_create(
             username="detections_tester",
-            defaults={
-                "email": "detections@example.com",
-                "is_staff": True,
-            },
+            defaults={"email": "detections@example.com", "is_staff": True},
         )
         if created:
             tester.set_unusable_password()
             tester.save(update_fields=["password"])
             self.stdout.write("  + user detections_tester")
-
-        wallet, _ = LedgerAccount.objects.get_or_create(
-            code="user-detections_tester",
-            defaults={
-                "name": "Detections Tester Wallet",
-                "account_type": AccountType.USER,
-                "active": True,
-                "user": tester,
-            },
-        )
-        if wallet.user_id != tester.pk:
-            wallet.user = tester
-            wallet.save(update_fields=["user"])
 
         specs = [
             ("detections-tester", "Detections Tester", "detections@example.com", tester),
@@ -131,11 +53,7 @@ class Command(IngressCommand):
         for slug, name, email, user in specs:
             person, created = Person.objects.get_or_create(
                 slug=slug,
-                defaults={
-                    "display_name": name,
-                    "email": email,
-                    "user": user,
-                },
+                defaults={"display_name": name, "email": email, "user": user},
             )
             updates = []
             if user and person.user_id != user.pk:
@@ -192,66 +110,6 @@ class Command(IngressCommand):
             categories[name] = category
         return categories
 
-    def _ensure_board(self, accounts):
-        shop, _ = Shop.objects.get_or_create(
-            slug="detections-field-ops",
-            defaults={
-                "name": "Detections Field Ops",
-                "description": "Internal shop for regulated field-response bounty work.",
-                "currency": "PLN",
-                "ledger_account": accounts["escrow"],
-                "is_active": True,
-            },
-        )
-        if shop.ledger_account_id != accounts["escrow"].pk:
-            shop.ledger_account = accounts["escrow"]
-            shop.save(update_fields=["ledger_account"])
-
-        territory = Territory.objects.filter(name="Polish Royal Cities").first()
-        custodian, _ = MarketCustodian.objects.get_or_create(
-            shop=shop,
-            name="Detections Response Desk",
-            defaults={
-                "description": "Approves field bounty submissions before reward release.",
-                "scope": "all",
-                "regulated_product_types": [],
-                "is_active": True,
-            },
-        )
-        board, created = BountyBoard.objects.get_or_create(
-            slug="field-response",
-            defaults={
-                "name": "Field Response",
-                "shop": shop,
-                "territory": territory,
-                "description": "Detection-linked work packages for local response teams.",
-                "custodian": custodian,
-                "ledger_account": accounts["escrow"],
-                "currency": "PLN",
-                "is_active": True,
-            },
-        )
-        if created:
-            self.stdout.write("  + bounty board Field Response")
-        return board
-
-    def _fund_board_escrow(self, asset, accounts):
-        ref = "detections-escrow-funding-001"
-        if LedgerTransaction.objects.filter(reference=ref).exists():
-            return
-        try:
-            transfer_asset(
-                asset=asset,
-                sender_account=accounts["reserve"],
-                receiver_account=accounts["escrow"],
-                amount=Decimal("25000.00"),
-                reference=ref,
-                description="Initial funding for detection bounty escrow.",
-            )
-            self.stdout.write("  + funded detections bounty escrow")
-        except ValidationError as exc:
-            self.stdout.write(self.style.WARNING(f"  ! could not fund escrow: {exc}"))
-
     def _ensure_detections(self, categories, addresses, people):
         now = timezone.now()
         specs = [
@@ -300,12 +158,13 @@ class Command(IngressCommand):
         return detections
 
     def _ensure_kanban_tasks(self, detections, people):
+        owner = people["response-lead-piotr"]
         project, created = first_or_create(
             Project,
             name="Detection Mitigation",
             defaults={
-                "description": "Kanban project for detection mitigation and bounty-backed field response.",
-                "owner": people["response-lead-piotr"],
+                "description": "Kanban project for detection mitigation and help requests.",
+                "owner": owner,
             },
         )
         if created:
@@ -314,10 +173,7 @@ class Command(IngressCommand):
         if people["tester"].user_id:
             project.collaborators.add(people["tester"].user)
 
-        auditor_users = [
-            person.user for person in (people["response-lead-piotr"], people["tester"])
-            if person.user_id
-        ]
+        auditor_users = [person.user for person in (owner, people["tester"]) if person.user_id]
         columns = {}
         for name, position, can_add in [
             ("To Do", 1, True),
@@ -329,15 +185,12 @@ class Command(IngressCommand):
                 Column,
                 project=project,
                 name=name,
-                defaults={
-                    "position": position,
-                    "can_add_task": can_add,
-                },
+                defaults={"position": position, "can_add_task": can_add},
             )
-            if created:
-                self.stdout.write(f"  + kanban column {name}")
             if auditor_users:
                 column.auditors.set(auditor_users)
+            if created:
+                self.stdout.write(f"  + kanban column {name}")
             columns[name] = column
 
         campaign, _ = first_or_create(
@@ -348,7 +201,7 @@ class Command(IngressCommand):
                 "description": "Mitigation campaign generated from detections.",
                 "start_date": timezone.now().date(),
                 "end_date": (timezone.now() + timedelta(days=30)).date(),
-                "owner": people["response-lead-piotr"],
+                "owner": owner,
                 "metadata": {"source": "detections_ingress"},
             },
         )
@@ -360,7 +213,7 @@ class Command(IngressCommand):
                 "description": "Resolve active detection incidents through normal Kanban task flow.",
                 "urgency": 3,
                 "impact": 3,
-                "owner": people["response-lead-piotr"],
+                "owner": owner,
                 "metadata": {"source": "detections_ingress"},
             },
         )
@@ -374,8 +227,7 @@ class Command(IngressCommand):
                 defaults={
                     "description": detection.description,
                     "column": columns["To Do"],
-                    "assignee": None,
-                    "reviewer": people["response-lead-piotr"],
+                    "reviewer": owner,
                     "due_date": (timezone.now() + timedelta(days=3)).date(),
                     "position": position,
                     "weight": 3 if detection.severity in ("high", "critical") else 2,
@@ -394,95 +246,16 @@ class Command(IngressCommand):
             tasks.append(task)
         return tasks
 
-    def _ensure_bounties(self, board, tasks, addresses, people, asset, currency, accounts):
-        specs = [
-            ("Repair badge reader and verify entry logs", tasks[0], addresses["warsaw-north-gate"], Decimal("450.00"), "high-priority field response"),
-            ("Inspect and document river yard crack", tasks[1], addresses["krakow-river-yard"], Decimal("220.00"), "inspection with photos and recommendation"),
-            ("Reset dock barrier and submit safety photo", tasks[2], addresses["gdansk-dock-seven"], Decimal("120.00"), "short on-site safety task"),
-        ]
-        bounties = []
-        for title, task, address, amount, summary in specs:
-            detection = task.detection_mitigations.first()
-            bounty, created = Bounty.objects.get_or_create(
-                board=board,
-                title=title,
-                defaults={
-                    "category": detection.category if detection else None,
-                    "task": task,
-                    "created_by": people["response-lead-piotr"],
-                    "summary": summary,
-                    "description": f"Complete Kanban task: {task.title}. Move it through review before reward release.",
-                    "bounty_type": "task",
-                    "status": "open",
-                    "reward_amount": amount,
-                    "reward_currency": currency,
-                    "reward_asset": asset,
-                    "reward_ledger_account": accounts["escrow"],
-                    "location": address,
-                    "deadline": timezone.now() + timedelta(days=3),
-                    "is_public": True,
-                },
-            )
-            if created:
-                self.stdout.write(f"  + bounty {title}")
-            elif bounty.task_id != task.pk:
-                bounty.task = task
-                bounty.save(update_fields=["task", "updated_at"])
-            bounties.append(bounty)
-        return bounties
-
-    def _ensure_claim_and_payment(self, bounty, hunter, asset, currency, accounts):
-        claim, created = BountyClaim.objects.get_or_create(
-            bounty=bounty,
-            hunter=hunter,
-            defaults={
-                "user": hunter.user,
-                "status": "approved",
-                "proposal": "Seeded full-mode claim for payment testing.",
-                "accepted_at": timezone.now() - timedelta(hours=2),
-                "completed_at": timezone.now() - timedelta(hours=1),
-            },
+    def _ensure_service_request(self, detection, requester):
+        if detection.outsourced_service_id:
+            return detection.outsourced_service
+        product = create_detection_service_request(
+            detection,
+            requester=requester,
+            title=f"Inspect: {detection.title}",
+            description=detection.description,
+            price=Decimal("220.00"),
+            currency="PLN",
         )
-        if claim.user_id != hunter.user_id:
-            claim.user = hunter.user
-            claim.save(update_fields=["user", "updated_at"])
-        if created:
-            self.stdout.write("  + approved bounty claim")
-
-        if bounty.task:
-            task = bounty.task
-            update_fields = []
-            if task.assignee_id != hunter.pk:
-                task.assignee = hunter
-                update_fields.append("assignee")
-            if not task.completed_at:
-                task.completed_at = timezone.now() - timedelta(hours=1)
-                update_fields.append("completed_at")
-            if update_fields:
-                task.save(update_fields=update_fields)
-
-        BountySubmission.objects.get_or_create(
-            claim=claim,
-            defaults={
-                "title": "Seeded completion evidence",
-                "body": "The field task was completed and evidence was attached in local testing data.",
-                "status": "approved",
-                "reviewer_note": "Approved by ingress seed.",
-                "reviewed_at": timezone.now(),
-            },
-        )
-        receiver = LedgerAccount.objects.filter(user=hunter.user, active=True).order_by("pk").first()
-        payment, created = BountyPayment.objects.get_or_create(
-            claim=claim,
-            defaults={
-                "ledger_account": accounts["escrow"],
-                "receiver_ledger_account": receiver,
-                "asset": asset,
-                "amount": bounty.reward_amount,
-                "currency": currency,
-                "note": "Seeded unsettled payment. Use the dashboard to transfer the asset.",
-                "is_settled": False,
-            },
-        )
-        if created:
-            self.stdout.write(f"  + unsettled payment {payment.amount} {asset.unit_name}")
+        self.stdout.write(f"  + bazaar service {product.name}")
+        return product

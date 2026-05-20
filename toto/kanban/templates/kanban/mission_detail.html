@@ -442,6 +442,10 @@
       </div>
     </section>
 
+    {% for section in mission_plugin_sections %}
+      {{ section.html }}
+    {% endfor %}
+
     <!-- Documentation Page -->
     {% if documentation_page %}
     <section

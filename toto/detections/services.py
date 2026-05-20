@@ -2,12 +2,9 @@ import json
 from datetime import timedelta
 from decimal import Decimal
 
-from django.core.exceptions import ValidationError
-from django.db import transaction
 from django.utils import timezone
 
-from toto.assets.models import Asset, LedgerAccount, LedgerTransaction
-from toto.assets.services.assets import transfer_asset
+from toto.bazaar.models import Product, Shop
 from toto.kanban.models import Campaign, Column, Mission, Project, Task
 from toto.people.models import Person
 
@@ -63,7 +60,7 @@ def ensure_detection_mitigation_task(detection, *, owner=None, reviewer=None):
         Project,
         name="Detection Mitigation",
         defaults={
-            "description": "Kanban project for detection mitigation and bounty-backed response work.",
+            "description": "Kanban project for detection mitigation and help requests.",
             "owner": owner,
         },
     )
@@ -134,153 +131,74 @@ def ensure_detection_mitigation_task(detection, *, owner=None, reviewer=None):
     return task
 
 
-def get_payment_asset(payment):
-    if payment.asset_id:
-        return payment.asset
-    if payment.currency_id and payment.currency.asset_id:
-        return payment.currency.asset
-    bounty = payment.claim.bounty
-    if bounty.reward_asset_id:
-        return bounty.reward_asset
-    if bounty.reward_currency_id and bounty.reward_currency.asset_id:
-        return bounty.reward_currency.asset
-    raise ValidationError("This bounty payment is not connected to an active payment asset.")
-
-
-def get_payment_source_account(payment):
-    bounty = payment.claim.bounty
-    account = payment.ledger_account or bounty.reward_ledger_account or bounty.board.ledger_account
-    if not account:
-        raise ValidationError("This bounty payment has no source ledger account.")
-    return account
-
-
-def get_default_receiver_account(payment):
-    if payment.receiver_ledger_account_id:
-        return payment.receiver_ledger_account
-    claim_user = payment.claim.user
-    if not claim_user:
-        return None
-    return (
-        LedgerAccount.objects
-        .filter(user=claim_user, active=True)
-        .order_by("pk")
+def create_detection_help_task(detection, *, mission, owner=None, reviewer=None, title="", description=""):
+    project = mission.campaign.project
+    column = (
+        Column.objects
+        .filter(project=project)
+        .order_by("position", "pk")
         .first()
     )
+    if not column:
+        column = Column.objects.create(project=project, name="To Do", position=1, can_add_task=True)
+    task = Task.objects.create(
+        mission=mission,
+        column=column,
+        title=title or f"Help with: {detection.title}",
+        description=description or detection.description,
+        assignee=owner,
+        reviewer=reviewer,
+        due_date=(timezone.now() + timedelta(days=3)).date(),
+        weight=3 if detection.severity in ("high", "critical") else 2,
+        metadata={
+            "source": "detection_help",
+            "detection_id": str(detection.pk),
+            "severity": detection.severity,
+        },
+    )
+    detection.mitigation_task = task
+    detection.save(update_fields=["mitigation_task", "updated_at"])
+    return task
 
 
-def settle_bounty_payment(*, payment, receiver_account=None, reference="", note="", paid_by=None):
-    with transaction.atomic():
-        payment = payment.__class__.objects.select_for_update().select_related(
-            "asset",
-            "currency__asset",
-            "claim__bounty__reward_asset",
-            "claim__bounty__reward_currency__asset",
-            "claim__bounty__reward_ledger_account",
-            "claim__bounty__board__ledger_account",
-            "claim__user",
-            "receiver_ledger_account",
-        ).get(pk=payment.pk)
-
-        if payment.is_settled:
-            raise ValidationError("This bounty payment is already settled.")
-
-        asset = get_payment_asset(payment)
-        source_account = get_payment_source_account(payment)
-        receiver_account = receiver_account or get_default_receiver_account(payment)
-        if not receiver_account:
-            raise ValidationError("Choose a receiver ledger account before settling payment.")
-
-        amount = Decimal(payment.amount)
-        if amount <= 0:
-            raise ValidationError("Payment amount must be positive.")
-
-        reference = reference or f"bounty-payment-{payment.pk}"
-        if LedgerTransaction.objects.filter(reference=reference).exists():
-            raise ValidationError(f"Ledger transaction reference '{reference}' already exists.")
-
-        tx = transfer_asset(
-            asset=asset,
-            sender_account=source_account,
-            receiver_account=receiver_account,
-            amount=amount,
-            reference=reference,
-            description=f"Bounty payment for {payment.claim.bounty.title}",
-            metadata={
-                "source": "detections.bounty_payment",
-                "payment_id": payment.pk,
-                "claim_id": payment.claim_id,
-                "bounty_id": payment.claim.bounty_id,
-            },
+def create_detection_service_request(
+    detection,
+    *,
+    requester=None,
+    title="",
+    description="",
+    price=Decimal("0.00"),
+    currency="PLN",
+):
+    currency = (currency or "PLN").upper()[:3]
+    shop = Shop.objects.filter(is_active=True).order_by("pk").first()
+    if not shop:
+        shop = Shop.objects.create(
+            name="Detection Services",
+            description="Service requests outsourced from field detections.",
+            owner=requester,
+            currency=currency,
+            is_active=True,
         )
 
-        payment.asset = asset
-        payment.ledger_account = source_account
-        payment.receiver_ledger_account = receiver_account
-        payment.ledger_tx_reference = tx.reference
-        if paid_by:
-            payment.paid_by = paid_by
-        if note:
-            payment.note = note
-        payment.is_settled = True
-        payment.save(update_fields=[
-            "asset",
-            "ledger_account",
-            "receiver_ledger_account",
-            "ledger_tx_reference",
-            "paid_by",
-            "note",
-            "is_settled",
-        ])
-
-        payment.claim.status = "paid"
-        payment.claim.save(update_fields=["status", "updated_at"])
-        return tx
-
-
-def complete_task_bounties(task, *, reviewer=None):
-    from toto.detections.models import BountyPayment
-
-    payments = []
-    for bounty in task.bounties.select_related(
-        "board__ledger_account",
-        "reward_asset",
-        "reward_currency__asset",
-        "reward_ledger_account",
-    ).all():
-        claims = list(bounty.claims.filter(
-            status__in=["accepted", "working", "submitted"]
-        ).select_related("user", "hunter"))
-        for claim in claims:
-            if claim.status != "approved":
-                claim.status = "approved"
-                claim.completed_at = timezone.now()
-                claim.save(update_fields=["status", "completed_at", "updated_at"])
-
-            receiver = (
-                LedgerAccount.objects
-                .filter(user=claim.user, active=True)
-                .order_by("pk")
-                .first()
-                if claim.user_id else None
-            )
-            payment, _ = BountyPayment.objects.get_or_create(
-                claim=claim,
-                defaults={
-                    "amount": bounty.reward_amount,
-                    "currency": bounty.reward_currency,
-                    "asset": bounty.reward_asset or (bounty.reward_currency.asset if bounty.reward_currency_id else None),
-                    "ledger_account": bounty.reward_ledger_account or bounty.board.ledger_account,
-                    "receiver_ledger_account": receiver,
-                    "paid_by": reviewer,
-                    "note": f"Auto-created when Kanban task #{task.pk} completed.",
-                    "is_settled": False,
-                },
-            )
-            payments.append(payment)
-
-        if claims and bounty.status != "completed":
-            bounty.status = "completed"
-            bounty.save(update_fields=["status", "updated_at"])
-
-    return payments
+    product = Product.objects.create(
+        shop=shop,
+        name=title or f"Help with: {detection.title}",
+        summary=f"Service request for detection {detection.title}"[:500],
+        description=description or detection.description,
+        product_type="service",
+        status="published",
+        price=price or Decimal("0.00"),
+        currency=currency or shop.currency,
+        is_public=True,
+        is_regulated=False,
+        origin_address=detection.address,
+        metadata={
+            "source": "detection_help",
+            "detection_id": str(detection.pk),
+            "severity": detection.severity,
+        },
+    )
+    detection.outsourced_service = product
+    detection.save(update_fields=["outsourced_service", "updated_at"])
+    return product
