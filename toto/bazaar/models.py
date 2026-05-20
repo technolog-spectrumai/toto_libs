@@ -130,6 +130,17 @@ class Product(DomainEntity):
     asset = models.ForeignKey('assets.Asset', on_delete=models.SET_NULL, null=True, blank=True, related_name='bazaar_products')
     is_featured = models.BooleanField(default=False)
     is_public = models.BooleanField(default=True)
+    is_regulated = models.BooleanField(default=False, help_text='Requires custodian approval before publishing or order confirmation.')
+    custodian = models.ForeignKey(
+        'MarketCustodian', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='regulated_products',
+    )
+    custodian_approval_status = models.CharField(
+        max_length=16,
+        choices=[('not_required', 'Not required'), ('pending', 'Pending'), ('approved', 'Approved'), ('rejected', 'Rejected')],
+        default='not_required',
+    )
+    custodian_note = models.TextField(blank=True)
     metadata = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -139,7 +150,7 @@ class Product(DomainEntity):
     class Meta:
         ordering = ['-created_at']
         unique_together = [('shop', 'slug')]
-        indexes = [models.Index(fields=['shop','status','is_public']), models.Index(fields=['product_type']), models.Index(fields=['is_featured'])]
+        indexes = [models.Index(fields=['shop','status','is_public']), models.Index(fields=['product_type']), models.Index(fields=['is_featured']), models.Index(fields=['is_regulated', 'custodian_approval_status'])]
 
     def __str__(self):
         return self.name
@@ -266,6 +277,51 @@ class OrderItem(DomainEntity):
     unit_price = models.DecimalField(max_digits=12, decimal_places=2)
     total_price = models.DecimalField(max_digits=12, decimal_places=2)
     metadata = models.JSONField(default=dict, blank=True)
+
+
+class ServiceDelivery(DomainEntity):
+    """
+    Tracks receiver confirmation for service-type order items.
+    Payment or fulfillment is only released after the receiver (and optionally a
+    custodian) confirms the work was delivered.  A Bounty is a regulated service —
+    it uses BountyClaim/BountySubmission which enforce both receiver *and* custodian
+    sign-off before the reward is released.
+    """
+    STATUS_CHOICES = [
+        ('pending', 'Pending confirmation'),
+        ('confirmed', 'Confirmed by receiver'),
+        ('disputed', 'Disputed'),
+        ('custodian_review', 'Under custodian review'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    ]
+
+    order_item = models.OneToOneField(OrderItem, on_delete=models.CASCADE, related_name='service_delivery')
+    status = models.CharField(max_length=24, choices=STATUS_CHOICES, default='pending')
+    receiver_note = models.TextField(blank=True)
+    dispute_note = models.TextField(blank=True)
+    custodian = models.ForeignKey(
+        'MarketCustodian', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='service_deliveries',
+    )
+    custodian_approval_status = models.CharField(
+        max_length=16,
+        choices=[('not_required', 'Not required'), ('pending', 'Pending'), ('approved', 'Approved'), ('rejected', 'Rejected')],
+        default='not_required',
+    )
+    custodian_note = models.TextField(blank=True)
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'service delivery'
+        verbose_name_plural = 'service deliveries'
+
+    def __str__(self):
+        return f'ServiceDelivery for {self.order_item}'
 
 
 class OrderStatusEvent(DomainEntity):
@@ -436,4 +492,48 @@ class WalletPin(DomainEntity):
 
     def __str__(self):
         return f"WalletPin({self.user})"
+
+
+# ---------------------------------------------------------------------------
+# Market custodian
+# ---------------------------------------------------------------------------
+
+class MarketCustodian(DomainEntity):
+    """
+    An entity authorised to regulate and approve specific products or product types
+    in a shop.  Regulated products require custodian approval before they can be
+    published or have orders confirmed.
+    """
+    SCOPE_CHOICES = [
+        ('all', 'All products'),
+        ('type', 'Specific product types'),
+        ('category', 'Specific categories'),
+    ]
+
+    shop = models.ForeignKey(Shop, on_delete=models.CASCADE, related_name='custodians')
+    person = models.ForeignKey(
+        'people.Person', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='market_custodianships',
+    )
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    scope = models.CharField(max_length=16, choices=SCOPE_CHOICES, default='all')
+    regulated_product_types = models.JSONField(
+        default=list, blank=True,
+        help_text='List of product_type values this custodian regulates (used when scope=type).',
+    )
+    regulated_categories = models.ManyToManyField(
+        'ProductCategory', blank=True,
+        related_name='custodians',
+        help_text='Categories this custodian regulates (used when scope=category).',
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return f'{self.name} ({self.shop})'
+
 

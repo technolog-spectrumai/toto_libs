@@ -3,18 +3,47 @@
 {% block bazaar_heading %}{{ shop.name|default:"Bazaar" }}{% endblock %}
 {% block bazaar_subtitle %}<p class="mt-2 max-w-2xl text-sm opacity-70">{{ shop.description|default:"Browse featured products, vendors, local services, bookings, and digital resources." }}</p>{% endblock %}
 {% block bazaar_content %}
+
+{# Quick-access strip #}
+<div class="flex flex-wrap gap-2">
+  <a href="{% url 'bazaar:product-list' %}" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-sunken-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-sunken-light'" class="flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold shadow-sm transition"><i class="fa-solid fa-box-open opacity-70"></i> Products</a>
+  <a href="{% url 'bazaar:product-list' %}?type=service" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-sunken-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-sunken-light'" class="flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold shadow-sm transition"><i class="fa-solid fa-handshake opacity-70"></i> Services</a>
+  <a href="{% url 'bazaar:cart' %}" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-sunken-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-sunken-light'" class="flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold shadow-sm transition"><i class="fa-solid fa-cart-shopping opacity-70"></i> Cart{% if cart.items.count %} <span :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'" class="rounded-full px-1.5 py-0.5 text-[10px] font-bold">{{ cart.items.count }}</span>{% endif %}</a>
+</div>
+
+{# Stats row #}
 <section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
   <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">Featured</p><p class="mt-2 text-3xl font-bold">{{ featured_products|length }}</p></article>
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">Services</p><p class="mt-2 text-3xl font-bold">{{ services|length }}</p></article>
   <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">Categories</p><p class="mt-2 text-3xl font-bold">{{ categories|length }}</p></article>
-  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">Vendors</p><p class="mt-2 text-3xl font-bold">{{ vendors|length }}</p></article>
   <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">Currency</p><p class="mt-2 text-3xl font-bold">{{ shop.currency|default:"PLN" }}</p></article>
 </section>
 
+{# Featured products #}
 <section class="space-y-4">
   <div class="flex items-center justify-between gap-3"><h2 class="text-xl font-bold">Featured products</h2><a href="{% url 'bazaar:product-list' %}" class="text-sm font-semibold underline hover:opacity-80">All products</a></div>
   <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{% for product in featured_products %}{% include "bazaar/partials/product_card.html" %}{% empty %}{% include "bazaar/partials/empty_state.html" with icon="fa-solid fa-box-open" message="No featured products yet." %}{% endfor %}</div>
 </section>
 
+{# Services #}
+{% if services %}
+<section class="space-y-4">
+  <div class="flex items-center justify-between gap-3">
+    <div>
+      <h2 class="text-xl font-bold">Services</h2>
+      <p class="text-sm opacity-60">Delivered by a vendor — you confirm receipt before payment is settled.</p>
+    </div>
+    <a href="{% url 'bazaar:product-list' %}?type=service" class="shrink-0 text-sm font-semibold underline hover:opacity-80">All services</a>
+  </div>
+  <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    {% for product in services %}{% include "bazaar/partials/product_card.html" %}{% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{# Bounties #}
+
+{# Categories #}
 <section class="space-y-4">
   <h2 class="text-xl font-bold">Categories</h2>
   <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -24,6 +53,7 @@
   </div>
 </section>
 
+{# New arrivals #}
 <section class="space-y-4">
   <h2 class="text-xl font-bold">New arrivals</h2>
   <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{% for product in new_products %}{% include "bazaar/partials/product_card.html" %}{% empty %}{% include "bazaar/partials/empty_state.html" with icon="fa-solid fa-box-open" message="No published products yet." %}{% endfor %}</div>

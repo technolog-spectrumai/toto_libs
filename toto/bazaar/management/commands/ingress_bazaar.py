@@ -8,6 +8,7 @@ from toto.ingress import IngressCommand
 from ...models import (
     Cart, CartItem, Coupon, Order, OrderItem, OrderStatusEvent,
     Product, ProductCategory, ProductVariant, Shop, Vendor,
+    MarketCustodian,
 )
 
 User = get_user_model()
@@ -22,7 +23,8 @@ class Command(IngressCommand):
         shops = self._seed_shops()
         categories = self._seed_categories(shops)
         vendors = self._seed_vendors(shops)
-        products = self._seed_products(shops, categories, vendors)
+        custodians = self._seed_custodians(shops, categories)
+        products = self._seed_products(shops, categories, vendors, custodians)
         self._seed_variants(products)
         self._seed_coupons(shops)
         self._link_ledger_accounts(shops)
@@ -158,7 +160,49 @@ class Command(IngressCommand):
 
     # ------------------------------------------------------------------ #
 
-    def _seed_products(self, shops: dict, categories: dict, vendors: dict) -> dict:
+    def _seed_custodians(self, shops: dict, categories: dict) -> dict:
+        gl = shops.get("greenleaf-market")
+        dh = shops.get("digital-horizons")
+
+        specs = []
+        if gl:
+            specs.append(dict(
+                shop=gl,
+                slug="gl-services-custodian",
+                name="GreenLeaf Service Board",
+                description="Regulates service offerings — consultations, deliveries, and workshops.",
+                scope="type",
+                regulated_product_types=["service"],
+                is_active=True,
+            ))
+        if dh:
+            specs.append(dict(
+                shop=dh,
+                slug="dh-regulated-custodian",
+                name="Digital Horizons Quality Council",
+                description="Reviews and approves regulated digital products and dev services.",
+                scope="all",
+                regulated_product_types=[],
+                is_active=True,
+            ))
+
+        custodians = {}
+        for spec in specs:
+            slug = spec.pop("slug")
+            shop = spec["shop"]
+            custodian, created = MarketCustodian.objects.get_or_create(
+                shop=shop,
+                name=spec["name"],
+                defaults={k: v for k, v in spec.items() if k != "shop"},
+            )
+            custodians[slug] = custodian
+            if created:
+                self.stdout.write(f"  + custodian '{custodian.name}' in '{shop.name}'")
+        return custodians
+
+    # ------------------------------------------------------------------ #
+
+    def _seed_products(self, shops: dict, categories: dict, vendors: dict, custodians: dict) -> dict:
         gl = shops.get("greenleaf-market")
         dh = shops.get("digital-horizons")
 
@@ -269,6 +313,53 @@ class Command(IngressCommand):
                     product_type="digital", status="hidden", is_public=True, is_featured=False,
                     price=Decimal("119.00"), currency="USD",
                     stock_tracking_enabled=False,
+                ),
+            ]
+
+        # Service products — regulated, require receiver confirmation
+        gl_custodian = custodians.get("gl-services-custodian")
+        dh_custodian = custodians.get("dh-regulated-custodian")
+        gl = shops.get("greenleaf-market")
+        dh = shops.get("digital-horizons")
+        fd_vendor = vendors.get("farm-direct")
+        uo_vendor = vendors.get("urban-organics")
+        cc_vendor = vendors.get("codecraft")
+
+        if gl and fd_vendor:
+            specs += [
+                dict(
+                    shop=gl, vendor=fd_vendor, category=categories.get("food-drinks"),
+                    name="Farm Consultation — Organic Growing Advice", slug="farm-consultation",
+                    summary="One-hour video call with our agronomist on organic growing techniques.",
+                    description="Book a personal consultation on soil health, crop rotation, pest management, or harvest planning. You confirm receipt after the session.",
+                    product_type="service", status="published", is_public=True, is_featured=True,
+                    price=Decimal("120.00"), currency="PLN",
+                    stock_tracking_enabled=False,
+                    is_regulated=True, custodian=gl_custodian, custodian_approval_status="approved",
+                ),
+                dict(
+                    shop=gl, vendor=uo_vendor, category=categories.get("home-garden"),
+                    name="Windowsill Herb Garden Setup", slug="herb-garden-setup",
+                    summary="In-home setup of a custom herb garden — we bring the plants and planters.",
+                    description="Our urban grower visits your home, sets up three-to-five herb planters, and gives a care walkthrough. Warsaw only. Confirm delivery after the visit.",
+                    product_type="service", status="published", is_public=True, is_featured=False,
+                    price=Decimal("200.00"), currency="PLN",
+                    stock_tracking_enabled=False,
+                    is_regulated=True, custodian=gl_custodian, custodian_approval_status="approved",
+                ),
+            ]
+
+        if dh and cc_vendor:
+            specs += [
+                dict(
+                    shop=dh, vendor=cc_vendor, category=categories.get("courses"),
+                    name="Code Review — 1-Hour Session", slug="code-review-session",
+                    summary="Live code review of your project with a senior engineer from CodeCraft.",
+                    description="Share your repo beforehand. Session conducted over video call. Written summary delivered afterwards. You confirm completion to release payment.",
+                    product_type="service", status="published", is_public=True, is_featured=True,
+                    price=Decimal("89.00"), currency="USD",
+                    stock_tracking_enabled=False,
+                    is_regulated=True, custodian=dh_custodian, custodian_approval_status="approved",
                 ),
             ]
 

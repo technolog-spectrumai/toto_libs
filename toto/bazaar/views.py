@@ -9,7 +9,10 @@ from django.views import View
 from django.views.generic import TemplateView, ListView, DetailView, FormView, CreateView, UpdateView
 from toto.core.page import PageProcessor
 from .forms import AddToCartForm, CheckoutForm, ProductForm, ReviewForm, ShipmentForm
-from .models import Product, ProductCategory, Vendor, CartItem, Order, OrderItem, Shipment, ProductReview, ShipmentLocation, WalletPin
+from .models import (
+    Product, ProductCategory, Vendor, CartItem, Order, OrderItem, Shipment, ProductReview,
+    ShipmentLocation, WalletPin,
+)
 from .selectors import active_shop, published_products, get_current_cart, customer_orders, product_review_metrics, vendor_inventory_metrics
 from .services import (
     add_product_to_cart, create_order_from_cart, apply_coupon,
@@ -34,10 +37,11 @@ class ShopHomeView(BazaarContextMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         shop = context.get('shop')
-        context['featured_products'] = published_products(shop).filter(is_featured=True)[:8]
-        context['new_products'] = published_products(shop)[:8]
+        context['featured_products'] = published_products(shop).filter(is_featured=True).exclude(product_type='service')[:8]
+        context['new_products'] = published_products(shop).exclude(product_type='service')[:8]
         context['categories'] = ProductCategory.objects.filter(shop=shop, is_active=True, parent__isnull=True)[:12] if shop else []
         context['vendors'] = Vendor.objects.filter(shop=shop, status='active')[:8] if shop else []
+        context['services'] = published_products(shop).filter(product_type='service')[:8] if shop else []
         return context
 
 
@@ -720,3 +724,4 @@ class WalletPinSetView(LoginRequiredMixin, BazaarContextMixin, TemplateView):
         except Exception as exc:
             messages.error(request, f'Could not save PIN: {exc}')
         return redirect('bazaar:wallet-pin-set')
+

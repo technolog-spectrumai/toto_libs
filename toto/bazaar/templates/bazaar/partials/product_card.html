@@ -9,9 +9,13 @@
       <div>
         <div class="flex items-start justify-between gap-3">
           <h3 class="line-clamp-2 font-bold">{{ product.name }}</h3>
-          <span :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold">{{ product.get_product_type_display }}</span>
+          <div class="flex shrink-0 flex-col items-end gap-1">
+            <span :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="rounded-full border px-2 py-0.5 text-[11px] font-semibold">{{ product.get_product_type_display }}</span>
+            {% if product.is_regulated %}<span class="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700"><i class="fa-solid fa-shield-halved"></i> Regulated</span>{% endif %}
+          </div>
         </div>
         {% if product.vendor %}<p class="mt-1 text-xs opacity-60"><i class="fa-solid fa-user-tag"></i> {{ product.vendor.display_name }}</p>{% endif %}
+        {% if product.is_regulated and product.custodian %}<p class="mt-0.5 text-xs opacity-55"><i class="fa-solid fa-circle-check"></i> Overseen by {{ product.custodian.name }}</p>{% endif %}
       </div>
       {% if product.summary %}<p class="line-clamp-2 text-sm opacity-75">{{ product.summary }}</p>{% endif %}
       <div class="flex items-end justify-between gap-3">

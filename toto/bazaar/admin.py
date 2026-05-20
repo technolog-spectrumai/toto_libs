@@ -49,3 +49,18 @@ for model in [CartItem, OrderItem, OrderStatusEvent, PaymentIntent, PaymentTrans
         admin.site.register(model)
     except admin.sites.AlreadyRegistered:
         pass
+
+
+@admin.register(MarketCustodian)
+class MarketCustodianAdmin(admin.ModelAdmin):
+    list_display = ('name', 'shop', 'scope', 'is_active', 'person')
+    list_filter = ('shop', 'scope', 'is_active')
+    search_fields = ('name',)
+    filter_horizontal = ('regulated_categories',)
+
+
+for model in [ServiceDelivery]:
+    try:
+        admin.site.register(model)
+    except admin.sites.AlreadyRegistered:
+        pass
