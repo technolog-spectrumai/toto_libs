@@ -340,6 +340,8 @@ def exchange_request_create(request):
 
 @login_required
 def exchange_request_accept(request, pk):
+    from toto.bazaar.wallet_pin import has_wallet_pin, session_is_verified
+
     exchange_request = get_object_or_404(
         AssetExchangeRequest.objects.select_related("counterparty", "offer_asset", "request_asset"),
         Q(counterparty=request.user) | (Q(counterparty__isnull=True) & ~Q(requester=request.user)),
@@ -349,24 +351,31 @@ def exchange_request_accept(request, pk):
     if request.method == "POST":
         form = ExchangeRequestResponseForm(request.POST, user=request.user, exchange_request=exchange_request)
         if form.is_valid():
-            try:
-                from toto.assets.services.assets import accept_exchange_request
-                accept_exchange_request(
-                    exchange_request=exchange_request,
-                    counterparty_account=form.cleaned_data["counterparty_account"],
-                    response_note=form.cleaned_data.get("response_note", ""),
-                )
-            except ValidationError as exc:
-                form.add_error(None, exc.messages[0] if hasattr(exc, "messages") else str(exc))
+            if not has_wallet_pin(request.user):
+                messages.error(request, "Set a wallet PIN before accepting trades.")
+                return redirect("assets:wallet_pin_set")
+            if not session_is_verified(request.session):
+                form.add_error(None, "Wallet PIN required. Please verify your PIN.")
             else:
-                messages.success(request, "Exchange request accepted and settled.")
-                return redirect("assets:exchange_center")
+                try:
+                    from toto.assets.services.assets import accept_exchange_request
+                    accept_exchange_request(
+                        exchange_request=exchange_request,
+                        counterparty_account=form.cleaned_data["counterparty_account"],
+                        response_note=form.cleaned_data.get("response_note", ""),
+                    )
+                except ValidationError as exc:
+                    form.add_error(None, exc.messages[0] if hasattr(exc, "messages") else str(exc))
+                else:
+                    messages.success(request, "Exchange request accepted and settled.")
+                    return redirect("assets:exchange_center")
     else:
         form = ExchangeRequestResponseForm(user=request.user, exchange_request=exchange_request)
     return assets_render(request, "assets/exchange_request_response.html", {
         "form": form,
         "exchange_request": exchange_request,
         "mode": "accept",
+        "has_wallet_pin": has_wallet_pin(request.user) if request.user.is_authenticated else False,
     })
 
 
@@ -375,8 +384,8 @@ def exchange_request_accept(request, pk):
 def exchange_request_reject(request, pk):
     exchange_request = get_object_or_404(
         AssetExchangeRequest,
+        Q(counterparty=request.user) | (Q(counterparty__isnull=True) & ~Q(requester=request.user)),
         pk=pk,
-        counterparty=request.user,
         status=ExchangeRequestStatus.PENDING,
     )
     from toto.assets.services.assets import reject_exchange_request

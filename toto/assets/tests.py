@@ -1,4 +1,5 @@
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
@@ -573,6 +574,30 @@ class ExchangeRequestTests(TestCase):
         self.assertEqual(get_asset_balance_display(self.offer_asset, self.counterparty_account), Decimal("12.00"))
         self.assertEqual(get_asset_balance_display(self.request_asset, self.requester_account), Decimal("10.00"))
 
+    def test_public_ask_can_be_reviewed_and_denied_by_other_user(self):
+        req = AssetExchangeRequest.objects.create(
+            requester=self.requester,
+            counterparty=None,
+            requester_account=self.requester_account,
+            offer_asset=self.offer_asset,
+            request_asset=self.request_asset,
+            offer_amount_base_units=to_base_units(Decimal("12.00"), self.offer_asset.decimals),
+            request_amount_base_units=to_base_units(Decimal("10.00"), self.request_asset.decimals),
+            commission_amount_base_units=0,
+            exchange_rate=Decimal("0.833333333333"),
+            commission_percent=Decimal("0"),
+        )
+        self.client.force_login(self.counterparty)
+
+        response = self.client.get(reverse("assets:exchange_request_accept", args=[req.pk]))
+        self.assertContains(response, "Accept and settle")
+        self.assertContains(response, "Deny")
+
+        response = self.client.post(reverse("assets:exchange_request_reject", args=[req.pk]))
+        self.assertRedirects(response, reverse("assets:exchange_center"))
+        req.refresh_from_db()
+        self.assertEqual(req.status, ExchangeRequestStatus.REJECTED)
+
     def test_accept_exchange_request_settles_assets(self):
         req = AssetExchangeRequest.objects.create(
             requester=self.requester,
@@ -597,6 +622,59 @@ class ExchangeRequestTests(TestCase):
         self.assertEqual(get_asset_balance_display(self.offer_asset, self.counterparty_account), Decimal("10.00"))
         self.assertEqual(get_asset_balance_display(self.request_asset, self.requester_account), Decimal("20.00"))
         self.assertEqual(get_asset_balance_display(self.request_asset, self.counterparty_account), Decimal("30.00"))
+
+    def test_accept_view_requires_verified_wallet_pin_session(self):
+        req = AssetExchangeRequest.objects.create(
+            requester=self.requester,
+            counterparty=self.counterparty,
+            requester_account=self.requester_account,
+            offer_asset=self.offer_asset,
+            request_asset=self.request_asset,
+            offer_amount_base_units=to_base_units(Decimal("10.00"), self.offer_asset.decimals),
+            request_amount_base_units=to_base_units(Decimal("20.00"), self.request_asset.decimals),
+            commission_amount_base_units=0,
+            exchange_rate=Decimal("2.000000000000"),
+            commission_percent=Decimal("0"),
+        )
+        self.client.force_login(self.counterparty)
+
+        with patch("toto.bazaar.wallet_pin.has_wallet_pin", return_value=True):
+            response = self.client.post(reverse("assets:exchange_request_accept", args=[req.pk]), {
+                "counterparty_account": self.counterparty_account.pk,
+            })
+
+        self.assertContains(response, "Wallet PIN required. Please verify your PIN.")
+        req.refresh_from_db()
+        self.assertEqual(req.status, ExchangeRequestStatus.PENDING)
+        self.assertFalse(LedgerTransaction.objects.filter(reference=f"exchange-{req.pk}-offer").exists())
+
+    def test_accept_view_settles_after_verified_wallet_pin_session(self):
+        req = AssetExchangeRequest.objects.create(
+            requester=self.requester,
+            counterparty=self.counterparty,
+            requester_account=self.requester_account,
+            offer_asset=self.offer_asset,
+            request_asset=self.request_asset,
+            offer_amount_base_units=to_base_units(Decimal("10.00"), self.offer_asset.decimals),
+            request_amount_base_units=to_base_units(Decimal("20.00"), self.request_asset.decimals),
+            commission_amount_base_units=0,
+            exchange_rate=Decimal("2.000000000000"),
+            commission_percent=Decimal("0"),
+        )
+        self.client.force_login(self.counterparty)
+        from toto.bazaar.wallet_pin import mark_session_verified
+        session = self.client.session
+        mark_session_verified(session)
+        session.save()
+
+        with patch("toto.bazaar.wallet_pin.has_wallet_pin", return_value=True):
+            response = self.client.post(reverse("assets:exchange_request_accept", args=[req.pk]), {
+                "counterparty_account": self.counterparty_account.pk,
+            })
+
+        self.assertRedirects(response, reverse("assets:exchange_center"))
+        req.refresh_from_db()
+        self.assertEqual(req.status, ExchangeRequestStatus.ACCEPTED)
 
     def test_requester_can_cancel_pending_proposal(self):
         req = AssetExchangeRequest.objects.create(
