@@ -73,17 +73,19 @@ class Command(IngressCommand):
 
                 address = random.choice(addresses) if addresses else None
 
+                organizer = random.choice(members)
                 event = ScheduledEvent.objects.create(
                     title=f"{company} {suffix}",
                     description=fake.paragraph(nb_sentences=3),
                     start_time=start,
                     end_time=end,
-                    organizer=random.choice(members),
+                    owner=organizer,
                     category=category,
                     address=address,
                     public=True,
                     requires_registration=random.choice([True, False]),
                 )
+                event.organizers.add(organizer)
 
                 created_count += 1
 

@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from toto.events.models import Availability, EventCategory, ScheduledEvent
+from toto.events.models import Availability, EventCategory, EventInvite, ScheduledEvent
 
 
 @admin.register(EventCategory)
@@ -13,7 +13,7 @@ class EventCategoryAdmin(admin.ModelAdmin):
 class ScheduledEventAdmin(admin.ModelAdmin):
     list_display = (
         "title",
-        "organizer",
+        "owner",
         "category",
         "address",
         "start_time",
@@ -25,13 +25,13 @@ class ScheduledEventAdmin(admin.ModelAdmin):
     search_fields = (
         "title",
         "description",
-        "organizer__display_name",
-        "organizer__email",
+        "owner__display_name",
+        "owner__email",
         "category__name",
         "address__street",
         "address__locality_name",
     )
-    autocomplete_fields = ("organizer", "category", "address")
+    autocomplete_fields = ("owner", "organizers", "category", "address")
     date_hierarchy = "start_time"
     ordering = ("-start_time", "title")
     fieldsets = (
@@ -44,14 +44,24 @@ class ScheduledEventAdmin(admin.ModelAdmin):
             {"fields": ("start_time", "end_time")},
         ),
         (
-            "Organiser & Location",
-            {"fields": ("organizer", "address")},
+            "People",
+            {"fields": ("owner", "organizers")},
         ),
         (
-            "Registration",
-            {"fields": ("requires_registration", "capacity")},
+            "Location & Registration",
+            {"fields": ("address", "requires_registration", "capacity")},
         ),
     )
+
+
+@admin.register(EventInvite)
+class EventInviteAdmin(admin.ModelAdmin):
+    list_display = ("person", "event", "status", "sent_at", "responded_at")
+    list_filter = ("status",)
+    search_fields = ("person__display_name", "event__title")
+    autocomplete_fields = ("person", "event")
+    ordering = ("-sent_at",)
+    readonly_fields = ("sent_at", "responded_at")
 
 
 @admin.register(Availability)

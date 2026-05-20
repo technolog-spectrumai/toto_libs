@@ -50,7 +50,6 @@ class ScheduledEventForm(forms.ModelForm):
             "start_time",
             "end_time",
             "category",
-            "organizer",
             "address",
             "capacity",
             "requires_registration",
@@ -60,7 +59,6 @@ class ScheduledEventForm(forms.ModelForm):
             "title": forms.TextInput(attrs={"placeholder": "Event title"}),
             "description": forms.Textarea(attrs={"rows": 5, "placeholder": "Describe the event..."}),
             "category": forms.Select(),
-            "organizer": forms.Select(),
             "address": forms.Select(),
             "capacity": forms.NumberInput(attrs={"placeholder": "Leave blank for unlimited"}),
         }

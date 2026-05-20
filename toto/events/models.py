@@ -54,12 +54,20 @@ class ScheduledEvent(EventBase):
     workshop, ceremony, etc.
     """
 
-    organizer = models.ForeignKey(
+    owner = models.ForeignKey(
         Person,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="organized_scheduled_events",
+        related_name="owned_events",
+        help_text="Person who created this event.",
+    )
+
+    organizers = models.ManyToManyField(
+        Person,
+        related_name="organized_events",
+        blank=True,
+        help_text="People who can manage this event and send invites.",
     )
 
     address = models.ForeignKey(
@@ -83,6 +91,43 @@ class ScheduledEvent(EventBase):
         verbose_name = "scheduled event"
         verbose_name_plural = "scheduled events"
         ordering = ["-start_time"]
+
+
+class EventInvite(DomainEntity):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        ACCEPTED = "accepted", "Accepted"
+        DECLINED = "declined", "Declined"
+
+    id = models.UUIDField(primary_key=True, default=uuid4, editable=False)
+
+    event = models.ForeignKey(
+        ScheduledEvent,
+        on_delete=models.CASCADE,
+        related_name="invites",
+    )
+    person = models.ForeignKey(
+        Person,
+        on_delete=models.CASCADE,
+        related_name="event_invites",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+    )
+    note = models.TextField(blank=True)
+    sent_at = models.DateTimeField(auto_now_add=True)
+    responded_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        unique_together = [("event", "person")]
+        ordering = ["sent_at"]
+        verbose_name = "event invite"
+        verbose_name_plural = "event invites"
+
+    def __str__(self):
+        return f"{self.person} → {self.event} ({self.status})"
 
 
 class Availability(DomainEntity):

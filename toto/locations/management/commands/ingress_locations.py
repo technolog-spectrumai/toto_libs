@@ -171,18 +171,21 @@ class Command(IngressCommand):
         address_key=None,
         public=True,
     ):
+        owner = self.people.get(organizer_key)
         event, _ = ScheduledEvent.objects.update_or_create(
             title=title,
             start_time=start_time,
             defaults={
                 "description": description,
                 "end_time": end_time,
-                "organizer": self.people.get(organizer_key),
+                "owner": owner,
                 "category": self.event_categories.get(category_name),
                 "address": self.addresses.get(address_key) if address_key else None,
                 "public": public,
             },
         )
+        if owner:
+            event.organizers.add(owner)
 
         self.events[title] = event
         return event
@@ -596,7 +599,7 @@ class Command(IngressCommand):
         ]
 
         for event in event_data:
-            self.upsert_event(**event)
+            self.upsert_event(**{k: v for k, v in event.items() if k not in ("route_name", "zone_name")})
 
     def create_map_layers(self):
         self.upsert_map_layer(

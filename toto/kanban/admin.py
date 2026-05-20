@@ -197,15 +197,18 @@ class TaskAdmin(admin.ModelAdmin):
                     f"Task '{task.title}' has no venture via its mission/campaign/project."
                 )
 
-            return ScheduledEvent.objects.create(
+            event = ScheduledEvent.objects.create(
                 title=task.title,
                 description=task.description or "",
                 start_time=task.sprint.start_time if task.sprint else now(),
                 end_time=task.due_date if task.due_date else now() + timedelta(days=1),
-                organizer=task.assignee,
+                owner=task.assignee,
                 category=None,
                 public=False,
             )
+            if task.assignee:
+                event.organizers.add(task.assignee)
+            return event
 
         result = BatchAction(queryset).run(convert_one)
 
@@ -246,15 +249,18 @@ class SprintAdmin(admin.ModelAdmin):
                     f"Sprint '{sprint.name}' has no venture via its project."
                 )
 
-            return ScheduledEvent.objects.create(
+            event = ScheduledEvent.objects.create(
                 title=f"Sprint: {sprint.name}",
                 description=f"Linked to project: {sprint.project.name}",
                 start_time=sprint.start_time or now(),
                 end_time=sprint.end_time or now() + timedelta(days=7),
-                organizer=sprint.project.owner,
+                owner=sprint.project.owner,
                 category=None,
                 public=False,
             )
+            if sprint.project.owner:
+                event.organizers.add(sprint.project.owner)
+            return event
 
         result = BatchAction(queryset).run(convert_one)
 
