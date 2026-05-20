@@ -1,0 +1,155 @@
+{% extends "detections/base.html" %}
+{% block detections_title %}Add Detection{% endblock %}
+{% block detections_heading %}Add Detection{% endblock %}
+{% block detections_subtitle %}<p class="mt-2 max-w-2xl text-sm opacity-70">Click a point on the map, then fill the detection details.</p>{% endblock %}
+{% block detections_content %}
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+{{ detection_features|json_script:"detection-features" }}
+
+<form method="post" class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_24rem]">{% csrf_token %}
+  <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="overflow-hidden rounded-2xl border shadow-sm">
+    <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+      <div>
+        <h2 class="text-lg font-bold">Map Location</h2>
+        <p id="selected-location-label" class="text-xs opacity-60">No point selected yet.</p>
+      </div>
+      <button type="button" id="clear-location" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-lg border px-3 py-1.5 text-xs font-semibold"><i class="fa-solid fa-xmark"></i> Clear</button>
+    </div>
+    <div id="detection-create-map" class="h-[34rem] w-full"></div>
+  </section>
+
+  <aside :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm">
+    <div class="space-y-4">
+      {% if form.non_field_errors %}<div class="rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{{ form.non_field_errors }}</div>{% endif %}
+
+      <input type="hidden" id="id_latitude" name="latitude" value="{{ form.latitude.value|default_if_none:'' }}">
+      <input type="hidden" id="id_longitude" name="longitude" value="{{ form.longitude.value|default_if_none:'' }}">
+
+      <label class="block">
+        <span class="text-xs font-semibold uppercase tracking-wide opacity-60">Title</span>
+        <input name="title" value="{{ form.title.value|default_if_none:'' }}" required :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm outline-none">
+        {% if form.title.errors %}<span class="mt-1 block text-xs text-red-600">{{ form.title.errors|join:", " }}</span>{% endif %}
+      </label>
+
+      <label class="block">
+        <span class="text-xs font-semibold uppercase tracking-wide opacity-60">Location label</span>
+        <input id="id_location_label" name="location_label" value="{{ form.location_label.value|default_if_none:'' }}" placeholder="Gate B, warehouse yard, route marker..." :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm outline-none">
+        {% if form.latitude.errors or form.longitude.errors %}<span class="mt-1 block text-xs text-red-600">Choose a map point.</span>{% endif %}
+      </label>
+
+      <div class="grid gap-3 sm:grid-cols-2">
+        <label class="block">
+          <span class="text-xs font-semibold uppercase tracking-wide opacity-60">Type</span>
+          <select name="detection_type" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm">
+            {% for value, label in form.fields.detection_type.choices %}<option value="{{ value }}" {% if form.detection_type.value == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="block">
+          <span class="text-xs font-semibold uppercase tracking-wide opacity-60">Severity</span>
+          <select name="severity" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm">
+            {% for value, label in form.fields.severity.choices %}<option value="{{ value }}" {% if form.severity.value == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select>
+        </label>
+      </div>
+
+      <div class="grid gap-3 sm:grid-cols-2">
+        <label class="block">
+          <span class="text-xs font-semibold uppercase tracking-wide opacity-60">Status</span>
+          <select name="status" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm">
+            {% for value, label in form.fields.status.choices %}<option value="{{ value }}" {% if form.status.value == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="block">
+          <span class="text-xs font-semibold uppercase tracking-wide opacity-60">Detected at</span>
+          <input type="datetime-local" name="start_time" value="{{ form.start_time.value|default_if_none:'' }}" required :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm outline-none">
+          {% if form.start_time.errors %}<span class="mt-1 block text-xs text-red-600">{{ form.start_time.errors|join:", " }}</span>{% endif %}
+        </label>
+      </div>
+
+      <label class="block">
+        <span class="text-xs font-semibold uppercase tracking-wide opacity-60">Category</span>
+        <select name="category" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm">
+          <option value="">Uncategorized</option>
+          {% for value, label in form.fields.category.choices %}{% if value %}<option value="{{ value }}" {% if form.category.value|stringformat:"s" == value|stringformat:"s" %}selected{% endif %}>{{ label }}</option>{% endif %}{% endfor %}
+        </select>
+      </label>
+
+      <label class="block">
+        <span class="text-xs font-semibold uppercase tracking-wide opacity-60">Description</span>
+        <textarea name="description" rows="5" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm outline-none">{{ form.description.value|default_if_none:'' }}</textarea>
+      </label>
+
+      <button :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'" class="inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold shadow-sm"><i class="fa-solid fa-plus"></i> Create detection</button>
+    </div>
+  </aside>
+</form>
+
+<script>
+(() => {
+  const el = document.getElementById("detection-create-map");
+  if (!el || typeof L === "undefined") return;
+  const latInput = document.getElementById("id_latitude");
+  const lngInput = document.getElementById("id_longitude");
+  const labelInput = document.getElementById("id_location_label");
+  const selectedLabel = document.getElementById("selected-location-label");
+  const features = JSON.parse(document.getElementById("detection-features").textContent || "[]");
+  const map = L.map(el).setView([52.1, 19.4], 6);
+  const isDark = localStorage.getItem("darkMode") === "true";
+  const tiles = isDark
+    ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+    : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
+  L.tileLayer(tiles, { maxZoom: 19 }).addTo(map);
+
+  let selectedMarker = null;
+  const setPoint = (latlng) => {
+    const lat = latlng.lat.toFixed(6);
+    const lng = latlng.lng.toFixed(6);
+    latInput.value = lat;
+    lngInput.value = lng;
+    selectedLabel.textContent = `Selected ${lat}, ${lng}`;
+    if (!labelInput.value) labelInput.value = `Map point ${lat}, ${lng}`;
+    if (selectedMarker) selectedMarker.setLatLng(latlng);
+    else selectedMarker = L.marker(latlng).addTo(map);
+  };
+
+  map.on("click", (event) => setPoint(event.latlng));
+  document.getElementById("clear-location").addEventListener("click", () => {
+    latInput.value = "";
+    lngInput.value = "";
+    selectedLabel.textContent = "No point selected yet.";
+    if (selectedMarker) {
+      selectedMarker.remove();
+      selectedMarker = null;
+    }
+  });
+
+  const existingLayers = [];
+  features.forEach((item) => {
+    if (!item.geometry) return;
+    const layer = L.geoJSON(item.geometry, {
+      style: { color: "#64748b", weight: 2 },
+      pointToLayer: (_feature, latlng) => L.circleMarker(latlng, {
+        radius: 5,
+        color: "#111827",
+        weight: 1,
+        fillColor: "#64748b",
+        fillOpacity: 0.75,
+      }),
+    }).bindPopup(`<strong>${item.title}</strong><br>${item.type} - ${item.status}`);
+    layer.addTo(map);
+    existingLayers.push(layer);
+  });
+
+  if (latInput.value && lngInput.value) {
+    const latlng = L.latLng(Number(latInput.value), Number(lngInput.value));
+    setPoint(latlng);
+    map.setView(latlng, 13);
+  } else if (existingLayers.length) {
+    const bounds = L.featureGroup(existingLayers).getBounds();
+    if (bounds.isValid()) map.fitBounds(bounds, { padding: [24, 24] });
+  }
+})();
+</script>
+{% endblock %}

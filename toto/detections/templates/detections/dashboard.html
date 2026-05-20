@@ -1,0 +1,104 @@
+{% extends "detections/base.html" %}
+{% block detections_title %}Dashboard{% endblock %}
+{% block detections_heading %}Detections Dashboard{% endblock %}
+{% block detections_subtitle %}<p class="mt-2 max-w-2xl text-sm opacity-70">New detections, pending claims, submissions awaiting review, and unsettled payments.</p>{% endblock %}
+{% block detections_content %}
+
+<div class="grid gap-4 sm:grid-cols-4">
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">New detections</p><p class="mt-2 text-3xl font-bold">{{ recent_detections|length }}</p></article>
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">Pending Claims</p><p class="mt-2 text-3xl font-bold">{{ pending_claims|length }}</p></article>
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">Pending Submissions</p><p class="mt-2 text-3xl font-bold">{{ pending_submissions|length }}</p></article>
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">Unsettled Payments</p><p class="mt-2 text-3xl font-bold">{{ pending_payments|length }}</p></article>
+</div>
+
+{# New detections #}
+{% if recent_detections %}
+<section class="space-y-3">
+  <h2 class="text-xl font-bold">New Detections</h2>
+  {% for detection in recent_detections %}
+    <a href="{% url 'detections:detection-detail' detection.pk %}" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-sunken-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-sunken-light'" class="flex items-center gap-3 rounded-xl border p-3 shadow-sm transition hover:opacity-90">
+      <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold {% if detection.severity == 'critical' %}bg-red-100 text-red-700{% elif detection.severity == 'high' %}bg-orange-100 text-orange-700{% elif detection.severity == 'medium' %}bg-yellow-100 text-yellow-700{% else %}bg-blue-100 text-blue-700{% endif %}"><i class="fa-solid fa-triangle-exclamation"></i></span>
+      <div class="min-w-0 flex-1">
+        <p class="truncate font-semibold text-sm">{{ detection.title }}</p>
+        <p class="text-xs opacity-55">{{ detection.get_severity_display }} · {{ detection.get_status_display }}{% if detection.location_label %} · {{ detection.location_label }}{% endif %}</p>
+      </div>
+      <span class="text-xs opacity-50">{{ detection.start_time|date:"d M" }}</span>
+    </a>
+  {% endfor %}
+</section>
+{% endif %}
+
+{# Pending claims #}
+<section class="space-y-3">
+  <h2 class="text-xl font-bold">Pending Claims</h2>
+  {% for claim in pending_claims %}
+    <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p class="font-bold">{{ claim.bounty.title }}</p>
+          <p class="mt-0.5 text-xs opacity-60">{{ claim.hunter }} · {{ claim.created_at|date:"d M Y" }}</p>
+          {% if claim.proposal %}<p class="mt-2 text-sm opacity-70">{{ claim.proposal|truncatechars:200 }}</p>{% endif %}
+        </div>
+        <form method="post" action="{% url 'detections:claim-action' claim.pk %}" class="flex gap-2">{% csrf_token %}
+          <button name="action" value="accept" :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'" class="rounded-lg px-3 py-1.5 text-xs font-semibold shadow-sm"><i class="fa-solid fa-check"></i> Accept</button>
+          <button name="action" value="reject" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-lg border px-3 py-1.5 text-xs font-semibold"><i class="fa-solid fa-xmark"></i> Reject</button>
+        </form>
+      </div>
+    </article>
+  {% empty %}
+    <p class="text-sm opacity-50">No pending claims.</p>
+  {% endfor %}
+</section>
+
+{# Pending submissions #}
+<section class="space-y-3">
+  <h2 class="text-xl font-bold">Pending Submissions</h2>
+  {% for submission in pending_submissions %}
+    <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div class="flex-1 min-w-0">
+          <p class="font-bold">{{ submission.claim.bounty.title }}</p>
+          <p class="mt-0.5 text-xs opacity-60">{{ submission.claim.hunter }} · {{ submission.submitted_at|date:"d M Y" }}</p>
+          {% if submission.title %}<p class="mt-2 text-sm font-semibold">{{ submission.title }}</p>{% endif %}
+          <p class="mt-1 text-sm opacity-70">{{ submission.body|truncatechars:300 }}</p>
+        </div>
+        <form method="post" action="{% url 'detections:submission-action' submission.pk %}" class="space-y-2 min-w-[200px]">{% csrf_token %}
+          <textarea name="reviewer_note" rows="2" placeholder="Reviewer note…" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="w-full rounded-lg border px-2 py-1.5 text-xs outline-none"></textarea>
+          <div class="flex gap-2">
+            <button name="action" value="approve" :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'" class="flex-1 rounded-lg px-3 py-1.5 text-xs font-semibold shadow-sm"><i class="fa-solid fa-check"></i> Approve</button>
+            <button name="action" value="revision" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="flex-1 rounded-lg border px-3 py-1.5 text-xs font-semibold"><i class="fa-solid fa-rotate-left"></i> Revision</button>
+          </div>
+        </form>
+      </div>
+    </article>
+  {% empty %}
+    <p class="text-sm opacity-50">No pending submissions.</p>
+  {% endfor %}
+</section>
+
+{# Unsettled payments #}
+{% if pending_payments %}
+<section class="space-y-3">
+  <h2 class="text-xl font-bold">Unsettled Payments</h2>
+  {% for payment in pending_payments %}
+    <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p class="font-bold">{{ payment.claim.bounty.title }}</p>
+          <p class="mt-0.5 text-xs opacity-60">{{ payment.claim.hunter }} · {{ payment.amount }}{% if payment.currency %} {{ payment.currency.code }}{% endif %}</p>
+          {% if payment.ledger_account %}<p class="text-xs opacity-55"><i class="fa-solid fa-vault"></i> {{ payment.ledger_account }}</p>{% endif %}
+          {% if payment.asset %}<p class="text-xs opacity-55"><i class="fa-solid fa-coins"></i> {{ payment.asset }}</p>{% endif %}
+          {% if payment.receiver_ledger_account %}<p class="text-xs opacity-55"><i class="fa-solid fa-arrow-right"></i> {{ payment.receiver_ledger_account }}</p>{% endif %}
+        </div>
+        <form method="post" action="{% url 'detections:payment-settle' payment.pk %}" class="space-y-2 min-w-[200px]">{% csrf_token %}
+          <input name="ledger_tx_reference" placeholder="Tx reference…" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="w-full rounded-lg border px-2 py-1.5 text-xs outline-none">
+          <input name="receiver_ledger_account" value="{% if payment.receiver_ledger_account %}{{ payment.receiver_ledger_account.code }}{% endif %}" placeholder="Receiver account code…" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="w-full rounded-lg border px-2 py-1.5 text-xs outline-none">
+          <button :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'" class="w-full rounded-lg px-3 py-1.5 text-xs font-semibold shadow-sm"><i class="fa-solid fa-money-bill-transfer"></i> Transfer Asset</button>
+        </form>
+      </div>
+    </article>
+  {% endfor %}
+</section>
+{% endif %}
+
+{% endblock %}
