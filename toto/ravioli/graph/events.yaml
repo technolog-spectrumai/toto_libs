@@ -8,11 +8,10 @@ nodes:
       name: name
 
   - label: Event
-    model: toto.events.models.Event
+    model: toto.events.models.ScheduledEvent
     uuid_field: uid
     fields:
       title: title
-      location: location
       start_time: start_time
       end_time: end_time
       public: public
@@ -21,9 +20,8 @@ links:
   - from_label: Event
     to_label: Person
     relation: ORGANIZED_BY
-    source: organizer
-    cardinality: one
-    nullable: true
+    source: organizers
+    cardinality: many
 
   - from_label: Event
     to_label: EventCategory

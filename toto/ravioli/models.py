@@ -22,6 +22,68 @@ class CypherQueryResult(models.Model):
         verbose_name_plural = "Graph Viewer"
 
 
+class GraphChangeEvent(models.Model):
+    ACTION_UPSERT_NODE = "upsert_node"
+    ACTION_DELETE_NODE = "delete_node"
+    ACTION_RESYNC_LINKS = "resync_links"
+    ACTION_RESYNC_LINK_SOURCE = "resync_link_source"
+    ACTION_RESYNC_LINK_FULL = "resync_link_full"
+    ACTION_UPSERT_JUNCTION = "upsert_junction"
+    ACTION_DELETE_JUNCTION = "delete_junction"
+
+    ACTION_CHOICES = [
+        (ACTION_UPSERT_NODE, "Upsert node"),
+        (ACTION_DELETE_NODE, "Delete node"),
+        (ACTION_RESYNC_LINKS, "Resync outgoing links"),
+        (ACTION_RESYNC_LINK_SOURCE, "Resync one link source"),
+        (ACTION_RESYNC_LINK_FULL, "Resync full link"),
+        (ACTION_UPSERT_JUNCTION, "Upsert junction relationship"),
+        (ACTION_DELETE_JUNCTION, "Delete junction relationship"),
+    ]
+
+    STATUS_PENDING = "pending"
+    STATUS_PROCESSING = "processing"
+    STATUS_DONE = "done"
+    STATUS_FAILED = "failed"
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_PROCESSING, "Processing"),
+        (STATUS_DONE, "Done"),
+        (STATUS_FAILED, "Failed"),
+    ]
+
+    action = models.CharField(max_length=32, choices=ACTION_CHOICES)
+    graph_label = models.CharField(max_length=128, blank=True)
+    model_path = models.CharField(max_length=255, blank=True)
+    object_uuid = models.CharField(max_length=64, blank=True)
+    payload = models.JSONField(default=dict, blank=True)
+    status = models.CharField(
+        max_length=16,
+        choices=STATUS_CHOICES,
+        default=STATUS_PENDING,
+        db_index=True,
+    )
+    attempts = models.PositiveIntegerField(default=0)
+    error = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    processed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Graph Change Event"
+        verbose_name_plural = "Graph Change Events"
+        ordering = ["created_at", "id"]
+        indexes = [
+            models.Index(fields=["status", "created_at"]),
+            models.Index(fields=["graph_label", "object_uuid"]),
+        ]
+
+    def __str__(self):
+        target = self.object_uuid or self.payload.get("link_key", "")
+        return f"{self.action}: {self.graph_label or target}"
+
+
 class GraphSync(models.Model):
     """
     Dummy model used only to expose a global admin action

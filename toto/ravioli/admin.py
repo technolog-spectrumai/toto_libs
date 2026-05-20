@@ -4,7 +4,7 @@ from django.contrib import admin, messages
 from django.shortcuts import render, redirect
 from django.urls import path
 
-from .models import CypherQuery, CypherQueryResult, GraphSync
+from .models import CypherQuery, CypherQueryResult, GraphChangeEvent, GraphSync
 
 
 @admin.register(CypherQuery)
@@ -44,6 +44,35 @@ class CypherQueryResultAdmin(admin.ModelAdmin):
             context["edges"] = edges
 
         return render(request, "admin/cypher_results.html", context)
+
+
+@admin.register(GraphChangeEvent)
+class GraphChangeEventAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "action",
+        "status",
+        "graph_label",
+        "object_uuid",
+        "attempts",
+        "created_at",
+        "processed_at",
+    )
+    list_filter = ("status", "action", "graph_label")
+    search_fields = ("graph_label", "object_uuid", "model_path", "error")
+    readonly_fields = (
+        "action",
+        "graph_label",
+        "model_path",
+        "object_uuid",
+        "payload",
+        "status",
+        "attempts",
+        "error",
+        "created_at",
+        "updated_at",
+        "processed_at",
+    )
 
 
 @admin.register(GraphSync)

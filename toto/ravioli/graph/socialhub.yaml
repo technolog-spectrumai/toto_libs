@@ -76,13 +76,6 @@ links:
     cardinality: one
     nullable: true
 
-  - from_label: CommunityNewsPost
-    to_label: PalimpsestPage
-    relation: POINTS_TO
-    source: source_page
-    cardinality: one
-    nullable: true
-
   - from_label: Community
     to_label: Federation
     relation: BELONGS_TO

@@ -7,7 +7,6 @@ this module owns the projection logic.
 """
 
 import json
-import importlib
 
 from .loader import load_all_configs, import_model
 
@@ -46,6 +45,17 @@ def _get_value(obj, field_def):
     return _apply_transform(value, transform)
 
 
+def link_key(link_def):
+    """Return a stable key for a YAML link definition."""
+    source = link_def.get("source") or link_def.get("via_model") or ""
+    return "|".join([
+        link_def.get("from_label", ""),
+        link_def.get("to_label", ""),
+        link_def.get("relation", ""),
+        source,
+    ])
+
+
 # ---------------------------------------------------------------------------
 # Projection runner
 # ---------------------------------------------------------------------------
@@ -63,6 +73,9 @@ class ProjectionRunner:
         self.client = client
         self.configs = configs if configs is not None else load_all_configs()
         self._label_map = self._build_label_map()
+        self._node_defs_by_label = self._build_node_def_map()
+        self._links_by_from_label = self._build_links_by_from_label()
+        self._links_by_key = self._build_links_by_key()
 
     # ------------------------------------------------------------------
     # Label → model mapping (built once, used for every link lookup)
@@ -79,6 +92,36 @@ class ProjectionRunner:
                     "uuid_field": node.get("uuid_field", "uid"),
                 }
         return mapping
+
+    def _build_node_def_map(self):
+        mapping = {}
+        for config in self.configs:
+            for node in config.get("nodes", []):
+                mapping[node["label"]] = node
+        return mapping
+
+    def _build_links_by_from_label(self):
+        mapping = {}
+        for config in self.configs:
+            for link in config.get("links", []):
+                mapping.setdefault(link["from_label"], []).append(link)
+        return mapping
+
+    def _build_links_by_key(self):
+        mapping = {}
+        for config in self.configs:
+            for link in config.get("links", []):
+                mapping[link_key(link)] = link
+        return mapping
+
+    def node_defs(self):
+        return list(self._node_defs_by_label.values())
+
+    def link_defs(self):
+        return list(self._links_by_key.values())
+
+    def get_link_def(self, key):
+        return self._links_by_key[key]
 
     # ------------------------------------------------------------------
     # Grouped labels — used by admin / views for display
@@ -172,26 +215,61 @@ class ProjectionRunner:
 
     def _project_node(self, node_def):
         model = import_model(node_def["model"])
+        for obj in model.objects.all().iterator():
+            self._project_node_instance(node_def, obj)
+
+    def _project_node_instance(self, node_def, obj):
         label = node_def["label"]
         uuid_field = node_def.get("uuid_field", "uid")
         field_map = node_def.get("fields", {})
+        uuid = str(getattr(obj, uuid_field))
+        props = {k: _get_value(obj, v) for k, v in field_map.items()}
 
-        if not field_map:
-            for obj in model.objects.all():
-                uuid = str(getattr(obj, uuid_field))
-                self.client.run_cypher(
-                    f"MERGE (n:{label} {{uuid: $uuid}})",
-                    {"uuid": uuid},
-                )
+        self.client.run_cypher(
+            (
+                f"MERGE (n:{label} {{uuid: $uuid}}) "
+                "SET n.ravioli_owned = true, "
+                "n.ravioli_label = $ravioli_label, "
+                "n += $props"
+            ),
+            {
+                "uuid": uuid,
+                "ravioli_label": label,
+                "props": props,
+            },
+        )
+
+    def project_node_by_label(self, label, uuid):
+        node_def = self._node_defs_by_label[label]
+        info = self._label_map[label]
+        obj = info["model"].objects.get(**{info["uuid_field"]: uuid})
+        self._project_node_instance(node_def, obj)
+        return obj
+
+    def delete_node_by_label(self, label, uuid):
+        self.client.run_cypher(
+            f"MATCH (n:{label} {{uuid: $uuid}}) DETACH DELETE n",
+            {"uuid": str(uuid)},
+        )
+
+    def project_outgoing_links_by_label(self, label, uuid):
+        info = self._label_map[label]
+        obj = info["model"].objects.get(**{info["uuid_field"]: uuid})
+        for link_def in self._links_by_from_label.get(label, []):
+            if not link_def.get("via_model"):
+                self._project_fk_link_instance(link_def, obj)
+        return obj
+
+    def project_link_source_by_key(self, key, uuid):
+        link_def = self._links_by_key[key]
+        if link_def.get("via_model"):
             return
+        from_info = self._label_map[link_def["from_label"]]
+        obj = from_info["model"].objects.get(**{from_info["uuid_field"]: uuid})
+        self._project_fk_link_instance(link_def, obj)
 
-        set_clause = ", ".join(f"n.{k} = ${k}" for k in field_map)
-        query = f"MERGE (n:{label} {{uuid: $uuid}}) SET {set_clause}"
-
-        for obj in model.objects.all():
-            uuid = str(getattr(obj, uuid_field))
-            props = {k: _get_value(obj, v) for k, v in field_map.items()}
-            self.client.run_cypher(query, {"uuid": uuid, **props})
+    def project_link_by_key(self, key):
+        self._project_link(self._links_by_key[key])
 
     # ------------------------------------------------------------------
     # Link projection (dispatch)
@@ -208,6 +286,11 @@ class ProjectionRunner:
     # ------------------------------------------------------------------
 
     def _project_fk_link(self, link_def):
+        from_info = self._label_map[link_def["from_label"]]
+        for obj in from_info["model"].objects.all().iterator():
+            self._project_fk_link_instance(link_def, obj)
+
+    def _project_fk_link_instance(self, link_def, obj):
         from_label = link_def["from_label"]
         to_label = link_def["to_label"]
         relation = link_def["relation"]
@@ -217,43 +300,50 @@ class ProjectionRunner:
 
         from_info = self._label_map[from_label]
         to_info = self._label_map[to_label]
-        from_model = from_info["model"]
         from_uuid_field = from_info["uuid_field"]
         to_uuid_field = to_info["uuid_field"]
 
         merge_query = (
             f"MATCH (a:{from_label} {{uuid: $f}}) "
             f"MATCH (b:{to_label} {{uuid: $t}}) "
-            f"MERGE (a)-[:{relation}]->(b)"
+            f"MERGE (a)-[r:{relation}]->(b) "
+            "SET r.ravioli_owned = true, "
+            "r.ravioli_from_label = $from_label, "
+            "r.ravioli_to_label = $to_label"
         )
         clear_query = (
             f"MATCH (a:{from_label} {{uuid: $uuid}})"
             f"-[r:{relation}]->() DELETE r"
         )
 
-        for obj in from_model.objects.all():
-            from_uuid = str(getattr(obj, from_uuid_field))
+        from_uuid = str(getattr(obj, from_uuid_field))
 
-            # Clear stale relationships before re-syncing.
-            self.client.run_cypher(clear_query, {"uuid": from_uuid})
+        # Clear stale relationships before re-syncing this source object.
+        self.client.run_cypher(clear_query, {"uuid": from_uuid})
 
-            if cardinality == "many":
-                for related in getattr(obj, source_field).all():
+        params_base = {
+            "f": from_uuid,
+            "from_label": from_label,
+            "to_label": to_label,
+        }
+
+        if cardinality == "many":
+            for related in getattr(obj, source_field).all():
+                to_uuid = str(getattr(related, to_uuid_field))
+                self.client.run_cypher(merge_query, {**params_base, "t": to_uuid})
+        else:
+            # Use the _id shortcut to avoid an extra DB hit when the FK is null.
+            id_attr = f"{source_field}_id"
+            has_value = (
+                bool(getattr(obj, id_attr))
+                if hasattr(obj, id_attr)
+                else bool(getattr(obj, source_field, None))
+            )
+            if has_value:
+                related = getattr(obj, source_field, None)
+                if related is not None:
                     to_uuid = str(getattr(related, to_uuid_field))
-                    self.client.run_cypher(merge_query, {"f": from_uuid, "t": to_uuid})
-            else:
-                # Use the _id shortcut to avoid an extra DB hit when the FK is null.
-                id_attr = f"{source_field}_id"
-                has_value = (
-                    bool(getattr(obj, id_attr))
-                    if hasattr(obj, id_attr)
-                    else bool(getattr(obj, source_field, None))
-                )
-                if has_value:
-                    related = getattr(obj, source_field, None)
-                    if related is not None:
-                        to_uuid = str(getattr(related, to_uuid_field))
-                        self.client.run_cypher(merge_query, {"f": from_uuid, "t": to_uuid})
+                    self.client.run_cypher(merge_query, {**params_base, "t": to_uuid})
 
     # ------------------------------------------------------------------
     # Junction-model link  (separate SQL model carries relationship props)
@@ -277,32 +367,73 @@ class ProjectionRunner:
         # Wipe all relationships of this type globally before re-creating.
         self.client.run_cypher(f"MATCH ()-[r:{relation}]->() DELETE r")
 
-        if props_map:
-            set_clause = ", ".join(f"r.{k} = ${k}" for k in props_map)
-            query = (
-                f"MATCH (a:{from_label} {{uuid: $f}}) "
-                f"MATCH (b:{to_label} {{uuid: $t}}) "
-                f"CREATE (a)-[r:{relation}]->(b) SET {set_clause}"
-            )
-        else:
-            query = (
-                f"MATCH (a:{from_label} {{uuid: $f}}) "
-                f"MATCH (b:{to_label} {{uuid: $t}}) "
-                f"CREATE (a)-[:{relation}]->(b)"
-            )
-
         qs = via_model.objects.select_related(from_field, to_field).all()
-        for junction_obj in qs:
-            from_obj = getattr(junction_obj, from_field, None)
-            to_obj = getattr(junction_obj, to_field, None)
-            if from_obj is None or to_obj is None:
-                continue
+        for junction_obj in qs.iterator():
+            self._project_junction_link_instance(link_def, junction_obj)
 
-            from_uuid = str(getattr(from_obj, from_uuid_field))
-            to_uuid = str(getattr(to_obj, to_uuid_field))
-            params: dict = {"f": from_uuid, "t": to_uuid}
+    def _junction_relation_uuid(self, junction_obj):
+        if hasattr(junction_obj, "uid"):
+            return str(junction_obj.uid)
+        return str(junction_obj.pk)
 
-            for rel_field, sql_field in props_map.items():
-                params[rel_field] = _get_value(junction_obj, sql_field)
+    def _project_junction_link_instance(self, link_def, junction_obj):
+        from_label = link_def["from_label"]
+        to_label = link_def["to_label"]
+        relation = link_def["relation"]
+        from_field = link_def["from_field"]
+        to_field = link_def["to_field"]
+        props_map = link_def.get("props", {})
 
-            self.client.run_cypher(query, params)
+        from_info = self._label_map[from_label]
+        to_info = self._label_map[to_label]
+        from_uuid_field = from_info["uuid_field"]
+        to_uuid_field = to_info["uuid_field"]
+
+        from_obj = getattr(junction_obj, from_field, None)
+        to_obj = getattr(junction_obj, to_field, None)
+        if from_obj is None or to_obj is None:
+            return
+
+        rel_uuid = self._junction_relation_uuid(junction_obj)
+        props = {
+            rel_field: _get_value(junction_obj, sql_field)
+            for rel_field, sql_field in props_map.items()
+        }
+
+        # If the SQL junction row changed endpoints, remove the old graph
+        # relationship carrying the same projection identity before re-creating.
+        self.delete_junction_relation(link_def, rel_uuid)
+
+        self.client.run_cypher(
+            (
+                f"MATCH (a:{from_label} {{uuid: $f}}) "
+                f"MATCH (b:{to_label} {{uuid: $t}}) "
+                f"MERGE (a)-[r:{relation} {{ravioli_uuid: $rel_uuid}}]->(b) "
+                "SET r.ravioli_owned = true, "
+                "r.ravioli_from_label = $from_label, "
+                "r.ravioli_to_label = $to_label, "
+                "r += $props"
+            ),
+            {
+                "f": str(getattr(from_obj, from_uuid_field)),
+                "t": str(getattr(to_obj, to_uuid_field)),
+                "rel_uuid": rel_uuid,
+                "from_label": from_label,
+                "to_label": to_label,
+                "props": props,
+            },
+        )
+
+    def project_junction_by_key(self, key, uuid):
+        link_def = self._links_by_key[key]
+        via_model = import_model(link_def["via_model"])
+        lookup = {"uid": uuid} if hasattr(via_model, "uid") else {"pk": uuid}
+        junction_obj = via_model.objects.get(**lookup)
+        self._project_junction_link_instance(link_def, junction_obj)
+
+    def delete_junction_relation(self, link_def, rel_uuid):
+        relation = link_def["relation"]
+        self.client.run_cypher(
+            f"MATCH ()-[r:{relation} {{ravioli_uuid: $rel_uuid}}]->() DELETE r",
+            {"rel_uuid": str(rel_uuid)},
+        )
