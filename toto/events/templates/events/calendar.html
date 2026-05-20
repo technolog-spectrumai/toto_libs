@@ -1,37 +1,11 @@
-{% extends "oya/base.html" %}
-{% load static %}
+{% extends "events/base.html" %}
 {% load i18n %}
 
-{% block title %}{% trans "Event Calendar" %}{% endblock %}
+{% block events_title %}{% trans "Event Calendar" %}{% endblock %}
 
-{% block start_script %}
-<!-- FullCalendar Scripts -->
+{% block events_head %}
 <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.9/index.global.min.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.9/index.global.min.js"></script>
-
-<style>
-  /* Make FullCalendar fully responsive */
-  .fc .fc-toolbar {
-    flex-wrap: wrap;
-    gap: 0.5rem;
-  }
-
-  .fc .fc-toolbar-title {
-    font-size: 1.25rem;
-  }
-
-  @media (max-width: 480px) {
-    .fc .fc-toolbar-title {
-      font-size: 1rem;
-    }
-  }
-
-  /* Prevent overflow on small screens */
-  #eventCalendar {
-    width: 100%;
-    overflow-x: auto;
-  }
-</style>
 
 <script>
   document.addEventListener('DOMContentLoaded', function () {
@@ -56,30 +30,58 @@
 </script>
 {% endblock %}
 
-{% block content %}
-<div
-  :class="darkMode
-    ? 'bg-primary-bg-dark text-text-main-dark'
-    : 'bg-primary-bg-light text-text-main-light'"
-  class="min-h-screen px-4 py-10 transition-colors duration-300">
+{% block events_content %}
+<div class="grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)]">
 
-  <div class="w-full max-w-6xl mx-auto space-y-12">
+  <!-- Sidebar -->
+  <aside
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="rounded-lg border p-5 shadow-sm space-y-5">
 
-    <!-- 📅 Event Calendar -->
-    <section>
-      <h2 class="text-2xl font-bold mb-4">{% trans "Event Calendar" %}</h2>
-
-      <div class="p-4 rounded border w-full overflow-hidden"
-           :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
-
-        <!-- Responsive wrapper -->
-        <div class="w-full overflow-x-auto">
-          <div id="eventCalendar" class="min-w-[320px]"></div>
-        </div>
-
+    <!-- Stats -->
+    <div class="grid grid-cols-2 gap-3 text-sm">
+      <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
+        <div class="text-xl font-bold">{{ total_events }}</div>
+        <div class="text-xs opacity-65">{% trans "Total" %}</div>
       </div>
-    </section>
+      <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
+        <div class="text-xl font-bold">{{ upcoming_count }}</div>
+        <div class="text-xs opacity-65">{% trans "Upcoming" %}</div>
+      </div>
+      <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3 col-span-2">
+        <div class="text-xl font-bold">{{ past_count }}</div>
+        <div class="text-xs opacity-65">{% trans "Past" %}</div>
+      </div>
+    </div>
 
+    <!-- Upcoming events list -->
+    <div>
+      <p class="mb-3 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Upcoming" %}</p>
+      <div class="space-y-2">
+        {% for event in upcoming_events %}
+          <a
+            href="{% url 'events:event_detail' event.pk %}"
+            :class="darkMode ? 'border-accent-1 bg-primary-bg-dark hover:bg-bubble-bg-dark' : 'border-accent-2 bg-primary-bg-light hover:bg-bubble-bg-light'"
+            class="block rounded-lg border p-3 text-sm transition">
+            <div class="font-semibold truncate">{{ event.title }}</div>
+            <div class="mt-1 text-xs opacity-60">{{ event.start_time|date:"M j, Y · g:i A" }}</div>
+          </a>
+        {% empty %}
+          <p class="text-sm opacity-50">{% trans "No upcoming events." %}</p>
+        {% endfor %}
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- Calendar main -->
+  <div
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="rounded-lg border p-5 shadow-sm w-full overflow-hidden">
+    <div class="w-full overflow-x-auto">
+      <div id="eventCalendar" class="min-w-[320px]"></div>
+    </div>
   </div>
+
 </div>
 {% endblock %}

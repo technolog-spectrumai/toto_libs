@@ -1,81 +1,101 @@
-{% extends "oya/base.html" %}
-{% load static %}
+{% extends "events/base.html" %}
 {% load i18n %}
 
-{% block title %}{{ event.title }}{% endblock %}
+{% block events_title %}{{ event.title }}{% endblock %}
 
-{% block content %}
-<div
-  :class="darkMode
-    ? 'bg-primary-bg-dark text-text-main-dark'
-    : 'bg-primary-bg-light text-text-main-light'"
-  class="min-h-screen px-4 py-10 transition-colors duration-300">
+{% block events_content %}
+<div class="mx-auto max-w-4xl space-y-6">
 
-  <div class="max-w-4xl mx-auto space-y-16">
-    <!-- 🗓️ Event Details -->
-    <section>
-      <h1 class="text-4xl font-extrabold tracking-tight mb-6"
-          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
-        {{ event.title }}
-      </h1>
-      <div class="p-6 rounded-lg border space-y-6"
-           :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+  <a href="{% url 'events:event_list' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+    <i class="fa-solid fa-arrow-left"></i>
+    {% trans "Back to calendar" %}
+  </a>
 
-        <div>
-          <h3 class="text-md font-bold uppercase tracking-wide"
-            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">{% trans "Description" %}</h3>
-          <p class="text-base">
-            {{ event.description }}
-          </p>
-        </div>
+  <section
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="rounded-lg border p-6 shadow-sm space-y-6">
 
-        <div>
-          <h3 class="text-md font-bold uppercase tracking-wide"
-            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">{% trans "Location" %}</h3>
-          <p class="text-base">{{ event.location }}</p>
-        </div>
+    <h2
+      :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+      class="text-3xl font-bold tracking-tight">
+      {{ event.title }}
+    </h2>
 
-        <div class="grid grid-cols-2 gap-6">
-          <div>
-            <p class="text-md font-bold uppercase tracking-wide"
-              :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">{% trans "Start Time" %}</p>
-            <p class="text-base">{{ event.start_time|date:"F j, Y, g:i A" }}</p>
-          </div>
-          <div>
-            <h3 class="text-md font-bold uppercase tracking-wide"
-            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">{% trans "End Time" %}</h3>
-            <p class="text-base">{{ event.end_time|date:"F j, Y, g:i A" }}</p>
-          </div>
-        </div>
-
-        {% if category %}
-        <div>
-          <h3 class="text-md font-bold uppercase tracking-wide"
-          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">{% trans "Category" %}</h3>
-          <p class="text-base">{{ category.name }}</p>
-        </div>
-        {% endif %}
-
-        {% if organizer %}
-        <div>
-          <h3 class="text-md font-bold uppercase tracking-wide"
-          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">{% trans "Organizer" %}</h3>
-          <p class="text-base">{{ organizer.display_name }}</p>
-        </div>
-        {% endif %}
+    <!-- Time row -->
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div>
+        <p
+          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+          class="mb-1 text-xs font-semibold uppercase tracking-wide">
+          {% trans "Start" %}
+        </p>
+        <p class="text-sm">{{ event.start_time|date:"F j, Y · g:i A" }}</p>
       </div>
-    </section>
-
-    <!-- 🔗 Navigation -->
-    <section>
-      <div class="text-right">
-        <a href="{% url 'events:event_list' %}"
-           class="inline-block px-4 py-2 rounded text-sm font-medium transition
-                  text-accent-light dark:text-accent-dark hover:underline">
-          ← {% trans "Back to Event Calendar" %}
-        </a>
+      <div>
+        <p
+          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+          class="mb-1 text-xs font-semibold uppercase tracking-wide">
+          {% trans "End" %}
+        </p>
+        <p class="text-sm">{{ event.end_time|date:"F j, Y · g:i A" }}</p>
       </div>
-    </section>
-  </div>
+    </div>
+
+    <!-- Description -->
+    {% if event.description %}
+    <div>
+      <p
+        :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+        class="mb-1 text-xs font-semibold uppercase tracking-wide">
+        {% trans "Description" %}
+      </p>
+      <p class="text-sm leading-relaxed">{{ event.description }}</p>
+    </div>
+    {% endif %}
+
+    <!-- Meta row -->
+    <div class="flex flex-wrap gap-2 border-t border-current/10 pt-4">
+      {% if category %}
+        <span class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-1 text-xs font-semibold">
+          <i class="fa-solid fa-shapes"></i>
+          {{ category.name }}
+        </span>
+      {% endif %}
+      {% if organizer %}
+        <span class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-1 text-xs font-semibold">
+          <i class="fa-solid fa-user"></i>
+          {{ organizer.display_name }}
+        </span>
+      {% endif %}
+      {% if event.public %}
+        <span class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-1 text-xs font-semibold">
+          <i class="fa-solid fa-globe"></i>
+          {% trans "Public" %}
+        </span>
+      {% else %}
+        <span class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-1 text-xs font-semibold">
+          <i class="fa-solid fa-lock"></i>
+          {% trans "Private" %}
+        </span>
+      {% endif %}
+      {% if event.address %}
+        <span class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-1 text-xs font-semibold">
+          <i class="fa-solid fa-location-dot"></i>
+          {{ event.address }}
+        </span>
+      {% elif event.zone %}
+        <span class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-1 text-xs font-semibold">
+          <i class="fa-solid fa-map"></i>
+          {{ event.zone }}
+        </span>
+      {% elif event.route %}
+        <span class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-1 text-xs font-semibold">
+          <i class="fa-solid fa-route"></i>
+          {{ event.route }}
+        </span>
+      {% endif %}
+    </div>
+
+  </section>
 </div>
 {% endblock %}
