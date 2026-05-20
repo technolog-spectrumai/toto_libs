@@ -56,6 +56,15 @@
             Detection
           </span>
         {% endif %}
+
+        {% if task.metadata.required_skills %}
+          <span
+            :class="darkMode ? 'bg-accent-dark/20 text-accent-dark' : 'bg-accent-light/15 text-accent-light'"
+            class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold">
+            <i class="fa-solid fa-user-gear text-[10px]"></i>
+            Skills
+          </span>
+        {% endif %}
       </div>
     </div>
 
@@ -188,6 +197,27 @@
         </div>
       {% endif %}
     </section>
+
+    {% if task.metadata.required_skills %}
+      <section
+        :class="darkMode
+          ? 'border-caution-dark/40 bg-caution-dark/10'
+          : 'border-caution-light/40 bg-caution-light/10'"
+        class="rounded-lg border p-3">
+        <p class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+          Required Skills
+        </p>
+        <div class="flex flex-wrap gap-2">
+          {% for skill in task.metadata.required_skills %}
+            <span
+              :class="darkMode ? 'bg-caution-dark/20 text-caution-dark' : 'bg-caution-light/20 text-caution-light'"
+              class="rounded-full px-2.5 py-1 text-xs font-semibold">
+              {{ skill.group }} / {{ skill.title }}
+            </span>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
 
     {% if task.metadata %}
       <section

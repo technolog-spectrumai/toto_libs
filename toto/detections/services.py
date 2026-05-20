@@ -1,10 +1,8 @@
 import json
 from datetime import timedelta
-from decimal import Decimal
 
 from django.utils import timezone
 
-from toto.bazaar.models import Product, Shop
 from toto.kanban.models import Campaign, Column, Mission, Project, Task
 from toto.people.models import Person
 
@@ -131,7 +129,28 @@ def ensure_detection_mitigation_task(detection, *, owner=None, reviewer=None):
     return task
 
 
-def create_detection_help_task(detection, *, mission, owner=None, reviewer=None, title="", description=""):
+def skill_metadata(required_skills):
+    return [
+        {
+            "id": skill.pk,
+            "title": skill.title,
+            "slug": skill.slug,
+            "group": skill.group.title,
+        }
+        for skill in (required_skills or [])
+    ]
+
+
+def create_detection_help_task(
+    detection,
+    *,
+    mission,
+    owner=None,
+    reviewer=None,
+    title="",
+    description="",
+    required_skills=None,
+):
     project = mission.campaign.project
     column = (
         Column.objects
@@ -141,64 +160,29 @@ def create_detection_help_task(detection, *, mission, owner=None, reviewer=None,
     )
     if not column:
         column = Column.objects.create(project=project, name="To Do", position=1, can_add_task=True)
+    metadata = {
+        "source": "detection_help",
+        "detection_id": str(detection.pk),
+        "severity": detection.severity,
+    }
+    if owner:
+        metadata["requested_by"] = {
+            "id": owner.pk,
+            "name": str(owner),
+        }
+    skills = skill_metadata(required_skills)
+    if skills:
+        metadata["required_skills"] = skills
     task = Task.objects.create(
         mission=mission,
         column=column,
         title=title or f"Help with: {detection.title}",
         description=description or detection.description,
-        assignee=owner,
         reviewer=reviewer,
         due_date=(timezone.now() + timedelta(days=3)).date(),
         weight=3 if detection.severity in ("high", "critical") else 2,
-        metadata={
-            "source": "detection_help",
-            "detection_id": str(detection.pk),
-            "severity": detection.severity,
-        },
+        metadata=metadata,
     )
     detection.mitigation_task = task
     detection.save(update_fields=["mitigation_task", "updated_at"])
     return task
-
-
-def create_detection_service_request(
-    detection,
-    *,
-    requester=None,
-    title="",
-    description="",
-    price=Decimal("0.00"),
-    currency="PLN",
-):
-    currency = (currency or "PLN").upper()[:3]
-    shop = Shop.objects.filter(is_active=True).order_by("pk").first()
-    if not shop:
-        shop = Shop.objects.create(
-            name="Detection Services",
-            description="Service requests outsourced from field detections.",
-            owner=requester,
-            currency=currency,
-            is_active=True,
-        )
-
-    product = Product.objects.create(
-        shop=shop,
-        name=title or f"Help with: {detection.title}",
-        summary=f"Service request for detection {detection.title}"[:500],
-        description=description or detection.description,
-        product_type="service",
-        status="published",
-        price=price or Decimal("0.00"),
-        currency=currency or shop.currency,
-        is_public=True,
-        is_regulated=False,
-        origin_address=detection.address,
-        metadata={
-            "source": "detection_help",
-            "detection_id": str(detection.pk),
-            "severity": detection.severity,
-        },
-    )
-    detection.outsourced_service = product
-    detection.save(update_fields=["outsourced_service", "updated_at"])
-    return product

@@ -1,6 +1,6 @@
 from datetime import timedelta
-from decimal import Decimal
 
+from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.contrib.gis.geos import Point
 from django.utils import timezone
@@ -11,21 +11,20 @@ from toto.locations.models import Address
 from toto.people.models import Person
 
 from ...models import Detection, DetectionCategory
-from ...services import create_detection_service_request, first_or_create
+from ...services import first_or_create, skill_metadata
 
 
 class Command(IngressCommand):
-    help = "Seed demo detections, map points, Kanban mitigation tasks, and Bazaar service help."
+    help = "Seed demo detections, map points, and Kanban mitigation tasks."
 
     def process(self):
         self.stdout.write("Seeding detections...")
         people = self._ensure_people()
         addresses = self._ensure_addresses()
         categories = self._ensure_categories()
+        skills = self._ensure_skills()
         detections = self._ensure_detections(categories, addresses, people)
-        tasks = self._ensure_kanban_tasks(detections, people)
-        if self.full:
-            self._ensure_service_request(detections[1], people["tester"])
+        tasks = self._ensure_kanban_tasks(detections, people, skills)
         self.stdout.write(self.style.SUCCESS(f"Detections ingress complete ({len(tasks)} tasks)."))
 
     def _point(self, longitude, latitude):
@@ -110,6 +109,43 @@ class Command(IngressCommand):
             categories[name] = category
         return categories
 
+    def _ensure_skills(self):
+        if not apps.is_installed("toto.competence"):
+            return {}
+        SkillGroup = apps.get_model("competence", "SkillGroup")
+        SkillBadge = apps.get_model("competence", "SkillBadge")
+        group, created = SkillGroup.objects.get_or_create(
+            slug="field-response",
+            defaults={
+                "title": "Field Response",
+                "description": "Skills used for detection mitigation and response assignment.",
+                "order": 30,
+            },
+        )
+        if created:
+            self.stdout.write("  + skill group Field Response")
+        specs = [
+            ("access-control", "Access Control", "fa-solid fa-id-badge", 10),
+            ("site-inspection", "Site Inspection", "fa-solid fa-helmet-safety", 20),
+            ("safety-response", "Safety Response", "fa-solid fa-shield-heart", 30),
+        ]
+        skills = {}
+        for slug, title, icon, order in specs:
+            badge, created = SkillBadge.objects.get_or_create(
+                group=group,
+                slug=slug,
+                defaults={
+                    "title": title,
+                    "description": f"{title} skill for detection response.",
+                    "icon": icon,
+                    "order": order,
+                },
+            )
+            if created:
+                self.stdout.write(f"  + skill badge {title}")
+            skills[slug] = badge
+        return skills
+
     def _ensure_detections(self, categories, addresses, people):
         now = timezone.now()
         specs = [
@@ -157,7 +193,7 @@ class Command(IngressCommand):
             detections.append(detection)
         return detections
 
-    def _ensure_kanban_tasks(self, detections, people):
+    def _ensure_kanban_tasks(self, detections, people, skills):
         owner = people["response-lead-piotr"]
         project, created = first_or_create(
             Project,
@@ -219,7 +255,17 @@ class Command(IngressCommand):
         )
 
         tasks = []
+        skill_map = {
+            "North gate badge reader offline": ["access-control"],
+            "River yard surface crack": ["site-inspection", "safety-response"],
+            "Dock seven loose barrier": ["safety-response"],
+        }
         for position, detection in enumerate(detections, start=1):
+            required_skills = [
+                skills[slug]
+                for slug in skill_map.get(detection.title, [])
+                if slug in skills
+            ]
             task, created = first_or_create(
                 Task,
                 mission=mission,
@@ -235,27 +281,19 @@ class Command(IngressCommand):
                         "source": "detection",
                         "detection_id": str(detection.pk),
                         "severity": detection.severity,
+                        "required_skills": skill_metadata(required_skills),
                     },
                 },
             )
             if created:
                 self.stdout.write(f"  + kanban task {task.title}")
+            elif required_skills:
+                metadata = task.metadata or {}
+                metadata["required_skills"] = skill_metadata(required_skills)
+                task.metadata = metadata
+                task.save(update_fields=["metadata"])
             if detection.mitigation_task_id != task.pk:
                 detection.mitigation_task = task
                 detection.save(update_fields=["mitigation_task", "updated_at"])
             tasks.append(task)
         return tasks
-
-    def _ensure_service_request(self, detection, requester):
-        if detection.outsourced_service_id:
-            return detection.outsourced_service
-        product = create_detection_service_request(
-            detection,
-            requester=requester,
-            title=f"Inspect: {detection.title}",
-            description=detection.description,
-            price=Decimal("220.00"),
-            currency="PLN",
-        )
-        self.stdout.write(f"  + bazaar service {product.name}")
-        return product

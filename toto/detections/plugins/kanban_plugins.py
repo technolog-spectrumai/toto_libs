@@ -27,7 +27,6 @@ class MissionDetectionsPlugin(MissionPlugin):
             "address",
             "mitigation_task",
             "mitigation_task__column",
-            "outsourced_service",
         ).order_by("-start_time")[:20]
         return context
 
@@ -53,6 +52,5 @@ class TaskDetectionsPlugin(TaskPlugin):
         ).select_related(
             "category",
             "address",
-            "outsourced_service",
         ).order_by("-start_time")
         return context

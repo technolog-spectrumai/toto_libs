@@ -11,7 +11,6 @@ from .forms import DetectionHelpForm, DetectionMapCreateForm
 from .models import Detection, DetectionCategory
 from .services import (
     create_detection_help_task,
-    create_detection_service_request,
     detection_map_feature,
     ensure_detection_mitigation_task,
     person_for_user,
@@ -39,7 +38,6 @@ class DetectionListView(DetectionsContextMixin, ListView):
             "reported_by",
             "mitigation_task",
             "mitigation_task__column",
-            "outsourced_service",
         )
         q = self.request.GET.get("q")
         status = self.request.GET.get("status")
@@ -88,7 +86,6 @@ class DetectionDetailView(DetectionsContextMixin, DetailView):
             "mitigation_task__mission",
             "mitigation_task__assignee",
             "mitigation_task__reviewer",
-            "outsourced_service",
         )
 
     def get_context_data(self, **kwargs):
@@ -139,7 +136,6 @@ class DetectionHelpView(LoginRequiredMixin, DetectionsContextMixin, View):
                 "address",
                 "mitigation_task",
                 "mitigation_task__mission",
-                "outsourced_service",
             ),
             pk=self.kwargs["pk"],
         )
@@ -152,29 +148,18 @@ class DetectionHelpView(LoginRequiredMixin, DetectionsContextMixin, View):
         detection = self.get_detection()
         form = DetectionHelpForm(request.POST, detection=detection)
         if not form.is_valid():
-            messages.error(request, "Choose how this detection should ask for help.")
+            messages.error(request, "Choose a mission for this help task.")
             return self._render(request, detection, form)
 
-        mode = form.cleaned_data["mode"]
-        if mode == DetectionHelpForm.MODE_TASK:
-            task = create_detection_help_task(
-                detection,
-                mission=form.cleaned_data["mission"],
-                owner=person_for_user(request.user),
-                title=form.cleaned_data["title"],
-                description=form.cleaned_data["description"],
-            )
-            messages.success(request, f"Help task created in {task.mission.title}.")
-        else:
-            product = create_detection_service_request(
-                detection,
-                requester=person_for_user(request.user),
-                title=form.cleaned_data["title"],
-                description=form.cleaned_data["description"],
-                price=form.cleaned_data["service_price"],
-                currency=form.cleaned_data["service_currency"],
-            )
-            messages.success(request, f"Bazaar service published: {product.name}.")
+        task = create_detection_help_task(
+            detection,
+            mission=form.cleaned_data["mission"],
+            owner=person_for_user(request.user),
+            title=form.cleaned_data["title"],
+            description=form.cleaned_data["description"],
+            required_skills=form.cleaned_data.get("required_skills"),
+        )
+        messages.success(request, f"Help task created in {task.mission.title}.")
         return redirect("detections:detection-detail", pk=detection.pk)
 
     def _render(self, request, detection, form):
@@ -197,7 +182,6 @@ class DetectionDashboardView(LoginRequiredMixin, DetectionsContextMixin, Templat
             "reported_by",
             "mitigation_task",
             "mitigation_task__column",
-            "outsourced_service",
         )[:20]
         status_counts = list(
             Detection.objects.values("status").annotate(count=Count("id")).order_by("status")
@@ -209,11 +193,7 @@ class DetectionDashboardView(LoginRequiredMixin, DetectionsContextMixin, Templat
             "recent_detections": recent,
             "active_count": Detection.objects.filter(status__in=["new", "acknowledged", "handling"]).count(),
             "task_count": Detection.objects.filter(mitigation_task__isnull=False).count(),
-            "service_count": Detection.objects.filter(outsourced_service__isnull=False).count(),
-            "unassigned_count": Detection.objects.filter(
-                mitigation_task__isnull=True,
-                outsourced_service__isnull=True,
-            ).count(),
+            "unassigned_count": Detection.objects.filter(mitigation_task__isnull=True).count(),
             "status_chart_data": {
                 "labels": [dict(Detection.STATUS_CHOICES).get(row["status"], row["status"]) for row in status_counts],
                 "data": [row["count"] for row in status_counts],

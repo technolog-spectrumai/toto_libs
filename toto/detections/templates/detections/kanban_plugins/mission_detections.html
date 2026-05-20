@@ -44,11 +44,6 @@
               {{ detection.mitigation_task.column.name }}
             </span>
           {% endif %}
-          {% if detection.outsourced_service %}
-            <span :class="darkMode ? 'bg-success-dark/20 text-success-dark' : 'bg-success-light/20 text-success-light'" class="rounded-full px-2 py-0.5">
-              Bazaar service
-            </span>
-          {% endif %}
         </div>
       </a>
     {% endfor %}

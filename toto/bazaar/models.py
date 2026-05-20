@@ -283,8 +283,7 @@ class ServiceDelivery(DomainEntity):
     """
     Tracks receiver confirmation for service-type order items.
     Payment or fulfillment is only released after the receiver (and optionally a
-    custodian) confirms the work was delivered. Detection help can be outsourced
-    as a service product and then follow this receiver/custodian confirmation flow.
+    custodian) confirms the work was delivered.
     """
     STATUS_CHOICES = [
         ('pending', 'Pending confirmation'),
@@ -534,4 +533,3 @@ class MarketCustodian(DomainEntity):
 
     def __str__(self):
         return f'{self.name} ({self.shop})'
-

@@ -102,14 +102,6 @@ class Detection(EventBase):
         related_name='detection_mitigations',
         help_text='Kanban task that mitigates or resolves this detection.',
     )
-    outsourced_service = models.ForeignKey(
-        'bazaar.Product',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='detection_help_requests',
-        help_text='Bazaar service request created when this detection is outsourced.',
-    )
 
     severity = models.CharField(max_length=16, choices=SEVERITY_CHOICES, default='medium')
     detection_type = models.CharField(max_length=24, choices=TYPE_CHOICES, default='incident')

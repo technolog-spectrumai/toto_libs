@@ -65,14 +65,18 @@
           <dd class="mt-1 font-bold">{{ detection.mitigation_task.reviewer|default:"Optional" }}</dd>
         </div>
       </dl>
-    </section>
-    {% endif %}
-
-    {% if detection.outsourced_service %}
-    <section :class="darkMode ? 'border-success-dark/40 bg-success-dark/10' : 'border-success-light/40 bg-success-light/10'" class="rounded-2xl border p-5 shadow-sm space-y-3">
-      <h2 :class="darkMode ? 'text-success-dark' : 'text-success-light'" class="text-lg font-bold"><i class="fa-solid fa-handshake-angle opacity-70"></i> Bazaar Service</h2>
-      <a href="{% url 'bazaar:product-detail' detection.outsourced_service.slug %}" class="block text-sm font-semibold underline hover:opacity-80">{{ detection.outsourced_service.name }}</a>
-      <p class="text-sm opacity-70">{{ detection.outsourced_service.price }} {{ detection.outsourced_service.currency }} - {{ detection.outsourced_service.get_status_display }}</p>
+      {% if detection.mitigation_task.metadata.required_skills %}
+        <div :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="border-t px-5 py-4">
+          <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Required skills</p>
+          <div class="mt-2 flex flex-wrap gap-2">
+            {% for skill in detection.mitigation_task.metadata.required_skills %}
+              <span :class="darkMode ? 'bg-caution-dark/20 text-caution-dark' : 'bg-caution-light/20 text-caution-light'" class="rounded-full px-2.5 py-1 text-xs font-semibold">
+                {{ skill.group }} / {{ skill.title }}
+              </span>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
     </section>
     {% endif %}
 
@@ -95,7 +99,7 @@
   <aside class="space-y-4">
     <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm">
       <h2 class="text-lg font-bold"><i class="fa-solid fa-handshake-angle opacity-70"></i> Help</h2>
-      <p class="mt-2 text-sm opacity-70">Create a Kanban task in another mission or outsource this detection as a Bazaar service.</p>
+      <p class="mt-2 text-sm opacity-70">Create a Kanban task in another mission and mark the skills needed for assignment.</p>
       <a href="{% url 'detections:detection-help' detection.pk %}" :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'" class="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
         <i class="fa-solid fa-plus"></i>
         Ask for help
