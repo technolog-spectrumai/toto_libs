@@ -5,12 +5,16 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.db.models import Count, Q, Sum
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 from toto.ui.page import PageProcessor
 
 from toto.tribunal.forms import (
+    JurySessionForm,
+    JuryVoteForm,
     TribunalCaseForm,
     TribunalClaimForm,
     TribunalEvidenceForm,
@@ -18,6 +22,8 @@ from toto.tribunal.forms import (
     TribunalRulingForm,
 )
 from toto.tribunal.models import (
+    JurySession,
+    JuryVote,
     TribunalCase,
     TribunalClaim,
     TribunalEvidence,
@@ -239,6 +245,9 @@ def get_case_metrics(case):
 
     evidence_per_claim = round(evidence_count / claim_count, 2) if claim_count else 0
 
+    jury_session_count = case.jury_sessions.count()
+    active_jury = case.jury_sessions.filter(status='open').first()
+
     readiness_score = 0
     readiness_score += 25 if party_count >= 2 else 0
     readiness_score += 25 if claim_count > 0 else 0
@@ -250,6 +259,8 @@ def get_case_metrics(case):
         "claim_count": claim_count,
         "evidence_count": evidence_count,
         "ruling_count": ruling_count,
+        "jury_session_count": jury_session_count,
+        "active_jury": active_jury,
         "total_claim_amount": total_claim_amount,
         "total_awarded_amount": total_awarded_amount,
         "age_days": age_days,
@@ -281,14 +292,15 @@ def get_case_charts(case):
         .order_by("evidence_type")
     )
 
+    activity_chart = charts.bar_chart(labels, [{
+        "label": "Case items",
+        "data": data,
+        "backgroundColor": charts.chart_colors,
+    }])
+    activity_chart["options"]["scales"]["y"]["ticks"] = {"stepSize": 1, "precision": 0}
+
     return {
-        "case_activity_chart_json": charts.chart_json(
-            charts.bar_chart(labels, [{
-                "label": "Case items",
-                "data": data,
-                "backgroundColor": charts.chart_colors,
-            }])
-        ),
+        "case_activity_chart_json": charts.chart_json(activity_chart),
         "case_claim_type_chart_json": charts.chart_json(
             charts.doughnut_chart(
                 [(row["claim_type"] or "unspecified") for row in claim_rows],
@@ -400,8 +412,16 @@ def case_detail(request, case_id):
             "rulings__fine_asset",
             "rulings__fine_obligation",
             "rulings__fine_obligation__asset",
+            "jury_sessions__votes__juror",
+            "jury_sessions__created_by",
         ),
         id=case_id,
+    )
+
+    jury_sessions = list(case.jury_sessions.all())
+    has_jury_verdict = any(
+        js.status == 'closed' and js.outcome not in ('pending', 'cancelled')
+        for js in jury_sessions
     )
 
     return render_tribunal(request, "tribunal/case_detail.html", {
@@ -412,6 +432,9 @@ def case_detail(request, case_id):
         "claim_form": TribunalClaimForm(case=case),
         "evidence_form": TribunalEvidenceForm(case=case),
         "ruling_form": TribunalRulingForm(case=case),
+        "jury_session_form": JurySessionForm(),
+        "jury_sessions": jury_sessions,
+        "has_jury_verdict": has_jury_verdict,
     })
 
 
@@ -750,3 +773,143 @@ def ruling_delete(request, ruling_id):
     ruling.delete()
     messages.success(request, "Ruling removed.")
     return redirect("tribunal:case_detail", case_id=case_id)
+
+
+@require_POST
+@login_required
+def jury_session_open(request, case_id):
+    if not request.user.is_staff:
+        raise PermissionDenied
+    case = get_object_or_404(TribunalCase, id=case_id)
+    form = JurySessionForm(request.POST)
+    if form.is_valid():
+        session = form.save(commit=False)
+        session.case = case
+        session.opens_at = timezone.now()
+        session.status = 'open'
+        try:
+            session.created_by = request.user.community_profile
+        except Exception:
+            pass
+        session.save()
+        messages.success(request, "Jury session opened.")
+    else:
+        messages.error(request, "Could not open jury session: " + str(form.errors))
+    return redirect("tribunal:case_detail", case_id=case_id)
+
+
+def _jury_session_ctx(session, user):
+    tally = session.tally()
+    total = sum(tally.values())
+    chart_data = json.dumps({
+        "chart_type": "doughnut",
+        "labels": ["Guilty", "Not Guilty", "Abstain"],
+        "datasets": [{
+            "label": "Votes",
+            "data": [tally["guilty"], tally["not_guilty"], tally["abstain"]],
+            "backgroundColor": ["#ff4455", "#5fa38c", "#4f5fa1"],
+        }],
+        "options": {"cutout": "55%"},
+    })
+    user_person = getattr(user, 'community_profile', None)
+    user_vote = session.votes.filter(juror=user_person).first() if user_person else None
+    invited = list(session.jurors.all())
+    is_invited = (not invited) or (user_person and any(j.pk == user_person.pk for j in invited))
+    votes_by_juror = {v.juror_id: v for v in session.votes.all()}
+    juror_rows = [(juror, votes_by_juror.get(juror.pk)) for juror in invited]
+    vote_form = JuryVoteForm() if session.is_open and not user_vote and is_invited else None
+    return {
+        "session": session,
+        "tally": tally,
+        "total": total,
+        "chart_data": chart_data,
+        "vote_form": vote_form,
+        "user_vote": user_vote,
+        "user_person": user_person,
+        "juror_rows": juror_rows,
+        "is_invited": is_invited,
+    }
+
+
+@login_required
+def jury_session_detail(request, session_id):
+    session = get_object_or_404(
+        JurySession.objects.select_related("case", "created_by").prefetch_related("votes__juror", "jurors"),
+        id=session_id,
+    )
+    return render_tribunal(request, "tribunal/jury_session_detail.html", _jury_session_ctx(session, request.user))
+
+
+@require_POST
+@login_required
+def jury_vote(request, session_id):
+    session = get_object_or_404(JurySession, id=session_id)
+    is_htmx = bool(request.headers.get('HX-Request'))
+    detail_url = reverse('tribunal:jury_session_detail', kwargs={'session_id': session_id})
+
+    def _htmx_redirect():
+        r = HttpResponse(status=204)
+        r['HX-Redirect'] = detail_url
+        return r
+
+    if not session.is_open:
+        if is_htmx:
+            return _htmx_redirect()
+        messages.error(request, "This jury session is no longer open for voting.")
+        return redirect(detail_url)
+
+    user_person = getattr(request.user, 'community_profile', None)
+    if not user_person:
+        if is_htmx:
+            return _htmx_redirect()
+        messages.error(request, "You need a person profile to cast a vote.")
+        return redirect(detail_url)
+
+    invited = session.jurors.all()
+    if invited.exists() and not invited.filter(pk=user_person.pk).exists():
+        if is_htmx:
+            return _htmx_redirect()
+        messages.error(request, "You are not invited to vote in this session.")
+        return redirect(detail_url)
+
+    if session.votes.filter(juror=user_person).exists():
+        if is_htmx:
+            return _htmx_redirect()
+        messages.error(request, "You have already voted in this session.")
+        return redirect(detail_url)
+
+    form = JuryVoteForm(request.POST)
+    if not form.is_valid():
+        if is_htmx:
+            return _htmx_redirect()
+        messages.error(request, "Invalid vote submission.")
+        return redirect(detail_url)
+
+    vote = form.save(commit=False)
+    vote.session = session
+    vote.juror = user_person
+    vote.save()
+
+    if is_htmx:
+        session = get_object_or_404(
+            JurySession.objects.select_related("case", "created_by").prefetch_related("votes__juror", "jurors"),
+            id=session_id,
+        )
+        return render_tribunal(request, "tribunal/_jury_live.html", _jury_session_ctx(session, request.user))
+
+    messages.success(request, f"Vote recorded: {vote.get_vote_display()}.")
+    return redirect(detail_url)
+
+
+@require_POST
+@login_required
+def jury_session_close(request, session_id):
+    if not request.user.is_staff:
+        raise PermissionDenied
+    session = get_object_or_404(JurySession.objects.select_related("case"), id=session_id)
+    outcome = session.compute_outcome()
+    session.status = 'closed'
+    session.outcome = outcome
+    session.save(update_fields=['status', 'outcome'])
+    messages.success(request, f"Jury session closed. Outcome: {outcome.replace('_', ' ').title()}.")
+    return redirect("tribunal:jury_session_detail", session_id=session_id)

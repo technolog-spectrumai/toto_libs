@@ -1,6 +1,8 @@
 from django.contrib import admin
 
 from toto.tribunal.models import (
+    JurySession,
+    JuryVote,
     TribunalCase,
     TribunalParty,
     TribunalClaim,
@@ -102,3 +104,24 @@ class TribunalRulingAdmin(admin.ModelAdmin):
     )
     list_filter = ("resolution_type", "currency", "fine_asset", "effective_at", "created_at")
     search_fields = ("case__title", "case__case_number", "title", "decision", "reasoning")
+
+
+class JuryVoteInline(admin.TabularInline):
+    model = JuryVote
+    extra = 0
+    readonly_fields = ('voted_at',)
+
+
+@admin.register(JurySession)
+class JurySessionAdmin(admin.ModelAdmin):
+    list_display = ("pk", "case", "status", "outcome", "opens_at", "closes_at", "created_by", "created_at")
+    list_filter = ("status", "outcome", "created_at")
+    search_fields = ("case__case_number", "case__title", "created_by__display_name")
+    inlines = [JuryVoteInline]
+
+
+@admin.register(JuryVote)
+class JuryVoteAdmin(admin.ModelAdmin):
+    list_display = ("session", "juror", "vote", "voted_at")
+    list_filter = ("vote", "voted_at")
+    search_fields = ("session__case__case_number", "juror__display_name", "reason")

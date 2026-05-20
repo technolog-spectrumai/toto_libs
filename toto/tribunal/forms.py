@@ -1,6 +1,8 @@
 from django import forms
 
 from toto.tribunal.models import (
+    JurySession,
+    JuryVote,
     TribunalCase,
     TribunalClaim,
     TribunalEvidence,
@@ -124,25 +126,50 @@ class TribunalRulingForm(forms.ModelForm):
             self.fields["fine_asset"].initial = order.ledger_asset_id
             self.fields["fine_amount"].initial = order.total_amount
 
+class JurySessionForm(forms.ModelForm):
+    closes_date = forms.DateField(
+        widget=forms.DateInput(attrs={'type': 'date'}),
+        label='Closes date',
+    )
+    closes_time = forms.TimeField(
+        widget=forms.TimeInput(attrs={'type': 'time'}),
+        label='Closes time',
+        initial='23:59',
+    )
+
+    class Meta:
+        model = JurySession
+        fields = ['jurors', 'required_votes', 'note']
+        widgets = {
+            'jurors': forms.CheckboxSelectMultiple(),
+            'note': forms.Textarea(attrs={'rows': 3}),
+        }
+
     def clean(self):
         cleaned = super().clean()
-        fine_fields = [
-            "fine_debtor_account",
-            "fine_creditor_account",
-            "fine_asset",
-            "fine_amount",
-        ]
-        has_fine_value = any(cleaned.get(field) for field in fine_fields) or cleaned.get("fine_due_at")
-        if not has_fine_value:
-            return cleaned
-
-        missing = [field for field in fine_fields if not cleaned.get(field)]
-        if missing:
-            raise forms.ValidationError(
-                "A fine needs a debtor account, creditor account, asset, and amount."
-            )
-
-        if cleaned["fine_amount"] <= 0:
-            self.add_error("fine_amount", "Fine amount must be greater than zero.")
-
+        d = cleaned.get('closes_date')
+        t = cleaned.get('closes_time')
+        if d and t:
+            import datetime
+            from django.utils import timezone as tz
+            naive = datetime.datetime.combine(d, t)
+            cleaned['closes_at'] = tz.make_aware(naive)
+        elif not self.errors:
+            raise forms.ValidationError('Closing date and time are required.')
         return cleaned
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        instance.closes_at = self.cleaned_data['closes_at']
+        if commit:
+            instance.save()
+        return instance
+
+
+class JuryVoteForm(forms.ModelForm):
+    class Meta:
+        model = JuryVote
+        fields = ['vote', 'reason']
+        widgets = {
+            'reason': forms.Textarea(attrs={'rows': 3}),
+        }
