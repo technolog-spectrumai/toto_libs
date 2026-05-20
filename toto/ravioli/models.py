@@ -84,6 +84,44 @@ class GraphChangeEvent(models.Model):
         return f"{self.action}: {self.graph_label or target}"
 
 
+class GraphProjectionPlan(models.Model):
+    STATUS_READY = "ready"
+    STATUS_APPLIED = "applied"
+    STATUS_FAILED = "failed"
+
+    STATUS_CHOICES = [
+        (STATUS_READY, "Ready"),
+        (STATUS_APPLIED, "Applied"),
+        (STATUS_FAILED, "Failed"),
+    ]
+
+    status = models.CharField(
+        max_length=16,
+        choices=STATUS_CHOICES,
+        default=STATUS_READY,
+        db_index=True,
+    )
+    scope = models.JSONField(default=dict, blank=True)
+    summary = models.JSONField(default=dict, blank=True)
+    diff = models.JSONField(default=dict, blank=True)
+    error = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    applied_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Graph Projection Plan"
+        verbose_name_plural = "Graph Projection Plans"
+        ordering = ["-created_at", "-id"]
+
+    @property
+    def total_changes(self):
+        return self.summary.get("total_changes", 0)
+
+    def __str__(self):
+        return f"Projection plan #{self.pk or 'new'} ({self.status})"
+
+
 class GraphSync(models.Model):
     """
     Dummy model used only to expose a global admin action

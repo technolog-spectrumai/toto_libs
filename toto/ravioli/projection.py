@@ -8,6 +8,8 @@ this module owns the projection logic.
 
 import json
 
+from django.core.serializers.json import DjangoJSONEncoder
+
 from .loader import load_all_configs, import_model
 
 
@@ -15,21 +17,43 @@ from .loader import load_all_configs, import_model
 # Value helpers
 # ---------------------------------------------------------------------------
 
+PRIMITIVE_PROPERTY_TYPES = (str, int, float, bool)
+
+
+def _json_property(value):
+    return json.dumps(value, cls=DjangoJSONEncoder, sort_keys=True)
+
+
+def _neo4j_property_value(value):
+    if value is None or isinstance(value, PRIMITIVE_PROPERTY_TYPES):
+        return value
+    if isinstance(value, (list, tuple, set)):
+        normalized = [_neo4j_property_value(item) for item in value]
+        if all(
+            item is None or isinstance(item, PRIMITIVE_PROPERTY_TYPES)
+            for item in normalized
+        ):
+            return normalized
+        return _json_property(list(value))
+    if isinstance(value, dict):
+        return _json_property(value)
+    return value
+
 def _apply_transform(value, transform):
     if transform == "wkt":
         return value.wkt if value else None
     if transform == "str":
         return str(value) if value is not None else None
     if transform == "json":
-        return json.dumps(value or {})
+        return _json_property(value or {})
     if transform == "file_url":
         try:
             return value.url if value else None
         except (ValueError, AttributeError):
             return None
     if transform == "default_dict":
-        return value or {}
-    return value
+        return _json_property(value or {})
+    return _neo4j_property_value(value)
 
 
 def _get_value(obj, field_def):

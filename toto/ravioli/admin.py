@@ -4,7 +4,13 @@ from django.contrib import admin, messages
 from django.shortcuts import render, redirect
 from django.urls import path
 
-from .models import CypherQuery, CypherQueryResult, GraphChangeEvent, GraphSync
+from .models import (
+    CypherQuery,
+    CypherQueryResult,
+    GraphChangeEvent,
+    GraphProjectionPlan,
+    GraphSync,
+)
 
 
 @admin.register(CypherQuery)
@@ -72,6 +78,22 @@ class GraphChangeEventAdmin(admin.ModelAdmin):
         "created_at",
         "updated_at",
         "processed_at",
+    )
+
+
+@admin.register(GraphProjectionPlan)
+class GraphProjectionPlanAdmin(admin.ModelAdmin):
+    list_display = ("id", "status", "total_changes", "created_at", "applied_at")
+    list_filter = ("status",)
+    readonly_fields = (
+        "status",
+        "scope",
+        "summary",
+        "diff",
+        "error",
+        "created_at",
+        "updated_at",
+        "applied_at",
     )
 
 

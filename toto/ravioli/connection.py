@@ -1,8 +1,42 @@
 from django.conf import settings
+from urllib.parse import urlparse, urlunparse
 
 
 def is_enabled():
     return bool(getattr(settings, "RAVIOLI_ENABLED", False))
+
+
+class Neo4jConnectionError(RuntimeError):
+    pass
+
+
+def connection_uris(uri):
+    uris = [uri]
+    parsed = urlparse(uri)
+    if (
+        getattr(settings, "RAVIOLI_NEO4J_LOCAL_FALLBACK", True)
+        and parsed.hostname in {"neo4j", "web_neo4j"}
+    ):
+        port = parsed.port or 7687
+        fallback = urlunparse(parsed._replace(netloc=f"127.0.0.1:{port}"))
+        if fallback not in uris:
+            if getattr(settings, "RAVIOLI_NEO4J_PREFER_LOCAL_FALLBACK", True):
+                uris.insert(0, fallback)
+            else:
+                uris.append(fallback)
+    return uris
+
+
+def is_connection_error(exc):
+    name = exc.__class__.__name__
+    message = str(exc)
+    return (
+        name in {"ServiceUnavailable", "SessionExpired"}
+        or "Cannot resolve address" in message
+        or "Connection refused" in message
+        or "Failed to establish connection" in message
+        or "Temporary failure in name resolution" in message
+    )
 
 
 class Neo4jClient:
@@ -10,25 +44,60 @@ class Neo4jClient:
 
     def __init__(self, uri=None, user=None, password=None):
         from neo4j import GraphDatabase  # lazy — only when actually used
-        self._driver = GraphDatabase.driver(
-            uri or settings.NEO4J_URI,
-            auth=(
-                user or settings.NEO4J_USER,
-                password or settings.NEO4J_PASSWORD,
-            ),
+
+        self._graph_database = GraphDatabase
+        self._uris = connection_uris(uri or settings.NEO4J_URI)
+        self._auth = (
+            user or settings.NEO4J_USER,
+            password or settings.NEO4J_PASSWORD,
         )
+        self._driver = None
+        self._driver_uri = None
 
     def close(self):
-        self._driver.close()
+        if self._driver is not None:
+            self._driver.close()
+            self._driver = None
+            self._driver_uri = None
+
+    def _connect(self, uri):
+        if self._driver is not None and self._driver_uri == uri:
+            return self._driver
+        self.close()
+        self._driver = self._graph_database.driver(uri, auth=self._auth)
+        self._driver_uri = uri
+        return self._driver
 
     # ------------------------------------------------------------------
     # GENERIC CYPHER
     # ------------------------------------------------------------------
 
     def run_cypher(self, query, params=None):
-        with self._driver.session() as session:
-            result = session.run(query, params or {})
-            return list(result)
+        errors = []
+        uris = list(self._uris)
+        if self._driver_uri in uris:
+            uris.remove(self._driver_uri)
+            uris.insert(0, self._driver_uri)
+
+        for uri in uris:
+            try:
+                driver = self._connect(uri)
+                with driver.session() as session:
+                    result = session.run(query, params or {})
+                    return list(result)
+            except Exception as exc:
+                if not is_connection_error(exc):
+                    raise
+                errors.append(f"{uri}: {exc}")
+                self.close()
+
+        raise Neo4jConnectionError(
+            "Could not connect to Neo4j. Tried "
+            + ", ".join(self._uris)
+            + ". Last error: "
+            + (errors[-1] if errors else "unknown")
+            + ". Set NEO4J_URI to the reachable Bolt endpoint."
+        )
 
     # ------------------------------------------------------------------
     # GRAPH EXTRACTION (nodes + edges from raw records)

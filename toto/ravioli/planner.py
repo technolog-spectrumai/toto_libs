@@ -1,0 +1,569 @@
+from django.core.serializers.json import DjangoJSONEncoder
+from django.utils import timezone
+
+from .loader import import_model, load_all_configs
+from .projection import _get_value, _neo4j_property_value, link_key
+
+
+META_PROPS = {
+    "ravioli_owned",
+    "ravioli_label",
+    "ravioli_from_label",
+    "ravioli_to_label",
+    "ravioli_uuid",
+}
+
+
+def _jsonable(value):
+    return DjangoJSONEncoder().default(value)
+
+
+def normalize(value):
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, dict):
+        return {str(k): normalize(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [normalize(v) for v in value]
+    try:
+        return _jsonable(value)
+    except TypeError:
+        return str(value)
+
+
+def clean_props(props):
+    return {
+        key: normalize(value)
+        for key, value in (props or {}).items()
+        if key not in META_PROPS
+    }
+
+
+def neo4j_props(props):
+    return {
+        key: _neo4j_property_value(value)
+        for key, value in (props or {}).items()
+    }
+
+
+def expected_node(node_def, obj):
+    uuid_field = node_def.get("uuid_field", "uid")
+    field_map = node_def.get("fields", {})
+    return {
+        "label": node_def["label"],
+        "uuid": str(getattr(obj, uuid_field)),
+        "props": {
+            key: normalize(_get_value(obj, field_def))
+            for key, field_def in field_map.items()
+        },
+    }
+
+
+def _junction_relation_uuid(junction_obj):
+    if hasattr(junction_obj, "uid"):
+        return str(junction_obj.uid)
+    return str(junction_obj.pk)
+
+
+class ProjectionPlanner:
+    def __init__(self, client, configs=None, selected_labels=None):
+        self.client = client
+        self.configs = configs if configs is not None else load_all_configs()
+        self.selected_labels = set(selected_labels or [])
+        self._label_map = self._build_label_map()
+
+    def _build_label_map(self):
+        mapping = {}
+        for config in self.configs:
+            for node in config.get("nodes", []):
+                mapping[node["label"]] = {
+                    "node_def": node,
+                    "model": import_model(node["model"]),
+                    "uuid_field": node.get("uuid_field", "uid"),
+                }
+        return mapping
+
+    def _node_selected(self, node_def):
+        return not self.selected_labels or node_def["label"] in self.selected_labels
+
+    def _link_selected(self, link_def):
+        return (
+            not self.selected_labels
+            or link_def["from_label"] in self.selected_labels
+        )
+
+    def selected_node_defs(self):
+        result = []
+        for config in self.configs:
+            for node_def in config.get("nodes", []):
+                if self._node_selected(node_def):
+                    result.append(node_def)
+        return result
+
+    def selected_link_defs(self):
+        result = []
+        for config in self.configs:
+            for link_def in config.get("links", []):
+                if self._link_selected(link_def):
+                    result.append(link_def)
+        return result
+
+    def expected_nodes(self):
+        expected = {}
+        for node_def in self.selected_node_defs():
+            model = import_model(node_def["model"])
+            label = node_def["label"]
+            expected[label] = {}
+            for obj in model.objects.all().iterator():
+                node = expected_node(node_def, obj)
+                expected[label][node["uuid"]] = node
+        return expected
+
+    def expected_relationships(self):
+        expected = {}
+        for link_def in self.selected_link_defs():
+            if link_def.get("via_model"):
+                expected.update(self._expected_junction_relationships(link_def))
+            else:
+                expected.update(self._expected_fk_relationships(link_def))
+        return expected
+
+    def _direct_relationship_key(self, rel):
+        return "|".join([
+            "direct",
+            rel["from_label"],
+            rel["from_uuid"],
+            rel["relation"],
+            rel["to_label"],
+            rel["to_uuid"],
+        ])
+
+    def _junction_relationship_key(self, rel):
+        return "|".join([
+            "junction",
+            rel["relation"],
+            rel["ravioli_uuid"],
+        ])
+
+    def _expected_fk_relationships(self, link_def):
+        from_info = self._label_map[link_def["from_label"]]
+        to_info = self._label_map[link_def["to_label"]]
+        from_model = from_info["model"]
+        from_uuid_field = from_info["uuid_field"]
+        to_uuid_field = to_info["uuid_field"]
+        source_field = link_def["source"]
+        cardinality = link_def.get("cardinality", "one")
+        result = {}
+
+        for obj in from_model.objects.all().iterator():
+            from_uuid = str(getattr(obj, from_uuid_field))
+            related_objects = []
+
+            if cardinality == "many":
+                related_objects = list(getattr(obj, source_field).all())
+            else:
+                id_attr = f"{source_field}_id"
+                has_value = (
+                    bool(getattr(obj, id_attr))
+                    if hasattr(obj, id_attr)
+                    else bool(getattr(obj, source_field, None))
+                )
+                if has_value:
+                    related = getattr(obj, source_field, None)
+                    if related is not None:
+                        related_objects = [related]
+
+            for related in related_objects:
+                rel = {
+                    "kind": "direct",
+                    "from_label": link_def["from_label"],
+                    "from_uuid": from_uuid,
+                    "relation": link_def["relation"],
+                    "to_label": link_def["to_label"],
+                    "to_uuid": str(getattr(related, to_uuid_field)),
+                    "props": {},
+                    "link_key": link_key(link_def),
+                }
+                rel["key"] = self._direct_relationship_key(rel)
+                result[rel["key"]] = rel
+
+        return result
+
+    def _expected_junction_relationships(self, link_def):
+        via_model = import_model(link_def["via_model"])
+        from_info = self._label_map[link_def["from_label"]]
+        to_info = self._label_map[link_def["to_label"]]
+        from_uuid_field = from_info["uuid_field"]
+        to_uuid_field = to_info["uuid_field"]
+        from_field = link_def["from_field"]
+        to_field = link_def["to_field"]
+        props_map = link_def.get("props", {})
+        result = {}
+
+        qs = via_model.objects.select_related(from_field, to_field).all()
+        for junction_obj in qs.iterator():
+            from_obj = getattr(junction_obj, from_field, None)
+            to_obj = getattr(junction_obj, to_field, None)
+            if from_obj is None or to_obj is None:
+                continue
+
+            rel = {
+                "kind": "junction",
+                "from_label": link_def["from_label"],
+                "from_uuid": str(getattr(from_obj, from_uuid_field)),
+                "relation": link_def["relation"],
+                "to_label": link_def["to_label"],
+                "to_uuid": str(getattr(to_obj, to_uuid_field)),
+                "ravioli_uuid": _junction_relation_uuid(junction_obj),
+                "props": {
+                    rel_field: normalize(_get_value(junction_obj, sql_field))
+                    for rel_field, sql_field in props_map.items()
+                },
+                "link_key": link_key(link_def),
+            }
+            rel["key"] = self._junction_relationship_key(rel)
+            result[rel["key"]] = rel
+
+        return result
+
+    def actual_nodes(self):
+        actual = {}
+        for node_def in self.selected_node_defs():
+            label = node_def["label"]
+            records = self.client.run_cypher(
+                (
+                    f"MATCH (n:{label}) "
+                    "WHERE n.uuid IS NOT NULL "
+                    "RETURN n.uuid AS uuid, properties(n) AS props"
+                )
+            )
+            actual[label] = {}
+            for record in records:
+                uuid = str(record["uuid"])
+                actual[label][uuid] = {
+                    "label": label,
+                    "uuid": uuid,
+                    "props": clean_props(record["props"]),
+                    "owned": bool((record["props"] or {}).get("ravioli_owned")),
+                }
+        return actual
+
+    def actual_relationships(self):
+        actual = {}
+        for link_def in self.selected_link_defs():
+            if link_def.get("via_model"):
+                actual.update(self._actual_junction_relationships(link_def))
+            else:
+                actual.update(self._actual_direct_relationships(link_def))
+        return actual
+
+    def _actual_direct_relationships(self, link_def):
+        from_label = link_def["from_label"]
+        to_label = link_def["to_label"]
+        relation = link_def["relation"]
+        records = self.client.run_cypher(
+            (
+                f"MATCH (a:{from_label})-[r:{relation}]->(b:{to_label}) "
+                "WHERE a.uuid IS NOT NULL AND b.uuid IS NOT NULL "
+                "RETURN a.uuid AS from_uuid, b.uuid AS to_uuid, "
+                "properties(r) AS props"
+            )
+        )
+        result = {}
+        for record in records:
+            rel = {
+                "kind": "direct",
+                "from_label": from_label,
+                "from_uuid": str(record["from_uuid"]),
+                "relation": relation,
+                "to_label": to_label,
+                "to_uuid": str(record["to_uuid"]),
+                "props": clean_props(record["props"]),
+                "owned": bool((record["props"] or {}).get("ravioli_owned")),
+                "link_key": link_key(link_def),
+            }
+            rel["key"] = self._direct_relationship_key(rel)
+            result[rel["key"]] = rel
+        return result
+
+    def _actual_junction_relationships(self, link_def):
+        from_label = link_def["from_label"]
+        to_label = link_def["to_label"]
+        relation = link_def["relation"]
+        records = self.client.run_cypher(
+            (
+                f"MATCH (a:{from_label})-[r:{relation}]->(b:{to_label}) "
+                "WHERE r.ravioli_uuid IS NOT NULL "
+                "AND a.uuid IS NOT NULL AND b.uuid IS NOT NULL "
+                "RETURN a.uuid AS from_uuid, b.uuid AS to_uuid, "
+                "r.ravioli_uuid AS ravioli_uuid, properties(r) AS props"
+            )
+        )
+        result = {}
+        for record in records:
+            rel = {
+                "kind": "junction",
+                "from_label": from_label,
+                "from_uuid": str(record["from_uuid"]),
+                "relation": relation,
+                "to_label": to_label,
+                "to_uuid": str(record["to_uuid"]),
+                "ravioli_uuid": str(record["ravioli_uuid"]),
+                "props": clean_props(record["props"]),
+                "owned": bool((record["props"] or {}).get("ravioli_owned")),
+                "link_key": link_key(link_def),
+            }
+            rel["key"] = self._junction_relationship_key(rel)
+            result[rel["key"]] = rel
+        return result
+
+    def build_diff(self):
+        expected_nodes = self.expected_nodes()
+        actual_nodes = self.actual_nodes()
+        expected_relationships = self.expected_relationships()
+        actual_relationships = self.actual_relationships()
+
+        diff = {
+            "nodes": {"create": [], "update": [], "delete": [], "ignored": []},
+            "relationships": {
+                "create": [],
+                "update": [],
+                "delete": [],
+                "ignored": [],
+            },
+        }
+
+        for label, nodes in expected_nodes.items():
+            graph_nodes = actual_nodes.get(label, {})
+            for uuid, expected in nodes.items():
+                actual = graph_nodes.get(uuid)
+                if actual is None:
+                    diff["nodes"]["create"].append(expected)
+                    continue
+
+                changes = prop_changes(expected["props"], actual["props"])
+                if changes or not actual["owned"]:
+                    diff["nodes"]["update"].append({
+                        **expected,
+                        "changes": changes,
+                        "claim": not actual["owned"],
+                    })
+
+            for uuid, actual in graph_nodes.items():
+                if uuid in nodes:
+                    continue
+                if actual["owned"]:
+                    diff["nodes"]["delete"].append(actual)
+                else:
+                    diff["nodes"]["ignored"].append(actual)
+
+        for key, expected in expected_relationships.items():
+            actual = actual_relationships.get(key)
+            if actual is None:
+                diff["relationships"]["create"].append(expected)
+                continue
+
+            changes = prop_changes(expected["props"], actual["props"])
+            endpoint_changed = (
+                expected["from_uuid"] != actual["from_uuid"]
+                or expected["to_uuid"] != actual["to_uuid"]
+            )
+            if changes or endpoint_changed or not actual["owned"]:
+                diff["relationships"]["update"].append({
+                    **expected,
+                    "changes": changes,
+                    "endpoint_changed": endpoint_changed,
+                    "claim": not actual["owned"],
+                })
+
+        for key, actual in actual_relationships.items():
+            if key in expected_relationships:
+                continue
+            if actual["owned"]:
+                diff["relationships"]["delete"].append(actual)
+            else:
+                diff["relationships"]["ignored"].append(actual)
+
+        totals = {
+            "expected_nodes": sum(len(nodes) for nodes in expected_nodes.values()),
+            "actual_nodes": sum(len(nodes) for nodes in actual_nodes.values()),
+            "expected_relationships": len(expected_relationships),
+            "actual_relationships": len(actual_relationships),
+        }
+        return diff, totals
+
+
+def prop_changes(expected_props, actual_props):
+    changes = {}
+    for key, expected_value in expected_props.items():
+        actual_value = actual_props.get(key)
+        if normalize(actual_value) != normalize(expected_value):
+            changes[key] = {
+                "from": normalize(actual_value),
+                "to": normalize(expected_value),
+            }
+    return changes
+
+
+def summarize_diff(diff, totals=None):
+    summary = {
+        "nodes": {},
+        "relationships": {},
+        "total_changes": 0,
+        "totals": totals or {},
+    }
+    for group in ("nodes", "relationships"):
+        for action in ("create", "update", "delete", "ignored"):
+            count = len(diff[group].get(action, []))
+            summary[group][action] = count
+            if action != "ignored":
+                summary["total_changes"] += count
+    return summary
+
+
+def create_projection_plan(client, labels=None, configs=None):
+    from .models import GraphProjectionPlan
+
+    planner = ProjectionPlanner(client, configs=configs, selected_labels=labels)
+    diff, totals = planner.build_diff()
+    summary = summarize_diff(diff, totals)
+    return GraphProjectionPlan.objects.create(
+        status=GraphProjectionPlan.STATUS_READY,
+        scope={"labels": labels or []},
+        summary=summary,
+        diff=diff,
+    )
+
+
+def apply_projection_plan(client, plan):
+    applier = ProjectionPlanApplier(client)
+    applier.apply(plan.diff)
+    plan.status = plan.STATUS_APPLIED
+    plan.applied_at = timezone.now()
+    plan.error = ""
+    plan.save(update_fields=["status", "applied_at", "error", "updated_at"])
+
+
+class ProjectionPlanApplier:
+    def __init__(self, client):
+        self.client = client
+
+    def apply(self, diff):
+        for node in diff["nodes"].get("create", []):
+            self.upsert_node(node)
+        for node in diff["nodes"].get("update", []):
+            self.upsert_node(node)
+        for rel in diff["relationships"].get("create", []):
+            self.upsert_relationship(rel)
+        for rel in diff["relationships"].get("update", []):
+            self.upsert_relationship(rel)
+        for rel in diff["relationships"].get("delete", []):
+            self.delete_relationship(rel)
+        for node in diff["nodes"].get("delete", []):
+            self.delete_node(node)
+
+    def upsert_node(self, node):
+        label = node["label"]
+        self.client.run_cypher(
+            (
+                f"MERGE (n:{label} {{uuid: $uuid}}) "
+                "SET n.ravioli_owned = true, "
+                "n.ravioli_label = $label, "
+                "n += $props"
+            ),
+            {
+                "uuid": node["uuid"],
+                "label": label,
+                "props": neo4j_props(node.get("props", {})),
+            },
+        )
+
+    def delete_node(self, node):
+        label = node["label"]
+        self.client.run_cypher(
+            (
+                f"MATCH (n:{label} {{uuid: $uuid}}) "
+                "WHERE coalesce(n.ravioli_owned, false) = true "
+                "DETACH DELETE n"
+            ),
+            {"uuid": node["uuid"]},
+        )
+
+    def upsert_relationship(self, rel):
+        if rel["kind"] == "junction":
+            self.upsert_junction_relationship(rel)
+        else:
+            self.upsert_direct_relationship(rel)
+
+    def upsert_direct_relationship(self, rel):
+        self.client.run_cypher(
+            (
+                f"MATCH (a:{rel['from_label']} {{uuid: $from_uuid}}) "
+                f"MATCH (b:{rel['to_label']} {{uuid: $to_uuid}}) "
+                f"MERGE (a)-[r:{rel['relation']}]->(b) "
+                "SET r.ravioli_owned = true, "
+                "r.ravioli_from_label = $from_label, "
+                "r.ravioli_to_label = $to_label, "
+                "r += $props"
+            ),
+            {
+                "from_uuid": rel["from_uuid"],
+                "to_uuid": rel["to_uuid"],
+                "from_label": rel["from_label"],
+                "to_label": rel["to_label"],
+                "props": neo4j_props(rel.get("props", {})),
+            },
+        )
+
+    def upsert_junction_relationship(self, rel):
+        self.client.run_cypher(
+            f"MATCH ()-[r:{rel['relation']} {{ravioli_uuid: $rel_uuid}}]->() DELETE r",
+            {"rel_uuid": rel["ravioli_uuid"]},
+        )
+        self.client.run_cypher(
+            (
+                f"MATCH (a:{rel['from_label']} {{uuid: $from_uuid}}) "
+                f"MATCH (b:{rel['to_label']} {{uuid: $to_uuid}}) "
+                f"MERGE (a)-[r:{rel['relation']} "
+                "{ravioli_uuid: $rel_uuid}]->(b) "
+                "SET r.ravioli_owned = true, "
+                "r.ravioli_from_label = $from_label, "
+                "r.ravioli_to_label = $to_label, "
+                "r += $props"
+            ),
+            {
+                "from_uuid": rel["from_uuid"],
+                "to_uuid": rel["to_uuid"],
+                "rel_uuid": rel["ravioli_uuid"],
+                "from_label": rel["from_label"],
+                "to_label": rel["to_label"],
+                "props": neo4j_props(rel.get("props", {})),
+            },
+        )
+
+    def delete_relationship(self, rel):
+        if rel["kind"] == "junction":
+            self.client.run_cypher(
+                (
+                    f"MATCH ()-[r:{rel['relation']} "
+                    "{ravioli_uuid: $rel_uuid}]->() "
+                    "WHERE coalesce(r.ravioli_owned, false) = true "
+                    "DELETE r"
+                ),
+                {"rel_uuid": rel["ravioli_uuid"]},
+            )
+            return
+
+        self.client.run_cypher(
+            (
+                f"MATCH (a:{rel['from_label']} {{uuid: $from_uuid}})"
+                f"-[r:{rel['relation']}]->"
+                f"(b:{rel['to_label']} {{uuid: $to_uuid}}) "
+                "WHERE coalesce(r.ravioli_owned, false) = true "
+                "DELETE r"
+            ),
+            {
+                "from_uuid": rel["from_uuid"],
+                "to_uuid": rel["to_uuid"],
+            },
+        )
