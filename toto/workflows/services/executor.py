@@ -205,7 +205,7 @@ class WorkflowExecutor:
             response = self._execute_lambda_content(lambda_fn.content, node_run.input_data or {})
 
         if "error" in response:
-            raise RuntimeError(f"Kernel error: {response['error']}")
+            raise RuntimeError(_format_lambda_error(response["error"]))
 
         stdout = response.get("stdout", "").strip()
         raw = self._parse_lambda_stdout(stdout)
@@ -426,3 +426,10 @@ class WorkflowExecutor:
         workflow_run.status = WorkflowRun.COMPLETED
         workflow_run.completed_at = timezone.now()
         workflow_run.save(update_fields=["status", "completed_at"])
+
+
+def _format_lambda_error(error: str) -> str:
+    error = str(error)
+    if error == "kernel_server_timeout":
+        return "Workflow task timed out."
+    return f"Workflow task error: {error}"

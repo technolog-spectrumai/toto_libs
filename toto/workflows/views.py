@@ -555,12 +555,13 @@ class WorkflowRunDetailUIView(LoginRequiredMixin, DetailView):
             reports_by_node_run.setdefault(report.source_node_run_id, []).append(report)
         for node_run in node_runs:
             node_run.generated_reports = reports_by_node_run.get(node_run.id, [])
+            node_run.display_error = _display_workflow_error(node_run.error)
         failed_node_run = next((node_run for node_run in node_runs if node_run.error), None)
 
         context["node_runs"] = node_runs
         context["edge_runs"] = edge_runs
         context["reports"] = reports
-        context["run_error"] = failed_node_run.error if failed_node_run else ""
+        context["run_error"] = failed_node_run.display_error if failed_node_run else ""
         context["run_error_node"] = failed_node_run.node if failed_node_run else None
 
         pending_tasks = []
@@ -597,3 +598,14 @@ class WorkflowRunDetailUIView(LoginRequiredMixin, DetailView):
             for e in all_edges
         ])
         return _decorate(context, self.request)
+
+
+def _display_workflow_error(error: str) -> str:
+    error = str(error or "")
+    if not error:
+        return ""
+    if error == "kernel_server_timeout" or error == "Kernel error: kernel_server_timeout":
+        return "Workflow task timed out."
+    if error.startswith("Kernel error: "):
+        return "Workflow task error: " + error.removeprefix("Kernel error: ").strip()
+    return error

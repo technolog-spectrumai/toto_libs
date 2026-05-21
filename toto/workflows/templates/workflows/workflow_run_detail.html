@@ -284,7 +284,7 @@
                   <div class="rounded-lg p-3 font-mono"
                        :class="darkMode ? 'bg-warn-dark/10 text-warn-dark' : 'bg-warn-light/10 text-warn-light'">
                     <p class="font-semibold mb-1">{% trans "Error" %}</p>
-                    {{ nr.error }}
+                    {{ nr.display_error }}
                   </div>
                 {% endif %}
                 {% if nr.input_data %}

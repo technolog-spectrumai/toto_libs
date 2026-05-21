@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 from celery.exceptions import SoftTimeLimitExceeded
 from django.contrib.auth import get_user_model
 from django.urls import reverse
-from django.test import TestCase, override_settings
+from django.test import RequestFactory, TestCase, override_settings
 from django.utils import timezone
 
 from .models import (
@@ -736,6 +736,7 @@ class WorkflowUIViewTests(TestCase):
             password="runner-pass",
         )
         self.client.force_login(self.user)
+        self.factory = RequestFactory()
 
     def test_run_button_endpoint_queues_celery_and_redirects_to_run(self):
         wf = Workflow.objects.create(name="Runnable UI Workflow")
@@ -780,6 +781,32 @@ class WorkflowUIViewTests(TestCase):
             fetch_redirect_response=False,
         )
         self.assertFalse(WorkflowRun.objects.filter(workflow=wf).exists())
+
+    def test_run_detail_displays_legacy_kernel_timeout_as_workflow_timeout(self):
+        wf = Workflow.objects.create(name="Failed UI Workflow")
+        node = _node(wf, WorkflowNode.LAMBDA, label="Build Trend Series", lambda_fn=_lambda("ui_fail"))
+        run = WorkflowRun.objects.create(workflow=wf, status=WorkflowRun.FAILED)
+        WorkflowNodeRun.objects.create(
+            workflow_run=run,
+            node=node,
+            status=WorkflowNodeRun.FAILED,
+            error="Kernel error: kernel_server_timeout",
+        )
+
+        from .views import WorkflowRunDetailUIView
+
+        request = self.factory.get(f"/workflows/runs/{run.id}/")
+        request.user = self.user
+        view = WorkflowRunDetailUIView()
+        view.request = request
+        view.kwargs = {"run_id": run.id}
+        view.object = run
+        with patch("toto.workflows.views._decorate", lambda context, request: context):
+            context = view.get_context_data(object=run)
+
+        self.assertEqual(context["run_error"], "Workflow task timed out.")
+        self.assertEqual(context["run_error_node"].label, "Build Trend Series")
+        self.assertEqual(context["node_runs"][0].display_error, "Workflow task timed out.")
 
     def test_restart_completed_run_clones_input_and_redirects_to_new_run(self):
         wf = Workflow.objects.create(name="Restartable UI Workflow")
@@ -940,7 +967,7 @@ class CeleryLambdaWorkflowTests(TestCase):
         node_run.refresh_from_db()
         run.refresh_from_db()
         self.assertEqual(node_run.status, WorkflowNodeRun.FAILED)
-        self.assertIn("kernel_crash", node_run.error)
+        self.assertIn("Workflow task error: kernel_crash", node_run.error)
         self.assertEqual(run.status, WorkflowRun.FAILED)
 
     def test_lambda_task_timeout_marks_node_and_run_failed(self):
