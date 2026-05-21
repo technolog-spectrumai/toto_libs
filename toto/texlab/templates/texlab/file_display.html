@@ -36,7 +36,7 @@
     <div class="flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2 shadow-sm"
          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
 
-      <!-- Left: file label + AI zone toolbar -->
+      <!-- Left: file label -->
       <div class="flex items-center gap-2 min-w-0 flex-1">
         <i class="fa-solid fa-file-code opacity-50 shrink-0"></i>
         <span class="font-mono text-sm font-semibold truncate">{{ file.vault_file.title }}</span>
@@ -46,7 +46,6 @@
         <span data-active-target-badge
               class="hidden shrink-0 rounded px-1.5 py-px text-[10px] font-bold uppercase tracking-wide
                      bg-accent-light text-primary-bg-light">live</span>
-        <span id="ai-toolbar-tex-{{ file.id }}" class="flex items-center gap-1 ml-1"></span>
       </div>
 
       <!-- Divider -->
@@ -54,14 +53,6 @@
 
       <!-- Right: action buttons -->
       <div class="flex items-center gap-1.5 flex-wrap">
-
-        <!-- Diff preview -->
-        <button type="button"
-          title="Preview Diff"
-          onclick="window.FunctionalZones && window.FunctionalZones.previewLatestBlockForZone('tex-file-{{ file.id }}')"
-          class="toolbar-btn border">
-          <i class="fa-solid fa-code-compare"></i>
-        </button>
 
         <!-- Read-only toggle -->
         <button id="toggle-readonly" title="Toggle read-only" class="toolbar-btn border">
@@ -73,7 +64,7 @@
           <i id="sync-icon" class="fa-solid fa-arrows-rotate"></i>
         </button>
 
-        {% if file.file_type == "tex" %}
+        {% if can_compile %}
         <!-- Images picker -->
         <button id="open-images-modal" title="Bucket images" class="toolbar-btn border">
           <i class="fa-solid fa-images"></i>
@@ -90,7 +81,7 @@
           <span class="hidden sm:inline">Save</span>
         </button>
 
-        {% if file.file_type == "tex" %}
+        {% if can_compile %}
         <!-- Compile -->
         <button id="compile-file" title="Compile to PDF"
           :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
@@ -123,6 +114,14 @@
     <div id="status-bar" class="hidden rounded-xl border px-4 py-3 text-sm"
          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
 
+      <!-- Running -->
+      <div id="status-running" class="hidden items-center gap-3">
+        <i class="fa-solid fa-spinner fa-spin shrink-0"
+           :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+        <span class="font-semibold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">Compiling</span>
+        <span id="status-running-detail" class="text-xs opacity-60">queued</span>
+      </div>
+
       <!-- Success -->
       <div id="status-success" class="hidden items-center gap-3">
         <i class="fa-solid fa-circle-check shrink-0"
@@ -152,7 +151,7 @@
 </div>
 
 <!-- ── Images Modal ───────────────────────────────────────── -->
-{% if file.file_type == "tex" %}
+{% if can_compile %}
 <div id="images-modal"
      class="fixed inset-0 z-50 hidden items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
   <div class="w-full max-w-2xl rounded-2xl border shadow-2xl"
@@ -319,30 +318,6 @@ const socket = new WebSocket(`${wsScheme}://${window.location.host}/ws/texlab/fi
 editor.session.on("change", () => TexSync.onLocalChange(editor, socket, syncEnabled));
 socket.onmessage = event => TexSync.onServerMessage(editor, syncEnabled, event);
 
-// ── FunctionalZones ────────────────────────────────────────
-document.addEventListener("DOMContentLoaded", () => {
-  if (!window.FunctionalZones) return;
-  window.FunctionalZones.registerZone({
-    id: "tex-file-{{ file.id }}",
-    label: "{{ file.vault_file.title|escapejs }}",
-    kind: "tex-file",
-    language: "latex",
-    acceptedLanguages: ["latex", "text"],
-    getContent:       () => editor.getValue(),
-    setContent:       c  => editor.setValue(c, -1),
-    insertContent:    c  => editor.insert(c),
-    appendContent:    c  => editor.setValue(`${editor.getValue()}\n${c}`, -1),
-    replaceSelection: c  => editor.session.replace(editor.getSelectionRange(), c),
-    getSelection:     () => editor.getSelectedText() || null,
-    metadata: { preferredImportMode: "insert", fileId: "{{ file.id }}" },
-  });
-  window.FunctionalZones.renderZoneToolbar(
-    document.getElementById("ai-toolbar-tex-{{ file.id }}"),
-    "tex-file-{{ file.id }}",
-    { importLabel: "Import" }
-  );
-});
-
 // ── Save ───────────────────────────────────────────────────
 async function saveFile() {
   const btn = document.getElementById("save-file");
@@ -356,7 +331,14 @@ async function saveFile() {
       credentials: "same-origin",
     });
     const data = await res.json();
-    if (data.status !== "ok") alert(data.error || "Failed to save file.");
+    if (data.status !== "ok") {
+      alert(data.error || "Failed to save file.");
+      return false;
+    }
+    return true;
+  } catch (err) {
+    alert("Save failed: " + err);
+    return false;
   } finally {
     btn.style.opacity = "1";
   }
@@ -384,24 +366,55 @@ document.getElementById("delete-file").addEventListener("click", async () => {
 });
 </script>
 
-{% if file.file_type == "tex" %}
+{% if can_compile %}
 <script>
 // ── Compile ────────────────────────────────────────────────
 const compileBtn  = document.getElementById("compile-file");
 const statusBar   = document.getElementById("status-bar");
+const statusRun   = document.getElementById("status-running");
+const statusRunDetail = document.getElementById("status-running-detail");
 const statusOk    = document.getElementById("status-success");
 const statusErr   = document.getElementById("status-error");
 const statusLog   = document.getElementById("status-error-log");
 const statusPdf   = document.getElementById("status-pdf-link");
-const statusCount = document.getElementById("images-count");
+const statusBaseUrl = "{% url 'texlab:compile_status' run_id=0 %}";
 
 function showStatus(mode) {
   statusBar.classList.remove("hidden");
   statusBar.classList.add("flex");
+  statusRun.classList.toggle("hidden", mode !== "running");
+  statusRun.classList.toggle("flex", mode === "running");
   statusOk.classList.toggle("hidden",  mode !== "ok");
   statusOk.classList.toggle("flex",    mode === "ok");
   statusErr.classList.toggle("hidden", mode !== "err");
   statusErr.classList.toggle("flex",   mode === "err");
+}
+
+async function pollCompileStatus(runId) {
+  const url = statusBaseUrl.replace("/0/", `/${runId}/`);
+
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    const res = await fetch(url, { credentials: "same-origin" });
+    const data = await res.json();
+
+    if (data.status === "success") {
+      if (data.pdf_url) statusPdf.href = data.pdf_url;
+      showStatus("ok");
+      return;
+    }
+
+    if (data.status === "failed") {
+      statusLog.textContent = data.log || "Compilation failed.";
+      showStatus("err");
+      return;
+    }
+
+    statusRunDetail.textContent = data.status || "running";
+    await new Promise(resolve => setTimeout(resolve, 1500));
+  }
+
+  statusLog.textContent = "Compilation is still running. Check the compile history again in a moment.";
+  showStatus("err");
 }
 
 // Expandable log
@@ -419,12 +432,28 @@ compileBtn.addEventListener("click", async () => {
   compileBtn.disabled = true;
   compileBtn.style.opacity = "0.5";
   compileBtn.style.filter  = "hue-rotate(40deg)";
+  statusRunDetail.textContent = "saving";
+  showStatus("running");
 
   try {
-    const res  = await fetch("{% url 'texlab:compile_latex' file_id=file.id %}", { method: "POST" });
+    const saved = await saveFile();
+    if (!saved) {
+      statusLog.textContent = "Save failed. Compilation was not started.";
+      showStatus("err");
+      return;
+    }
+
+    statusRunDetail.textContent = "queued";
+    const res  = await fetch("{% url 'texlab:compile_latex' file_id=file.id %}", {
+      method: "POST",
+      headers: { "X-CSRFToken": "{{ csrf_token }}" },
+      credentials: "same-origin",
+    });
     const data = await res.json();
 
-    if (data.status === "ok" || data.pdf_url) {
+    if (data.status === "queued" && data.run_id) {
+      await pollCompileStatus(data.run_id);
+    } else if (data.status === "ok" || data.pdf_url) {
       if (data.pdf_url) statusPdf.href = data.pdf_url;
       showStatus("ok");
     } else {
@@ -523,3 +552,5 @@ document.getElementById("refresh-images").addEventListener("click", loadImages);
 </script>
 {% endif %}
 {% endblock %}
+
+{% block floating_widgets %}{% endblock %}

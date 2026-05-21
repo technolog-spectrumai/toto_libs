@@ -101,6 +101,10 @@ class FileDisplayView(LoginRequiredMixin, DetailView):
 
         context["workspace"] = latex_file.workspace
         context["content"] = content
+        context["can_compile"] = (
+            latex_file.file_type == "tex"
+            or vault_file.title.lower().endswith(".tex")
+        )
 
         context["compile_runs"] = (
             CompileRun.objects
@@ -254,15 +258,22 @@ def create_file(request, workspace_slug):
     base, ext = name.rsplit(".", 1)
     ext = ext.lower()
 
-    EXT_MAP = {
+    VAULT_TYPE_MAP = {
         "tex": "text",
         "sty": "text",
         "bib": "text",
         "txt": "text",
         "pdf": "pdf",
     }
+    LATEX_TYPE_MAP = {
+        "tex": "tex",
+        "sty": "sty",
+        "bib": "bib",
+        "pdf": "pdf",
+    }
 
-    file_type = EXT_MAP.get(ext, "text")
+    vault_file_type = VAULT_TYPE_MAP.get(ext, "text")
+    latex_file_type = LATEX_TYPE_MAP.get(ext, "other")
 
     # Get workspace
     try:
@@ -288,7 +299,7 @@ def create_file(request, workspace_slug):
         bucket=workspace.bucket,
         owner=request.user,
         key=key,
-        file_type=file_type,
+        file_type=vault_file_type,
     )
 
     # Initial content for text-like files
@@ -304,7 +315,7 @@ def create_file(request, workspace_slug):
     latex_file = LatexFile.objects.create(
         workspace=workspace,
         vault_file=vault_file,
-        file_type=file_type
+        file_type=latex_file_type
     )
 
     url = reverse(
@@ -405,7 +416,6 @@ def delete_workspace(request, slug):
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
-
 
 
 
