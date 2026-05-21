@@ -12,6 +12,7 @@ from .views import (
     # UI
     ReportListUIView, ReportDetailUIView,
     WorkflowListUIView, WorkflowDetailUIView, WorkflowRunDetailUIView,
+    workflow_run_start_ui, workflow_run_restart_ui,
 )
 
 app_name = "workflows"
@@ -21,6 +22,8 @@ urlpatterns = [
     path("", WorkflowListUIView.as_view(), name="workflow_list"),
     path("reports/", ReportListUIView.as_view(), name="report_list"),
     path("reports/<int:report_id>/", ReportDetailUIView.as_view(), name="report_detail"),
+    path("<int:workflow_id>/run/", workflow_run_start_ui, name="workflow_run_start"),
+    path("runs/<int:run_id>/restart/", workflow_run_restart_ui, name="workflow_run_restart"),
     path("<int:workflow_id>/", WorkflowDetailUIView.as_view(), name="workflow_detail"),
     path("runs/<int:run_id>/", WorkflowRunDetailUIView.as_view(), name="workflow_run_detail"),
 

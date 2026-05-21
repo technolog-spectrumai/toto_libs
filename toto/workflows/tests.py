@@ -11,6 +11,8 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from celery.exceptions import SoftTimeLimitExceeded
+from django.contrib.auth import get_user_model
+from django.urls import reverse
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
@@ -720,6 +722,91 @@ class ReportWorkflowTests(TestCase):
 
         with self.assertRaises(DjangoValidationError):
             template.full_clean()
+
+
+# ---------------------------------------------------------------------------
+#  Workflow UI
+# ---------------------------------------------------------------------------
+
+class WorkflowUIViewTests(TestCase):
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="runner",
+            password="runner-pass",
+        )
+        self.client.force_login(self.user)
+
+    def test_run_button_endpoint_executes_without_celery_and_redirects_to_run(self):
+        MockClient = _make_kernel_mock({"data": {"ok": True}, "route": "end"})
+        wf = Workflow.objects.create(name="Runnable UI Workflow")
+        _node(wf, WorkflowNode.LAMBDA, label="Start", lambda_fn=_lambda("ui_start"))
+
+        with override_settings(WORKFLOW_KERNEL_CLIENT=MockClient):
+            with patch("toto.workflows.views.celery_available", return_value=False):
+                response = self.client.post(reverse("workflows:workflow_run_start", args=[wf.id]))
+
+        run = WorkflowRun.objects.get(workflow=wf)
+        self.assertRedirects(
+            response,
+            reverse("workflows:workflow_run_detail", args=[run.id]),
+            fetch_redirect_response=False,
+        )
+        self.assertEqual(run.status, WorkflowRun.COMPLETED)
+        self.assertEqual(run.node_runs.get().output_data["data"], {"ok": True})
+
+    def test_run_button_endpoint_rejects_invalid_workflow(self):
+        wf = Workflow.objects.create(name="Empty UI Workflow")
+
+        response = self.client.post(reverse("workflows:workflow_run_start", args=[wf.id]))
+
+        self.assertRedirects(
+            response,
+            reverse("workflows:workflow_detail", args=[wf.id]),
+            fetch_redirect_response=False,
+        )
+        self.assertFalse(WorkflowRun.objects.filter(workflow=wf).exists())
+
+    def test_restart_completed_run_clones_input_and_redirects_to_new_run(self):
+        MockClient = _make_kernel_mock({"data": {"restarted": True}, "route": "end"})
+        wf = Workflow.objects.create(name="Restartable UI Workflow")
+        _node(wf, WorkflowNode.LAMBDA, label="Start", lambda_fn=_lambda("ui_restart"))
+        source_run = WorkflowRun.objects.create(
+            workflow=wf,
+            status=WorkflowRun.COMPLETED,
+            input_data={"data": {"seed": 7}},
+        )
+
+        with override_settings(WORKFLOW_KERNEL_CLIENT=MockClient):
+            with patch("toto.workflows.views.celery_available", return_value=False):
+                response = self.client.post(reverse("workflows:workflow_run_restart", args=[source_run.id]))
+
+        new_run = WorkflowRun.objects.exclude(id=source_run.id).get(workflow=wf)
+        self.assertRedirects(
+            response,
+            reverse("workflows:workflow_run_detail", args=[new_run.id]),
+            fetch_redirect_response=False,
+        )
+        self.assertEqual(new_run.input_data, source_run.input_data)
+        self.assertEqual(new_run.status, WorkflowRun.COMPLETED)
+        self.assertEqual(new_run.node_runs.get().output_data["data"], {"restarted": True})
+
+    def test_restart_rejects_non_completed_run(self):
+        wf = Workflow.objects.create(name="Running UI Workflow")
+        source_run = WorkflowRun.objects.create(
+            workflow=wf,
+            status=WorkflowRun.RUNNING,
+            input_data={"data": {"seed": 7}},
+        )
+
+        response = self.client.post(reverse("workflows:workflow_run_restart", args=[source_run.id]))
+
+        self.assertRedirects(
+            response,
+            reverse("workflows:workflow_run_detail", args=[source_run.id]),
+            fetch_redirect_response=False,
+        )
+        self.assertEqual(WorkflowRun.objects.filter(workflow=wf).count(), 1)
 
 
 # ---------------------------------------------------------------------------

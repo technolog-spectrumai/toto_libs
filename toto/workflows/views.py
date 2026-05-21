@@ -1,6 +1,11 @@
+from copy import deepcopy
+
+from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.shortcuts import get_object_or_404
-from django.urls import reverse_lazy
+from django.shortcuts import get_object_or_404, redirect
+from django.urls import reverse, reverse_lazy
+from django.views.decorators.http import require_POST
 from django.views.generic import DetailView, ListView
 
 from rest_framework import status
@@ -46,6 +51,7 @@ from .serializers import (
     WorkflowConnectorSerializer,
 )
 from .services.human_task import submit_human_task
+from .services.executor import WorkflowExecutor
 from .services.reports import render_report
 from .services.validator import ValidationError, WorkflowValidator
 from .tasks import resume_workflow_run_task, start_workflow_run_task
@@ -454,6 +460,58 @@ class WorkflowDetailUIView(LoginRequiredMixin, DetailView):
         return _decorate(context, self.request)
 
 
+@login_required(login_url=reverse_lazy("core:login"))
+@require_POST
+def workflow_run_start_ui(request, workflow_id):
+    workflow = get_object_or_404(Workflow, pk=workflow_id)
+    try:
+        WorkflowValidator().validate(workflow)
+    except ValidationError as exc:
+        messages.error(
+            request,
+            "Workflow validation failed: " + "; ".join(exc.errors),
+        )
+        return redirect("workflows:workflow_detail", workflow_id=workflow.id)
+
+    run = _start_workflow_run(request, workflow, input_data={})
+    return redirect(reverse("workflows:workflow_run_detail", kwargs={"run_id": run.id}))
+
+
+@login_required(login_url=reverse_lazy("core:login"))
+@require_POST
+def workflow_run_restart_ui(request, run_id):
+    source_run = get_object_or_404(WorkflowRun.objects.select_related("workflow"), pk=run_id)
+    if source_run.status != WorkflowRun.COMPLETED:
+        messages.error(request, "Only completed workflow runs can be restarted.")
+        return redirect(reverse("workflows:workflow_run_detail", kwargs={"run_id": source_run.id}))
+
+    workflow = source_run.workflow
+    try:
+        WorkflowValidator().validate(workflow)
+    except ValidationError as exc:
+        messages.error(
+            request,
+            "Workflow validation failed: " + "; ".join(exc.errors),
+        )
+        return redirect(reverse("workflows:workflow_run_detail", kwargs={"run_id": source_run.id}))
+
+    run = _start_workflow_run(request, workflow, input_data=deepcopy(source_run.input_data or {}))
+    messages.success(request, f"Restarted workflow run #{source_run.id} as run #{run.id}.")
+    return redirect(reverse("workflows:workflow_run_detail", kwargs={"run_id": run.id}))
+
+
+def _start_workflow_run(request, workflow, *, input_data):
+    run = WorkflowRun.objects.create(workflow=workflow, input_data=input_data or {})
+    if celery_available():
+        start_workflow_run_task.delay(run.id)
+        messages.success(request, f"Started workflow run #{run.id}.")
+    else:
+        WorkflowExecutor(async_lambdas=False).start(run)
+        run.refresh_from_db()
+        messages.success(request, f"Ran workflow #{run.id} without Celery.")
+    return run
+
+
 class WorkflowRunDetailUIView(LoginRequiredMixin, DetailView):
     model = WorkflowRun
     template_name = "workflows/workflow_run_detail.html"
@@ -485,10 +543,13 @@ class WorkflowRunDetailUIView(LoginRequiredMixin, DetailView):
             reports_by_node_run.setdefault(report.source_node_run_id, []).append(report)
         for node_run in node_runs:
             node_run.generated_reports = reports_by_node_run.get(node_run.id, [])
+        failed_node_run = next((node_run for node_run in node_runs if node_run.error), None)
 
         context["node_runs"] = node_runs
         context["edge_runs"] = edge_runs
         context["reports"] = reports
+        context["run_error"] = failed_node_run.error if failed_node_run else ""
+        context["run_error_node"] = failed_node_run.node if failed_node_run else None
 
         pending_tasks = []
         for nr in node_runs:

@@ -29,8 +29,19 @@
           </h1>
         </div>
 
-        <!-- Status badge -->
-        <div>
+        <!-- Actions -->
+        <div class="flex flex-wrap items-center gap-2">
+          {% if run.status == 'completed' %}
+            <form method="post" action="{% url 'workflows:workflow_run_restart' run.id %}">
+              {% csrf_token %}
+              <button type="submit"
+                      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-primary-bg-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-primary-bg-light'"
+                      class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-semibold shadow-sm transition">
+                <i class="fa-solid fa-rotate-right"></i>
+                {% trans "Restart" %}
+              </button>
+            </form>
+          {% endif %}
           <span class="rounded-full px-4 py-1.5 text-sm font-bold
             {% if run.status == 'completed' %}
               :class="darkMode ? 'bg-success-dark/20 text-success-dark' : 'bg-success-light/20 text-success-light'"
@@ -58,6 +69,19 @@
           <span><i class="fa-solid fa-flag-checkered mr-1"></i> {% trans "Completed" %} {{ run.completed_at|date:"Y-m-d H:i:s" }}</span>
         {% endif %}
       </div>
+      {% if run.status == 'failed' and run_error %}
+        <div class="rounded-lg border p-4 text-sm"
+             :class="darkMode ? 'border-warn-dark/40 bg-warn-dark/10 text-warn-dark' : 'border-warn-light/40 bg-warn-light/10 text-warn-light'">
+          <p class="mb-1 flex items-center gap-2 font-bold">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            {% trans "Run failed" %}
+            {% if run_error_node %}
+              <span class="font-normal opacity-75">({{ run_error_node.label|default:run_error_node.id }})</span>
+            {% endif %}
+          </p>
+          <p class="font-mono text-xs leading-relaxed">{{ run_error }}</p>
+        </div>
+      {% endif %}
     </header>
 
     <!-- Graph -->
