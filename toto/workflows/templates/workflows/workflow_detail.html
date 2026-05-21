@@ -31,15 +31,24 @@
 
       <!-- Actions -->
       <div class="flex flex-wrap items-center gap-2">
-        <form method="post" action="{% url 'workflows:workflow_run_start' workflow.id %}">
-          {% csrf_token %}
-          <button type="submit"
-                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90' : 'bg-accent-light text-primary-bg-light hover:opacity-90'"
-                  class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold shadow-sm transition">
-            <i class="fa-solid fa-play"></i>
-            {% trans "Run" %}
-          </button>
-        </form>
+        {% if trigger_node %}
+          <a href="{% url 'workflows:workflow_gate' workflow.id %}"
+             :class="darkMode ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90' : 'bg-accent-light text-primary-bg-light hover:opacity-90'"
+             class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold shadow-sm transition">
+            <i class="fa-solid fa-door-open"></i>
+            {% trans "Open Gate" %}
+          </a>
+        {% else %}
+          <form method="post" action="{% url 'workflows:workflow_run_start' workflow.id %}">
+            {% csrf_token %}
+            <button type="submit"
+                    :class="darkMode ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90' : 'bg-accent-light text-primary-bg-light hover:opacity-90'"
+                    class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold shadow-sm transition">
+              <i class="fa-solid fa-play"></i>
+              {% trans "Run" %}
+            </button>
+          </form>
+        {% endif %}
         <span :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
               class="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm shadow-sm">
           <i class="fa-solid fa-circle-nodes opacity-60"></i>

@@ -38,6 +38,18 @@ class WorkflowValidator:
                     errors.append(
                         f"Lambda node {node.id} ({node.label!r}) has no lambda_function."
                     )
+            elif node.node_type == WorkflowNode.TRIGGER:
+                input_keys = set()
+                for trigger_input in node.trigger_inputs.all():
+                    if trigger_input.key in input_keys:
+                        errors.append(
+                            f"Trigger node {node.id} has duplicate input key {trigger_input.key!r}."
+                        )
+                    input_keys.add(trigger_input.key)
+                    if trigger_input.input_type not in dict(trigger_input.INPUT_TYPES):
+                        errors.append(
+                            f"Trigger input {trigger_input.key!r} has unsupported type."
+                        )
             elif node.node_type == WorkflowNode.HUMAN:
                 schema = node.config.get("schema") if node.config else None
                 if not schema:

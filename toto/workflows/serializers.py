@@ -11,7 +11,9 @@ from .models import (
     WorkflowEdgeRun,
     WorkflowNode,
     WorkflowNodeRun,
+    WorkflowRunFile,
     WorkflowRun,
+    WorkflowTriggerInput,
 )
 
 
@@ -53,12 +55,30 @@ class ReportSerializer(serializers.ModelSerializer):
 
 
 class WorkflowNodeSerializer(serializers.ModelSerializer):
+    trigger_inputs = serializers.SerializerMethodField()
+
     class Meta:
         model = WorkflowNode
         fields = [
             "id", "workflow", "node_type", "label",
             "lambda_function", "connector", "report_template",
-            "config", "position_x", "position_y",
+            "config", "position_x", "position_y", "trigger_inputs",
+        ]
+        read_only_fields = ["id"]
+
+    def get_trigger_inputs(self, obj):
+        if obj.node_type != WorkflowNode.TRIGGER:
+            return []
+        return WorkflowTriggerInputSerializer(obj.trigger_inputs.all(), many=True).data
+
+
+class WorkflowTriggerInputSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WorkflowTriggerInput
+        fields = [
+            "id", "trigger_node", "key", "label", "input_type", "required",
+            "default_value", "order", "help_text", "allow_multiple_files",
+            "accepted_file_types", "max_file_count", "max_file_size",
         ]
         read_only_fields = ["id"]
 
@@ -133,21 +153,32 @@ class WorkflowEdgeRunSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class WorkflowRunFileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WorkflowRunFile
+        fields = [
+            "id", "workflow_run", "trigger_input", "input_key", "original_name",
+            "mime_type", "size", "metadata", "uploaded_at",
+        ]
+        read_only_fields = fields
+
+
 class WorkflowRunSerializer(serializers.ModelSerializer):
     node_runs = WorkflowNodeRunSerializer(many=True, read_only=True)
     edge_runs = WorkflowEdgeRunSerializer(many=True, read_only=True)
+    files = WorkflowRunFileSerializer(many=True, read_only=True)
 
     class Meta:
         model = WorkflowRun
         fields = [
             "id", "workflow", "status", "input_data", "output_data",
             "started_at", "completed_at", "created_at",
-            "node_runs", "edge_runs",
+            "node_runs", "edge_runs", "files",
         ]
         read_only_fields = [
             "id", "status", "output_data",
             "started_at", "completed_at", "created_at",
-            "node_runs", "edge_runs",
+            "node_runs", "edge_runs", "files",
         ]
 
 

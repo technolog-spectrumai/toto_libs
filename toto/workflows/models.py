@@ -194,6 +194,7 @@ class ReportTemplate(models.Model):
 
 
 class WorkflowNode(models.Model):
+    TRIGGER = "trigger"
     LAMBDA = "lambda"
     HUMAN = "human"
     SPLIT = "split"
@@ -202,6 +203,7 @@ class WorkflowNode(models.Model):
     REPORT = "report"
 
     NODE_TYPES = [
+        (TRIGGER, "Trigger"),
         (LAMBDA, "Lambda"),
         (HUMAN, "Human"),
         (SPLIT, "Split"),
@@ -242,6 +244,69 @@ class WorkflowNode(models.Model):
 
     def __str__(self):
         return f"{self.node_type}:{self.id} ({self.label})"
+
+
+class WorkflowTriggerInput(models.Model):
+    TYPE_INT = "int"
+    TYPE_FLOAT = "float"
+    TYPE_TEXT = "text"
+    TYPE_FILE = "file"
+    TYPE_DATETIME = "datetime"
+
+    INPUT_TYPES = [
+        (TYPE_INT, "Integer"),
+        (TYPE_FLOAT, "Float"),
+        (TYPE_TEXT, "Text"),
+        (TYPE_FILE, "File"),
+        (TYPE_DATETIME, "Datetime"),
+    ]
+
+    trigger_node = models.ForeignKey(
+        WorkflowNode,
+        on_delete=models.CASCADE,
+        related_name="trigger_inputs",
+        limit_choices_to={"node_type": WorkflowNode.TRIGGER},
+    )
+    key = models.SlugField(max_length=120)
+    label = models.CharField(max_length=180)
+    input_type = models.CharField(max_length=20, choices=INPUT_TYPES)
+    required = models.BooleanField(default=False)
+    default_value = models.JSONField(null=True, blank=True)
+    order = models.PositiveIntegerField(default=0)
+    help_text = models.TextField(blank=True)
+    allow_multiple_files = models.BooleanField(default=False)
+    accepted_file_types = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Comma-separated MIME types or extensions, e.g. application/pdf,.txt,image/*.",
+    )
+    max_file_count = models.PositiveIntegerField(null=True, blank=True)
+    max_file_size = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Maximum size per file in bytes.",
+    )
+
+    class Meta:
+        ordering = ["order", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["trigger_node", "key"],
+                name="unique_workflow_trigger_input_key",
+            )
+        ]
+
+    def clean(self):
+        if self.trigger_node_id and self.trigger_node.node_type != WorkflowNode.TRIGGER:
+            raise ValidationError("Trigger inputs can only be attached to Trigger nodes.")
+        if self.input_type != self.TYPE_FILE:
+            self.allow_multiple_files = False
+            self.accepted_file_types = ""
+            self.max_file_count = None
+            self.max_file_size = None
+
+    def __str__(self):
+        return f"{self.trigger_node}: {self.key}"
 
 
 class WorkflowEdge(models.Model):
@@ -292,6 +357,42 @@ class WorkflowRun(models.Model):
 
     def __str__(self):
         return f"Run {self.id} [{self.workflow}] {self.status}"
+
+
+class WorkflowRunFile(models.Model):
+    workflow_run = models.ForeignKey(
+        WorkflowRun, on_delete=models.CASCADE, related_name="files"
+    )
+    trigger_input = models.ForeignKey(
+        WorkflowTriggerInput,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="run_files",
+    )
+    input_key = models.CharField(max_length=120)
+    file = models.FileField(upload_to="workflow-runs/%Y/%m/%d/")
+    original_name = models.CharField(max_length=255)
+    mime_type = models.CharField(max_length=120, blank=True)
+    size = models.PositiveBigIntegerField(default=0)
+    metadata = models.JSONField(default=dict, blank=True)
+    uploaded_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["input_key", "id"]
+
+    def as_reference(self) -> dict:
+        return {
+            "file_id": str(self.id),
+            "name": self.original_name,
+            "mime_type": self.mime_type,
+            "size": self.size,
+            "url": self.file.url if self.file else "",
+            "metadata": self.metadata or {},
+        }
+
+    def __str__(self):
+        return self.original_name
 
 
 class WorkflowNodeRun(models.Model):

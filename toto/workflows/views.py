@@ -1,9 +1,10 @@
 from copy import deepcopy
+import json
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.views.decorators.http import require_POST
 from django.views.generic import DetailView, ListView
@@ -52,6 +53,14 @@ from .serializers import (
 )
 from .services.human_task import submit_human_task
 from .services.reports import render_report
+from .services.triggers import (
+    TriggerValidationError,
+    create_triggered_run,
+    get_trigger_node,
+    prepare_trigger_submission,
+    rerun_initial_values,
+    trigger_inputs,
+)
 from .services.validator import ValidationError, WorkflowValidator
 from .tasks import resume_workflow_run_task, start_workflow_run_task
 
@@ -388,10 +397,15 @@ class WorkflowListUIView(LoginRequiredMixin, ListView):
     login_url = reverse_lazy("core:login")
 
     def get_queryset(self):
-        return Workflow.objects.order_by("-created_at")
+        return Workflow.objects.prefetch_related("nodes").order_by("-created_at")
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        for workflow in context["workflows"]:
+            workflow.trigger_node = next(
+                (node for node in workflow.nodes.all() if node.node_type == WorkflowNode.TRIGGER),
+                None,
+            )
         return _decorate(context, self.request)
 
 
@@ -446,6 +460,7 @@ class WorkflowDetailUIView(LoginRequiredMixin, DetailView):
         context["nodes"] = nodes
         context["edges"] = edges
         context["runs"] = workflow.runs.order_by("-created_at")[:20]
+        context["trigger_node"] = get_trigger_node(workflow)
         context["graph_nodes_json"] = json.dumps([
             {
                 "id": n.id,
@@ -471,6 +486,8 @@ class WorkflowDetailUIView(LoginRequiredMixin, DetailView):
 @require_POST
 def workflow_run_start_ui(request, workflow_id):
     workflow = get_object_or_404(Workflow, pk=workflow_id)
+    if get_trigger_node(workflow) is not None:
+        return redirect("workflows:workflow_gate", workflow_id=workflow.id)
     try:
         WorkflowValidator().validate(workflow)
     except ValidationError as exc:
@@ -509,6 +526,72 @@ def workflow_run_restart_ui(request, run_id):
         return redirect(reverse("workflows:workflow_run_detail", kwargs={"run_id": source_run.id}))
     messages.success(request, f"Restarted workflow run #{source_run.id} as run #{run.id}.")
     return redirect(reverse("workflows:workflow_run_detail", kwargs={"run_id": run.id}))
+
+
+class WorkflowGateUIView(LoginRequiredMixin, DetailView):
+    model = Workflow
+    template_name = "workflows/workflow_gate.html"
+    context_object_name = "workflow"
+    login_url = reverse_lazy("core:login")
+
+    def get_object(self, queryset=None):
+        return get_object_or_404(Workflow, pk=self.kwargs["workflow_id"])
+
+    def get(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        return render(request, self.template_name, self._context())
+
+    def post(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        workflow = self.object
+        try:
+            WorkflowValidator().validate(workflow)
+            submission = prepare_trigger_submission(workflow, request.POST, request.FILES)
+        except ValidationError as exc:
+            return render(request, self.template_name, self._context(general_errors=exc.errors), status=422)
+        except TriggerValidationError as exc:
+            return render(request, self.template_name, self._context(errors=exc.errors), status=422)
+
+        if not celery_available():
+            return render(
+                request,
+                self.template_name,
+                self._context(general_errors=[
+                    "No Celery workers are running. Start a Celery worker before executing workflows."
+                ]),
+                status=503,
+            )
+
+        run = create_triggered_run(workflow=workflow, submission=submission)
+        start_workflow_run_task.delay(run.id)
+        messages.success(request, f"Started workflow run #{run.id}.")
+        return redirect("workflows:workflow_run_detail", run_id=run.id)
+
+    def _context(self, *, errors=None, general_errors=None):
+        workflow = self.object
+        trigger_node = get_trigger_node(workflow)
+        rerun = self._rerun_source()
+        initial = rerun_initial_values(rerun) if rerun else {"parameters": {}, "files": {}}
+        context = {
+            "workflow": workflow,
+            "trigger_node": trigger_node,
+            "trigger_inputs": _gate_input_context(trigger_node, initial, self.request.POST if self.request.method == "POST" else None),
+            "errors": errors or {},
+            "general_errors": general_errors or [],
+            "rerun": rerun,
+        }
+        return _decorate(context, self.request)
+
+    def _rerun_source(self):
+        run_id = self.request.GET.get("rerun") or self.request.POST.get("rerun_id")
+        if not run_id:
+            return None
+        return WorkflowRun.objects.filter(pk=run_id, workflow=self.object).first()
+
+
+@login_required(login_url=reverse_lazy("core:login"))
+def workflow_run_legacy_redirect(request, run_id):
+    return redirect("workflows:workflow_run_detail", run_id=run_id)
 
 
 def _start_workflow_run(request, workflow, *, input_data):
@@ -563,6 +646,7 @@ class WorkflowRunDetailUIView(LoginRequiredMixin, DetailView):
         context["reports"] = reports
         context["run_error"] = failed_node_run.display_error if failed_node_run else ""
         context["run_error_node"] = failed_node_run.node if failed_node_run else None
+        context.update(_run_user_context(run))
 
         pending_tasks = []
         for nr in node_runs:
@@ -609,3 +693,54 @@ def _display_workflow_error(error: str) -> str:
     if error.startswith("Kernel error: "):
         return "Workflow task error: " + error.removeprefix("Kernel error: ").strip()
     return error
+
+
+def _gate_input_context(trigger_node, initial: dict, post_data=None) -> list[dict]:
+    if trigger_node is None:
+        return []
+    parameters = initial.get("parameters") or {}
+    files = initial.get("files") or {}
+    rows = []
+    for item in trigger_inputs(trigger_node):
+        value = post_data.get(item.key) if post_data is not None else parameters.get(item.key, item.default_value)
+        date_value = ""
+        time_value = ""
+        if item.input_type == "datetime":
+            value = parameters.get(item.key, item.default_value) if post_data is None else ""
+            if post_data is not None:
+                date_value = post_data.get(f"{item.key}__date", "")
+                time_value = post_data.get(f"{item.key}__time", "")
+            elif value:
+                parts = str(value).split("T", 1)
+                date_value = parts[0]
+                if len(parts) > 1:
+                    time_value = parts[1][:5]
+        existing_files = files.get(item.key, []) if item.input_type == "file" else []
+        existing_file_rows = [
+            {"ref": file_ref, "json": json.dumps(file_ref, sort_keys=True)}
+            for file_ref in existing_files
+            if isinstance(file_ref, dict)
+        ]
+        rows.append({
+            "definition": item,
+            "value": "" if value is None else value,
+            "date_value": date_value,
+            "time_value": time_value,
+            "existing_files": existing_files,
+            "existing_file_rows": existing_file_rows,
+            "accept_attr": item.accepted_file_types,
+        })
+    return rows
+
+
+def _run_user_context(run: WorkflowRun) -> dict:
+    input_data = run.input_data or {}
+    failed_node_run = run.node_runs.exclude(error="").select_related("node").first()
+    return {
+        "parameters": input_data.get("parameters") or {},
+        "files": input_data.get("files") or {},
+        "inputs": input_data.get("inputs") or {},
+        "lambda_payload": input_data.get("lambda_payload") or {},
+        "run_error": _display_workflow_error(failed_node_run.error) if failed_node_run else "",
+        "run_error_node": failed_node_run.node if failed_node_run else None,
+    }

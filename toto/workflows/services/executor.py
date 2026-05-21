@@ -39,6 +39,7 @@ from ..models import (
 )
 from ..output import normalize_workflow_output
 from .connectors import execute_connector
+from .triggers import trigger_payload_for_run
 
 log = logging.getLogger(__name__)
 
@@ -99,7 +100,9 @@ class WorkflowExecutor:
     def _execute_node(self, node_run: WorkflowNodeRun) -> None:
         node = node_run.node
         try:
-            if node.node_type == WorkflowNode.LAMBDA:
+            if node.node_type == WorkflowNode.TRIGGER:
+                output = self._run_trigger(node_run)
+            elif node.node_type == WorkflowNode.LAMBDA:
                 output = self._run_lambda(node_run)
             elif node.node_type == WorkflowNode.HUMAN:
                 self._run_human(node_run)
@@ -235,6 +238,12 @@ class WorkflowExecutor:
             except (json.JSONDecodeError, ValueError):
                 continue
         return {}
+
+    def _run_trigger(self, node_run: WorkflowNodeRun) -> dict:
+        return {
+            "data": trigger_payload_for_run(node_run.workflow_run, node_run.node),
+            "routes": ["start"],
+        }
 
     def _run_human(self, node_run: WorkflowNodeRun) -> None:
         node = node_run.node

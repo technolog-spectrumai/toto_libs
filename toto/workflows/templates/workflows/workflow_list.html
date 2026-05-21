@@ -46,15 +46,15 @@
         {% for wf in workflows %}
           <li :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-primary-bg-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-primary-bg-light'"
               class="rounded-xl border p-4 shadow-sm transition-colors duration-200">
-            <a href="{% url 'workflows:workflow_detail' wf.id %}" class="group flex items-start justify-between gap-4">
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div class="min-w-0 flex-1">
-                <div class="flex items-center gap-2">
+                <a href="{% url 'workflows:workflow_detail' wf.id %}" class="group flex items-center gap-2">
                   <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
                      class="fa-solid fa-diagram-project text-sm"></i>
                   <span class="truncate font-semibold group-hover:underline underline-offset-2">
                     {{ wf.name }}
                   </span>
-                </div>
+                </a>
                 {% if wf.description %}
                   <p class="mt-1 truncate text-xs opacity-55">{{ wf.description }}</p>
                 {% endif %}
@@ -63,8 +63,23 @@
                   {% trans "Created" %} {{ wf.created_at|date:"Y-m-d H:i" }}
                 </p>
               </div>
-              <i class="fa-solid fa-chevron-right mt-1 shrink-0 text-xs opacity-40 transition-opacity group-hover:opacity-80"></i>
-            </a>
+              <div class="flex shrink-0 flex-wrap gap-2">
+                {% if wf.trigger_node %}
+                  <a href="{% url 'workflows:workflow_gate' wf.id %}"
+                     :class="darkMode ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90' : 'bg-accent-light text-primary-bg-light hover:opacity-90'"
+                     class="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold shadow-sm transition">
+                    <i class="fa-solid fa-door-open"></i>
+                    {% trans "Open Gate" %}
+                  </a>
+                {% endif %}
+                <a href="{% url 'workflows:workflow_detail' wf.id %}"
+                   :class="darkMode ? 'border-accent-1 hover:bg-primary-bg-dark' : 'border-accent-2 hover:bg-primary-bg-light'"
+                   class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition">
+                  <i class="fa-solid fa-circle-info"></i>
+                  {% trans "Details" %}
+                </a>
+              </div>
+            </div>
           </li>
         {% endfor %}
       </ul>

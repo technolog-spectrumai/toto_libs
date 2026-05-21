@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 
 from celery.exceptions import SoftTimeLimitExceeded
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 from django.test import RequestFactory, TestCase, override_settings
 from django.utils import timezone
@@ -28,6 +29,7 @@ from .models import (
     WorkflowNode,
     WorkflowNodeRun,
     WorkflowRun,
+    WorkflowTriggerInput,
 )
 from .services.executor import WorkflowExecutor
 from .services.human_task import apply_output_mapping, submit_human_task
@@ -900,6 +902,128 @@ class WorkflowUIViewTests(TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertEqual(task.status, HumanTask.PENDING)
         self.assertEqual(node_run.status, WorkflowNodeRun.WAITING)
+
+    def test_gate_submit_stores_trigger_inputs_files_and_redirects_to_run_detail(self):
+        wf = Workflow.objects.create(name="Gate Workflow")
+        trigger = _node(wf, WorkflowNode.TRIGGER, label="Manual Start")
+        worker = _node(wf, WorkflowNode.LAMBDA, label="Worker", lambda_fn=_lambda("gate_worker"))
+        _edge(wf, trigger, worker)
+        WorkflowTriggerInput.objects.create(
+            trigger_node=trigger,
+            key="customer_id",
+            label="Customer",
+            input_type=WorkflowTriggerInput.TYPE_INT,
+            required=True,
+            order=1,
+        )
+        WorkflowTriggerInput.objects.create(
+            trigger_node=trigger,
+            key="threshold",
+            label="Threshold",
+            input_type=WorkflowTriggerInput.TYPE_FLOAT,
+            order=2,
+        )
+        WorkflowTriggerInput.objects.create(
+            trigger_node=trigger,
+            key="notes",
+            label="Notes",
+            input_type=WorkflowTriggerInput.TYPE_TEXT,
+            order=3,
+        )
+        WorkflowTriggerInput.objects.create(
+            trigger_node=trigger,
+            key="processing_deadline",
+            label="Deadline",
+            input_type=WorkflowTriggerInput.TYPE_DATETIME,
+            required=True,
+            order=4,
+        )
+        WorkflowTriggerInput.objects.create(
+            trigger_node=trigger,
+            key="source_documents",
+            label="Documents",
+            input_type=WorkflowTriggerInput.TYPE_FILE,
+            required=True,
+            allow_multiple_files=True,
+            accepted_file_types="application/pdf",
+            max_file_count=2,
+            max_file_size=1024,
+            order=5,
+        )
+
+        upload = SimpleUploadedFile(
+            "invoice.pdf",
+            b"%PDF-1.4 tiny",
+            content_type="application/pdf",
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with override_settings(MEDIA_ROOT=tmpdir):
+                with patch("toto.workflows.views.celery_available", return_value=True):
+                    with patch("toto.workflows.views.start_workflow_run_task.delay") as delay:
+                        response = self.client.post(
+                            reverse("workflows:workflow_gate", args=[wf.id]),
+                            data={
+                                "customer_id": "123",
+                                "threshold": "0.75",
+                                "notes": "Run for May invoices",
+                                "processing_deadline__date": "2026-05-21",
+                                "processing_deadline__time": "14:30",
+                                "source_documents": upload,
+                            },
+                        )
+
+        run = WorkflowRun.objects.get(workflow=wf)
+        delay.assert_called_once_with(run.id)
+        self.assertRedirects(
+            response,
+            reverse("workflows:workflow_run_detail", args=[run.id]),
+            fetch_redirect_response=False,
+        )
+        self.assertEqual(run.input_data["parameters"]["customer_id"], 123)
+        self.assertEqual(run.input_data["parameters"]["threshold"], 0.75)
+        self.assertIn("2026-05-21T14:30:00", run.input_data["parameters"]["processing_deadline"])
+        self.assertEqual(run.input_data["files"]["source_documents"][0]["name"], "invoice.pdf")
+        self.assertEqual(run.input_data["lambda_payload"]["workflow_id"], str(wf.id))
+        self.assertEqual(run.input_data["lambda_payload"]["run_id"], str(run.id))
+        self.assertEqual(run.input_data["lambda_payload"]["trigger_node_id"], str(trigger.id))
+
+    def test_trigger_node_passes_manual_payload_to_downstream_lambda(self):
+        fn = LambdaFunction.objects.create(
+            function_name="trigger_payload_reader",
+            content=(
+                "import json\n"
+                "payload = _input['data']\n"
+                "print(json.dumps({'data': {'seen': payload['inputs']['customer_id'], "
+                "'run_id': payload['run_id']}, 'route': 'end'}))"
+            ),
+        )
+        wf = Workflow.objects.create(name="Trigger Executor")
+        trigger = _node(wf, WorkflowNode.TRIGGER, label="Manual Start")
+        worker = _node(wf, WorkflowNode.LAMBDA, label="Worker", lambda_fn=fn)
+        _edge(wf, trigger, worker)
+        run = WorkflowRun.objects.create(
+            workflow=wf,
+            input_data={
+                "trigger_node_id": trigger.id,
+                "parameters": {"customer_id": 123},
+                "files": {},
+                "inputs": {"customer_id": 123},
+                "lambda_payload": {
+                    "workflow_id": str(wf.id),
+                    "run_id": "manual-run",
+                    "trigger_node_id": str(trigger.id),
+                    "inputs": {"customer_id": 123},
+                },
+            },
+        )
+
+        WorkflowExecutor().start(run)
+
+        run.refresh_from_db()
+        worker_run = run.node_runs.get(node=worker)
+        self.assertEqual(run.status, WorkflowRun.COMPLETED)
+        self.assertEqual(worker_run.input_data["data"]["inputs"]["customer_id"], 123)
+        self.assertEqual(worker_run.output_data["data"], {"seen": 123, "run_id": "manual-run"})
 
 
 # ---------------------------------------------------------------------------

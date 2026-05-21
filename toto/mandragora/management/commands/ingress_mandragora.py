@@ -24,6 +24,7 @@ from toto.workflows.models import (
     WorkflowNode,
     WorkflowNodeRun,
     WorkflowRun,
+    WorkflowTriggerInput,
 )
 
 _DEFAULT_DEPS = [
@@ -220,13 +221,7 @@ class Command(IngressCommand):
             "api_connector_slug": api_connector.slug,
             "endpoint": "v1/forecast",
             "method": "GET",
-            "params": {
-                "latitude": 52.4069,
-                "longitude": 16.9252,
-                "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum",
-                "forecast_days": 7,
-                "timezone": "Europe/Warsaw",
-            },
+            "params_field": "data.params",
             "timeout_seconds": 10,
             "max_response_bytes": 200000,
         }
@@ -874,10 +869,28 @@ print(json.dumps({"data": {"series": series}, "route": "report"}))
         connector = WorkflowConnector.objects.filter(name="Demo Open-Meteo Forecast").first()
         if connector is None:
             connector = self._seed_weather_workflow_connector(self._seed_weather_api_connector())
-        fn = self._upsert_lambda("weather_build_series", """\
+        fn_request = self._upsert_lambda("weather_build_request", """\
+import json
+
+inputs = _input.get("data", {}).get("inputs", {})
+latitude = float(inputs.get("latitude") or 52.4069)
+longitude = float(inputs.get("longitude") or 16.9252)
+forecast_days = int(inputs.get("forecast_days") or 7)
+city = inputs.get("city") or "Poznan"
+params = {
+    "latitude": latitude,
+    "longitude": longitude,
+    "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum",
+    "forecast_days": max(1, min(forecast_days, 16)),
+    "timezone": "Europe/Warsaw",
+}
+print(json.dumps({"data": {"city": city, "params": params}, "route": "fetch"}))
+""")
+        fn_series = self._upsert_lambda("weather_build_series", """\
 import json
 
 payload = _input.get("data", {}).get("json", {})
+city = _input.get("data", {}).get("city", "Poznan")
 daily = payload.get("daily", {})
 units = payload.get("daily_units", {})
 dates = daily.get("time", [])
@@ -902,7 +915,7 @@ for index, label in enumerate(dates):
 
 print(json.dumps({
     "data": {
-        "location": "Poznan",
+        "location": city,
         "source": "Open-Meteo",
         "temperature_unit": units.get("temperature_2m_max", "degC"),
         "precipitation_unit": units.get("precipitation_sum", "mm"),
@@ -926,28 +939,47 @@ print(json.dumps({
             self._ensure_weather_workflow_nodes(
                 wf=wf,
                 connector=connector,
-                lambda_function=fn,
+                request_lambda=fn_request,
+                series_lambda=fn_series,
                 temperature_template=temperature_template,
                 precipitation_template=precipitation_template,
             )
             return
 
+        n_trigger = WorkflowNode.objects.create(
+            workflow=wf,
+            node_type=WorkflowNode.TRIGGER,
+            label="Weather Gate",
+            position_x=0,
+            position_y=0,
+        )
+        self._ensure_weather_trigger_inputs(n_trigger)
+        n_request = WorkflowNode.objects.create(
+            workflow=wf,
+            node_type=WorkflowNode.LAMBDA,
+            label="Build Forecast Request",
+            lambda_function=fn_request,
+            position_x=0,
+            position_y=120,
+        )
         n_fetch = WorkflowNode.objects.create(
             workflow=wf,
             node_type=WorkflowNode.CONNECTOR,
             label="Fetch Forecast",
             connector=connector,
             position_x=0,
-            position_y=0,
+            position_y=240,
         )
         n_series = WorkflowNode.objects.create(
             workflow=wf,
             node_type=WorkflowNode.LAMBDA,
             label="Build Weather Series",
-            lambda_function=fn,
+            lambda_function=fn_series,
             position_x=0,
-            position_y=120,
+            position_y=360,
         )
+        WorkflowEdge.objects.create(workflow=wf, source=n_trigger, target=n_request)
+        WorkflowEdge.objects.create(workflow=wf, source=n_request, target=n_fetch)
         WorkflowEdge.objects.create(workflow=wf, source=n_fetch, target=n_series)
         if temperature_template:
             n_temperature = WorkflowNode.objects.create(
@@ -957,7 +989,7 @@ print(json.dumps({
                 report_template=temperature_template,
                 config={"title": "Poznan Temperature Forecast", "route": "end"},
                 position_x=-160,
-                position_y=260,
+                position_y=500,
             )
             WorkflowEdge.objects.create(workflow=wf, source=n_series, target=n_temperature)
         if precipitation_template:
@@ -968,7 +1000,7 @@ print(json.dumps({
                 report_template=precipitation_template,
                 config={"title": "Poznan Precipitation Forecast", "route": "end"},
                 position_x=160,
-                position_y=260,
+                position_y=500,
             )
             WorkflowEdge.objects.create(workflow=wf, source=n_series, target=n_precipitation)
         self.stdout.write(self.style.SUCCESS("Created workflow: Weather Forecast Report"))
@@ -978,10 +1010,57 @@ print(json.dumps({
         *,
         wf,
         connector,
-        lambda_function,
+        request_lambda,
+        series_lambda,
         temperature_template,
         precipitation_template,
     ):
+        trigger, trigger_created = WorkflowNode.objects.get_or_create(
+            workflow=wf,
+            label="Weather Gate",
+            defaults={
+                "node_type": WorkflowNode.TRIGGER,
+                "position_x": 0,
+                "position_y": 0,
+            },
+        )
+        if trigger.node_type != WorkflowNode.TRIGGER:
+            trigger.node_type = WorkflowNode.TRIGGER
+        if trigger.position_x != 0 or trigger.position_y != 0:
+            trigger.position_x = 0
+            trigger.position_y = 0
+        trigger.save(update_fields=["node_type", "position_x", "position_y"])
+        self._ensure_weather_trigger_inputs(trigger)
+        if trigger_created:
+            self.stdout.write(self.style.SUCCESS("  + trigger node: Weather Gate"))
+
+        request_node, request_created = WorkflowNode.objects.get_or_create(
+            workflow=wf,
+            label="Build Forecast Request",
+            defaults={
+                "node_type": WorkflowNode.LAMBDA,
+                "lambda_function": request_lambda,
+                "position_x": 0,
+                "position_y": 120,
+            },
+        )
+        request_changed = False
+        if request_node.node_type != WorkflowNode.LAMBDA:
+            request_node.node_type = WorkflowNode.LAMBDA
+            request_changed = True
+        if request_node.lambda_function_id != request_lambda.id:
+            request_node.lambda_function = request_lambda
+            request_changed = True
+        if request_node.position_x != 0 or request_node.position_y != 120:
+            request_node.position_x = 0
+            request_node.position_y = 120
+            request_changed = True
+        if request_changed:
+            request_node.save(update_fields=["node_type", "lambda_function", "position_x", "position_y"])
+        WorkflowEdge.objects.get_or_create(workflow=wf, source=trigger, target=request_node)
+        if request_created:
+            self.stdout.write(self.style.SUCCESS("  + lambda node: Build Forecast Request"))
+
         fetch, fetch_created = WorkflowNode.objects.get_or_create(
             workflow=wf,
             label="Fetch Forecast",
@@ -989,7 +1068,7 @@ print(json.dumps({
                 "node_type": WorkflowNode.CONNECTOR,
                 "connector": connector,
                 "position_x": 0,
-                "position_y": 0,
+                "position_y": 240,
             },
         )
         fetch_changed = False
@@ -999,30 +1078,39 @@ print(json.dumps({
         if connector and fetch.connector_id != connector.id:
             fetch.connector = connector
             fetch_changed = True
+        if fetch.position_x != 0 or fetch.position_y != 240:
+            fetch.position_x = 0
+            fetch.position_y = 240
+            fetch_changed = True
         if fetch_changed:
-            fetch.save(update_fields=["node_type", "connector"])
+            fetch.save(update_fields=["node_type", "connector", "position_x", "position_y"])
         if fetch_created:
             self.stdout.write(self.style.SUCCESS("  + connector node: Fetch Forecast"))
+        WorkflowEdge.objects.get_or_create(workflow=wf, source=request_node, target=fetch)
 
         series, series_created = WorkflowNode.objects.get_or_create(
             workflow=wf,
             label="Build Weather Series",
             defaults={
                 "node_type": WorkflowNode.LAMBDA,
-                "lambda_function": lambda_function,
+                "lambda_function": series_lambda,
                 "position_x": 0,
-                "position_y": 120,
+                "position_y": 360,
             },
         )
         series_changed = False
         if series.node_type != WorkflowNode.LAMBDA:
             series.node_type = WorkflowNode.LAMBDA
             series_changed = True
-        if series.lambda_function_id != lambda_function.id:
-            series.lambda_function = lambda_function
+        if series.lambda_function_id != series_lambda.id:
+            series.lambda_function = series_lambda
+            series_changed = True
+        if series.position_x != 0 or series.position_y != 360:
+            series.position_x = 0
+            series.position_y = 360
             series_changed = True
         if series_changed:
-            series.save(update_fields=["node_type", "lambda_function"])
+            series.save(update_fields=["node_type", "lambda_function", "position_x", "position_y"])
         WorkflowEdge.objects.get_or_create(workflow=wf, source=fetch, target=series)
         if series_created:
             self.stdout.write(self.style.SUCCESS("  + lambda node: Build Weather Series"))
@@ -1044,6 +1132,58 @@ print(json.dumps({
             position_x=160,
         )
 
+    def _ensure_weather_trigger_inputs(self, trigger_node):
+        definitions = [
+            {
+                "key": "city",
+                "label": "City",
+                "input_type": WorkflowTriggerInput.TYPE_TEXT,
+                "required": True,
+                "default_value": "Poznan",
+                "order": 1,
+                "help_text": "Display name for this weather run.",
+            },
+            {
+                "key": "latitude",
+                "label": "Latitude",
+                "input_type": WorkflowTriggerInput.TYPE_FLOAT,
+                "required": True,
+                "default_value": 52.4069,
+                "order": 2,
+            },
+            {
+                "key": "longitude",
+                "label": "Longitude",
+                "input_type": WorkflowTriggerInput.TYPE_FLOAT,
+                "required": True,
+                "default_value": 16.9252,
+                "order": 3,
+            },
+            {
+                "key": "forecast_days",
+                "label": "Forecast days",
+                "input_type": WorkflowTriggerInput.TYPE_INT,
+                "required": True,
+                "default_value": 7,
+                "order": 4,
+                "help_text": "Open-Meteo supports up to 16 days for this endpoint.",
+            },
+            {
+                "key": "requested_at",
+                "label": "Requested at",
+                "input_type": WorkflowTriggerInput.TYPE_DATETIME,
+                "required": False,
+                "order": 5,
+                "help_text": "Optional scheduling/reference timestamp for the run.",
+            },
+        ]
+        for definition in definitions:
+            WorkflowTriggerInput.objects.update_or_create(
+                trigger_node=trigger_node,
+                key=definition["key"],
+                defaults=definition,
+            )
+
     def _ensure_weather_report_node(self, *, wf, source, label, template, title, position_x):
         if not template:
             return
@@ -1055,7 +1195,7 @@ print(json.dumps({
                 "report_template": template,
                 "config": {"title": title, "route": "end"},
                 "position_x": position_x,
-                "position_y": 260,
+                "position_y": 500,
             },
         )
         changed = False
@@ -1065,8 +1205,12 @@ print(json.dumps({
         if report_node.report_template_id != template.id:
             report_node.report_template = template
             changed = True
+        if report_node.position_x != position_x or report_node.position_y != 500:
+            report_node.position_x = position_x
+            report_node.position_y = 500
+            changed = True
         if changed:
-            report_node.save(update_fields=["node_type", "report_template"])
+            report_node.save(update_fields=["node_type", "report_template", "position_x", "position_y"])
         WorkflowEdge.objects.get_or_create(workflow=wf, source=source, target=report_node)
         if created:
             self.stdout.write(self.style.SUCCESS(f"  + report node: {label}"))
@@ -1617,11 +1761,35 @@ print(json.dumps({
 
         nodes = {n.label: n for n in wf.nodes.all()}
         edges = {(e.source.label, e.target.label): e for e in wf.edges.select_related("source", "target")}
-        if "Fetch Forecast" not in nodes or "Build Weather Series" not in nodes:
+        if (
+            "Weather Gate" not in nodes
+            or "Build Forecast Request" not in nodes
+            or "Fetch Forecast" not in nodes
+            or "Build Weather Series" not in nodes
+        ):
             return
 
         forecast_payload = self._weather_forecast_payload()
         weather_data = self._weather_report_data(forecast_payload)
+        parameters = {
+            "city": "Poznan",
+            "latitude": 52.4069,
+            "longitude": 16.9252,
+            "forecast_days": 7,
+        }
+        request_output = {
+            "data": {
+                "city": "Poznan",
+                "params": {
+                    "latitude": 52.4069,
+                    "longitude": 16.9252,
+                    "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum",
+                    "forecast_days": 7,
+                    "timezone": "Europe/Warsaw",
+                },
+            },
+            "routes": ["fetch"],
+        }
         fetch_output = {
             "data": {
                 "status_code": 200,
@@ -1635,16 +1803,48 @@ print(json.dumps({
         run = WorkflowRun.objects.create(
             workflow=wf,
             status=WorkflowRun.COMPLETED,
-            input_data={"data": {"city": "Poznan", "source": "Open-Meteo"}},
             output_data=series_output,
             started_at=now - timedelta(minutes=14),
             completed_at=now - timedelta(minutes=12),
+        )
+        lambda_payload = {
+            "workflow_id": str(wf.id),
+            "run_id": str(run.id),
+            "trigger_node_id": str(nodes["Weather Gate"].id),
+            "inputs": parameters,
+        }
+        run.input_data = {
+            "trigger_node_id": nodes["Weather Gate"].id,
+            "parameters": parameters,
+            "files": {},
+            "inputs": parameters,
+            "lambda_payload": lambda_payload,
+        }
+        run.save(update_fields=["input_data"])
+        trigger_output = {"data": lambda_payload, "routes": ["start"]}
+        self._nr(
+            run,
+            nodes["Weather Gate"],
+            WorkflowNodeRun.COMPLETED,
+            run.input_data,
+            trigger_output,
+            timedelta(minutes=14, seconds=30),
+            timedelta(minutes=14, seconds=20),
+        )
+        self._nr(
+            run,
+            nodes["Build Forecast Request"],
+            WorkflowNodeRun.COMPLETED,
+            trigger_output,
+            request_output,
+            timedelta(minutes=14, seconds=20),
+            timedelta(minutes=14),
         )
         self._nr(
             run,
             nodes["Fetch Forecast"],
             WorkflowNodeRun.COMPLETED,
-            run.input_data,
+            request_output,
             fetch_output,
             timedelta(minutes=14),
             timedelta(minutes=13, seconds=45),
@@ -1671,8 +1871,10 @@ print(json.dumps({
                     {"data": {"report": {"title": title}}, "routes": ["end"]},
                     start_offset,
                     timedelta(minutes=12),
-                )
+        )
         for edge_key, activated_at in (
+            (("Weather Gate", "Build Forecast Request"), timedelta(minutes=14, seconds=20)),
+            (("Build Forecast Request", "Fetch Forecast"), timedelta(minutes=14)),
             (("Fetch Forecast", "Build Weather Series"), timedelta(minutes=13, seconds=45)),
             (("Build Weather Series", "Temperature Report"), timedelta(minutes=13, seconds=10)),
             (("Build Weather Series", "Precipitation Report"), timedelta(minutes=13)),

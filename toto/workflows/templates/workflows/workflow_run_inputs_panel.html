@@ -1,0 +1,55 @@
+{% load i18n %}
+
+<section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-5 shadow-sm">
+  <h2 class="flex items-center gap-2 text-lg font-semibold">
+    <i class="fa-solid fa-list-check"></i>
+    {% trans "Submitted Inputs" %}
+  </h2>
+
+  <div class="mt-4 grid gap-4 lg:grid-cols-2">
+    <div>
+      <p class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-55">{% trans "Parameters" %}</p>
+      {% if parameters %}
+        <dl class="space-y-2">
+          {% for key, value in parameters.items %}
+            <div class="rounded-lg border px-3 py-2 text-sm"
+                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'">
+              <dt class="text-xs font-semibold opacity-55">{{ key }}</dt>
+              <dd class="mt-1 break-words font-mono text-xs">{{ value }}</dd>
+            </div>
+          {% endfor %}
+        </dl>
+      {% else %}
+        <p class="text-sm opacity-55">{% trans "No scalar parameters were submitted." %}</p>
+      {% endif %}
+    </div>
+
+    <div>
+      <p class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-55">{% trans "Files" %}</p>
+      {% if files %}
+        <div class="space-y-3">
+          {% for key, refs in files.items %}
+            <div class="rounded-lg border p-3"
+                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'">
+              <p class="text-xs font-semibold opacity-55">{{ key }}</p>
+              <div class="mt-2 space-y-2">
+                {% for file_ref in refs %}
+                  <div class="flex items-center gap-3 text-xs">
+                    <i class="fa-regular fa-file opacity-60"></i>
+                    <div class="min-w-0">
+                      <p class="truncate font-semibold">{{ file_ref.name }}</p>
+                      <p class="opacity-55">{{ file_ref.mime_type|default:"unknown" }} · {{ file_ref.size|filesizeformat }}</p>
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-sm opacity-55">{% trans "No files were submitted." %}</p>
+      {% endif %}
+    </div>
+  </div>
+</section>
