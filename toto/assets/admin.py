@@ -34,9 +34,9 @@ class AssetHoldingInline(admin.TabularInline):
 class TokenizationInline(admin.TabularInline):
     model = Tokenization
     extra = 0
-    readonly_fields = ("created_at",)
-    raw_id_fields = ("real_world_object", "supervisor")
-    fields = ("real_world_object", "supervisor", "created_at", "metadata")
+    readonly_fields = ("created_at", "status", "default_reason", "default_note", "defaulted_at", "defaulted_by")
+    raw_id_fields = ("real_world_object", "supervisor", "defaulted_by")
+    fields = ("real_world_object", "supervisor", "status", "default_reason", "defaulted_at", "defaulted_by", "created_at", "metadata")
 
     def has_delete_permission(self, request, obj=None):
         return False
@@ -58,17 +58,18 @@ class AssetAdmin(admin.ModelAdmin):
 
 @admin.register(Tokenization)
 class TokenizationAdmin(admin.ModelAdmin):
-    list_display = ("real_world_object", "asset", "supervisor", "created_at")
-    list_filter = ("asset", "created_at")
+    list_display = ("real_world_object", "asset", "status", "supervisor", "default_reason", "defaulted_at", "created_at")
+    list_filter = ("status", "default_reason", "asset", "created_at")
     search_fields = (
         "real_world_object__name",
         "real_world_object__slug",
         "asset__name",
         "asset__unit_name",
         "supervisor__display_name",
+        "default_note",
     )
-    readonly_fields = ("created_at",)
-    raw_id_fields = ("real_world_object", "asset", "supervisor")
+    readonly_fields = ("created_at", "defaulted_at")
+    raw_id_fields = ("real_world_object", "asset", "supervisor", "defaulted_by")
 
     def has_delete_permission(self, request, obj=None):
         return False

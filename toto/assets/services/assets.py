@@ -3,6 +3,7 @@ from decimal import Decimal, ROUND_UP
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.utils import timezone
 
 from toto.assets.hashing import attach_hash
 from toto.assets.models import (
@@ -12,6 +13,9 @@ from toto.assets.models import (
     LedgerAccount,
     LedgerEntry,
     LedgerTransaction,
+    Tokenization,
+    TokenizationDefaultReason,
+    TokenizationStatus,
     TransactionType,
     to_base_units,
 )
@@ -170,6 +174,56 @@ def transfer_asset(
         attach_hash(tx)
 
         return tx
+
+
+def default_tokenization(
+    *,
+    tokenization: Tokenization,
+    reason: str,
+    note: str = "",
+    defaulted_by=None,
+) -> Tokenization:
+    if reason not in TokenizationDefaultReason.values:
+        raise ValidationError("Choose a valid default reason.")
+
+    with transaction.atomic():
+        current = (
+            Tokenization.objects
+            .select_for_update()
+            .select_related("asset")
+            .get(pk=tokenization.pk)
+        )
+
+        if current.status == TokenizationStatus.DEFAULTED:
+            raise ValidationError("This tokenization has already defaulted.")
+
+        now = timezone.now()
+        current.status = TokenizationStatus.DEFAULTED
+        current.default_reason = reason
+        current.default_note = note.strip()
+        current.defaulted_at = now
+        current.defaulted_by = defaulted_by
+        current.save(update_fields=[
+            "status",
+            "default_reason",
+            "default_note",
+            "defaulted_at",
+            "defaulted_by",
+        ])
+
+        asset = current.asset
+        metadata = asset.metadata if isinstance(asset.metadata, dict) else {"previous_metadata": asset.metadata}
+        metadata["tokenization_default"] = {
+            "tokenization_id": current.pk,
+            "reason": reason,
+            "note": current.default_note,
+            "defaulted_at": now.isoformat(),
+        }
+        asset.active = False
+        asset.metadata = metadata
+        asset.save(update_fields=["active", "metadata", "updated_at"])
+
+        return current
 
 
 def reverse_transaction(

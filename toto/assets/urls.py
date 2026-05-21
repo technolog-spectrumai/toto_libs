@@ -8,6 +8,7 @@ urlpatterns = [
     path("", views.asset_list, name="asset_list"),
     path("assets/<int:pk>/", views.asset_detail, name="asset_detail"),
     path("objects/<int:object_id>/tokenize/", views.tokenization_create_for_object, name="tokenization_create_for_object"),
+    path("tokenizations/<int:pk>/default/", views.tokenization_default, name="tokenization_default"),
     path("accounts/", views.account_list, name="account_list"),
     path("accounts/<int:pk>/", views.account_detail, name="account_detail"),
     path("transactions/", views.transaction_list, name="transaction_list"),

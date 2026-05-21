@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from django import forms
 
-from toto.assets.models import Asset, LedgerAccount, Tokenization
+from toto.assets.models import Asset, LedgerAccount, Tokenization, TokenizationDefaultReason
 
 
 class TokenizationCreateForm(forms.Form):
@@ -51,3 +51,19 @@ class TokenizationCreateForm(forms.Form):
         if self.real_world_object and Tokenization.objects.filter(real_world_object=self.real_world_object).exists():
             raise forms.ValidationError("This object is already tokenized and cannot be tokenized again.")
         return cleaned
+
+
+class TokenizationDefaultForm(forms.Form):
+    reason = forms.ChoiceField(choices=TokenizationDefaultReason.choices)
+    note = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={"rows": 3}),
+        help_text="Optional details for the default record.",
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            css_class = "w-full rounded-lg border px-3 py-2 text-sm outline-none transition focus:ring-2 focus:ring-current/20 border-accent-2 bg-primary-bg-light text-text-main-light"
+            existing = field.widget.attrs.get("class", "")
+            field.widget.attrs["class"] = f"{existing} {css_class}".strip()

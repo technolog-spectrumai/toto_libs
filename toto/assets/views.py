@@ -10,7 +10,7 @@ from django.utils.translation import gettext_lazy as _
 from django.views.decorators.http import require_POST
 from toto.ui import PageProcessor
 
-from .forms import TokenizationCreateForm
+from .forms import TokenizationCreateForm, TokenizationDefaultForm
 from .hashing import verify_hash_chain
 from .models import (
     Asset,
@@ -19,10 +19,11 @@ from .models import (
     LedgerEntry,
     LedgerTransaction,
     Tokenization,
+    TokenizationStatus,
     TransactionType,
 )
 from .queries import list_asset_holders, verify_asset_ledger
-from .services.assets import create_asset
+from .services.assets import create_asset, default_tokenization
 
 
 def assets_render(request, template_name, context):
@@ -132,6 +133,43 @@ def tokenization_create_for_object(request, object_id):
         "form": form,
         "object": obj,
     })
+
+
+@require_POST
+@login_required
+def tokenization_default(request, pk):
+    tokenization = get_object_or_404(
+        Tokenization.objects.select_related("asset", "real_world_object"),
+        pk=pk,
+    )
+    next_url = request.POST.get("next") or reverse("assets:asset_detail", kwargs={"pk": tokenization.asset_id})
+    if not url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
+        next_url = reverse("assets:asset_detail", kwargs={"pk": tokenization.asset_id})
+
+    if tokenization.status == TokenizationStatus.DEFAULTED:
+        messages.info(request, "This tokenization has already defaulted.")
+        return redirect(next_url)
+
+    form = TokenizationDefaultForm(request.POST)
+    if form.is_valid():
+        data = form.cleaned_data
+        try:
+            defaulted = default_tokenization(
+                tokenization=tokenization,
+                reason=data["reason"],
+                note=data.get("note", ""),
+                defaulted_by=request.user,
+            )
+        except ValidationError as exc:
+            messages.error(request, "; ".join(exc.messages))
+        else:
+            messages.success(
+                request,
+                f"{defaulted.asset.unit_name} defaulted; the asset is now inactive.",
+            )
+    else:
+        messages.error(request, "Choose a valid default reason.")
+    return redirect(next_url)
 
 
 # ---------------------------------------------------------------------------

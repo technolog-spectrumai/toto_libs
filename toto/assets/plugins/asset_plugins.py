@@ -1,5 +1,6 @@
 from typing import Any, ClassVar
 
+from toto.assets.models import TokenizationDefaultReason
 from toto.core.plugin import BasePlugin
 
 
@@ -50,4 +51,5 @@ class UnderlyingObjectsAssetPlugin(AssetPlugin):
             .select_related("real_world_object", "supervisor")
             .order_by("-created_at")
         )
+        context["tokenization_default_reasons"] = TokenizationDefaultReason.choices
         return context

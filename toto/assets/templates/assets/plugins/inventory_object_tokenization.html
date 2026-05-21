@@ -30,14 +30,52 @@
       <a href="{% url 'assets:asset_detail' tokenization.asset.pk %}" class="font-semibold underline-offset-4 hover:underline">
         {{ tokenization.asset.name }} ({{ tokenization.asset.unit_name }})
       </a>
-      <span class="rounded border border-current/20 px-2 py-0.5 text-xs">
-        {% trans "Permanent" %}
-      </span>
+      {% if tokenization.is_defaulted %}
+        <span class="rounded border border-current/20 px-2 py-0.5 text-xs"
+              :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">
+          {% trans "Defaulted" %}
+        </span>
+      {% else %}
+        <span class="rounded border border-current/20 px-2 py-0.5 text-xs">
+          {% trans "Permanent" %}
+        </span>
+      {% endif %}
     </div>
     <p class="mt-1 text-xs opacity-60">
       {% trans "Created" %} {{ tokenization.created_at|date:"M d, Y H:i" }}
       · {% trans "Supervisor" %}: {{ tokenization.supervisor|default:"—" }}
     </p>
+    {% if tokenization.is_defaulted %}
+      <p class="mt-2 text-xs opacity-70">
+        {{ tokenization.get_default_reason_display }}
+        {% if tokenization.defaulted_at %}· {{ tokenization.defaulted_at|date:"M d, Y H:i" }}{% endif %}
+      </p>
+      {% if tokenization.default_note %}
+        <p class="mt-1 text-xs opacity-70">{{ tokenization.default_note }}</p>
+      {% endif %}
+    {% elif request.user.is_authenticated %}
+      <form method="post"
+            action="{% url 'assets:tokenization_default' tokenization.pk %}"
+            class="mt-4 grid gap-2 sm:grid-cols-[minmax(0,220px)_minmax(0,1fr)_auto]">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <select name="reason"
+                class="min-w-0 rounded-lg border border-current/20 bg-transparent px-3 py-2 text-sm">
+          {% for value, label in tokenization_default_reasons %}
+            <option value="{{ value }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+        <input name="note"
+               type="text"
+               placeholder="{% trans 'Optional note' %}"
+               class="min-w-0 rounded-lg border border-current/20 bg-transparent px-3 py-2 text-sm">
+        <button type="submit"
+                class="inline-flex items-center justify-center gap-2 rounded-lg border border-current/20 px-3 py-2 text-sm font-semibold">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+          {% trans "Default" %}
+        </button>
+      </form>
+    {% endif %}
   </div>
   {% else %}
   <p class="mt-4 rounded-xl border border-dashed px-4 py-3 text-sm opacity-70" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">

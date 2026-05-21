@@ -1,5 +1,6 @@
 from typing import Any
 
+from toto.assets.models import TokenizationDefaultReason
 from toto.inventory.plugins.inventory_object_plugins import InventoryObjectPlugin
 
 
@@ -25,6 +26,7 @@ class AssetTokenizationInventoryObjectPlugin(InventoryObjectPlugin):
             {
                 "tokenization": tokenization,
                 "can_tokenize": tokenization is None,
+                "tokenization_default_reasons": TokenizationDefaultReason.choices,
             }
         )
         return context

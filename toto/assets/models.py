@@ -78,6 +78,18 @@ class TokenizationQuerySet(models.QuerySet):
         raise ValidationError("Tokenization records are permanent and cannot be reverted.")
 
 
+class TokenizationStatus(models.TextChoices):
+    ACTIVE = "active", "Active"
+    DEFAULTED = "defaulted", "Defaulted"
+
+
+class TokenizationDefaultReason(models.TextChoices):
+    NO_LONGER_EXISTS = "no_longer_exists", "Underlying object no longer exists"
+    BROKEN = "broken", "Underlying object is broken"
+    LOST = "lost", "Underlying object is lost"
+    OTHER = "other", "Other"
+
+
 class Tokenization(models.Model):
     objects = TokenizationQuerySet.as_manager()
 
@@ -100,6 +112,25 @@ class Tokenization(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     metadata = models.JSONField(default=dict, blank=True)
+    status = models.CharField(
+        max_length=20,
+        choices=TokenizationStatus.choices,
+        default=TokenizationStatus.ACTIVE,
+    )
+    default_reason = models.CharField(
+        max_length=40,
+        choices=TokenizationDefaultReason.choices,
+        blank=True,
+    )
+    default_note = models.TextField(blank=True)
+    defaulted_at = models.DateTimeField(null=True, blank=True)
+    defaulted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="defaulted_tokenizations",
+    )
 
     class Meta:
         ordering = ["-created_at"]
@@ -116,6 +147,7 @@ class Tokenization(models.Model):
         indexes = [
             models.Index(fields=["real_world_object"]),
             models.Index(fields=["asset"]),
+            models.Index(fields=["status"]),
             models.Index(fields=["supervisor"]),
             models.Index(fields=["created_at"]),
         ]
@@ -125,6 +157,10 @@ class Tokenization(models.Model):
 
     def delete(self, *args, **kwargs):
         raise ValidationError("Tokenization records are permanent and cannot be reverted.")
+
+    @property
+    def is_defaulted(self) -> bool:
+        return self.status == TokenizationStatus.DEFAULTED
 
 
 # ---------------------------------------------------------------------------

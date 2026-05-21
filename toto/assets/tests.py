@@ -10,6 +10,9 @@ from .models import (
     LedgerEntry,
     LedgerHash,
     LedgerTransaction,
+    Tokenization,
+    TokenizationDefaultReason,
+    TokenizationStatus,
     TransactionType,
     from_base_units,
     to_base_units,
@@ -22,7 +25,7 @@ from .queries import (
     list_asset_holders,
     verify_asset_ledger,
 )
-from .services.assets import create_asset, reverse_transaction, transfer_asset
+from .services.assets import create_asset, default_tokenization, reverse_transaction, transfer_asset
 
 
 # ---------------------------------------------------------------------------
@@ -269,6 +272,55 @@ class AssetTransferTests(TestCase):
             for e in LedgerEntry.objects.filter(asset=self.asset)
         )
         self.assertEqual(total, 0)
+
+
+# ---------------------------------------------------------------------------
+# Tokenization default
+# ---------------------------------------------------------------------------
+
+class TokenizationDefaultTests(TestCase):
+    def setUp(self):
+        from toto.inventory.models import RealWorldObject
+
+        self.reserve = make_account("reserve", "reserve")
+        self.asset = create_asset(
+            name="Tokenized Object",
+            unit_name="TOKOBJ",
+            total_supply=Decimal("1"),
+            decimals=0,
+            reserve_account=self.reserve,
+            reference="create-tokobj",
+        )
+        self.obj = RealWorldObject.objects.create(name="Broken machine")
+        self.tokenization = Tokenization.objects.create(
+            real_world_object=self.obj,
+            asset=self.asset,
+        )
+
+    def test_default_tokenization_marks_asset_inactive(self):
+        defaulted = default_tokenization(
+            tokenization=self.tokenization,
+            reason=TokenizationDefaultReason.BROKEN,
+            note="Main bearing cracked.",
+        )
+
+        self.asset.refresh_from_db()
+        self.assertEqual(defaulted.status, TokenizationStatus.DEFAULTED)
+        self.assertEqual(defaulted.default_reason, TokenizationDefaultReason.BROKEN)
+        self.assertFalse(self.asset.active)
+        self.assertEqual(self.asset.metadata["tokenization_default"]["reason"], TokenizationDefaultReason.BROKEN)
+
+    def test_default_tokenization_cannot_run_twice(self):
+        default_tokenization(
+            tokenization=self.tokenization,
+            reason=TokenizationDefaultReason.NO_LONGER_EXISTS,
+        )
+
+        with self.assertRaises(ValidationError):
+            default_tokenization(
+                tokenization=self.tokenization,
+                reason=TokenizationDefaultReason.BROKEN,
+            )
 
 
 # ---------------------------------------------------------------------------
