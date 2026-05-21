@@ -1,5 +1,106 @@
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
+from django.utils.text import slugify
+
+
+REPORT_BLOCK_TYPES = {"card", "chart", "table", "text"}
+REPORT_CHART_TYPES = {"bar", "line", "area", "pie"}
+
+
+def default_report_definition():
+    return {
+        "version": 1,
+        "pages": [
+            {
+                "key": "summary",
+                "title": "Summary",
+                "blocks": [
+                    {
+                        "type": "card",
+                        "title": "Total",
+                        "value": {"path": "total"},
+                        "format": "number",
+                        "span": 3,
+                    },
+                    {
+                        "type": "table",
+                        "title": "Rows",
+                        "data": {"path": "rows"},
+                        "columns": [
+                            {"key": "name", "label": "Name"},
+                            {"key": "value", "label": "Value", "format": "number"},
+                        ],
+                        "span": 12,
+                    },
+                    {
+                        "type": "chart",
+                        "title": "Trend",
+                        "chart": "bar",
+                        "data": {"path": "series"},
+                        "x": "label",
+                        "y": "value",
+                        "span": 6,
+                    },
+                ],
+            }
+        ],
+    }
+
+
+def validate_report_definition(value):
+    if not isinstance(value, dict):
+        raise ValidationError("Report definition must be a JSON object.")
+
+    pages = value.get("pages")
+    if not isinstance(pages, list) or not pages:
+        raise ValidationError("Report definition requires a non-empty pages array.")
+
+    page_keys: set[str] = set()
+    for page_index, page in enumerate(pages):
+        if not isinstance(page, dict):
+            raise ValidationError(f"Report page #{page_index + 1} must be an object.")
+
+        key = page.get("key") or f"page-{page_index + 1}"
+        if key in page_keys:
+            raise ValidationError(f'Duplicate report page key: "{key}".')
+        page_keys.add(key)
+
+        blocks = page.get("blocks")
+        if not isinstance(blocks, list) or not blocks:
+            raise ValidationError(f'Report page "{key}" requires a non-empty blocks array.')
+
+        for block_index, block in enumerate(blocks):
+            _validate_report_block(block, page_key=key, block_index=block_index)
+
+
+def _validate_report_block(block, *, page_key: str, block_index: int):
+    label = f'block #{block_index + 1} on page "{page_key}"'
+    if not isinstance(block, dict):
+        raise ValidationError(f"Report {label} must be an object.")
+
+    block_type = block.get("type")
+    if block_type not in REPORT_BLOCK_TYPES:
+        raise ValidationError(
+            f"Report {label} has unsupported type {block_type!r}. "
+            f"Use one of: {', '.join(sorted(REPORT_BLOCK_TYPES))}."
+        )
+
+    if block_type == "table":
+        columns = block.get("columns")
+        if not isinstance(columns, list) or not columns:
+            raise ValidationError(f"Report table {label} requires a non-empty columns array.")
+        for column in columns:
+            if not isinstance(column, dict) or not (column.get("key") or column.get("path")):
+                raise ValidationError("Report table columns require key or path.")
+
+    if block_type == "chart":
+        chart_type = block.get("chart", "bar")
+        if chart_type not in REPORT_CHART_TYPES:
+            raise ValidationError(
+                f"Report chart {label} has unsupported chart {chart_type!r}. "
+                f"Use one of: {', '.join(sorted(REPORT_CHART_TYPES))}."
+            )
 
 
 class LambdaFunction(models.Model):
@@ -57,12 +158,47 @@ class WorkflowConnector(models.Model):
         return f"{self.name} ({self.connector_type})"
 
 
+class ReportTemplate(models.Model):
+    name = models.CharField(max_length=180, unique=True)
+    slug = models.SlugField(max_length=200, unique=True, blank=True)
+    description = models.TextField(blank=True)
+    definition = models.JSONField(
+        default=default_report_definition,
+        blank=True,
+        validators=[validate_report_definition],
+        help_text=(
+            "JSON report syntax. Root: {version, pages:[{key,title,blocks:[]}]}. "
+            "Block types: card, table, chart, text. Values can use {'path': 'metrics.total'}."
+        ),
+    )
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            base_slug = slugify(self.name) or "report-template"
+            slug = base_slug
+            counter = 1
+            while type(self).objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                slug = f"{base_slug}-{counter}"
+                counter += 1
+            self.slug = slug
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.name
+
+
 class WorkflowNode(models.Model):
     LAMBDA = "lambda"
     HUMAN = "human"
     SPLIT = "split"
     JOIN = "join"
     CONNECTOR = "connector"
+    REPORT = "report"
 
     NODE_TYPES = [
         (LAMBDA, "Lambda"),
@@ -70,6 +206,7 @@ class WorkflowNode(models.Model):
         (SPLIT, "Split"),
         (JOIN, "Join"),
         (CONNECTOR, "Connector"),
+        (REPORT, "Report"),
     ]
 
     workflow = models.ForeignKey(Workflow, on_delete=models.CASCADE, related_name="nodes")
@@ -89,7 +226,15 @@ class WorkflowNode(models.Model):
         on_delete=models.SET_NULL,
         related_name="workflow_nodes",
     )
+    report_template = models.ForeignKey(
+        ReportTemplate,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="workflow_nodes",
+    )
     # Human nodes: {"schema": {...json-schema...}, "output_mapping": {...}}
+    # Report nodes: {"title": "...", "title_field": "data.title", "data_field": "data", "route": "done"}
     config = models.JSONField(default=dict, blank=True)
     position_x = models.FloatField(default=0.0)
     position_y = models.FloatField(default=0.0)
@@ -189,6 +334,91 @@ class WorkflowNodeRun(models.Model):
 
     def __str__(self):
         return f"NodeRun {self.id} ({self.node}) [{self.status}]"
+
+
+class Report(models.Model):
+    DRAFT = "draft"
+    PUBLISHED = "published"
+    ARCHIVED = "archived"
+
+    STATUS_CHOICES = [
+        (DRAFT, "Draft"),
+        (PUBLISHED, "Published"),
+        (ARCHIVED, "Archived"),
+    ]
+
+    template = models.ForeignKey(
+        ReportTemplate,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="reports",
+    )
+    workflow_run = models.ForeignKey(
+        WorkflowRun,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="reports",
+    )
+    source_node_run = models.ForeignKey(
+        WorkflowNodeRun,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="reports",
+    )
+    title = models.CharField(max_length=220)
+    slug = models.SlugField(max_length=240, unique=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=PUBLISHED)
+    definition = models.JSONField(
+        default=default_report_definition,
+        validators=[validate_report_definition],
+        help_text="Snapshot of the report template definition used to generate this report.",
+    )
+    data = models.JSONField(default=dict, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            base_slug = slugify(self.title) or "report"
+            slug = base_slug
+            counter = 1
+            while type(self).objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                slug = f"{base_slug}-{counter}"
+                counter += 1
+            self.slug = slug
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.title
+
+
+class ReportPage(models.Model):
+    report = models.ForeignKey(Report, on_delete=models.CASCADE, related_name="pages")
+    key = models.SlugField(max_length=120)
+    title = models.CharField(max_length=180)
+    order = models.PositiveIntegerField(default=0)
+    blocks = models.JSONField(default=list, blank=True)
+    data = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["order", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["report", "key"],
+                name="unique_report_page_key",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.report}: {self.title}"
 
 
 class WorkflowEdgeRun(models.Model):

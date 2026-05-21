@@ -51,6 +51,11 @@ class WorkflowValidator:
                     )
                 else:
                     errors.extend(validate_connector_config(node.connector))
+            elif node.node_type == WorkflowNode.REPORT:
+                if node.report_template_id is None:
+                    errors.append(
+                        f"Report node {node.id} ({node.label!r}) has no report_template."
+                    )
 
     def _validate_edges(self, edges: list, node_ids: set, errors: list[str]) -> None:
         seen: set[tuple] = set()

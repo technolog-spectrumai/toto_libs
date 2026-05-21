@@ -110,6 +110,8 @@ class WorkflowExecutor:
                 output = self._run_join(node_run)
             elif node.node_type == WorkflowNode.CONNECTOR:
                 output = self._run_connector(node_run)
+            elif node.node_type == WorkflowNode.REPORT:
+                output = self._run_report(node_run)
             else:
                 raise ValueError(f"Unknown node_type: {node.node_type!r}")
         except Exception as exc:
@@ -254,6 +256,11 @@ class WorkflowExecutor:
         if connector is None:
             raise ValueError("Connector node has no connector configured.")
         return execute_connector(connector, node_run.input_data or {})
+
+    def _run_report(self, node_run: WorkflowNodeRun) -> dict:
+        from .reports import create_report_from_node_run
+
+        return create_report_from_node_run(node_run)
 
     def _activate_outgoing_edges(self, node_run: WorkflowNodeRun) -> None:
         node = node_run.node

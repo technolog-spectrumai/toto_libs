@@ -2,6 +2,9 @@ from rest_framework import serializers
 
 from .models import (
     HumanTask,
+    Report,
+    ReportPage,
+    ReportTemplate,
     WorkflowConnector,
     Workflow,
     WorkflowEdge,
@@ -19,12 +22,39 @@ class WorkflowConnectorSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at"]
 
 
+class ReportTemplateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ReportTemplate
+        fields = ["id", "name", "slug", "description", "definition", "created_at", "updated_at"]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+
+class ReportPageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ReportPage
+        fields = ["id", "report", "key", "title", "order", "blocks", "data", "created_at"]
+        read_only_fields = ["id", "created_at"]
+
+
+class ReportSerializer(serializers.ModelSerializer):
+    pages = ReportPageSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Report
+        fields = [
+            "id", "template", "workflow_run", "source_node_run", "title", "slug",
+            "status", "definition", "data", "metadata", "created_at", "updated_at", "pages",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at", "pages"]
+
+
 class WorkflowNodeSerializer(serializers.ModelSerializer):
     class Meta:
         model = WorkflowNode
         fields = [
             "id", "workflow", "node_type", "label",
-            "lambda_function", "connector", "config", "position_x", "position_y",
+            "lambda_function", "connector", "report_template",
+            "config", "position_x", "position_y",
         ]
         read_only_fields = ["id"]
 

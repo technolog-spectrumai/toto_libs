@@ -24,6 +24,8 @@ def _decorate(context, request):
 
 from .models import (
     HumanTask,
+    Report,
+    ReportTemplate,
     WorkflowConnector,
     Workflow,
     WorkflowEdge,
@@ -34,6 +36,8 @@ from .models import (
 from .serializers import (
     StartRunSerializer,
     SubmitHumanTaskSerializer,
+    ReportSerializer,
+    ReportTemplateSerializer,
     WorkflowEdgeSerializer,
     WorkflowListSerializer,
     WorkflowNodeSerializer,
@@ -42,6 +46,7 @@ from .serializers import (
     WorkflowConnectorSerializer,
 )
 from .services.human_task import submit_human_task
+from .services.reports import render_report
 from .services.validator import ValidationError, WorkflowValidator
 from .tasks import resume_workflow_run_task, start_workflow_run_task
 
@@ -81,6 +86,59 @@ def connector_detail(request, connector_id):
     ser.is_valid(raise_exception=True)
     ser.save()
     return Response(WorkflowConnectorSerializer(connector).data)
+
+
+# ---------------------------------------------------------------------------
+#  Reports
+# ---------------------------------------------------------------------------
+
+@api_view(["GET", "POST"])
+def report_template_list(request):
+    if request.method == "GET":
+        qs = ReportTemplate.objects.all().order_by("name")
+        return Response(ReportTemplateSerializer(qs, many=True).data)
+
+    ser = ReportTemplateSerializer(data=request.data)
+    ser.is_valid(raise_exception=True)
+    template = ser.save()
+    return Response(ReportTemplateSerializer(template).data, status=status.HTTP_201_CREATED)
+
+
+@api_view(["GET", "PUT", "PATCH", "DELETE"])
+def report_template_detail(request, template_id):
+    try:
+        template = ReportTemplate.objects.get(pk=template_id)
+    except ReportTemplate.DoesNotExist:
+        return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == "GET":
+        return Response(ReportTemplateSerializer(template).data)
+
+    if request.method == "DELETE":
+        template.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    partial = request.method == "PATCH"
+    ser = ReportTemplateSerializer(template, data=request.data, partial=partial)
+    ser.is_valid(raise_exception=True)
+    ser.save()
+    return Response(ReportTemplateSerializer(template).data)
+
+
+@api_view(["GET"])
+def report_list(request):
+    qs = Report.objects.select_related("template", "workflow_run").prefetch_related("pages").order_by("-created_at")
+    return Response(ReportSerializer(qs, many=True).data)
+
+
+@api_view(["GET"])
+def report_detail(request, report_id):
+    try:
+        report = Report.objects.select_related("template", "workflow_run").prefetch_related("pages").get(pk=report_id)
+    except Report.DoesNotExist:
+        return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    return Response(ReportSerializer(report).data)
 
 
 # ---------------------------------------------------------------------------
@@ -324,6 +382,39 @@ class WorkflowListUIView(LoginRequiredMixin, ListView):
         return _decorate(context, self.request)
 
 
+class ReportListUIView(LoginRequiredMixin, ListView):
+    model = Report
+    template_name = "workflows/report_list.html"
+    context_object_name = "reports"
+    login_url = reverse_lazy("core:login")
+
+    def get_queryset(self):
+        return Report.objects.select_related("template", "workflow_run").order_by("-created_at")
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["templates"] = ReportTemplate.objects.order_by("name")
+        return _decorate(context, self.request)
+
+
+class ReportDetailUIView(LoginRequiredMixin, DetailView):
+    model = Report
+    template_name = "workflows/report_detail.html"
+    context_object_name = "report"
+    login_url = reverse_lazy("core:login")
+
+    def get_object(self, queryset=None):
+        return get_object_or_404(
+            Report.objects.select_related("template", "workflow_run").prefetch_related("pages"),
+            pk=self.kwargs["report_id"],
+        )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["render_pages"] = render_report(self.get_object())
+        return _decorate(context, self.request)
+
+
 class WorkflowDetailUIView(LoginRequiredMixin, DetailView):
     model = Workflow
     template_name = "workflows/workflow_detail.html"
@@ -380,6 +471,7 @@ class WorkflowRunDetailUIView(LoginRequiredMixin, DetailView):
         edge_runs = list(run.edge_runs.select_related("edge__source", "edge__target").order_by("id"))
         context["node_runs"] = node_runs
         context["edge_runs"] = edge_runs
+        context["reports"] = run.reports.select_related("template").order_by("-created_at")
 
         pending_tasks = []
         for nr in node_runs:

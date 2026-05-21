@@ -56,6 +56,27 @@
       </div>
     </header>
 
+    {% if reports %}
+      <section>
+        <h2 class="mb-3 flex items-center gap-2 text-lg font-semibold">
+          <i class="fa-solid fa-chart-column"></i> {% trans "Reports" %}
+        </h2>
+        <div class="grid gap-3 md:grid-cols-2">
+          {% for report in reports %}
+            <a href="{% url 'workflows:report_detail' report.id %}"
+               :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-primary-bg-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-primary-bg-light'"
+               class="rounded-lg border p-4 shadow-sm transition">
+              <div class="font-semibold">{{ report.title }}</div>
+              <div class="mt-1 text-xs opacity-60">
+                {% if report.template %}{{ report.template.name }}{% else %}{% trans "Snapshot" %}{% endif %}
+                · {{ report.created_at|date:"Y-m-d H:i" }}
+              </div>
+            </a>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+
     <!-- Graph -->
     <section>
       <div class="mb-3 flex items-center justify-between">
@@ -214,6 +235,8 @@
                   {% elif nr.node.node_type == 'join' %}
                     <span class="ml-2 rounded-full px-2 py-0.5 text-xs font-medium"
                           :class="darkMode ? 'bg-success-dark/15 text-success-dark' : 'bg-success-light/15 text-success-light'">join</span>
+                  {% elif nr.node.node_type == 'report' %}
+                    <span class="ml-2 rounded-full bg-cyan-500/15 px-2 py-0.5 text-xs font-medium text-cyan-600">report</span>
                   {% else %}
                     <span class="ml-2 rounded-full bg-gray-500/15 px-2 py-0.5 text-xs font-medium text-gray-500">{{ nr.node.node_type }}</span>
                   {% endif %}

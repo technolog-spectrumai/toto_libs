@@ -3,12 +3,14 @@ from django.urls import path
 from .views import (
     # API
     connector_list, connector_detail,
+    report_template_list, report_template_detail, report_list, report_detail,
     workflow_list, workflow_detail, validate_workflow,
     node_create, node_detail,
     edge_create, edge_delete,
     run_list, run_detail,
     human_task_submit,
     # UI
+    ReportListUIView, ReportDetailUIView,
     WorkflowListUIView, WorkflowDetailUIView, WorkflowRunDetailUIView,
 )
 
@@ -17,12 +19,18 @@ app_name = "workflows"
 urlpatterns = [
     # ----- UI -----
     path("", WorkflowListUIView.as_view(), name="workflow_list"),
+    path("reports/", ReportListUIView.as_view(), name="report_list"),
+    path("reports/<int:report_id>/", ReportDetailUIView.as_view(), name="report_detail"),
     path("<int:workflow_id>/", WorkflowDetailUIView.as_view(), name="workflow_detail"),
     path("runs/<int:run_id>/", WorkflowRunDetailUIView.as_view(), name="workflow_run_detail"),
 
     # ----- API -----
     path("api/connectors/", connector_list, name="api_connector_list"),
     path("api/connectors/<int:connector_id>/", connector_detail, name="api_connector_detail"),
+    path("api/report-templates/", report_template_list, name="api_report_template_list"),
+    path("api/report-templates/<int:template_id>/", report_template_detail, name="api_report_template_detail"),
+    path("api/reports/", report_list, name="api_report_list"),
+    path("api/reports/<int:report_id>/", report_detail, name="api_report_detail"),
     path("api/", workflow_list, name="api_workflow_list"),
     path("api/<int:workflow_id>/", workflow_detail, name="api_workflow_detail"),
     path("api/<int:workflow_id>/validate/", validate_workflow, name="api_workflow_validate"),

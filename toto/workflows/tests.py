@@ -17,6 +17,8 @@ from django.utils import timezone
 from .models import (
     HumanTask,
     LambdaFunction,
+    Report,
+    ReportTemplate,
     WorkflowConnector,
     Workflow,
     WorkflowEdge,
@@ -51,13 +53,22 @@ def _lambda(name="fn") -> LambdaFunction:
     return LambdaFunction.objects.create(function_name=name, content="pass")
 
 
-def _node(workflow, node_type, label="", lambda_fn=None, connector=None, config=None) -> WorkflowNode:
+def _node(
+    workflow,
+    node_type,
+    label="",
+    lambda_fn=None,
+    connector=None,
+    report_template=None,
+    config=None,
+) -> WorkflowNode:
     return WorkflowNode.objects.create(
         workflow=workflow,
         node_type=node_type,
         label=label,
         lambda_function=lambda_fn,
         connector=connector,
+        report_template=report_template,
         config=config or {},
     )
 
@@ -137,6 +148,13 @@ class ValidatorTests(TestCase):
         with self.assertRaises(ValidationError) as ctx:
             WorkflowValidator().validate(wf)
         self.assertTrue(any("has no connector" in e for e in ctx.exception.errors))
+
+    def test_report_without_template_fails(self):
+        wf = self._workflow()
+        _node(wf, WorkflowNode.REPORT, label="missing-report")
+        with self.assertRaises(ValidationError) as ctx:
+            WorkflowValidator().validate(wf)
+        self.assertTrue(any("has no report_template" in e for e in ctx.exception.errors))
 
     def test_split_without_single_incoming_fails(self):
         wf = self._workflow()
@@ -544,6 +562,110 @@ class ConnectorWorkflowTests(TestCase):
         self.assertEqual(len(output["data"]["availabilities"]), 1)
         self.assertEqual(output["data"]["availabilities"][0]["person"]["display_name"], "Ada Lovelace")
         self.assertEqual(output["data"]["availabilities"][0]["availability_type"], Availability.AvailabilityType.BUSY)
+
+
+# ---------------------------------------------------------------------------
+#  Report workflow nodes
+# ---------------------------------------------------------------------------
+
+class ReportWorkflowTests(TestCase):
+
+    def _template(self):
+        return ReportTemplate.objects.create(
+            name="Metrics report",
+            definition={
+                "version": 1,
+                "pages": [
+                    {
+                        "key": "summary",
+                        "title": "Summary",
+                        "blocks": [
+                            {
+                                "type": "card",
+                                "title": "Total",
+                                "value": {"path": "metrics.total"},
+                                "span": 3,
+                            },
+                            {
+                                "type": "table",
+                                "title": "Items",
+                                "data": {"path": "items"},
+                                "columns": [
+                                    {"key": "name", "label": "Name"},
+                                    {"key": "value", "label": "Value"},
+                                ],
+                                "span": 12,
+                            },
+                            {
+                                "type": "chart",
+                                "title": "Series",
+                                "chart": "bar",
+                                "data": {"path": "series"},
+                                "x": "label",
+                                "y": "value",
+                                "span": 6,
+                            },
+                        ],
+                    }
+                ],
+            },
+        )
+
+    def test_report_node_materializes_pages_from_workflow_output(self):
+        MockClient = _make_kernel_mock({
+            "data": {
+                "title": "Generated metrics",
+                "metrics": {"total": 42},
+                "items": [{"name": "Ada", "value": 30}, {"name": "Grace", "value": 12}],
+                "series": [{"label": "A", "value": 30}, {"label": "B", "value": 12}],
+            },
+            "route": "report",
+        })
+        template = self._template()
+        wf = Workflow.objects.create(name="ReportFlow")
+        start = _node(wf, WorkflowNode.LAMBDA, label="Metrics", lambda_fn=_lambda("metrics"))
+        report_node = _node(
+            wf,
+            WorkflowNode.REPORT,
+            label="Report",
+            report_template=template,
+            config={"title_field": "data.title"},
+        )
+        _edge(wf, start, report_node)
+        run = WorkflowRun.objects.create(workflow=wf)
+
+        with override_settings(WORKFLOW_KERNEL_CLIENT=MockClient):
+            WorkflowExecutor().start(run)
+
+        run.refresh_from_db()
+        report = Report.objects.get()
+        page = report.pages.get()
+        report_run = run.node_runs.get(node=report_node)
+        self.assertEqual(run.status, WorkflowRun.COMPLETED)
+        self.assertEqual(report.title, "Generated metrics")
+        self.assertEqual(page.key, "summary")
+        self.assertEqual(page.data["metrics"]["total"], 42)
+        self.assertEqual(report_run.output_data["data"]["report"]["id"], report.id)
+
+    def test_report_renderer_resolves_card_table_and_chart_values(self):
+        from .services.reports import create_report, render_report
+
+        template = self._template()
+        report = create_report(
+            template=template,
+            title="Rendered metrics",
+            data={
+                "metrics": {"total": 42},
+                "items": [{"name": "Ada", "value": 30}],
+                "series": [{"label": "A", "value": 30}, {"label": "B", "value": 15}],
+            },
+        )
+
+        blocks = render_report(report)[0]["blocks"]
+        self.assertEqual(blocks[0]["value"], 42)
+        self.assertEqual(blocks[1]["rows"][0]["values"], ["Ada", 30])
+        self.assertEqual(blocks[2]["points"][0]["percent"], 100)
+        self.assertEqual(blocks[2]["points"][1]["percent"], 50)
 
 
 # ---------------------------------------------------------------------------

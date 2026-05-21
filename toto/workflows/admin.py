@@ -4,8 +4,18 @@ from django.utils.html import format_html
 from jsoneditor.forms import JSONEditor
 
 from .models import (
-    LambdaFunction, WorkflowConnector, Workflow, WorkflowNode, WorkflowEdge,
-    WorkflowRun, WorkflowNodeRun, WorkflowEdgeRun, HumanTask,
+    HumanTask,
+    LambdaFunction,
+    Report,
+    ReportPage,
+    ReportTemplate,
+    WorkflowConnector,
+    Workflow,
+    WorkflowEdge,
+    WorkflowEdgeRun,
+    WorkflowNode,
+    WorkflowNodeRun,
+    WorkflowRun,
 )
 
 _RUN_STATUS_COLORS = {
@@ -40,7 +50,7 @@ def _run_badge(status_val, label):
 class WorkflowNodeInline(admin.TabularInline):
     model = WorkflowNode
     extra = 0
-    fields = ("id", "node_type", "label", "lambda_function", "connector")
+    fields = ("id", "node_type", "label", "lambda_function", "connector", "report_template")
     readonly_fields = ("id",)
 
 
@@ -83,7 +93,7 @@ class WorkflowAdmin(admin.ModelAdmin):
 
 @admin.register(WorkflowNode)
 class WorkflowNodeAdmin(admin.ModelAdmin):
-    list_display = ("id", "workflow", "node_type", "label", "lambda_function", "connector")
+    list_display = ("id", "workflow", "node_type", "label", "lambda_function", "connector", "report_template")
     list_filter = ("node_type", "workflow")
     search_fields = ("label",)
     formfield_overrides = {
@@ -125,6 +135,47 @@ class WorkflowRunAdmin(admin.ModelAdmin):
     @admin.display(description="Status")
     def status_badge(self, obj):
         return _run_badge(obj.status, obj.get_status_display())
+
+
+class ReportPageInline(admin.TabularInline):
+    model = ReportPage
+    extra = 0
+    fields = ("key", "title", "order")
+
+
+@admin.register(ReportTemplate)
+class ReportTemplateAdmin(admin.ModelAdmin):
+    list_display = ("id", "name", "slug", "updated_at")
+    search_fields = ("name", "slug", "description")
+    prepopulated_fields = {"slug": ("name",)}
+    readonly_fields = ("created_at", "updated_at")
+    fields = ("name", "slug", "description", "definition", "created_at", "updated_at")
+    formfield_overrides = {
+        models.JSONField: {"widget": JSON_EDITOR_WIDGET},
+    }
+
+
+@admin.register(Report)
+class ReportAdmin(admin.ModelAdmin):
+    list_display = ("id", "title", "template", "workflow_run", "status", "created_at")
+    list_filter = ("status", "template")
+    search_fields = ("title", "slug")
+    prepopulated_fields = {"slug": ("title",)}
+    readonly_fields = ("created_at", "updated_at")
+    inlines = [ReportPageInline]
+    formfield_overrides = {
+        models.JSONField: {"widget": JSON_EDITOR_WIDGET},
+    }
+
+
+@admin.register(ReportPage)
+class ReportPageAdmin(admin.ModelAdmin):
+    list_display = ("id", "report", "key", "title", "order")
+    list_filter = ("report",)
+    search_fields = ("title", "key", "report__title")
+    formfield_overrides = {
+        models.JSONField: {"widget": JSON_EDITOR_WIDGET},
+    }
 
 
 @admin.register(WorkflowNodeRun)
