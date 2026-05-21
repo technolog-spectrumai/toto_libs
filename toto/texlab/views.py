@@ -8,6 +8,7 @@ from django.shortcuts import get_object_or_404
 from toto.ui import PageProcessor
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
+from django.utils import timezone
 from toto.celery_utils import celery_available
 from toto.texlab.tasks import compile_latex_task
 from toto.texlab.models import CompileRun, LatexFile
@@ -144,18 +145,6 @@ def save_file(request, file_id):
 
 @csrf_exempt
 def compile_latex(request, file_id):
-    if not celery_available():
-        return JsonResponse(
-            {
-                "error": (
-                    "No Celery workers are running. "
-                    "Start a worker before compiling (see CELERY.md)."
-                ),
-                "celery_unavailable": True,
-            },
-            status=503,
-        )
-
     try:
         lf = LatexFile.objects.select_related(
             "vault_file", "workspace__bucket"
@@ -168,9 +157,43 @@ def compile_latex(request, file_id):
         latex_file=lf,
         status=CompileRun.PENDING,
     )
-    compile_latex_task.delay(file_id, run.id)
 
-    return JsonResponse({"status": "queued", "run_id": run.id})
+    if celery_available():
+        compile_latex_task.delay(file_id, run.id)
+        return JsonResponse({"status": "queued", "run_id": run.id})
+
+    run.status = CompileRun.RUNNING
+    run.save(update_fields=["status"])
+
+    try:
+        pdf_vault, log = compile_tex_to_pdf(lf.vault_file, lf.workspace)
+    except Exception as exc:
+        run.status = CompileRun.FAILED
+        run.log = str(exc)
+        run.finished_at = timezone.now()
+        run.save(update_fields=["status", "log", "finished_at"])
+        return JsonResponse({
+            "status": "failed",
+            "run_id": run.id,
+            "log": run.log,
+            "error": "Compilation failed.",
+            "celery_unavailable": True,
+            "compiled_inline": True,
+        }, status=500)
+
+    run.status = CompileRun.SUCCESS
+    run.log = log
+    run.pdf_url = pdf_vault.get_public_url()
+    run.finished_at = timezone.now()
+    run.save(update_fields=["status", "log", "pdf_url", "finished_at"])
+
+    return JsonResponse({
+        "status": "ok",
+        "run_id": run.id,
+        "pdf_url": run.pdf_url,
+        "celery_unavailable": True,
+        "compiled_inline": True,
+    })
 
 
 def compile_status(request, run_id):
@@ -416,7 +439,6 @@ def delete_workspace(request, slug):
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
-
 
 
 
