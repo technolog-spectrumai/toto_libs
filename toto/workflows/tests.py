@@ -29,6 +29,8 @@ from .services.human_task import apply_output_mapping, submit_human_task
 from .services.validator import ValidationError, WorkflowValidator
 from .output import WorkflowOutput, normalize_workflow_output
 from .tasks import execute_lambda_node_task
+from toto.mandragora.connectors import execute_connector as execute_mandragora_connector
+from toto.mandragora.connectors import list_available_connectors
 
 
 def _make_kernel_mock(stdout_payload: dict):
@@ -226,6 +228,12 @@ class LinearLambdaWorkflowTests(TestCase):
 
 class ConnectorWorkflowTests(TestCase):
 
+    def test_connector_registry_exposes_app_connector_classes_to_mandragora(self):
+        connector_types = {item["connector_type"] for item in list_available_connectors()}
+        self.assertIn(WorkflowConnector.PEOPLE_READ, connector_types)
+        self.assertIn(WorkflowConnector.SOCIALHUB_READ, connector_types)
+        self.assertIn(WorkflowConnector.LOCATIONS_READ, connector_types)
+
     def test_file_write_connector_writes_input_content(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             connector = WorkflowConnector.objects.create(
@@ -314,6 +322,80 @@ class ConnectorWorkflowTests(TestCase):
         output = run.node_runs.get().output_data
         self.assertEqual(output["data"]["status_code"], 200)
         self.assertEqual(output["data"]["json"], {"ok": True})
+
+    def test_people_read_connector_searches_people_without_writes(self):
+        from toto.people.models import Person
+
+        Person.objects.create(display_name="Ada Lovelace", slug="ada-lovelace", bio="Computing")
+        Person.objects.create(display_name="Grace Hopper", slug="grace-hopper", bio="Compiler")
+        connector = WorkflowConnector.objects.create(
+            name="search-people",
+            connector_type=WorkflowConnector.PEOPLE_READ,
+            config={"action": "search", "query_field": "data.query"},
+        )
+        wf = Workflow.objects.create(name="PeopleRead")
+        _node(wf, WorkflowNode.CONNECTOR, label="people", connector=connector)
+        run = WorkflowRun.objects.create(workflow=wf, input_data={"data": {"query": "Ada"}})
+
+        WorkflowExecutor().start(run)
+
+        run.refresh_from_db()
+        output = run.node_runs.get().output_data
+        self.assertEqual(run.status, WorkflowRun.COMPLETED)
+        self.assertEqual([p["display_name"] for p in output["data"]["people"]], ["Ada Lovelace"])
+        self.assertEqual(Person.objects.count(), 2)
+
+    def test_mandragora_can_execute_people_connector(self):
+        from toto.people.models import Person
+
+        Person.objects.create(display_name="Ada Lovelace", slug="ada-lovelace", bio="Computing")
+
+        output = execute_mandragora_connector(
+            WorkflowConnector.PEOPLE_READ,
+            {"action": "search", "query": "Ada"},
+            {},
+        )
+
+        self.assertEqual(output["data"]["people"][0]["display_name"], "Ada Lovelace")
+
+    def test_socialhub_read_connector_gets_community(self):
+        from toto.socialhub.models import Community
+
+        Community.objects.create(name="Open Guild", slug="open-guild", org_type=Community.GUILD)
+        connector = WorkflowConnector.objects.create(
+            name="get-community",
+            connector_type=WorkflowConnector.SOCIALHUB_READ,
+            config={"resource": "community", "action": "get", "lookup": "slug", "value": "open-guild"},
+        )
+        wf = Workflow.objects.create(name="SocialhubRead")
+        _node(wf, WorkflowNode.CONNECTOR, label="community", connector=connector)
+        run = WorkflowRun.objects.create(workflow=wf)
+
+        WorkflowExecutor().start(run)
+
+        output = run.node_runs.get().output_data
+        self.assertEqual(output["data"]["community"]["name"], "Open Guild")
+        self.assertEqual(output["data"]["community"]["org_type"], Community.GUILD)
+
+    def test_locations_read_connector_lists_addresses(self):
+        from toto.locations.models import Address
+
+        Address.objects.create(country_name="PL", locality_name="Krakow", street="Grodzka", building="1")
+        Address.objects.create(country_name="PL", locality_name="Warsaw", street="Krolewska", building="2")
+        connector = WorkflowConnector.objects.create(
+            name="search-addresses",
+            connector_type=WorkflowConnector.LOCATIONS_READ,
+            config={"resource": "address", "action": "search", "query": "Krakow"},
+        )
+        wf = Workflow.objects.create(name="LocationsRead")
+        _node(wf, WorkflowNode.CONNECTOR, label="addresses", connector=connector)
+        run = WorkflowRun.objects.create(workflow=wf)
+
+        WorkflowExecutor().start(run)
+
+        output = run.node_runs.get().output_data
+        self.assertEqual(len(output["data"]["addresses"]), 1)
+        self.assertEqual(output["data"]["addresses"][0]["locality_name"], "Krakow")
 
 
 # ---------------------------------------------------------------------------

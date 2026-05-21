@@ -33,11 +33,17 @@ class WorkflowConnector(models.Model):
     FILE_READ = "file_read"
     FILE_WRITE = "file_write"
     API_REQUEST = "api_request"
+    PEOPLE_READ = "people_read"
+    SOCIALHUB_READ = "socialhub_read"
+    LOCATIONS_READ = "locations_read"
 
     CONNECTOR_TYPES = [
         (FILE_READ, "File read"),
         (FILE_WRITE, "File write"),
         (API_REQUEST, "API request"),
+        (PEOPLE_READ, "People read"),
+        (SOCIALHUB_READ, "Socialhub read"),
+        (LOCATIONS_READ, "Locations read"),
     ]
 
     name = models.CharField(max_length=255, unique=True)

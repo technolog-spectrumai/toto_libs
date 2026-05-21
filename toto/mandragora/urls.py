@@ -3,6 +3,7 @@ from .views import (
     NotebookListView, NotebookDetailView,
     notebook_create, notebook_update, notebook_delete,
     cell_result,
+    connector_execute, connector_list,
     run_cell,
     start_kernel, stop_kernel, check_kernel, kernel_dependencies,
     create_cell, delete_cell, promote_cell_to_lambda,
@@ -23,6 +24,8 @@ urlpatterns = [
     path("kernel/<int:notebook_id>/stop/", stop_kernel, name="stop_kernel"),
     path("kernel/<int:notebook_id>/status/", check_kernel, name="check_kernel"),
     path("kernel/<int:notebook_id>/dependencies/", kernel_dependencies, name="kernel_dependencies"),
+    path("connectors/", connector_list, name="connector_list"),
+    path("connectors/execute/", connector_execute, name="connector_execute"),
     path("<int:notebook_id>/cells/create/", create_cell, name="create_cell"),
 
     # Notebook CRUD (slug-based — must come after fixed-prefix paths)

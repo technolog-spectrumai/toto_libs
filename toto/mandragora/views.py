@@ -11,11 +11,13 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from toto.celery_utils import celery_available
+from toto.core.connectors import ConnectorExecutionError
 from .forms import NotebookForm
 from .models import Cell, ComputeKernel, KernelDependency, Notebook
 from .tasks import execute_cell_task
 from .kernel import KernelClient
 from toto.workflows.models import LambdaFunction
+from .connectors import execute_connector, list_available_connectors, validate_connector
 
 
 def mandragora_render(request, template_name, context):
@@ -255,6 +257,33 @@ def check_kernel(request, notebook_id):
     if result.get("running"):
         return Response({"status": "running"})
     return Response({"status": "stopped"})
+
+
+# ---------------------------------------------------------
+#  Connector Access
+# ---------------------------------------------------------
+
+@api_view(["GET"])
+def connector_list(request):
+    return Response({"connectors": list_available_connectors()})
+
+
+@api_view(["POST"])
+def connector_execute(request):
+    connector_type = request.data.get("connector_type")
+    if not connector_type:
+        return Response({"error": "connector_type required"}, status=400)
+
+    config = request.data.get("config") or {}
+    input_data = request.data.get("input_data") or {}
+    errors = validate_connector(connector_type, config)
+    if errors:
+        return Response({"errors": errors}, status=422)
+
+    try:
+        return Response(execute_connector(connector_type, config, input_data))
+    except ConnectorExecutionError as exc:
+        return Response({"error": str(exc)}, status=400)
 
 
 # ---------------------------------------------------------

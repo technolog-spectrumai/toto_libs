@@ -1,5 +1,7 @@
 from django.contrib import admin
+from django.db import models
 from django.utils.html import format_html
+from jsoneditor.forms import JSONEditor
 
 from .models import (
     LambdaFunction, WorkflowConnector, Workflow, WorkflowNode, WorkflowEdge,
@@ -15,6 +17,15 @@ _RUN_STATUS_COLORS = {
     "waiting":   "#d97706",
     "skipped":   "#9ca3af",
 }
+
+JSON_EDITOR_WIDGET = JSONEditor(
+    init_options={
+        "mode": "code",
+        "modes": ["code", "tree", "form", "view"],
+        "search": True,
+        "history": True,
+    }
+)
 
 
 def _run_badge(status_val, label):
@@ -52,6 +63,10 @@ class WorkflowConnectorAdmin(admin.ModelAdmin):
     list_filter = ("connector_type",)
     search_fields = ("name",)
     readonly_fields = ("created_at",)
+    fields = ("name", "connector_type", "config", "created_at")
+    formfield_overrides = {
+        models.JSONField: {"widget": JSON_EDITOR_WIDGET},
+    }
 
 
 @admin.register(Workflow)
@@ -71,6 +86,9 @@ class WorkflowNodeAdmin(admin.ModelAdmin):
     list_display = ("id", "workflow", "node_type", "label", "lambda_function", "connector")
     list_filter = ("node_type", "workflow")
     search_fields = ("label",)
+    formfield_overrides = {
+        models.JSONField: {"widget": JSON_EDITOR_WIDGET},
+    }
 
 
 @admin.register(WorkflowEdge)
