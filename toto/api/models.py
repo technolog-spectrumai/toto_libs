@@ -161,21 +161,47 @@ class ApiConnector(models.Model):
     def get_timeout(self):
         return int(self.auth_config.get("timeout_seconds") or 30)
 
+    def decrypt_api_secret(self, *, vault_session):
+        if vault_session is None:
+            raise RuntimeError(
+                f'API connector "{self.name}" requires a Gervazy vault session to resolve credentials.'
+            )
+        if self.api_secret_id is None:
+            raise RuntimeError(f'API connector "{self.name}" has no api_secret configured.')
+        return vault_session.decrypt_secret(self.api_secret)
+
     def build_auth_headers(self, *, vault_session):
         """Return HTTP auth headers. vault_session must be an unlocked Gervazy vault session."""
         if not self.is_active:
             raise RuntimeError(f'API connector "{self.name}" is inactive.')
         if self.auth_type == self.AUTH_NONE:
             return {}
+        if self.auth_type == self.AUTH_QUERY_PARAM:
+            return {}
         if self.auth_type == self.AUTH_BEARER_TOKEN:
-            token = vault_session.decrypt_secret(self.api_secret)
+            token = self.decrypt_api_secret(vault_session=vault_session)
             return {"Authorization": f"Bearer {token}"}
         if self.auth_type == self.AUTH_API_KEY_HEADER:
             header_name = self.auth_config.get("header_name") or "Authorization"
             prefix = self.auth_config.get("header_prefix", "")
-            api_key = vault_session.decrypt_secret(self.api_secret)
+            api_key = self.decrypt_api_secret(vault_session=vault_session)
             value = f"{prefix} {api_key}".strip() if prefix else api_key
             return {header_name: value}
+        raise RuntimeError(
+            f"Auth type {self.auth_type} requires custom request handling."
+        )
+
+    def build_auth_query_params(self, *, vault_session):
+        """Return HTTP auth query params for connector types that use them."""
+        if not self.is_active:
+            raise RuntimeError(f'API connector "{self.name}" is inactive.')
+        if self.auth_type == self.AUTH_NONE:
+            return {}
+        if self.auth_type == self.AUTH_QUERY_PARAM:
+            param_name = self.auth_config.get("query_param_name") or "api_key"
+            return {param_name: self.decrypt_api_secret(vault_session=vault_session)}
+        if self.auth_type in (self.AUTH_BEARER_TOKEN, self.AUTH_API_KEY_HEADER):
+            return {}
         raise RuntimeError(
             f"Auth type {self.auth_type} requires custom request handling."
         )

@@ -30,6 +30,7 @@ from .services.human_task import apply_output_mapping, submit_human_task
 from .services.validator import ValidationError, WorkflowValidator
 from .output import WorkflowOutput, normalize_workflow_output
 from .tasks import execute_lambda_node_task
+from toto.api.models import Connector as ApiConnectorModel
 from toto.mandragora.connectors import execute_connector as execute_mandragora_connector
 from toto.mandragora.connectors import list_available_connectors
 
@@ -230,7 +231,11 @@ class LinearLambdaWorkflowTests(TestCase):
 class ConnectorWorkflowTests(TestCase):
 
     def test_connector_registry_exposes_app_connector_classes_to_mandragora(self):
-        connector_types = {item["connector_type"] for item in list_available_connectors()}
+        connectors = list_available_connectors()
+        connector_types = {item["connector_type"] for item in connectors}
+        connector_apps = {item["connector_type"]: item["app_label"] for item in connectors}
+        self.assertIn(WorkflowConnector.API_REQUEST, connector_types)
+        self.assertEqual(connector_apps[WorkflowConnector.API_REQUEST], "api")
         self.assertIn(WorkflowConnector.PEOPLE_READ, connector_types)
         self.assertIn(WorkflowConnector.SOCIALHUB_READ, connector_types)
         self.assertIn(WorkflowConnector.LOCATIONS_READ, connector_types)
@@ -315,7 +320,7 @@ class ConnectorWorkflowTests(TestCase):
             input_data={"data": {"payload": {"name": "Ada"}}},
         )
 
-        with patch("toto.workflows.services.connectors.urlopen", return_value=FakeResponse()) as mock_urlopen:
+        with patch("toto.api.client.urlopen", return_value=FakeResponse()) as mock_urlopen:
             WorkflowExecutor().start(run)
 
         request = mock_urlopen.call_args.args[0]
@@ -324,6 +329,79 @@ class ConnectorWorkflowTests(TestCase):
         output = run.node_runs.get().output_data
         self.assertEqual(output["data"]["status_code"], 200)
         self.assertEqual(output["data"]["json"], {"ok": True})
+
+    def test_api_connector_can_use_saved_core_api_connector(self):
+        class FakeResponse:
+            status = 200
+            headers = {"Content-Type": "application/json"}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self, *args):
+                return b'{"created": true}'
+
+            def getcode(self):
+                return self.status
+
+        api_connector = ApiConnectorModel.objects.create(
+            name="Example API",
+            slug="example-api",
+            base_url="https://api.example.test/v1/",
+            auth_type=ApiConnectorModel.AUTH_NONE,
+        )
+        connector = WorkflowConnector.objects.create(
+            name="call-saved-api",
+            connector_type=WorkflowConnector.API_REQUEST,
+            config={
+                "api_connector_slug": api_connector.slug,
+                "endpoint": "items",
+                "method": "POST",
+                "json_field": "data.payload",
+            },
+        )
+        wf = Workflow.objects.create(name="SavedApiCall")
+        _node(wf, WorkflowNode.CONNECTOR, label="api", connector=connector)
+        run = WorkflowRun.objects.create(
+            workflow=wf,
+            input_data={"data": {"payload": {"name": "Ada"}}},
+        )
+
+        with patch("toto.api.client.urlopen", return_value=FakeResponse()) as mock_urlopen:
+            WorkflowExecutor().start(run)
+
+        request = mock_urlopen.call_args.args[0]
+        self.assertEqual(request.full_url, "https://api.example.test/v1/items")
+        self.assertEqual(request.get_method(), "POST")
+        self.assertEqual(request.data, b'{"name": "Ada"}')
+        output = run.node_runs.get().output_data
+        self.assertEqual(output["data"]["json"], {"created": True})
+
+    def test_saved_api_connector_auth_requires_vault_session(self):
+        api_connector = ApiConnectorModel.objects.create(
+            name="Secret API",
+            slug="secret-api",
+            base_url="https://api.example.test/v1/",
+            auth_type=ApiConnectorModel.AUTH_BEARER_TOKEN,
+        )
+        connector = WorkflowConnector.objects.create(
+            name="call-secret-api",
+            connector_type=WorkflowConnector.API_REQUEST,
+            config={"api_connector_slug": api_connector.slug, "endpoint": "items"},
+        )
+        wf = Workflow.objects.create(name="SecretApiCall")
+        _node(wf, WorkflowNode.CONNECTOR, label="api", connector=connector)
+        run = WorkflowRun.objects.create(workflow=wf)
+
+        WorkflowExecutor().start(run)
+
+        run.refresh_from_db()
+        node_run = run.node_runs.get()
+        self.assertEqual(run.status, WorkflowRun.FAILED)
+        self.assertIn("vault session", node_run.error)
 
     def test_people_read_connector_searches_people_without_writes(self):
         from toto.people.models import Person

@@ -54,6 +54,7 @@ def load_connector_modules() -> None:
     # connector availability is predictable in workflows, Mandragora, and shell use.
     for module_path in (
         "toto.workflows.services.connectors",
+        "toto.api.connectors",
         "toto.people.connectors",
         "toto.socialhub.connectors",
         "toto.locations.connectors",
