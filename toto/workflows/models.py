@@ -36,6 +36,7 @@ class WorkflowConnector(models.Model):
     PEOPLE_READ = "people_read"
     SOCIALHUB_READ = "socialhub_read"
     LOCATIONS_READ = "locations_read"
+    EVENTS_READ = "events_read"
 
     CONNECTOR_TYPES = [
         (FILE_READ, "File read"),
@@ -44,6 +45,7 @@ class WorkflowConnector(models.Model):
         (PEOPLE_READ, "People read"),
         (SOCIALHUB_READ, "Socialhub read"),
         (LOCATIONS_READ, "Locations read"),
+        (EVENTS_READ, "Events read"),
     ]
 
     name = models.CharField(max_length=255, unique=True)

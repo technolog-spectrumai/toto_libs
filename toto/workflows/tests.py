@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 
 from celery.exceptions import SoftTimeLimitExceeded
 from django.test import TestCase, override_settings
+from django.utils import timezone
 
 from .models import (
     HumanTask,
@@ -233,6 +234,7 @@ class ConnectorWorkflowTests(TestCase):
         self.assertIn(WorkflowConnector.PEOPLE_READ, connector_types)
         self.assertIn(WorkflowConnector.SOCIALHUB_READ, connector_types)
         self.assertIn(WorkflowConnector.LOCATIONS_READ, connector_types)
+        self.assertIn(WorkflowConnector.EVENTS_READ, connector_types)
 
     def test_file_write_connector_writes_input_content(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -396,6 +398,74 @@ class ConnectorWorkflowTests(TestCase):
         output = run.node_runs.get().output_data
         self.assertEqual(len(output["data"]["addresses"]), 1)
         self.assertEqual(output["data"]["addresses"][0]["locality_name"], "Krakow")
+
+    def test_events_read_connector_searches_scheduled_events(self):
+        from datetime import timedelta
+
+        from toto.events.models import EventCategory, ScheduledEvent
+
+        category = EventCategory.objects.create(name="Workshop", description="Hands-on")
+        ScheduledEvent.objects.create(
+            title="Workflow Automation Workshop",
+            description="Build useful automations",
+            start_time=timezone.now() + timedelta(days=1),
+            end_time=timezone.now() + timedelta(days=1, hours=2),
+            category=category,
+            public=True,
+        )
+        ScheduledEvent.objects.create(
+            title="Private Planning",
+            description="Hidden",
+            start_time=timezone.now() + timedelta(days=2),
+            end_time=timezone.now() + timedelta(days=2, hours=1),
+            category=category,
+            public=False,
+        )
+        connector = WorkflowConnector.objects.create(
+            name="search-events",
+            connector_type=WorkflowConnector.EVENTS_READ,
+            config={"resource": "scheduled_event", "action": "search", "query": "Automation"},
+        )
+        wf = Workflow.objects.create(name="EventsRead")
+        _node(wf, WorkflowNode.CONNECTOR, label="events", connector=connector)
+        run = WorkflowRun.objects.create(workflow=wf)
+
+        WorkflowExecutor().start(run)
+
+        output = run.node_runs.get().output_data
+        self.assertEqual(len(output["data"]["events"]), 1)
+        self.assertEqual(output["data"]["events"][0]["title"], "Workflow Automation Workshop")
+        self.assertEqual(output["data"]["events"][0]["category"]["name"], "Workshop")
+
+    def test_events_read_connector_lists_availability_for_person(self):
+        from datetime import timedelta
+
+        from toto.events.models import Availability
+        from toto.people.models import Person
+
+        person = Person.objects.create(display_name="Ada Lovelace", slug="ada-lovelace")
+        Availability.objects.create(
+            person=person,
+            start_time=timezone.now() + timedelta(days=1),
+            end_time=timezone.now() + timedelta(days=1, hours=1),
+            availability_type=Availability.AvailabilityType.BUSY,
+            reason="Workshop",
+        )
+        connector = WorkflowConnector.objects.create(
+            name="person-availability",
+            connector_type=WorkflowConnector.EVENTS_READ,
+            config={"resource": "availability", "person_slug": "ada-lovelace"},
+        )
+        wf = Workflow.objects.create(name="AvailabilityRead")
+        _node(wf, WorkflowNode.CONNECTOR, label="availability", connector=connector)
+        run = WorkflowRun.objects.create(workflow=wf)
+
+        WorkflowExecutor().start(run)
+
+        output = run.node_runs.get().output_data
+        self.assertEqual(len(output["data"]["availabilities"]), 1)
+        self.assertEqual(output["data"]["availabilities"][0]["person"]["display_name"], "Ada Lovelace")
+        self.assertEqual(output["data"]["availabilities"][0]["availability_type"], Availability.AvailabilityType.BUSY)
 
 
 # ---------------------------------------------------------------------------

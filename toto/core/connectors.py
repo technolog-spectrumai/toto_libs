@@ -57,6 +57,7 @@ def load_connector_modules() -> None:
         "toto.people.connectors",
         "toto.socialhub.connectors",
         "toto.locations.connectors",
+        "toto.events.connectors",
     ):
         try:
             __import__(module_path)
