@@ -3,7 +3,7 @@ WorkflowExecutor — DAG runner.
 
 Execution contract
 ------------------
-- Lambda nodes run their LambdaFunction.content via KernelClient. In
+- Lambda nodes run their LambdaFunction.content in the workflow worker. In
   async_lambdas mode, each lambda node is queued as its own Celery task.
   The kernel is expected to print a JSON object:
       {"data": {...}, "route": "branch_name"}
@@ -24,6 +24,8 @@ Execution contract
 
 import json
 import logging
+from contextlib import redirect_stdout
+from io import StringIO
 
 from django.conf import settings
 from django.utils import timezone
@@ -42,13 +44,11 @@ log = logging.getLogger(__name__)
 
 
 def _get_kernel_client():
-    """Return a KernelClient instance; patched to MockKernelClient in tests."""
+    """Legacy test hook; production workflow lambdas do not use KernelClient."""
     mock_cls = getattr(settings, "WORKFLOW_KERNEL_CLIENT", None)
     if mock_cls is not None:
         return mock_cls()
-    from toto.mandragora.kernel import KernelClient
-    addr = getattr(settings, "KERNEL_SERVER_ADDR", "tcp://127.0.0.1:5555")
-    return KernelClient(addr=addr)
+    return None
 
 
 class WorkflowExecutor:
@@ -193,25 +193,48 @@ class WorkflowExecutor:
         if lambda_fn is None:
             raise ValueError("Lambda node has no lambda_function configured.")
 
-        client = _get_kernel_client()
         injected_code = (
             f"import json as _json\n"
             f"_input = _json.loads({json.dumps(json.dumps(node_run.input_data or {}))})\n"
             + lambda_fn.content
         )
-        response = client.execute(lambda_fn.id, injected_code)
+        client = _get_kernel_client()
+        if client is not None:
+            response = client.execute(lambda_fn.id, injected_code)
+        else:
+            response = self._execute_lambda_content(lambda_fn.content, node_run.input_data or {})
 
         if "error" in response:
             raise RuntimeError(f"Kernel error: {response['error']}")
 
         stdout = response.get("stdout", "").strip()
-        try:
-            raw = json.loads(stdout)
-        except (json.JSONDecodeError, ValueError):
-            raw = {}
+        raw = self._parse_lambda_stdout(stdout)
 
         wo = normalize_workflow_output(raw)
         return {"data": wo.data, "routes": wo.routes}
+
+    def _execute_lambda_content(self, content: str, input_data: dict) -> dict:
+        stdout = StringIO()
+        scope = {
+            "__name__": "__workflow_lambda__",
+            "_input": input_data,
+        }
+        with redirect_stdout(stdout):
+            exec(content, scope, scope)
+        return {"stdout": stdout.getvalue()}
+
+    def _parse_lambda_stdout(self, stdout: str) -> dict:
+        if not stdout:
+            return {}
+        for line in reversed(stdout.splitlines()):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                return json.loads(line)
+            except (json.JSONDecodeError, ValueError):
+                continue
+        return {}
 
     def _run_human(self, node_run: WorkflowNodeRun) -> None:
         node = node_run.node

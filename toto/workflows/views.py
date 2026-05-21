@@ -51,7 +51,6 @@ from .serializers import (
     WorkflowConnectorSerializer,
 )
 from .services.human_task import submit_human_task
-from .services.executor import WorkflowExecutor
 from .services.reports import render_report
 from .services.validator import ValidationError, WorkflowValidator
 from .tasks import resume_workflow_run_task, start_workflow_run_task
@@ -351,22 +350,30 @@ def human_task_submit(request, task_id):
     ser = SubmitHumanTaskSerializer(data=request.data)
     ser.is_valid(raise_exception=True)
 
-    use_celery = celery_available()
+    if not celery_available():
+        return Response(
+            {
+                "error": (
+                    "No Celery workers are running. "
+                    "Start a Celery worker before resuming workflows."
+                ),
+                "celery_unavailable": True,
+            },
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
     submit_human_task(
         task,
         ser.validated_data["submitted_data"],
-        async_lambdas=use_celery,
-        resume=not use_celery,
+        async_lambdas=True,
+        resume=False,
     )
-    resume_task_id = None
-    if use_celery:
-        resume_task_id = resume_workflow_run_task.delay(task.node_run.workflow_run_id).id
+    resume_task_id = resume_workflow_run_task.delay(task.node_run.workflow_run_id).id
     task.refresh_from_db()
     run = task.node_run.workflow_run
     run.refresh_from_db()
     data = WorkflowRunSerializer(run).data
-    if resume_task_id:
-        data["task_id"] = resume_task_id
+    data["task_id"] = resume_task_id
     return Response(data)
 
 
@@ -474,6 +481,8 @@ def workflow_run_start_ui(request, workflow_id):
         return redirect("workflows:workflow_detail", workflow_id=workflow.id)
 
     run = _start_workflow_run(request, workflow, input_data={})
+    if run is None:
+        return redirect("workflows:workflow_detail", workflow_id=workflow.id)
     return redirect(reverse("workflows:workflow_run_detail", kwargs={"run_id": run.id}))
 
 
@@ -496,19 +505,22 @@ def workflow_run_restart_ui(request, run_id):
         return redirect(reverse("workflows:workflow_run_detail", kwargs={"run_id": source_run.id}))
 
     run = _start_workflow_run(request, workflow, input_data=deepcopy(source_run.input_data or {}))
+    if run is None:
+        return redirect(reverse("workflows:workflow_run_detail", kwargs={"run_id": source_run.id}))
     messages.success(request, f"Restarted workflow run #{source_run.id} as run #{run.id}.")
     return redirect(reverse("workflows:workflow_run_detail", kwargs={"run_id": run.id}))
 
 
 def _start_workflow_run(request, workflow, *, input_data):
+    if not celery_available():
+        messages.error(
+            request,
+            "No Celery workers are running. Start a Celery worker before executing workflows.",
+        )
+        return None
     run = WorkflowRun.objects.create(workflow=workflow, input_data=input_data or {})
-    if celery_available():
-        start_workflow_run_task.delay(run.id)
-        messages.success(request, f"Started workflow run #{run.id}.")
-    else:
-        WorkflowExecutor(async_lambdas=False).start(run)
-        run.refresh_from_db()
-        messages.success(request, f"Ran workflow #{run.id} without Celery.")
+    start_workflow_run_task.delay(run.id)
+    messages.success(request, f"Started workflow run #{run.id}.")
     return run
 
 

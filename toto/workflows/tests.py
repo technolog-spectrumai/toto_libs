@@ -737,23 +737,37 @@ class WorkflowUIViewTests(TestCase):
         )
         self.client.force_login(self.user)
 
-    def test_run_button_endpoint_executes_without_celery_and_redirects_to_run(self):
-        MockClient = _make_kernel_mock({"data": {"ok": True}, "route": "end"})
+    def test_run_button_endpoint_queues_celery_and_redirects_to_run(self):
         wf = Workflow.objects.create(name="Runnable UI Workflow")
         _node(wf, WorkflowNode.LAMBDA, label="Start", lambda_fn=_lambda("ui_start"))
 
-        with override_settings(WORKFLOW_KERNEL_CLIENT=MockClient):
-            with patch("toto.workflows.views.celery_available", return_value=False):
+        with patch("toto.workflows.views.celery_available", return_value=True):
+            with patch("toto.workflows.views.start_workflow_run_task.delay") as delay:
                 response = self.client.post(reverse("workflows:workflow_run_start", args=[wf.id]))
 
         run = WorkflowRun.objects.get(workflow=wf)
+        delay.assert_called_once_with(run.id)
         self.assertRedirects(
             response,
             reverse("workflows:workflow_run_detail", args=[run.id]),
             fetch_redirect_response=False,
         )
-        self.assertEqual(run.status, WorkflowRun.COMPLETED)
-        self.assertEqual(run.node_runs.get().output_data["data"], {"ok": True})
+        self.assertEqual(run.status, WorkflowRun.PENDING)
+        self.assertFalse(run.node_runs.exists())
+
+    def test_run_button_endpoint_requires_celery(self):
+        wf = Workflow.objects.create(name="Runnable UI Workflow")
+        _node(wf, WorkflowNode.LAMBDA, label="Start", lambda_fn=_lambda("ui_start"))
+
+        with patch("toto.workflows.views.celery_available", return_value=False):
+            response = self.client.post(reverse("workflows:workflow_run_start", args=[wf.id]))
+
+        self.assertRedirects(
+            response,
+            reverse("workflows:workflow_detail", args=[wf.id]),
+            fetch_redirect_response=False,
+        )
+        self.assertFalse(WorkflowRun.objects.filter(workflow=wf).exists())
 
     def test_run_button_endpoint_rejects_invalid_workflow(self):
         wf = Workflow.objects.create(name="Empty UI Workflow")
@@ -768,7 +782,6 @@ class WorkflowUIViewTests(TestCase):
         self.assertFalse(WorkflowRun.objects.filter(workflow=wf).exists())
 
     def test_restart_completed_run_clones_input_and_redirects_to_new_run(self):
-        MockClient = _make_kernel_mock({"data": {"restarted": True}, "route": "end"})
         wf = Workflow.objects.create(name="Restartable UI Workflow")
         _node(wf, WorkflowNode.LAMBDA, label="Start", lambda_fn=_lambda("ui_restart"))
         source_run = WorkflowRun.objects.create(
@@ -777,19 +790,39 @@ class WorkflowUIViewTests(TestCase):
             input_data={"data": {"seed": 7}},
         )
 
-        with override_settings(WORKFLOW_KERNEL_CLIENT=MockClient):
-            with patch("toto.workflows.views.celery_available", return_value=False):
+        with patch("toto.workflows.views.celery_available", return_value=True):
+            with patch("toto.workflows.views.start_workflow_run_task.delay") as delay:
                 response = self.client.post(reverse("workflows:workflow_run_restart", args=[source_run.id]))
 
         new_run = WorkflowRun.objects.exclude(id=source_run.id).get(workflow=wf)
+        delay.assert_called_once_with(new_run.id)
         self.assertRedirects(
             response,
             reverse("workflows:workflow_run_detail", args=[new_run.id]),
             fetch_redirect_response=False,
         )
         self.assertEqual(new_run.input_data, source_run.input_data)
-        self.assertEqual(new_run.status, WorkflowRun.COMPLETED)
-        self.assertEqual(new_run.node_runs.get().output_data["data"], {"restarted": True})
+        self.assertEqual(new_run.status, WorkflowRun.PENDING)
+        self.assertFalse(new_run.node_runs.exists())
+
+    def test_restart_requires_celery(self):
+        wf = Workflow.objects.create(name="Restartable UI Workflow")
+        _node(wf, WorkflowNode.LAMBDA, label="Start", lambda_fn=_lambda("ui_restart"))
+        source_run = WorkflowRun.objects.create(
+            workflow=wf,
+            status=WorkflowRun.COMPLETED,
+            input_data={"data": {"seed": 7}},
+        )
+
+        with patch("toto.workflows.views.celery_available", return_value=False):
+            response = self.client.post(reverse("workflows:workflow_run_restart", args=[source_run.id]))
+
+        self.assertRedirects(
+            response,
+            reverse("workflows:workflow_run_detail", args=[source_run.id]),
+            fetch_redirect_response=False,
+        )
+        self.assertEqual(WorkflowRun.objects.filter(workflow=wf).count(), 1)
 
     def test_restart_rejects_non_completed_run(self):
         wf = Workflow.objects.create(name="Running UI Workflow")
@@ -807,6 +840,39 @@ class WorkflowUIViewTests(TestCase):
             fetch_redirect_response=False,
         )
         self.assertEqual(WorkflowRun.objects.filter(workflow=wf).count(), 1)
+
+    def test_human_task_submit_requires_celery(self):
+        wf = Workflow.objects.create(name="Human UI Workflow")
+        human_node = _node(
+            wf,
+            WorkflowNode.HUMAN,
+            label="Review",
+            config={"schema": {"type": "object", "properties": {"approved": {"type": "boolean"}}}},
+        )
+        run = WorkflowRun.objects.create(workflow=wf, status=WorkflowRun.PAUSED)
+        node_run = WorkflowNodeRun.objects.create(
+            workflow_run=run,
+            node=human_node,
+            status=WorkflowNodeRun.WAITING,
+        )
+        task = HumanTask.objects.create(
+            node_run=node_run,
+            status=HumanTask.PENDING,
+            form_schema=human_node.config["schema"],
+        )
+
+        with patch("toto.workflows.views.celery_available", return_value=False):
+            response = self.client.post(
+                reverse("workflows:api_human_task_submit", args=[task.id]),
+                data={"submitted_data": {"approved": True}},
+                content_type="application/json",
+            )
+
+        task.refresh_from_db()
+        node_run.refresh_from_db()
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(task.status, HumanTask.PENDING)
+        self.assertEqual(node_run.status, WorkflowNodeRun.WAITING)
 
 
 # ---------------------------------------------------------------------------
@@ -834,6 +900,23 @@ class CeleryLambdaWorkflowTests(TestCase):
         self.assertEqual(run.status, WorkflowRun.COMPLETED)
         self.assertEqual(run.node_runs.filter(node__node_type=WorkflowNode.LAMBDA).count(), 2)
         self.assertEqual(run.node_runs.exclude(celery_task_id="").count(), 2)
+
+    def test_lambda_task_executes_content_without_kernel_server(self):
+        fn = LambdaFunction.objects.create(
+            function_name="celery_local_lambda",
+            content='import json\nprint(json.dumps({"data": {"ok": _input["data"]["ok"]}, "route": "end"}))',
+        )
+        wf = Workflow.objects.create(name="CeleryLocalLambda")
+        _node(wf, WorkflowNode.LAMBDA, label="Local", lambda_fn=fn)
+
+        run = WorkflowRun.objects.create(workflow=wf, input_data={"data": {"ok": True}})
+        with override_settings(CELERY_TASK_ALWAYS_EAGER=True, CELERY_TASK_EAGER_PROPAGATES=True):
+            WorkflowExecutor(async_lambdas=True).start(run)
+
+        run.refresh_from_db()
+        node_run = run.node_runs.get()
+        self.assertEqual(run.status, WorkflowRun.COMPLETED)
+        self.assertEqual(node_run.output_data["data"], {"ok": True})
 
     def test_lambda_task_failure_marks_node_and_run_failed(self):
         instance = MagicMock()
