@@ -93,6 +93,7 @@ class Command(IngressCommand):
     def _seed_connectors(self):
         self._seed_connector_sample_file()
         api_connector = self._seed_api_connector()
+        weather_api_connector = self._seed_weather_api_connector()
 
         seed_configs = {
             WorkflowConnector.FILE_READ: {
@@ -161,6 +162,7 @@ class Command(IngressCommand):
             )
             if created:
                 self.stdout.write(self.style.SUCCESS(f"  + connector: {name}"))
+        self._seed_weather_workflow_connector(weather_api_connector)
 
     def _seed_connector_sample_file(self):
         root = getattr(settings, "WORKFLOW_FILE_CONNECTOR_ROOT", None)
@@ -192,6 +194,58 @@ class Command(IngressCommand):
         if created:
             self.stdout.write(self.style.SUCCESS("  + API connector: HTTPBin Demo"))
         return api_connector
+
+    def _seed_weather_api_connector(self):
+        api_connector, created = ApiConnector.objects.update_or_create(
+            slug="open-meteo-forecast",
+            defaults={
+                "name": "Open-Meteo Forecast",
+                "provider": ApiConnector.PROVIDER_GENERIC,
+                "base_url": "https://api.open-meteo.com/",
+                "auth_type": ApiConnector.AUTH_NONE,
+                "auth_config": {"timeout_seconds": 10},
+                "extra": {
+                    "headers": {"User-Agent": "toto-mandragora-ingress/1.0"},
+                },
+                "is_active": True,
+            },
+        )
+        if created:
+            self.stdout.write(self.style.SUCCESS("  + API connector: Open-Meteo Forecast"))
+        return api_connector
+
+    def _seed_weather_workflow_connector(self, api_connector):
+        name = "Demo Open-Meteo Forecast"
+        config = {
+            "api_connector_slug": api_connector.slug,
+            "endpoint": "v1/forecast",
+            "method": "GET",
+            "params": {
+                "latitude": 52.4069,
+                "longitude": 16.9252,
+                "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum",
+                "forecast_days": 7,
+                "timezone": "Europe/Warsaw",
+            },
+            "timeout_seconds": 10,
+            "max_response_bytes": 200000,
+        }
+        errors = validate_connector_type(WorkflowConnector.API_REQUEST, config)
+        if errors:
+            self.stdout.write(
+                self.style.WARNING(f"Skipping Open-Meteo connector seed: {'; '.join(errors)}")
+            )
+            return None
+        connector, created = WorkflowConnector.objects.update_or_create(
+            name=name,
+            defaults={
+                "connector_type": WorkflowConnector.API_REQUEST,
+                "config": config,
+            },
+        )
+        if created:
+            self.stdout.write(self.style.SUCCESS(f"  + connector: {name}"))
+        return connector
 
     # ------------------------------------------------------------------
     #  Report seeds
@@ -268,6 +322,7 @@ class Command(IngressCommand):
             title="Acquisition Channel Mix",
             data_key="series",
         )
+        self._seed_weather_reports(templates)
 
     def _seed_report_templates(self):
         table, table_created = ReportTemplate.objects.update_or_create(
@@ -335,6 +390,38 @@ class Command(IngressCommand):
                 },
             },
         )
+        weather_temperature, weather_temperature_created = ReportTemplate.objects.update_or_create(
+            slug="weather-temperature-line",
+            defaults={
+                "name": "Weather Temperature Line",
+                "description": "Daily maximum temperature forecast from Open-Meteo.",
+                "definition": {
+                    "version": 1,
+                    "type": "chart",
+                    "title": "Daily max temperature",
+                    "chart": "line",
+                    "data": {"path": "temperature_series"},
+                    "x": "label",
+                    "y": "value",
+                },
+            },
+        )
+        weather_precipitation, weather_precipitation_created = ReportTemplate.objects.update_or_create(
+            slug="weather-precipitation-bar",
+            defaults={
+                "name": "Weather Precipitation Bar",
+                "description": "Daily precipitation forecast from Open-Meteo.",
+                "definition": {
+                    "version": 1,
+                    "type": "chart",
+                    "title": "Daily precipitation",
+                    "chart": "bar",
+                    "data": {"path": "precipitation_series"},
+                    "x": "label",
+                    "y": "value",
+                },
+            },
+        )
         if table_created:
             self.stdout.write(self.style.SUCCESS("  + report template: Pipeline Output Table"))
         if chart_created:
@@ -343,12 +430,49 @@ class Command(IngressCommand):
             self.stdout.write(self.style.SUCCESS("  + report template: Metrics Trend Line"))
         if pie_created:
             self.stdout.write(self.style.SUCCESS("  + report template: Channel Mix Pie"))
+        if weather_temperature_created:
+            self.stdout.write(self.style.SUCCESS("  + report template: Weather Temperature Line"))
+        if weather_precipitation_created:
+            self.stdout.write(self.style.SUCCESS("  + report template: Weather Precipitation Bar"))
         return {
             "pipeline_table": table,
             "enrichment_chart": chart,
             "metrics_line": line,
             "channel_pie": pie,
+            "weather_temperature": weather_temperature,
+            "weather_precipitation": weather_precipitation,
         }
+
+    def _seed_weather_reports(self, templates):
+        weather_run = WorkflowNodeRun.objects.filter(
+            node__workflow__name="Weather Forecast Report",
+            node__label="Build Weather Series",
+            status=WorkflowNodeRun.COMPLETED,
+        ).select_related("workflow_run").order_by("-completed_at").first()
+        if not weather_run:
+            return
+        weather_data = (weather_run.output_data or {}).get("data", {})
+        self._seed_generated_report(
+            slug="ingress-weather-temperature-line",
+            template=templates["weather_temperature"],
+            title="Poznan Temperature Forecast",
+            data=weather_data,
+            source_node_run=self._weather_report_node_run(weather_run, "Temperature Report") or weather_run,
+        )
+        self._seed_generated_report(
+            slug="ingress-weather-precipitation-bar",
+            template=templates["weather_precipitation"],
+            title="Poznan Precipitation Forecast",
+            data=weather_data,
+            source_node_run=self._weather_report_node_run(weather_run, "Precipitation Report") or weather_run,
+        )
+
+    def _weather_report_node_run(self, source_run, report_label):
+        return WorkflowNodeRun.objects.filter(
+            workflow_run=source_run.workflow_run,
+            node__label=report_label,
+            status=WorkflowNodeRun.COMPLETED,
+        ).first()
 
     def _seed_chart_example_report(
         self,
@@ -469,6 +593,10 @@ class Command(IngressCommand):
         self._seed_fanout_workflow(report_templates["enrichment_chart"])
         self._seed_line_chart_workflow(report_templates["metrics_line"])
         self._seed_pie_chart_workflow(report_templates["channel_pie"])
+        self._seed_weather_workflow(
+            report_templates["weather_temperature"],
+            report_templates["weather_precipitation"],
+        )
 
     def _upsert_lambda(self, name: str, src: str) -> LambdaFunction:
         fn, created = LambdaFunction.objects.update_or_create(
@@ -742,6 +870,207 @@ print(json.dumps({"data": {"series": series}, "route": "report"}))
             report_title="Acquisition Channel Mix",
         )
 
+    def _seed_weather_workflow(self, temperature_template=None, precipitation_template=None):
+        connector = WorkflowConnector.objects.filter(name="Demo Open-Meteo Forecast").first()
+        if connector is None:
+            connector = self._seed_weather_workflow_connector(self._seed_weather_api_connector())
+        fn = self._upsert_lambda("weather_build_series", """\
+import json
+
+payload = _input.get("data", {}).get("json", {})
+daily = payload.get("daily", {})
+units = payload.get("daily_units", {})
+dates = daily.get("time", [])
+max_t = daily.get("temperature_2m_max", [])
+min_t = daily.get("temperature_2m_min", [])
+precip = daily.get("precipitation_sum", [])
+
+temperature_series = []
+precipitation_series = []
+for index, label in enumerate(dates):
+    if index < len(max_t) and max_t[index] is not None:
+        temperature_series.append({
+            "label": label,
+            "value": max_t[index],
+            "min": min_t[index] if index < len(min_t) else None,
+        })
+    if index < len(precip) and precip[index] is not None:
+        precipitation_series.append({
+            "label": label,
+            "value": precip[index],
+        })
+
+print(json.dumps({
+    "data": {
+        "location": "Poznan",
+        "source": "Open-Meteo",
+        "temperature_unit": units.get("temperature_2m_max", "degC"),
+        "precipitation_unit": units.get("precipitation_sum", "mm"),
+        "temperature_series": temperature_series,
+        "precipitation_series": precipitation_series,
+    },
+    "route": "report",
+}))
+""")
+        wf, created = Workflow.objects.get_or_create(
+            name="Weather Forecast Report",
+            defaults={
+                "description": (
+                    "Fetch a 7 day Open-Meteo forecast and route daily temperature "
+                    "and precipitation into separate reports."
+                )
+            },
+        )
+        if not created:
+            self.stdout.write(self.style.WARNING("Workflow already exists: Weather Forecast Report"))
+            self._ensure_weather_workflow_nodes(
+                wf=wf,
+                connector=connector,
+                lambda_function=fn,
+                temperature_template=temperature_template,
+                precipitation_template=precipitation_template,
+            )
+            return
+
+        n_fetch = WorkflowNode.objects.create(
+            workflow=wf,
+            node_type=WorkflowNode.CONNECTOR,
+            label="Fetch Forecast",
+            connector=connector,
+            position_x=0,
+            position_y=0,
+        )
+        n_series = WorkflowNode.objects.create(
+            workflow=wf,
+            node_type=WorkflowNode.LAMBDA,
+            label="Build Weather Series",
+            lambda_function=fn,
+            position_x=0,
+            position_y=120,
+        )
+        WorkflowEdge.objects.create(workflow=wf, source=n_fetch, target=n_series)
+        if temperature_template:
+            n_temperature = WorkflowNode.objects.create(
+                workflow=wf,
+                node_type=WorkflowNode.REPORT,
+                label="Temperature Report",
+                report_template=temperature_template,
+                config={"title": "Poznan Temperature Forecast", "route": "end"},
+                position_x=-160,
+                position_y=260,
+            )
+            WorkflowEdge.objects.create(workflow=wf, source=n_series, target=n_temperature)
+        if precipitation_template:
+            n_precipitation = WorkflowNode.objects.create(
+                workflow=wf,
+                node_type=WorkflowNode.REPORT,
+                label="Precipitation Report",
+                report_template=precipitation_template,
+                config={"title": "Poznan Precipitation Forecast", "route": "end"},
+                position_x=160,
+                position_y=260,
+            )
+            WorkflowEdge.objects.create(workflow=wf, source=n_series, target=n_precipitation)
+        self.stdout.write(self.style.SUCCESS("Created workflow: Weather Forecast Report"))
+
+    def _ensure_weather_workflow_nodes(
+        self,
+        *,
+        wf,
+        connector,
+        lambda_function,
+        temperature_template,
+        precipitation_template,
+    ):
+        fetch, fetch_created = WorkflowNode.objects.get_or_create(
+            workflow=wf,
+            label="Fetch Forecast",
+            defaults={
+                "node_type": WorkflowNode.CONNECTOR,
+                "connector": connector,
+                "position_x": 0,
+                "position_y": 0,
+            },
+        )
+        fetch_changed = False
+        if fetch.node_type != WorkflowNode.CONNECTOR:
+            fetch.node_type = WorkflowNode.CONNECTOR
+            fetch_changed = True
+        if connector and fetch.connector_id != connector.id:
+            fetch.connector = connector
+            fetch_changed = True
+        if fetch_changed:
+            fetch.save(update_fields=["node_type", "connector"])
+        if fetch_created:
+            self.stdout.write(self.style.SUCCESS("  + connector node: Fetch Forecast"))
+
+        series, series_created = WorkflowNode.objects.get_or_create(
+            workflow=wf,
+            label="Build Weather Series",
+            defaults={
+                "node_type": WorkflowNode.LAMBDA,
+                "lambda_function": lambda_function,
+                "position_x": 0,
+                "position_y": 120,
+            },
+        )
+        series_changed = False
+        if series.node_type != WorkflowNode.LAMBDA:
+            series.node_type = WorkflowNode.LAMBDA
+            series_changed = True
+        if series.lambda_function_id != lambda_function.id:
+            series.lambda_function = lambda_function
+            series_changed = True
+        if series_changed:
+            series.save(update_fields=["node_type", "lambda_function"])
+        WorkflowEdge.objects.get_or_create(workflow=wf, source=fetch, target=series)
+        if series_created:
+            self.stdout.write(self.style.SUCCESS("  + lambda node: Build Weather Series"))
+
+        self._ensure_weather_report_node(
+            wf=wf,
+            source=series,
+            label="Temperature Report",
+            template=temperature_template,
+            title="Poznan Temperature Forecast",
+            position_x=-160,
+        )
+        self._ensure_weather_report_node(
+            wf=wf,
+            source=series,
+            label="Precipitation Report",
+            template=precipitation_template,
+            title="Poznan Precipitation Forecast",
+            position_x=160,
+        )
+
+    def _ensure_weather_report_node(self, *, wf, source, label, template, title, position_x):
+        if not template:
+            return
+        report_node, created = WorkflowNode.objects.get_or_create(
+            workflow=wf,
+            label=label,
+            defaults={
+                "node_type": WorkflowNode.REPORT,
+                "report_template": template,
+                "config": {"title": title, "route": "end"},
+                "position_x": position_x,
+                "position_y": 260,
+            },
+        )
+        changed = False
+        if report_node.node_type != WorkflowNode.REPORT:
+            report_node.node_type = WorkflowNode.REPORT
+            changed = True
+        if report_node.report_template_id != template.id:
+            report_node.report_template = template
+            changed = True
+        if changed:
+            report_node.save(update_fields=["node_type", "report_template"])
+        WorkflowEdge.objects.get_or_create(workflow=wf, source=source, target=report_node)
+        if created:
+            self.stdout.write(self.style.SUCCESS(f"  + report node: {label}"))
+
     def _seed_single_report_workflow(
         self,
         *,
@@ -862,6 +1191,7 @@ print(json.dumps({"data": {"series": series}, "route": "report"}))
         self._seed_enrichment_runs(now)
         self._seed_metrics_trend_runs(now)
         self._seed_channel_mix_runs(now)
+        self._seed_weather_runs(now)
 
     def _nr(self, run, node, status, input_data, output_data, ago_start, ago_end=None, error=""):
         """Create a WorkflowNodeRun with realistic timestamps."""
@@ -1273,6 +1603,167 @@ print(json.dumps({"data": {"series": series}, "route": "report"}))
             start_ago=timedelta(minutes=19),
             finish_ago=timedelta(minutes=17),
         )
+
+    def _seed_weather_runs(self, now):
+        try:
+            wf = Workflow.objects.get(name="Weather Forecast Report")
+        except Workflow.DoesNotExist:
+            return
+
+        if WorkflowRun.objects.filter(workflow=wf).exists():
+            self.stdout.write(self.style.WARNING("Runs already exist: Weather Forecast Report"))
+            self._backfill_weather_report_runs(wf)
+            return
+
+        nodes = {n.label: n for n in wf.nodes.all()}
+        edges = {(e.source.label, e.target.label): e for e in wf.edges.select_related("source", "target")}
+        if "Fetch Forecast" not in nodes or "Build Weather Series" not in nodes:
+            return
+
+        forecast_payload = self._weather_forecast_payload()
+        weather_data = self._weather_report_data(forecast_payload)
+        fetch_output = {
+            "data": {
+                "status_code": 200,
+                "headers": {"Content-Type": "application/json"},
+                "json": forecast_payload,
+                "truncated": False,
+            },
+            "routes": [],
+        }
+        series_output = {"data": weather_data, "routes": ["report"]}
+        run = WorkflowRun.objects.create(
+            workflow=wf,
+            status=WorkflowRun.COMPLETED,
+            input_data={"data": {"city": "Poznan", "source": "Open-Meteo"}},
+            output_data=series_output,
+            started_at=now - timedelta(minutes=14),
+            completed_at=now - timedelta(minutes=12),
+        )
+        self._nr(
+            run,
+            nodes["Fetch Forecast"],
+            WorkflowNodeRun.COMPLETED,
+            run.input_data,
+            fetch_output,
+            timedelta(minutes=14),
+            timedelta(minutes=13, seconds=45),
+        )
+        self._nr(
+            run,
+            nodes["Build Weather Series"],
+            WorkflowNodeRun.COMPLETED,
+            fetch_output,
+            series_output,
+            timedelta(minutes=13, seconds=45),
+            timedelta(minutes=13, seconds=20),
+        )
+        for report_label, title, start_offset in (
+            ("Temperature Report", "Poznan Temperature Forecast", timedelta(minutes=13, seconds=10)),
+            ("Precipitation Report", "Poznan Precipitation Forecast", timedelta(minutes=13)),
+        ):
+            if report_label in nodes:
+                self._nr(
+                    run,
+                    nodes[report_label],
+                    WorkflowNodeRun.COMPLETED,
+                    series_output,
+                    {"data": {"report": {"title": title}}, "routes": ["end"]},
+                    start_offset,
+                    timedelta(minutes=12),
+                )
+        for edge_key, activated_at in (
+            (("Fetch Forecast", "Build Weather Series"), timedelta(minutes=13, seconds=45)),
+            (("Build Weather Series", "Temperature Report"), timedelta(minutes=13, seconds=10)),
+            (("Build Weather Series", "Precipitation Report"), timedelta(minutes=13)),
+        ):
+            edge = edges.get(edge_key)
+            if edge:
+                self._er(run, edge, True, activated_at)
+        self.stdout.write(self.style.SUCCESS("Seeded 1 run: Weather Forecast Report"))
+
+    def _backfill_weather_report_runs(self, wf):
+        source = wf.nodes.filter(label="Build Weather Series").first()
+        if source is None:
+            return
+        created_count = 0
+        for source_run in WorkflowNodeRun.objects.filter(
+            node=source,
+            status=WorkflowNodeRun.COMPLETED,
+        ).select_related("workflow_run").order_by("completed_at"):
+            for report_label, title in (
+                ("Temperature Report", "Poznan Temperature Forecast"),
+                ("Precipitation Report", "Poznan Precipitation Forecast"),
+            ):
+                report_node = wf.nodes.filter(label=report_label).first()
+                if report_node is None:
+                    continue
+                edge = wf.edges.filter(source=source, target=report_node).first()
+                report_run, created = self._ensure_seed_report_node_run(
+                    workflow_run=source_run.workflow_run,
+                    node=report_node,
+                    input_data=source_run.output_data,
+                    title=title,
+                    completed_at=source_run.completed_at,
+                )
+                created_count += int(created)
+                self._ensure_seed_report_edge_run(
+                    workflow_run=source_run.workflow_run,
+                    edge=edge,
+                    activated_at=report_run.started_at or report_run.completed_at,
+                )
+        if created_count:
+            self.stdout.write(
+                self.style.SUCCESS(f"  + report node runs: Weather Forecast Report ({created_count})")
+            )
+
+    def _weather_forecast_payload(self):
+        return {
+            "latitude": 52.4,
+            "longitude": 16.9,
+            "generationtime_ms": 0.14,
+            "timezone": "Europe/Warsaw",
+            "daily_units": {
+                "time": "iso8601",
+                "temperature_2m_max": "degC",
+                "temperature_2m_min": "degC",
+                "precipitation_sum": "mm",
+            },
+            "daily": {
+                "time": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+                "temperature_2m_max": [19.4, 21.1, 20.3, 18.7, 22.6, 24.1, 23.3],
+                "temperature_2m_min": [9.2, 10.4, 11.1, 8.9, 12.0, 13.2, 12.8],
+                "precipitation_sum": [0.0, 0.4, 2.8, 6.1, 1.3, 0.0, 0.2],
+            },
+        }
+
+    def _weather_report_data(self, payload):
+        daily = payload.get("daily", {})
+        units = payload.get("daily_units", {})
+        dates = daily.get("time", [])
+        max_t = daily.get("temperature_2m_max", [])
+        min_t = daily.get("temperature_2m_min", [])
+        precip = daily.get("precipitation_sum", [])
+        return {
+            "location": "Poznan",
+            "source": "Open-Meteo",
+            "temperature_unit": units.get("temperature_2m_max", "degC"),
+            "precipitation_unit": units.get("precipitation_sum", "mm"),
+            "temperature_series": [
+                {
+                    "label": label,
+                    "value": max_t[index],
+                    "min": min_t[index] if index < len(min_t) else None,
+                }
+                for index, label in enumerate(dates)
+                if index < len(max_t)
+            ],
+            "precipitation_series": [
+                {"label": label, "value": precip[index]}
+                for index, label in enumerate(dates)
+                if index < len(precip)
+            ],
+        }
 
     def _seed_single_report_example_runs(
         self,
