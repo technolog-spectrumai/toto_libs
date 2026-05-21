@@ -11,7 +11,7 @@ from toto.core.connectors import list_connector_types, validate_connector_type
 from toto.mandragora.models import (
     Cell, ComputeKernel, KernelDependency, Notebook,
 )
-from toto.workflows.services.reports import create_report
+from toto.workflows.services.reports import create_report, serialize_report_reference
 from toto.workflows.models import (
     HumanTask,
     LambdaFunction,
@@ -81,9 +81,10 @@ class Command(IngressCommand):
             self.stdout.write(self.style.WARNING(f"Notebook already exists: {notebook.title}"))
 
         self._seed_connectors()
-        self._seed_workflows()
+        report_templates = self._seed_report_templates()
+        self._seed_workflows(report_templates)
         self._seed_runs()
-        self._seed_reports()
+        self._seed_reports(report_templates)
 
     # ------------------------------------------------------------------
     #  Connector seeds
@@ -196,39 +197,51 @@ class Command(IngressCommand):
     #  Report seeds
     # ------------------------------------------------------------------
 
-    def _seed_reports(self):
-        templates = self._seed_report_templates()
+    def _seed_reports(self, templates=None):
+        templates = templates or self._seed_report_templates()
 
-        notify_run = WorkflowNodeRun.objects.filter(
+        pipeline_report_run = WorkflowNodeRun.objects.filter(
+            node__workflow__name="Data Pipeline",
+            node__label="Output Report",
+            status=WorkflowNodeRun.COMPLETED,
+        ).select_related("workflow_run").order_by("-completed_at").first()
+        notify_run = pipeline_report_run or WorkflowNodeRun.objects.filter(
             node__workflow__name="Data Pipeline",
             node__label="Notify",
             status=WorkflowNodeRun.COMPLETED,
         ).select_related("workflow_run").order_by("-completed_at").first()
         if notify_run:
+            notify_data = (notify_run.input_data or {}).get("data", {})
+            if not notify_data.get("rows"):
+                notify_data = (notify_run.output_data or {}).get("data", {})
+            rows = notify_data.get("rows") or [
+                {"field": key, "value": value}
+                for key, value in (notify_data.get("payload") or {}).items()
+            ]
             self._seed_generated_report(
                 slug="ingress-pipeline-output-table",
                 template=templates["pipeline_table"],
                 title="Pipeline Output Table",
-                data={
-                    "rows": [
-                        {"field": key, "value": value}
-                        for key, value in (notify_run.output_data or {}).get("data", {}).get("payload", {}).items()
-                    ]
-                },
+                data={"rows": rows},
                 source_node_run=notify_run,
             )
 
-        enrichment_run = WorkflowNodeRun.objects.filter(
+        enrichment_report_run = WorkflowNodeRun.objects.filter(
+            node__workflow__name="Parallel Enrichment",
+            node__label="Summary Chart",
+            status=WorkflowNodeRun.COMPLETED,
+        ).select_related("workflow_run").order_by("-completed_at").first()
+        enrichment_run = enrichment_report_run or WorkflowNodeRun.objects.filter(
             node__workflow__name="Parallel Enrichment",
             node__label="Summarise",
             status=WorkflowNodeRun.COMPLETED,
         ).select_related("workflow_run").order_by("-completed_at").first()
         if enrichment_run:
-            summary = (enrichment_run.output_data or {}).get("data", {}).get("summary", {})
-            series = [
-                {"label": key.replace("_", " ").title(), "value": len(value) if isinstance(value, dict) else 1}
-                for key, value in summary.items()
-            ]
+            enrichment_data = (enrichment_run.input_data or {}).get("data", {})
+            if not enrichment_data.get("series"):
+                enrichment_data = (enrichment_run.output_data or {}).get("data", {})
+            summary = enrichment_data.get("summary", {})
+            series = enrichment_data.get("series") or self._summary_series(summary)
             self._seed_generated_report(
                 slug="ingress-enrichment-chart",
                 template=templates["enrichment_chart"],
@@ -236,6 +249,25 @@ class Command(IngressCommand):
                 data={"series": series},
                 source_node_run=enrichment_run,
             )
+
+        self._seed_chart_example_report(
+            slug="ingress-metrics-trend-line",
+            workflow_name="Metrics Trend Report",
+            report_node_label="Trend Line Report",
+            source_node_label="Build Trend Series",
+            template=templates["metrics_line"],
+            title="Weekly Metrics Trend",
+            data_key="series",
+        )
+        self._seed_chart_example_report(
+            slug="ingress-channel-mix-pie",
+            workflow_name="Channel Mix Report",
+            report_node_label="Channel Mix Report",
+            source_node_label="Build Channel Mix",
+            template=templates["channel_pie"],
+            title="Acquisition Channel Mix",
+            data_key="series",
+        )
 
     def _seed_report_templates(self):
         table, table_created = ReportTemplate.objects.update_or_create(
@@ -271,14 +303,101 @@ class Command(IngressCommand):
                 },
             },
         )
+        line, line_created = ReportTemplate.objects.update_or_create(
+            slug="metrics-trend-line",
+            defaults={
+                "name": "Metrics Trend Line",
+                "description": "One line chart report showing a fake weekly trend.",
+                "definition": {
+                    "version": 1,
+                    "type": "chart",
+                    "title": "Weekly active items",
+                    "chart": "line",
+                    "data": {"path": "series"},
+                    "x": "label",
+                    "y": "value",
+                },
+            },
+        )
+        pie, pie_created = ReportTemplate.objects.update_or_create(
+            slug="channel-mix-pie",
+            defaults={
+                "name": "Channel Mix Pie",
+                "description": "One pie chart report showing a fake acquisition split.",
+                "definition": {
+                    "version": 1,
+                    "type": "chart",
+                    "title": "Acquisition mix",
+                    "chart": "pie",
+                    "data": {"path": "series"},
+                    "x": "label",
+                    "y": "value",
+                },
+            },
+        )
         if table_created:
             self.stdout.write(self.style.SUCCESS("  + report template: Pipeline Output Table"))
         if chart_created:
             self.stdout.write(self.style.SUCCESS("  + report template: Enrichment Sections Chart"))
-        return {"pipeline_table": table, "enrichment_chart": chart}
+        if line_created:
+            self.stdout.write(self.style.SUCCESS("  + report template: Metrics Trend Line"))
+        if pie_created:
+            self.stdout.write(self.style.SUCCESS("  + report template: Channel Mix Pie"))
+        return {
+            "pipeline_table": table,
+            "enrichment_chart": chart,
+            "metrics_line": line,
+            "channel_pie": pie,
+        }
+
+    def _seed_chart_example_report(
+        self,
+        *,
+        slug,
+        workflow_name,
+        report_node_label,
+        source_node_label,
+        template,
+        title,
+        data_key,
+    ):
+        report_run = WorkflowNodeRun.objects.filter(
+            node__workflow__name=workflow_name,
+            node__label=report_node_label,
+            status=WorkflowNodeRun.COMPLETED,
+        ).select_related("workflow_run").order_by("-completed_at").first()
+        source_run = report_run or WorkflowNodeRun.objects.filter(
+            node__workflow__name=workflow_name,
+            node__label=source_node_label,
+            status=WorkflowNodeRun.COMPLETED,
+        ).select_related("workflow_run").order_by("-completed_at").first()
+        if not source_run:
+            return
+        data = (source_run.input_data or {}).get("data", {})
+        if data_key not in data:
+            data = (source_run.output_data or {}).get("data", {})
+        self._seed_generated_report(
+            slug=slug,
+            template=template,
+            title=title,
+            data={data_key: data.get(data_key, [])},
+            source_node_run=source_run,
+        )
 
     def _seed_generated_report(self, *, slug, template, title, data, source_node_run):
-        if Report.objects.filter(slug=slug).exists():
+        existing = Report.objects.filter(slug=slug).first()
+        if existing:
+            if source_node_run.node.node_type == WorkflowNode.REPORT:
+                update_fields = []
+                if existing.workflow_run_id != source_node_run.workflow_run_id:
+                    existing.workflow_run = source_node_run.workflow_run
+                    update_fields.append("workflow_run")
+                if existing.source_node_run_id != source_node_run.id:
+                    existing.source_node_run = source_node_run
+                    update_fields.append("source_node_run")
+                if update_fields:
+                    existing.save(update_fields=[*update_fields, "updated_at"])
+                self._update_report_node_run_output(source_node_run, existing)
             return
         report = create_report(
             template=template,
@@ -291,16 +410,65 @@ class Command(IngressCommand):
         if report.slug != slug:
             report.slug = slug
             report.save(update_fields=["slug", "updated_at"])
+        if source_node_run.node.node_type == WorkflowNode.REPORT:
+            self._update_report_node_run_output(source_node_run, report)
         self.stdout.write(self.style.SUCCESS(f"  + report: {title}"))
+
+    def _update_report_node_run_output(self, node_run, report):
+        node_run.output_data = {
+            "data": {"report": serialize_report_reference(report)},
+            "routes": (node_run.output_data or {}).get("routes", ["end"]),
+        }
+        node_run.save(update_fields=["output_data"])
+
+    def _ensure_seed_report_node_run(self, *, workflow_run, node, input_data, title, completed_at):
+        completed_at = completed_at or workflow_run.completed_at or timezone.now()
+        node_run, created = WorkflowNodeRun.objects.get_or_create(
+            workflow_run=workflow_run,
+            node=node,
+            defaults={
+                "status": WorkflowNodeRun.COMPLETED,
+                "input_data": input_data,
+                "output_data": {"data": {"report": {"title": title}}, "routes": ["end"]},
+                "started_at": completed_at,
+                "completed_at": completed_at,
+            },
+        )
+        return node_run, created
+
+    def _ensure_seed_report_edge_run(self, *, workflow_run, edge, activated_at):
+        if edge is None:
+            return
+        edge_run, created = WorkflowEdgeRun.objects.get_or_create(
+            workflow_run=workflow_run,
+            edge=edge,
+            defaults={
+                "activated": True,
+                "activated_at": activated_at or timezone.now(),
+            },
+        )
+        if not created and not edge_run.activated:
+            edge_run.activated = True
+            edge_run.activated_at = activated_at or timezone.now()
+            edge_run.save(update_fields=["activated", "activated_at"])
+
+    def _summary_series(self, summary):
+        return [
+            {"label": key.replace("_", " ").title(), "value": len(value) if isinstance(value, dict) else 1}
+            for key, value in summary.items()
+        ]
 
     # ------------------------------------------------------------------
     #  Workflow seeds
     # ------------------------------------------------------------------
 
-    def _seed_workflows(self):
-        self._seed_linear_workflow()
+    def _seed_workflows(self, report_templates=None):
+        report_templates = report_templates or self._seed_report_templates()
+        self._seed_linear_workflow(report_templates["pipeline_table"])
         self._seed_approval_workflow()
-        self._seed_fanout_workflow()
+        self._seed_fanout_workflow(report_templates["enrichment_chart"])
+        self._seed_line_chart_workflow(report_templates["metrics_line"])
+        self._seed_pie_chart_workflow(report_templates["channel_pie"])
 
     def _upsert_lambda(self, name: str, src: str) -> LambdaFunction:
         fn, created = LambdaFunction.objects.update_or_create(
@@ -311,7 +479,7 @@ class Command(IngressCommand):
             self.stdout.write(self.style.SUCCESS(f"  + lambda: {name}"))
         return fn
 
-    def _seed_linear_workflow(self):
+    def _seed_linear_workflow(self, report_template=None):
         """validate → transform → notify (3 lambda nodes in sequence)."""
         wf, created = Workflow.objects.get_or_create(
             name="Data Pipeline",
@@ -319,6 +487,8 @@ class Command(IngressCommand):
         )
         if not created:
             self.stdout.write(self.style.WARNING("Workflow already exists: Data Pipeline"))
+            if report_template:
+                self._ensure_linear_report_node(wf, report_template)
             return
 
         fn_validate = self._upsert_lambda("pipeline_validate", """\
@@ -336,7 +506,8 @@ print(json.dumps({"data": {"result": transformed}, "route": "done"}))
         fn_notify = self._upsert_lambda("pipeline_notify", """\
 import json
 result = _input.get("data", {}).get("result", {})
-print(json.dumps({"data": {"notified": True, "payload": result}, "route": "end"}))
+rows = [{"field": k, "value": v} for k, v in result.items()]
+print(json.dumps({"data": {"notified": True, "payload": result, "rows": rows}, "route": "end"}))
 """)
 
         n1 = WorkflowNode.objects.create(workflow=wf, node_type=WorkflowNode.LAMBDA, label="Validate",  lambda_function=fn_validate,  position_x=0,   position_y=0)
@@ -344,7 +515,46 @@ print(json.dumps({"data": {"notified": True, "payload": result}, "route": "end"}
         n3 = WorkflowNode.objects.create(workflow=wf, node_type=WorkflowNode.LAMBDA, label="Notify",    lambda_function=fn_notify,    position_x=0,   position_y=240)
         WorkflowEdge.objects.create(workflow=wf, source=n1, target=n2)
         WorkflowEdge.objects.create(workflow=wf, source=n2, target=n3)
+        if report_template:
+            n_report = WorkflowNode.objects.create(
+                workflow=wf,
+                node_type=WorkflowNode.REPORT,
+                label="Output Report",
+                report_template=report_template,
+                config={"title": "Pipeline Output Table", "route": "end"},
+                position_x=0,
+                position_y=360,
+            )
+            WorkflowEdge.objects.create(workflow=wf, source=n3, target=n_report)
         self.stdout.write(self.style.SUCCESS("Created workflow: Data Pipeline"))
+
+    def _ensure_linear_report_node(self, wf, report_template):
+        notify = wf.nodes.filter(label="Notify").first()
+        if notify is None:
+            return
+        report_node, created = WorkflowNode.objects.get_or_create(
+            workflow=wf,
+            label="Output Report",
+            defaults={
+                "node_type": WorkflowNode.REPORT,
+                "report_template": report_template,
+                "config": {"title": "Pipeline Output Table", "route": "end"},
+                "position_x": 0,
+                "position_y": 360,
+            },
+        )
+        changed = False
+        if report_node.node_type != WorkflowNode.REPORT:
+            report_node.node_type = WorkflowNode.REPORT
+            changed = True
+        if report_node.report_template_id != report_template.id:
+            report_node.report_template = report_template
+            changed = True
+        if changed:
+            report_node.save(update_fields=["node_type", "report_template"])
+        WorkflowEdge.objects.get_or_create(workflow=wf, source=notify, target=report_node)
+        if created:
+            self.stdout.write(self.style.SUCCESS("  + report node: Output Report"))
 
     def _seed_approval_workflow(self):
         """score → human review (approve/reject) → approve branch or reject branch."""
@@ -394,7 +604,7 @@ print(json.dumps({"data": {"decision": "rejected", "score": _input.get("data", {
         WorkflowEdge.objects.create(workflow=wf, source=n_human,  target=n_reject, branch_key="rejected")
         self.stdout.write(self.style.SUCCESS("Created workflow: Human Approval Gate"))
 
-    def _seed_fanout_workflow(self):
+    def _seed_fanout_workflow(self, report_template=None):
         """fetch → split into 3 parallel enrichment lambdas → join → summarise."""
         wf, created = Workflow.objects.get_or_create(
             name="Parallel Enrichment",
@@ -402,6 +612,8 @@ print(json.dumps({"data": {"decision": "rejected", "score": _input.get("data", {
         )
         if not created:
             self.stdout.write(self.style.WARNING("Workflow already exists: Parallel Enrichment"))
+            if report_template:
+                self._ensure_enrichment_report_node(wf, report_template)
             return
 
         fn_fetch = self._upsert_lambda("enrich_fetch", """\
@@ -423,7 +635,8 @@ print(json.dumps({"data": {"social": {"followers": 1024}}, "route": "merged"}))
         fn_summarise = self._upsert_lambda("enrich_summarise", """\
 import json
 d = _input.get("data", {})
-print(json.dumps({"data": {"summary": d, "complete": True}, "route": "end"}))
+series = [{"label": k.replace("_", " ").title(), "value": len(v) if isinstance(v, dict) else 1} for k, v in d.items()]
+print(json.dumps({"data": {"summary": d, "series": series, "complete": True}, "route": "end"}))
 """)
 
         n_fetch     = WorkflowNode.objects.create(workflow=wf, node_type=WorkflowNode.LAMBDA, label="Fetch",      lambda_function=fn_fetch,     position_x=0,    position_y=0)
@@ -433,6 +646,17 @@ print(json.dumps({"data": {"summary": d, "complete": True}, "route": "end"}))
         n_soc       = WorkflowNode.objects.create(workflow=wf, node_type=WorkflowNode.LAMBDA, label="Social",     lambda_function=fn_soc,       position_x=200,  position_y=200)
         n_join      = WorkflowNode.objects.create(workflow=wf, node_type=WorkflowNode.JOIN,   label="Merge",                                    position_x=0,    position_y=300)
         n_summarise = WorkflowNode.objects.create(workflow=wf, node_type=WorkflowNode.LAMBDA, label="Summarise",  lambda_function=fn_summarise, position_x=0,    position_y=400)
+        n_report = None
+        if report_template:
+            n_report = WorkflowNode.objects.create(
+                workflow=wf,
+                node_type=WorkflowNode.REPORT,
+                label="Summary Chart",
+                report_template=report_template,
+                config={"title": "Enrichment Sections Chart", "route": "end"},
+                position_x=0,
+                position_y=520,
+            )
         WorkflowEdge.objects.create(workflow=wf, source=n_fetch,     target=n_split)
         WorkflowEdge.objects.create(workflow=wf, source=n_split,     target=n_geo,       branch_key="geo")
         WorkflowEdge.objects.create(workflow=wf, source=n_split,     target=n_fin,       branch_key="financial")
@@ -441,7 +665,190 @@ print(json.dumps({"data": {"summary": d, "complete": True}, "route": "end"}))
         WorkflowEdge.objects.create(workflow=wf, source=n_fin,       target=n_join)
         WorkflowEdge.objects.create(workflow=wf, source=n_soc,       target=n_join)
         WorkflowEdge.objects.create(workflow=wf, source=n_join,      target=n_summarise)
+        if n_report:
+            WorkflowEdge.objects.create(workflow=wf, source=n_summarise, target=n_report)
         self.stdout.write(self.style.SUCCESS("Created workflow: Parallel Enrichment"))
+
+    def _ensure_enrichment_report_node(self, wf, report_template):
+        summarise = wf.nodes.filter(label="Summarise").first()
+        if summarise is None:
+            return
+        report_node, created = WorkflowNode.objects.get_or_create(
+            workflow=wf,
+            label="Summary Chart",
+            defaults={
+                "node_type": WorkflowNode.REPORT,
+                "report_template": report_template,
+                "config": {"title": "Enrichment Sections Chart", "route": "end"},
+                "position_x": 0,
+                "position_y": 520,
+            },
+        )
+        changed = False
+        if report_node.node_type != WorkflowNode.REPORT:
+            report_node.node_type = WorkflowNode.REPORT
+            changed = True
+        if report_node.report_template_id != report_template.id:
+            report_node.report_template = report_template
+            changed = True
+        if changed:
+            report_node.save(update_fields=["node_type", "report_template"])
+        WorkflowEdge.objects.get_or_create(workflow=wf, source=summarise, target=report_node)
+        if created:
+            self.stdout.write(self.style.SUCCESS("  + report node: Summary Chart"))
+
+    def _seed_line_chart_workflow(self, report_template=None):
+        self._seed_single_report_workflow(
+            name="Metrics Trend Report",
+            description="Fake backend flow that creates a line chart report from synthetic weekly metrics.",
+            lambda_name="report_metrics_trend",
+            lambda_label="Build Trend Series",
+            lambda_source="""\
+import json
+series = [
+    {"label": "Mon", "value": 42},
+    {"label": "Tue", "value": 51},
+    {"label": "Wed", "value": 48},
+    {"label": "Thu", "value": 64},
+    {"label": "Fri", "value": 73},
+    {"label": "Sat", "value": 69},
+    {"label": "Sun", "value": 81},
+]
+print(json.dumps({"data": {"series": series}, "route": "report"}))
+""",
+            report_label="Trend Line Report",
+            report_template=report_template,
+            report_title="Weekly Metrics Trend",
+        )
+
+    def _seed_pie_chart_workflow(self, report_template=None):
+        self._seed_single_report_workflow(
+            name="Channel Mix Report",
+            description="Fake backend flow that creates a pie chart report from synthetic channel mix data.",
+            lambda_name="report_channel_mix",
+            lambda_label="Build Channel Mix",
+            lambda_source="""\
+import json
+series = [
+    {"label": "Organic", "value": 44},
+    {"label": "Social", "value": 27},
+    {"label": "Referral", "value": 16},
+    {"label": "Paid", "value": 13},
+]
+print(json.dumps({"data": {"series": series}, "route": "report"}))
+""",
+            report_label="Channel Mix Report",
+            report_template=report_template,
+            report_title="Acquisition Channel Mix",
+        )
+
+    def _seed_single_report_workflow(
+        self,
+        *,
+        name,
+        description,
+        lambda_name,
+        lambda_label,
+        lambda_source,
+        report_label,
+        report_template,
+        report_title,
+    ):
+        fn = self._upsert_lambda(lambda_name, lambda_source)
+        wf, created = Workflow.objects.get_or_create(
+            name=name,
+            defaults={"description": description},
+        )
+        if not created:
+            self.stdout.write(self.style.WARNING(f"Workflow already exists: {name}"))
+            self._ensure_single_report_workflow_nodes(
+                wf=wf,
+                lambda_label=lambda_label,
+                lambda_function=fn,
+                report_label=report_label,
+                report_template=report_template,
+                report_title=report_title,
+            )
+            return
+
+        n_source = WorkflowNode.objects.create(
+            workflow=wf,
+            node_type=WorkflowNode.LAMBDA,
+            label=lambda_label,
+            lambda_function=fn,
+            position_x=0,
+            position_y=0,
+        )
+        if report_template:
+            n_report = WorkflowNode.objects.create(
+                workflow=wf,
+                node_type=WorkflowNode.REPORT,
+                label=report_label,
+                report_template=report_template,
+                config={"title": report_title, "route": "end"},
+                position_x=0,
+                position_y=120,
+            )
+            WorkflowEdge.objects.create(workflow=wf, source=n_source, target=n_report)
+        self.stdout.write(self.style.SUCCESS(f"Created workflow: {name}"))
+
+    def _ensure_single_report_workflow_nodes(
+        self,
+        *,
+        wf,
+        lambda_label,
+        lambda_function,
+        report_label,
+        report_template,
+        report_title,
+    ):
+        source_node, source_created = WorkflowNode.objects.get_or_create(
+            workflow=wf,
+            label=lambda_label,
+            defaults={
+                "node_type": WorkflowNode.LAMBDA,
+                "lambda_function": lambda_function,
+                "position_x": 0,
+                "position_y": 0,
+            },
+        )
+        source_changed = False
+        if source_node.node_type != WorkflowNode.LAMBDA:
+            source_node.node_type = WorkflowNode.LAMBDA
+            source_changed = True
+        if source_node.lambda_function_id != lambda_function.id:
+            source_node.lambda_function = lambda_function
+            source_changed = True
+        if source_changed:
+            source_node.save(update_fields=["node_type", "lambda_function"])
+        if source_created:
+            self.stdout.write(self.style.SUCCESS(f"  + lambda node: {lambda_label}"))
+
+        if not report_template:
+            return
+        report_node, report_created = WorkflowNode.objects.get_or_create(
+            workflow=wf,
+            label=report_label,
+            defaults={
+                "node_type": WorkflowNode.REPORT,
+                "report_template": report_template,
+                "config": {"title": report_title, "route": "end"},
+                "position_x": 0,
+                "position_y": 120,
+            },
+        )
+        report_changed = False
+        if report_node.node_type != WorkflowNode.REPORT:
+            report_node.node_type = WorkflowNode.REPORT
+            report_changed = True
+        if report_node.report_template_id != report_template.id:
+            report_node.report_template = report_template
+            report_changed = True
+        if report_changed:
+            report_node.save(update_fields=["node_type", "report_template"])
+        WorkflowEdge.objects.get_or_create(workflow=wf, source=source_node, target=report_node)
+        if report_created:
+            self.stdout.write(self.style.SUCCESS(f"  + report node: {report_label}"))
 
     # ------------------------------------------------------------------
     #  Fake run seeds
@@ -453,6 +860,8 @@ print(json.dumps({"data": {"summary": d, "complete": True}, "route": "end"}))
         self._seed_pipeline_runs(now)
         self._seed_approval_runs(now)
         self._seed_enrichment_runs(now)
+        self._seed_metrics_trend_runs(now)
+        self._seed_channel_mix_runs(now)
 
     def _nr(self, run, node, status, input_data, output_data, ago_start, ago_end=None, error=""):
         """Create a WorkflowNodeRun with realistic timestamps."""
@@ -489,6 +898,7 @@ print(json.dumps({"data": {"summary": d, "complete": True}, "route": "end"}))
 
         if WorkflowRun.objects.filter(workflow=wf).exists():
             self.stdout.write(self.style.WARNING("Runs already exist: Data Pipeline"))
+            self._backfill_pipeline_report_runs(wf)
             return
 
         nodes = {n.label: n for n in wf.nodes.all()}
@@ -504,10 +914,30 @@ print(json.dumps({"data": {"summary": d, "complete": True}, "route": "end"}))
         )
         validate_out = {"data": {"valid": True, "raw": {"name": "Alice", "score": 98}}, "routes": ["ok"]}
         transform_out = {"data": {"result": {"NAME": "ALICE", "SCORE": "98"}}, "routes": ["done"]}
-        notify_out = {"data": {"notified": True, "payload": {"NAME": "ALICE", "SCORE": "98"}}, "routes": ["end"]}
+        notify_out = {
+            "data": {
+                "notified": True,
+                "payload": {"NAME": "ALICE", "SCORE": "98"},
+                "rows": [
+                    {"field": "NAME", "value": "ALICE"},
+                    {"field": "SCORE", "value": "98"},
+                ],
+            },
+            "routes": ["end"],
+        }
         self._nr(r1, nodes["Validate"],  WorkflowNodeRun.COMPLETED, r1.input_data,  validate_out,  timedelta(hours=2, minutes=5), timedelta(hours=2, minutes=4))
         self._nr(r1, nodes["Transform"], WorkflowNodeRun.COMPLETED, validate_out,   transform_out, timedelta(hours=2, minutes=4), timedelta(hours=2, minutes=3))
         self._nr(r1, nodes["Notify"],    WorkflowNodeRun.COMPLETED, transform_out,  notify_out,    timedelta(hours=2, minutes=3), timedelta(hours=2))
+        if "Output Report" in nodes:
+            self._nr(
+                r1,
+                nodes["Output Report"],
+                WorkflowNodeRun.COMPLETED,
+                notify_out,
+                {"data": {"report": {"title": "Pipeline Output Table"}}, "routes": ["end"]},
+                timedelta(hours=2, minutes=2),
+                timedelta(hours=2),
+            )
         for e in edges:
             self._er(r1, e, True, timedelta(hours=2, minutes=4))
 
@@ -521,10 +951,30 @@ print(json.dumps({"data": {"summary": d, "complete": True}, "route": "end"}))
         )
         v2 = {"data": {"valid": True, "raw": {"city": "Poznań", "pop": 540000}}, "routes": ["ok"]}
         t2 = {"data": {"result": {"CITY": "POZNAŃ", "POP": "540000"}}, "routes": ["done"]}
-        n2 = {"data": {"notified": True, "payload": {"CITY": "POZNAŃ", "POP": "540000"}}, "routes": ["end"]}
+        n2 = {
+            "data": {
+                "notified": True,
+                "payload": {"CITY": "POZNAŃ", "POP": "540000"},
+                "rows": [
+                    {"field": "CITY", "value": "POZNAŃ"},
+                    {"field": "POP", "value": "540000"},
+                ],
+            },
+            "routes": ["end"],
+        }
         self._nr(r2, nodes["Validate"],  WorkflowNodeRun.COMPLETED, r2.input_data, v2, timedelta(minutes=47), timedelta(minutes=46, seconds=30))
         self._nr(r2, nodes["Transform"], WorkflowNodeRun.COMPLETED, v2,            t2, timedelta(minutes=46, seconds=30), timedelta(minutes=46))
         self._nr(r2, nodes["Notify"],    WorkflowNodeRun.COMPLETED, t2,            n2, timedelta(minutes=46), timedelta(minutes=45))
+        if "Output Report" in nodes:
+            self._nr(
+                r2,
+                nodes["Output Report"],
+                WorkflowNodeRun.COMPLETED,
+                n2,
+                {"data": {"report": {"title": "Pipeline Output Table"}}, "routes": ["end"]},
+                timedelta(minutes=45, seconds=30),
+                timedelta(minutes=45),
+            )
         for e in edges:
             self._er(r2, e, True, timedelta(minutes=46))
 
@@ -539,6 +989,34 @@ print(json.dumps({"data": {"summary": d, "complete": True}, "route": "end"}))
                  error="Kernel error: timeout after 5000ms")
 
         self.stdout.write(self.style.SUCCESS("Seeded 3 runs: Data Pipeline"))
+
+    def _backfill_pipeline_report_runs(self, wf):
+        notify = wf.nodes.filter(label="Notify").first()
+        report_node = wf.nodes.filter(label="Output Report").first()
+        if notify is None or report_node is None:
+            return
+        edge = wf.edges.filter(source=notify, target=report_node).first()
+        created_count = 0
+        notify_runs = WorkflowNodeRun.objects.filter(
+            node=notify,
+            status=WorkflowNodeRun.COMPLETED,
+        ).select_related("workflow_run").order_by("completed_at")
+        for notify_run in notify_runs:
+            report_run, created = self._ensure_seed_report_node_run(
+                workflow_run=notify_run.workflow_run,
+                node=report_node,
+                input_data=notify_run.output_data,
+                title="Pipeline Output Table",
+                completed_at=notify_run.completed_at,
+            )
+            created_count += int(created)
+            self._ensure_seed_report_edge_run(
+                workflow_run=notify_run.workflow_run,
+                edge=edge,
+                activated_at=report_run.started_at or report_run.completed_at,
+            )
+        if created_count:
+            self.stdout.write(self.style.SUCCESS(f"  + report node runs: Data Pipeline ({created_count})"))
 
     # --- Human Approval Gate ---
 
@@ -620,6 +1098,7 @@ print(json.dumps({"data": {"summary": d, "complete": True}, "route": "end"}))
 
         if WorkflowRun.objects.filter(workflow=wf).exists():
             self.stdout.write(self.style.WARNING("Runs already exist: Parallel Enrichment"))
+            self._backfill_enrichment_report_runs(wf)
             return
 
         nodes = {n.label: n for n in wf.nodes.all()}
@@ -631,7 +1110,7 @@ print(json.dumps({"data": {"summary": d, "complete": True}, "route": "end"}))
         soc_out    = {"data": {"social": {"followers": 1024}}, "routes": ["merged"]}
         merge_data = {"geo": {"country": "PL", "city": "Poznań"}, "financial": {"credit_score": 720}, "social": {"followers": 1024}}
         join_out   = {"data": merge_data, "routes": ["merged"]}
-        summary_out = {"data": {"summary": merge_data, "complete": True}, "routes": ["end"]}
+        summary_out = {"data": {"summary": merge_data, "series": self._summary_series(merge_data), "complete": True}, "routes": ["end"]}
 
         # Run 1 — completed, 90 minutes ago
         r1 = WorkflowRun.objects.create(
@@ -648,8 +1127,23 @@ print(json.dumps({"data": {"summary": d, "complete": True}, "route": "end"}))
         self._nr(r1, nodes["Social"],    WorkflowNodeRun.COMPLETED, fetch_out,     soc_out,     timedelta(minutes=91, seconds=45), timedelta(minutes=91))
         self._nr(r1, nodes["Merge"],     WorkflowNodeRun.COMPLETED, join_out,      join_out,    timedelta(minutes=91),   timedelta(minutes=90, seconds=50))
         self._nr(r1, nodes["Summarise"], WorkflowNodeRun.COMPLETED, join_out,      summary_out, timedelta(minutes=90, seconds=50), timedelta(minutes=90))
-        for lbl, target_lbl in [("Fetch","Fan-out"),("Fan-out","Geo"),("Fan-out","Financial"),("Fan-out","Social"),("Geo","Merge"),("Financial","Merge"),("Social","Merge"),("Merge","Summarise")]:
-            self._er(r1, edges[(lbl, target_lbl)], True, timedelta(minutes=91, seconds=45))
+        if "Summary Chart" in nodes:
+            self._nr(
+                r1,
+                nodes["Summary Chart"],
+                WorkflowNodeRun.COMPLETED,
+                summary_out,
+                {"data": {"report": {"title": "Enrichment Sections Chart"}}, "routes": ["end"]},
+                timedelta(minutes=89, seconds=50),
+                timedelta(minutes=89, seconds=45),
+            )
+        enrichment_edges = [("Fetch","Fan-out"),("Fan-out","Geo"),("Fan-out","Financial"),("Fan-out","Social"),("Geo","Merge"),("Financial","Merge"),("Social","Merge"),("Merge","Summarise")]
+        if "Summary Chart" in nodes and ("Summarise", "Summary Chart") in edges:
+            enrichment_edges.append(("Summarise", "Summary Chart"))
+        for lbl, target_lbl in enrichment_edges:
+            edge = edges.get((lbl, target_lbl))
+            if edge:
+                self._er(r1, edge, True, timedelta(minutes=91, seconds=45))
 
         # Run 2 — failed at Financial branch, 30 minutes ago
         r2 = WorkflowRun.objects.create(
@@ -672,7 +1166,7 @@ print(json.dumps({"data": {"summary": d, "complete": True}, "route": "end"}))
         geo_soc_fetch = {"data": {"entity": "mini-llc"}, "routes": ["geo", "social"]}
         merge_gs = {"geo": {"country": "DE", "city": "Berlin"}, "social": {"followers": 320}}
         join_gs  = {"data": merge_gs, "routes": ["merged"]}
-        summary_gs = {"data": {"summary": merge_gs, "complete": True}, "routes": ["end"]}
+        summary_gs = {"data": {"summary": merge_gs, "series": self._summary_series(merge_gs), "complete": True}, "routes": ["end"]}
         r3 = WorkflowRun.objects.create(
             workflow=wf, status=WorkflowRun.COMPLETED,
             input_data={"data": {"entity": "mini-llc"}},
@@ -688,6 +1182,16 @@ print(json.dumps({"data": {"summary": d, "complete": True}, "route": "end"}))
         self._nr(r3, nodes["Social"],    WorkflowNodeRun.COMPLETED, geo_soc_fetch, soc_out_gs,    timedelta(minutes=5, seconds=50), timedelta(minutes=5, seconds=20))
         self._nr(r3, nodes["Merge"],     WorkflowNodeRun.COMPLETED, join_gs,       join_gs,        timedelta(minutes=5, seconds=20), timedelta(minutes=5, seconds=10))
         self._nr(r3, nodes["Summarise"], WorkflowNodeRun.COMPLETED, join_gs,       summary_gs,    timedelta(minutes=5, seconds=10), timedelta(minutes=5))
+        if "Summary Chart" in nodes:
+            self._nr(
+                r3,
+                nodes["Summary Chart"],
+                WorkflowNodeRun.COMPLETED,
+                summary_gs,
+                {"data": {"report": {"title": "Enrichment Sections Chart"}}, "routes": ["end"]},
+                timedelta(minutes=4, seconds=55),
+                timedelta(minutes=4, seconds=50),
+            )
         self._er(r3, edges[("Fetch",      "Fan-out")],   True,  timedelta(minutes=5, seconds=55))
         self._er(r3, edges[("Fan-out",    "Geo")],       True,  timedelta(minutes=5, seconds=50))
         self._er(r3, edges[("Fan-out",    "Financial")], False)
@@ -695,5 +1199,171 @@ print(json.dumps({"data": {"summary": d, "complete": True}, "route": "end"}))
         self._er(r3, edges[("Geo",        "Merge")],     True,  timedelta(minutes=5, seconds=30))
         self._er(r3, edges[("Social",     "Merge")],     True,  timedelta(minutes=5, seconds=20))
         self._er(r3, edges[("Merge",      "Summarise")], True,  timedelta(minutes=5, seconds=10))
+        report_edge = edges.get(("Summarise", "Summary Chart"))
+        if "Summary Chart" in nodes and report_edge:
+            self._er(r3, report_edge, True, timedelta(minutes=4, seconds=55))
 
         self.stdout.write(self.style.SUCCESS("Seeded 3 runs: Parallel Enrichment"))
+
+    def _backfill_enrichment_report_runs(self, wf):
+        summarise = wf.nodes.filter(label="Summarise").first()
+        report_node = wf.nodes.filter(label="Summary Chart").first()
+        if summarise is None or report_node is None:
+            return
+        edge = wf.edges.filter(source=summarise, target=report_node).first()
+        created_count = 0
+        summary_runs = WorkflowNodeRun.objects.filter(
+            node=summarise,
+            status=WorkflowNodeRun.COMPLETED,
+        ).select_related("workflow_run").order_by("completed_at")
+        for summary_run in summary_runs:
+            report_run, created = self._ensure_seed_report_node_run(
+                workflow_run=summary_run.workflow_run,
+                node=report_node,
+                input_data=summary_run.output_data,
+                title="Enrichment Sections Chart",
+                completed_at=summary_run.completed_at,
+            )
+            created_count += int(created)
+            self._ensure_seed_report_edge_run(
+                workflow_run=summary_run.workflow_run,
+                edge=edge,
+                activated_at=report_run.started_at or report_run.completed_at,
+            )
+        if created_count:
+            self.stdout.write(self.style.SUCCESS(f"  + report node runs: Parallel Enrichment ({created_count})"))
+
+    # --- Fake backend chart flows ---
+
+    def _seed_metrics_trend_runs(self, now):
+        self._seed_single_report_example_runs(
+            now=now,
+            workflow_name="Metrics Trend Report",
+            source_label="Build Trend Series",
+            report_label="Trend Line Report",
+            report_title="Weekly Metrics Trend",
+            input_payload={"metric": "active_items"},
+            series=[
+                {"label": "Mon", "value": 42},
+                {"label": "Tue", "value": 51},
+                {"label": "Wed", "value": 48},
+                {"label": "Thu", "value": 64},
+                {"label": "Fri", "value": 73},
+                {"label": "Sat", "value": 69},
+                {"label": "Sun", "value": 81},
+            ],
+            start_ago=timedelta(minutes=24),
+            finish_ago=timedelta(minutes=22),
+        )
+
+    def _seed_channel_mix_runs(self, now):
+        self._seed_single_report_example_runs(
+            now=now,
+            workflow_name="Channel Mix Report",
+            source_label="Build Channel Mix",
+            report_label="Channel Mix Report",
+            report_title="Acquisition Channel Mix",
+            input_payload={"window": "last_30_days"},
+            series=[
+                {"label": "Organic", "value": 44},
+                {"label": "Social", "value": 27},
+                {"label": "Referral", "value": 16},
+                {"label": "Paid", "value": 13},
+            ],
+            start_ago=timedelta(minutes=19),
+            finish_ago=timedelta(minutes=17),
+        )
+
+    def _seed_single_report_example_runs(
+        self,
+        *,
+        now,
+        workflow_name,
+        source_label,
+        report_label,
+        report_title,
+        input_payload,
+        series,
+        start_ago,
+        finish_ago,
+    ):
+        try:
+            wf = Workflow.objects.get(name=workflow_name)
+        except Workflow.DoesNotExist:
+            return
+
+        if WorkflowRun.objects.filter(workflow=wf).exists():
+            self.stdout.write(self.style.WARNING(f"Runs already exist: {workflow_name}"))
+            self._backfill_single_report_example_runs(
+                wf=wf,
+                source_label=source_label,
+                report_label=report_label,
+                report_title=report_title,
+            )
+            return
+
+        nodes = {n.label: n for n in wf.nodes.all()}
+        edges = {(e.source.label, e.target.label): e for e in wf.edges.select_related("source", "target")}
+        if source_label not in nodes:
+            return
+
+        output_data = {"data": {"series": series}, "routes": ["report"]}
+        r1 = WorkflowRun.objects.create(
+            workflow=wf,
+            status=WorkflowRun.COMPLETED,
+            input_data={"data": input_payload},
+            output_data={"data": {"series": series}, "routes": ["end"]},
+            started_at=now - start_ago,
+            completed_at=now - finish_ago,
+        )
+        self._nr(
+            r1,
+            nodes[source_label],
+            WorkflowNodeRun.COMPLETED,
+            r1.input_data,
+            output_data,
+            start_ago,
+            finish_ago + timedelta(seconds=20),
+        )
+        if report_label in nodes:
+            self._nr(
+                r1,
+                nodes[report_label],
+                WorkflowNodeRun.COMPLETED,
+                output_data,
+                {"data": {"report": {"title": report_title}}, "routes": ["end"]},
+                finish_ago + timedelta(seconds=10),
+                finish_ago,
+            )
+            edge = edges.get((source_label, report_label))
+            if edge:
+                self._er(r1, edge, True, finish_ago + timedelta(seconds=10))
+        self.stdout.write(self.style.SUCCESS(f"Seeded 1 run: {workflow_name}"))
+
+    def _backfill_single_report_example_runs(self, *, wf, source_label, report_label, report_title):
+        source = wf.nodes.filter(label=source_label).first()
+        report_node = wf.nodes.filter(label=report_label).first()
+        if source is None or report_node is None:
+            return
+        edge = wf.edges.filter(source=source, target=report_node).first()
+        created_count = 0
+        source_runs = WorkflowNodeRun.objects.filter(
+            node=source,
+            status=WorkflowNodeRun.COMPLETED,
+        ).select_related("workflow_run").order_by("completed_at")
+        for source_run in source_runs:
+            report_run, created = self._ensure_seed_report_node_run(
+                workflow_run=source_run.workflow_run,
+                node=report_node,
+                input_data=source_run.output_data,
+                title=report_title,
+                completed_at=source_run.completed_at,
+            )
+            created_count += int(created)
+            self._ensure_seed_report_edge_run(
+                workflow_run=source_run.workflow_run,
+                edge=edge,
+                activated_at=report_run.started_at or report_run.completed_at,
+            )
+        if created_count:
+            self.stdout.write(self.style.SUCCESS(f"  + report node runs: {wf.name} ({created_count})"))

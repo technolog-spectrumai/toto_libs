@@ -669,6 +669,35 @@ class ReportWorkflowTests(TestCase):
         self.assertEqual(report.report_type, "chart")
         self.assertEqual(block["points"][0]["percent"], 100)
         self.assertEqual(block["points"][1]["percent"], 50)
+        self.assertIn("x_percent", block["points"][0])
+        self.assertIn("line_points", block)
+
+    def test_report_renderer_adds_pie_metadata(self):
+        from .services.reports import create_report, render_report
+
+        template = ReportTemplate.objects.create(
+            name="Pie chart",
+            definition={
+                "version": 1,
+                "type": "chart",
+                "title": "Mix",
+                "chart": "pie",
+                "data": {"path": "series"},
+                "x": "label",
+                "y": "value",
+            },
+        )
+        report = create_report(
+            template=template,
+            title="Rendered pie",
+            data={"series": [{"label": "A", "value": 25}, {"label": "B", "value": 75}]},
+        )
+
+        block = render_report(report)[0]["blocks"][0]
+        self.assertEqual(block["chart"], "pie")
+        self.assertEqual(block["points"][0]["share_percent"], 25.0)
+        self.assertEqual(block["points"][1]["share_percent"], 75.0)
+        self.assertIn("conic-gradient", block["pie_gradient"])
 
     def test_report_definition_rejects_multiple_blocks(self):
         from django.core.exceptions import ValidationError as DjangoValidationError

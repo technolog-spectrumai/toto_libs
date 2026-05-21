@@ -96,21 +96,85 @@
                   <i class="fa-solid fa-chart-simple"></i>
                   {{ block.title }}
                 </h3>
-                <div class="space-y-3">
-                  {% for point in block.points %}
-                    <div class="grid grid-cols-[140px_minmax(0,1fr)_80px] items-center gap-3 text-sm">
-                      <div class="truncate opacity-75">{{ point.label }}</div>
-                      <div class="h-3 overflow-hidden rounded-full bg-gray-500/15">
-                        <div :class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'"
-                             class="h-full rounded-full"
-                             style="width: {{ point.percent }}%"></div>
-                      </div>
-                      <div class="text-right font-semibold">{{ point.value }}</div>
+                {% if block.chart == "line" and block.points %}
+                  <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_240px] lg:items-center">
+                    <svg viewBox="-12 0 116 76" class="h-56 w-full overflow-visible" role="img" aria-label="{{ block.title }}">
+                      <g class="opacity-15">
+                        <line x1="0" y1="5" x2="100" y2="5" stroke="currentColor" stroke-width="0.5"></line>
+                        <line x1="0" y1="18.75" x2="100" y2="18.75" stroke="currentColor" stroke-width="0.5"></line>
+                        <line x1="0" y1="32.5" x2="100" y2="32.5" stroke="currentColor" stroke-width="0.5"></line>
+                        <line x1="0" y1="46.25" x2="100" y2="46.25" stroke="currentColor" stroke-width="0.5"></line>
+                        <line x1="0" y1="60" x2="100" y2="60" stroke="currentColor" stroke-width="0.5"></line>
+                        <line x1="0" y1="5" x2="0" y2="60" stroke="currentColor" stroke-width="0.5"></line>
+                        <line x1="25" y1="5" x2="25" y2="60" stroke="currentColor" stroke-width="0.5"></line>
+                        <line x1="50" y1="5" x2="50" y2="60" stroke="currentColor" stroke-width="0.5"></line>
+                        <line x1="75" y1="5" x2="75" y2="60" stroke="currentColor" stroke-width="0.5"></line>
+                        <line x1="100" y1="5" x2="100" y2="60" stroke="currentColor" stroke-width="0.5"></line>
+                      </g>
+                      <g class="opacity-45">
+                        <line x1="0" y1="60" x2="100" y2="60" stroke="currentColor" stroke-width="1"></line>
+                        <line x1="0" y1="5" x2="0" y2="60" stroke="currentColor" stroke-width="1"></line>
+                      </g>
+                      <g class="text-[4px] opacity-60">
+                        {% for tick in block.y_ticks %}
+                          <text x="-3" y="{{ tick.y }}" text-anchor="end" dominant-baseline="middle" fill="currentColor">{{ tick.label }}</text>
+                        {% endfor %}
+                      </g>
+                      <polyline points="{{ block.line_points }}"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2.4"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                class="opacity-85"></polyline>
+                      {% for point in block.points %}
+                        <line x1="{{ point.x_percent }}" y1="60" x2="{{ point.x_percent }}" y2="63" stroke="currentColor" stroke-width="0.7" class="opacity-45"></line>
+                        <circle cx="{{ point.x_percent }}" cy="{{ point.y_percent }}" r="2.4" fill="{{ point.color }}"></circle>
+                        <text x="{{ point.x_percent }}" y="70" text-anchor="middle" fill="currentColor" class="text-[4px] opacity-60">{{ point.label }}</text>
+                      {% endfor %}
+                    </svg>
+                    <div class="space-y-3">
+                      {% for point in block.points %}
+                        <div class="grid grid-cols-[16px_minmax(0,1fr)_70px] items-center gap-3 text-sm">
+                          <span class="h-3 w-3 rounded-full" style="background: {{ point.color }}"></span>
+                          <span class="truncate opacity-75">{{ point.label }}</span>
+                          <span class="text-right font-semibold">{{ point.value }}</span>
+                        </div>
+                      {% endfor %}
                     </div>
-                  {% empty %}
-                    <p class="text-sm opacity-55">{% trans "No chart data." %}</p>
-                  {% endfor %}
-                </div>
+                  </div>
+                {% elif block.chart == "pie" and block.points %}
+                  <div class="grid gap-6 md:grid-cols-[220px_minmax(0,1fr)] md:items-center">
+                    <div class="mx-auto aspect-square w-52 rounded-full shadow-inner"
+                         style="background: {{ block.pie_gradient }}"></div>
+                    <div class="space-y-3">
+                      {% for point in block.points %}
+                        <div class="grid grid-cols-[16px_minmax(0,1fr)_70px_70px] items-center gap-3 text-sm">
+                          <span class="h-3 w-3 rounded-full" style="background: {{ point.color }}"></span>
+                          <span class="truncate opacity-75">{{ point.label }}</span>
+                          <span class="text-right font-semibold">{{ point.value }}</span>
+                          <span class="text-right opacity-65">{{ point.share_percent }}%</span>
+                        </div>
+                      {% endfor %}
+                    </div>
+                  </div>
+                {% else %}
+                  <div class="space-y-3">
+                    {% for point in block.points %}
+                      <div class="grid grid-cols-[140px_minmax(0,1fr)_80px] items-center gap-3 text-sm">
+                        <div class="truncate opacity-75">{{ point.label }}</div>
+                        <div class="h-3 overflow-hidden rounded-full bg-gray-500/15">
+                          <div :class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'"
+                               class="h-full rounded-full"
+                               style="width: {{ point.percent }}%"></div>
+                        </div>
+                        <div class="text-right font-semibold">{{ point.value }}</div>
+                      </div>
+                    {% empty %}
+                      <p class="text-sm opacity-55">{% trans "No chart data." %}</p>
+                    {% endfor %}
+                  </div>
+                {% endif %}
 
               {% else %}
                 <h3 class="mb-3 text-sm font-bold uppercase tracking-wide opacity-70">{{ block.title }}</h3>

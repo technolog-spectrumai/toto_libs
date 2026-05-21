@@ -145,11 +145,13 @@ def resolve_block(block: dict, data: dict) -> dict:
         y_key = block.get("y", "value")
         points = []
         numeric_values = []
+        total_numeric = 0
         for row in rows:
             value = _resolve_path(row, y_key)
             numeric_value = _numeric(value)
             if numeric_value is not None:
                 numeric_values.append(numeric_value)
+                total_numeric += numeric_value
             points.append(
                 {
                     "label": _resolve_path(row, x_key),
@@ -164,10 +166,19 @@ def resolve_block(block: dict, data: dict) -> dict:
                 if max_value and point["numeric_value"] is not None
                 else 0
             )
+            point["share_percent"] = (
+                round((point["numeric_value"] / total_numeric) * 100, 1)
+                if total_numeric and point["numeric_value"] is not None
+                else 0
+            )
+        _decorate_chart_points(points)
         resolved.update(
             {
                 "chart": block.get("chart", "bar"),
                 "points": points,
+                "line_points": _line_points(points),
+                "pie_gradient": _pie_gradient(points),
+                "y_ticks": _chart_y_ticks(max_value),
             }
         )
     else:
@@ -286,6 +297,61 @@ def _numeric(value):
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+_CHART_COLORS = [
+    "#2563eb",
+    "#16a34a",
+    "#f59e0b",
+    "#dc2626",
+    "#7c3aed",
+    "#0891b2",
+    "#db2777",
+    "#475569",
+]
+
+
+def _decorate_chart_points(points: list[dict]) -> None:
+    count = max(len(points) - 1, 1)
+    for index, point in enumerate(points):
+        point["color"] = _CHART_COLORS[index % len(_CHART_COLORS)]
+        point["x_percent"] = round((index / count) * 100, 2)
+        point["y_percent"] = round(60 - (float(point.get("percent") or 0) * 0.55), 2)
+
+
+def _line_points(points: list[dict]) -> str:
+    return " ".join(
+        f"{point.get('x_percent', 0)},{point.get('y_percent', 60)}"
+        for point in points
+    )
+
+
+def _pie_gradient(points: list[dict]) -> str:
+    if not points:
+        return ""
+    cursor = 0
+    segments = []
+    for index, point in enumerate(points):
+        share = float(point.get("share_percent") or 0)
+        end = 100 if index == len(points) - 1 else min(cursor + share, 100)
+        segments.append(f"{point['color']} {cursor:.1f}% {end:.1f}%")
+        cursor = end
+    return f"conic-gradient({', '.join(segments)})"
+
+
+def _chart_y_ticks(max_value: float) -> list[dict]:
+    values = [max_value, max_value / 2, 0] if max_value else [0]
+    positions = [5, 32.5, 60] if max_value else [60]
+    return [
+        {"label": _format_tick(value), "y": position}
+        for value, position in zip(values, positions)
+    ]
+
+
+def _format_tick(value: float) -> str:
+    if float(value).is_integer():
+        return str(int(value))
+    return f"{value:.1f}"
 
 
 def _span(value) -> int:
