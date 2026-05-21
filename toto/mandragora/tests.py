@@ -6,7 +6,7 @@ from django.test import TestCase, override_settings
 from toto.api.models import Connector as ApiConnector
 from toto.core.connectors import list_connector_types, validate_connector_type
 from toto.mandragora.management.commands.ingress_mandragora import Command
-from toto.workflows.models import WorkflowConnector
+from toto.workflows.models import Report, ReportTemplate, WorkflowConnector
 
 
 class MandragoraIngressTests(TestCase):
@@ -27,3 +27,16 @@ class MandragoraIngressTests(TestCase):
                     validate_connector_type(connector.connector_type, connector.config),
                     [],
                 )
+
+    def test_seed_reports_creates_table_and_chart_reports_for_seeded_runs(self):
+        command = Command()
+        command._seed_workflows()
+        command._seed_runs()
+        command._seed_reports()
+
+        self.assertTrue(ReportTemplate.objects.filter(slug="pipeline-output-table").exists())
+        self.assertTrue(ReportTemplate.objects.filter(slug="enrichment-sections-chart").exists())
+        self.assertTrue(Report.objects.filter(slug="ingress-pipeline-output-table").exists())
+        self.assertTrue(Report.objects.filter(slug="ingress-enrichment-chart").exists())
+        self.assertEqual(set(Report.objects.values_list("report_type", flat=True)), {"chart", "table"})
+        self.assertEqual(Report.objects.filter(source_node_run__isnull=False).count(), 2)

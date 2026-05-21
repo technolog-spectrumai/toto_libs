@@ -6,44 +6,23 @@ from django.utils.text import slugify
 
 REPORT_BLOCK_TYPES = {"card", "chart", "table", "text"}
 REPORT_CHART_TYPES = {"bar", "line", "area", "pie"}
+REPORT_TYPE_CHOICES = [
+    ("card", "Card"),
+    ("chart", "Chart"),
+    ("table", "Table"),
+    ("text", "Text"),
+]
 
 
 def default_report_definition():
     return {
         "version": 1,
-        "pages": [
-            {
-                "key": "summary",
-                "title": "Summary",
-                "blocks": [
-                    {
-                        "type": "card",
-                        "title": "Total",
-                        "value": {"path": "total"},
-                        "format": "number",
-                        "span": 3,
-                    },
-                    {
-                        "type": "table",
-                        "title": "Rows",
-                        "data": {"path": "rows"},
-                        "columns": [
-                            {"key": "name", "label": "Name"},
-                            {"key": "value", "label": "Value", "format": "number"},
-                        ],
-                        "span": 12,
-                    },
-                    {
-                        "type": "chart",
-                        "title": "Trend",
-                        "chart": "bar",
-                        "data": {"path": "series"},
-                        "x": "label",
-                        "y": "value",
-                        "span": 6,
-                    },
-                ],
-            }
+        "type": "table",
+        "title": "Rows",
+        "data": {"path": "rows"},
+        "columns": [
+            {"key": "name", "label": "Name"},
+            {"key": "value", "label": "Value", "format": "number"},
         ],
     }
 
@@ -52,9 +31,13 @@ def validate_report_definition(value):
     if not isinstance(value, dict):
         raise ValidationError("Report definition must be a JSON object.")
 
+    if "pages" not in value:
+        _validate_report_block(value, page_key="report", block_index=0)
+        return
+
     pages = value.get("pages")
-    if not isinstance(pages, list) or not pages:
-        raise ValidationError("Report definition requires a non-empty pages array.")
+    if not isinstance(pages, list) or len(pages) != 1:
+        raise ValidationError("Report definition must define exactly one page.")
 
     page_keys: set[str] = set()
     for page_index, page in enumerate(pages):
@@ -67,11 +50,25 @@ def validate_report_definition(value):
         page_keys.add(key)
 
         blocks = page.get("blocks")
-        if not isinstance(blocks, list) or not blocks:
-            raise ValidationError(f'Report page "{key}" requires a non-empty blocks array.')
+        if not isinstance(blocks, list) or len(blocks) != 1:
+            raise ValidationError(f'Report page "{key}" must define exactly one block.')
 
         for block_index, block in enumerate(blocks):
             _validate_report_block(block, page_key=key, block_index=block_index)
+
+
+def report_definition_block(value):
+    if isinstance(value, dict) and "pages" in value:
+        pages = value.get("pages") or []
+        if pages and isinstance(pages[0], dict):
+            blocks = pages[0].get("blocks") or []
+            if blocks and isinstance(blocks[0], dict):
+                return blocks[0]
+    return value if isinstance(value, dict) else {}
+
+
+def report_definition_type(value):
+    return report_definition_block(value).get("type", "table")
 
 
 def _validate_report_block(block, *, page_key: str, block_index: int):
@@ -161,14 +158,17 @@ class WorkflowConnector(models.Model):
 class ReportTemplate(models.Model):
     name = models.CharField(max_length=180, unique=True)
     slug = models.SlugField(max_length=200, unique=True, blank=True)
+    report_type = models.CharField(max_length=20, choices=REPORT_TYPE_CHOICES, default="table")
     description = models.TextField(blank=True)
     definition = models.JSONField(
         default=default_report_definition,
         blank=True,
         validators=[validate_report_definition],
         help_text=(
-            "JSON report syntax. Root: {version, pages:[{key,title,blocks:[]}]}. "
-            "Block types: card, table, chart, text. Values can use {'path': 'metrics.total'}."
+            "JSON report syntax for one visualization. "
+            "Use {type:'chart', data:{path:'series'}, x:'label', y:'value'} or "
+            "{type:'table', data:{path:'rows'}, columns:[...]}. "
+            "Values can use {'path': 'metrics.total'}."
         ),
     )
     created_at = models.DateTimeField(default=timezone.now)
@@ -178,6 +178,7 @@ class ReportTemplate(models.Model):
         ordering = ["name"]
 
     def save(self, *args, **kwargs):
+        self.report_type = report_definition_type(self.definition)
         if not self.slug:
             base_slug = slugify(self.name) or "report-template"
             slug = base_slug
@@ -370,6 +371,7 @@ class Report(models.Model):
     )
     title = models.CharField(max_length=220)
     slug = models.SlugField(max_length=240, unique=True, blank=True)
+    report_type = models.CharField(max_length=20, choices=REPORT_TYPE_CHOICES, default="table")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=PUBLISHED)
     definition = models.JSONField(
         default=default_report_definition,
@@ -385,6 +387,7 @@ class Report(models.Model):
         ordering = ["-created_at"]
 
     def save(self, *args, **kwargs):
+        self.report_type = report_definition_type(self.definition)
         if not self.slug:
             base_slug = slugify(self.title) or "report"
             slug = base_slug

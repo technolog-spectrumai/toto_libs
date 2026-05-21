@@ -4,7 +4,14 @@ from django.utils.text import slugify
 
 from toto.core.connectors import get_dotted
 
-from ..models import Report, ReportPage, ReportTemplate, WorkflowNodeRun
+from ..models import (
+    Report,
+    ReportPage,
+    ReportTemplate,
+    WorkflowNodeRun,
+    report_definition_block,
+    report_definition_type,
+)
 
 
 class ReportGenerationError(RuntimeError):
@@ -60,6 +67,7 @@ def create_report(
         workflow_run=workflow_run,
         source_node_run=source_node_run,
         title=title or template.name,
+        report_type=template.report_type,
         definition=definition,
         data=data or {},
         metadata=metadata or {},
@@ -73,6 +81,7 @@ def serialize_report_reference(report: Report) -> dict:
         "id": report.id,
         "title": report.title,
         "slug": report.slug,
+        "report_type": report.report_type,
         "status": report.status,
         "page_count": report.pages.count(),
     }
@@ -172,12 +181,27 @@ def resolve_block(block: dict, data: dict) -> dict:
 
 
 def _create_pages(report: Report) -> None:
+    if "pages" not in report.definition:
+        block = report_definition_block(report.definition)
+        page_data = _page_data(report.definition, report.data)
+        ReportPage.objects.create(
+            report=report,
+            key=slugify(report.definition.get("key") or report.report_type) or report.report_type,
+            title=report.definition.get("title") or report.title,
+            order=0,
+            blocks=[block],
+            data=page_data,
+        )
+        report_type = report_definition_type(report.definition)
+        if report.report_type != report_type:
+            report.report_type = report_type
+            report.save(update_fields=["report_type", "updated_at"])
+        return
+
     pages = report.definition.get("pages") or []
     for index, page_def in enumerate(pages):
         key = slugify(page_def.get("key") or f"page-{index + 1}") or f"page-{index + 1}"
-        page_data = _resolve_value({"path": page_def.get("data_path")}, report.data) if page_def.get("data_path") else report.data
-        if not isinstance(page_data, dict):
-            page_data = {"value": page_data}
+        page_data = _page_data(page_def, report.data)
         ReportPage.objects.create(
             report=report,
             key=key,
@@ -186,6 +210,17 @@ def _create_pages(report: Report) -> None:
             blocks=page_def.get("blocks") or [],
             data=page_data,
         )
+
+
+def _page_data(definition: dict, report_data: dict) -> dict:
+    page_data = (
+        _resolve_value({"path": definition.get("data_path")}, report_data)
+        if definition.get("data_path")
+        else report_data
+    )
+    if not isinstance(page_data, dict):
+        page_data = {"value": page_data}
+    return page_data
 
 
 def _configured_data(config: dict, input_data: dict) -> dict:

@@ -25,7 +25,10 @@ class WorkflowConnectorSerializer(serializers.ModelSerializer):
 class ReportTemplateSerializer(serializers.ModelSerializer):
     class Meta:
         model = ReportTemplate
-        fields = ["id", "name", "slug", "description", "definition", "created_at", "updated_at"]
+        fields = [
+            "id", "name", "slug", "report_type", "description",
+            "definition", "created_at", "updated_at",
+        ]
         read_only_fields = ["id", "created_at", "updated_at"]
 
 
@@ -43,7 +46,8 @@ class ReportSerializer(serializers.ModelSerializer):
         model = Report
         fields = [
             "id", "template", "workflow_run", "source_node_run", "title", "slug",
-            "status", "definition", "data", "metadata", "created_at", "updated_at", "pages",
+            "report_type", "status", "definition", "data", "metadata",
+            "created_at", "updated_at", "pages",
         ]
         read_only_fields = ["id", "created_at", "updated_at", "pages"]
 

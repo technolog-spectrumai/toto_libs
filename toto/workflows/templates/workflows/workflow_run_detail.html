@@ -56,27 +56,6 @@
       </div>
     </header>
 
-    {% if reports %}
-      <section>
-        <h2 class="mb-3 flex items-center gap-2 text-lg font-semibold">
-          <i class="fa-solid fa-chart-column"></i> {% trans "Reports" %}
-        </h2>
-        <div class="grid gap-3 md:grid-cols-2">
-          {% for report in reports %}
-            <a href="{% url 'workflows:report_detail' report.id %}"
-               :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-primary-bg-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-primary-bg-light'"
-               class="rounded-lg border p-4 shadow-sm transition">
-              <div class="font-semibold">{{ report.title }}</div>
-              <div class="mt-1 text-xs opacity-60">
-                {% if report.template %}{{ report.template.name }}{% else %}{% trans "Snapshot" %}{% endif %}
-                · {{ report.created_at|date:"Y-m-d H:i" }}
-              </div>
-            </a>
-          {% endfor %}
-        </div>
-      </section>
-    {% endif %}
-
     <!-- Graph -->
     <section>
       <div class="mb-3 flex items-center justify-between">
@@ -284,6 +263,79 @@
                     <p class="font-semibold mb-1 opacity-60">{% trans "Input" %}</p>
                     <pre class="overflow-x-auto rounded-lg p-3 font-mono text-xs leading-relaxed"
                          :class="darkMode ? 'bg-black/30' : 'bg-gray-100'">{{ nr.input_data|pprint }}</pre>
+                  </div>
+                {% endif %}
+                {% if nr.generated_reports %}
+                  <div>
+                    <p class="mb-2 flex items-center gap-2 font-semibold opacity-70">
+                      <i class="fa-solid fa-chart-column"></i>
+                      {% trans "Reports" %}
+                    </p>
+                    <div class="space-y-3">
+                      {% for report in nr.generated_reports %}
+                        <div :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                             class="rounded-lg border p-3">
+                          <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+                            <a href="{% url 'workflows:report_detail' report.id %}" class="font-semibold underline hover:opacity-80">
+                              {{ report.title }}
+                            </a>
+                            <span class="rounded-full bg-gray-500/15 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                              {{ report.report_type }}
+                            </span>
+                          </div>
+
+                          {% with block=report.render_block %}
+                            {% if block.type == "table" %}
+                              <div class="overflow-x-auto">
+                                <table class="min-w-full text-left text-xs">
+                                  <thead class="border-b border-current/15 uppercase tracking-wide opacity-60">
+                                    <tr>
+                                      {% for column in block.columns %}
+                                        <th class="px-2 py-1">{% if column.label %}{{ column.label }}{% else %}{{ column.key }}{% endif %}</th>
+                                      {% endfor %}
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {% for row in block.rows|slice:":6" %}
+                                      <tr class="border-b border-current/10 last:border-b-0">
+                                        {% for value in row.values %}
+                                          <td class="px-2 py-1.5">{{ value }}</td>
+                                        {% endfor %}
+                                      </tr>
+                                    {% empty %}
+                                      <tr>
+                                        <td class="px-2 py-2 opacity-55" colspan="{{ block.columns|length }}">{% trans "No rows." %}</td>
+                                      </tr>
+                                    {% endfor %}
+                                  </tbody>
+                                </table>
+                              </div>
+                            {% elif block.type == "chart" %}
+                              <div class="space-y-2">
+                                {% for point in block.points|slice:":6" %}
+                                  <div class="grid grid-cols-[100px_minmax(0,1fr)_56px] items-center gap-2">
+                                    <div class="truncate opacity-70">{{ point.label }}</div>
+                                    <div class="h-2 overflow-hidden rounded-full bg-gray-500/15">
+                                      <div :class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'"
+                                           class="h-full rounded-full"
+                                           style="width: {{ point.percent }}%"></div>
+                                    </div>
+                                    <div class="text-right font-semibold">{{ point.value }}</div>
+                                  </div>
+                                {% empty %}
+                                  <p class="opacity-55">{% trans "No chart data." %}</p>
+                                {% endfor %}
+                              </div>
+                            {% elif block.type == "card" %}
+                              <div class="text-2xl font-bold">{{ block.value|default:"-" }}</div>
+                              {% if block.subtitle %}<p class="mt-1 opacity-65">{{ block.subtitle }}</p>{% endif %}
+                            {% else %}
+                              <div class="leading-6 opacity-80">{{ block.body|linebreaks }}</div>
+                            {% endif %}
+                          {% endwith %}
+                        </div>
+                      {% endfor %}
+                    </div>
                   </div>
                 {% endif %}
                 {% if nr.output_data %}

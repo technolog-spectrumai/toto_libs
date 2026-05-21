@@ -145,11 +145,12 @@ class ReportPageInline(admin.TabularInline):
 
 @admin.register(ReportTemplate)
 class ReportTemplateAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "slug", "updated_at")
+    list_display = ("id", "name", "slug", "report_type", "updated_at")
+    list_filter = ("report_type",)
     search_fields = ("name", "slug", "description")
     prepopulated_fields = {"slug": ("name",)}
     readonly_fields = ("created_at", "updated_at")
-    fields = ("name", "slug", "description", "definition", "created_at", "updated_at")
+    fields = ("name", "slug", "report_type", "description", "definition", "created_at", "updated_at")
     formfield_overrides = {
         models.JSONField: {"widget": JSON_EDITOR_WIDGET},
     }
@@ -157,8 +158,8 @@ class ReportTemplateAdmin(admin.ModelAdmin):
 
 @admin.register(Report)
 class ReportAdmin(admin.ModelAdmin):
-    list_display = ("id", "title", "template", "workflow_run", "status", "created_at")
-    list_filter = ("status", "template")
+    list_display = ("id", "title", "report_type", "template", "workflow_run", "status", "created_at")
+    list_filter = ("report_type", "status", "template")
     search_fields = ("title", "slug")
     prepopulated_fields = {"slug": ("title",)}
     readonly_fields = ("created_at", "updated_at")

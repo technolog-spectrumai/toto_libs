@@ -469,9 +469,26 @@ class WorkflowRunDetailUIView(LoginRequiredMixin, DetailView):
         run = self.get_object()
         node_runs = list(run.node_runs.select_related("node").order_by("id"))
         edge_runs = list(run.edge_runs.select_related("edge__source", "edge__target").order_by("id"))
+        reports = list(
+            run.reports.select_related("template", "source_node_run")
+            .prefetch_related("pages")
+            .order_by("-created_at")
+        )
+        reports_by_node_run = {}
+        for report in reports:
+            rendered_pages = render_report(report)
+            report.render_block = (
+                rendered_pages[0]["blocks"][0]
+                if rendered_pages and rendered_pages[0]["blocks"]
+                else None
+            )
+            reports_by_node_run.setdefault(report.source_node_run_id, []).append(report)
+        for node_run in node_runs:
+            node_run.generated_reports = reports_by_node_run.get(node_run.id, [])
+
         context["node_runs"] = node_runs
         context["edge_runs"] = edge_runs
-        context["reports"] = run.reports.select_related("template").order_by("-created_at")
+        context["reports"] = reports
 
         pending_tasks = []
         for nr in node_runs:

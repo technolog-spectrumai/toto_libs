@@ -11,9 +11,19 @@ from toto.core.connectors import list_connector_types, validate_connector_type
 from toto.mandragora.models import (
     Cell, ComputeKernel, KernelDependency, Notebook,
 )
+from toto.workflows.services.reports import create_report
 from toto.workflows.models import (
-    LambdaFunction, Workflow, WorkflowConnector, WorkflowEdge, WorkflowNode,
-    WorkflowRun, WorkflowNodeRun, WorkflowEdgeRun, HumanTask,
+    HumanTask,
+    LambdaFunction,
+    Report,
+    ReportTemplate,
+    Workflow,
+    WorkflowConnector,
+    WorkflowEdge,
+    WorkflowEdgeRun,
+    WorkflowNode,
+    WorkflowNodeRun,
+    WorkflowRun,
 )
 
 _DEFAULT_DEPS = [
@@ -73,6 +83,7 @@ class Command(IngressCommand):
         self._seed_connectors()
         self._seed_workflows()
         self._seed_runs()
+        self._seed_reports()
 
     # ------------------------------------------------------------------
     #  Connector seeds
@@ -180,6 +191,107 @@ class Command(IngressCommand):
         if created:
             self.stdout.write(self.style.SUCCESS("  + API connector: HTTPBin Demo"))
         return api_connector
+
+    # ------------------------------------------------------------------
+    #  Report seeds
+    # ------------------------------------------------------------------
+
+    def _seed_reports(self):
+        templates = self._seed_report_templates()
+
+        notify_run = WorkflowNodeRun.objects.filter(
+            node__workflow__name="Data Pipeline",
+            node__label="Notify",
+            status=WorkflowNodeRun.COMPLETED,
+        ).select_related("workflow_run").order_by("-completed_at").first()
+        if notify_run:
+            self._seed_generated_report(
+                slug="ingress-pipeline-output-table",
+                template=templates["pipeline_table"],
+                title="Pipeline Output Table",
+                data={
+                    "rows": [
+                        {"field": key, "value": value}
+                        for key, value in (notify_run.output_data or {}).get("data", {}).get("payload", {}).items()
+                    ]
+                },
+                source_node_run=notify_run,
+            )
+
+        enrichment_run = WorkflowNodeRun.objects.filter(
+            node__workflow__name="Parallel Enrichment",
+            node__label="Summarise",
+            status=WorkflowNodeRun.COMPLETED,
+        ).select_related("workflow_run").order_by("-completed_at").first()
+        if enrichment_run:
+            summary = (enrichment_run.output_data or {}).get("data", {}).get("summary", {})
+            series = [
+                {"label": key.replace("_", " ").title(), "value": len(value) if isinstance(value, dict) else 1}
+                for key, value in summary.items()
+            ]
+            self._seed_generated_report(
+                slug="ingress-enrichment-chart",
+                template=templates["enrichment_chart"],
+                title="Enrichment Sections Chart",
+                data={"series": series},
+                source_node_run=enrichment_run,
+            )
+
+    def _seed_report_templates(self):
+        table, table_created = ReportTemplate.objects.update_or_create(
+            slug="pipeline-output-table",
+            defaults={
+                "name": "Pipeline Output Table",
+                "description": "One table report showing workflow output fields.",
+                "definition": {
+                    "version": 1,
+                    "type": "table",
+                    "title": "Output fields",
+                    "data": {"path": "rows"},
+                    "columns": [
+                        {"key": "field", "label": "Field"},
+                        {"key": "value", "label": "Value"},
+                    ],
+                },
+            },
+        )
+        chart, chart_created = ReportTemplate.objects.update_or_create(
+            slug="enrichment-sections-chart",
+            defaults={
+                "name": "Enrichment Sections Chart",
+                "description": "One bar chart report showing enrichment section sizes.",
+                "definition": {
+                    "version": 1,
+                    "type": "chart",
+                    "title": "Sections",
+                    "chart": "bar",
+                    "data": {"path": "series"},
+                    "x": "label",
+                    "y": "value",
+                },
+            },
+        )
+        if table_created:
+            self.stdout.write(self.style.SUCCESS("  + report template: Pipeline Output Table"))
+        if chart_created:
+            self.stdout.write(self.style.SUCCESS("  + report template: Enrichment Sections Chart"))
+        return {"pipeline_table": table, "enrichment_chart": chart}
+
+    def _seed_generated_report(self, *, slug, template, title, data, source_node_run):
+        if Report.objects.filter(slug=slug).exists():
+            return
+        report = create_report(
+            template=template,
+            data=data,
+            title=title,
+            workflow_run=source_node_run.workflow_run,
+            source_node_run=source_node_run,
+            metadata={"source": "mandragora-ingress"},
+        )
+        if report.slug != slug:
+            report.slug = slug
+            report.save(update_fields=["slug", "updated_at"])
+        self.stdout.write(self.style.SUCCESS(f"  + report: {title}"))
 
     # ------------------------------------------------------------------
     #  Workflow seeds

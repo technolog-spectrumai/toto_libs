@@ -575,39 +575,27 @@ class ReportWorkflowTests(TestCase):
             name="Metrics report",
             definition={
                 "version": 1,
-                "pages": [
-                    {
-                        "key": "summary",
-                        "title": "Summary",
-                        "blocks": [
-                            {
-                                "type": "card",
-                                "title": "Total",
-                                "value": {"path": "metrics.total"},
-                                "span": 3,
-                            },
-                            {
-                                "type": "table",
-                                "title": "Items",
-                                "data": {"path": "items"},
-                                "columns": [
-                                    {"key": "name", "label": "Name"},
-                                    {"key": "value", "label": "Value"},
-                                ],
-                                "span": 12,
-                            },
-                            {
-                                "type": "chart",
-                                "title": "Series",
-                                "chart": "bar",
-                                "data": {"path": "series"},
-                                "x": "label",
-                                "y": "value",
-                                "span": 6,
-                            },
-                        ],
-                    }
+                "type": "table",
+                "title": "Items",
+                "data": {"path": "items"},
+                "columns": [
+                    {"key": "name", "label": "Name"},
+                    {"key": "value", "label": "Value"},
                 ],
+            },
+        )
+
+    def _chart_template(self):
+        return ReportTemplate.objects.create(
+            name="Metrics chart",
+            definition={
+                "version": 1,
+                "type": "chart",
+                "title": "Series",
+                "chart": "bar",
+                "data": {"path": "series"},
+                "x": "label",
+                "y": "value",
             },
         )
 
@@ -643,11 +631,12 @@ class ReportWorkflowTests(TestCase):
         report_run = run.node_runs.get(node=report_node)
         self.assertEqual(run.status, WorkflowRun.COMPLETED)
         self.assertEqual(report.title, "Generated metrics")
-        self.assertEqual(page.key, "summary")
-        self.assertEqual(page.data["metrics"]["total"], 42)
+        self.assertEqual(report.report_type, "table")
+        self.assertEqual(page.key, "table")
+        self.assertEqual(page.data["items"][0]["name"], "Ada")
         self.assertEqual(report_run.output_data["data"]["report"]["id"], report.id)
 
-    def test_report_renderer_resolves_card_table_and_chart_values(self):
+    def test_report_renderer_resolves_table_values(self):
         from .services.reports import create_report, render_report
 
         template = self._template()
@@ -662,10 +651,46 @@ class ReportWorkflowTests(TestCase):
         )
 
         blocks = render_report(report)[0]["blocks"]
-        self.assertEqual(blocks[0]["value"], 42)
-        self.assertEqual(blocks[1]["rows"][0]["values"], ["Ada", 30])
-        self.assertEqual(blocks[2]["points"][0]["percent"], 100)
-        self.assertEqual(blocks[2]["points"][1]["percent"], 50)
+        self.assertEqual(len(blocks), 1)
+        self.assertEqual(blocks[0]["type"], "table")
+        self.assertEqual(blocks[0]["rows"][0]["values"], ["Ada", 30])
+
+    def test_report_renderer_resolves_chart_values(self):
+        from .services.reports import create_report, render_report
+
+        template = self._chart_template()
+        report = create_report(
+            template=template,
+            title="Rendered chart",
+            data={"series": [{"label": "A", "value": 30}, {"label": "B", "value": 15}]},
+        )
+
+        block = render_report(report)[0]["blocks"][0]
+        self.assertEqual(report.report_type, "chart")
+        self.assertEqual(block["points"][0]["percent"], 100)
+        self.assertEqual(block["points"][1]["percent"], 50)
+
+    def test_report_definition_rejects_multiple_blocks(self):
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        template = ReportTemplate(
+            name="Bad report",
+            definition={
+                "version": 1,
+                "pages": [
+                    {
+                        "key": "bad",
+                        "blocks": [
+                            {"type": "table", "columns": [{"key": "name"}]},
+                            {"type": "chart", "data": {"path": "series"}},
+                        ],
+                    }
+                ],
+            },
+        )
+
+        with self.assertRaises(DjangoValidationError):
+            template.full_clean()
 
 
 # ---------------------------------------------------------------------------
