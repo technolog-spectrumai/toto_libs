@@ -15,6 +15,12 @@
       </a>
       <span class="opacity-40">/</span>
       <span class="text-sm opacity-70 line-clamp-1 max-w-xs">{{ conversation.title|default:"Chat" }}</span>
+      {% if agent.graph_rag_enabled %}
+        <span class="inline-flex items-center gap-1 rounded border border-current/15 px-2 py-1 text-xs font-semibold">
+          <i class="fa-solid fa-circle-nodes"></i>
+          Graph RAG
+        </span>
+      {% endif %}
     </div>
     <a
       href="{% url 'steven:agent_detail' agent.slug %}"

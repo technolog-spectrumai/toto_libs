@@ -34,6 +34,20 @@ class AgentSession(ABC):
     def __init__(self, profile):
         self.profile = profile
 
+    def graph_context_for(self, user_prompt: str) -> str:
+        if not getattr(self.profile, "graph_rag_enabled", False):
+            return ""
+
+        from .graph_rag import GraphRagRetriever, format_graph_context
+
+        retriever = GraphRagRetriever()
+        try:
+            result = retriever.retrieve_for_agent(self.profile, user_prompt)
+        finally:
+            retriever.close()
+
+        return format_graph_context(result)
+
     def run(self, agent_run):
         """Run and persist an AgentRun using this session implementation."""
         agent_run.status = "running"
@@ -98,8 +112,8 @@ class RealAgentSession(AgentSession):
 
             agent = create_agent(
                 model=model,
-                tools=tools_for_agent(self.profile),
-                system_prompt=self.profile.system_prompt or "",
+                tools=tools_for_agent(self.profile, llm=model),
+                system_prompt=self._system_prompt_with_graph_context(user_prompt),
             )
 
             messages = [(m["role"], m["content"]) for m in (history or [])]
@@ -108,6 +122,17 @@ class RealAgentSession(AgentSession):
             response = agent.invoke({"messages": messages})
 
         return extract_text(response)
+
+    def _system_prompt_with_graph_context(self, user_prompt):
+        system_prompt = self.profile.system_prompt or ""
+        graph_context = self.graph_context_for(user_prompt)
+        if not graph_context:
+            return system_prompt
+        return (
+            f"{system_prompt}\n\n"
+            "----\n"
+            f"{graph_context}"
+        )
 
 
 class StubAgentSession(AgentSession):
@@ -188,6 +213,13 @@ class RuleBasedAgentSession(AgentSession):
                 else "  (no rules defined)"
             )
             return f"{self._BUILTIN_HELP}\n\nConfigured intents:\n  {intents}"
+
+        if lower.startswith(("graph ", "rag ")):
+            query = text.split(None, 1)[1] if " " in text else text
+            graph_context = self.graph_context_for(query)
+            if graph_context:
+                return graph_context
+            return "No graph context found for that query."
 
         if lower in ("who are you", "what are you", "whoami"):
             nlp_note = "spaCy" if spacy_available() else "simple split (spaCy not available)"

@@ -1,7 +1,4 @@
-from django.contrib import admin, messages
-from django.core.exceptions import PermissionDenied
-from django.shortcuts import redirect
-from django.urls import path, reverse
+from django.contrib import admin
 
 from .models import AgentConnector, AgentProfile, AgentRun, AgentTool
 
@@ -13,8 +10,25 @@ class AgentToolInline(admin.TabularInline):
 
 @admin.register(AgentProfile)
 class AgentProfileAdmin(admin.ModelAdmin):
-    list_display = ("name", "slug", "user", "model_name", "connector", "temperature", "uses_encrypted_chat", "is_active", "updated_at")
-    list_filter = ("is_active", "uses_encrypted_chat", "model_name", "connector")
+    list_display = (
+        "name",
+        "slug",
+        "user",
+        "model_name",
+        "connector",
+        "temperature",
+        "graph_rag_enabled",
+        "uses_encrypted_chat",
+        "is_active",
+        "updated_at",
+    )
+    list_filter = (
+        "is_active",
+        "graph_rag_enabled",
+        "uses_encrypted_chat",
+        "model_name",
+        "connector",
+    )
     search_fields = ("name", "slug", "user__username", "description", "system_prompt")
     prepopulated_fields = {"slug": ("name",)}
     autocomplete_fields = ("connector", "user")
@@ -24,6 +38,18 @@ class AgentProfileAdmin(admin.ModelAdmin):
         }),
         ("Runtime", {
             "fields": ("model_name", "connector", "temperature", "uses_encrypted_chat", "system_prompt"),
+        }),
+        ("Graph RAG", {
+            "fields": (
+                "graph_rag_enabled",
+                "graph_rag_labels",
+                "graph_rag_max_nodes",
+                "graph_rag_depth",
+            ),
+            "description": (
+                "Retrieve context from ravioli's Neo4j projection before "
+                "Steven answers. Leave labels empty to search every graph label."
+            ),
         }),
     )
     inlines = [AgentToolInline]

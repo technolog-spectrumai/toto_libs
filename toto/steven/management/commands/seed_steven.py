@@ -27,10 +27,18 @@ class Command(BaseCommand):
             connector.api_secret = api_secret
         connector.save()
 
-        agent, created = AgentProfile.objects.get_or_create(h": (
-                    "You are Steven, an AI agent manager. Use tools when helpful, explain what you did, "
-                    "and ask for clarification only when required."
+        agent, created = AgentProfile.objects.get_or_create(
+            slug="steven-default",
+            defaults={
+                "name": "Steven",
+                "description": "A general-purpose AI agent managed by Toto Studio.",
+                "connector": connector,
+                "model_name": "openai:gpt-4.1-mini",
+                "system_prompt": (
+                    "You are Steven, an AI agent manager. Use tools when helpful, "
+                    "explain what you did, and ask for clarification only when required."
                 ),
+                "is_active": True,
             },
         )
         if agent.connector_id != connector.id:
