@@ -24,6 +24,7 @@ def _decorate(context, request):
 
 from .models import (
     HumanTask,
+    WorkflowConnector,
     Workflow,
     WorkflowEdge,
     WorkflowNode,
@@ -38,10 +39,48 @@ from .serializers import (
     WorkflowNodeSerializer,
     WorkflowRunSerializer,
     WorkflowSerializer,
+    WorkflowConnectorSerializer,
 )
 from .services.human_task import submit_human_task
 from .services.validator import ValidationError, WorkflowValidator
 from .tasks import resume_workflow_run_task, start_workflow_run_task
+
+
+# ---------------------------------------------------------------------------
+#  Connector CRUD
+# ---------------------------------------------------------------------------
+
+@api_view(["GET", "POST"])
+def connector_list(request):
+    if request.method == "GET":
+        qs = WorkflowConnector.objects.all().order_by("name")
+        return Response(WorkflowConnectorSerializer(qs, many=True).data)
+
+    ser = WorkflowConnectorSerializer(data=request.data)
+    ser.is_valid(raise_exception=True)
+    connector = ser.save()
+    return Response(WorkflowConnectorSerializer(connector).data, status=status.HTTP_201_CREATED)
+
+
+@api_view(["GET", "PUT", "PATCH", "DELETE"])
+def connector_detail(request, connector_id):
+    try:
+        connector = WorkflowConnector.objects.get(pk=connector_id)
+    except WorkflowConnector.DoesNotExist:
+        return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == "GET":
+        return Response(WorkflowConnectorSerializer(connector).data)
+
+    if request.method == "DELETE":
+        connector.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    partial = request.method == "PATCH"
+    ser = WorkflowConnectorSerializer(connector, data=request.data, partial=partial)
+    ser.is_valid(raise_exception=True)
+    ser.save()
+    return Response(WorkflowConnectorSerializer(connector).data)
 
 
 # ---------------------------------------------------------------------------

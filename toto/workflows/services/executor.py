@@ -36,6 +36,7 @@ from ..models import (
     WorkflowRun,
 )
 from ..output import normalize_workflow_output
+from .connectors import execute_connector
 
 log = logging.getLogger(__name__)
 
@@ -107,6 +108,8 @@ class WorkflowExecutor:
                 output = self._run_split(node_run)
             elif node.node_type == WorkflowNode.JOIN:
                 output = self._run_join(node_run)
+            elif node.node_type == WorkflowNode.CONNECTOR:
+                output = self._run_connector(node_run)
             else:
                 raise ValueError(f"Unknown node_type: {node.node_type!r}")
         except Exception as exc:
@@ -245,6 +248,12 @@ class WorkflowExecutor:
                 merged_routes.extend(source_run.output_data.get("routes", []))
 
         return {"data": merged_data, "routes": merged_routes}
+
+    def _run_connector(self, node_run: WorkflowNodeRun) -> dict:
+        connector = node_run.node.connector
+        if connector is None:
+            raise ValueError("Connector node has no connector configured.")
+        return execute_connector(connector, node_run.input_data or {})
 
     def _activate_outgoing_edges(self, node_run: WorkflowNodeRun) -> None:
         node = node_run.node

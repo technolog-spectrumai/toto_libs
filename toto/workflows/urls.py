@@ -2,6 +2,7 @@ from django.urls import path
 
 from .views import (
     # API
+    connector_list, connector_detail,
     workflow_list, workflow_detail, validate_workflow,
     node_create, node_detail,
     edge_create, edge_delete,
@@ -20,6 +21,8 @@ urlpatterns = [
     path("runs/<int:run_id>/", WorkflowRunDetailUIView.as_view(), name="workflow_run_detail"),
 
     # ----- API -----
+    path("api/connectors/", connector_list, name="api_connector_list"),
+    path("api/connectors/<int:connector_id>/", connector_detail, name="api_connector_detail"),
     path("api/", workflow_list, name="api_workflow_list"),
     path("api/<int:workflow_id>/", workflow_detail, name="api_workflow_detail"),
     path("api/<int:workflow_id>/validate/", validate_workflow, name="api_workflow_validate"),

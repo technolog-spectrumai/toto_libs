@@ -29,17 +29,39 @@ class Workflow(models.Model):
         return self.name
 
 
+class WorkflowConnector(models.Model):
+    FILE_READ = "file_read"
+    FILE_WRITE = "file_write"
+    API_REQUEST = "api_request"
+
+    CONNECTOR_TYPES = [
+        (FILE_READ, "File read"),
+        (FILE_WRITE, "File write"),
+        (API_REQUEST, "API request"),
+    ]
+
+    name = models.CharField(max_length=255, unique=True)
+    connector_type = models.CharField(max_length=40, choices=CONNECTOR_TYPES)
+    config = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return f"{self.name} ({self.connector_type})"
+
+
 class WorkflowNode(models.Model):
     LAMBDA = "lambda"
     HUMAN = "human"
     SPLIT = "split"
     JOIN = "join"
+    CONNECTOR = "connector"
 
     NODE_TYPES = [
         (LAMBDA, "Lambda"),
         (HUMAN, "Human"),
         (SPLIT, "Split"),
         (JOIN, "Join"),
+        (CONNECTOR, "Connector"),
     ]
 
     workflow = models.ForeignKey(Workflow, on_delete=models.CASCADE, related_name="nodes")
@@ -47,6 +69,13 @@ class WorkflowNode(models.Model):
     label = models.CharField(max_length=255, blank=True)
     lambda_function = models.ForeignKey(
         "workflows.LambdaFunction",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="workflow_nodes",
+    )
+    connector = models.ForeignKey(
+        WorkflowConnector,
         null=True,
         blank=True,
         on_delete=models.SET_NULL,

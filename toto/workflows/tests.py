@@ -6,7 +6,9 @@ resolves this setting at call time so no real kernel process is needed.
 """
 
 import json
-from unittest.mock import MagicMock
+import tempfile
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 from celery.exceptions import SoftTimeLimitExceeded
 from django.test import TestCase, override_settings
@@ -14,6 +16,7 @@ from django.test import TestCase, override_settings
 from .models import (
     HumanTask,
     LambdaFunction,
+    WorkflowConnector,
     Workflow,
     WorkflowEdge,
     WorkflowEdgeRun,
@@ -44,12 +47,13 @@ def _lambda(name="fn") -> LambdaFunction:
     return LambdaFunction.objects.create(function_name=name, content="pass")
 
 
-def _node(workflow, node_type, label="", lambda_fn=None, config=None) -> WorkflowNode:
+def _node(workflow, node_type, label="", lambda_fn=None, connector=None, config=None) -> WorkflowNode:
     return WorkflowNode.objects.create(
         workflow=workflow,
         node_type=node_type,
         label=label,
         lambda_function=lambda_fn,
+        connector=connector,
         config=config or {},
     )
 
@@ -122,6 +126,13 @@ class ValidatorTests(TestCase):
         with self.assertRaises(ValidationError) as ctx:
             WorkflowValidator().validate(wf)
         self.assertTrue(any("config['schema']" in e for e in ctx.exception.errors))
+
+    def test_connector_without_connector_fails(self):
+        wf = self._workflow()
+        _node(wf, WorkflowNode.CONNECTOR, label="missing")
+        with self.assertRaises(ValidationError) as ctx:
+            WorkflowValidator().validate(wf)
+        self.assertTrue(any("has no connector" in e for e in ctx.exception.errors))
 
     def test_split_without_single_incoming_fails(self):
         wf = self._workflow()
@@ -207,6 +218,102 @@ class LinearLambdaWorkflowTests(TestCase):
             WorkflowExecutor().start(run)
         run.refresh_from_db()
         self.assertEqual(run.status, WorkflowRun.FAILED)
+
+
+# ---------------------------------------------------------------------------
+#  Connector workflow nodes
+# ---------------------------------------------------------------------------
+
+class ConnectorWorkflowTests(TestCase):
+
+    def test_file_write_connector_writes_input_content(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            connector = WorkflowConnector.objects.create(
+                name="write-result",
+                connector_type=WorkflowConnector.FILE_WRITE,
+                config={
+                    "path": "runs/result.txt",
+                    "content_field": "data.message",
+                },
+            )
+            wf = Workflow.objects.create(name="FileWrite")
+            _node(wf, WorkflowNode.CONNECTOR, label="write", connector=connector)
+            run = WorkflowRun.objects.create(
+                workflow=wf,
+                input_data={"data": {"message": "hello workflow"}},
+            )
+
+            with override_settings(WORKFLOW_FILE_CONNECTOR_ROOT=tmpdir):
+                WorkflowExecutor().start(run)
+
+            run.refresh_from_db()
+            self.assertEqual(run.status, WorkflowRun.COMPLETED)
+            self.assertEqual((Path(tmpdir) / "runs/result.txt").read_text(), "hello workflow")
+            output = run.node_runs.get().output_data
+            self.assertEqual(output["data"]["path"], "runs/result.txt")
+
+    def test_file_read_connector_returns_text_and_json(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "input.json"
+            path.write_text('{"answer": 42}')
+            connector = WorkflowConnector.objects.create(
+                name="read-json",
+                connector_type=WorkflowConnector.FILE_READ,
+                config={"path": "input.json"},
+            )
+            wf = Workflow.objects.create(name="FileRead")
+            _node(wf, WorkflowNode.CONNECTOR, label="read", connector=connector)
+            run = WorkflowRun.objects.create(workflow=wf)
+
+            with override_settings(WORKFLOW_FILE_CONNECTOR_ROOT=tmpdir):
+                WorkflowExecutor().start(run)
+
+            output = run.node_runs.get().output_data
+            self.assertEqual(output["data"]["content"], '{"answer": 42}')
+            self.assertEqual(output["data"]["json"], {"answer": 42})
+
+    def test_api_connector_returns_response_data(self):
+        class FakeResponse:
+            status = 200
+            headers = {"Content-Type": "application/json"}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self, *args):
+                return b'{"ok": true}'
+
+            def getcode(self):
+                return self.status
+
+        connector = WorkflowConnector.objects.create(
+            name="call-api",
+            connector_type=WorkflowConnector.API_REQUEST,
+            config={
+                "url": "https://api.example.test/items",
+                "method": "POST",
+                "json_field": "data.payload",
+            },
+        )
+        wf = Workflow.objects.create(name="ApiCall")
+        _node(wf, WorkflowNode.CONNECTOR, label="api", connector=connector)
+        run = WorkflowRun.objects.create(
+            workflow=wf,
+            input_data={"data": {"payload": {"name": "Ada"}}},
+        )
+
+        with patch("toto.workflows.services.connectors.urlopen", return_value=FakeResponse()) as mock_urlopen:
+            WorkflowExecutor().start(run)
+
+        request = mock_urlopen.call_args.args[0]
+        self.assertEqual(request.get_method(), "POST")
+        self.assertEqual(request.data, b'{"name": "Ada"}')
+        output = run.node_runs.get().output_data
+        self.assertEqual(output["data"]["status_code"], 200)
+        self.assertEqual(output["data"]["json"], {"ok": True})
 
 
 # ---------------------------------------------------------------------------

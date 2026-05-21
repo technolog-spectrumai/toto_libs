@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from .models import (
     HumanTask,
+    WorkflowConnector,
     Workflow,
     WorkflowEdge,
     WorkflowEdgeRun,
@@ -11,12 +12,19 @@ from .models import (
 )
 
 
+class WorkflowConnectorSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WorkflowConnector
+        fields = ["id", "name", "connector_type", "config", "created_at"]
+        read_only_fields = ["id", "created_at"]
+
+
 class WorkflowNodeSerializer(serializers.ModelSerializer):
     class Meta:
         model = WorkflowNode
         fields = [
             "id", "workflow", "node_type", "label",
-            "lambda_function", "config", "position_x", "position_y",
+            "lambda_function", "connector", "config", "position_x", "position_y",
         ]
         read_only_fields = ["id"]
 

@@ -1,6 +1,7 @@
 from collections import defaultdict, deque
 
 from ..models import Workflow, WorkflowNode
+from .connectors import validate_connector_config
 
 
 class ValidationError(Exception):
@@ -43,6 +44,13 @@ class WorkflowValidator:
                     errors.append(
                         f"Human node {node.id} ({node.label!r}) is missing config['schema']."
                     )
+            elif node.node_type == WorkflowNode.CONNECTOR:
+                if node.connector_id is None:
+                    errors.append(
+                        f"Connector node {node.id} ({node.label!r}) has no connector."
+                    )
+                else:
+                    errors.extend(validate_connector_config(node.connector))
 
     def _validate_edges(self, edges: list, node_ids: set, errors: list[str]) -> None:
         seen: set[tuple] = set()
