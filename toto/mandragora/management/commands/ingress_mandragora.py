@@ -1,13 +1,18 @@
+from pathlib import Path
+
+from django.conf import settings
 from toto.ingress import IngressCommand
 
 from django.utils import timezone
 from datetime import timedelta
 
+from toto.api.models import Connector as ApiConnector
+from toto.core.connectors import list_connector_types, validate_connector_type
 from toto.mandragora.models import (
     Cell, ComputeKernel, KernelDependency, Notebook,
 )
 from toto.workflows.models import (
-    LambdaFunction, Workflow, WorkflowEdge, WorkflowNode,
+    LambdaFunction, Workflow, WorkflowConnector, WorkflowEdge, WorkflowNode,
     WorkflowRun, WorkflowNodeRun, WorkflowEdgeRun, HumanTask,
 )
 
@@ -65,8 +70,116 @@ class Command(IngressCommand):
         else:
             self.stdout.write(self.style.WARNING(f"Notebook already exists: {notebook.title}"))
 
+        self._seed_connectors()
         self._seed_workflows()
         self._seed_runs()
+
+    # ------------------------------------------------------------------
+    #  Connector seeds
+    # ------------------------------------------------------------------
+
+    def _seed_connectors(self):
+        self._seed_connector_sample_file()
+        api_connector = self._seed_api_connector()
+
+        seed_configs = {
+            WorkflowConnector.FILE_READ: {
+                "path": "ingress/sample-input.json",
+                "encoding": "utf-8",
+            },
+            WorkflowConnector.FILE_WRITE: {
+                "path": "ingress/sample-output.json",
+                "json_field": "data",
+                "mode": "overwrite",
+            },
+            WorkflowConnector.API_REQUEST: {
+                "api_connector_slug": api_connector.slug,
+                "endpoint": "anything/mandragora-ingress",
+                "method": "GET",
+                "params": {"source": "mandragora-ingress"},
+                "timeout_seconds": 10,
+            },
+            WorkflowConnector.PEOPLE_READ: {
+                "action": "list",
+                "limit": 10,
+            },
+            WorkflowConnector.SOCIALHUB_READ: {
+                "resource": "community",
+                "action": "list",
+                "limit": 10,
+            },
+            WorkflowConnector.LOCATIONS_READ: {
+                "resource": "address",
+                "action": "list",
+                "limit": 10,
+            },
+            WorkflowConnector.EVENTS_READ: {
+                "resource": "scheduled_event",
+                "action": "list",
+                "limit": 10,
+                "public_only": True,
+            },
+        }
+
+        for connector_info in list_connector_types():
+            connector_type = connector_info["connector_type"]
+            config = seed_configs.get(connector_type)
+            if config is None:
+                self.stdout.write(
+                    self.style.WARNING(f"No ingress seed config for connector type: {connector_type}")
+                )
+                continue
+
+            errors = validate_connector_type(connector_type, config)
+            if errors:
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"Skipping connector seed {connector_type}: {'; '.join(errors)}"
+                    )
+                )
+                continue
+
+            name = f"Demo {connector_info['label']}"
+            _, created = WorkflowConnector.objects.update_or_create(
+                name=name,
+                defaults={
+                    "connector_type": connector_type,
+                    "config": config,
+                },
+            )
+            if created:
+                self.stdout.write(self.style.SUCCESS(f"  + connector: {name}"))
+
+    def _seed_connector_sample_file(self):
+        root = getattr(settings, "WORKFLOW_FILE_CONNECTOR_ROOT", None)
+        if root is None:
+            root = Path(settings.MEDIA_ROOT) / "workflow-files"
+        sample_path = Path(root) / "ingress" / "sample-input.json"
+        sample_path.parent.mkdir(parents=True, exist_ok=True)
+        if not sample_path.exists():
+            sample_path.write_text(
+                '{\n  "source": "mandragora-ingress",\n  "message": "Hello connector."\n}\n',
+                encoding="utf-8",
+            )
+
+    def _seed_api_connector(self):
+        api_connector, created = ApiConnector.objects.update_or_create(
+            slug="httpbin-demo",
+            defaults={
+                "name": "HTTPBin Demo",
+                "provider": ApiConnector.PROVIDER_GENERIC,
+                "base_url": "https://httpbin.org/",
+                "auth_type": ApiConnector.AUTH_NONE,
+                "auth_config": {"timeout_seconds": 10},
+                "extra": {
+                    "headers": {"User-Agent": "toto-mandragora-ingress/1.0"},
+                },
+                "is_active": True,
+            },
+        )
+        if created:
+            self.stdout.write(self.style.SUCCESS("  + API connector: HTTPBin Demo"))
+        return api_connector
 
     # ------------------------------------------------------------------
     #  Workflow seeds
