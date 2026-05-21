@@ -48,15 +48,15 @@ import sys
 from django.core.management.base import BaseCommand, CommandError
 from django.test.utils import override_settings
 
-from ...models import (
+from toto.workflows.models import (
     LambdaFunction,
     Workflow,
     WorkflowEdge,
     WorkflowNode,
     WorkflowRun,
 )
-from ...services.executor import WorkflowExecutor
-from ...services.validator import ValidationError, WorkflowValidator
+from toto.workflows.services.executor import WorkflowExecutor
+from toto.workflows.services.validator import ValidationError, WorkflowValidator
 
 WORKFLOW_NAME = "Example Workflow (demo)"
 

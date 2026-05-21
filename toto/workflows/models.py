@@ -2,6 +2,24 @@ from django.db import models
 from django.utils import timezone
 
 
+class LambdaFunction(models.Model):
+    function_name = models.CharField(max_length=255, unique=True)
+    content = models.TextField(blank=True)
+    stdout = models.TextField(blank=True)
+    stderr = models.TextField(blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    kernel = models.OneToOneField(
+        "mandragora.ComputeKernel",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="lambda_function",
+    )
+
+    def __str__(self):
+        return f"LambdaFunction {self.function_name}"
+
+
 class Workflow(models.Model):
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
@@ -28,7 +46,7 @@ class WorkflowNode(models.Model):
     node_type = models.CharField(max_length=20, choices=NODE_TYPES)
     label = models.CharField(max_length=255, blank=True)
     lambda_function = models.ForeignKey(
-        "mandragora.LambdaFunction",
+        "workflows.LambdaFunction",
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
@@ -55,7 +73,12 @@ class WorkflowEdge(models.Model):
     is_default = models.BooleanField(default=False)
 
     class Meta:
-        unique_together = [("source", "target")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["source", "target"],
+                name="unique_workflow_edge",
+            )
+        ]
 
     def __str__(self):
         return f"Edge {self.source_id}→{self.target_id} [{self.branch_key or 'default'}]"
@@ -115,11 +138,17 @@ class WorkflowNodeRun(models.Model):
     input_data = models.JSONField(null=True, blank=True)
     output_data = models.JSONField(null=True, blank=True)
     error = models.TextField(blank=True)
+    celery_task_id = models.CharField(max_length=255, blank=True)
     started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        unique_together = [("workflow_run", "node")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["workflow_run", "node"],
+                name="unique_workflow_node_run",
+            )
+        ]
 
     def __str__(self):
         return f"NodeRun {self.id} ({self.node}) [{self.status}]"
@@ -136,7 +165,12 @@ class WorkflowEdgeRun(models.Model):
     activated_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        unique_together = [("workflow_run", "edge")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["workflow_run", "edge"],
+                name="unique_workflow_edge_run",
+            )
+        ]
 
     def __str__(self):
         state = "activated" if self.activated else "skipped"

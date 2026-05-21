@@ -12,9 +12,10 @@ from rest_framework.response import Response
 
 from toto.celery_utils import celery_available
 from .forms import NotebookForm
-from .models import Cell, ComputeKernel, KernelDependency, LambdaFunction, Notebook
+from .models import Cell, ComputeKernel, KernelDependency, Notebook
 from .tasks import execute_cell_task
 from .kernel import KernelClient
+from toto.workflows.models import LambdaFunction
 
 
 def mandragora_render(request, template_name, context):

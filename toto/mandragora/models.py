@@ -4,7 +4,7 @@ from django.utils.text import slugify
 
 
 # ---------------------------------------------------------
-#  Base Executable Unit (shared by Cell + LambdaFunction)
+#  Base Executable Unit
 # ---------------------------------------------------------
 
 class ExecutableUnit(models.Model):
@@ -138,17 +138,3 @@ class Cell(ExecutableUnit):
     def __str__(self):
         return f"{self.cell_type} cell {self.id}"
 
-
-class LambdaFunction(ExecutableUnit):
-    function_name = models.CharField(max_length=255, unique=True)
-
-    kernel = models.OneToOneField(
-        ComputeKernel,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="lambda_function"
-    )
-
-    def __str__(self):
-        return f"LambdaFunction {self.function_name}"

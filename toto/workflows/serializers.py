@@ -78,7 +78,7 @@ class WorkflowNodeRunSerializer(serializers.ModelSerializer):
         model = WorkflowNodeRun
         fields = [
             "id", "node", "node_type", "node_label", "status",
-            "input_data", "output_data", "error",
+            "input_data", "output_data", "error", "celery_task_id",
             "started_at", "completed_at", "human_task",
         ]
         read_only_fields = fields

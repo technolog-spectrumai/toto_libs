@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.utils.html import format_html
 
 from .models import (
-    Workflow, WorkflowNode, WorkflowEdge,
+    LambdaFunction, Workflow, WorkflowNode, WorkflowEdge,
     WorkflowRun, WorkflowNodeRun, WorkflowEdgeRun, HumanTask,
 )
 
@@ -40,6 +40,12 @@ class WorkflowEdgeInline(admin.TabularInline):
     fk_name = "workflow"
 
 
+@admin.register(LambdaFunction)
+class LambdaFunctionAdmin(admin.ModelAdmin):
+    list_display = ("id", "function_name", "kernel")
+    search_fields = ("function_name",)
+
+
 @admin.register(Workflow)
 class WorkflowAdmin(admin.ModelAdmin):
     list_display = ("id", "name", "node_count", "created_at")
@@ -68,8 +74,8 @@ class WorkflowEdgeAdmin(admin.ModelAdmin):
 class WorkflowNodeRunInline(admin.TabularInline):
     model = WorkflowNodeRun
     extra = 0
-    fields = ("node", "status_badge", "started_at", "completed_at")
-    readonly_fields = ("status_badge", "started_at", "completed_at")
+    fields = ("node", "status_badge", "celery_task_id", "started_at", "completed_at")
+    readonly_fields = ("status_badge", "celery_task_id", "started_at", "completed_at")
 
     @admin.display(description="Status")
     def status_badge(self, obj):
@@ -97,9 +103,9 @@ class WorkflowRunAdmin(admin.ModelAdmin):
 
 @admin.register(WorkflowNodeRun)
 class WorkflowNodeRunAdmin(admin.ModelAdmin):
-    list_display = ("id", "workflow_run", "node", "status_badge", "started_at")
+    list_display = ("id", "workflow_run", "node", "status_badge", "celery_task_id", "started_at")
     list_filter = ("status",)
-    readonly_fields = ("started_at", "completed_at")
+    readonly_fields = ("celery_task_id", "started_at", "completed_at")
 
     @admin.display(description="Status")
     def status_badge(self, obj):

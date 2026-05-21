@@ -8,12 +8,12 @@ resolves this setting at call time so no real kernel process is needed.
 import json
 from unittest.mock import MagicMock
 
+from celery.exceptions import SoftTimeLimitExceeded
 from django.test import TestCase, override_settings
-
-from toto.mandragora.models import LambdaFunction
 
 from .models import (
     HumanTask,
+    LambdaFunction,
     Workflow,
     WorkflowEdge,
     WorkflowEdgeRun,
@@ -25,6 +25,7 @@ from .services.executor import WorkflowExecutor
 from .services.human_task import apply_output_mapping, submit_human_task
 from .services.validator import ValidationError, WorkflowValidator
 from .output import WorkflowOutput, normalize_workflow_output
+from .tasks import execute_lambda_node_task
 
 
 def _make_kernel_mock(stdout_payload: dict):
@@ -205,6 +206,83 @@ class LinearLambdaWorkflowTests(TestCase):
         with override_settings(WORKFLOW_KERNEL_CLIENT=type("MC", (), {"__new__": lambda cls, *a, **k: instance})):
             WorkflowExecutor().start(run)
         run.refresh_from_db()
+        self.assertEqual(run.status, WorkflowRun.FAILED)
+
+
+# ---------------------------------------------------------------------------
+#  Celery lambda node execution
+# ---------------------------------------------------------------------------
+
+class CeleryLambdaWorkflowTests(TestCase):
+
+    def test_async_lambdas_queue_one_task_per_lambda_node(self):
+        MockClient = _make_kernel_mock({"data": {"ok": True}, "route": "next"})
+        wf = Workflow.objects.create(name="CeleryLinear")
+        a = _node(wf, WorkflowNode.LAMBDA, label="A", lambda_fn=_lambda("celery_a"))
+        b = _node(wf, WorkflowNode.LAMBDA, label="B", lambda_fn=_lambda("celery_b"))
+        _edge(wf, a, b)
+
+        run = WorkflowRun.objects.create(workflow=wf, input_data={"seed": 1})
+        with override_settings(
+            WORKFLOW_KERNEL_CLIENT=MockClient,
+            CELERY_TASK_ALWAYS_EAGER=True,
+            CELERY_TASK_EAGER_PROPAGATES=True,
+        ):
+            WorkflowExecutor(async_lambdas=True).start(run)
+
+        run.refresh_from_db()
+        self.assertEqual(run.status, WorkflowRun.COMPLETED)
+        self.assertEqual(run.node_runs.filter(node__node_type=WorkflowNode.LAMBDA).count(), 2)
+        self.assertEqual(run.node_runs.exclude(celery_task_id="").count(), 2)
+
+    def test_lambda_task_failure_marks_node_and_run_failed(self):
+        instance = MagicMock()
+        instance.execute.return_value = {"error": "kernel_crash"}
+        MockClient = type("MC", (), {"__new__": lambda cls, *a, **k: instance})
+
+        wf = Workflow.objects.create(name="CeleryFailure")
+        node = _node(wf, WorkflowNode.LAMBDA, label="bad", lambda_fn=_lambda("celery_fail"))
+        run = WorkflowRun.objects.create(workflow=wf, status=WorkflowRun.RUNNING)
+        node_run = WorkflowNodeRun.objects.create(
+            workflow_run=run,
+            node=node,
+            status=WorkflowNodeRun.PENDING,
+            input_data={},
+        )
+
+        with override_settings(WORKFLOW_KERNEL_CLIENT=MockClient):
+            with self.assertRaises(RuntimeError):
+                execute_lambda_node_task.apply(args=[node_run.id], throw=True)
+
+        node_run.refresh_from_db()
+        run.refresh_from_db()
+        self.assertEqual(node_run.status, WorkflowNodeRun.FAILED)
+        self.assertIn("kernel_crash", node_run.error)
+        self.assertEqual(run.status, WorkflowRun.FAILED)
+
+    def test_lambda_task_timeout_marks_node_and_run_failed(self):
+        instance = MagicMock()
+        instance.execute.side_effect = SoftTimeLimitExceeded()
+        MockClient = type("MC", (), {"__new__": lambda cls, *a, **k: instance})
+
+        wf = Workflow.objects.create(name="CeleryTimeout")
+        node = _node(wf, WorkflowNode.LAMBDA, label="slow", lambda_fn=_lambda("celery_timeout"))
+        run = WorkflowRun.objects.create(workflow=wf, status=WorkflowRun.RUNNING)
+        node_run = WorkflowNodeRun.objects.create(
+            workflow_run=run,
+            node=node,
+            status=WorkflowNodeRun.PENDING,
+            input_data={},
+        )
+
+        with override_settings(WORKFLOW_KERNEL_CLIENT=MockClient):
+            with self.assertRaises(SoftTimeLimitExceeded):
+                execute_lambda_node_task.apply(args=[node_run.id], throw=True)
+
+        node_run.refresh_from_db()
+        run.refresh_from_db()
+        self.assertEqual(node_run.status, WorkflowNodeRun.FAILED)
+        self.assertIn("timed out", node_run.error)
         self.assertEqual(run.status, WorkflowRun.FAILED)
 
 

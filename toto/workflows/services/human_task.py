@@ -47,7 +47,13 @@ def apply_output_mapping(submitted_data: dict, config: dict) -> dict:
     return {"data": wo.data, "routes": wo.routes}
 
 
-def submit_human_task(task: HumanTask, submitted_data: dict) -> None:
+def submit_human_task(
+    task: HumanTask,
+    submitted_data: dict,
+    *,
+    async_lambdas: bool = False,
+    resume: bool = True,
+) -> None:
     if task.status == HumanTask.SUBMITTED:
         return
 
@@ -65,6 +71,7 @@ def submit_human_task(task: HumanTask, submitted_data: dict) -> None:
     node_run.completed_at = timezone.now()
     node_run.save(update_fields=["output_data", "status", "completed_at"])
 
-    executor = WorkflowExecutor()
+    executor = WorkflowExecutor(async_lambdas=async_lambdas)
     executor._activate_outgoing_edges(node_run)
-    executor.resume(node_run.workflow_run)
+    if resume:
+        executor.resume(node_run.workflow_run)

@@ -5,7 +5,7 @@ from django.utils import timezone
 from django.utils.html import format_html
 
 from .models import (
-    Cell, ComputeKernel, KernelDependency, LambdaFunction, Notebook,
+    Cell, ComputeKernel, KernelDependency, Notebook,
 )
 
 
@@ -120,9 +120,3 @@ class CellAdmin(admin.ModelAdmin):
     list_filter = ("cell_type", "notebook")
     ordering = ("notebook", "position")
     search_fields = ("content",)
-
-
-@admin.register(LambdaFunction)
-class LambdaFunctionAdmin(admin.ModelAdmin):
-    list_display = ("id", "function_name", "kernel")
-    search_fields = ("function_name",)

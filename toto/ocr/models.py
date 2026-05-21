@@ -5,7 +5,7 @@ from django.utils import timezone
 from django.contrib.auth import get_user_model
 from toto.vault.models import VaultFile, Bucket
 from toto.ocr.transform import TransformHelper
-from toto.mandragora.models import LambdaFunction
+from toto.workflows.models import LambdaFunction
 import os
 import shutil
 from django.core.files import File

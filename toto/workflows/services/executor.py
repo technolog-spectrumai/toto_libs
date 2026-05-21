@@ -1,9 +1,10 @@
 """
-WorkflowExecutor — synchronous DAG runner.
+WorkflowExecutor — DAG runner.
 
 Execution contract
 ------------------
-- Lambda nodes run their LambdaFunction.content via KernelClient.
+- Lambda nodes run their LambdaFunction.content via KernelClient. In
+  async_lambdas mode, each lambda node is queued as its own Celery task.
   The kernel is expected to print a JSON object:
       {"data": {...}, "route": "branch_name"}
       {"data": {...}, "routes": ["a", "b"]}
@@ -50,6 +51,8 @@ def _get_kernel_client():
 
 
 class WorkflowExecutor:
+    def __init__(self, *, async_lambdas: bool = False):
+        self.async_lambdas = async_lambdas
 
     def start(self, workflow_run: WorkflowRun) -> None:
         """Begin execution of a fresh WorkflowRun."""
@@ -75,16 +78,20 @@ class WorkflowExecutor:
         self._advance(workflow_run)
 
     def _schedule_node(self, workflow_run: WorkflowRun, node: WorkflowNode, input_data: dict) -> None:
+        is_async_lambda = self.async_lambdas and node.node_type == WorkflowNode.LAMBDA
         node_run, created = WorkflowNodeRun.objects.get_or_create(
             workflow_run=workflow_run,
             node=node,
             defaults={
-                "status": WorkflowNodeRun.RUNNING,
+                "status": WorkflowNodeRun.PENDING if is_async_lambda else WorkflowNodeRun.RUNNING,
                 "input_data": input_data,
-                "started_at": timezone.now(),
+                "started_at": None if is_async_lambda else timezone.now(),
             },
         )
         if not created:
+            return
+        if is_async_lambda:
+            self._queue_lambda_node(node_run)
             return
         self._execute_node(node_run)
 
@@ -112,6 +119,44 @@ class WorkflowExecutor:
             node_run.workflow_run.save(update_fields=["status"])
             return
 
+        self._complete_node_run(node_run, output)
+
+    def execute_lambda_node_run(self, node_run_id: int) -> dict:
+        node_run = WorkflowNodeRun.objects.select_related(
+            "node__lambda_function",
+            "node__lambda_function__kernel",
+            "workflow_run",
+        ).get(pk=node_run_id)
+        if node_run.node.node_type != WorkflowNode.LAMBDA:
+            raise ValueError(f"NodeRun {node_run.id} is not a lambda node.")
+        if node_run.status == WorkflowNodeRun.COMPLETED:
+            return node_run.output_data or {}
+        if node_run.workflow_run.status in (WorkflowRun.FAILED, WorkflowRun.COMPLETED):
+            return node_run.output_data or {}
+
+        node_run.status = WorkflowNodeRun.RUNNING
+        if node_run.started_at is None:
+            node_run.started_at = timezone.now()
+        node_run.save(update_fields=["status", "started_at"])
+
+        output = self._run_lambda(node_run)
+        self._complete_node_run(node_run, output)
+        return node_run.output_data or {}
+
+    def mark_node_run_failed(self, node_run_id: int, error: str) -> None:
+        try:
+            node_run = WorkflowNodeRun.objects.select_related("workflow_run").get(pk=node_run_id)
+        except WorkflowNodeRun.DoesNotExist:
+            return
+        node_run.status = WorkflowNodeRun.FAILED
+        node_run.error = error
+        node_run.completed_at = timezone.now()
+        node_run.save(update_fields=["status", "error", "completed_at"])
+        node_run.workflow_run.status = WorkflowRun.FAILED
+        node_run.workflow_run.completed_at = timezone.now()
+        node_run.workflow_run.save(update_fields=["status", "completed_at"])
+
+    def _complete_node_run(self, node_run: WorkflowNodeRun, output: dict) -> None:
         node_run.output_data = output if isinstance(output, dict) else {}
         node_run.status = WorkflowNodeRun.COMPLETED
         node_run.completed_at = timezone.now()
@@ -119,6 +164,24 @@ class WorkflowExecutor:
 
         self._activate_outgoing_edges(node_run)
         self._advance(node_run.workflow_run)
+
+    def _queue_lambda_node(self, node_run: WorkflowNodeRun) -> None:
+        from ..tasks import execute_lambda_node_task
+
+        timeout_seconds = self._lambda_task_timeout_seconds(node_run)
+        task_result = execute_lambda_node_task.apply_async(
+            args=[node_run.id],
+            soft_time_limit=timeout_seconds,
+            time_limit=timeout_seconds + 5,
+        )
+        node_run.celery_task_id = task_result.id
+        node_run.save(update_fields=["celery_task_id"])
+
+    def _lambda_task_timeout_seconds(self, node_run: WorkflowNodeRun) -> int:
+        lambda_fn = node_run.node.lambda_function
+        if lambda_fn and lambda_fn.kernel and lambda_fn.kernel.timeout_ms:
+            return max(1, int(lambda_fn.kernel.timeout_ms / 1000))
+        return int(getattr(settings, "WORKFLOW_LAMBDA_TASK_TIMEOUT_SECONDS", 30))
 
     def _run_lambda(self, node_run: WorkflowNodeRun) -> dict:
         lambda_fn = node_run.node.lambda_function

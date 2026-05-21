@@ -7,6 +7,8 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
+from toto.celery_utils import celery_available
+
 try:
     from toto.ui import PageProcessor
     _HAS_PAGE_PROCESSOR = True
@@ -37,9 +39,9 @@ from .serializers import (
     WorkflowRunSerializer,
     WorkflowSerializer,
 )
-from .services.executor import WorkflowExecutor
 from .services.human_task import submit_human_task
 from .services.validator import ValidationError, WorkflowValidator
+from .tasks import resume_workflow_run_task, start_workflow_run_task
 
 
 # ---------------------------------------------------------------------------
@@ -192,13 +194,27 @@ def run_list(request, workflow_id):
             status=status.HTTP_422_UNPROCESSABLE_ENTITY,
         )
 
+    if not celery_available():
+        return Response(
+            {
+                "error": (
+                    "No Celery workers are running. "
+                    "Start a Celery worker before executing workflows."
+                ),
+                "celery_unavailable": True,
+            },
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
     run = WorkflowRun.objects.create(
         workflow=workflow,
         input_data=ser.validated_data.get("input_data") or {},
     )
-    WorkflowExecutor().start(run)
+    task_result = start_workflow_run_task.delay(run.id)
     run.refresh_from_db()
-    return Response(WorkflowRunSerializer(run).data, status=status.HTTP_201_CREATED)
+    data = WorkflowRunSerializer(run).data
+    data["task_id"] = task_result.id
+    return Response(data, status=status.HTTP_201_CREATED)
 
 
 @api_view(["GET"])
@@ -232,11 +248,23 @@ def human_task_submit(request, task_id):
     ser = SubmitHumanTaskSerializer(data=request.data)
     ser.is_valid(raise_exception=True)
 
-    submit_human_task(task, ser.validated_data["submitted_data"])
+    use_celery = celery_available()
+    submit_human_task(
+        task,
+        ser.validated_data["submitted_data"],
+        async_lambdas=use_celery,
+        resume=not use_celery,
+    )
+    resume_task_id = None
+    if use_celery:
+        resume_task_id = resume_workflow_run_task.delay(task.node_run.workflow_run_id).id
     task.refresh_from_db()
     run = task.node_run.workflow_run
     run.refresh_from_db()
-    return Response(WorkflowRunSerializer(run).data)
+    data = WorkflowRunSerializer(run).data
+    if resume_task_id:
+        data["task_id"] = resume_task_id
+    return Response(data)
 
 
 # ---------------------------------------------------------------------------

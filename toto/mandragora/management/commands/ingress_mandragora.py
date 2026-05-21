@@ -4,10 +4,10 @@ from django.utils import timezone
 from datetime import timedelta
 
 from toto.mandragora.models import (
-    Cell, ComputeKernel, KernelDependency, LambdaFunction, Notebook,
+    Cell, ComputeKernel, KernelDependency, Notebook,
 )
 from toto.workflows.models import (
-    Workflow, WorkflowEdge, WorkflowNode,
+    LambdaFunction, Workflow, WorkflowEdge, WorkflowNode,
     WorkflowRun, WorkflowNodeRun, WorkflowEdgeRun, HumanTask,
 )
 
