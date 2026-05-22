@@ -599,8 +599,8 @@
         return {
           label: addr.name,
           data: values,
-          borderColor: def.datasets ? color : def.borderColor,
-          backgroundColor: def.datasets ? color + "30" : def.backgroundColor,
+          borderColor: color,
+          backgroundColor: def.type === "bar" ? color + "cc" : color + "30",
           tension: 0.3,
           fill: def.fill || false,
           pointRadius: 0,
@@ -700,10 +700,18 @@
 
             <div class="max-h-52 space-y-0.5 overflow-y-auto">
               <template x-for="addr in filteredAddresses" :key="addr.id">
-                <label class="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition hover:bg-current/5">
+                <label class="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition"
+                       :class="selectedIds.includes(addr.id)
+                         ? (darkMode ? 'bg-accent-dark/15' : 'bg-accent-light/10')
+                         : 'hover:bg-current/5'">
                   <input type="checkbox" :checked="selectedIds.includes(addr.id)"
-                         @change="toggleLocation(addr.id)"
-                         class="h-4 w-4 accent-current">
+                         @change="toggleLocation(addr.id)" class="sr-only">
+                  <span class="flex h-4 w-4 shrink-0 items-center justify-center rounded border transition"
+                        :class="selectedIds.includes(addr.id)
+                          ? (darkMode ? 'border-transparent bg-accent-dark' : 'border-transparent bg-accent-light')
+                          : (darkMode ? 'border-accent-1' : 'border-accent-2')">
+                    <i class="fa-solid fa-check text-[9px] text-white" x-show="selectedIds.includes(addr.id)"></i>
+                  </span>
                   <span class="truncate" x-text="addr.name"></span>
                 </label>
               </template>
@@ -824,10 +832,18 @@
               </label>
               <div class="max-h-52 space-y-0.5 overflow-y-auto">
                 <template x-for="addr in filteredAddresses" :key="addr.id">
-                  <label class="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition hover:bg-current/5">
+                  <label class="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition"
+                         :class="selectedIds.includes(addr.id)
+                           ? (darkMode ? 'bg-accent-dark/15' : 'bg-accent-light/10')
+                           : 'hover:bg-current/5'">
                     <input type="checkbox" :checked="selectedIds.includes(addr.id)"
-                           @change="toggleLocation(addr.id)"
-                           class="h-4 w-4 accent-current">
+                           @change="toggleLocation(addr.id)" class="sr-only">
+                    <span class="flex h-4 w-4 shrink-0 items-center justify-center rounded border transition"
+                          :class="selectedIds.includes(addr.id)
+                            ? (darkMode ? 'border-transparent bg-accent-dark' : 'border-transparent bg-accent-light')
+                            : (darkMode ? 'border-accent-1' : 'border-accent-2')">
+                      <i class="fa-solid fa-check text-[9px] text-white" x-show="selectedIds.includes(addr.id)"></i>
+                    </span>
                     <span class="truncate" x-text="addr.name"></span>
                   </label>
                 </template>
