@@ -76,6 +76,10 @@ class Community(DomainEntity):
     email = models.EmailField(unique=True, blank=True, null=True)
     is_foreign = models.BooleanField(default=False,
                                      help_text="Indicates whether this federation originates outside the local jurisdiction")
+    is_federal_tribe = models.BooleanField(
+        default=False,
+        help_text="Members of this community are exempt from all poll taxes (federal tax exemption).",
+    )
     email_service = models.ForeignKey(
         "api.EmailService",
         on_delete=models.SET_NULL,

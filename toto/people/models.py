@@ -44,6 +44,10 @@ class Person(DomainEntity):
     )
     email = models.EmailField(blank=True, null=True)
     phone = models.CharField(max_length=50, blank=True, null=True)
+    is_federal_agent = models.BooleanField(
+        default=False,
+        help_text="Federal agents are exempt from community poll taxes.",
+    )
 
     class Meta:
         # Keep the same physical table — zero DB migration needed.

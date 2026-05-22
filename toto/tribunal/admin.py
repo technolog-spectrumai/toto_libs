@@ -125,3 +125,4 @@ class JuryVoteAdmin(admin.ModelAdmin):
     list_display = ("session", "juror", "vote", "voted_at")
     list_filter = ("vote", "voted_at")
     search_fields = ("session__case__case_number", "juror__display_name", "reason")
+

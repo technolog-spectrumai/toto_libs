@@ -1,0 +1,262 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}Assembly Overview{% endblock %}
+
+{% block start_script %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<style>[x-cloak]{display:none!important}</style>
+{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-6xl space-y-8">
+
+    <!-- Header -->
+    <header>
+      <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+        class="text-xs font-semibold uppercase tracking-wide">Governance</p>
+      <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+        <i class="fa-solid fa-landmark"></i>
+        Assembly
+      </h1>
+      <p class="mt-1 text-sm opacity-60">Community governance — proposals, rules, tax decisions, and the immutable decision ledger.</p>
+    </header>
+
+    <!-- Stats grid -->
+    <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+
+      {% with stats=stats %}
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-xl border p-4 shadow-sm">
+        <div class="text-2xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">{{ stats.communities_with_proposals }}</div>
+        <div class="mt-1 text-xs font-semibold uppercase tracking-wide opacity-60">Communities</div>
+      </div>
+
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-xl border p-4 shadow-sm">
+        <div class="text-2xl font-bold text-yellow-500">{{ stats.open_proposals }}</div>
+        <div class="mt-1 text-xs font-semibold uppercase tracking-wide opacity-60">Open</div>
+      </div>
+
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-xl border p-4 shadow-sm">
+        <div class="text-2xl font-bold text-blue-500">{{ stats.total_decisions }}</div>
+        <div class="mt-1 text-xs font-semibold uppercase tracking-wide opacity-60">Decisions</div>
+      </div>
+
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-xl border p-4 shadow-sm">
+        <div class="text-2xl font-bold text-green-500">{{ stats.active_rules }}</div>
+        <div class="mt-1 text-xs font-semibold uppercase tracking-wide opacity-60">Rules</div>
+      </div>
+
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-xl border p-4 shadow-sm">
+        <div class="text-2xl font-bold text-purple-500">{{ stats.active_fees }}</div>
+        <div class="mt-1 text-xs font-semibold uppercase tracking-wide opacity-60">Fee records</div>
+      </div>
+
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-xl border p-4 shadow-sm">
+        <div class="text-2xl font-bold text-orange-500">{{ stats.active_poll_taxes }}</div>
+        <div class="mt-1 text-xs font-semibold uppercase tracking-wide opacity-60">Poll taxes</div>
+      </div>
+      {% endwith %}
+    </div>
+
+    <!-- Proposal type breakdown -->
+    <div class="grid gap-3 sm:grid-cols-2">
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="flex items-center gap-4 rounded-xl border p-4 shadow-sm">
+        <i class="fa-solid fa-gavel text-2xl opacity-40"></i>
+        <div>
+          <div class="text-xl font-bold">{{ stats.rule_proposals }}</div>
+          <div class="text-xs font-semibold uppercase tracking-wide opacity-60">Rule proposals (all time)</div>
+        </div>
+      </div>
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="flex items-center gap-4 rounded-xl border p-4 shadow-sm">
+        <i class="fa-solid fa-percent text-2xl opacity-40"></i>
+        <div>
+          <div class="text-xl font-bold">{{ stats.tax_proposals }}</div>
+          <div class="text-xs font-semibold uppercase tracking-wide opacity-60">Tax proposals (all time)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fee history chart -->
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-2xl border p-5 shadow-sm sm:p-6"
+      x-data="feeChart()" x-init="init()">
+
+      <div class="mb-4 flex items-center justify-between gap-4">
+        <div>
+          <h2 class="flex items-center gap-2 text-lg font-bold">
+            <i class="fa-solid fa-chart-line"></i>
+            Tax Rate History
+          </h2>
+          <p class="mt-1 text-xs opacity-60">Fee (basis points) per community/asset over time. 100 bps = 1%.</p>
+        </div>
+      </div>
+
+      <div class="relative h-64">
+        <canvas id="feeHistoryChart"></canvas>
+        <p x-show="empty" class="absolute inset-0 flex items-center justify-center text-sm italic opacity-50">
+          No fee records yet.
+        </p>
+      </div>
+    </section>
+
+    <!-- Community assemblies -->
+    <section class="space-y-4">
+      <h2 class="flex items-center gap-2 text-xl font-bold">
+        <i class="fa-solid fa-people-group"></i>
+        Communities
+      </h2>
+
+      {% if communities %}
+        {% for community in communities %}
+        <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="rounded-2xl border p-5 shadow-sm sm:p-6">
+
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 class="text-lg font-bold">{{ community.name }}</h3>
+              <p class="text-xs opacity-60">{{ community.get_org_type_display }}</p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              {% if community.open_proposal_count %}
+                <span class="inline-flex items-center gap-1 rounded-lg bg-yellow-500/15 px-3 py-1.5 text-xs font-semibold text-yellow-600">
+                  <i class="fa-solid fa-scroll"></i>
+                  {{ community.open_proposal_count }} open
+                </span>
+              {% endif %}
+              <a href="{% url 'assembly:community_assembly' community.slug %}"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="inline-flex items-center gap-2 rounded-lg px-4 py-1.5 text-sm font-semibold shadow-sm transition hover:opacity-90">
+                <i class="fa-solid fa-arrow-right text-xs"></i>
+                Open Assembly
+              </a>
+            </div>
+          </div>
+
+          {% if community.recent_rules or community.recent_decisions %}
+          <div class="mt-4 grid gap-4 sm:grid-cols-2">
+
+            <!-- Recent rules -->
+            {% if community.recent_rules %}
+            <div>
+              <p class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-50">
+                <i class="fa-solid fa-gavel mr-1"></i>Active rules
+              </p>
+              <ul class="space-y-1.5">
+                {% for rule in community.recent_rules %}
+                <li :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                  class="rounded-lg border p-2.5 text-sm">
+                  <p class="font-semibold">{{ rule.title }}</p>
+                  <p class="mt-0.5 text-xs opacity-60">{{ rule.text|truncatechars:80 }}</p>
+                </li>
+                {% endfor %}
+              </ul>
+            </div>
+            {% endif %}
+
+            <!-- Recent decisions -->
+            {% if community.recent_decisions %}
+            <div>
+              <p class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-50">
+                <i class="fa-solid fa-link mr-1"></i>Recent decisions
+              </p>
+              <ul class="space-y-1.5">
+                {% for d in community.recent_decisions %}
+                <li :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                  class="rounded-lg border p-2.5 text-sm">
+                  <div class="flex items-start justify-between gap-2">
+                    <p class="font-semibold">{{ d.title }}</p>
+                    <span class="shrink-0 text-xs opacity-40">{{ d.created_at|date:"Y-m-d" }}</span>
+                  </div>
+                  <p class="mt-0.5 text-xs opacity-60">{{ d.decision_type }}</p>
+                </li>
+                {% endfor %}
+              </ul>
+            </div>
+            {% endif %}
+
+          </div>
+          {% endif %}
+
+        </article>
+        {% endfor %}
+      {% else %}
+        <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="rounded-2xl border border-dashed p-10 text-center text-sm italic opacity-60">
+          No community assemblies yet. Open a community page to start.
+        </div>
+      {% endif %}
+    </section>
+
+  </div>
+</section>
+
+{% endblock %}
+
+{% block end_script %}
+<script>
+const _feeChartData = {{ fee_chart_data }};
+
+function feeChart() {
+  return {
+    empty: !_feeChartData.datasets || _feeChartData.datasets.length === 0,
+    init() {
+      if (this.empty) return;
+      const isDark = document.documentElement.classList.contains('dark') ||
+        document.body.getAttribute('x-bind:data-dark') === 'true' ||
+        (window.Alpine && Alpine.store && Alpine.store('darkMode'));
+
+      const gridColor = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)';
+      const tickColor = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.45)';
+
+      new Chart(document.getElementById('feeHistoryChart'), {
+        type: 'line',
+        data: _feeChartData,
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: { color: tickColor, boxWidth: 12, padding: 16, font: { size: 11 } },
+            },
+            tooltip: {
+              callbacks: {
+                label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y} bps`,
+              },
+            },
+          },
+          scales: {
+            x: {
+              type: 'category',
+              ticks: { color: tickColor, font: { size: 11 } },
+              grid: { color: gridColor },
+            },
+            y: {
+              ticks: {
+                color: tickColor,
+                font: { size: 11 },
+                callback: v => v + ' bps',
+              },
+              grid: { color: gridColor },
+            },
+          },
+        },
+      });
+    },
+  };
+}
+</script>
+{% endblock %}

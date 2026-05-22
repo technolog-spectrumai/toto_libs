@@ -1,3 +1,4 @@
+# logistics
 from django.db import models
 from toto.core.domain import DomainEntity
 

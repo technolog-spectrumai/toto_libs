@@ -7,24 +7,20 @@ from django.utils import timezone
 from datetime import timedelta
 
 from toto.api.models import Connector as ApiConnector
-from toto.core.connectors import list_connector_types, validate_connector_type
 from toto.mandragora.models import (
     Cell, ComputeKernel, KernelDependency, Notebook,
 )
 from toto.workflows.services.reports import create_report, serialize_report_reference
 from toto.workflows.models import (
-    HumanTask,
     LambdaFunction,
     Report,
     ReportTemplate,
     Workflow,
-    WorkflowConnector,
     WorkflowEdge,
     WorkflowEdgeRun,
     WorkflowNode,
     WorkflowNodeRun,
     WorkflowRun,
-    WorkflowTriggerInput,
 )
 
 _DEFAULT_DEPS = [
@@ -93,77 +89,8 @@ class Command(IngressCommand):
 
     def _seed_connectors(self):
         self._seed_connector_sample_file()
-        api_connector = self._seed_api_connector()
-        weather_api_connector = self._seed_weather_api_connector()
-
-        seed_configs = {
-            WorkflowConnector.FILE_READ: {
-                "path": "ingress/sample-input.json",
-                "encoding": "utf-8",
-            },
-            WorkflowConnector.FILE_WRITE: {
-                "path": "ingress/sample-output.json",
-                "json_field": "data",
-                "mode": "overwrite",
-            },
-            WorkflowConnector.API_REQUEST: {
-                "api_connector_slug": api_connector.slug,
-                "endpoint": "anything/mandragora-ingress",
-                "method": "GET",
-                "params": {"source": "mandragora-ingress"},
-                "timeout_seconds": 10,
-            },
-            WorkflowConnector.PEOPLE_READ: {
-                "action": "list",
-                "limit": 10,
-            },
-            WorkflowConnector.SOCIALHUB_READ: {
-                "resource": "community",
-                "action": "list",
-                "limit": 10,
-            },
-            WorkflowConnector.LOCATIONS_READ: {
-                "resource": "address",
-                "action": "list",
-                "limit": 10,
-            },
-            WorkflowConnector.EVENTS_READ: {
-                "resource": "scheduled_event",
-                "action": "list",
-                "limit": 10,
-                "public_only": True,
-            },
-        }
-
-        for connector_info in list_connector_types():
-            connector_type = connector_info["connector_type"]
-            config = seed_configs.get(connector_type)
-            if config is None:
-                self.stdout.write(
-                    self.style.WARNING(f"No ingress seed config for connector type: {connector_type}")
-                )
-                continue
-
-            errors = validate_connector_type(connector_type, config)
-            if errors:
-                self.stdout.write(
-                    self.style.WARNING(
-                        f"Skipping connector seed {connector_type}: {'; '.join(errors)}"
-                    )
-                )
-                continue
-
-            name = f"Demo {connector_info['label']}"
-            _, created = WorkflowConnector.objects.update_or_create(
-                name=name,
-                defaults={
-                    "connector_type": connector_type,
-                    "config": config,
-                },
-            )
-            if created:
-                self.stdout.write(self.style.SUCCESS(f"  + connector: {name}"))
-        self._seed_weather_workflow_connector(weather_api_connector)
+        self._seed_api_connector()
+        self._seed_weather_api_connector()
 
     def _seed_connector_sample_file(self):
         root = getattr(settings, "WORKFLOW_FILE_CONNECTOR_ROOT", None)
@@ -215,32 +142,6 @@ class Command(IngressCommand):
             self.stdout.write(self.style.SUCCESS("  + API connector: Open-Meteo Forecast"))
         return api_connector
 
-    def _seed_weather_workflow_connector(self, api_connector):
-        name = "Demo Open-Meteo Forecast"
-        config = {
-            "api_connector_slug": api_connector.slug,
-            "endpoint": "v1/forecast",
-            "method": "GET",
-            "params_field": "data.params",
-            "timeout_seconds": 10,
-            "max_response_bytes": 200000,
-        }
-        errors = validate_connector_type(WorkflowConnector.API_REQUEST, config)
-        if errors:
-            self.stdout.write(
-                self.style.WARNING(f"Skipping Open-Meteo connector seed: {'; '.join(errors)}")
-            )
-            return None
-        connector, created = WorkflowConnector.objects.update_or_create(
-            name=name,
-            defaults={
-                "connector_type": WorkflowConnector.API_REQUEST,
-                "config": config,
-            },
-        )
-        if created:
-            self.stdout.write(self.style.SUCCESS(f"  + connector: {name}"))
-        return connector
 
     # ------------------------------------------------------------------
     #  Report seeds
@@ -719,7 +620,7 @@ print(json.dumps({"data": {"decision": "rejected", "score": _input.get("data", {
         }
 
         n_score  = WorkflowNode.objects.create(workflow=wf, node_type=WorkflowNode.LAMBDA, label="Score",   lambda_function=fn_score,  position_x=0,    position_y=0)
-        n_human  = WorkflowNode.objects.create(workflow=wf, node_type=WorkflowNode.HUMAN,  label="Review",  config=human_config,        position_x=0,    position_y=120)
+        n_human  = WorkflowNode.objects.create(workflow=wf, node_type=WorkflowNode.LAMBDA, label="Review",  config=human_config,        position_x=0,    position_y=120)
         n_accept = WorkflowNode.objects.create(workflow=wf, node_type=WorkflowNode.LAMBDA, label="Accept",  lambda_function=fn_accept, position_x=-150, position_y=240)
         n_reject = WorkflowNode.objects.create(workflow=wf, node_type=WorkflowNode.LAMBDA, label="Reject",  lambda_function=fn_reject, position_x=150,  position_y=240)
         WorkflowEdge.objects.create(workflow=wf, source=n_score,  target=n_human)
@@ -866,9 +767,8 @@ print(json.dumps({"data": {"series": series}, "route": "report"}))
         )
 
     def _seed_weather_workflow(self, temperature_template=None, precipitation_template=None):
-        connector = WorkflowConnector.objects.filter(name="Demo Open-Meteo Forecast").first()
-        if connector is None:
-            connector = self._seed_weather_workflow_connector(self._seed_weather_api_connector())
+        self.stdout.write(self.style.WARNING("Skipping Weather Forecast workflow — CONNECTOR/TRIGGER node types removed in spine redesign"))
+        return
         fn_request = self._upsert_lambda("weather_build_request", """\
 import json
 
@@ -1133,56 +1033,7 @@ print(json.dumps({
         )
 
     def _ensure_weather_trigger_inputs(self, trigger_node):
-        definitions = [
-            {
-                "key": "city",
-                "label": "City",
-                "input_type": WorkflowTriggerInput.TYPE_TEXT,
-                "required": True,
-                "default_value": "Poznan",
-                "order": 1,
-                "help_text": "Display name for this weather run.",
-            },
-            {
-                "key": "latitude",
-                "label": "Latitude",
-                "input_type": WorkflowTriggerInput.TYPE_FLOAT,
-                "required": True,
-                "default_value": 52.4069,
-                "order": 2,
-            },
-            {
-                "key": "longitude",
-                "label": "Longitude",
-                "input_type": WorkflowTriggerInput.TYPE_FLOAT,
-                "required": True,
-                "default_value": 16.9252,
-                "order": 3,
-            },
-            {
-                "key": "forecast_days",
-                "label": "Forecast days",
-                "input_type": WorkflowTriggerInput.TYPE_INT,
-                "required": True,
-                "default_value": 7,
-                "order": 4,
-                "help_text": "Open-Meteo supports up to 16 days for this endpoint.",
-            },
-            {
-                "key": "requested_at",
-                "label": "Requested at",
-                "input_type": WorkflowTriggerInput.TYPE_DATETIME,
-                "required": False,
-                "order": 5,
-                "help_text": "Optional scheduling/reference timestamp for the run.",
-            },
-        ]
-        for definition in definitions:
-            WorkflowTriggerInput.objects.update_or_create(
-                trigger_node=trigger_node,
-                key=definition["key"],
-                defaults=definition,
-            )
+        pass  # WorkflowTriggerInput removed in spine redesign
 
     def _ensure_weather_report_node(self, *, wf, source, label, template, title, position_x):
         if not template:
@@ -1554,12 +1405,6 @@ print(json.dumps({
         nr_score = self._nr(r3, nodes["Score"],  WorkflowNodeRun.COMPLETED, r3.input_data,      score_out_pending, timedelta(minutes=6),  timedelta(minutes=5, seconds=45))
         nr_human = self._nr(r3, nodes["Review"], WorkflowNodeRun.WAITING,   score_out_pending,  None,              timedelta(minutes=5, seconds=45))
         self._er(r3, edges[("Score", "Review")], True, timedelta(minutes=5, seconds=45))
-        HumanTask.objects.create(
-            node_run=nr_human,
-            status=HumanTask.PENDING,
-            form_schema=nodes["Review"].config.get("schema", {}),
-        )
-
         self.stdout.write(self.style.SUCCESS("Seeded 3 runs: Human Approval Gate"))
 
     # --- Parallel Enrichment ---

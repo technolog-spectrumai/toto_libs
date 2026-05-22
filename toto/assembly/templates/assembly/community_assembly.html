@@ -1,0 +1,474 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}Assembly – {{ community.name }}{% endblock %}
+
+{% block start_script %}
+<style>[x-cloak]{display:none!important}</style>
+{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-5xl space-y-6">
+
+    <!-- Header -->
+    <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div class="space-y-2">
+        <a href="{% url 'socialhub:community_detail' community.slug %}"
+          class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+          <i class="fa-solid fa-arrow-left"></i>
+          {{ community.name }}
+        </a>
+        <div>
+          <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+            class="text-xs font-semibold uppercase tracking-wide">Community Assembly</p>
+          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+            <i class="fa-solid fa-landmark"></i>
+            {{ community.name }}
+          </h1>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap gap-2">
+        {% if is_federal_agent or is_federal_tribe_member %}
+          <span
+            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+            class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm">
+            <i class="fa-solid fa-shield-halved"></i>
+            Tax exempt
+          </span>
+        {% endif %}
+        {% if has_voting_rights %}
+          <span
+            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+            class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm">
+            <i class="fa-solid fa-check-circle text-green-500"></i>
+            Voting rights active
+          </span>
+        {% else %}
+          <span
+            class="inline-flex items-center gap-2 rounded-lg border border-yellow-400/40 bg-yellow-500/10 px-4 py-2 text-sm font-semibold text-yellow-600 shadow-sm">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            Poll tax due
+          </span>
+        {% endif %}
+      </div>
+    </header>
+
+    <!-- Poll Taxes -->
+    {% if poll_taxes %}
+    <section
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-2xl border p-5 shadow-sm sm:p-6">
+      <h2 class="mb-4 flex items-center gap-2 text-lg font-bold">
+        <i class="fa-solid fa-coins"></i>
+        Poll Taxes
+      </h2>
+      <div class="space-y-3">
+        {% for item in poll_taxes %}
+        <div
+          :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+          class="flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p class="text-sm font-semibold">
+              {{ item.poll_tax.payment_asset.unit_name }}
+              — {{ item.poll_tax.get_period_display }}
+              — Period: {{ item.period_label }}
+            </p>
+            <p class="mt-0.5 text-xs opacity-60">
+              Head: {{ item.poll_tax.head_amount_base_units }}{% if item.poll_tax.wealth_rate_bps %}
+              + {{ item.poll_tax.wealth_rate_bps }}bps wealth ({{ item.poll_tax.wealth_asset.unit_name }}){% endif %}
+              — Owed: {{ item.amount_owed }}
+            </p>
+          </div>
+          {% if item.paid %}
+            <span class="inline-flex items-center gap-1 rounded-lg bg-green-500/15 px-3 py-1.5 text-xs font-semibold text-green-600">
+              <i class="fa-solid fa-check"></i> Paid
+            </span>
+          {% elif has_voting_rights %}
+            <span class="inline-flex items-center gap-1 rounded-lg bg-green-500/15 px-3 py-1.5 text-xs font-semibold text-green-600">
+              <i class="fa-solid fa-shield-halved"></i> Exempt
+            </span>
+          {% else %}
+            <form method="post" action="{% url 'assembly:poll_tax_pay' community.slug item.poll_tax.pk %}">
+              {% csrf_token %}
+              <button type="submit"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+                <i class="fa-solid fa-money-bill"></i> Pay
+              </button>
+            </form>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+
+    <!-- Proposals -->
+    <section
+      x-data="{ showForm: false, proposalType: 'rule' }"
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-2xl border p-5 shadow-sm sm:p-6">
+
+      <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 class="flex items-center gap-2 text-lg font-bold">
+            <i class="fa-solid fa-scroll"></i>
+            Proposals
+          </h2>
+          <p class="mt-1 text-xs opacity-60">Quorum: {{ quorum_fraction_pct }}% yes required to pass</p>
+        </div>
+        <button type="button" @click="showForm = !showForm"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-plus"></i> New Proposal
+        </button>
+      </div>
+
+      <!-- New proposal form -->
+      <div x-show="showForm" x-cloak class="mb-5">
+        <form method="post" action="{% url 'assembly:proposal_create' community.slug %}"
+          :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+          class="space-y-4 rounded-xl border p-4">
+          {% csrf_token %}
+
+          <div class="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label class="mb-1 block text-xs font-semibold uppercase opacity-60">Proposal type</label>
+              <select name="proposal_type" x-model="proposalType"
+                :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                class="w-full rounded-lg border px-3 py-2 text-sm">
+                {% for val, label in assembly_proposal_types %}
+                  <option value="{{ val }}">{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div>
+              <label class="mb-1 block text-xs font-semibold uppercase opacity-60">Title</label>
+              <input type="text" name="title" required
+                :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                class="w-full rounded-lg border px-3 py-2 text-sm">
+            </div>
+          </div>
+
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase opacity-60">Body / rationale</label>
+            <textarea name="body" rows="3"
+              :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+              class="w-full rounded-lg border px-3 py-2 text-sm"></textarea>
+          </div>
+
+          <!-- Rule: positive / repeal toggle -->
+          <div x-show="proposalType === 'rule'" class="flex items-center gap-3">
+            <label class="inline-flex cursor-pointer items-center gap-2 text-sm font-semibold">
+              <input type="checkbox" name="is_repeal" value="1" class="h-4 w-4 rounded">
+              This is a <span class="text-red-500">repeal</span> (removes an existing rule)
+            </label>
+          </div>
+
+          <!-- Asset tax fields -->
+          <div x-show="proposalType === 'asset_tax'"
+            x-data="{
+              assetSearch: '',
+              assetId: '',
+              assetLabel: 'All assets (blanket fee)',
+              open: false,
+              assets: {{ available_assets_json }},
+              get filtered() {
+                if (!this.assetSearch) return this.assets;
+                const q = this.assetSearch.toLowerCase();
+                return this.assets.filter(a =>
+                  a.name.toLowerCase().includes(q) || a.unit_name.toLowerCase().includes(q)
+                );
+              },
+              select(id, label) {
+                this.assetId = id;
+                this.assetLabel = label;
+                this.assetSearch = '';
+                this.open = false;
+              },
+              selectAll() {
+                this.assetId = '';
+                this.assetLabel = 'All assets (blanket fee)';
+                this.assetSearch = '';
+                this.open = false;
+              }
+            }"
+            class="space-y-4">
+
+            <div class="grid gap-4 sm:grid-cols-2">
+
+              <!-- Searchable asset picker -->
+              <div class="relative">
+                <label class="mb-1 block text-xs font-semibold uppercase opacity-60">Asset</label>
+                <input type="hidden" name="asset_id" :value="assetId">
+
+                <button type="button" @click="open = !open; $nextTick(() => { if (open) $refs.searchInput.focus() })"
+                  :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                  class="flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-sm">
+                  <span x-text="assetLabel" :class="assetId === '' ? 'opacity-50' : ''"></span>
+                  <i class="fa-solid fa-chevron-down text-xs opacity-50 transition-transform" :class="open ? 'rotate-180' : ''"></i>
+                </button>
+
+                <div x-show="open" x-cloak @click.outside="open = false"
+                  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                  class="absolute z-20 mt-1 w-full rounded-xl border shadow-lg">
+
+                  <!-- Search input -->
+                  <div class="p-2">
+                    <input type="text" x-model="assetSearch" placeholder="Search assets…"
+                      @keydown.escape="open = false"
+                      x-ref="searchInput"
+                      :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                      class="w-full rounded-lg border px-3 py-1.5 text-sm">
+                  </div>
+
+                  <ul class="max-h-52 overflow-y-auto pb-1">
+                    <!-- All assets option -->
+                    <li>
+                      <button type="button" @click="selectAll()"
+                        :class="assetId === ''
+                          ? (darkMode ? 'bg-accent-dark/20' : 'bg-accent-light/10')
+                          : 'hover:opacity-75'"
+                        class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold">
+                        <i class="fa-solid fa-layer-group text-xs opacity-60"></i>
+                        All assets <span class="ml-auto text-xs opacity-50">blanket fee</span>
+                      </button>
+                    </li>
+                    <li :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-t mx-2"></li>
+
+                    <!-- Individual assets -->
+                    <template x-for="asset in filtered" :key="asset.id">
+                      <li>
+                        <button type="button" @click="select(asset.id, asset.name + ' (' + asset.unit_name + ')')"
+                          :class="assetId == asset.id
+                            ? (darkMode ? 'bg-accent-dark/20' : 'bg-accent-light/10')
+                            : 'hover:opacity-75'"
+                          class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm">
+                          <span class="truncate" x-text="asset.name"></span>
+                          <span class="ml-auto shrink-0 font-mono text-xs opacity-50" x-text="asset.unit_name"></span>
+                        </button>
+                      </li>
+                    </template>
+
+                    <li x-show="filtered.length === 0" class="px-3 py-2 text-xs italic opacity-50">No assets found.</li>
+                  </ul>
+                </div>
+
+                <p class="mt-1 text-xs opacity-50">
+                  "All assets" sets a blanket fee. Per-asset fee can be negative (discount).
+                </p>
+              </div>
+
+              <!-- Fee bps -->
+              <div>
+                <label class="mb-1 block text-xs font-semibold uppercase opacity-60">Fee (bps) — 100 = 1%</label>
+                <input type="number" name="fee_bps" value="0"
+                  :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                  class="w-full rounded-lg border px-3 py-2 text-sm">
+                <p class="mt-1 text-xs opacity-50">Negative values discount on top of the blanket fee.</p>
+              </div>
+
+            </div>
+          </div>
+
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase opacity-60">Voting closes at (optional)</label>
+            <div class="flex flex-wrap gap-2">
+              <input type="date" name="closes_date"
+                :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                class="rounded-lg border px-3 py-2 text-sm">
+              <input type="time" name="closes_time" value="23:59"
+                :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                class="rounded-lg border px-3 py-2 text-sm">
+            </div>
+            <p class="mt-1 text-xs opacity-50">Leave date blank for no deadline.</p>
+          </div>
+
+          <div class="flex justify-end">
+            <button type="submit"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+              <i class="fa-solid fa-paper-plane"></i> Submit
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Proposal list -->
+      {% if proposal_data %}
+        <div class="space-y-3">
+          {% for item in proposal_data %}
+          <article
+            :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+            class="rounded-xl border p-4">
+            <div class="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <p class="font-semibold">{{ item.proposal.title }}</p>
+                  {% if item.proposal.proposal_type == 'rule' %}
+                    {% if item.proposal.is_repeal %}
+                      <span class="rounded bg-red-500/15 px-2 py-0.5 text-xs font-semibold text-red-600">Repeal</span>
+                    {% else %}
+                      <span class="rounded bg-green-500/15 px-2 py-0.5 text-xs font-semibold text-green-600">New rule</span>
+                    {% endif %}
+                  {% else %}
+                    <span :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="rounded px-2 py-0.5 text-xs font-semibold">
+                      Asset tax
+                    </span>
+                  {% endif %}
+                  <span class="text-xs opacity-50">{{ item.proposal.get_status_display }}</span>
+                </div>
+                <p class="mt-0.5 text-xs opacity-60">by {{ item.proposal.opened_by.display_name|default:"—" }}{% if item.proposal.closes_at %} · closes {{ item.proposal.closes_at|date:"Y-m-d H:i" }}{% endif %}</p>
+              </div>
+              <div class="flex gap-2 text-xs font-semibold">
+                <span class="rounded bg-green-500/15 px-2 py-0.5 text-green-600">✓ {{ item.tally.yes }}</span>
+                <span class="rounded bg-red-500/15 px-2 py-0.5 text-red-600">✗ {{ item.tally.no }}</span>
+                <span class="rounded px-2 py-0.5 opacity-50">— {{ item.tally.abstain }}</span>
+              </div>
+            </div>
+
+            {% if item.proposal.body %}
+              <p class="mt-2 text-sm opacity-70">{{ item.proposal.body|truncatechars:200 }}</p>
+            {% endif %}
+
+            {% if item.proposal.is_open %}
+              <div class="mt-3 flex flex-wrap gap-2">
+                {% if item.user_vote %}
+                  <span class="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-semibold opacity-60"
+                    :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+                    Your vote: {{ item.user_vote.get_vote_display }}
+                  </span>
+                {% elif has_voting_rights %}
+                  {% for val, label in vote_choices %}
+                    <form method="post" action="{% url 'assembly:proposal_vote' community.slug item.proposal.pk %}">
+                      {% csrf_token %}
+                      <input type="hidden" name="vote" value="{{ val }}">
+                      <button type="submit"
+                        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                        class="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80">
+                        {{ label }}
+                      </button>
+                    </form>
+                  {% endfor %}
+                {% else %}
+                  <span class="text-xs font-semibold text-yellow-600">
+                    <i class="fa-solid fa-lock text-xs"></i> Pay poll tax to vote
+                  </span>
+                {% endif %}
+
+                {% if request.user.is_staff %}
+                  <form method="post" action="{% url 'assembly:proposal_close' community.slug item.proposal.pk %}">
+                    {% csrf_token %}
+                    <button type="submit"
+                      class="inline-flex items-center gap-1 rounded-lg border border-red-400/30 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:opacity-80">
+                      Force close
+                    </button>
+                  </form>
+                {% endif %}
+              </div>
+            {% endif %}
+          </article>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div
+          :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+          class="rounded-xl border border-dashed p-6 text-center text-sm italic opacity-70">
+          No proposals yet.
+        </div>
+      {% endif %}
+    </section>
+
+    <!-- Rules & Fees side-by-side -->
+    <div class="grid gap-6 sm:grid-cols-2">
+
+      <!-- Active Rules -->
+      <section
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-2xl border p-5 shadow-sm">
+        <h2 class="mb-4 flex items-center gap-2 text-lg font-bold">
+          <i class="fa-solid fa-gavel"></i> Rules
+        </h2>
+        {% if community_rules %}
+          <ul class="space-y-2">
+            {% for rule in community_rules %}
+              <li
+                :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                class="rounded-xl border p-3">
+                <p class="text-sm font-semibold">{{ rule.title }}</p>
+                <p class="mt-0.5 text-xs opacity-60">{{ rule.text|truncatechars:120 }}</p>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="text-sm italic opacity-60">No active rules.</p>
+        {% endif %}
+      </section>
+
+      <!-- Transaction Fees -->
+      <section
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-2xl border p-5 shadow-sm">
+        <h2 class="mb-4 flex items-center gap-2 text-lg font-bold">
+          <i class="fa-solid fa-percent"></i> Transaction Fees
+        </h2>
+        {% if community_fees %}
+          <ul class="space-y-2">
+            {% for fee in community_fees %}
+              <li
+                :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                class="flex items-center justify-between gap-2 rounded-xl border p-3 text-sm">
+                <div>
+                  <p class="font-semibold">
+                    {% if fee.asset %}{{ fee.asset.unit_name }}{% else %}<span class="opacity-60">Blanket (all assets)</span>{% endif %}
+                  </p>
+                  <p class="text-xs opacity-50">{{ fee.get_set_by_display }}</p>
+                </div>
+                <span class="font-bold {% if fee.fee_bps < 0 %}text-green-500{% else %}":class="darkMode ? 'text-accent-dark' : 'text-accent-light'{% endif %}">
+                  {% if fee.fee_bps >= 0 %}+{% endif %}{{ fee.fee_bps }} bps
+                </span>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="text-sm italic opacity-60">No active fees.</p>
+        {% endif %}
+      </section>
+    </div>
+
+    <!-- Decision Ledger -->
+    <section
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-2xl border p-5 shadow-sm sm:p-6">
+      <h2 class="mb-4 flex items-center gap-2 text-lg font-bold">
+        <i class="fa-solid fa-link"></i> Decision Ledger
+      </h2>
+      {% if decisions %}
+        <div class="space-y-2">
+          {% for d in decisions %}
+            <article
+              :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+              class="rounded-xl border p-3">
+              <div class="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <p class="text-sm font-semibold">{{ d.title }}</p>
+                  <p class="mt-0.5 text-xs opacity-60">{{ d.decision_type }} · {{ d.created_at|date:"Y-m-d H:i" }}</p>
+                </div>
+                <code class="font-mono text-xs opacity-40">{{ d.content_hash|truncatechars:16 }}</code>
+              </div>
+            </article>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-sm italic opacity-60">No decisions recorded yet.</p>
+      {% endif %}
+    </section>
+
+  </div>
+</section>
+{% endblock %}

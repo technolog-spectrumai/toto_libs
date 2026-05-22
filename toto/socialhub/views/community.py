@@ -8,7 +8,6 @@ from toto.ui import PageProcessor
 from django.http import JsonResponse
 
 
-
 class CommunityListView(ListView):
     model = Community
     template_name = "socialhub/community_list.html"
