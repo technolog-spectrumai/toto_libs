@@ -22,7 +22,7 @@ class BaseWeatherProvider:
         """
         raise NotImplementedError
 
-    def fetch_forecast(self, addresses: list["Address"], hours_ahead: int = 120) -> dict:
+    def fetch_forecast(self, addresses: list["Address"], start_at=None, end_at=None) -> dict:
         """
         Fetch hourly forecast for a list of Address objects.
         Returns a dict with keys:

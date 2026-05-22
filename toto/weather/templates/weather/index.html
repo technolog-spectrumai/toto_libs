@@ -701,7 +701,8 @@
             <div class="max-h-52 space-y-0.5 overflow-y-auto">
               <template x-for="addr in filteredAddresses" :key="addr.id">
                 <label class="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition hover:bg-current/5">
-                  <input type="checkbox" :value="addr.id" x-model="selectedIds" @change="toggleLocation(addr.id)"
+                  <input type="checkbox" :checked="selectedIds.includes(addr.id)"
+                         @change="toggleLocation(addr.id)"
                          class="h-4 w-4 accent-current">
                   <span class="truncate" x-text="addr.name"></span>
                 </label>
@@ -824,7 +825,9 @@
               <div class="max-h-52 space-y-0.5 overflow-y-auto">
                 <template x-for="addr in filteredAddresses" :key="addr.id">
                   <label class="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition hover:bg-current/5">
-                    <input type="checkbox" :value="addr.id" x-model="selectedIds" class="h-4 w-4 accent-current">
+                    <input type="checkbox" :checked="selectedIds.includes(addr.id)"
+                           @change="toggleLocation(addr.id)"
+                           class="h-4 w-4 accent-current">
                     <span class="truncate" x-text="addr.name"></span>
                   </label>
                 </template>
@@ -895,11 +898,7 @@
               <span class="ml-auto opacity-50" x-text="`${sliderTimes.length} steps`"></span>
             </div>
 
-            <!-- Forecast map -->
-            <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-                 class="relative h-64 overflow-hidden rounded-xl border shadow-sm lg:h-80">
-              <div id="weather-forecast-map" class="weather-map h-full w-full"></div>
-            </div>
+
 
             <!-- Charts -->
             <div class="space-y-3">
