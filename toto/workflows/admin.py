@@ -4,29 +4,23 @@ from django.utils.html import format_html
 from jsoneditor.forms import JSONEditor
 
 from .models import (
-    HumanTask,
     LambdaFunction,
     Report,
     ReportPage,
     ReportTemplate,
-    WorkflowConnector,
     Workflow,
     WorkflowEdge,
     WorkflowEdgeRun,
     WorkflowNode,
     WorkflowNodeRun,
-    WorkflowRunFile,
     WorkflowRun,
-    WorkflowTriggerInput,
 )
 
 _RUN_STATUS_COLORS = {
     "pending":   "#6b7280",
     "running":   "#2563eb",
-    "paused":    "#d97706",
     "completed": "#16a34a",
     "failed":    "#dc2626",
-    "waiting":   "#d97706",
     "skipped":   "#9ca3af",
 }
 
@@ -53,29 +47,8 @@ class WorkflowNodeInline(admin.TabularInline):
     model = WorkflowNode
     extra = 0
     show_change_link = True
-    fields = ("id", "node_type", "label", "lambda_function", "connector", "report_template")
+    fields = ("id", "node_type", "label", "lambda_function", "report_template")
     readonly_fields = ("id",)
-
-
-class WorkflowTriggerInputInline(admin.TabularInline):
-    model = WorkflowTriggerInput
-    extra = 0
-    fields = (
-        "order",
-        "key",
-        "label",
-        "input_type",
-        "required",
-        "default_value",
-        "help_text",
-        "allow_multiple_files",
-        "accepted_file_types",
-        "max_file_count",
-        "max_file_size",
-    )
-    formfield_overrides = {
-        models.JSONField: {"widget": JSON_EDITOR_WIDGET},
-    }
 
 
 class WorkflowEdgeInline(admin.TabularInline):
@@ -91,22 +64,11 @@ class LambdaFunctionAdmin(admin.ModelAdmin):
     search_fields = ("function_name",)
 
 
-@admin.register(WorkflowConnector)
-class WorkflowConnectorAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "connector_type", "created_at")
-    list_filter = ("connector_type",)
-    search_fields = ("name",)
-    readonly_fields = ("created_at",)
-    fields = ("name", "connector_type", "config", "created_at")
-    formfield_overrides = {
-        models.JSONField: {"widget": JSON_EDITOR_WIDGET},
-    }
-
-
 @admin.register(Workflow)
 class WorkflowAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "node_count", "created_at")
-    search_fields = ("name",)
+    list_display = ("id", "name", "slug", "node_count", "created_at")
+    search_fields = ("name", "slug")
+    prepopulated_fields = {"slug": ("name",)}
     readonly_fields = ("created_at",)
     inlines = [WorkflowNodeInline, WorkflowEdgeInline]
 
@@ -117,18 +79,12 @@ class WorkflowAdmin(admin.ModelAdmin):
 
 @admin.register(WorkflowNode)
 class WorkflowNodeAdmin(admin.ModelAdmin):
-    list_display = ("id", "workflow", "node_type", "label", "lambda_function", "connector", "report_template")
+    list_display = ("id", "workflow", "node_type", "label", "lambda_function", "report_template")
     list_filter = ("node_type", "workflow")
     search_fields = ("label",)
-    inlines = [WorkflowTriggerInputInline]
     formfield_overrides = {
         models.JSONField: {"widget": JSON_EDITOR_WIDGET},
     }
-
-    def get_inline_instances(self, request, obj=None):
-        if obj is None or obj.node_type != WorkflowNode.TRIGGER:
-            return []
-        return super().get_inline_instances(request, obj)
 
 
 @admin.register(WorkflowEdge)
@@ -155,19 +111,12 @@ class WorkflowEdgeRunInline(admin.TabularInline):
     readonly_fields = ("activated_at",)
 
 
-class WorkflowRunFileInline(admin.TabularInline):
-    model = WorkflowRunFile
-    extra = 0
-    fields = ("input_key", "original_name", "mime_type", "size", "uploaded_at")
-    readonly_fields = ("input_key", "original_name", "mime_type", "size", "uploaded_at")
-
-
 @admin.register(WorkflowRun)
 class WorkflowRunAdmin(admin.ModelAdmin):
     list_display = ("id", "workflow", "status_badge", "started_at", "completed_at")
     list_filter = ("status", "workflow")
     readonly_fields = ("created_at", "started_at", "completed_at")
-    inlines = [WorkflowNodeRunInline, WorkflowEdgeRunInline, WorkflowRunFileInline]
+    inlines = [WorkflowNodeRunInline, WorkflowEdgeRunInline]
 
     @admin.display(description="Status")
     def status_badge(self, obj):
@@ -225,28 +174,3 @@ class WorkflowNodeRunAdmin(admin.ModelAdmin):
     @admin.display(description="Status")
     def status_badge(self, obj):
         return _run_badge(obj.status, obj.get_status_display())
-
-
-@admin.register(WorkflowTriggerInput)
-class WorkflowTriggerInputAdmin(admin.ModelAdmin):
-    list_display = ("id", "trigger_node", "key", "input_type", "required", "order")
-    list_filter = ("input_type", "required", "trigger_node__workflow")
-    search_fields = ("key", "label", "trigger_node__label", "trigger_node__workflow__name")
-    formfield_overrides = {
-        models.JSONField: {"widget": JSON_EDITOR_WIDGET},
-    }
-
-
-@admin.register(WorkflowRunFile)
-class WorkflowRunFileAdmin(admin.ModelAdmin):
-    list_display = ("id", "workflow_run", "input_key", "original_name", "mime_type", "size", "uploaded_at")
-    list_filter = ("input_key", "mime_type")
-    search_fields = ("original_name", "input_key", "workflow_run__workflow__name")
-    readonly_fields = ("uploaded_at",)
-
-
-@admin.register(HumanTask)
-class HumanTaskAdmin(admin.ModelAdmin):
-    list_display = ("id", "node_run", "status", "submitted_at", "created_at")
-    list_filter = ("status",)
-    readonly_fields = ("created_at", "submitted_at")

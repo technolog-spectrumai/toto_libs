@@ -6,27 +6,8 @@ from django.conf import settings
 from toto.core.connectors import (
     BaseConnector,
     ConnectorExecutionError,
-    execute_connector_type,
     register_connector,
-    validate_connector_type,
 )
-
-from ..models import WorkflowConnector
-from ..output import normalize_workflow_output
-
-
-def execute_connector(connector: WorkflowConnector, input_data: dict | None) -> dict:
-    raw = execute_connector_type(
-        connector.connector_type,
-        connector.config or {},
-        input_data or {},
-    )
-    wo = normalize_workflow_output(raw)
-    return {"data": wo.data, "routes": wo.routes}
-
-
-def validate_connector_config(connector: WorkflowConnector) -> list[str]:
-    return validate_connector_type(connector.connector_type, connector.config or {})
 
 
 @register_connector

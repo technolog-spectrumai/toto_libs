@@ -1,25 +1,23 @@
 """
-WorkflowExecutor — DAG runner.
+WorkflowExecutor — lean DAG runner for chains of lambda functions.
 
 Execution contract
 ------------------
 - Lambda nodes run their LambdaFunction.content in the workflow worker. In
-  async_lambdas mode, each lambda node is queued as its own Celery task.
-  The kernel is expected to print a JSON object:
+  async_lambdas mode each lambda node is queued as its own Celery task.
+  The lambda is expected to print a JSON object to stdout:
       {"data": {...}, "route": "branch_name"}
       {"data": {...}, "routes": ["a", "b"]}
-  to stdout.  Any other stdout is silently ignored.
-
-- Human nodes create a HumanTask and pause the WorkflowRun.
-  Execution resumes via WorkflowExecutor.resume(workflow_run).
+  Any other stdout lines are silently ignored.
 
 - Split nodes read route/routes from their input_data and activate
-  matching outgoing edges by edge.branch_key.  If no edge matches,
-  the default edge (is_default=True) fires.  Split nodes do not
-  invoke any lambda.
+  matching outgoing edges by edge.branch_key. The default edge fires if
+  no branch key matches. Split nodes do not invoke any lambda.
 
-- Join nodes wait until every *activated* upstream edge is backed by
-  a COMPLETED node_run, then merge all upstream data dicts and continue.
+- Join nodes wait until every activated upstream edge has a COMPLETED
+  source node_run, then merge all upstream data dicts and continue.
+
+- Report nodes generate a debug/informational Report record.
 """
 
 import json
@@ -31,21 +29,17 @@ from django.conf import settings
 from django.utils import timezone
 
 from ..models import (
-    HumanTask,
     WorkflowEdgeRun,
     WorkflowNode,
     WorkflowNodeRun,
     WorkflowRun,
 )
 from ..output import normalize_workflow_output
-from .connectors import execute_connector
-from .triggers import trigger_payload_for_run
 
 log = logging.getLogger(__name__)
 
 
 def _get_kernel_client():
-    """Legacy test hook; production workflow lambdas do not use KernelClient."""
     mock_cls = getattr(settings, "WORKFLOW_KERNEL_CLIENT", None)
     if mock_cls is not None:
         return mock_cls()
@@ -57,7 +51,6 @@ class WorkflowExecutor:
         self.async_lambdas = async_lambdas
 
     def start(self, workflow_run: WorkflowRun) -> None:
-        """Begin execution of a fresh WorkflowRun."""
         workflow_run.status = WorkflowRun.RUNNING
         workflow_run.started_at = timezone.now()
         workflow_run.save(update_fields=["status", "started_at"])
@@ -69,15 +62,6 @@ class WorkflowExecutor:
             self._schedule_node(workflow_run, node, workflow_run.input_data or {})
 
         self._check_completion(workflow_run)
-
-    def resume(self, workflow_run: WorkflowRun) -> None:
-        """Resume a PAUSED run (called after a HumanTask is submitted)."""
-        workflow_run.refresh_from_db()
-        if workflow_run.status != WorkflowRun.PAUSED:
-            return
-        workflow_run.status = WorkflowRun.RUNNING
-        workflow_run.save(update_fields=["status"])
-        self._advance(workflow_run)
 
     def _schedule_node(self, workflow_run: WorkflowRun, node: WorkflowNode, input_data: dict) -> None:
         is_async_lambda = self.async_lambdas and node.node_type == WorkflowNode.LAMBDA
@@ -100,19 +84,12 @@ class WorkflowExecutor:
     def _execute_node(self, node_run: WorkflowNodeRun) -> None:
         node = node_run.node
         try:
-            if node.node_type == WorkflowNode.TRIGGER:
-                output = self._run_trigger(node_run)
-            elif node.node_type == WorkflowNode.LAMBDA:
+            if node.node_type == WorkflowNode.LAMBDA:
                 output = self._run_lambda(node_run)
-            elif node.node_type == WorkflowNode.HUMAN:
-                self._run_human(node_run)
-                return
             elif node.node_type == WorkflowNode.SPLIT:
                 output = self._run_split(node_run)
             elif node.node_type == WorkflowNode.JOIN:
                 output = self._run_join(node_run)
-            elif node.node_type == WorkflowNode.CONNECTOR:
-                output = self._run_connector(node_run)
             elif node.node_type == WorkflowNode.REPORT:
                 output = self._run_report(node_run)
             else:
@@ -239,26 +216,6 @@ class WorkflowExecutor:
                 continue
         return {}
 
-    def _run_trigger(self, node_run: WorkflowNodeRun) -> dict:
-        return {
-            "data": trigger_payload_for_run(node_run.workflow_run, node_run.node),
-            "routes": ["start"],
-        }
-
-    def _run_human(self, node_run: WorkflowNodeRun) -> None:
-        node = node_run.node
-        schema = node.config.get("schema", {})
-        HumanTask.objects.create(
-            node_run=node_run,
-            form_schema=schema,
-            status=HumanTask.PENDING,
-        )
-        node_run.status = WorkflowNodeRun.WAITING
-        node_run.save(update_fields=["status"])
-
-        node_run.workflow_run.status = WorkflowRun.PAUSED
-        node_run.workflow_run.save(update_fields=["status"])
-
     def _run_split(self, node_run: WorkflowNodeRun) -> dict:
         return node_run.input_data or {}
 
@@ -282,12 +239,6 @@ class WorkflowExecutor:
                 merged_routes.extend(source_run.output_data.get("routes", []))
 
         return {"data": merged_data, "routes": merged_routes}
-
-    def _run_connector(self, node_run: WorkflowNodeRun) -> dict:
-        connector = node_run.node.connector
-        if connector is None:
-            raise ValueError("Connector node has no connector configured.")
-        return execute_connector(connector, node_run.input_data or {})
 
     def _run_report(self, node_run: WorkflowNodeRun) -> dict:
         from .reports import create_report_from_node_run
@@ -426,10 +377,6 @@ class WorkflowExecutor:
             return
 
         node_runs = WorkflowNodeRun.objects.filter(workflow_run=workflow_run)
-        if node_runs.filter(status=WorkflowNodeRun.WAITING).exists():
-            workflow_run.status = WorkflowRun.PAUSED
-            workflow_run.save(update_fields=["status"])
-            return
         if node_runs.filter(status__in=[WorkflowNodeRun.RUNNING, WorkflowNodeRun.PENDING]).exists():
             return
         workflow_run.status = WorkflowRun.COMPLETED

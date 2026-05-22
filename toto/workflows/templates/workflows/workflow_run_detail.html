@@ -31,21 +31,11 @@
 
         <!-- Actions -->
         <div class="flex flex-wrap items-center gap-2">
-          {% if run.input_data.trigger_node_id %}
-            <a href="{% url 'workflows:workflow_gate' run.workflow.id %}?rerun={{ run.id }}"
-               :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-primary-bg-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-primary-bg-light'"
-               class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-semibold shadow-sm transition">
-              <i class="fa-solid fa-rotate-right"></i>
-              {% trans "Rerun" %}
-            </a>
-          {% endif %}
           <span class="rounded-full px-4 py-1.5 text-sm font-bold
             {% if run.status == 'completed' %}
               :class="darkMode ? 'bg-success-dark/20 text-success-dark' : 'bg-success-light/20 text-success-light'"
             {% elif run.status == 'failed' %}
               :class="darkMode ? 'bg-warn-dark/20 text-warn-dark' : 'bg-warn-light/20 text-warn-light'"
-            {% elif run.status == 'paused' %}
-              :class="darkMode ? 'bg-caution-dark/20 text-caution-dark' : 'bg-caution-light/20 text-caution-light'"
             {% elif run.status == 'running' %}
               :class="darkMode ? 'bg-accent-dark/20 text-accent-dark' : 'bg-accent-light/20 text-accent-light'"
             {% else %}
@@ -132,10 +122,6 @@
                 :class="darkMode ? 'border-warn-dark bg-warn-dark/20' : 'border-warn-light bg-warn-light/20'"></span>
           failed
         </span>
-        <span class="flex items-center gap-1.5" :class="darkMode ? 'text-caution-dark' : 'text-caution-light'">
-          <span class="inline-block h-3 w-3 rounded-sm border-2" :class="darkMode ? 'border-caution-dark bg-caution-dark/20' : 'border-caution-light bg-caution-light/20'"></span>
-          waiting
-        </span>
         <span class="flex items-center gap-1.5"
               :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
           <span class="inline-block h-3 w-3 rounded-sm border-2"
@@ -153,74 +139,6 @@
         <div id="workflow-graph-container" class="h-80 w-full"></div>
       </div>
     </section>
-
-    <!-- Pending human tasks -->
-    {% if pending_tasks %}
-      <section>
-        <h2 class="mb-3 flex items-center gap-2 text-lg font-semibold" :class="darkMode ? 'text-caution-dark' : 'text-caution-light'">
-          <i class="fa-solid fa-user-clock"></i> {% trans "Awaiting human input" %}
-        </h2>
-        {% for task in pending_tasks %}
-          <div :class="darkMode ? 'border-caution-dark/40 bg-bubble-bg-dark' : 'border-caution-light/40 bg-bubble-bg-light'"
-               class="rounded-xl border p-5 shadow-sm space-y-4"
-               x-data="{ formData: {} }">
-            <p class="text-sm font-semibold">{% trans "Human Task" %} #{{ task.id }}</p>
-
-            <form @submit.prevent="submitTask({{ task.id }}, formData)">
-              {% for field_name, field_spec in task.form_schema.properties.items %}
-                <div class="mb-3">
-                  <label class="block text-xs font-semibold mb-1 opacity-70">
-                    {{ field_spec.title|default:field_name }}
-                    {% if field_name in task.form_schema.required %}
-                      <span :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" class="ml-1">*</span>
-                    {% endif %}
-                  </label>
-                  {% if field_spec.type == "boolean" %}
-                    <input type="checkbox"
-                           x-model="formData['{{ field_name }}']"
-                           class="rounded border border-gray-400"
-                           :class="darkMode ? 'text-accent-dark focus:ring-accent-dark' : 'text-accent-light focus:ring-accent-light'">
-                  {% elif field_spec.type == "number" or field_spec.type == "integer" %}
-                    <input type="number" step="any"
-                           x-model.number="formData['{{ field_name }}']"
-                           placeholder="{{ field_spec.description|default:'' }}"
-                           class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                           :class="darkMode ? 'bg-primary-bg-dark border-accent-1 focus:ring-accent-dark' : 'bg-white border-accent-2 focus:ring-accent-light'">
-                  {% else %}
-                    <input type="text"
-                           x-model="formData['{{ field_name }}']"
-                           placeholder="{{ field_spec.description|default:'' }}"
-                           class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                           :class="darkMode ? 'bg-primary-bg-dark border-accent-1 focus:ring-accent-dark' : 'bg-white border-accent-2 focus:ring-accent-light'">
-                  {% endif %}
-                </div>
-              {% endfor %}
-
-              <button type="submit"
-                      class="mt-2 rounded-lg px-5 py-2 text-sm font-semibold transition-colors" :class="darkMode ? 'bg-caution-dark text-primary-bg-dark hover:bg-caution-dark/80' : 'bg-caution-light text-white hover:bg-caution-light/80'">
-                <i class="fa-solid fa-paper-plane mr-2"></i> {% trans "Submit" %}
-              </button>
-            </form>
-          </div>
-        {% endfor %}
-
-        <script>
-          async function submitTask(taskId, formData) {
-            const res = await fetch("{% url 'workflows:api_human_task_submit' 0 %}".replace('/0/', `/${taskId}/`), {
-              method: "POST",
-              headers: {"Content-Type": "application/json", "X-CSRFToken": getCookie("csrftoken")},
-              body: JSON.stringify({submitted_data: formData}),
-            });
-            if (res.ok) { window.location.reload(); }
-            else { alert("Submission failed: " + (await res.text())); }
-          }
-          function getCookie(name) {
-            const v = document.cookie.match('(^|;) ?' + name + '=([^;]*)(;|$)');
-            return v ? v[2] : null;
-          }
-        </script>
-      </section>
-    {% endif %}
 
     <!-- Node runs -->
     <section>
@@ -242,8 +160,6 @@
                   {% elif nr.status == "failed" %}
                     <i class="fa-solid fa-circle-xmark"
                        :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
-                  {% elif nr.status == "waiting" %}
-                    <i class="fa-solid fa-user-clock" :class="darkMode ? 'text-caution-dark' : 'text-caution-light'"></i>
                   {% elif nr.status == "running" %}
                     <i class="fa-solid fa-spinner fa-spin"
                        :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
@@ -256,8 +172,6 @@
                   {% if nr.node.node_type == 'lambda' %}
                     <span class="ml-2 rounded-full px-2 py-0.5 text-xs font-medium"
                           :class="darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'">lambda</span>
-                  {% elif nr.node.node_type == 'human' %}
-                    <span class="ml-2 rounded-full px-2 py-0.5 text-xs font-medium" :class="darkMode ? 'bg-caution-dark/15 text-caution-dark' : 'bg-caution-light/15 text-caution-light'">human</span>
                   {% elif nr.node.node_type == 'split' %}
                     <span class="ml-2 rounded-full px-2 py-0.5 text-xs font-medium"
                           :class="darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'">split</span>
@@ -286,8 +200,6 @@
                           :class="darkMode ? 'bg-warn-dark/15 text-warn-dark' : 'bg-warn-light/15 text-warn-light'">
                       {{ nr.status }}
                     </span>
-                  {% elif nr.status == 'waiting' %}
-                    <span class="rounded-full px-2 py-0.5 text-xs font-semibold" :class="darkMode ? 'bg-caution-dark/15 text-caution-dark' : 'bg-caution-light/15 text-caution-light'">{{ nr.status }}</span>
                   {% elif nr.status == 'running' %}
                     <span class="rounded-full px-2 py-0.5 text-xs font-semibold"
                           :class="darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'">{{ nr.status }}</span>

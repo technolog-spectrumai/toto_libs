@@ -1,7 +1,6 @@
 from collections import defaultdict, deque
 
 from ..models import Workflow, WorkflowNode
-from .connectors import validate_connector_config
 
 
 class ValidationError(Exception):
@@ -38,31 +37,6 @@ class WorkflowValidator:
                     errors.append(
                         f"Lambda node {node.id} ({node.label!r}) has no lambda_function."
                     )
-            elif node.node_type == WorkflowNode.TRIGGER:
-                input_keys = set()
-                for trigger_input in node.trigger_inputs.all():
-                    if trigger_input.key in input_keys:
-                        errors.append(
-                            f"Trigger node {node.id} has duplicate input key {trigger_input.key!r}."
-                        )
-                    input_keys.add(trigger_input.key)
-                    if trigger_input.input_type not in dict(trigger_input.INPUT_TYPES):
-                        errors.append(
-                            f"Trigger input {trigger_input.key!r} has unsupported type."
-                        )
-            elif node.node_type == WorkflowNode.HUMAN:
-                schema = node.config.get("schema") if node.config else None
-                if not schema:
-                    errors.append(
-                        f"Human node {node.id} ({node.label!r}) is missing config['schema']."
-                    )
-            elif node.node_type == WorkflowNode.CONNECTOR:
-                if node.connector_id is None:
-                    errors.append(
-                        f"Connector node {node.id} ({node.label!r}) has no connector."
-                    )
-                else:
-                    errors.extend(validate_connector_config(node.connector))
             elif node.node_type == WorkflowNode.REPORT:
                 if node.report_template_id is None:
                     errors.append(

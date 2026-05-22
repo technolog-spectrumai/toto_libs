@@ -120,39 +120,23 @@ class LambdaFunction(models.Model):
 
 class Workflow(models.Model):
     name = models.CharField(max_length=255)
+    slug = models.SlugField(max_length=280, unique=True, blank=True)
     description = models.TextField(blank=True)
     created_at = models.DateTimeField(default=timezone.now)
 
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            base_slug = slugify(self.name) or "workflow"
+            slug = base_slug
+            counter = 1
+            while type(self).objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                slug = f"{base_slug}-{counter}"
+                counter += 1
+            self.slug = slug
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return self.name
-
-
-class WorkflowConnector(models.Model):
-    FILE_READ = "file_read"
-    FILE_WRITE = "file_write"
-    API_REQUEST = "api_request"
-    PEOPLE_READ = "people_read"
-    SOCIALHUB_READ = "socialhub_read"
-    LOCATIONS_READ = "locations_read"
-    EVENTS_READ = "events_read"
-
-    CONNECTOR_TYPES = [
-        (FILE_READ, "File read"),
-        (FILE_WRITE, "File write"),
-        (API_REQUEST, "API request"),
-        (PEOPLE_READ, "People read"),
-        (SOCIALHUB_READ, "Socialhub read"),
-        (LOCATIONS_READ, "Locations read"),
-        (EVENTS_READ, "Events read"),
-    ]
-
-    name = models.CharField(max_length=255, unique=True)
-    connector_type = models.CharField(max_length=40, choices=CONNECTOR_TYPES)
-    config = models.JSONField(default=dict, blank=True)
-    created_at = models.DateTimeField(default=timezone.now)
-
-    def __str__(self):
-        return f"{self.name} ({self.connector_type})"
 
 
 class ReportTemplate(models.Model):
@@ -194,21 +178,15 @@ class ReportTemplate(models.Model):
 
 
 class WorkflowNode(models.Model):
-    TRIGGER = "trigger"
     LAMBDA = "lambda"
-    HUMAN = "human"
     SPLIT = "split"
     JOIN = "join"
-    CONNECTOR = "connector"
     REPORT = "report"
 
     NODE_TYPES = [
-        (TRIGGER, "Trigger"),
         (LAMBDA, "Lambda"),
-        (HUMAN, "Human"),
         (SPLIT, "Split"),
         (JOIN, "Join"),
-        (CONNECTOR, "Connector"),
         (REPORT, "Report"),
     ]
 
@@ -222,13 +200,6 @@ class WorkflowNode(models.Model):
         on_delete=models.SET_NULL,
         related_name="workflow_nodes",
     )
-    connector = models.ForeignKey(
-        WorkflowConnector,
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="workflow_nodes",
-    )
     report_template = models.ForeignKey(
         ReportTemplate,
         null=True,
@@ -236,77 +207,12 @@ class WorkflowNode(models.Model):
         on_delete=models.SET_NULL,
         related_name="workflow_nodes",
     )
-    # Human nodes: {"schema": {...json-schema...}, "output_mapping": {...}}
-    # Report nodes: {"title": "...", "title_field": "data.title", "data_field": "data", "route": "done"}
     config = models.JSONField(default=dict, blank=True)
     position_x = models.FloatField(default=0.0)
     position_y = models.FloatField(default=0.0)
 
     def __str__(self):
         return f"{self.node_type}:{self.id} ({self.label})"
-
-
-class WorkflowTriggerInput(models.Model):
-    TYPE_INT = "int"
-    TYPE_FLOAT = "float"
-    TYPE_TEXT = "text"
-    TYPE_FILE = "file"
-    TYPE_DATETIME = "datetime"
-
-    INPUT_TYPES = [
-        (TYPE_INT, "Integer"),
-        (TYPE_FLOAT, "Float"),
-        (TYPE_TEXT, "Text"),
-        (TYPE_FILE, "File"),
-        (TYPE_DATETIME, "Datetime"),
-    ]
-
-    trigger_node = models.ForeignKey(
-        WorkflowNode,
-        on_delete=models.CASCADE,
-        related_name="trigger_inputs",
-        limit_choices_to={"node_type": WorkflowNode.TRIGGER},
-    )
-    key = models.SlugField(max_length=120)
-    label = models.CharField(max_length=180)
-    input_type = models.CharField(max_length=20, choices=INPUT_TYPES)
-    required = models.BooleanField(default=False)
-    default_value = models.JSONField(null=True, blank=True)
-    order = models.PositiveIntegerField(default=0)
-    help_text = models.TextField(blank=True)
-    allow_multiple_files = models.BooleanField(default=False)
-    accepted_file_types = models.CharField(
-        max_length=255,
-        blank=True,
-        help_text="Comma-separated MIME types or extensions, e.g. application/pdf,.txt,image/*.",
-    )
-    max_file_count = models.PositiveIntegerField(null=True, blank=True)
-    max_file_size = models.PositiveIntegerField(
-        null=True,
-        blank=True,
-        help_text="Maximum size per file in bytes.",
-    )
-
-    class Meta:
-        ordering = ["order", "id"]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["trigger_node", "key"],
-                name="unique_workflow_trigger_input_key",
-            )
-        ]
-
-    def clean(self):
-        if self.trigger_node_id and self.trigger_node.node_type != WorkflowNode.TRIGGER:
-            raise ValidationError("Trigger inputs can only be attached to Trigger nodes.")
-        if self.input_type != self.TYPE_FILE:
-            self.allow_multiple_files = False
-            self.accepted_file_types = ""
-            self.max_file_count = None
-            self.max_file_size = None
-
-    def __str__(self):
-        return f"{self.trigger_node}: {self.key}"
 
 
 class WorkflowEdge(models.Model):
@@ -335,14 +241,12 @@ class WorkflowEdge(models.Model):
 class WorkflowRun(models.Model):
     PENDING = "pending"
     RUNNING = "running"
-    PAUSED = "paused"
     COMPLETED = "completed"
     FAILED = "failed"
 
     STATUS_CHOICES = [
         (PENDING, "Pending"),
         (RUNNING, "Running"),
-        (PAUSED, "Paused"),
         (COMPLETED, "Completed"),
         (FAILED, "Failed"),
     ]
@@ -359,46 +263,9 @@ class WorkflowRun(models.Model):
         return f"Run {self.id} [{self.workflow}] {self.status}"
 
 
-class WorkflowRunFile(models.Model):
-    workflow_run = models.ForeignKey(
-        WorkflowRun, on_delete=models.CASCADE, related_name="files"
-    )
-    trigger_input = models.ForeignKey(
-        WorkflowTriggerInput,
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="run_files",
-    )
-    input_key = models.CharField(max_length=120)
-    file = models.FileField(upload_to="workflow-runs/%Y/%m/%d/")
-    original_name = models.CharField(max_length=255)
-    mime_type = models.CharField(max_length=120, blank=True)
-    size = models.PositiveBigIntegerField(default=0)
-    metadata = models.JSONField(default=dict, blank=True)
-    uploaded_at = models.DateTimeField(default=timezone.now)
-
-    class Meta:
-        ordering = ["input_key", "id"]
-
-    def as_reference(self) -> dict:
-        return {
-            "file_id": str(self.id),
-            "name": self.original_name,
-            "mime_type": self.mime_type,
-            "size": self.size,
-            "url": self.file.url if self.file else "",
-            "metadata": self.metadata or {},
-        }
-
-    def __str__(self):
-        return self.original_name
-
-
 class WorkflowNodeRun(models.Model):
     PENDING = "pending"
     RUNNING = "running"
-    WAITING = "waiting"
     COMPLETED = "completed"
     FAILED = "failed"
     SKIPPED = "skipped"
@@ -406,7 +273,6 @@ class WorkflowNodeRun(models.Model):
     STATUS_CHOICES = [
         (PENDING, "Pending"),
         (RUNNING, "Running"),
-        (WAITING, "Waiting for human"),
         (COMPLETED, "Completed"),
         (FAILED, "Failed"),
         (SKIPPED, "Skipped"),
@@ -546,25 +412,3 @@ class WorkflowEdgeRun(models.Model):
     def __str__(self):
         state = "activated" if self.activated else "skipped"
         return f"EdgeRun {self.id} (edge {self.edge_id}) [{state}]"
-
-
-class HumanTask(models.Model):
-    PENDING = "pending"
-    SUBMITTED = "submitted"
-
-    STATUS_CHOICES = [
-        (PENDING, "Pending"),
-        (SUBMITTED, "Submitted"),
-    ]
-
-    node_run = models.OneToOneField(
-        WorkflowNodeRun, on_delete=models.CASCADE, related_name="human_task"
-    )
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=PENDING)
-    form_schema = models.JSONField(default=dict)
-    submitted_data = models.JSONField(null=True, blank=True)
-    submitted_at = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(default=timezone.now)
-
-    def __str__(self):
-        return f"HumanTask {self.id} [{self.status}]"

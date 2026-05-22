@@ -26,29 +26,13 @@
           {% if workflow.description %}
             <p class="mt-1 text-sm opacity-60">{{ workflow.description }}</p>
           {% endif %}
+          <p class="mt-1 font-mono text-xs opacity-45">
+            <i class="fa-solid fa-tag mr-1"></i>{{ workflow.slug }}
+          </p>
         </div>
       </div>
 
-      <!-- Actions -->
       <div class="flex flex-wrap items-center gap-2">
-        {% if trigger_node %}
-          <a href="{% url 'workflows:workflow_gate' workflow.id %}"
-             :class="darkMode ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90' : 'bg-accent-light text-primary-bg-light hover:opacity-90'"
-             class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold shadow-sm transition">
-            <i class="fa-solid fa-door-open"></i>
-            {% trans "Open Gate" %}
-          </a>
-        {% else %}
-          <form method="post" action="{% url 'workflows:workflow_run_start' workflow.id %}">
-            {% csrf_token %}
-            <button type="submit"
-                    :class="darkMode ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90' : 'bg-accent-light text-primary-bg-light hover:opacity-90'"
-                    class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold shadow-sm transition">
-              <i class="fa-solid fa-play"></i>
-              {% trans "Run" %}
-            </button>
-          </form>
-        {% endif %}
         <span :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
               class="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm shadow-sm">
           <i class="fa-solid fa-circle-nodes opacity-60"></i>
@@ -77,19 +61,18 @@
 
       <!-- Legend -->
       <div class="mb-3 flex flex-wrap gap-3 text-xs font-semibold">
-        <span class="flex items-center gap-1.5"
-              :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+        <span class="flex items-center gap-1.5" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
           <span class="inline-block h-3 w-3 rounded-sm border-2"
                 :class="darkMode ? 'border-accent-dark bg-accent-dark/10' : 'border-accent-light bg-accent-light/10'"></span> lambda</span>
-        <span class="flex items-center gap-1.5" :class="darkMode ? 'text-caution-dark' : 'text-caution-light'"><span class="inline-block h-3 w-3 rounded-sm border-2" :class="darkMode ? 'border-caution-dark bg-caution-dark/10' : 'border-caution-light bg-caution-light/10'"></span> human</span>
-        <span class="flex items-center gap-1.5"
-              :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+        <span class="flex items-center gap-1.5" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
           <span class="inline-block h-3 w-3 rotate-45 border-2"
                 :class="darkMode ? 'border-accent-dark bg-accent-dark/10' : 'border-accent-light bg-accent-light/10'"></span> split</span>
-        <span class="flex items-center gap-1.5"
-              :class="darkMode ? 'text-success-dark' : 'text-success-light'">
+        <span class="flex items-center gap-1.5" :class="darkMode ? 'text-success-dark' : 'text-success-light'">
           <span class="inline-block h-3 w-3 rotate-45 border-2"
                 :class="darkMode ? 'border-success-dark bg-success-dark/10' : 'border-success-light bg-success-light/10'"></span> join</span>
+        <span class="flex items-center gap-1.5" :class="darkMode ? 'text-link-dark' : 'text-link-light'">
+          <span class="inline-block h-3 w-3 rounded-full border-2"
+                :class="darkMode ? 'border-link-dark bg-link-dark/10' : 'border-link-light bg-link-light/10'"></span> report</span>
       </div>
 
       <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
@@ -130,14 +113,15 @@
                     {% if node.node_type == "lambda" %}
                       <span class="rounded-full px-2 py-0.5 text-xs font-semibold"
                             :class="darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'">lambda</span>
-                    {% elif node.node_type == "human" %}
-                      <span class="rounded-full px-2 py-0.5 text-xs font-semibold" :class="darkMode ? 'bg-caution-dark/15 text-caution-dark' : 'bg-caution-light/15 text-caution-light'">human</span>
                     {% elif node.node_type == "split" %}
                       <span class="rounded-full px-2 py-0.5 text-xs font-semibold"
                             :class="darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'">split</span>
                     {% elif node.node_type == "join" %}
                       <span class="rounded-full px-2 py-0.5 text-xs font-semibold"
                             :class="darkMode ? 'bg-success-dark/15 text-success-dark' : 'bg-success-light/15 text-success-light'">join</span>
+                    {% elif node.node_type == "report" %}
+                      <span class="rounded-full px-2 py-0.5 text-xs font-semibold"
+                            :class="darkMode ? 'bg-link-dark/15 text-link-dark' : 'bg-link-light/15 text-link-light'">report</span>
                     {% endif %}
                   </td>
                   <td class="px-4 py-3">{{ node.label|default:"—" }}</td>
@@ -179,8 +163,7 @@
                   <td class="px-4 py-3">{{ edge.branch_key|default:"—" }}</td>
                   <td class="px-4 py-3">
                     {% if edge.is_default %}
-                      <i class="fa-solid fa-check"
-                         :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+                      <i class="fa-solid fa-check" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
                     {% else %}
                       <span class="opacity-30">—</span>
                     {% endif %}
@@ -208,47 +191,38 @@
               <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <a href="{% url 'workflows:workflow_run_detail' run.id %}"
                    class="group flex min-w-0 items-center gap-3">
-                    {% if run.status == "completed" %}
-                      <i class="fa-solid fa-circle-check"
-                         :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
-                    {% elif run.status == "failed" %}
-                      <i class="fa-solid fa-circle-xmark"
-                         :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
-                    {% elif run.status == "paused" %}
-                      <i class="fa-solid fa-circle-pause" :class="darkMode ? 'text-caution-dark' : 'text-caution-light'"></i>
-                    {% elif run.status == "running" %}
-                      <i class="fa-solid fa-spinner fa-spin"
-                         :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
-                    {% else %}
-                      <i class="fa-regular fa-circle opacity-40"></i>
-                    {% endif %}
-                    <span class="text-sm font-semibold group-hover:underline underline-offset-2">
-                      {% trans "Run" %} #{{ run.id }}
-                    </span>
-                    {% if run.status == 'completed' %}
-                      <span class="rounded-full px-2 py-0.5 text-xs font-semibold"
-                            :class="darkMode ? 'bg-success-dark/15 text-success-dark' : 'bg-success-light/15 text-success-light'">{{ run.status }}</span>
-                    {% elif run.status == 'failed' %}
-                      <span class="rounded-full px-2 py-0.5 text-xs font-semibold"
-                            :class="darkMode ? 'bg-warn-dark/15 text-warn-dark' : 'bg-warn-light/15 text-warn-light'">{{ run.status }}</span>
-                    {% elif run.status == 'paused' %}
-                      <span class="rounded-full px-2 py-0.5 text-xs font-semibold" :class="darkMode ? 'bg-caution-dark/15 text-caution-dark' : 'bg-caution-light/15 text-caution-light'">{{ run.status }}</span>
-                    {% elif run.status == 'running' %}
-                      <span class="rounded-full px-2 py-0.5 text-xs font-semibold"
-                            :class="darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'">{{ run.status }}</span>
-                    {% else %}
-                      <span class="rounded-full bg-gray-500/15 px-2 py-0.5 text-xs font-semibold text-gray-500">{{ run.status }}</span>
-                    {% endif %}
+                  {% if run.status == "completed" %}
+                    <i class="fa-solid fa-circle-check" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+                  {% elif run.status == "failed" %}
+                    <i class="fa-solid fa-circle-xmark" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
+                  {% elif run.status == "running" %}
+                    <i class="fa-solid fa-spinner fa-spin" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+                  {% else %}
+                    <i class="fa-regular fa-circle opacity-40"></i>
+                  {% endif %}
+                  <span class="text-sm font-semibold group-hover:underline underline-offset-2">
+                    {% trans "Run" %} #{{ run.id }}
+                  </span>
+                  {% if run.status == 'completed' %}
+                    <span class="rounded-full px-2 py-0.5 text-xs font-semibold"
+                          :class="darkMode ? 'bg-success-dark/15 text-success-dark' : 'bg-success-light/15 text-success-light'">{{ run.status }}</span>
+                  {% elif run.status == 'failed' %}
+                    <span class="rounded-full px-2 py-0.5 text-xs font-semibold"
+                          :class="darkMode ? 'bg-warn-dark/15 text-warn-dark' : 'bg-warn-light/15 text-warn-light'">{{ run.status }}</span>
+                  {% elif run.status == 'running' %}
+                    <span class="rounded-full px-2 py-0.5 text-xs font-semibold"
+                          :class="darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'">{{ run.status }}</span>
+                  {% else %}
+                    <span class="rounded-full bg-gray-500/15 px-2 py-0.5 text-xs font-semibold text-gray-500">{{ run.status }}</span>
+                  {% endif %}
                 </a>
-                <div class="flex items-center justify-between gap-3 sm:justify-end">
-                  <span class="text-xs opacity-50">{{ run.created_at|date:"Y-m-d H:i" }}</span>
-                </div>
+                <span class="text-xs opacity-50">{{ run.created_at|date:"Y-m-d H:i" }}</span>
               </div>
             </li>
           {% endfor %}
         </ul>
       {% else %}
-        <p class="text-sm opacity-55">{% trans "No runs yet." %}</p>
+        <p class="text-sm opacity-55">{% trans "No runs yet. Workflows are started programmatically by services." %}</p>
       {% endif %}
     </section>
 

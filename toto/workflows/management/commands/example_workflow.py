@@ -1,22 +1,16 @@
 r"""
 management command: example_workflow
 
-Creates and runs a fully wired example DAG workflow that demonstrates every
-node type: lambda → split → [branch_a, branch_b] → join → human → lambda.
+Creates and runs an example DAG workflow: lambda → split → [branch_a, branch_b] → join → lambda.
 
 Usage
 -----
-  python manage.py example_workflow                  # dry-run (build + validate only)
-  python manage.py example_workflow --run            # build and execute
-  python manage.py example_workflow --run --mock     # execute with a mock kernel (no real server required)
-  python manage.py example_workflow --destroy        # delete the example workflow + all runs
+  python manage.py example_workflow           # dry-run (build + validate only)
+  python manage.py example_workflow --run     # build and execute synchronously
+  python manage.py example_workflow --destroy # delete the example workflow + all runs
 """
 
-import json
-import sys
-
 from django.core.management.base import BaseCommand, CommandError
-from django.test.utils import override_settings
 
 from ...models import (
     LambdaFunction,
@@ -57,48 +51,9 @@ print(json.dumps({
 _FINALIZE_SRC = """\
 import json
 print(json.dumps({
-    "data": {"done": True, "route_taken": _input.get("routes", [])},
-    "route": "end",
+    "data": {"done": True, "routes_taken": _input.get("routes", [])},
 }))
 """
-
-HUMAN_CONFIG = {
-    "schema": {
-        "type": "object",
-        "properties": {
-            "approved": {"type": "boolean", "title": "Approve?"},
-            "comment":  {"type": "string",  "title": "Comment"},
-        },
-        "required": ["approved"],
-    },
-    "output_mapping": {
-        "route": {
-            "field": "approved",
-            "map": {"True": "approved", "False": "rejected"},
-        },
-        "data": {
-            "comment": {"field": "comment"},
-        },
-    },
-}
-
-_MOCK_OUTPUTS = {}
-
-
-def _build_mock_client():
-    import json as _json
-
-    class MockKernelClient:
-        def __init__(self):
-            pass
-
-        def execute(self, fn_id, code):
-            payload = _MOCK_OUTPUTS.get(fn_id)
-            if payload is None:
-                return {"stdout": '{"data": {}, "routes": []}'}
-            return {"stdout": _json.dumps(payload)}
-
-    return MockKernelClient
 
 
 class Command(BaseCommand):
@@ -106,7 +61,6 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("--run",     action="store_true", help="Execute the workflow after building it.")
-        parser.add_argument("--mock",    action="store_true", help="Use a mock kernel (no real server required).")
         parser.add_argument("--destroy", action="store_true", help="Delete the example workflow and all its runs.")
 
     def handle(self, *args, **options):
@@ -118,11 +72,11 @@ class Command(BaseCommand):
         self._validate(workflow)
 
         if options["run"]:
-            self._execute(workflow, mock=options["mock"])
+            self._execute(workflow)
         else:
             self.stdout.write(self.style.SUCCESS(
-                f"\nWorkflow '{workflow.name}' (id={workflow.id}) built and validated.\n"
-                f"Run with:  python manage.py example_workflow --run --mock\n"
+                f"\nWorkflow '{workflow.name}' (id={workflow.id}, slug={workflow.slug}) built and validated.\n"
+                f"Run with:  python manage.py example_workflow --run\n"
             ))
 
     def _destroy(self):
@@ -135,7 +89,7 @@ class Command(BaseCommand):
     def _build(self) -> Workflow:
         wf, created = Workflow.objects.get_or_create(
             name=WORKFLOW_NAME,
-            defaults={"description": "Auto-generated demo workflow covering all node types."},
+            defaults={"description": "Auto-generated demo workflow."},
         )
 
         if not created:
@@ -149,28 +103,21 @@ class Command(BaseCommand):
         fn_branch_b = self._upsert_lambda("demo_branch_b", _BRANCH_B_SRC)
         fn_finalize = self._upsert_lambda("demo_finalize", _FINALIZE_SRC)
 
-        n_prepare  = WorkflowNode.objects.create(workflow=wf, node_type=WorkflowNode.LAMBDA,  label="prepare",  lambda_function=fn_prepare,  position_x=0,    position_y=0)
-        n_split    = WorkflowNode.objects.create(workflow=wf, node_type=WorkflowNode.SPLIT,   label="split",                                position_x=0,    position_y=100)
-        n_a        = WorkflowNode.objects.create(workflow=wf, node_type=WorkflowNode.LAMBDA,  label="branch_a", lambda_function=fn_branch_a, position_x=-150, position_y=200)
-        n_b        = WorkflowNode.objects.create(workflow=wf, node_type=WorkflowNode.LAMBDA,  label="branch_b", lambda_function=fn_branch_b, position_x=150,  position_y=200)
-        n_join     = WorkflowNode.objects.create(workflow=wf, node_type=WorkflowNode.JOIN,    label="join",                                position_x=0,    position_y=300)
-        n_human    = WorkflowNode.objects.create(workflow=wf, node_type=WorkflowNode.HUMAN,   label="review",   config=HUMAN_CONFIG,         position_x=0,    position_y=400)
-        n_finalize = WorkflowNode.objects.create(workflow=wf, node_type=WorkflowNode.LAMBDA,  label="finalize", lambda_function=fn_finalize, position_x=0,    position_y=500)
+        n_prepare  = WorkflowNode.objects.create(workflow=wf, node_type=WorkflowNode.LAMBDA, label="prepare",  lambda_function=fn_prepare,  position_x=0,    position_y=0)
+        n_split    = WorkflowNode.objects.create(workflow=wf, node_type=WorkflowNode.SPLIT,  label="split",                                position_x=0,    position_y=100)
+        n_a        = WorkflowNode.objects.create(workflow=wf, node_type=WorkflowNode.LAMBDA, label="branch_a", lambda_function=fn_branch_a, position_x=-150, position_y=200)
+        n_b        = WorkflowNode.objects.create(workflow=wf, node_type=WorkflowNode.LAMBDA, label="branch_b", lambda_function=fn_branch_b, position_x=150,  position_y=200)
+        n_join     = WorkflowNode.objects.create(workflow=wf, node_type=WorkflowNode.JOIN,   label="join",                                position_x=0,    position_y=300)
+        n_finalize = WorkflowNode.objects.create(workflow=wf, node_type=WorkflowNode.LAMBDA, label="finalize", lambda_function=fn_finalize, position_x=0,    position_y=400)
 
-        WorkflowEdge.objects.create(workflow=wf, source=n_prepare,  target=n_split)
-        WorkflowEdge.objects.create(workflow=wf, source=n_split,    target=n_a,        branch_key="path_a")
-        WorkflowEdge.objects.create(workflow=wf, source=n_split,    target=n_b,        branch_key="path_b")
-        WorkflowEdge.objects.create(workflow=wf, source=n_a,        target=n_join)
-        WorkflowEdge.objects.create(workflow=wf, source=n_b,        target=n_join)
-        WorkflowEdge.objects.create(workflow=wf, source=n_join,     target=n_human)
-        WorkflowEdge.objects.create(workflow=wf, source=n_human,    target=n_finalize, branch_key="approved")
+        WorkflowEdge.objects.create(workflow=wf, source=n_prepare, target=n_split)
+        WorkflowEdge.objects.create(workflow=wf, source=n_split,   target=n_a,       branch_key="path_a")
+        WorkflowEdge.objects.create(workflow=wf, source=n_split,   target=n_b,       branch_key="path_b")
+        WorkflowEdge.objects.create(workflow=wf, source=n_a,       target=n_join)
+        WorkflowEdge.objects.create(workflow=wf, source=n_b,       target=n_join)
+        WorkflowEdge.objects.create(workflow=wf, source=n_join,    target=n_finalize)
 
-        _MOCK_OUTPUTS[fn_prepare.id]  = {"data": {"prepared": True, "seed": 42}, "routes": ["path_a", "path_b"]}
-        _MOCK_OUTPUTS[fn_branch_a.id] = {"data": {"branch": "a", "value": 84}, "route": "merged"}
-        _MOCK_OUTPUTS[fn_branch_b.id] = {"data": {"branch": "b", "value": 126}, "route": "merged"}
-        _MOCK_OUTPUTS[fn_finalize.id] = {"data": {"done": True}, "route": "end"}
-
-        self.stdout.write(self.style.SUCCESS("  ✓ 7 nodes, 7 edges created."))
+        self.stdout.write(self.style.SUCCESS("  ✓ 6 nodes, 6 edges created."))
         return wf
 
     def _upsert_lambda(self, name: str, src: str) -> LambdaFunction:
@@ -182,7 +129,7 @@ class Command(BaseCommand):
 
     def _validate(self, wf: Workflow):
         try:
-            WorkflowValidator().validate(wf)
+            WorkflowValidator(wf).validate()
             self.stdout.write(self.style.SUCCESS("  ✓ Validation passed."))
         except ValidationError as exc:
             self.stderr.write(self.style.ERROR("Validation failed:"))
@@ -190,36 +137,13 @@ class Command(BaseCommand):
                 self.stderr.write(f"  • {e}")
             raise CommandError("Fix validation errors before running.")
 
-    def _execute(self, wf: Workflow, mock: bool = False):
+    def _execute(self, wf: Workflow):
         run = WorkflowRun.objects.create(workflow=wf, input_data={"seed": 7})
         self.stdout.write(f"\nStarting run id={run.id} ...")
-
-        executor = WorkflowExecutor()
-        if mock:
-            MockClient = _build_mock_client()
-            with override_settings(WORKFLOW_KERNEL_CLIENT=MockClient):
-                executor.start(run)
-        else:
-            executor.start(run)
-
+        WorkflowExecutor().start(run)
         run.refresh_from_db()
         self.stdout.write(f"\nRun status: {self.style.SUCCESS(run.status.upper())}")
-
         self.stdout.write("\nNode runs:")
         for nr in run.node_runs.select_related("node").order_by("id"):
             status_str = self.style.SUCCESS(nr.status) if nr.status == "completed" else self.style.WARNING(nr.status)
             self.stdout.write(f"  [{status_str}] {nr.node.label} ({nr.node.node_type})")
-
-        from ...models import HumanTask
-        tasks = HumanTask.objects.filter(node_run__workflow_run=run, status=HumanTask.PENDING)
-        if tasks.exists():
-            task = tasks.first()
-            self.stdout.write(self.style.WARNING(
-                f"\nWorkflow is PAUSED awaiting human input (task id={task.id}).\n"
-                f"Submit via API:\n"
-                f'  curl -X POST http://localhost:8000/workflows/api/human-tasks/{task.id}/submit/ \\\n'
-                f'       -H "Content-Type: application/json" \\\n'
-                f'       -d \'{{"submitted_data": {{"approved": true, "comment": "LGTM"}}}}\'\n'
-            ))
-        else:
-            self.stdout.write(self.style.SUCCESS("\nWorkflow completed without human input (check mock outputs)."))
