@@ -9,10 +9,10 @@ from .models import (
     FutureMarket,
     InstrumentExecution,
     InstrumentObligation,
+    OptionContract,
     RevenueShareContract,
     RevenueShareRecipient,
     StakingPosition,
-    TimelockContract,
     VestingContract,
 )
 
@@ -85,7 +85,7 @@ class RevenueShareContractAdmin(admin.ModelAdmin):
     inlines = [RevenueShareRecipientInline]
 
 
-admin.site.register(TimelockContract)
+admin.site.register(OptionContract)
 admin.site.register(VestingContract)
 admin.site.register(StakingPosition)
 admin.site.register(InstrumentObligation)

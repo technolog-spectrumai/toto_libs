@@ -123,11 +123,21 @@
            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
         <i class="fa-solid fa-file-contract mb-3 text-3xl block opacity-30"></i>
         {% trans "No instruments found." %}
-        <div class="mt-4">
-          <a href="{% url 'instruments:instrument_create' %}"
+        <div class="mt-4 flex flex-wrap justify-center gap-2">
+          <a href="{% url 'instruments:escrow_create' %}"
              class="rounded-lg px-4 py-2 text-sm font-semibold"
              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'">
-            {% trans "Create first instrument" %}
+            {% trans "New Escrow" %}
+          </a>
+          <a href="{% url 'instruments:future_contract_create' %}"
+             class="rounded-lg border px-4 py-2 text-sm font-semibold"
+             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+            {% trans "New Future" %}
+          </a>
+          <a href="{% url 'instruments:vesting_create' %}"
+             class="rounded-lg border px-4 py-2 text-sm font-semibold"
+             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+            {% trans "New Vesting" %}
           </a>
         </div>
       </div>
@@ -135,29 +145,41 @@
   </section>
 
   <!-- Quick links -->
-  <section class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+  <section class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
     <a href="{% url 'instruments:escrow_create' %}"
        class="flex items-center gap-3 rounded-xl border p-4 text-sm font-semibold shadow-sm transition hover:opacity-80"
        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
-      <i class="fa-solid fa-lock text-lg opacity-60"></i>
+      <i class="fa-solid fa-lock text-lg text-yellow-500"></i>
       <span>{% trans "New Escrow" %}</span>
     </a>
     <a href="{% url 'instruments:forward_create' %}"
        class="flex items-center gap-3 rounded-xl border p-4 text-sm font-semibold shadow-sm transition hover:opacity-80"
        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
-      <i class="fa-solid fa-arrow-right-arrow-left text-lg opacity-60"></i>
+      <i class="fa-solid fa-arrow-right-arrow-left text-lg text-blue-500"></i>
       <span>{% trans "New Forward" %}</span>
     </a>
-    <a href="{% url 'instruments:timelock_create' %}"
+    <a href="{% url 'instruments:future_contract_create' %}"
        class="flex items-center gap-3 rounded-xl border p-4 text-sm font-semibold shadow-sm transition hover:opacity-80"
        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
-      <i class="fa-solid fa-clock text-lg opacity-60"></i>
-      <span>{% trans "New Timelock" %}</span>
+      <i class="fa-solid fa-arrow-trend-up text-lg text-cyan-500"></i>
+      <span>{% trans "New Future" %}</span>
+    </a>
+    <a href="{% url 'instruments:vesting_create' %}"
+       class="flex items-center gap-3 rounded-xl border p-4 text-sm font-semibold shadow-sm transition hover:opacity-80"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <i class="fa-solid fa-hourglass-half text-lg text-orange-500"></i>
+      <span>{% trans "New Vesting" %}</span>
+    </a>
+    <a href="{% url 'instruments:option_create' %}"
+       class="flex items-center gap-3 rounded-xl border p-4 text-sm font-semibold shadow-sm transition hover:opacity-80"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <i class="fa-solid fa-ticket text-lg text-purple-500"></i>
+      <span>{% trans "New Option" %}</span>
     </a>
     <a href="{% url 'instruments:staking_create' %}"
        class="flex items-center gap-3 rounded-xl border p-4 text-sm font-semibold shadow-sm transition hover:opacity-80"
        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
-      <i class="fa-solid fa-layer-group text-lg opacity-60"></i>
+      <i class="fa-solid fa-layer-group text-lg text-indigo-500"></i>
       <span>{% trans "New Staking" %}</span>
     </a>
   </section>

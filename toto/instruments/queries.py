@@ -11,7 +11,7 @@ def dashboard_counts():
         "escrows": qs.filter(instrument_type=InstrumentType.ESCROW).count(),
         "forwards": qs.filter(instrument_type=InstrumentType.FORWARD).count(),
         "futures": qs.filter(instrument_type=InstrumentType.FUTURE).count(),
-        "timelocks": qs.filter(instrument_type=InstrumentType.TIMELOCK).count(),
+        "options": qs.filter(instrument_type=InstrumentType.OPTION).count(),
         "vesting": qs.filter(instrument_type=InstrumentType.VESTING).count(),
         "staking": qs.filter(instrument_type=InstrumentType.STAKING).count(),
     }

@@ -1,0 +1,128 @@
+{% extends "instruments/base.html" %}
+{% load i18n %}
+
+{% block instruments_title %}{% trans "New Future Market" %}{% endblock %}
+
+{% block instruments_content %}
+<div class="space-y-6 max-w-3xl">
+
+  <div>
+    <a href="{% url 'instruments:future_market_list' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+      <i class="fa-solid fa-arrow-left"></i> {% trans "Future markets" %}
+    </a>
+  </div>
+
+  <div class="flex items-center gap-3">
+    <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-500/10">
+      <i class="fa-solid fa-chart-line text-cyan-500"></i>
+    </div>
+    <div>
+      <h2 class="text-2xl font-bold">{% trans "New Future Market" %}</h2>
+      <p class="text-sm opacity-60">{% trans "Defines a standardised contract specification for futures trading." %}</p>
+    </div>
+  </div>
+
+  <form method="post" class="space-y-5">
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+    <div class="rounded-lg border border-red-400 px-4 py-3 text-sm font-semibold text-red-600">{{ form.non_field_errors }}</div>
+    {% endif %}
+
+    <!-- Identity -->
+    <fieldset class="rounded-xl border p-5 space-y-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Market Identity" %}</legend>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label for="{{ form.code.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.code.label }} <span class="text-red-400">*</span></label>
+          {{ form.code }}
+          <p class="mt-1 text-xs opacity-50">{% trans "Short unique code, e.g. BTC-USD-Q1-2026." %}</p>
+          {% for e in form.code.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+        </div>
+        <div>
+          <label for="{{ form.name.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.name.label }}</label>
+          {{ form.name }}
+          <p class="mt-1 text-xs opacity-50">{% trans "Human-readable name (optional)." %}</p>
+          {% for e in form.name.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+        </div>
+        <div class="flex items-center gap-3">
+          {{ form.active }}
+          <label for="{{ form.active.id_for_label }}" class="text-sm font-semibold">{{ form.active.label }}</label>
+          {% for e in form.active.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+        </div>
+      </div>
+    </fieldset>
+
+    <!-- Contract spec -->
+    <fieldset class="rounded-xl border p-5 space-y-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Contract Specification" %}</legend>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label for="{{ form.underlying_asset.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.underlying_asset.label }} <span class="text-red-400">*</span></label>
+          {{ form.underlying_asset }}
+          {% for e in form.underlying_asset.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+        </div>
+        <div>
+          <label for="{{ form.contract_size_base_units.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.contract_size_base_units.label }} <span class="text-red-400">*</span></label>
+          {{ form.contract_size_base_units }}
+          <p class="mt-1 text-xs opacity-50">{% trans "Units of underlying per contract (base units)." %}</p>
+          {% for e in form.contract_size_base_units.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+        </div>
+        <div>
+          <label for="{{ form.settlement_asset.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.settlement_asset.label }} <span class="text-red-400">*</span></label>
+          {{ form.settlement_asset }}
+          {% for e in form.settlement_asset.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+        </div>
+        <div>
+          <label for="{{ form.settlement_type.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.settlement_type.label }}</label>
+          {{ form.settlement_type }}
+          {% for e in form.settlement_type.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+        </div>
+      </div>
+    </fieldset>
+
+    <!-- Margin requirements -->
+    <fieldset class="rounded-xl border p-5 space-y-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Margin Requirements" %}</legend>
+      <div class="rounded-lg p-3 text-xs opacity-60" :class="darkMode ? 'bg-primary-bg-dark' : 'bg-gray-50'">
+        <i class="fa-solid fa-circle-info mr-1"></i>
+        {% trans "Margin in basis points of notional value. 1000 bps = 10%. Maintenance must be ≤ initial." %}
+      </div>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label for="{{ form.initial_margin_bps.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.initial_margin_bps.label }}</label>
+          {{ form.initial_margin_bps }}
+          <p class="mt-1 text-xs opacity-50">{% trans "Required to open a position." %}</p>
+          {% for e in form.initial_margin_bps.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+        </div>
+        <div>
+          <label for="{{ form.maintenance_margin_bps.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.maintenance_margin_bps.label }}</label>
+          {{ form.maintenance_margin_bps }}
+          <p class="mt-1 text-xs opacity-50">{% trans "Triggers a margin call if breached." %}</p>
+          {% for e in form.maintenance_margin_bps.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+        </div>
+      </div>
+    </fieldset>
+
+    <!-- Metadata -->
+    <fieldset class="rounded-xl border p-5 space-y-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Metadata" %}</legend>
+      <div>
+        <label for="{{ form.metadata.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.metadata.label }}</label>
+        {{ form.metadata }}
+        {% for e in form.metadata.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+      </div>
+    </fieldset>
+
+    <div class="flex items-center gap-3">
+      <button type="submit" class="rounded-lg px-5 py-2.5 text-sm font-bold shadow-sm transition hover:opacity-90"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'">
+        <i class="fa-solid fa-chart-line mr-1"></i> {% trans "Create market" %}
+      </button>
+      <a href="{% url 'instruments:future_market_list' %}" class="rounded-lg border px-5 py-2.5 text-sm font-semibold transition hover:opacity-80"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+        {% trans "Cancel" %}
+      </a>
+    </div>
+  </form>
+</div>
+{% endblock %}

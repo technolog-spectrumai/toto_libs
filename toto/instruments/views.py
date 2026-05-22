@@ -15,9 +15,9 @@ from .forms import (
     ForwardContractForm,
     FutureContractForm,
     FutureMarketForm,
+    OptionContractForm,
     RevenueShareContractForm,
     StakingPositionForm,
-    TimelockContractForm,
     VestingContractForm,
 )
 from .models import (
@@ -27,11 +27,11 @@ from .models import (
     FutureMarket,
     InstrumentStatus,
     InstrumentType,
+    OptionContract,
     StakingPosition,
-    TimelockContract,
 )
 from .queries import dashboard_counts, list_instruments
-from .services import EscrowService, ForwardService, StakingService, TimelockService
+from .services import EscrowService, ForwardService, OptionService, StakingService
 
 
 def instruments_render(request, template_name, context):
@@ -72,7 +72,7 @@ def instrument_create(request):
             return redirect("instruments:instrument_detail", pk=instrument.pk)
     else:
         form = FinancialInstrumentForm(initial={"issuer": request.user})
-    return instruments_render(request, "instruments/form.html", {"form": form, "title": "Create Instrument"})
+    return instruments_render(request, "instruments/instrument_form.html", {"form": form})
 
 
 # ── Escrow ────────────────────────────────────────────────────────────────────
@@ -87,7 +87,7 @@ def escrow_create(request):
             return redirect("instruments:instrument_detail", pk=escrow.instrument_id)
     else:
         form = EscrowContractForm()
-    return instruments_render(request, "instruments/form.html", {"form": form, "title": "Create Escrow"})
+    return instruments_render(request, "instruments/escrow_form.html", {"form": form})
 
 
 @require_POST
@@ -138,7 +138,7 @@ def forward_create(request):
             return redirect("instruments:instrument_detail", pk=fwd.instrument_id)
     else:
         form = ForwardContractForm()
-    return instruments_render(request, "instruments/form.html", {"form": form, "title": "Create Forward Contract"})
+    return instruments_render(request, "instruments/forward_form.html", {"form": form})
 
 
 @require_POST
@@ -177,7 +177,7 @@ def future_market_create(request):
             return redirect("instruments:future_market_list")
     else:
         form = FutureMarketForm()
-    return instruments_render(request, "instruments/form.html", {"form": form, "title": "Create Future Market"})
+    return instruments_render(request, "instruments/future_market_form.html", {"form": form})
 
 
 @login_required
@@ -190,57 +190,38 @@ def future_contract_create(request):
             return redirect("instruments:instrument_detail", pk=fc.instrument_id)
     else:
         form = FutureContractForm()
-    return instruments_render(request, "instruments/form.html", {"form": form, "title": "Create Future Contract"})
+    return instruments_render(request, "instruments/future_contract_form.html", {"form": form})
 
 
-# ── Timelock ──────────────────────────────────────────────────────────────────
+# ── Option ────────────────────────────────────────────────────────────────────
 
 @login_required
-def timelock_create(request):
+def option_create(request):
     if request.method == "POST":
-        form = TimelockContractForm(request.POST)
+        form = OptionContractForm(request.POST)
         if form.is_valid():
-            tl = form.save()
-            messages.success(request, "Timelock created.")
-            return redirect("instruments:instrument_detail", pk=tl.instrument_id)
+            opt = form.save()
+            messages.success(request, "Option contract created.")
+            return redirect("instruments:instrument_detail", pk=opt.instrument_id)
     else:
-        form = TimelockContractForm()
-    return instruments_render(request, "instruments/form.html", {"form": form, "title": "Create Timelock"})
+        form = OptionContractForm()
+    return instruments_render(request, "instruments/option_form.html", {"form": form})
 
 
 @require_POST
 @login_required
-def timelock_fund(request, pk):
+def option_exercise(request, pk):
     instrument = get_object_or_404(
-        FinancialInstrument.objects.select_related("timelock_contract"),
+        FinancialInstrument.objects.select_related("option_contract__underlying_asset"),
         pk=pk,
     )
-    tl = getattr(instrument, "timelock_contract", None)
-    if not tl:
-        messages.error(request, "No timelock contract attached.")
+    opt = getattr(instrument, "option_contract", None)
+    if not opt:
+        messages.error(request, "No option contract attached.")
         return redirect("instruments:instrument_detail", pk=pk)
     try:
-        TimelockService.fund(tl)
-        messages.success(request, "Timelock funded.")
-    except ValidationError as exc:
-        messages.error(request, "; ".join(exc.messages))
-    return redirect("instruments:instrument_detail", pk=pk)
-
-
-@require_POST
-@login_required
-def timelock_release(request, pk):
-    instrument = get_object_or_404(
-        FinancialInstrument.objects.select_related("timelock_contract__asset"),
-        pk=pk,
-    )
-    tl = getattr(instrument, "timelock_contract", None)
-    if not tl:
-        messages.error(request, "No timelock contract attached.")
-        return redirect("instruments:instrument_detail", pk=pk)
-    try:
-        TimelockService.release(tl)
-        messages.success(request, "Timelock released.")
+        OptionService.exercise(opt)
+        messages.success(request, "Option exercised.")
     except ValidationError as exc:
         messages.error(request, "; ".join(exc.messages))
     return redirect("instruments:instrument_detail", pk=pk)
@@ -258,7 +239,7 @@ def vesting_create(request):
             return redirect("instruments:instrument_detail", pk=vc.instrument_id)
     else:
         form = VestingContractForm()
-    return instruments_render(request, "instruments/form.html", {"form": form, "title": "Create Vesting Contract"})
+    return instruments_render(request, "instruments/vesting_form.html", {"form": form})
 
 
 # ── Revenue Share ─────────────────────────────────────────────────────────────
@@ -273,7 +254,7 @@ def revenue_share_create(request):
             return redirect("instruments:instrument_detail", pk=rev.instrument_id)
     else:
         form = RevenueShareContractForm()
-    return instruments_render(request, "instruments/form.html", {"form": form, "title": "Create Revenue Share"})
+    return instruments_render(request, "instruments/revenue_share_form.html", {"form": form})
 
 
 # ── Staking ───────────────────────────────────────────────────────────────────
@@ -288,7 +269,7 @@ def staking_create(request):
             return redirect("instruments:instrument_detail", pk=stk.instrument_id)
     else:
         form = StakingPositionForm()
-    return instruments_render(request, "instruments/form.html", {"form": form, "title": "Create Staking Position"})
+    return instruments_render(request, "instruments/staking_form.html", {"form": form})
 
 
 @require_POST

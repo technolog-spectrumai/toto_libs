@@ -22,8 +22,8 @@ class InstrumentType(models.TextChoices):
     ESCROW = "escrow", "Escrow"
     FORWARD = "forward", "Forward"
     FUTURE = "future", "Future"
+    OPTION = "option", "Option"
     REVENUE_SHARE = "revenue_share", "Revenue Share"
-    TIMELOCK = "timelock", "Timelock"
     VESTING = "vesting", "Vesting"
     STAKING = "staking", "Staking"
 
@@ -478,45 +478,6 @@ class RevenueShareRecipient(models.Model):
             raise ValidationError({"share_bps": "Share cannot exceed 10000 bps."})
 
 
-class TimelockContract(models.Model):
-    instrument = models.OneToOneField(
-        FinancialInstrument,
-        on_delete=models.PROTECT,
-        related_name="timelock_contract",
-    )
-    owner_account = models.ForeignKey(
-        "assets.LedgerAccount",
-        on_delete=models.PROTECT,
-        related_name="timelocks",
-    )
-    beneficiary_account = models.ForeignKey(
-        "assets.LedgerAccount",
-        on_delete=models.PROTECT,
-        related_name="timelock_benefits",
-    )
-    asset = models.ForeignKey(
-        "assets.Asset",
-        on_delete=models.PROTECT,
-        related_name="timelock_contracts",
-    )
-    amount_base_units = models.BigIntegerField()
-    unlock_at = models.DateTimeField()
-    released_at = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    def clean(self):
-        if self.amount_base_units is not None and self.amount_base_units <= 0:
-            raise ValidationError({"amount_base_units": "Amount must be positive."})
-
-    @property
-    def amount_display(self):
-        return from_base_units(self.amount_base_units, self.asset.decimals)
-
-    @property
-    def is_unlocked(self):
-        return timezone.now() >= self.unlock_at
-
 
 class VestingContract(models.Model):
     instrument = models.OneToOneField(
@@ -604,3 +565,111 @@ class StakingPosition(models.Model):
     @property
     def staked_amount_display(self):
         return from_base_units(self.staked_amount_base_units, self.staked_asset.decimals)
+
+
+class OptionType(models.TextChoices):
+    CALL = "call", "Call"
+    PUT = "put", "Put"
+
+
+class OptionStyle(models.TextChoices):
+    EUROPEAN = "european", "European"
+    AMERICAN = "american", "American"
+
+
+class OptionSettlementType(models.TextChoices):
+    PHYSICAL = "physical", "Physical Delivery"
+    CASH = "cash", "Cash Settlement"
+
+
+class OptionContract(models.Model):
+    instrument = models.OneToOneField(
+        FinancialInstrument,
+        on_delete=models.PROTECT,
+        related_name="option_contract",
+    )
+    option_type = models.CharField(max_length=10, choices=OptionType.choices)
+    style = models.CharField(max_length=10, choices=OptionStyle.choices, default=OptionStyle.EUROPEAN)
+    buyer_account = models.ForeignKey(
+        "assets.LedgerAccount",
+        on_delete=models.PROTECT,
+        related_name="option_positions_as_buyer",
+        help_text="Holds the right to exercise.",
+    )
+    writer_account = models.ForeignKey(
+        "assets.LedgerAccount",
+        on_delete=models.PROTECT,
+        related_name="option_positions_as_writer",
+        help_text="Has the obligation if exercised.",
+    )
+    underlying_asset = models.ForeignKey(
+        "assets.Asset",
+        on_delete=models.PROTECT,
+        related_name="option_contracts_as_underlying",
+    )
+    quantity_base_units = models.BigIntegerField()
+    payment_asset = models.ForeignKey(
+        "assets.Asset",
+        on_delete=models.PROTECT,
+        related_name="option_contracts_as_payment",
+        help_text="Asset used to pay the strike price.",
+    )
+    strike_price_base_units = models.BigIntegerField(
+        help_text="Strike price per unit of underlying, in payment asset base units.",
+    )
+    premium_base_units = models.BigIntegerField(
+        default=0,
+        help_text="Premium paid by buyer to writer for the option.",
+    )
+    settlement_type = models.CharField(
+        max_length=20,
+        choices=OptionSettlementType.choices,
+        default=OptionSettlementType.CASH,
+    )
+    expiry_at = models.DateTimeField()
+    exercised_at = models.DateTimeField(null=True, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-expiry_at"]
+        indexes = [
+            models.Index(fields=["buyer_account", "expiry_at"]),
+            models.Index(fields=["writer_account", "expiry_at"]),
+            models.Index(fields=["underlying_asset", "option_type", "expiry_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.instrument.reference}: {self.get_option_type_display()} {self.get_style_display()}"
+
+    def clean(self):
+        if self.quantity_base_units is not None and self.quantity_base_units <= 0:
+            raise ValidationError({"quantity_base_units": "Quantity must be positive."})
+        if self.strike_price_base_units is not None and self.strike_price_base_units <= 0:
+            raise ValidationError({"strike_price_base_units": "Strike price must be positive."})
+        if self.premium_base_units is not None and self.premium_base_units < 0:
+            raise ValidationError({"premium_base_units": "Premium cannot be negative."})
+        if self.buyer_account_id and self.writer_account_id and self.buyer_account_id == self.writer_account_id:
+            raise ValidationError("Buyer and writer accounts must be different.")
+
+    @property
+    def is_expired(self):
+        from django.utils import timezone
+        return timezone.now() > self.expiry_at
+
+    @property
+    def is_exercised(self):
+        return self.exercised_at is not None
+
+    @property
+    def quantity_display(self):
+        return from_base_units(self.quantity_base_units, self.underlying_asset.decimals)
+
+    @property
+    def strike_price_display(self):
+        return from_base_units(self.strike_price_base_units, self.payment_asset.decimals)
+
+    @property
+    def premium_display(self):
+        return from_base_units(self.premium_base_units, self.payment_asset.decimals)

@@ -20,7 +20,7 @@ from .models import (
     InstrumentObligationRole,
     InstrumentStatus,
     InstrumentType,
-    TimelockContract,
+    OptionContract,
     VestingContract,
     StakingPosition,
 )
@@ -213,47 +213,37 @@ class ForwardService:
         return seller_delivery, buyer_payment
 
 
-class TimelockService:
+class OptionService:
     @staticmethod
     @transaction.atomic
-    def fund(timelock: TimelockContract, *, reference: str | None = None):
-        if timelock.instrument.status != InstrumentStatus.DRAFT:
-            raise ValidationError("Only draft timelocks can be funded.")
+    def exercise(option: OptionContract, *, reference: str | None = None):
+        instrument = option.instrument
+        if instrument.status != InstrumentStatus.ACTIVE:
+            raise ValidationError("Only active options can be exercised.")
+        if option.is_expired:
+            raise ValidationError("Option has expired.")
+        if option.is_exercised:
+            raise ValidationError("Option has already been exercised.")
         tx = get_backend().transfer_asset(
-            asset=timelock.asset,
-            sender_account=timelock.owner_account,
-            receiver_account=timelock.instrument.contract_account,
-            amount=timelock.amount_display,
-            reference=reference or f"{timelock.instrument.reference}-TIMELOCK-FUND",
-            description=f"Fund timelock {timelock.instrument.reference}",
-            metadata={"instrument": timelock.instrument.reference, "action": "timelock_fund"},
+            asset=option.underlying_asset,
+            sender_account=option.writer_account,
+            receiver_account=option.buyer_account,
+            amount=option.quantity_display,
+            reference=reference or f"{instrument.reference}-OPTION-EXERCISE",
+            description=f"Exercise option {instrument.reference}",
+            metadata={"instrument": instrument.reference, "action": "option_exercise"},
         )
-        timelock.instrument.status = InstrumentStatus.ACTIVE
-        timelock.instrument.save(update_fields=["status", "updated_at"])
-        record_execution(instrument=timelock.instrument, action="timelock_fund", status=InstrumentExecutionStatus.SUCCESS, transaction_obj=tx)
-        return tx
-
-    @staticmethod
-    @transaction.atomic
-    def release(timelock: TimelockContract, *, reference: str | None = None):
-        if not timelock.is_unlocked:
-            raise ValidationError("Timelock is not unlocked yet.")
-        if timelock.released_at:
-            raise ValidationError("Timelock has already been released.")
-        tx = get_backend().transfer_asset(
-            asset=timelock.asset,
-            sender_account=timelock.instrument.contract_account,
-            receiver_account=timelock.beneficiary_account,
-            amount=timelock.amount_display,
-            reference=reference or f"{timelock.instrument.reference}-TIMELOCK-RELEASE",
-            description=f"Release timelock {timelock.instrument.reference}",
-            metadata={"instrument": timelock.instrument.reference, "action": "timelock_release"},
+        option.exercised_at = timezone.now()
+        instrument.status = InstrumentStatus.SETTLED
+        option.save(update_fields=["exercised_at", "updated_at"])
+        instrument.save(update_fields=["status", "updated_at"])
+        record_execution(
+            instrument=instrument,
+            action="option_exercise",
+            status=InstrumentExecutionStatus.SUCCESS,
+            transaction_obj=tx,
+            result_data={"transaction_reference": tx.reference},
         )
-        timelock.released_at = timezone.now()
-        timelock.instrument.status = InstrumentStatus.SETTLED
-        timelock.save(update_fields=["released_at", "updated_at"])
-        timelock.instrument.save(update_fields=["status", "updated_at"])
-        record_execution(instrument=timelock.instrument, action="timelock_release", status=InstrumentExecutionStatus.SUCCESS, transaction_obj=tx)
         return tx
 
 

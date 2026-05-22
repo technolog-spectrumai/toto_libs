@@ -170,44 +170,38 @@
   {% endwith %}
   {% endif %}
 
-  <!-- ── Timelock ───────────────────────────────────────── -->
-  {% if instrument.timelock_contract %}
-  {% with tl=instrument.timelock_contract %}
+  <!-- ── Option ───────────────────────────────────────────── -->
+  {% if instrument.option_contract %}
+  {% with opt=instrument.option_contract %}
   <section class="rounded-xl border p-5 shadow-sm space-y-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
     <h2 class="flex items-center gap-2 text-xl font-bold">
-      <i class="fa-solid fa-clock opacity-60"></i> {% trans "Timelock Contract" %}
+      <i class="fa-solid fa-ticket opacity-60"></i> {% trans "Option Contract" %}
     </h2>
     <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 text-sm">
-      <div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Owner" %}</div><div class="font-semibold">{{ tl.owner_account.code }}</div></div>
-      <div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Beneficiary" %}</div><div class="font-semibold">{{ tl.beneficiary_account.code }}</div></div>
-      <div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Asset" %}</div><div class="font-semibold">{{ tl.amount_display }} {{ tl.asset.unit_name }}</div></div>
+      <div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Type" %}</div><div class="font-semibold">{{ opt.get_option_type_display }} · {{ opt.get_style_display }}</div></div>
+      <div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Buyer" %}</div><div class="font-semibold">{{ opt.buyer_account.code }}</div></div>
+      <div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Writer" %}</div><div class="font-semibold">{{ opt.writer_account.code }}</div></div>
+      <div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Underlying" %}</div><div class="font-semibold">{{ opt.quantity_display }} {{ opt.underlying_asset.unit_name }}</div></div>
+      <div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Strike" %}</div><div class="font-semibold">{{ opt.strike_price_display }} {{ opt.payment_asset.unit_name }}</div></div>
+      <div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Premium" %}</div><div class="font-semibold">{{ opt.premium_display }} {{ opt.payment_asset.unit_name }}</div></div>
+      <div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Settlement" %}</div><div class="font-semibold">{{ opt.get_settlement_type_display }}</div></div>
       <div>
-        <div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Unlock at" %}</div>
-        <div class="font-semibold {% if tl.is_unlocked %}text-green-500{% endif %}">
-          {{ tl.unlock_at|date:"M d, Y H:i" }}
-          {% if tl.is_unlocked %}<span class="text-xs ml-1">({% trans "unlocked" %})</span>{% endif %}
+        <div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Expiry" %}</div>
+        <div class="font-semibold {% if opt.is_expired %}text-red-500{% endif %}">
+          {{ opt.expiry_at|date:"M d, Y H:i" }}
+          {% if opt.is_expired %}<span class="text-xs ml-1">({% trans "expired" %})</span>{% endif %}
         </div>
       </div>
-      {% if tl.released_at %}<div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Released" %}</div><div class="font-semibold text-blue-500">{{ tl.released_at|date:"M d, Y H:i" }}</div></div>{% endif %}
+      {% if opt.exercised_at %}<div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Exercised" %}</div><div class="font-semibold text-green-500">{{ opt.exercised_at|date:"M d, Y H:i" }}</div></div>{% endif %}
     </div>
-    <div class="flex flex-wrap gap-2 pt-1">
-      {% if instrument.status == 'draft' %}
-      <form method="post" action="{% url 'instruments:timelock_fund' instrument.pk %}">{% csrf_token %}
-        <button class="rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90"
-                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'">
-          <i class="fa-solid fa-circle-dollar-to-slot"></i> {% trans "Fund" %}
-        </button>
-      </form>
-      {% endif %}
-      {% if instrument.status == 'active' and tl.is_unlocked and not tl.released_at %}
-      <form method="post" action="{% url 'instruments:timelock_release' instrument.pk %}">{% csrf_token %}
-        <button class="rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90"
-                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'">
-          <i class="fa-solid fa-unlock"></i> {% trans "Release" %}
-        </button>
-      </form>
-      {% endif %}
-    </div>
+    {% if instrument.status == 'active' and not opt.is_exercised and not opt.is_expired %}
+    <form method="post" action="{% url 'instruments:option_exercise' instrument.pk %}">{% csrf_token %}
+      <button class="rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'">
+        <i class="fa-solid fa-bolt"></i> {% trans "Exercise" %}
+      </button>
+    </form>
+    {% endif %}
   </section>
   {% endwith %}
   {% endif %}

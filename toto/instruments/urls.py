@@ -25,10 +25,9 @@ urlpatterns = [
     path("future-markets/create/", views.future_market_create, name="future_market_create"),
     path("futures/create/", views.future_contract_create, name="future_contract_create"),
 
-    # Timelock
-    path("timelocks/create/", views.timelock_create, name="timelock_create"),
-    path("<int:pk>/timelock/fund/", views.timelock_fund, name="timelock_fund"),
-    path("<int:pk>/timelock/release/", views.timelock_release, name="timelock_release"),
+    # Option
+    path("options/create/", views.option_create, name="option_create"),
+    path("<int:pk>/option/exercise/", views.option_exercise, name="option_exercise"),
 
     # Vesting
     path("vesting/create/", views.vesting_create, name="vesting_create"),

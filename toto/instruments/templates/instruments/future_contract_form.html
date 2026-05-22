@@ -1,0 +1,131 @@
+{% extends "instruments/base.html" %}
+{% load i18n %}
+
+{% block instruments_title %}{% trans "New Future Contract" %}{% endblock %}
+
+{% block instruments_content %}
+<div class="space-y-6 max-w-3xl">
+
+  <div>
+    <a href="{% url 'instruments:future_market_list' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+      <i class="fa-solid fa-arrow-left"></i> {% trans "Future markets" %}
+    </a>
+  </div>
+
+  <div class="flex items-center gap-3">
+    <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-500/10">
+      <i class="fa-solid fa-arrow-right-to-line text-cyan-500"></i>
+    </div>
+    <div>
+      <h2 class="text-2xl font-bold">{% trans "New Future Contract" %}</h2>
+      <p class="text-sm opacity-60">{% trans "Opens a long/short futures position against a market definition." %}</p>
+    </div>
+  </div>
+
+  <form method="post" class="space-y-5">
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+    <div class="rounded-lg border border-red-400 px-4 py-3 text-sm font-semibold text-red-600">{{ form.non_field_errors }}</div>
+    {% endif %}
+
+    <!-- Instrument & Market -->
+    <fieldset class="rounded-xl border p-5 space-y-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Instrument & Market" %}</legend>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label for="{{ form.instrument.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.instrument.label }} <span class="text-red-400">*</span></label>
+          {{ form.instrument }}
+          <p class="mt-1 text-xs opacity-50">{% trans "Must be a draft instrument of type Future." %}</p>
+          {% for e in form.instrument.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+        </div>
+        <div>
+          <label for="{{ form.market.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.market.label }} <span class="text-red-400">*</span></label>
+          {{ form.market }}
+          {% for e in form.market.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+        </div>
+      </div>
+    </fieldset>
+
+    <!-- Positions -->
+    <fieldset class="rounded-xl border p-5 space-y-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Position Holders" %}</legend>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label for="{{ form.long_account.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
+            <i class="fa-solid fa-arrow-trend-up mr-1 text-green-400"></i>{{ form.long_account.label }} <span class="text-red-400">*</span>
+          </label>
+          {{ form.long_account }}
+          <p class="mt-1 text-xs opacity-50">{% trans "Profits if price rises." %}</p>
+          {% for e in form.long_account.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+        </div>
+        <div>
+          <label for="{{ form.short_account.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
+            <i class="fa-solid fa-arrow-trend-down mr-1 text-red-400"></i>{{ form.short_account.label }} <span class="text-red-400">*</span>
+          </label>
+          {{ form.short_account }}
+          <p class="mt-1 text-xs opacity-50">{% trans "Profits if price falls." %}</p>
+          {% for e in form.short_account.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+        </div>
+      </div>
+    </fieldset>
+
+    <!-- Contract terms -->
+    <fieldset class="rounded-xl border p-5 space-y-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Contract Terms" %}</legend>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label for="{{ form.contract_count.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.contract_count.label }}</label>
+          {{ form.contract_count }}
+          <p class="mt-1 text-xs opacity-50">{% trans "Number of standard contracts." %}</p>
+          {% for e in form.contract_count.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+        </div>
+        <div>
+          <label for="{{ form.entry_price_base_units.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.entry_price_base_units.label }} <span class="text-red-400">*</span></label>
+          {{ form.entry_price_base_units }}
+          <p class="mt-1 text-xs opacity-50">{% trans "Price per unit in base units at position open." %}</p>
+          {% for e in form.entry_price_base_units.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+        </div>
+        <div>
+          <label for="{{ form.settlement_price_base_units.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.settlement_price_base_units.label }}</label>
+          {{ form.settlement_price_base_units }}
+          <p class="mt-1 text-xs opacity-50">{% trans "Leave blank — set at settlement." %}</p>
+          {% for e in form.settlement_price_base_units.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+        </div>
+        <div>
+          <label for="{{ form.settlement_at.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.settlement_at.label }} <span class="text-red-400">*</span></label>
+          {{ form.settlement_at }}
+          {% for e in form.settlement_at.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+        </div>
+      </div>
+    </fieldset>
+
+    <!-- Timestamps (admin fields) -->
+    <fieldset class="rounded-xl border p-5 space-y-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Timestamps" %} <span class="font-normal opacity-60">({% trans "optional" %})</span></legend>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label for="{{ form.opened_at.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.opened_at.label }}</label>
+          {{ form.opened_at }}
+          {% for e in form.opened_at.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+        </div>
+        <div>
+          <label for="{{ form.settled_at.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.settled_at.label }}</label>
+          {{ form.settled_at }}
+          {% for e in form.settled_at.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+        </div>
+      </div>
+    </fieldset>
+
+    <div class="flex items-center gap-3">
+      <button type="submit" class="rounded-lg px-5 py-2.5 text-sm font-bold shadow-sm transition hover:opacity-90"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'">
+        <i class="fa-solid fa-arrow-right-to-line mr-1"></i> {% trans "Open position" %}
+      </button>
+      <a href="{% url 'instruments:instrument_list' %}" class="rounded-lg border px-5 py-2.5 text-sm font-semibold transition hover:opacity-80"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+        {% trans "Cancel" %}
+      </a>
+    </div>
+  </form>
+</div>
+{% endblock %}

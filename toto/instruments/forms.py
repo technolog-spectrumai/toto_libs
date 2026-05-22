@@ -6,10 +6,10 @@ from .models import (
     ForwardContract,
     FutureContract,
     FutureMarket,
+    OptionContract,
     RevenueShareContract,
     RevenueShareRecipient,
     StakingPosition,
-    TimelockContract,
     VestingContract,
 )
 
@@ -88,11 +88,11 @@ class RevenueShareRecipientForm(StyledModelForm):
         fields = "__all__"
 
 
-class TimelockContractForm(StyledModelForm):
+class OptionContractForm(StyledModelForm):
     class Meta:
-        model = TimelockContract
+        model = OptionContract
         fields = "__all__"
-        widgets = {"unlock_at": forms.DateTimeInput(attrs={"type": "datetime-local"})}
+        widgets = {"expiry_at": forms.DateTimeInput(attrs={"type": "datetime-local"})}
 
 
 class VestingContractForm(StyledModelForm):

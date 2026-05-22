@@ -1,0 +1,133 @@
+{% extends "instruments/base.html" %}
+{% load i18n %}
+
+{% block instruments_title %}{% trans "New Escrow" %}{% endblock %}
+
+{% block instruments_content %}
+<div class="space-y-6 max-w-3xl">
+
+  <div>
+    <a href="{% url 'instruments:instrument_list' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+      <i class="fa-solid fa-arrow-left"></i> {% trans "All instruments" %}
+    </a>
+  </div>
+
+  <div class="flex items-center gap-3">
+    <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-yellow-500/10">
+      <i class="fa-solid fa-lock text-yellow-500"></i>
+    </div>
+    <div>
+      <h2 class="text-2xl font-bold">{% trans "New Escrow Contract" %}</h2>
+      <p class="text-sm opacity-60">{% trans "Holds funds in a neutral account pending release or refund." %}</p>
+    </div>
+  </div>
+
+  <form method="post" class="space-y-5">
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+    <div class="rounded-lg border border-red-400 px-4 py-3 text-sm font-semibold text-red-600">{{ form.non_field_errors }}</div>
+    {% endif %}
+
+    <!-- Instrument link -->
+    <fieldset class="rounded-xl border p-5 space-y-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Instrument" %}</legend>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label for="{{ form.instrument.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.instrument.label }} <span class="text-red-400">*</span></label>
+          {{ form.instrument }}
+          <p class="mt-1 text-xs opacity-50">{% trans "Must be a draft instrument of type Escrow." %}</p>
+          {% for e in form.instrument.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+        </div>
+        <div>
+          <label for="{{ form.status.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.status.label }}</label>
+          {{ form.status }}
+          {% for e in form.status.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+        </div>
+        <div>
+          <label for="{{ form.order_reference.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.order_reference.label }}</label>
+          {{ form.order_reference }}
+          <p class="mt-1 text-xs opacity-50">{% trans "Optional link to an external order number." %}</p>
+          {% for e in form.order_reference.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+        </div>
+      </div>
+    </fieldset>
+
+    <!-- Accounts -->
+    <fieldset class="rounded-xl border p-5 space-y-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Accounts" %}</legend>
+      <div class="rounded-lg p-3 text-xs opacity-60" :class="darkMode ? 'bg-primary-bg-dark' : 'bg-gray-50'">
+        <i class="fa-solid fa-circle-info mr-1"></i>
+        {% trans "Buyer funds → Escrow holds → Seller receives on release. Escrow account must differ from buyer and seller." %}
+      </div>
+      <div class="grid gap-4 sm:grid-cols-3">
+        <div>
+          <label for="{{ form.buyer_account.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
+            <i class="fa-solid fa-arrow-right mr-1 text-blue-400"></i>{{ form.buyer_account.label }} <span class="text-red-400">*</span>
+          </label>
+          {{ form.buyer_account }}
+          {% for e in form.buyer_account.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+        </div>
+        <div>
+          <label for="{{ form.escrow_account.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
+            <i class="fa-solid fa-vault mr-1 text-yellow-400"></i>{{ form.escrow_account.label }} <span class="text-red-400">*</span>
+          </label>
+          {{ form.escrow_account }}
+          {% for e in form.escrow_account.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+        </div>
+        <div>
+          <label for="{{ form.seller_account.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
+            <i class="fa-solid fa-arrow-left mr-1 text-green-400"></i>{{ form.seller_account.label }} <span class="text-red-400">*</span>
+          </label>
+          {{ form.seller_account }}
+          {% for e in form.seller_account.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+        </div>
+      </div>
+    </fieldset>
+
+    <!-- Asset & Amount -->
+    <fieldset class="rounded-xl border p-5 space-y-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Asset & Amount" %}</legend>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label for="{{ form.asset.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.asset.label }} <span class="text-red-400">*</span></label>
+          {{ form.asset }}
+          {% for e in form.asset.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+        </div>
+        <div>
+          <label for="{{ form.amount_base_units.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.amount_base_units.label }} <span class="text-red-400">*</span></label>
+          {{ form.amount_base_units }}
+          <p class="mt-1 text-xs opacity-50">{% trans "Amount in smallest denomination (base units)." %}</p>
+          {% for e in form.amount_base_units.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+        </div>
+      </div>
+    </fieldset>
+
+    <!-- Conditions & Metadata -->
+    <fieldset class="rounded-xl border p-5 space-y-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Conditions & Metadata" %}</legend>
+      <div>
+        <label for="{{ form.release_condition.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.release_condition.label }}</label>
+        {{ form.release_condition }}
+        <p class="mt-1 text-xs opacity-50">{% trans "JSON conditions that must be met before release." %}</p>
+        {% for e in form.release_condition.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+      </div>
+      <div>
+        <label for="{{ form.metadata.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.metadata.label }}</label>
+        {{ form.metadata }}
+        {% for e in form.metadata.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+      </div>
+    </fieldset>
+
+    <div class="flex items-center gap-3">
+      <button type="submit" class="rounded-lg px-5 py-2.5 text-sm font-bold shadow-sm transition hover:opacity-90"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'">
+        <i class="fa-solid fa-lock mr-1"></i> {% trans "Create escrow" %}
+      </button>
+      <a href="{% url 'instruments:instrument_list' %}" class="rounded-lg border px-5 py-2.5 text-sm font-semibold transition hover:opacity-80"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+        {% trans "Cancel" %}
+      </a>
+    </div>
+  </form>
+</div>
+{% endblock %}
