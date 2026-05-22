@@ -5,138 +5,152 @@
 {% block title %}Dashboard | {{ platform.site_name }}{% endblock %}
 
 {% block content %}
-<div
-  :class="darkMode
-    ? 'bg-primary-bg-dark text-text-main-dark'
-    : 'bg-primary-bg-light text-text-main-light'"
-  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8"
+  x-data="{
+    allOpen: true,
+    toggleAll() {
+      this.allOpen = !this.allOpen;
+      this.$dispatch('dashboard-toggle', { open: this.allOpen });
+    }
+  }">
 
-  <div class="mx-auto max-w-6xl space-y-8">
+  <div class="mx-auto max-w-7xl space-y-6">
 
     <!-- Header -->
-    <header class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-      <div>
+    <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div class="space-y-2">
         <a href="{% url 'core:welcome' %}"
-           :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-           class="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide hover:opacity-80 transition">
-          <i class="fa-solid fa-arrow-left text-[10px]"></i>
+           class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+          <i class="fa-solid fa-arrow-left"></i>
           {% trans "Welcome Page" %}
         </a>
-
-        <h1 class="mt-2 flex items-center gap-3 text-4xl font-extrabold tracking-tight">
-          <i class="fa-solid fa-gauge-high"></i>
-          {% trans "Dashboard" %}
-        </h1>
-
-        <p class="mt-2 max-w-2xl text-sm opacity-70">
-          {% trans "Quick access to your main modules, tools, and work areas." %}
-        </p>
+        <div>
+          <p
+            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+            class="text-xs font-semibold uppercase tracking-wide">
+            {% trans "Toto Platform" %}
+          </p>
+          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+            <i class="fa-solid fa-gauge-high"></i>
+            {% trans "Dashboard" %}
+          </h1>
+        </div>
       </div>
 
-      <div
-        :class="darkMode
-          ? 'border-accent-1 bg-bubble-bg-dark'
-          : 'border-accent-2 bg-bubble-bg-light'"
-        class="inline-flex items-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold shadow-sm">
-        <i
-          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-          class="fa-solid fa-layer-group"></i>
-        {% blocktrans with count=blocks|length %}{{ count }} item{% endblocktrans %}
-      </div>
+      <nav class="flex flex-wrap items-center gap-2">
+        <span class="text-sm opacity-55">
+          {% blocktrans with count=total_items %}{{ count }} modules{% endblocktrans %}
+        </span>
+        <button
+          type="button"
+          @click="toggleAll()"
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-layer-group"></i>
+          <span x-text="allOpen ? '{% trans "Collapse all" %}' : '{% trans "Expand all" %}'"></span>
+        </button>
+      </nav>
     </header>
 
     <!-- Messages -->
     {% if messages %}
-      <section
-        :class="darkMode
-          ? 'border-accent-1 bg-bubble-bg-dark'
-          : 'border-accent-2 bg-bubble-bg-light'"
-        class="rounded-2xl border p-4 shadow-sm">
-
-        <div class="space-y-3">
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-lg border p-4 shadow-sm">
+        <div class="space-y-2">
           {% for message in messages %}
-            <div
-              :class="darkMode
-                ? 'border-accent-1 bg-primary-bg-dark'
-                : 'border-accent-2 bg-primary-bg-light'"
-              class="rounded-xl border px-4 py-3 text-sm font-semibold">
-              {{ message }}
-            </div>
+            <p class="text-sm font-semibold">{{ message }}</p>
           {% endfor %}
         </div>
-      </section>
+      </div>
     {% endif %}
 
-    <!-- Dashboard Blocks -->
-    {% if blocks %}
-      <section class="grid grid-cols-1 gap-5 md:grid-cols-2">
-        {% for block in blocks %}
-          <article
-            :class="darkMode
-              ? 'bg-bubble-bg-dark border-accent-1'
-              : 'bg-bubble-bg-light border-accent-2'"
-            class="group flex items-start rounded-xl border border-l-4 p-4 shadow-sm transition-all duration-300 hover:scale-[1.01] hover:shadow-md">
+    <!-- Dashboard Groups -->
+    {% if groups %}
+      {% for group in groups %}
+        <section
+          x-data="{ open: true }"
+          @dashboard-toggle.window="open = $event.detail.open"
+          class="space-y-3">
 
-            <div
-              :class="darkMode
-                ? 'bg-primary-bg-dark text-accent-dark border-accent-1'
-                : 'bg-primary-bg-light text-accent-light border-accent-2'"
-              class="mr-3 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border shadow-sm">
-              <i class="{{ block.icon|default:'fa-solid fa-cube' }} text-lg"></i>
-            </div>
+          <button
+            type="button"
+            @click="open = !open"
+            class="flex w-full items-center justify-between gap-3 text-left">
+            <h2 class="text-sm font-semibold uppercase tracking-wide opacity-60">
+              {{ group.title }}
+            </h2>
+            <i
+              class="fa-solid fa-chevron-down text-xs opacity-40 transition-transform duration-200"
+              :class="open ? '' : '-rotate-90'"></i>
+          </button>
 
-            <div class="min-w-0 flex-1">
-              <h2 class="break-words text-base font-bold">
-                <a
-                  href="{{ block.link|default:'#' }}"
-                  {% if block.link %}target="_blank" rel="noopener noreferrer"{% endif %}
-                  :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-                  class="underline-offset-4 transition hover:underline">
-                  {{ block.title|default:"Untitled" }}
-                </a>
-              </h2>
+          <div
+            x-show="open"
+            x-transition:enter="transition ease-out duration-200"
+            x-transition:enter-start="opacity-0 -translate-y-1"
+            x-transition:enter-end="opacity-100 translate-y-0"
+            x-transition:leave="transition ease-in duration-150"
+            x-transition:leave-start="opacity-100 translate-y-0"
+            x-transition:leave-end="opacity-0 -translate-y-1"
+            class="grid grid-cols-1 gap-3 md:grid-cols-2">
 
-              <p class="mt-1 break-words text-sm leading-5 opacity-80">
-                {{ block.description|default:"No description available." }}
-              </p>
+            {% for block in group.items %}
+              <article
+                :class="darkMode
+                  ? 'border-accent-1 bg-bubble-bg-dark hover:bg-primary-bg-dark'
+                  : 'border-accent-2 bg-bubble-bg-light hover:bg-primary-bg-light'"
+                class="rounded-lg border p-5 shadow-sm transition">
 
-              <a
-                href="{{ block.link|default:'#' }}"
-                {% if block.link %}target="_blank" rel="noopener noreferrer"{% endif %}
-                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-                class="mt-3 inline-flex items-center gap-2 text-xs font-semibold opacity-90 transition hover:opacity-100">
-                {% trans "Open" %}
-                <i class="fa-solid fa-arrow-right text-[10px] transition group-hover:translate-x-0.5"></i>
-              </a>
-            </div>
-          </article>
-        {% endfor %}
-      </section>
+                <div class="flex items-center justify-between gap-4">
+                  <div class="flex min-w-0 items-center gap-3">
+                    <div
+                      :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                      class="w-6 shrink-0 text-center text-xl">
+                      <i class="{{ block.icon|default:'fa-solid fa-cube' }}"></i>
+                    </div>
+                    <div class="min-w-0">
+                      <h3
+                        :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                        class="break-words font-bold">
+                        {{ block.title|default:"Untitled" }}
+                      </h3>
+                      <p class="mt-0.5 line-clamp-2 text-sm opacity-70">
+                        {{ block.description|default:"No description available." }}
+                      </p>
+                    </div>
+                  </div>
+
+                  <a
+                    href="{{ block.link|default:'#' }}"
+                    {% if block.link and block.link != '#' %}target="_blank" rel="noopener noreferrer"{% endif %}
+                    :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                    class="inline-flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
+                    <i class="fa-solid fa-arrow-right"></i>
+                    {% trans "Open" %}
+                  </a>
+                </div>
+              </article>
+            {% endfor %}
+
+          </div>
+        </section>
+      {% endfor %}
+
     {% else %}
-      <section
-        :class="darkMode
-          ? 'border-accent-1 bg-bubble-bg-dark'
-          : 'border-accent-2 bg-bubble-bg-light'"
-        class="rounded-2xl border border-dashed p-10 text-center shadow-sm">
-
-        <div
-          :class="darkMode
-            ? 'border-accent-1 bg-primary-bg-dark'
-            : 'border-accent-2 bg-primary-bg-light'"
-          class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border">
-          <i
-            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-            class="fa-solid fa-box-open text-2xl"></i>
-        </div>
-
-        <h2 class="mt-4 text-lg font-bold">{% trans "No dashboard items" %}</h2>
-
-        <p class="mx-auto mt-2 max-w-md text-sm opacity-70">
-          {% trans "No elements are available right now." %}
-        </p>
-      </section>
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-lg border border-dashed p-10 text-center shadow-sm">
+        <i
+          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+          class="fa-solid fa-box-open text-4xl"></i>
+        <h2 class="mt-4 text-xl font-bold">{% trans "No dashboard items" %}</h2>
+        <p class="mt-1 text-sm opacity-70">{% trans "No elements are available right now." %}</p>
+      </div>
     {% endif %}
 
   </div>
-</div>
+</section>
 {% endblock %}

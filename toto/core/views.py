@@ -42,35 +42,53 @@ def welcome_view(request):
     return render(request, _get_template("home.html"), processor.decorate(context, request))
 
 
+def _resolve_dashboard_item(item, request):
+    if not request.user.is_authenticated and not item.get("public", True):
+        return None
+    link = item.get("link")
+    if link and ":" in link:
+        try:
+            link = reverse(link)
+        except NoReverseMatch:
+            pass
+    return {
+        "title": item["title"],
+        "description": item["description"],
+        "icon": item["icon"],
+        "link": link,
+        "public": item.get("public", True),
+    }
+
+
+def _get_grouped_dashboard_items(request):
+    items_by_title = {}
+    for item in settings.DASHBOARD_ITEMS:
+        resolved = _resolve_dashboard_item(item, request)
+        if resolved is not None:
+            items_by_title[item["title"]] = resolved
+
+    groups = []
+    for category in settings.DASHBOARD_CATEGORIES:
+        grouped_items = [
+            items_by_title[title]
+            for title in category["items"]
+            if title in items_by_title
+        ]
+        if grouped_items:
+            groups.append({"title": category["title"], "items": grouped_items})
+    return groups
+
+
 def dashboard_view(request):
     processor = PageProcessor()
 
-    items = []
-
-    for item in settings.DASHBOARD_ITEMS:
-        # Skip non-public items for anonymous users
-        if not request.user.is_authenticated and not item.get("public", True):
-            continue
-
-        # Resolve named URLs like "events:event_list"
-        link = item.get("link")
-        if link and ":" in link:
-            try:
-                link = reverse(link)
-            except NoReverseMatch:
-                pass  # allow raw URLs
-
-        items.append({
-            "title": item["title"],
-            "description": item["description"],
-            "icon": item["icon"],
-            "link": link,
-            "public": item.get("public", True),
-        })
+    groups = _get_grouped_dashboard_items(request)
+    total_items = sum(len(g["items"]) for g in groups)
 
     context = {
         "page_title": "Dashboard",
-        "blocks": items,
+        "groups": groups,
+        "total_items": total_items,
     }
 
     context = processor.decorate(context, request)
