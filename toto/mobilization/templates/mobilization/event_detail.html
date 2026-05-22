@@ -154,9 +154,9 @@
       <div class="flex items-center justify-between mb-4">
         <h3 class="font-bold flex items-center gap-2"><i class="fa-solid fa-sitemap"></i> {% trans "Command Structure" %}</h3>
         <div class="flex gap-2 text-xs opacity-60">
-          <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-full bg-blue-500"></span>Coordinator</span>
-          <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-full bg-green-500"></span>Deployment</span>
-          <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-full bg-amber-500"></span>Lead</span>
+          <span class="flex items-center gap-1"><span :class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'" class="inline-block w-3 h-3 rounded-full"></span>Coordinator</span>
+          <span class="flex items-center gap-1"><span :class="darkMode ? 'bg-success-dark' : 'bg-success-light'" class="inline-block w-3 h-3 rounded-full"></span>Deployment</span>
+          <span class="flex items-center gap-1"><span :class="darkMode ? 'bg-caution-dark' : 'bg-caution-light'" class="inline-block w-3 h-3 rounded-full"></span>Lead</span>
         </div>
       </div>
       <div id="escalation-tree" class="h-64 w-full rounded-lg"
@@ -550,10 +550,11 @@ document.addEventListener("DOMContentLoaded", function () {
     const nodes = {{ escalation_nodes|safe }};
     const edges = {{ escalation_edges|safe }};
     if (nodes.length) {
+      const style = getComputedStyle(document.documentElement);
       const typeColors = {
-        coordinator: isDark ? "#6366f1" : "#4f46e5",
-        deployment:  isDark ? "#22c55e" : "#16a34a",
-        lead:        isDark ? "#f59e0b" : "#d97706",
+        coordinator: style.getPropertyValue(isDark ? "--color-accent-dark" : "--color-accent-light").trim() || (isDark ? "#6366f1" : "#4f46e5"),
+        deployment:  style.getPropertyValue(isDark ? "--color-success-dark" : "--color-success-light").trim() || (isDark ? "#22c55e" : "#16a34a"),
+        lead:        style.getPropertyValue(isDark ? "--color-caution-dark" : "--color-caution-light").trim() || (isDark ? "#f59e0b" : "#d97706"),
       };
       const cy = cytoscape({
         container: cyEl,

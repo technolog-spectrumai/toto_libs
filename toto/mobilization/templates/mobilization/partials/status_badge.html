@@ -1,24 +1,24 @@
 {% comment %}
-  Expects: status (str), status_choices (list of tuples)
+  Expects: status (str)
   Colors map by status value.
 {% endcomment %}
 {% if status == "active" or status == "responding" or status == "enacted" %}
-  <span :class="darkMode ? 'bg-green-900/30 text-green-300' : 'bg-green-100 text-green-800'"
+  <span :class="darkMode ? 'bg-success-dark/20 text-success-dark' : 'bg-success-light/20 text-success-light'"
         class="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-semibold capitalize">
     <i class="fa-solid fa-circle-dot"></i> {{ status|capfirst }}
   </span>
 {% elif status == "cancelled" or status == "rejected" or status == "no_show" %}
-  <span :class="darkMode ? 'bg-red-900/30 text-red-300' : 'bg-red-100 text-red-800'"
+  <span :class="darkMode ? 'bg-warn-dark/20 text-warn-dark' : 'bg-warn-light/20 text-warn-light'"
         class="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-semibold capitalize">
     <i class="fa-solid fa-xmark"></i> {{ status|capfirst }}
   </span>
-{% elif status == "completed" or status == "done" or status == "resolved" %}
-  <span :class="darkMode ? 'bg-indigo-900/30 text-indigo-300' : 'bg-indigo-100 text-indigo-800'"
+{% elif status == "completed" or status == "done" or status == "resolved" or status == "lifted" %}
+  <span :class="darkMode ? 'bg-accent-dark/20 text-accent-dark' : 'bg-accent-light/20 text-accent-light'"
         class="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-semibold capitalize">
     <i class="fa-solid fa-check"></i> {{ status|capfirst }}
   </span>
-{% elif status == "submitted" or status == "reviewed" %}
-  <span :class="darkMode ? 'bg-amber-900/30 text-amber-300' : 'bg-amber-100 text-amber-800'"
+{% elif status == "submitted" or status == "reviewed" or status == "in_progress" or status == "standby" %}
+  <span :class="darkMode ? 'bg-caution-dark/20 text-caution-dark' : 'bg-caution-light/20 text-caution-light'"
         class="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-semibold capitalize">
     <i class="fa-solid fa-hourglass-half"></i> {{ status|capfirst }}
   </span>

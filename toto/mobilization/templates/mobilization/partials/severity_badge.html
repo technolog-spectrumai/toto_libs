@@ -1,20 +1,20 @@
 {% if severity == "critical" %}
-  <span :class="darkMode ? 'bg-purple-900/30 text-purple-300' : 'bg-purple-100 text-purple-800'"
+  <span :class="darkMode ? 'bg-warn-dark/20 text-warn-dark' : 'bg-warn-light/20 text-warn-light'"
         class="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-semibold">
     <i class="fa-solid fa-circle-exclamation"></i> Critical
   </span>
 {% elif severity == "high" %}
-  <span :class="darkMode ? 'bg-red-900/30 text-red-300' : 'bg-red-100 text-red-800'"
+  <span :class="darkMode ? 'bg-warn-dark/10 text-warn-dark' : 'bg-warn-light/10 text-warn-light'"
         class="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-semibold">
     <i class="fa-solid fa-chevron-double-up"></i> High
   </span>
 {% elif severity == "medium" %}
-  <span :class="darkMode ? 'bg-amber-900/30 text-amber-300' : 'bg-amber-100 text-amber-800'"
+  <span :class="darkMode ? 'bg-caution-dark/20 text-caution-dark' : 'bg-caution-light/20 text-caution-light'"
         class="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-semibold">
     <i class="fa-solid fa-minus"></i> Medium
   </span>
 {% else %}
-  <span :class="darkMode ? 'bg-green-900/30 text-green-300' : 'bg-green-100 text-green-800'"
+  <span :class="darkMode ? 'bg-success-dark/20 text-success-dark' : 'bg-success-light/20 text-success-light'"
         class="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-semibold">
     <i class="fa-solid fa-chevron-down"></i> Low
   </span>

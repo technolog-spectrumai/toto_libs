@@ -1,10 +1,10 @@
 {% if priority == "urgent" %}
-  <span :class="darkMode ? 'text-red-300' : 'text-red-700'"
+  <span :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
         class="inline-flex items-center gap-1 text-xs font-semibold">
     <i class="fa-solid fa-angles-up"></i> Urgent
   </span>
 {% elif priority == "high" %}
-  <span :class="darkMode ? 'text-amber-300' : 'text-amber-700'"
+  <span :class="darkMode ? 'text-caution-dark' : 'text-caution-light'"
         class="inline-flex items-center gap-1 text-xs font-semibold">
     <i class="fa-solid fa-angle-up"></i> High
   </span>

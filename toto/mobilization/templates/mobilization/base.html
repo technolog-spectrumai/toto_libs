@@ -68,9 +68,9 @@
         {% for message in messages %}
           <div class="rounded-lg border px-4 py-3 text-sm font-medium
             {% if message.tags == 'error' %}
-              border-red-400 bg-red-50 text-red-800
+              border-warn-light bg-warn-light/10 text-warn-light
             {% else %}
-              border-green-400 bg-green-50 text-green-800
+              border-success-light bg-success-light/10 text-success-light
             {% endif %}">
             {{ message }}
           </div>

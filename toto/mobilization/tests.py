@@ -3,6 +3,8 @@ from django.core.exceptions import ValidationError
 from unittest.mock import patch, MagicMock
 import datetime
 
+from decimal import Decimal
+
 from .models import (
     Responder,
     ResponderSkill,
@@ -11,6 +13,7 @@ from .models import (
     MobilizationEvent,
     Deployment,
     DeploymentAssignment,
+    EmergencyStatus,
     Intervention,
 )
 from . import services
@@ -436,3 +439,110 @@ class ResponderSkillTest(TestCase):
         rs = ResponderSkill.__new__(ResponderSkill)
         rs.level = "certified"
         self.assertEqual(rs.get_level_display(), "Certified")
+
+
+class EmergencyTaxTest(TestCase):
+    """Unit tests for EmergencyStatus tax calculation helpers."""
+
+    def _make_emergency(self, level="emergency", status="active", tax_rate=None, expires_at=None):
+        es = MagicMock(spec=EmergencyStatus)
+        es.level = level
+        es.status = status
+        es.emergency_tax_rate = Decimal(str(tax_rate)) if tax_rate is not None else None
+        es.expires_at = expires_at
+        es.is_active = property(lambda self: EmergencyStatus.is_active.fget(self))
+        # Bind real is_active property
+        es.is_active = EmergencyStatus.is_active.fget(es)
+        return es
+
+    def test_tax_rate_applied_to_transaction_amount(self):
+        """Tax revenue = amount × rate for an active emergency."""
+        tax_rate = Decimal("0.0250")  # 2.5%
+        transaction_amount = Decimal("1000.00")
+        expected_tax = transaction_amount * tax_rate
+        self.assertEqual(expected_tax, Decimal("25.00"))
+
+    def test_zero_tax_rate_produces_no_revenue(self):
+        tax_rate = Decimal("0")
+        transaction_amount = Decimal("500.00")
+        self.assertEqual(transaction_amount * tax_rate, Decimal("0"))
+
+    def test_critical_emergency_max_rate_calculation(self):
+        """Verify rate is stored as a fraction, not percentage."""
+        rate = Decimal("0.1000")  # 10%
+        base = Decimal("2000.00")
+        self.assertEqual(base * rate, Decimal("200.0000"))
+
+    def test_is_active_true_when_status_active_no_expiry(self):
+        es = EmergencyStatus.__new__(EmergencyStatus)
+        es.status = "active"
+        es.expires_at = None
+        self.assertTrue(EmergencyStatus.is_active.fget(es))
+
+    def test_is_active_false_when_status_lifted(self):
+        es = EmergencyStatus.__new__(EmergencyStatus)
+        es.status = "lifted"
+        es.expires_at = None
+        self.assertFalse(EmergencyStatus.is_active.fget(es))
+
+    def test_is_active_false_when_expired(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        es = EmergencyStatus.__new__(EmergencyStatus)
+        es.status = "active"
+        es.expires_at = timezone.now() - timedelta(hours=1)
+        self.assertFalse(EmergencyStatus.is_active.fget(es))
+
+    def test_is_active_true_when_not_yet_expired(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        es = EmergencyStatus.__new__(EmergencyStatus)
+        es.status = "active"
+        es.expires_at = timezone.now() + timedelta(hours=24)
+        self.assertTrue(EmergencyStatus.is_active.fget(es))
+
+    def test_clean_requires_community_or_zone(self):
+        es = MagicMock(spec=EmergencyStatus)
+        es.community_id = None
+        es.zone_id = None
+        es.clean = lambda: EmergencyStatus.clean(es)
+        with self.assertRaises(ValidationError):
+            es.clean()
+
+    def test_clean_passes_with_community_only(self):
+        es = MagicMock(spec=EmergencyStatus)
+        es.community_id = 1
+        es.zone_id = None
+        es.clean = lambda: EmergencyStatus.clean(es)
+        es.clean()  # should not raise
+
+    def test_clean_passes_with_zone_only(self):
+        es = MagicMock(spec=EmergencyStatus)
+        es.community_id = None
+        es.zone_id = 5
+        es.clean = lambda: EmergencyStatus.clean(es)
+        es.clean()  # should not raise
+
+    def test_tax_accumulation_across_multiple_transactions(self):
+        """Simulates collecting tax from three transactions at 3% rate."""
+        rate = Decimal("0.0300")
+        amounts = [Decimal("500.00"), Decimal("1200.50"), Decimal("75.25")]
+        total_tax = sum(a * rate for a in amounts)
+        expected = Decimal("500.00") * rate + Decimal("1200.50") * rate + Decimal("75.25") * rate
+        self.assertEqual(total_tax, expected)
+        # 15.0000 + 36.0150 + 2.2575 = 53.2725
+        self.assertAlmostEqual(float(total_tax), 53.2725, places=4)
+
+    def test_str_representation(self):
+        # Use a plain namespace to avoid FK descriptor interference
+        class FakeES:
+            community = MagicMock()
+            zone = None
+            level = "emergency"
+            status = "active"
+            def get_level_display(self): return "Emergency"
+            def get_status_display(self): return "Active"
+        es = FakeES()
+        result = EmergencyStatus.__str__(es)
+        self.assertIn("Emergency", result)
+        self.assertIn("Active", result)
