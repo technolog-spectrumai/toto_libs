@@ -7,8 +7,25 @@ Workflow spine redesign:
 - Remove WAITING status from WorkflowNodeRun
 """
 
+import re
+
 from django.db import migrations, models
 import django.utils.timezone
+
+
+def _backfill_slugs(apps, schema_editor):
+    Workflow = apps.get_model("workflows", "Workflow")
+    seen = set(Workflow.objects.exclude(slug="").values_list("slug", flat=True))
+    for wf in Workflow.objects.filter(slug=""):
+        base = re.sub(r"[^a-z0-9]+", "-", wf.name.lower()).strip("-") or "workflow"
+        slug = base
+        n = 1
+        while slug in seen:
+            slug = f"{base}-{n}"
+            n += 1
+        wf.slug = slug
+        wf.save(update_fields=["slug"])
+        seen.add(slug)
 
 
 class Migration(migrations.Migration):
@@ -41,14 +58,8 @@ class Migration(migrations.Migration):
             preserve_default=False,
         ),
 
-        # 7. Back-fill slug from name for existing rows using a data migration step
-        migrations.RunSQL(
-            sql="""
-                UPDATE workflows_workflow SET slug = LOWER(REGEXP_REPLACE(name, '[^a-zA-Z0-9]+', '-', 'g'))
-                WHERE slug = '' OR slug IS NULL;
-            """,
-            reverse_sql=migrations.RunSQL.noop,
-        ),
+        # 7. Back-fill slug from name for existing rows (Python — works on SQLite and PostgreSQL)
+        migrations.RunPython(_backfill_slugs, migrations.RunPython.noop),
 
         # 8. Update WorkflowRun STATUS_CHOICES — remove PAUSED (DB column unchanged, just choices)
         migrations.AlterField(

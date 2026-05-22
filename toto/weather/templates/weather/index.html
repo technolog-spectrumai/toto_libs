@@ -1,0 +1,802 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}Weather | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<style>
+  [x-cloak] { display: none !important; }
+  .weather-map .leaflet-control-zoom a { border-radius: 6px; }
+</style>
+
+<script>
+  window._weatherAddresses = JSON.parse(`{{ addresses_json|escapejs }}`);
+  window._weatherUrls = {
+    refresh:       "{% url 'weather:api_refresh' %}",
+    current:       "{% url 'weather:api_current' %}",
+    loadForecast:  "{% url 'weather:api_load_forecast' %}",
+    forecast:      "{% url 'weather:api_forecast' %}",
+    runStatus:     "/weather/api/run/{id}/status/",
+    csrfToken:     "{{ csrf_token }}",
+  };
+
+  function weatherApp() {
+    return {
+      // ── tabs ──────────────────────────────────────────────────────
+      activeTab: "current",
+
+      // ── location selection ────────────────────────────────────────
+      addresses: window._weatherAddresses || [],
+      selectedIds: [],
+
+      // ── current weather ───────────────────────────────────────────
+      currentObs: {},           // {address_id: observation}
+      currentRunId: null,
+      currentStatus: "",        // pending|running|completed|failed|""
+      currentError: "",
+      currentPolling: null,
+
+      // ── forecast ──────────────────────────────────────────────────
+      forecastSession: null,
+      forecastPoints: [],       // raw from API
+      forecastRunId: null,
+      forecastStatus: "",
+      forecastError: "",
+      forecastPolling: null,
+      sliderIndex: 0,
+      sliderTimes: [],          // unique sorted ISO strings
+      chartCollapsed: {},       // {chartKey: bool}
+
+      // ── map ───────────────────────────────────────────────────────
+      mapReady: false,
+
+      // ── computed ──────────────────────────────────────────────────
+
+      get selectedAddresses() {
+        return this.addresses.filter(a => this.selectedIds.includes(a.id));
+      },
+
+      get isBusy() {
+        return this.currentStatus === "running" || this.currentStatus === "pending";
+      },
+
+      get isForecastBusy() {
+        return this.forecastStatus === "running" || this.forecastStatus === "pending";
+      },
+
+      get sliderCurrentTime() {
+        return this.sliderTimes[this.sliderIndex] || null;
+      },
+
+      get sliderLabel() {
+        if (!this.sliderCurrentTime) return "—";
+        const d = new Date(this.sliderCurrentTime);
+        return d.toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+      },
+
+      get forecastAtSlider() {
+        if (!this.sliderCurrentTime) return {};
+        const t = this.sliderCurrentTime;
+        const result = {};
+        for (const p of this.forecastPoints) {
+          if (p.valid_at === t) {
+            result[p.address_id] = p;
+          }
+        }
+        return result;
+      },
+
+      // ── init ──────────────────────────────────────────────────────
+
+      init() {
+        this.$nextTick(() => {
+          initWeatherMap(this);
+          this.mapReady = true;
+        });
+        this.$watch("selectedIds", () => {
+          updateWeatherMarkers(this.selectedAddresses, this.currentObs, this.darkMode);
+        });
+        this.$watch("currentObs", () => {
+          updateWeatherMarkers(this.selectedAddresses, this.currentObs, this.darkMode);
+        });
+        this.$watch("sliderIndex", () => {
+          updateForecastMarkers(this.selectedAddresses, this.forecastAtSlider, this.darkMode);
+        });
+        this.$watch("activeTab", (tab) => {
+          setTimeout(() => refreshWeatherMap(), 120);
+          if (tab === "forecast" && this.forecastPoints.length) {
+            this.$nextTick(() => renderCharts(this));
+          }
+        });
+      },
+
+      // ── location selection ────────────────────────────────────────
+
+      toggleLocation(id) {
+        if (this.selectedIds.includes(id)) {
+          this.selectedIds = this.selectedIds.filter(x => x !== id);
+        } else {
+          this.selectedIds = [...this.selectedIds, id];
+        }
+      },
+
+      selectAll() { this.selectedIds = this.addresses.map(a => a.id); },
+      clearAll() { this.selectedIds = []; },
+
+      // ── current weather ───────────────────────────────────────────
+
+      async refreshWeather() {
+        if (!this.selectedIds.length) return;
+        this.currentError = "";
+        this.currentStatus = "pending";
+        try {
+          const resp = await _post(window._weatherUrls.refresh, {
+            location_ids: this.selectedIds,
+          });
+          if (resp.error) throw new Error(resp.error);
+          this.currentRunId = resp.run_id;
+          this.currentStatus = "running";
+          this._pollCurrentRun();
+        } catch (e) {
+          this.currentError = e.message || "Failed to start refresh.";
+          this.currentStatus = "failed";
+        }
+      },
+
+      _pollCurrentRun() {
+        clearInterval(this.currentPolling);
+        this.currentPolling = setInterval(async () => {
+          const s = await _getRunStatus(this.currentRunId);
+          this.currentStatus = s.status;
+          if (s.status === "completed") {
+            clearInterval(this.currentPolling);
+            await this.loadCurrentData();
+          } else if (s.status === "failed") {
+            clearInterval(this.currentPolling);
+            this.currentError = s.error || "Workflow failed.";
+          }
+        }, 2000);
+      },
+
+      async loadCurrentData() {
+        if (!this.selectedIds.length) return;
+        const params = this.selectedIds.map(id => `location_ids[]=${id}`).join("&");
+        try {
+          const resp = await fetch(`${window._weatherUrls.current}?${params}`);
+          const data = await resp.json();
+          this.currentObs = data.observations || {};
+        } catch (e) {
+          console.warn("Failed to load current weather data:", e);
+        }
+      },
+
+      // ── forecast ──────────────────────────────────────────────────
+
+      async loadForecast() {
+        if (!this.selectedIds.length) return;
+        this.forecastError = "";
+        this.forecastStatus = "pending";
+        try {
+          const resp = await _post(window._weatherUrls.loadForecast, {
+            location_ids: this.selectedIds,
+            hours_ahead: 120,
+          });
+          if (resp.error) throw new Error(resp.error);
+          this.forecastRunId = resp.run_id;
+          this.forecastStatus = "running";
+          this._pollForecastRun();
+        } catch (e) {
+          this.forecastError = e.message || "Failed to start forecast load.";
+          this.forecastStatus = "failed";
+        }
+      },
+
+      _pollForecastRun() {
+        clearInterval(this.forecastPolling);
+        this.forecastPolling = setInterval(async () => {
+          const s = await _getRunStatus(this.forecastRunId);
+          this.forecastStatus = s.status;
+          if (s.status === "completed") {
+            clearInterval(this.forecastPolling);
+            await this.loadForecastData();
+          } else if (s.status === "failed") {
+            clearInterval(this.forecastPolling);
+            this.forecastError = s.error || "Forecast workflow failed.";
+          }
+        }, 2000);
+      },
+
+      async loadForecastData() {
+        if (!this.selectedIds.length) return;
+        const params = this.selectedIds.map(id => `location_ids[]=${id}`).join("&");
+        try {
+          const resp = await fetch(`${window._weatherUrls.forecast}?${params}`);
+          const data = await resp.json();
+          this.forecastSession = data.session;
+          this.forecastPoints = data.points || [];
+          const times = [...new Set(this.forecastPoints.map(p => p.valid_at))].sort();
+          this.sliderTimes = times;
+          this.sliderIndex = 0;
+          this.$nextTick(() => renderCharts(this));
+          updateForecastMarkers(this.selectedAddresses, this.forecastAtSlider, this.darkMode);
+        } catch (e) {
+          console.warn("Failed to load forecast data:", e);
+        }
+      },
+
+      toggleChart(key) {
+        this.chartCollapsed[key] = !this.chartCollapsed[key];
+      },
+
+      isChartCollapsed(key) {
+        return !!this.chartCollapsed[key];
+      },
+
+      obsFor(addressId) {
+        return this.currentObs[String(addressId)] || null;
+      },
+
+      fmtTemp(v) { return v != null ? `${v.toFixed(1)}°C` : "—"; },
+      fmtPrecip(v, t) {
+        if (v == null) return "—";
+        const label = t ? ` (${t})` : "";
+        return `${v} mm${label}`;
+      },
+      fmtCloud(v) { return v != null ? `${v}%` : "—"; },
+      fmtWind(spd, dir) {
+        if (spd == null) return "—";
+        const arrow = dir != null ? ` ${compassDir(dir)}` : "";
+        return `${spd} km/h${arrow}`;
+      },
+      fmtVis(v) { return v != null ? `${v} km` : "—"; },
+    };
+  }
+
+  // ── helper functions ──────────────────────────────────────────────
+
+  function compassDir(deg) {
+    const dirs = ["N","NE","E","SE","S","SW","W","NW"];
+    return dirs[Math.round(deg / 45) % 8];
+  }
+
+  async function _post(url, body) {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": window._weatherUrls.csrfToken,
+      },
+      body: JSON.stringify(body),
+    });
+    return resp.json();
+  }
+
+  async function _getRunStatus(runId) {
+    try {
+      const url = window._weatherUrls.runStatus.replace("{id}", runId);
+      const resp = await fetch(url);
+      return resp.json();
+    } catch (e) {
+      return { status: "failed", error: "Could not check run status." };
+    }
+  }
+
+  // ── map ───────────────────────────────────────────────────────────
+
+  let _map = null;
+  let _weatherMarkers = {};
+  let _forecastMarkers = {};
+
+  function initWeatherMap(app) {
+    if (_map) return;
+    const isDark = localStorage.getItem("darkMode") === "true";
+    const lightTiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19, attribution: "&copy; OpenStreetMap contributors"
+    });
+    const darkTiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      maxZoom: 19, attribution: "&copy; OSM contributors &copy; CARTO"
+    });
+    _map = L.map("weather-map", { zoomControl: false, scrollWheelZoom: true })
+      .setView([52.0, 19.0], 5);
+    (isDark ? darkTiles : lightTiles).addTo(_map);
+    L.control.zoom({ position: "bottomright" }).addTo(_map);
+
+    // Place all addresses as small faded dots
+    (window._weatherAddresses || []).forEach(a => {
+      const m = L.circleMarker([a.lat, a.lng], {
+        radius: 5, color: "#888", fillColor: "#aaa", fillOpacity: 0.4, weight: 1
+      }).bindTooltip(a.name, { permanent: false, direction: "top" });
+      m.addTo(_map);
+    });
+  }
+
+  function refreshWeatherMap() {
+    if (_map) _map.invalidateSize();
+  }
+
+  function updateWeatherMarkers(selectedAddresses, obs, isDark) {
+    if (!_map) return;
+    Object.values(_weatherMarkers).forEach(m => _map.removeLayer(m));
+    _weatherMarkers = {};
+
+    const accentColor = isDark ? "#6470b2" : "#2f3d63";
+    selectedAddresses.forEach(a => {
+      const o = obs[String(a.id)];
+      const label = o && o.temperature != null
+        ? `${o.temperature.toFixed(1)}°C`
+        : a.name;
+      const html = `
+        <div style="background:${accentColor};color:#fff;border:2px solid #fff;
+                    border-radius:999px;padding:3px 8px;font-size:11px;font-weight:800;
+                    box-shadow:0 4px 12px rgba(0,0,0,0.25);white-space:nowrap;">
+          ${escapeHtml(a.name.length > 18 ? a.name.slice(0, 16) + "…" : a.name)}
+          ${o && o.temperature != null ? `· ${o.temperature.toFixed(1)}°C` : ""}
+        </div>`;
+      const icon = L.divIcon({ className: "", html, iconAnchor: [0, 10] });
+      const m = L.marker([a.lat, a.lng], { icon });
+      if (o) {
+        const lines = [
+          o.temperature != null ? `🌡 ${o.temperature.toFixed(1)}°C` : null,
+          o.precipitation_mm != null ? `🌧 ${o.precipitation_mm} mm ${o.precipitation_type || ""}` : null,
+          o.cloud_cover != null ? `☁ ${o.cloud_cover}%` : null,
+          o.wind_speed_kmh != null ? `💨 ${o.wind_speed_kmh} km/h` : null,
+          o.visibility_km != null ? `👁 ${o.visibility_km} km` : null,
+        ].filter(Boolean).join("<br>");
+        m.bindPopup(`<strong>${escapeHtml(a.name)}</strong><br>${lines}`);
+      } else {
+        m.bindPopup(`<strong>${escapeHtml(a.name)}</strong><br><em>No data yet</em>`);
+      }
+      m.addTo(_map);
+      _weatherMarkers[a.id] = m;
+    });
+
+    if (selectedAddresses.length) {
+      const bounds = L.latLngBounds(selectedAddresses.map(a => [a.lat, a.lng]));
+      if (bounds.isValid()) _map.fitBounds(bounds, { padding: [40, 40], maxZoom: 12 });
+    }
+  }
+
+  function updateForecastMarkers(selectedAddresses, forecastAtSlider, isDark) {
+    if (!_map) return;
+    Object.values(_forecastMarkers).forEach(m => _map.removeLayer(m));
+    _forecastMarkers = {};
+
+    const accentColor = isDark ? "#5f7fc9" : "#2a4b8f";
+    selectedAddresses.forEach(a => {
+      const p = forecastAtSlider[a.id];
+      const html = `
+        <div style="background:${accentColor};color:#fff;border:2px solid #fff;
+                    border-radius:999px;padding:3px 8px;font-size:11px;font-weight:800;
+                    box-shadow:0 4px 12px rgba(0,0,0,0.25);white-space:nowrap;">
+          ${escapeHtml(a.name.length > 18 ? a.name.slice(0, 16) + "…" : a.name)}
+          ${p && p.temperature != null ? `· ${p.temperature.toFixed(1)}°C` : ""}
+        </div>`;
+      const icon = L.divIcon({ className: "", html, iconAnchor: [0, 10] });
+      const m = L.marker([a.lat, a.lng], { icon });
+      if (p) {
+        const lines = [
+          p.temperature != null ? `🌡 ${p.temperature.toFixed(1)}°C` : null,
+          p.precipitation_mm != null ? `🌧 ${p.precipitation_mm} mm ${p.precipitation_type || ""}` : null,
+          p.cloud_cover != null ? `☁ ${p.cloud_cover}%` : null,
+          p.wind_speed_kmh != null ? `💨 ${p.wind_speed_kmh} km/h` : null,
+          p.visibility_km != null ? `👁 ${p.visibility_km} km` : null,
+        ].filter(Boolean).join("<br>");
+        m.bindPopup(`<strong>${escapeHtml(a.name)}</strong><br>${lines}`);
+      }
+      m.addTo(_map);
+      _forecastMarkers[a.id] = m;
+    });
+  }
+
+  function escapeHtml(v) {
+    const el = document.createElement("div");
+    el.textContent = v || "";
+    return el.innerHTML;
+  }
+
+  // ── chart rendering ───────────────────────────────────────────────
+
+  const _charts = {};
+
+  function renderCharts(app) {
+    if (!app.forecastPoints.length || !app.selectedIds.length) return;
+
+    const labels = app.sliderTimes.map(t => {
+      const d = new Date(t);
+      return d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit" });
+    });
+
+    const isDark = localStorage.getItem("darkMode") === "true";
+    const textColor = isDark ? "#e2e8f0" : "#1e293b";
+    const gridColor = isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.07)";
+
+    const baseOpts = {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: textColor, boxWidth: 12 } },
+        tooltip: { mode: "index", intersect: false },
+      },
+      scales: {
+        x: { ticks: { color: textColor, maxRotation: 45, autoSkip: true, maxTicksLimit: 12 }, grid: { color: gridColor } },
+        y: { ticks: { color: textColor }, grid: { color: gridColor } },
+      },
+    };
+
+    const CHART_DEFS = [
+      {
+        key: "temperature",
+        canvasId: "chart-temperature",
+        label: "Temperature (°C)",
+        type: "line",
+        field: "temperature",
+        borderColor: isDark ? "#f87171" : "#dc2626",
+        backgroundColor: isDark ? "rgba(248,113,113,0.15)" : "rgba(220,38,38,0.1)",
+        fill: true,
+      },
+      {
+        key: "precipitation",
+        canvasId: "chart-precipitation",
+        label: "Precipitation (mm)",
+        type: "bar",
+        field: "precipitation_mm",
+        backgroundColor: isDark ? "#60a5fa" : "#2563eb",
+      },
+      {
+        key: "wind",
+        canvasId: "chart-wind",
+        label: "Wind speed (km/h)",
+        type: "line",
+        field: "wind_speed_kmh",
+        borderColor: isDark ? "#4ade80" : "#16a34a",
+        backgroundColor: isDark ? "rgba(74,222,128,0.15)" : "rgba(22,163,74,0.1)",
+        fill: true,
+      },
+      {
+        key: "cloud",
+        canvasId: "chart-cloud",
+        label: "Cloud cover (%)",
+        type: "line",
+        field: "cloud_cover",
+        borderColor: isDark ? "#94a3b8" : "#64748b",
+        backgroundColor: isDark ? "rgba(148,163,184,0.15)" : "rgba(100,116,139,0.1)",
+        fill: true,
+      },
+      {
+        key: "visibility",
+        canvasId: "chart-visibility",
+        label: "Visibility (km)",
+        type: "line",
+        field: "visibility_km",
+        borderColor: isDark ? "#fbbf24" : "#d97706",
+        backgroundColor: isDark ? "rgba(251,191,36,0.15)" : "rgba(217,119,6,0.1)",
+        fill: true,
+      },
+    ];
+
+    const COLORS = [
+      "#6366f1","#ec4899","#14b8a6","#f59e0b","#8b5cf6","#10b981",
+    ];
+
+    CHART_DEFS.forEach(def => {
+      const canvas = document.getElementById(def.canvasId);
+      if (!canvas) return;
+
+      if (_charts[def.key]) {
+        _charts[def.key].destroy();
+        delete _charts[def.key];
+      }
+
+      const datasets = app.selectedAddresses.map((addr, i) => {
+        const pointsForAddr = app.forecastPoints.filter(p => p.address_id === addr.id);
+        const byTime = {};
+        pointsForAddr.forEach(p => { byTime[p.valid_at] = p[def.field]; });
+        const values = app.sliderTimes.map(t => byTime[t] ?? null);
+        const color = COLORS[i % COLORS.length];
+        return {
+          label: addr.name,
+          data: values,
+          borderColor: def.datasets ? color : def.borderColor,
+          backgroundColor: def.datasets ? color + "30" : def.backgroundColor,
+          tension: 0.3,
+          fill: def.fill || false,
+          pointRadius: 0,
+          pointHoverRadius: 4,
+        };
+      });
+
+      const config = {
+        type: def.type,
+        data: { labels, datasets },
+        options: {
+          ...baseOpts,
+          plugins: {
+            ...baseOpts.plugins,
+            title: { display: false },
+          },
+        },
+      };
+      _charts[def.key] = new Chart(canvas, config);
+    });
+  }
+</script>
+{% endblock %}
+
+{% block content %}
+<div
+  x-data="weatherApp()"
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-7xl space-y-5">
+
+    <!-- Header -->
+    <header class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div>
+        <a href="{% url 'core:dashboard' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+          <i class="fa-solid fa-arrow-left"></i> Dashboard
+        </a>
+        <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+           class="mt-2 text-xs font-semibold uppercase tracking-wide">Spatial</p>
+        <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold sm:text-4xl">
+          <i class="fa-solid fa-cloud-sun"></i> Weather
+        </h1>
+        <p class="mt-1 text-sm opacity-65">
+          Current: <span class="font-semibold">{{ current_provider }}</span>
+          &nbsp;·&nbsp;
+          Forecast: <span class="font-semibold">{{ forecast_provider }}</span>
+        </p>
+      </div>
+
+      <!-- Tab bar -->
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="inline-flex rounded-xl border p-1 shadow-sm">
+        <button type="button" @click="activeTab = 'current'"
+                :class="activeTab === 'current'
+                  ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light')
+                  : 'opacity-60 hover:opacity-100'"
+                class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition">
+          <i class="fa-solid fa-sun"></i> Current
+        </button>
+        <button type="button" @click="activeTab = 'forecast'"
+                :class="activeTab === 'forecast'
+                  ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light')
+                  : 'opacity-60 hover:opacity-100'"
+                class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition">
+          <i class="fa-solid fa-calendar-week"></i> Forecast
+        </button>
+      </div>
+    </header>
+
+    <!-- ================================================================ -->
+    <!-- TAB: CURRENT WEATHER -->
+    <!-- ================================================================ -->
+    <div x-show="activeTab === 'current'" x-cloak>
+      <div class="grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
+
+        <!-- Sidebar: location selection + weather table -->
+        <aside class="flex flex-col gap-4">
+
+          <!-- Location picker -->
+          <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+               class="rounded-xl border p-4 shadow-sm">
+            <div class="mb-3 flex items-center justify-between gap-2">
+              <h2 class="text-sm font-semibold">Locations</h2>
+              <div class="flex gap-2 text-xs">
+                <button type="button" @click="selectAll()" class="underline underline-offset-2 opacity-65 hover:opacity-100">All</button>
+                <button type="button" @click="clearAll()" class="underline underline-offset-2 opacity-65 hover:opacity-100">None</button>
+              </div>
+            </div>
+
+            <div class="max-h-64 space-y-0.5 overflow-y-auto">
+              <template x-for="addr in addresses" :key="addr.id">
+                <label class="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition hover:bg-current/5">
+                  <input type="checkbox" :value="addr.id" x-model="selectedIds" @change="toggleLocation(addr.id)"
+                         class="h-4 w-4 accent-current">
+                  <span class="truncate" x-text="addr.name"></span>
+                </label>
+              </template>
+            </div>
+
+            <p class="mt-2 text-xs opacity-50" x-text="`${selectedIds.length} selected`"></p>
+          </div>
+
+          <!-- Refresh button -->
+          <button type="button" @click="refreshWeather()"
+                  :disabled="!selectedIds.length || isBusy"
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90 disabled:opacity-40' : 'bg-accent-light text-primary-bg-light hover:opacity-90 disabled:opacity-40'"
+                  class="inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold shadow-sm transition">
+            <i class="fa-solid" :class="isBusy ? 'fa-spinner fa-spin' : 'fa-rotate-right'"></i>
+            <span x-text="isBusy ? 'Loading…' : 'Refresh weather'"></span>
+          </button>
+
+          <!-- Status / error -->
+          <div x-show="currentError" x-cloak
+               :class="darkMode ? 'border-warn-dark/40 bg-warn-dark/10 text-warn-dark' : 'border-warn-light/40 bg-warn-light/10 text-warn-light'"
+               class="rounded-xl border p-3 text-sm">
+            <i class="fa-solid fa-circle-exclamation mr-2"></i>
+            <span x-text="currentError"></span>
+          </div>
+
+          <!-- Weather data cards -->
+          <div class="space-y-3">
+            <template x-for="addr in selectedAddresses" :key="addr.id">
+              <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                   class="rounded-xl border p-3 shadow-sm text-sm">
+                <p class="mb-2 font-semibold truncate" x-text="addr.name"></p>
+                <template x-if="obsFor(addr.id)">
+                  <dl class="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                    <dt class="opacity-55">Temperature</dt>
+                    <dd class="font-semibold" x-text="fmtTemp(obsFor(addr.id).temperature)"></dd>
+                    <dt class="opacity-55">Precipitation</dt>
+                    <dd class="font-semibold" x-text="fmtPrecip(obsFor(addr.id).precipitation_mm, obsFor(addr.id).precipitation_type)"></dd>
+                    <dt class="opacity-55">Cloud cover</dt>
+                    <dd class="font-semibold" x-text="fmtCloud(obsFor(addr.id).cloud_cover)"></dd>
+                    <dt class="opacity-55">Wind</dt>
+                    <dd class="font-semibold" x-text="fmtWind(obsFor(addr.id).wind_speed_kmh, obsFor(addr.id).wind_direction_deg)"></dd>
+                    <dt class="opacity-55">Visibility</dt>
+                    <dd class="font-semibold" x-text="fmtVis(obsFor(addr.id).visibility_km)"></dd>
+                  </dl>
+                </template>
+                <template x-if="!obsFor(addr.id)">
+                  <p class="text-xs opacity-40">No data — click Refresh</p>
+                </template>
+              </div>
+            </template>
+
+            <template x-if="!selectedAddresses.length">
+              <p class="text-xs opacity-40">Select locations to see weather data.</p>
+            </template>
+          </div>
+
+        </aside>
+
+        <!-- Map -->
+        <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="relative min-h-[65vh] overflow-hidden rounded-xl border shadow-sm lg:h-[75vh]">
+          <div id="weather-map" class="weather-map h-full min-h-[65vh] w-full lg:min-h-0"></div>
+
+          <div class="pointer-events-none absolute left-3 top-3 z-[500]">
+            <div :class="darkMode ? 'bg-bubble-bg-dark/95 text-text-main-dark' : 'bg-bubble-bg-light/95 text-text-main-light'"
+                 class="rounded-lg border border-current/10 px-3 py-2 text-xs font-semibold shadow-sm backdrop-blur">
+              <span x-text="selectedIds.length ? `${selectedIds.length} locations selected` : 'Select locations in the sidebar'"></span>
+            </div>
+          </div>
+
+          {% if not celery_ok %}
+          <div class="pointer-events-none absolute bottom-3 right-3 z-[500]">
+            <div class="rounded-lg border border-current/10 bg-amber-500/90 px-3 py-2 text-xs font-semibold text-white shadow-sm backdrop-blur">
+              <i class="fa-solid fa-triangle-exclamation mr-1"></i> No Celery worker running
+            </div>
+          </div>
+          {% endif %}
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ================================================================ -->
+    <!-- TAB: FORECAST -->
+    <!-- ================================================================ -->
+    <div x-show="activeTab === 'forecast'" x-cloak>
+      <div class="space-y-4">
+
+        <!-- Controls row -->
+        <div class="flex flex-wrap gap-3">
+
+          <!-- Location picker (compact) -->
+          <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+               class="flex items-center gap-2 rounded-xl border px-4 py-2 text-sm shadow-sm">
+            <i class="fa-solid fa-map-location-dot opacity-50"></i>
+            <span x-text="selectedIds.length ? `${selectedIds.length} locations` : 'None selected'"></span>
+            <button type="button" @click="selectAll()" class="ml-2 text-xs underline opacity-60 hover:opacity-100">All</button>
+            <button type="button" @click="clearAll()" class="text-xs underline opacity-60 hover:opacity-100">None</button>
+          </div>
+
+          <!-- Load forecast button -->
+          <button type="button" @click="loadForecast()"
+                  :disabled="!selectedIds.length || isForecastBusy"
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90 disabled:opacity-40' : 'bg-accent-light text-primary-bg-light hover:opacity-90 disabled:opacity-40'"
+                  class="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold shadow-sm transition">
+            <i class="fa-solid" :class="isForecastBusy ? 'fa-spinner fa-spin' : 'fa-cloud-arrow-down'"></i>
+            <span x-text="isForecastBusy ? 'Loading forecast…' : 'Load forecast'"></span>
+          </button>
+
+          <!-- Forecast meta -->
+          <template x-if="forecastSession">
+            <div class="flex items-center gap-2 rounded-xl border border-current/10 px-3 py-2 text-xs opacity-70">
+              <i class="fa-solid fa-calendar-check"></i>
+              <span x-text="`${new Date(forecastSession.valid_from).toLocaleDateString()} → ${new Date(forecastSession.valid_to).toLocaleDateString()}`"></span>
+              <span class="opacity-50">·</span>
+              <span x-text="`${forecastSession.resolution_hours}h resolution`"></span>
+            </div>
+          </template>
+        </div>
+
+        <!-- Error -->
+        <div x-show="forecastError" x-cloak
+             :class="darkMode ? 'border-warn-dark/40 bg-warn-dark/10 text-warn-dark' : 'border-warn-light/40 bg-warn-light/10 text-warn-light'"
+             class="rounded-xl border p-3 text-sm">
+          <i class="fa-solid fa-circle-exclamation mr-2"></i>
+          <span x-text="forecastError"></span>
+        </div>
+
+        <template x-if="sliderTimes.length">
+          <!-- Time slider + map -->
+          <div class="space-y-4">
+            <!-- Slider -->
+            <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                 class="rounded-xl border p-4 shadow-sm">
+              <div class="mb-2 flex items-center justify-between gap-3 text-sm font-semibold">
+                <span><i class="fa-regular fa-clock mr-1"></i> <span x-text="sliderLabel"></span></span>
+                <span class="text-xs opacity-50" x-text="`Step ${sliderIndex + 1} / ${sliderTimes.length}`"></span>
+              </div>
+              <input type="range" min="0" :max="sliderTimes.length - 1" step="1"
+                     x-model.number="sliderIndex" class="w-full accent-current">
+              <div class="mt-1 flex justify-between text-xs opacity-45">
+                <span x-text="sliderTimes[0] ? new Date(sliderTimes[0]).toLocaleDateString() : ''"></span>
+                <span x-text="sliderTimes[sliderTimes.length - 1] ? new Date(sliderTimes[sliderTimes.length - 1]).toLocaleDateString() : ''"></span>
+              </div>
+            </div>
+
+            <!-- Forecast map -->
+            <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                 class="relative h-64 overflow-hidden rounded-xl border shadow-sm lg:h-80">
+              <div id="weather-map" class="weather-map h-full w-full"></div>
+            </div>
+
+            <!-- Charts -->
+            <div class="space-y-3">
+              <template x-for="chartDef in [
+                {key:'temperature', label:'Temperature (°C)', icon:'fa-temperature-half', canvasId:'chart-temperature'},
+                {key:'precipitation', label:'Precipitation (mm)', icon:'fa-cloud-rain', canvasId:'chart-precipitation'},
+                {key:'wind', label:'Wind speed (km/h)', icon:'fa-wind', canvasId:'chart-wind'},
+                {key:'cloud', label:'Cloud cover (%)', icon:'fa-cloud', canvasId:'chart-cloud'},
+                {key:'visibility', label:'Visibility (km)', icon:'fa-eye', canvasId:'chart-visibility'},
+              ]" :key="chartDef.key">
+                <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                     class="rounded-xl border shadow-sm overflow-hidden">
+                  <button type="button" @click="toggleChart(chartDef.key)"
+                          class="flex w-full items-center justify-between gap-3 px-4 py-3 text-sm font-semibold hover:bg-current/5 transition">
+                    <span class="flex items-center gap-2">
+                      <i class="fa-solid" :class="chartDef.icon"></i>
+                      <span x-text="chartDef.label"></span>
+                    </span>
+                    <i class="fa-solid text-xs opacity-50" :class="isChartCollapsed(chartDef.key) ? 'fa-chevron-down' : 'fa-chevron-up'"></i>
+                  </button>
+                  <div x-show="!isChartCollapsed(chartDef.key)" class="px-4 pb-4">
+                    <div class="h-48">
+                      <canvas :id="chartDef.canvasId"></canvas>
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
+
+        <template x-if="!sliderTimes.length && forecastStatus !== 'running' && forecastStatus !== 'pending'">
+          <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+               class="rounded-xl border border-dashed p-10 text-center shadow-sm">
+            <i class="fa-solid fa-calendar-week text-3xl opacity-20"></i>
+            <p class="mt-3 text-sm font-semibold opacity-55">No forecast loaded yet.</p>
+            <p class="mt-1 text-xs opacity-40">Select locations and click "Load forecast".</p>
+          </div>
+        </template>
+
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  // Re-init map when tab switches back to forecast (shared map element moved)
+  document.addEventListener("DOMContentLoaded", () => {
+    setTimeout(() => { if (_map) _map.invalidateSize(); }, 200);
+  });
+</script>
+{% endblock %}
