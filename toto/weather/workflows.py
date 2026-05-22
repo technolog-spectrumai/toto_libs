@@ -91,11 +91,13 @@ def _parse_dt(raw):
 _data = _input.get("data") or _input
 location_ids = _data.get("location_ids", [])
 provider_slug = _data.get("provider", "open_meteo")
-hours_ahead = int(_data.get("hours_ahead", 120))
 
 addresses = list(Address.objects.filter(id__in=location_ids, geometry__isnull=False))
 provider = get_provider(provider_slug)
-result = provider.fetch_forecast(addresses, hours_ahead=hours_ahead)
+
+start_at = _parse_dt(_data.get("start_at")) if _data.get("start_at") else None
+end_at = _parse_dt(_data.get("end_at")) if _data.get("end_at") else None
+result = provider.fetch_forecast(addresses, start_at=start_at, end_at=end_at)
 
 valid_from = _parse_dt(result.get("valid_from"))
 valid_to = _parse_dt(result.get("valid_to"))

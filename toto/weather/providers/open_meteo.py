@@ -94,7 +94,16 @@ class OpenMeteoProvider(BaseWeatherProvider):
                 results.append({"address_id": address.id, "error": str(exc)})
         return results
 
-    def fetch_forecast(self, addresses, hours_ahead: int = 120) -> dict:
+    def fetch_forecast(self, addresses, start_at=None, end_at=None) -> dict:
+        from datetime import datetime, timezone as tz, timedelta
+        now = datetime.now(tz.utc)
+        if start_at is None:
+            start_at = now
+        if end_at is None:
+            end_at = now + timedelta(hours=24)
+
+        hours_ahead = max(1, int((end_at - now).total_seconds() / 3600) + 1)
+
         all_points: list[dict] = []
         valid_from = None
         valid_to = None
@@ -122,11 +131,6 @@ class OpenMeteoProvider(BaseWeatherProvider):
                 hourly = data.get("hourly") or {}
                 times = hourly.get("time") or []
 
-                if times:
-                    if valid_from is None:
-                        valid_from = times[0]
-                    valid_to = times[-1]
-
                 def _val(key, i):
                     lst = hourly.get(key)
                     if lst and i < len(lst):
@@ -134,10 +138,18 @@ class OpenMeteoProvider(BaseWeatherProvider):
                     return None
 
                 for i, t in enumerate(times):
+                    # t is "YYYY-MM-DDTHH:MM" (UTC, no tz suffix from Open-Meteo)
+                    t_dt = datetime.fromisoformat(t).replace(tzinfo=tz.utc)
+                    if t_dt < start_at or t_dt > end_at:
+                        continue
+                    if valid_from is None or t_dt < valid_from:
+                        valid_from = t_dt
+                    if valid_to is None or t_dt > valid_to:
+                        valid_to = t_dt
                     vis_raw = _val("visibility", i)
                     all_points.append({
                         "address_id": address.id,
-                        "valid_at": t,
+                        "valid_at": t_dt.isoformat(),
                         "temperature": _val("temperature_2m", i),
                         "precipitation_mm": _val("precipitation", i),
                         "precipitation_type": _wmo_to_precip_type(_val("weather_code", i)),
@@ -150,8 +162,8 @@ class OpenMeteoProvider(BaseWeatherProvider):
                 log.warning("Open-Meteo forecast failed for address %s: %s", address.id, exc)
 
         return {
-            "valid_from": valid_from,
-            "valid_to": valid_to,
+            "valid_from": valid_from.isoformat() if valid_from else None,
+            "valid_to": valid_to.isoformat() if valid_to else None,
             "resolution_hours": self.forecast_resolution_hours,
             "points": all_points,
         }

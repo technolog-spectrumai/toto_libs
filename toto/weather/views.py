@@ -132,7 +132,8 @@ def api_load_forecast(request):
         return JsonResponse({"error": "Invalid JSON."}, status=400)
 
     location_ids = [int(x) for x in (data.get("location_ids") or []) if x]
-    hours_ahead = int(data.get("hours_ahead", 120))
+    start_at = data.get("start_at") or None
+    end_at = data.get("end_at") or None
     if not location_ids:
         return JsonResponse({"error": "Select at least one location."}, status=400)
 
@@ -149,7 +150,8 @@ def api_load_forecast(request):
         run = trigger_workflow(WEATHER_FORECAST_SLUG, {
             "location_ids": location_ids,
             "provider": settings_obj.forecast_provider,
-            "hours_ahead": hours_ahead,
+            "start_at": start_at,
+            "end_at": end_at,
         })
         return JsonResponse({"run_id": run.id})
     except Workflow.DoesNotExist:
