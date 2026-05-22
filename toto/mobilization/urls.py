@@ -40,6 +40,11 @@ urlpatterns = [
     path("events/<int:pk>/evac-routes/add/", views.evac_route_add, name="evac_route_add"),
     path("events/<int:pk>/evac-routes/<int:route_pk>/status/", views.evac_route_status, name="evac_route_status"),
 
+    # Emergency status
+    path("events/<int:pk>/emergency/declare/", views.emergency_status_declare, name="emergency_status_declare"),
+    path("events/<int:pk>/emergency/<int:es_pk>/lift/", views.emergency_status_lift, name="emergency_status_lift"),
+    path("events/<int:pk>/emergency/<int:es_pk>/equipment/", views.emergency_equipment_authorize, name="emergency_equipment_authorize"),
+
     # Deployment routes
     path("deployments/<int:pk>/routes/add/", views.deployment_route_add, name="deployment_route_add"),
 

@@ -239,6 +239,175 @@
     </div>
   </div>
 
+  {# — Emergency status — #}
+  <div x-data="{ declareOpen: false }"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5 shadow-sm">
+    <div class="mb-4 flex items-center justify-between">
+      <h3 class="font-bold flex items-center gap-2">
+        <i class="fa-solid fa-triangle-exclamation"></i> {% trans "Emergency Status" %} ({{ emergency_statuses|length }})
+      </h3>
+      <button type="button" @click="declareOpen = !declareOpen"
+              :class="darkMode ? 'bg-warn-dark text-primary-bg-dark' : 'bg-warn-light text-primary-bg-light'"
+              class="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold hover:opacity-80">
+        <i class="fa-solid fa-siren-on"></i> {% trans "Declare" %}
+      </button>
+    </div>
+
+    {# Declare form #}
+    <div x-show="declareOpen" x-cloak
+         :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+         class="mb-4 rounded-lg p-4">
+      <form method="post" action="{% url 'mobilization:emergency_status_declare' event.pk %}"
+            class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {% csrf_token %}
+        <select name="level"
+                :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                class="rounded-lg border px-3 py-2 text-sm">
+          {% for val, label in emergency_level_choices %}
+            <option value="{{ val }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+        <select name="community"
+                :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                class="rounded-lg border px-3 py-2 text-sm">
+          <option value="">{% trans "Community (optional)" %}</option>
+          {% for c in all_communities %}
+            <option value="{{ c.pk }}">{{ c.name }}</option>
+          {% endfor %}
+        </select>
+        <select name="zone"
+                :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                class="rounded-lg border px-3 py-2 text-sm">
+          <option value="">{% trans "Zone (optional)" %}</option>
+          {% for z in all_zones %}
+            <option value="{{ z.pk }}">{{ z.name }}</option>
+          {% endfor %}
+        </select>
+        <input name="emergency_tax_rate" type="number" step="0.0001" min="0" max="1"
+               placeholder="{% trans "Tax rate e.g. 0.025" %}"
+               :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+               class="rounded-lg border px-3 py-2 text-sm">
+        <div class="flex flex-wrap gap-3 items-center text-sm">
+          <label class="flex items-center gap-1.5">
+            <input type="checkbox" name="allows_asset_requisition" value="1" checked class="rounded"> Assets
+          </label>
+          <label class="flex items-center gap-1.5">
+            <input type="checkbox" name="allows_inventory_access" value="1" checked class="rounded"> Inventory
+          </label>
+          <label class="flex items-center gap-1.5">
+            <input type="checkbox" name="allows_route_commandeering" value="1" class="rounded"> Routes
+          </label>
+        </div>
+        <button type="submit"
+                :class="darkMode ? 'bg-warn-dark text-primary-bg-dark' : 'bg-warn-light text-primary-bg-light'"
+                class="rounded-lg px-4 py-2 text-sm font-semibold hover:opacity-90">
+          {% trans "Declare Emergency" %}
+        </button>
+      </form>
+    </div>
+
+    <div class="space-y-3">
+      {% for es in emergency_statuses %}
+        <div x-data="{ authorizeOpen: false }"
+             :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+             class="rounded-lg p-4">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div class="space-y-1">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="font-semibold text-sm">
+                  {% if es.community %}{{ es.community }}{% endif %}
+                  {% if es.community and es.zone %} · {% endif %}
+                  {% if es.zone %}{{ es.zone }}{% endif %}
+                </span>
+                <span :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
+                      class="rounded border border-current/30 px-2 py-0.5 text-xs font-semibold uppercase">
+                  {{ es.get_level_display }}
+                </span>
+                {% include "mobilization/partials/status_badge.html" with status=es.status %}
+              </div>
+              <div class="flex flex-wrap gap-3 text-xs opacity-60">
+                <span>{% trans "Declared" %} {{ es.declared_at|date:"M d, H:i" }}</span>
+                {% if es.declared_by %}<span>{% trans "by" %} {{ es.declared_by }}</span>{% endif %}
+                {% if es.emergency_tax_rate %}<span><i class="fa-solid fa-percent mr-1"></i>{{ es.emergency_tax_rate|floatformat:2 }}% tax</span>{% endif %}
+              </div>
+              <div class="flex flex-wrap gap-2 text-xs opacity-70 mt-1">
+                {% if es.allows_asset_requisition %}<span class="rounded border border-current/15 px-1.5 py-0.5"><i class="fa-solid fa-coins mr-1"></i>Assets</span>{% endif %}
+                {% if es.allows_inventory_access %}<span class="rounded border border-current/15 px-1.5 py-0.5"><i class="fa-solid fa-boxes-stacked mr-1"></i>Inventory</span>{% endif %}
+                {% if es.allows_route_commandeering %}<span class="rounded border border-current/15 px-1.5 py-0.5"><i class="fa-solid fa-route mr-1"></i>Routes</span>{% endif %}
+              </div>
+            </div>
+            <div class="flex gap-2">
+              {% if es.allows_inventory_access and es.status == "active" %}
+                <button type="button" @click="authorizeOpen = !authorizeOpen"
+                        :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                        class="rounded-lg border px-2 py-1 text-xs font-semibold hover:opacity-80">
+                  <i class="fa-solid fa-toolbox mr-1"></i>{% trans "Authorize" %}
+                </button>
+              {% endif %}
+              {% if es.status == "active" %}
+                <form method="post" action="{% url 'mobilization:emergency_status_lift' event.pk es.pk %}">
+                  {% csrf_token %}
+                  <button type="submit" class="rounded-lg border border-current/20 px-2 py-1 text-xs hover:opacity-80">
+                    <i class="fa-solid fa-check mr-1"></i>{% trans "Lift" %}
+                  </button>
+                </form>
+              {% endif %}
+            </div>
+          </div>
+
+          {# Equipment access list #}
+          {% if es.equipment_accesses.all %}
+            <div class="mt-3 border-t border-current/10 pt-3 space-y-1.5">
+              <div class="text-xs font-semibold opacity-50 uppercase tracking-wide">{% trans "Hybrid Equipment" %}</div>
+              {% for ea in es.equipment_accesses.all %}
+                <div class="flex items-center justify-between text-xs">
+                  <span class="flex items-center gap-1.5">
+                    <i class="fa-solid fa-code-branch opacity-50"></i>
+                    {{ ea.item.name }} × {{ ea.quantity }}
+                    {% if ea.deployment %}<span class="opacity-60">→ {{ ea.deployment.title }}</span>{% endif %}
+                  </span>
+                  {% if ea.returned_at %}
+                    <span class="opacity-40">{% trans "returned" %}</span>
+                  {% else %}
+                    <span :class="darkMode ? 'text-success-dark' : 'text-success-light'">{% trans "in use" %}</span>
+                  {% endif %}
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+
+          {# Authorize equipment inline form #}
+          <div x-show="authorizeOpen" x-cloak class="mt-3 border-t border-current/10 pt-3">
+            <form method="post" action="{% url 'mobilization:emergency_equipment_authorize' event.pk es.pk %}"
+                  class="flex flex-wrap gap-2">
+              {% csrf_token %}
+              <select name="item"
+                      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                      class="flex-1 min-w-36 rounded-lg border px-3 py-1.5 text-xs">
+                <option value="">{% trans "Select item..." %}</option>
+                {# Items from available inventory #}
+                {% for dep in deployments %}
+                  {% for eq in dep.equipment.all %}
+                    <option value="{{ eq.item.pk }}">{{ eq.item.name }}</option>
+                  {% endfor %}
+                {% endfor %}
+              </select>
+              <input type="number" name="quantity" value="1" min="0.01" step="0.01"
+                     :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                     class="w-20 rounded-lg border px-3 py-1.5 text-xs">
+              <button type="submit"
+                      :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                      class="rounded-lg px-3 py-1.5 text-xs font-semibold">{% trans "Authorize" %}</button>
+            </form>
+          </div>
+        </div>
+      {% empty %}
+        <p class="text-sm opacity-60">{% trans "No emergency status declared." %}</p>
+      {% endfor %}
+    </div>
+  </div>
+
   {# — Deployments — #}
   <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
        class="rounded-lg border p-5 shadow-sm">

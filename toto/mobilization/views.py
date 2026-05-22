@@ -19,6 +19,8 @@ from .models import (
     DeploymentAssignment,
     DeploymentEquipment,
     DeploymentRoute,
+    EmergencyEquipmentAccess,
+    EmergencyStatus,
     EvacuationRoute,
     Intervention,
 )
@@ -355,8 +357,14 @@ def event_detail(request, pk):
         )
 
     evac_routes = event.evac_routes.select_related("route").order_by("route_type", "name")
-    from toto.locations.models import Route
+    emergency_statuses = event.emergency_statuses.select_related(
+        "community", "zone", "declared_by"
+    ).prefetch_related("equipment_accesses__item", "equipment_accesses__deployment").order_by("-declared_at")
+    from toto.locations.models import Route, Zone
+    from toto.socialhub.models import Community
     available_routes = Route.objects.order_by("name")
+    all_communities = Community.objects.order_by("name")
+    all_zones = Zone.objects.order_by("name")
 
     # Build escalation / hierarchy data for Cytoscape
     escalation_nodes = []
@@ -395,6 +403,10 @@ def event_detail(request, pk):
         "available_routes": available_routes,
         "evac_route_type_choices": EvacuationRoute.ROUTE_TYPE_CHOICES,
         "evac_status_choices": EvacuationRoute.STATUS_CHOICES,
+        "emergency_statuses": emergency_statuses,
+        "emergency_level_choices": EmergencyStatus.LEVEL_CHOICES,
+        "all_communities": all_communities,
+        "all_zones": all_zones,
         "escalation_nodes": json.dumps(escalation_nodes),
         "escalation_edges": json.dumps(escalation_edges),
         "mission_timeline": json.dumps(mission_timeline),
@@ -834,3 +846,99 @@ def deployment_equipment_add(request, pk):
         )
         messages.success(request, f"{item.name} added to deployment equipment.")
     return redirect("mobilization:deployment_detail", pk=pk)
+
+
+# ---------------------------------------------------------------------------
+# Emergency status
+# ---------------------------------------------------------------------------
+
+@login_required
+@require_POST
+def emergency_status_declare(request, pk):
+    event = get_object_or_404(MobilizationEvent, pk=pk)
+    from toto.socialhub.models import Community
+    from toto.locations.models import Zone
+
+    community_id = request.POST.get("community") or None
+    zone_id = request.POST.get("zone") or None
+    level = request.POST.get("level", "warning")
+    allows_asset = request.POST.get("allows_asset_requisition") == "1"
+    allows_inventory = request.POST.get("allows_inventory_access") == "1"
+    allows_routes = request.POST.get("allows_route_commandeering") == "1"
+    tax_rate = request.POST.get("emergency_tax_rate") or None
+    notes = request.POST.get("notes", "")
+
+    community = Community.objects.filter(pk=community_id).first() if community_id else None
+    zone = Zone.objects.filter(pk=zone_id).first() if zone_id else None
+    person = _person(request)
+
+    if not community and not zone:
+        messages.error(request, "Select a community or zone.")
+        return redirect("mobilization:event_detail", pk=pk)
+
+    try:
+        tax_rate_val = float(tax_rate) if tax_rate else None
+    except ValueError:
+        tax_rate_val = None
+
+    EmergencyStatus.objects.create(
+        event=event,
+        community=community,
+        zone=zone,
+        level=level,
+        declared_by=person,
+        notes=notes,
+        allows_asset_requisition=allows_asset,
+        allows_inventory_access=allows_inventory,
+        allows_route_commandeering=allows_routes,
+        emergency_tax_rate=tax_rate_val,
+    )
+    target = str(community or zone)
+    messages.success(request, f"Emergency declared for {target}.")
+    return redirect("mobilization:event_detail", pk=pk)
+
+
+@login_required
+@require_POST
+def emergency_status_lift(request, pk, es_pk):
+    es = get_object_or_404(EmergencyStatus, pk=es_pk, event_id=pk)
+    person = _person(request)
+    es.lift(lifted_by=person)
+    messages.success(request, "Emergency status lifted.")
+    return redirect("mobilization:event_detail", pk=pk)
+
+
+@login_required
+@require_POST
+def emergency_equipment_authorize(request, pk, es_pk):
+    es = get_object_or_404(EmergencyStatus, pk=es_pk, event_id=pk)
+    from toto.inventory.models import RealWorldObject
+
+    item_id = request.POST.get("item")
+    deployment_id = request.POST.get("deployment") or None
+    quantity = request.POST.get("quantity", "1")
+
+    item = RealWorldObject.objects.filter(pk=item_id).first() if item_id else None
+    deployment = Deployment.objects.filter(pk=deployment_id).first() if deployment_id else None
+
+    try:
+        quantity = float(quantity)
+    except (ValueError, TypeError):
+        quantity = 1
+
+    if not item:
+        messages.error(request, "Item is required.")
+    else:
+        person = _person(request)
+        EmergencyEquipmentAccess.objects.get_or_create(
+            emergency=es,
+            item=item,
+            defaults={
+                "deployment": deployment,
+                "is_hybrid": True,
+                "quantity": quantity,
+                "authorized_by": person,
+            },
+        )
+        messages.success(request, f"{item.name} authorized as hybrid equipment.")
+    return redirect("mobilization:event_detail", pk=pk)

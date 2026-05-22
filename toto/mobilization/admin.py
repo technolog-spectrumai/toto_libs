@@ -8,7 +8,12 @@ from .models import (
     MobilizationEvent,
     Deployment,
     DeploymentAssignment,
+    DeploymentEquipment,
+    DeploymentRoute,
+    EvacuationRoute,
     Intervention,
+    EmergencyStatus,
+    EmergencyEquipmentAccess,
 )
 
 
@@ -120,3 +125,46 @@ class InterventionAdmin(admin.ModelAdmin):
     list_filter = ("status", "priority", "intervention_type", "is_required")
     search_fields = ("title", "description")
     readonly_fields = ("created_at", "updated_at", "started_at", "completed_at")
+
+
+@admin.register(EvacuationRoute)
+class EvacuationRouteAdmin(admin.ModelAdmin):
+    list_display = ("name", "event", "route_type", "status")
+    list_filter = ("route_type", "status")
+    search_fields = ("name",)
+
+
+@admin.register(DeploymentRoute)
+class DeploymentRouteAdmin(admin.ModelAdmin):
+    list_display = ("deployment", "route", "route_type")
+    list_filter = ("route_type",)
+
+
+@admin.register(DeploymentEquipment)
+class DeploymentEquipmentAdmin(admin.ModelAdmin):
+    list_display = ("item", "deployment", "quantity", "allocated_at")
+    search_fields = ("item__name", "deployment__title")
+
+
+class EmergencyEquipmentAccessInline(admin.TabularInline):
+    model = EmergencyEquipmentAccess
+    extra = 0
+    fields = ("item", "deployment", "is_hybrid", "quantity", "authorized_by", "returned_at")
+    readonly_fields = ("authorized_at",)
+
+
+@admin.register(EmergencyStatus)
+class EmergencyStatusAdmin(admin.ModelAdmin):
+    list_display = ("event", "community", "zone", "level", "status", "declared_at", "lifted_at", "is_active")
+    list_filter = ("level", "status", "allows_asset_requisition", "allows_inventory_access")
+    search_fields = ("event__title", "community__name")
+    readonly_fields = ("created_at", "updated_at")
+    inlines = [EmergencyEquipmentAccessInline]
+
+
+@admin.register(EmergencyEquipmentAccess)
+class EmergencyEquipmentAccessAdmin(admin.ModelAdmin):
+    list_display = ("item", "emergency", "deployment", "is_hybrid", "quantity", "authorized_by", "returned_at")
+    list_filter = ("is_hybrid",)
+    search_fields = ("item__name",)
+    readonly_fields = ("authorized_at",)

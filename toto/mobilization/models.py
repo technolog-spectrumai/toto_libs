@@ -667,3 +667,175 @@ class Intervention(models.Model):
 
     def __str__(self):
         return f"[{self.get_status_display()}] {self.title}"
+
+
+class EmergencyStatus(models.Model):
+    """
+    Declared state of emergency for a community and/or zone, linked to a mobilization event.
+    When active, grants special privileges: assets and inventory items belonging to the
+    community/zone can be marked as hybrid equipment and allocated to deployments.
+    """
+
+    LEVEL_CHOICES = [
+        ("watch", "Watch"),
+        ("warning", "Warning"),
+        ("emergency", "Emergency"),
+        ("critical_emergency", "Critical Emergency"),
+    ]
+
+    STATUS_CHOICES = [
+        ("active", "Active"),
+        ("lifted", "Lifted"),
+        ("expired", "Expired"),
+    ]
+
+    event = models.ForeignKey(
+        MobilizationEvent,
+        on_delete=models.CASCADE,
+        related_name="emergency_statuses",
+    )
+    community = models.ForeignKey(
+        "socialhub.Community",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="emergency_statuses",
+    )
+    zone = models.ForeignKey(
+        "locations.Zone",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="emergency_statuses",
+    )
+    level = models.CharField(max_length=30, choices=LEVEL_CHOICES, default="warning")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="active", db_index=True)
+    declared_by = models.ForeignKey(
+        "people.Person",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="declared_emergency_statuses",
+    )
+    declared_at = models.DateTimeField(default=timezone.now)
+    lifted_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+
+    # Special privileges granted under this emergency
+    allows_asset_requisition = models.BooleanField(
+        default=True,
+        help_text="Community/zone assets can be requisitioned for deployment use",
+    )
+    allows_inventory_access = models.BooleanField(
+        default=True,
+        help_text="Inventory items at community/zone sites become available as hybrid equipment",
+    )
+    allows_route_commandeering = models.BooleanField(
+        default=False,
+        help_text="Emergency vehicles may commandeer routes within this zone",
+    )
+
+    # Emergency tax — levy collected during the emergency to fund response
+    emergency_tax_rate = models.DecimalField(
+        max_digits=5,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text="Tax rate applied during emergency (e.g. 0.0250 = 2.5%)",
+    )
+    emergency_tax_asset = models.ForeignKey(
+        "assets.Asset",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="emergency_tax_statuses",
+        help_text="Asset/currency in which the emergency tax is denominated",
+    )
+    emergency_tax_account = models.ForeignKey(
+        "assets.LedgerAccount",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="emergency_tax_statuses",
+        help_text="Ledger account where emergency tax revenue is collected",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["event", "status"]),
+            models.Index(fields=["community", "status"]),
+            models.Index(fields=["zone", "status"]),
+        ]
+        verbose_name_plural = "Emergency statuses"
+
+    def clean(self):
+        if not self.community_id and not self.zone_id:
+            raise ValidationError("An emergency status must target either a community or a zone (or both).")
+
+    @property
+    def is_active(self):
+        if self.status != "active":
+            return False
+        if self.expires_at and timezone.now() > self.expires_at:
+            return False
+        return True
+
+    def lift(self, lifted_by=None):
+        self.status = "lifted"
+        self.lifted_at = timezone.now()
+        self.save()
+
+    def __str__(self):
+        target = str(self.community or self.zone or "—")
+        return f"[{self.get_level_display()}] Emergency — {target} ({self.get_status_display()})"
+
+
+class EmergencyEquipmentAccess(models.Model):
+    """
+    Tracks an inventory item that has been granted hybrid access under an emergency status.
+    The item remains owned by the community/zone but can be allocated to deployments.
+    """
+
+    emergency = models.ForeignKey(
+        EmergencyStatus,
+        on_delete=models.CASCADE,
+        related_name="equipment_accesses",
+    )
+    item = models.ForeignKey(
+        "inventory.RealWorldObject",
+        on_delete=models.CASCADE,
+        related_name="emergency_accesses",
+    )
+    deployment = models.ForeignKey(
+        Deployment,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="emergency_equipment",
+    )
+    is_hybrid = models.BooleanField(
+        default=True,
+        help_text="Item shared under emergency — owner retains nominal ownership",
+    )
+    quantity = models.DecimalField(max_digits=10, decimal_places=2, default=1)
+    authorized_by = models.ForeignKey(
+        "people.Person",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="authorized_emergency_equipment",
+    )
+    authorized_at = models.DateTimeField(auto_now_add=True)
+    returned_at = models.DateTimeField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        unique_together = [("emergency", "item")]
+        ordering = ["item__name"]
+
+    def __str__(self):
+        return f"Emergency access: {self.item.name} (hybrid={self.is_hybrid})"
