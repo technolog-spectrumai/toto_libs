@@ -1,43 +1,87 @@
 import random
 from django.utils import timezone
+from django.db import models
 from datetime import timedelta
 
 from toto.ingress import IngressCommand
 from toto.people.models import Person
 from toto.socialhub.models import Community
 from toto.mobilization.models import (
+    AchievementBadge,
+    PersonAchievement,
     IncidentType,
+    InterventionType,
     Responder,
     ResponderSkill,
     MobilizationReport,
+    MobilizationReportEvidence,
     MobilizationEvent,
     Deployment,
     DeploymentAssignment,
-    Intervention,
-    EvacuationRoute,
-    DeploymentRoute,
     DeploymentEquipment,
+    DeploymentRoute,
+    EvacuationRoute,
+    Intervention,
+    EmergencyStatus,
+    EmergencyEquipmentAccess,
 )
 
 
+# ---------------------------------------------------------------------------
+# Static seed data
+# ---------------------------------------------------------------------------
+
 INCIDENT_TYPES = [
-    {"name": "Flood", "slug": "flood", "icon": "fa-solid fa-water", "order": 1},
-    {"name": "Fire", "slug": "fire", "icon": "fa-solid fa-fire", "order": 2},
-    {"name": "Earthquake", "slug": "earthquake", "icon": "fa-solid fa-house-crack", "order": 3},
-    {"name": "Storm", "slug": "storm", "icon": "fa-solid fa-cloud-bolt", "order": 4},
-    {"name": "Chemical Spill", "slug": "chemical-spill", "icon": "fa-solid fa-biohazard", "order": 5},
-    {"name": "Infrastructure Failure", "slug": "infrastructure-failure", "icon": "fa-solid fa-road-barrier", "order": 6},
-    {"name": "Mass Casualty", "slug": "mass-casualty", "icon": "fa-solid fa-hospital", "order": 7},
-    {"name": "Evacuation", "slug": "evacuation", "icon": "fa-solid fa-person-walking-arrow-right", "order": 8},
+    {"name": "Flood",                  "slug": "flood",                  "icon": "fa-solid fa-water",                    "order": 1},
+    {"name": "Fire",                   "slug": "fire",                   "icon": "fa-solid fa-fire",                     "order": 2},
+    {"name": "Earthquake",             "slug": "earthquake",             "icon": "fa-solid fa-house-crack",              "order": 3},
+    {"name": "Storm",                  "slug": "storm",                  "icon": "fa-solid fa-cloud-bolt",               "order": 4},
+    {"name": "Chemical Spill",         "slug": "chemical-spill",         "icon": "fa-solid fa-biohazard",                "order": 5},
+    {"name": "Infrastructure Failure", "slug": "infrastructure-failure", "icon": "fa-solid fa-road-barrier",             "order": 6},
+    {"name": "Mass Casualty",          "slug": "mass-casualty",          "icon": "fa-solid fa-hospital",                 "order": 7},
+    {"name": "Evacuation",             "slug": "evacuation",             "icon": "fa-solid fa-person-walking-arrow-right","order": 8},
+]
+
+ACHIEVEMENT_BADGES = [
+    {"name": "First Responder",       "slug": "first-responder",      "icon": "fa-solid fa-medal",               "category": "service",    "order": 1,
+     "description": "Responded to a mobilization event within the first hour of activation."},
+    {"name": "Life Saver",            "slug": "life-saver",           "icon": "fa-solid fa-heart-pulse",         "category": "rescue",     "order": 1,
+     "description": "Directly involved in saving one or more lives during a deployment."},
+    {"name": "Field Commander",       "slug": "field-commander",      "icon": "fa-solid fa-star",                "category": "leadership", "order": 1,
+     "description": "Led a deployment team of 5+ responders through an active incident."},
+    {"name": "Flood Specialist",      "slug": "flood-specialist",     "icon": "fa-solid fa-water",               "category": "training",   "order": 2,
+     "description": "Completed certified flood response training and participated in a flood event."},
+    {"name": "Search & Rescue",       "slug": "search-rescue",        "icon": "fa-solid fa-magnifying-glass-location", "category": "rescue", "order": 2,
+     "description": "Successfully completed a search and rescue operation."},
+    {"name": "Multi-Incident Veteran","slug": "multi-incident-veteran","icon": "fa-solid fa-shield-halved",      "category": "service",    "order": 3,
+     "description": "Participated in 3 or more distinct mobilization events."},
+    {"name": "Logistics Expert",      "slug": "logistics-expert",     "icon": "fa-solid fa-boxes-stacked",      "category": "training",   "order": 3,
+     "description": "Managed supply chain and equipment allocation across a multi-deployment event."},
+    {"name": "Night Ops",             "slug": "night-ops",            "icon": "fa-solid fa-moon",               "category": "special",    "order": 1,
+     "description": "Completed a deployment that ran through overnight hours."},
+]
+
+RESPONDER_SKILL_SLUGS = [
+    ("emergency-response",  "Emergency Response",  "First Response"),
+    ("first-aid",           "First Aid & CPR",     "Medical"),
+    ("navigation",          "Field Navigation",    "Field Ops"),
+    ("comms",               "Radio Communications","Communications"),
+    ("logistics-mob",       "Logistics & Supply",  "Logistics"),
+    ("hazmat-basic",        "HazMat Basic",        "Safety"),
+    ("water-rescue",        "Water Rescue",        "Rescue"),
 ]
 
 SCENARIOS = [
+    # ── Active critical flood ──────────────────────────────────────────────
     {
         "report_title": "Riverside District Flooding — Critical",
         "severity": "critical",
+        "report_status": "enacted",
         "event_title": "Riverside Flood Response 2026",
         "event_status": "active",
         "incident": "flood",
+        "hours_ago": 18,
+        "emergency": {"level": "critical_emergency", "tax_rate": "0.0350"},
         "deployments": [
             {
                 "title": "North Bank Evacuation Team",
@@ -47,9 +91,11 @@ SCENARIOS = [
                 "objective": "Evacuate 200+ residents from low-lying zones along north bank",
                 "is_hybrid": False,
                 "interventions": [
-                    {"title": "House-to-house checks — Block A", "intervention_type": "welfare_check", "priority": "urgent", "is_required": True},
-                    {"title": "Boat transport — elderly residents", "intervention_type": "transport", "priority": "urgent", "is_required": True},
-                    {"title": "Supply drop — temporary shelter", "intervention_type": "supply_delivery", "priority": "normal", "is_required": False},
+                    {"title": "House-to-house checks — Block A",     "type": "welfare-check",  "priority": "urgent", "required": True,  "status": "done"},
+                    {"title": "House-to-house checks — Block B",     "type": "welfare-check",  "priority": "urgent", "required": True,  "status": "in_progress"},
+                    {"title": "Boat transport — elderly residents",  "type": "transport",      "priority": "urgent", "required": True,  "status": "in_progress"},
+                    {"title": "Supply drop — temporary shelter",     "type": "supply-delivery","priority": "normal", "required": False, "status": "todo"},
+                    {"title": "Evacuation pickup — Block C",         "type": "evacuation-pickup","priority":"high",  "required": True,  "status": "todo"},
                 ],
             },
             {
@@ -61,18 +107,37 @@ SCENARIOS = [
                 "is_hybrid": True,
                 "hybrid_time_percent": 60,
                 "interventions": [
-                    {"title": "Triage — assembly point", "intervention_type": "first_aid", "priority": "urgent", "is_required": True},
-                    {"title": "Damage report — flooded infrastructure", "intervention_type": "damage_report", "priority": "normal", "is_required": False},
+                    {"title": "Triage — assembly point",                    "type": "first-aid",    "priority": "urgent", "required": True,  "status": "in_progress"},
+                    {"title": "Damage report — flooded infrastructure",     "type": "damage-report","priority": "normal", "required": False, "status": "todo"},
+                    {"title": "Decontamination station — evacuation hub",   "type": "decontamination","priority": "high", "required": True,  "status": "todo"},
+                ],
+            },
+            {
+                "title": "Sandbagging Crew — Levee Section 4",
+                "deployment_type": "flood_response",
+                "priority": "urgent",
+                "status": "active",
+                "objective": "Reinforce levee at section 4 before water reaches critical level",
+                "is_hybrid": False,
+                "interventions": [
+                    {"title": "Sandbagging — Levee Section 4A",  "type": "sandbagging",  "priority": "urgent", "required": True, "status": "in_progress"},
+                    {"title": "Sandbagging — Levee Section 4B",  "type": "sandbagging",  "priority": "urgent", "required": True, "status": "todo"},
+                    {"title": "Road closure — Riverside Drive",  "type": "road-closure", "priority": "urgent", "required": True, "status": "done"},
                 ],
             },
         ],
     },
+
+    # ── Active high fire ───────────────────────────────────────────────────
     {
         "report_title": "Industrial Fire — Sector 7 Warehouse District",
         "severity": "high",
+        "report_status": "enacted",
         "event_title": "Warehouse Fire Containment — Sector 7",
         "event_status": "active",
         "incident": "fire",
+        "hours_ago": 6,
+        "emergency": {"level": "emergency", "tax_rate": "0.0200"},
         "deployments": [
             {
                 "title": "Perimeter Control Team",
@@ -82,30 +147,50 @@ SCENARIOS = [
                 "objective": "Establish and hold safe perimeter; monitor wind direction",
                 "is_hybrid": False,
                 "interventions": [
-                    {"title": "Road closure — access routes", "intervention_type": "road_closure", "priority": "urgent", "is_required": True},
-                    {"title": "Welfare check — adjacent businesses", "intervention_type": "welfare_check", "priority": "high", "is_required": True},
+                    {"title": "Road closure — N-access routes",          "type": "road-closure",  "priority": "urgent", "required": True,  "status": "done"},
+                    {"title": "Road closure — S-access routes",          "type": "road-closure",  "priority": "urgent", "required": True,  "status": "done"},
+                    {"title": "Welfare check — adjacent businesses",     "type": "welfare-check", "priority": "high",   "required": True,  "status": "in_progress"},
+                    {"title": "Communications relay — sector command",   "type": "communications","priority": "high",   "required": True,  "status": "in_progress"},
                 ],
             },
             {
                 "title": "Logistics Coordination",
                 "deployment_type": "logistics",
                 "priority": "normal",
-                "status": "planned",
+                "status": "active",
                 "objective": "Coordinate water and foam supply to fire crews",
                 "is_hybrid": True,
                 "hybrid_time_percent": 50,
                 "interventions": [
-                    {"title": "Water truck routing", "intervention_type": "transport", "priority": "high", "is_required": True},
+                    {"title": "Water truck routing",     "type": "transport",       "priority": "high",   "required": True,  "status": "in_progress"},
+                    {"title": "Foam supply delivery",   "type": "supply-delivery", "priority": "high",   "required": True,  "status": "todo"},
+                ],
+            },
+            {
+                "title": "Shelter Setup — Community Hall",
+                "deployment_type": "shelter_support",
+                "priority": "normal",
+                "status": "planned",
+                "objective": "Open community hall as emergency shelter for displaced residents",
+                "is_hybrid": False,
+                "interventions": [
+                    {"title": "Shelter setup — main hall",   "type": "shelter-setup",  "priority": "normal", "required": True, "status": "todo"},
+                    {"title": "Supply delivery — cots, food","type": "supply-delivery","priority": "normal", "required": True, "status": "todo"},
                 ],
             },
         ],
     },
+
+    # ── Standby storm ──────────────────────────────────────────────────────
     {
         "report_title": "Post-Storm Infrastructure Check — Northern Sector",
         "severity": "medium",
+        "report_status": "enacted",
         "event_title": "Storm Aftermath — Northern Sector",
         "event_status": "standby",
         "incident": "storm",
+        "hours_ago": 48,
+        "emergency": None,
         "deployments": [
             {
                 "title": "Damage Assessment Team",
@@ -115,42 +200,138 @@ SCENARIOS = [
                 "objective": "Survey storm damage across 15 km of northern roads",
                 "is_hybrid": False,
                 "interventions": [
-                    {"title": "Road condition survey — N17 corridor", "intervention_type": "damage_report", "priority": "normal", "is_required": True},
-                    {"title": "Sandbag deployment — flood risk zones", "intervention_type": "sandbagging", "priority": "normal", "is_required": False},
+                    {"title": "Road condition survey — N17 corridor", "type": "damage-report", "priority": "normal", "required": True,  "status": "todo"},
+                    {"title": "Sandbag deployment — flood risk zones", "type": "sandbagging",   "priority": "normal", "required": False, "status": "todo"},
+                    {"title": "Search residential area — Block 9",    "type": "search-rescue", "priority": "normal", "required": False, "status": "todo"},
                 ],
             },
         ],
     },
+
+    # ── Resolved chemical spill (historical) ───────────────────────────────
+    {
+        "report_title": "Chemical Leak — Refinery Annex B",
+        "severity": "high",
+        "report_status": "closed",
+        "event_title": "Refinery Chemical Spill Response",
+        "event_status": "resolved",
+        "incident": "chemical-spill",
+        "hours_ago": 240,
+        "emergency": {"level": "warning", "tax_rate": None, "status": "lifted"},
+        "deployments": [
+            {
+                "title": "HazMat Containment Unit",
+                "deployment_type": "mixed",
+                "priority": "urgent",
+                "status": "completed",
+                "objective": "Contain chemical leak and decontaminate affected area",
+                "is_hybrid": False,
+                "interventions": [
+                    {"title": "Decontamination — Zone A",      "type": "decontamination", "priority": "urgent", "required": True, "status": "done"},
+                    {"title": "Decontamination — Zone B",      "type": "decontamination", "priority": "urgent", "required": True, "status": "done"},
+                    {"title": "Road closure — refinery access","type": "road-closure",     "priority": "urgent", "required": True, "status": "done"},
+                    {"title": "Damage report — final",         "type": "damage-report",   "priority": "normal", "required": True, "status": "done"},
+                ],
+            },
+            {
+                "title": "Medical Response — Contamination Exposure",
+                "deployment_type": "medical",
+                "priority": "high",
+                "status": "completed",
+                "objective": "Treat workers and first responders exposed to chemical agent",
+                "is_hybrid": False,
+                "interventions": [
+                    {"title": "First aid — 12 affected workers", "type": "first-aid", "priority": "urgent", "required": True, "status": "done"},
+                    {"title": "Welfare check — refinery staff",  "type": "welfare-check","priority": "high",  "required": True, "status": "done"},
+                ],
+            },
+        ],
+    },
+
+    # ── Submitted mass casualty (in review) ───────────────────────────────
+    {
+        "report_title": "Multi-Vehicle Collision — Highway 12 Junction",
+        "severity": "critical",
+        "report_status": "submitted",
+        "event_title": None,
+        "event_status": None,
+        "incident": "mass-casualty",
+        "hours_ago": 2,
+        "emergency": None,
+        "deployments": [],
+    },
 ]
 
+ROUTE_TYPE_EVAC_CHOICES = ["evacuation", "supply", "medical", "patrol"]
+ROUTE_TYPE_DEP_CHOICES  = ["primary", "alternate", "supply", "retreat"]
 RESPONDER_STATUSES = ["available", "standby", "available", "available", "responding", "off_duty"]
 
 
+# ---------------------------------------------------------------------------
+# Command
+# ---------------------------------------------------------------------------
+
 class Command(IngressCommand):
-    help = "Seeds realistic mobilization scenarios: incident types, responders, reports, events, deployments, and interventions"
+    help = "Seeds comprehensive mobilization data: every model type with realistic scenarios"
 
-    def process(self):
+    def process(self):  # noqa: C901
         self._create_incident_types()
+        self._create_intervention_types()
+        achievement_cache = self._create_achievement_badges()
 
-        persons = list(Person.objects.order_by("?")[:20])
         communities = list(Community.objects.all())
-
-        if not persons:
-            print("⚠  No persons found — run ingress for people/socialhub first.")
-            return
         if not communities:
             print("⚠  No communities found — run ingress for socialhub first.")
             return
 
-        responders = self._create_responders(persons, communities)
+        federal_tribe_ids = list(
+            Community.objects.filter(is_federal_tribe=True).values_list("id", flat=True)
+        )
+        eligible_persons = list(
+            Person.objects.filter(
+                models.Q(is_federal_agent=True) | models.Q(communities__in=federal_tribe_ids)
+            ).distinct().order_by("?")[:20]
+        )
+
+        if not eligible_persons:
+            # Bootstrap: promote some persons to federal agent for demo seeding
+            candidates = list(Person.objects.order_by("?")[:6])
+            if not candidates:
+                print("⚠  No persons in database at all — run people/socialhub ingress first.")
+                return
+            for p in candidates:
+                if not p.is_federal_agent:
+                    p.is_federal_agent = True
+                    p.save(update_fields=["is_federal_agent"])
+            eligible_persons = candidates
+            print(f"  ℹ  No eligible persons found — marked {len(candidates)} as federal agents for demo.")
+
+        skill_cache = self._get_or_create_skill_badges()
+        responders = self._create_responders(eligible_persons, communities, skill_cache)
         if not responders:
             print("⚠  Could not create responders.")
             return
 
-        for scenario in SCENARIOS:
-            self._create_scenario(scenario, responders, communities)
+        type_cache = {it.slug: it for it in InterventionType.objects.all()}
 
-        print(f"✔  Mobilization ingress complete: {len(SCENARIOS)} scenarios, {len(responders)} responders.")
+        # Grab optional linked models (may not exist yet)
+        routes = self._get_routes()
+        inventory_items = self._get_inventory_items()
+        detections = self._get_detections()
+
+        created_deployments = []
+        for scenario in SCENARIOS:
+            deps = self._create_scenario(scenario, responders, communities, type_cache, routes, inventory_items, detections)
+            created_deployments.extend(deps)
+
+        self._award_achievements(responders, achievement_cache, created_deployments)
+
+        print(
+            f"✔  Mobilization ingress complete: {len(SCENARIOS)} scenarios, "
+            f"{len(responders)} responders, {len(created_deployments)} deployments."
+        )
+
+    # ── Reference data ───────────────────────────────────────────────────
 
     def _create_incident_types(self):
         for it in INCIDENT_TYPES:
@@ -160,50 +341,163 @@ class Command(IngressCommand):
             )
         print(f"✔  Incident types: {IncidentType.objects.count()} total.")
 
-    def _create_responders(self, persons, communities):
+    def _create_intervention_types(self):
+        count = InterventionType.objects.count()
+        print(f"✔  Intervention types: {count} total (seeded in migration).")
+
+    def _create_achievement_badges(self):
+        cache = {}
+        for b in ACHIEVEMENT_BADGES:
+            badge, _ = AchievementBadge.objects.get_or_create(
+                slug=b["slug"],
+                defaults={
+                    "name": b["name"],
+                    "icon": b["icon"],
+                    "category": b["category"],
+                    "order": b["order"],
+                    "description": b["description"],
+                },
+            )
+            cache[b["slug"]] = badge
+        print(f"✔  Achievement badges: {AchievementBadge.objects.count()} total.")
+        return cache
+
+    def _get_or_create_skill_badges(self):
+        from toto.competence.models import SkillBadge, SkillGroup
+        cache = {}
+        group, _ = SkillGroup.objects.get_or_create(
+            slug="mobilization",
+            defaults={"title": "Mobilization", "order": 50},
+        )
+        for slug, title, _ in RESPONDER_SKILL_SLUGS:
+            badge, _ = SkillBadge.objects.get_or_create(
+                group=group,
+                slug=slug,
+                defaults={"title": title, "icon": "fa-solid fa-shield-halved", "order": 0},
+            )
+            cache[slug] = badge
+        print(f"✔  Responder skill badges: {len(cache)} total.")
+        return cache
+
+    # ── Responders ────────────────────────────────────────────────────────
+
+    def _create_responders(self, persons, communities, skill_cache):
         responders = []
-        for i, person in enumerate(persons[:8]):
-            responder, created = Responder.objects.get_or_create(
+        skill_list = list(skill_cache.values())
+        for person in persons[:10]:
+            responder, _ = Responder.objects.get_or_create(
                 person=person,
                 defaults={
                     "is_active": True,
-                    "is_trained": random.random() > 0.3,
-                    "is_background_checked": random.random() > 0.4,
+                    "is_trained": random.random() > 0.25,
+                    "is_background_checked": random.random() > 0.35,
                     "current_status": random.choice(RESPONDER_STATUSES),
+                    "notes": random.choice([
+                        "Available for flood and evacuation operations.",
+                        "Certified HazMat level 1.",
+                        "Prefers field coordination over logistics.",
+                        "Night-shift certified.",
+                        "",
+                    ]),
                 },
             )
-            # Assign to communities
             if communities:
                 responder.communities.add(random.choice(communities))
+            for badge in random.sample(skill_list, min(random.randint(1, 3), len(skill_list))):
+                ResponderSkill.objects.get_or_create(
+                    responder=responder,
+                    skill=badge,
+                    defaults={"level": random.choice(["basic", "trained", "certified", "professional"])},
+                )
             responders.append(responder)
-        if created or True:
-            print(f"✔  Responders: {Responder.objects.count()} total.")
+        print(f"✔  Responders: {Responder.objects.count()} total.")
         return responders
 
-    def _create_scenario(self, scenario, responders, communities):
+    # ── Optional linked data helpers ──────────────────────────────────────
+
+    def _get_routes(self):
+        try:
+            from toto.locations.models import Route
+            routes = list(Route.objects.all())
+            if routes:
+                print(f"  ℹ  Found {len(routes)} routes for deployment/evac seeding.")
+            return routes
+        except Exception:
+            return []
+
+    def _get_inventory_items(self):
+        try:
+            from toto.inventory.models import RealWorldObject
+            items = list(RealWorldObject.objects.select_related("location")[:20])
+            if items:
+                print(f"  ℹ  Found {len(items)} inventory items for equipment seeding.")
+            return items
+        except Exception:
+            return []
+
+    def _get_detections(self):
+        try:
+            from toto.detections.models import Detection
+            detections = list(Detection.objects.all()[:10])
+            if detections:
+                print(f"  ℹ  Found {len(detections)} detections for evidence seeding.")
+            return detections
+        except Exception:
+            return []
+
+    # ── Main scenario builder ─────────────────────────────────────────────
+
+    def _create_scenario(self, scenario, responders, communities, type_cache, routes, inventory_items, detections):  # noqa: C901
         community = random.choice(communities)
         coordinator = random.choice(responders).person if responders else None
         incident_type = IncidentType.objects.filter(slug=scenario["incident"]).first()
         now = timezone.now()
+        hours_ago = scenario.get("hours_ago", 12)
+        report_time = now - timedelta(hours=hours_ago)
 
-        # Report
+        # ── Report ──
         report, _ = MobilizationReport.objects.get_or_create(
             title=scenario["report_title"],
             defaults={
                 "community": community,
                 "incident_type": incident_type,
                 "severity": scenario["severity"],
-                "status": "enacted",
-                "summary": f"Automated ingress scenario: {scenario['report_title']}",
-                "justification": "Generated for demo purposes.",
+                "status": scenario["report_status"],
+                "summary": (
+                    f"Emergency situation reported: {scenario['report_title']}. "
+                    "Immediate response required. All available responders should be mobilized."
+                ),
+                "justification": (
+                    "Situation confirmed by field agents. "
+                    f"Incident type: {incident_type}. "
+                    "Risk to life and property assessed as significant."
+                ),
                 "submitted_by": coordinator,
-                "reviewed_by": coordinator,
-                "enacted_by": coordinator,
-                "enacted_at": now - timedelta(hours=random.randint(2, 48)),
+                "reviewed_by": coordinator if scenario["report_status"] in ("reviewed", "enacted", "closed") else None,
+                "enacted_by": coordinator if scenario["report_status"] in ("enacted", "closed") else None,
+                "enacted_at": report_time + timedelta(hours=1) if scenario["report_status"] in ("enacted", "closed") else None,
             },
         )
 
-        # Event
+        # Seed report evidence from available detections
+        if detections and scenario["report_status"] in ("enacted", "closed", "reviewed"):
+            for det in random.sample(detections, min(2, len(detections))):
+                MobilizationReportEvidence.objects.get_or_create(
+                    report=report,
+                    detection=det,
+                    defaults={
+                        "evidence_role": random.choice(["primary", "supporting", "context"]),
+                        "weight": random.choice(["normal", "high"]),
+                        "note": "Auto-linked by ingress.",
+                        "added_by": coordinator,
+                    },
+                )
+
+        # ── Event (skip if no event for this scenario) ──
+        if not scenario.get("event_title"):
+            print(f"  ✔ Report only: {scenario['report_title']}")
+            return []
+
         event, _ = MobilizationEvent.objects.get_or_create(
             title=scenario["event_title"],
             defaults={
@@ -212,14 +506,57 @@ class Command(IngressCommand):
                 "incident_type": incident_type,
                 "status": scenario["event_status"],
                 "coordinator": coordinator,
-                "description": f"Response event created from report: {report.title}",
-                "started_at": now - timedelta(hours=random.randint(1, 24)) if scenario["event_status"] == "active" else None,
+                "is_hybrid": any(d.get("is_hybrid") for d in scenario["deployments"]),
+                "description": (
+                    f"Response operation for: {report.title}. "
+                    "Coordinate all deployments through this event."
+                ),
+                "started_at": report_time + timedelta(hours=2) if scenario["event_status"] in ("active", "resolved") else None,
+                "ended_at": report_time + timedelta(hours=hours_ago - 1) if scenario["event_status"] == "resolved" else None,
             },
         )
 
-        # Deployments
+        # ── Emergency status ──
+        emrg_data = scenario.get("emergency")
+        if emrg_data:
+            emrg_status = emrg_data.get("status", "active")
+            es, es_created = EmergencyStatus.objects.get_or_create(
+                event=event,
+                community=community,
+                defaults={
+                    "zone": None,
+                    "level": emrg_data["level"],
+                    "status": emrg_status,
+                    "declared_by": coordinator,
+                    "declared_at": report_time + timedelta(hours=3),
+                    "lifted_at": report_time + timedelta(hours=hours_ago - 2) if emrg_status == "lifted" else None,
+                    "allows_asset_requisition": True,
+                    "allows_inventory_access": True,
+                    "allows_route_commandeering": emrg_data["level"] in ("emergency", "critical_emergency"),
+                    "emergency_tax_rate": emrg_data.get("tax_rate"),
+                    "notes": f"Emergency declared in response to: {event.title}",
+                },
+            )
+
+            # Seed hybrid equipment access if we have inventory items
+            if es_created and inventory_items and emrg_data.get("tax_rate"):
+                for item in random.sample(inventory_items, min(2, len(inventory_items))):
+                    EmergencyEquipmentAccess.objects.get_or_create(
+                        emergency=es,
+                        item=item,
+                        defaults={
+                            "is_hybrid": True,
+                            "quantity": random.choice([1, 2, 5, 10]),
+                            "authorized_by": coordinator,
+                        },
+                    )
+
+        # ── Deployments ──
+        created_deployments = []
+        available_responders = [r for r in responders if r.current_status in ("available", "standby", "responding")]
+
         for dep_data in scenario["deployments"]:
-            dep, _ = Deployment.objects.get_or_create(
+            dep, dep_created = Deployment.objects.get_or_create(
                 event=event,
                 title=dep_data["title"],
                 defaults={
@@ -231,33 +568,124 @@ class Command(IngressCommand):
                     "objective": dep_data.get("objective", ""),
                     "is_hybrid": dep_data.get("is_hybrid", False),
                     "hybrid_time_percent": dep_data.get("hybrid_time_percent"),
+                    "per_diem_amount": random.choice([None, None, "50.00", "75.00", "100.00"]),
                 },
             )
 
-            # Assign some responders
-            available = [r for r in responders if r.current_status in ("available", "standby")]
-            for responder in random.sample(available, min(2, len(available))):
-                DeploymentAssignment.objects.get_or_create(
-                    deployment=dep,
-                    responder=responder,
-                    defaults={
-                        "role": random.choice(["lead", "responder", "medic", "driver"]),
-                        "status": "active" if dep_data["status"] == "active" else "assigned",
-                    },
-                )
+            if dep_created:
+                # Assignments
+                assigned = random.sample(available_responders, min(random.randint(1, 3), len(available_responders)))
+                lead = assigned[0] if assigned else None
+                for i, responder in enumerate(assigned):
+                    role = "lead" if i == 0 else random.choice(["responder", "medic", "driver", "communicator"])
+                    a_status = "active" if dep_data["status"] == "active" else (
+                        "completed" if dep_data["status"] == "completed" else "assigned"
+                    )
+                    DeploymentAssignment.objects.get_or_create(
+                        deployment=dep,
+                        responder=responder,
+                        defaults={"role": role, "status": a_status, "assigned_by": coordinator},
+                    )
+
+                # Evacuation routes (for evacuation-type deployments)
+                if routes and dep_data["deployment_type"] in ("evacuation", "flood_response", "medical"):
+                    for route in random.sample(routes, min(2, len(routes))):
+                        evac_status = "cleared" if dep_data["status"] == "completed" else random.choice(["active", "planned"])
+                        EvacuationRoute.objects.get_or_create(
+                            event=event,
+                            route=route,
+                            defaults={
+                                "name": f"{route.name} — {dep_data['deployment_type'].replace('_', ' ').title()}",
+                                "route_type": random.choice(ROUTE_TYPE_EVAC_CHOICES),
+                                "status": evac_status,
+                                "notes": f"Assigned for {dep.title}.",
+                            },
+                        )
+
+                # Deployment routes
+                if routes:
+                    for route in random.sample(routes, min(2, len(routes))):
+                        DeploymentRoute.objects.get_or_create(
+                            deployment=dep,
+                            route=route,
+                            defaults={
+                                "route_type": random.choice(ROUTE_TYPE_DEP_CHOICES),
+                                "notes": f"Route designated for {dep.title}.",
+                            },
+                        )
+
+                # Equipment
+                if inventory_items:
+                    for item in random.sample(inventory_items, min(random.randint(1, 3), len(inventory_items))):
+                        DeploymentEquipment.objects.get_or_create(
+                            deployment=dep,
+                            item=item,
+                            defaults={
+                                "quantity": random.choice([1, 2, 4, 10, 20]),
+                                "notes": f"Allocated to {dep.title}.",
+                            },
+                        )
 
             # Interventions
             for iv_data in dep_data.get("interventions", []):
-                Intervention.objects.get_or_create(
+                iv_type = type_cache.get(iv_data["type"])
+                iv_status = iv_data.get("status", "todo")
+                iv, _ = Intervention.objects.get_or_create(
                     deployment=dep,
                     title=iv_data["title"],
                     defaults={
-                        "intervention_type": iv_data["intervention_type"],
+                        "intervention_type": iv_type,
                         "priority": iv_data["priority"],
-                        "is_required": iv_data.get("is_required", True),
-                        "status": random.choice(["todo", "in_progress"]) if dep_data["status"] == "active" else "todo",
+                        "is_required": iv_data.get("required", True),
+                        "status": iv_status,
                         "reported_by": coordinator,
+                        "started_at": report_time + timedelta(hours=4) if iv_status in ("in_progress", "done") else None,
+                        "completed_at": report_time + timedelta(hours=6) if iv_status == "done" else None,
+                        "outcome_notes": "Completed successfully." if iv_status == "done" else "",
+                        "effect_description": (
+                            "Situation stabilised after intervention." if iv_status == "done" else ""
+                        ),
+                        "estimated_cost": random.choice([None, "500.00", "1200.00", "300.00"]),
                     },
                 )
 
-        print(f"  ✔ Scenario: {scenario['event_title']}")
+            created_deployments.append(dep)
+
+        print(f"  ✔ Scenario: {scenario['event_title']} ({len(created_deployments)} deployments)")
+        return created_deployments
+
+    # ── Achievement awards ────────────────────────────────────────────────
+
+    def _award_achievements(self, responders, achievement_cache, deployments):
+        if not achievement_cache or not responders:
+            return
+
+        badge_list = list(achievement_cache.values())
+        persons_with_deployments = set()
+        for dep in deployments:
+            for a in dep.assignments.select_related("responder__person"):
+                persons_with_deployments.add(a.responder.person_id)
+
+        awarded = 0
+        for responder in responders:
+            person = responder.person
+            # Award 1-3 badges to each active responder who participated in a deployment
+            if person.pk not in persons_with_deployments:
+                continue
+            n = random.randint(1, min(3, len(badge_list)))
+            for badge in random.sample(badge_list, n):
+                linked_dep = random.choice(deployments) if deployments else None
+                _, created = PersonAchievement.objects.get_or_create(
+                    person=person,
+                    badge=badge,
+                    defaults={
+                        "deployment": linked_dep,
+                        "awarded_by": random.choice(responders).person,
+                        "awarded_at": timezone.now() - timedelta(days=random.randint(0, 30)),
+                        "note": f"Awarded for outstanding performance during: {linked_dep.title if linked_dep else 'field operations'}.",
+                    },
+                )
+                if created:
+                    awarded += 1
+
+        print(f"✔  Achievement awards: {awarded} new awards given.")

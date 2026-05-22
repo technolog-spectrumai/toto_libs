@@ -1,6 +1,9 @@
 from django.contrib import admin
 from .models import (
+    AchievementBadge,
+    PersonAchievement,
     IncidentType,
+    InterventionType,
     Responder,
     ResponderSkill,
     MobilizationReport,
@@ -17,11 +20,37 @@ from .models import (
 )
 
 
+@admin.register(AchievementBadge)
+class AchievementBadgeAdmin(admin.ModelAdmin):
+    list_display = ("name", "slug", "category", "icon", "order")
+    list_filter = ("category",)
+    prepopulated_fields = {"slug": ("name",)}
+    search_fields = ("name",)
+    ordering = ("category", "order", "name")
+
+
+@admin.register(PersonAchievement)
+class PersonAchievementAdmin(admin.ModelAdmin):
+    list_display = ("person", "badge", "deployment", "awarded_by", "awarded_at")
+    list_filter = ("badge__category",)
+    search_fields = ("person__display_name", "badge__name")
+    readonly_fields = ("awarded_at",)
+    autocomplete_fields = ("badge",)
+
+
 @admin.register(IncidentType)
 class IncidentTypeAdmin(admin.ModelAdmin):
     list_display = ("name", "slug", "order")
     prepopulated_fields = {"slug": ("name",)}
     search_fields = ("name",)
+
+
+@admin.register(InterventionType)
+class InterventionTypeAdmin(admin.ModelAdmin):
+    list_display = ("name", "slug", "icon", "order")
+    prepopulated_fields = {"slug": ("name",)}
+    search_fields = ("name",)
+    ordering = ("order", "name")
 
 
 class ResponderSkillInline(admin.TabularInline):
@@ -99,6 +128,7 @@ class InterventionInline(admin.TabularInline):
     model = Intervention
     extra = 0
     fields = ("title", "intervention_type", "priority", "status", "assigned_to", "is_required")
+    autocomplete_fields = ("intervention_type",)
     show_change_link = True
 
 
@@ -122,8 +152,9 @@ class DeploymentAssignmentAdmin(admin.ModelAdmin):
 @admin.register(Intervention)
 class InterventionAdmin(admin.ModelAdmin):
     list_display = ("title", "deployment", "intervention_type", "priority", "status", "assigned_to", "is_required", "completed_at")
-    list_filter = ("status", "priority", "intervention_type", "is_required")
+    list_filter = ("status", "priority", "intervention_type__name", "is_required")
     search_fields = ("title", "description")
+    autocomplete_fields = ("intervention_type",)
     readonly_fields = ("created_at", "updated_at", "started_at", "completed_at")
 
 

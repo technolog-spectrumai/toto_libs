@@ -1,0 +1,96 @@
+{% extends "mobilization/base.html" %}
+{% load i18n %}
+
+{% block mob_title %}{% trans "Call In Responder" %}{% endblock %}
+
+{% block mob_content %}
+<div class="space-y-5">
+
+  <div class="flex items-center justify-between gap-4">
+    <div>
+      <h1 class="text-2xl font-bold flex items-center gap-2">
+        <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="fa-solid fa-user-plus"></i>
+        {% trans "Call In Responder" %}
+      </h1>
+      <p class="mt-1 text-sm opacity-60">
+        {% trans "Eligible persons — federal agents and members of federal tribe communities — who are not yet registered as responders." %}
+      </p>
+    </div>
+    <a href="{% url 'mobilization:responder_list' %}"
+       :class="darkMode ? 'border-accent-1 hover:bg-primary-bg-dark' : 'border-accent-2 hover:bg-primary-bg-light'"
+       class="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition">
+      <i class="fa-solid fa-arrow-left"></i> {% trans "Back to Responders" %}
+    </a>
+  </div>
+
+  {# Search #}
+  <form method="get"
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="flex gap-3 rounded-lg border p-4 shadow-sm">
+    <input type="search" name="q" value="{{ q }}" placeholder="{% trans "Search by name..." %}"
+           :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+           class="flex-1 rounded-lg border px-3 py-2 text-sm outline-none">
+    <button type="submit"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="rounded-lg px-4 py-2 text-sm font-semibold hover:opacity-90">
+      <i class="fa-solid fa-magnifying-glass mr-1"></i> {% trans "Search" %}
+    </button>
+    {% if q %}
+      <a href="{% url 'mobilization:responder_recruit' %}"
+         class="flex items-center rounded-lg border border-current/20 px-3 py-2 text-sm hover:opacity-80">
+        <i class="fa-solid fa-xmark"></i>
+      </a>
+    {% endif %}
+  </form>
+
+  {# Eligible persons list #}
+  <div class="space-y-2">
+    {% for person in eligible %}
+      <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+               class="rounded-lg border p-4 shadow-sm flex items-center justify-between gap-4">
+        <div class="min-w-0 space-y-1">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="font-semibold truncate">{{ person }}</span>
+            {% if person.is_federal_agent %}
+              <span :class="darkMode ? 'bg-accent-dark/20 text-accent-dark border-accent-dark/30' : 'bg-accent-light/20 text-accent-light border-accent-light/30'"
+                    class="rounded border px-2 py-0.5 text-xs font-semibold">
+                <i class="fa-solid fa-id-badge mr-1"></i>{% trans "Federal Agent" %}
+              </span>
+            {% endif %}
+          </div>
+          {% with federal_tribes=person.communities.all %}
+            {% if federal_tribes %}
+              <div class="flex flex-wrap gap-1.5 text-xs opacity-60">
+                {% for c in federal_tribes %}
+                  {% if c.is_federal_tribe %}
+                    <span><i class="fa-solid fa-people-roof mr-0.5"></i>{{ c.name }}</span>
+                  {% endif %}
+                {% endfor %}
+              </div>
+            {% endif %}
+          {% endwith %}
+        </div>
+        <form method="post" action="{% url 'mobilization:responder_callin' %}">
+          {% csrf_token %}
+          <input type="hidden" name="person_id" value="{{ person.pk }}">
+          <button type="submit"
+                  :class="darkMode ? 'bg-success-dark text-primary-bg-dark hover:opacity-90' : 'bg-success-light text-primary-bg-light hover:opacity-90'"
+                  class="rounded-lg px-4 py-2 text-sm font-semibold transition">
+            <i class="fa-solid fa-phone mr-1"></i> {% trans "Call In" %}
+          </button>
+        </form>
+      </article>
+    {% empty %}
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-12 text-center shadow-sm">
+        <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="fa-solid fa-users-slash text-4xl opacity-30"></i>
+        <h2 class="mt-4 text-xl font-bold">{% trans "No eligible persons found" %}</h2>
+        <p class="mt-1 text-sm opacity-60">
+          {% trans "All eligible federal agents and federal tribe members are already registered as responders, or no matching persons were found." %}
+        </p>
+      </div>
+    {% endfor %}
+  </div>
+
+</div>
+{% endblock %}

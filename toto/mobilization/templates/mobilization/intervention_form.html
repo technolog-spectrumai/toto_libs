@@ -32,8 +32,9 @@
           <select name="intervention_type"
                   :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
                   class="w-full rounded-lg border px-3 py-2 text-sm">
-            {% for val, label in intervention_type_choices %}
-              <option value="{{ val }}">{{ label }}</option>
+            <option value="">— {% trans "None" %} —</option>
+            {% for it in intervention_types %}
+              <option value="{{ it.pk }}">{% if it.icon %}<i class="{{ it.icon }}"></i> {% endif %}{{ it.name }}</option>
             {% endfor %}
           </select>
         </div>
@@ -78,6 +79,20 @@
           </div>
         {% endif %}
       </div>
+
+      {% if event_detections %}
+        <div>
+          <label class="mb-1 block text-sm font-semibold">{% trans "Detection to Mitigate" %}</label>
+          <select name="detection"
+                  :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                  class="w-full rounded-lg border px-3 py-2 text-sm">
+            <option value="">— {% trans "None" %} —</option>
+            {% for det in event_detections %}
+              <option value="{{ det.pk }}">{{ det.title }} ({{ det.get_severity_display }} · {{ det.get_status_display }})</option>
+            {% endfor %}
+          </select>
+        </div>
+      {% endif %}
 
       <div>
         <label class="mb-1 block text-sm font-semibold">{% trans "Description" %}</label>

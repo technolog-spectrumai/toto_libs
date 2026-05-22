@@ -32,6 +32,79 @@ class IncidentType(models.Model):
         return self.name
 
 
+class InterventionType(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    slug = models.SlugField(max_length=100, unique=True)
+    description = models.TextField(blank=True)
+    icon = models.CharField(max_length=80, default="fa-solid fa-hand-holding-medical")
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["order", "name"]
+
+    def __str__(self):
+        return self.name
+
+
+class AchievementBadge(models.Model):
+    CATEGORY_CHOICES = [
+        ("service", "Service"),
+        ("rescue", "Rescue"),
+        ("leadership", "Leadership"),
+        ("training", "Training"),
+        ("special", "Special"),
+    ]
+
+    name = models.CharField(max_length=200, unique=True)
+    slug = models.SlugField(max_length=200, unique=True)
+    description = models.TextField(blank=True)
+    icon = models.CharField(max_length=100, default="fa-solid fa-medal")
+    category = models.CharField(max_length=30, choices=CATEGORY_CHOICES, default="service")
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["category", "order", "name"]
+
+    def __str__(self):
+        return self.name
+
+
+class PersonAchievement(models.Model):
+    person = models.ForeignKey(
+        "people.Person",
+        on_delete=models.CASCADE,
+        related_name="mobilization_achievements",
+    )
+    badge = models.ForeignKey(
+        AchievementBadge,
+        on_delete=models.CASCADE,
+        related_name="awarded_to",
+    )
+    deployment = models.ForeignKey(
+        "mobilization.Deployment",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="achievement_awards",
+    )
+    awarded_by = models.ForeignKey(
+        "people.Person",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="awarded_achievements",
+    )
+    awarded_at = models.DateTimeField(default=timezone.now)
+    note = models.TextField(blank=True)
+
+    class Meta:
+        unique_together = [("person", "badge")]
+        ordering = ["-awarded_at"]
+
+    def __str__(self):
+        return f"{self.person} — {self.badge}"
+
+
 class Responder(models.Model):
     CURRENT_STATUS_CHOICES = [
         ("off_duty", "Off Duty"),
@@ -70,6 +143,19 @@ class Responder(models.Model):
             models.Index(fields=["current_status"]),
             models.Index(fields=["is_active", "current_status"]),
         ]
+
+    def clean(self):
+        if not self.person_id:
+            return
+        from toto.people.models import Person as _Person
+        p = _Person.objects.prefetch_related("communities").get(pk=self.person_id)
+        if p.is_federal_agent:
+            return
+        if p.communities.filter(is_federal_tribe=True).exists():
+            return
+        raise ValidationError(
+            "Responders must be federal agents or members of a federal tribe community."
+        )
 
     def __str__(self):
         return f"Responder: {self.person}"
@@ -558,18 +644,6 @@ class DeploymentEquipment(models.Model):
 
 
 class Intervention(models.Model):
-    INTERVENTION_TYPE_CHOICES = [
-        ("evacuation_pickup", "Evacuation Pickup"),
-        ("welfare_check", "Welfare Check"),
-        ("first_aid", "First Aid"),
-        ("transport", "Transport"),
-        ("supply_delivery", "Supply Delivery"),
-        ("damage_report", "Damage Report"),
-        ("road_closure", "Road Closure"),
-        ("sandbagging", "Sandbagging"),
-        ("other", "Other"),
-    ]
-
     STATUS_CHOICES = [
         ("todo", "To Do"),
         ("assigned", "Assigned"),
@@ -591,8 +665,22 @@ class Intervention(models.Model):
         on_delete=models.SET_NULL,
         related_name="mobilization_interventions",
     )
+    detection = models.ForeignKey(
+        "detections.Detection",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="mobilization_interventions",
+        help_text="Detection this intervention is intended to mitigate",
+    )
     title = models.CharField(max_length=255)
-    intervention_type = models.CharField(max_length=30, choices=INTERVENTION_TYPE_CHOICES)
+    intervention_type = models.ForeignKey(
+        InterventionType,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="interventions",
+    )
     priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default="normal")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="todo", db_index=True)
     assigned_to = models.ForeignKey(
@@ -734,6 +822,16 @@ class EmergencyStatus(models.Model):
     allows_route_commandeering = models.BooleanField(
         default=False,
         help_text="Emergency vehicles may commandeer routes within this zone",
+    )
+
+    # Assembly proposal that authorized this emergency declaration
+    source_proposal = models.ForeignKey(
+        "assembly.AssemblyProposal",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="emergency_declarations",
+        help_text="Assembly proposal that voted to authorize this emergency status",
     )
 
     # Emergency tax — levy collected during the emergency to fund response

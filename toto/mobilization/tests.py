@@ -421,6 +421,7 @@ class DeploymentValidationTest(TestCase):
         deployment.community_id = community_id
         deployment.event_id = 1
         deployment.event = mock_event
+        deployment.hybrid_time_percent = None
         deployment.clean = lambda: Deployment.clean(deployment)
         return deployment
 

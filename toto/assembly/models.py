@@ -15,6 +15,7 @@ def _compute_hash(content: dict, prev_hash: str = "") -> str:
 class AssemblyProposalType(models.TextChoices):
     RULE = "rule", "Rule"
     ASSET_TAX = "asset_tax", "Asset Transaction Tax"
+    EMERGENCY_DECLARATION = "emg_declare", "Emergency Declaration"
 
 
 class AssemblyStatus(models.TextChoices):

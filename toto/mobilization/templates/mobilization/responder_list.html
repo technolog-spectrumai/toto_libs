@@ -6,6 +6,16 @@
 {% block mob_content %}
 <div class="space-y-5">
 
+  {# — Header with call-in button — #}
+  <div class="flex items-center justify-between gap-4">
+    <h1 class="text-2xl font-bold">{% trans "Responders" %}</h1>
+    <a href="{% url 'mobilization:responder_recruit' %}"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+       class="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold hover:opacity-90">
+      <i class="fa-solid fa-user-plus"></i> {% trans "Call In Responder" %}
+    </a>
+  </div>
+
   {# — Status quick stats — #}
   <div class="grid grid-cols-2 gap-3 sm:grid-cols-5">
     {% for val, label, cnt in status_counts_list %}

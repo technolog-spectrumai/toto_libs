@@ -20,6 +20,12 @@
           </h2>
           <div class="flex flex-wrap items-center gap-2">
             {% include "mobilization/partials/status_badge.html" with status=responder.current_status %}
+            {% if responder.person.is_federal_agent %}
+              <span :class="darkMode ? 'bg-accent-dark/20 text-accent-dark border-accent-dark/30' : 'bg-accent-light/20 text-accent-light border-accent-light/30'"
+                    class="rounded border px-2 py-0.5 text-xs font-semibold">
+                <i class="fa-solid fa-id-badge mr-1"></i>Federal Agent
+              </span>
+            {% endif %}
             {% if responder.is_trained %}<span class="rounded border border-current/20 px-2 py-0.5 text-xs"><i class="fa-solid fa-graduation-cap mr-1"></i>Trained</span>{% endif %}
             {% if responder.is_background_checked %}<span class="rounded border border-current/20 px-2 py-0.5 text-xs"><i class="fa-solid fa-shield-check mr-1"></i>Background checked</span>{% endif %}
             {% if not responder.is_active %}<span :class="darkMode ? 'border-warn-dark/50 text-warn-dark' : 'border-warn-light/50 text-warn-light'" class="rounded border px-2 py-0.5 text-xs">Inactive</span>{% endif %}
@@ -53,26 +59,68 @@
       {% endif %}
     </div>
 
-    {# — Assignment history — #}
+    {# — Deployment history — #}
     <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
          class="rounded-lg border p-5 shadow-sm">
-      <h3 class="mb-4 flex items-center gap-2 font-bold"><i class="fa-solid fa-clock-rotate-left"></i> {% trans "Recent Assignments" %}</h3>
+      <h3 class="mb-4 flex items-center gap-2 font-bold"><i class="fa-solid fa-clock-rotate-left"></i> {% trans "Deployment History" %}</h3>
       <div class="space-y-3">
-        {% for a in recent_assignments %}
+        {% for a in all_assignments %}
           <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
-            <div class="flex items-center justify-between gap-2">
+            <div class="flex flex-wrap items-center justify-between gap-2">
               <a href="{% url 'mobilization:deployment_detail' a.deployment.pk %}"
                  :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
                  class="font-semibold text-sm underline hover:opacity-80">{{ a.deployment.title }}</a>
               {% include "mobilization/partials/status_badge.html" with status=a.status %}
             </div>
-            <div class="mt-1 text-xs opacity-60 capitalize">{{ a.get_role_display }}</div>
+            <div class="mt-1 flex flex-wrap gap-3 text-xs opacity-60">
+              <span class="capitalize">{{ a.get_role_display }}</span>
+              {% if a.deployment.event %}
+                <span><i class="fa-solid fa-bolt mr-0.5"></i>{{ a.deployment.event.title }}</span>
+              {% endif %}
+              {% if a.deployment.community %}
+                <span><i class="fa-solid fa-people-roof mr-0.5"></i>{{ a.deployment.community }}</span>
+              {% endif %}
+              {% if a.confirmed_at %}
+                <span><i class="fa-solid fa-calendar-check mr-0.5"></i>{{ a.confirmed_at|date:"M d, Y" }}</span>
+              {% endif %}
+            </div>
           </div>
         {% empty %}
-          <p class="text-sm opacity-60">{% trans "No assignments." %}</p>
+          <p class="text-sm opacity-60">{% trans "No deployment history." %}</p>
         {% endfor %}
       </div>
     </div>
+
+    {# — Achievement badges — #}
+    {% if achievements %}
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-5 shadow-sm">
+        <h3 class="mb-4 flex items-center gap-2 font-bold"><i class="fa-solid fa-medal"></i> {% trans "Achievement Badges" %}</h3>
+        <div class="grid gap-3 sm:grid-cols-2">
+          {% for pa in achievements %}
+            <div :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
+                 class="rounded-lg border p-3 flex gap-3 items-start">
+              <div :class="darkMode ? 'text-caution-dark' : 'text-caution-light'" class="text-xl mt-0.5 shrink-0">
+                <i class="{{ pa.badge.icon }}"></i>
+              </div>
+              <div class="min-w-0">
+                <div class="font-semibold text-sm">{{ pa.badge.name }}</div>
+                {% if pa.badge.description %}
+                  <div class="text-xs opacity-60 mt-0.5">{{ pa.badge.description }}</div>
+                {% endif %}
+                <div class="mt-1 flex flex-wrap gap-2 text-xs opacity-50">
+                  <span>{{ pa.awarded_at|date:"M d, Y" }}</span>
+                  {% if pa.awarded_by %}<span>{% trans "by" %} {{ pa.awarded_by }}</span>{% endif %}
+                  {% if pa.deployment %}
+                    <span><i class="fa-solid fa-users-gear mr-0.5"></i>{{ pa.deployment.title }}</span>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
   </section>
 
   <aside class="space-y-5">

@@ -11,8 +11,12 @@ from django.utils import timezone
 from toto.ui import PageProcessor
 
 from .models import (
+    AchievementBadge,
+    PersonAchievement,
     IncidentType,
+    InterventionType,
     Responder,
+    ResponderSkill,
     MobilizationReport,
     MobilizationEvent,
     Deployment,
@@ -141,15 +145,79 @@ def responder_detail(request, pk):
         status="active"
     ).select_related("deployment__event", "deployment__community")
 
-    recent_assignments = responder.deployment_assignments.select_related(
-        "deployment__event"
-    ).order_by("-deployment__created_at")[:10]
+    all_assignments = responder.deployment_assignments.select_related(
+        "deployment__event", "deployment__community", "assigned_by"
+    ).order_by("-deployment__created_at")
+
+    achievements = responder.person.mobilization_achievements.select_related(
+        "badge", "deployment", "awarded_by"
+    ).order_by("-awarded_at")
 
     return _render(request, "mobilization/responder_detail.html", {
         "responder": responder,
         "active_assignments": active_assignments,
-        "recent_assignments": recent_assignments,
+        "all_assignments": all_assignments,
+        "achievements": achievements,
     })
+
+
+# ---------------------------------------------------------------------------
+# Responder recruitment (call-in menu)
+# ---------------------------------------------------------------------------
+
+@login_required
+def responder_recruit(request):
+    """
+    Shows eligible persons (federal agents OR members of a federal tribe community)
+    who do not yet have a Responder profile — the call-in roster.
+    """
+    from toto.people.models import Person
+    from toto.socialhub.models import Community
+
+    q = request.GET.get("q", "")
+
+    existing_responder_person_ids = Responder.objects.values_list("person_id", flat=True)
+
+    federal_tribe_community_ids = Community.objects.filter(
+        is_federal_tribe=True
+    ).values_list("id", flat=True)
+
+    eligible = Person.objects.filter(
+        Q(is_federal_agent=True) | Q(communities__in=federal_tribe_community_ids)
+    ).exclude(
+        id__in=existing_responder_person_ids
+    ).distinct().prefetch_related("communities")
+
+    if q:
+        eligible = eligible.filter(display_name__icontains=q)
+
+    return _render(request, "mobilization/responder_recruit.html", {
+        "eligible": eligible.order_by("display_name"),
+        "q": q,
+    })
+
+
+@login_required
+@require_POST
+def responder_callin(request):
+    """Creates a Responder profile for an eligible person."""
+    from toto.people.models import Person
+    person_id = request.POST.get("person_id")
+    person = get_object_or_404(Person, pk=person_id)
+
+    if hasattr(person, "responder_profile"):
+        messages.warning(request, f"{person} is already a responder.")
+        return redirect("mobilization:responder_recruit")
+
+    responder = Responder(person=person, is_active=True)
+    try:
+        responder.full_clean()
+        responder.save()
+        messages.success(request, f"{person} added as a responder.")
+        return redirect("mobilization:responder_detail", pk=responder.pk)
+    except ValidationError as e:
+        messages.error(request, str(e.message if hasattr(e, "message") else e))
+        return redirect("mobilization:responder_recruit")
 
 
 # ---------------------------------------------------------------------------
@@ -358,13 +426,20 @@ def event_detail(request, pk):
 
     evac_routes = event.evac_routes.select_related("route").order_by("route_type", "name")
     emergency_statuses = event.emergency_statuses.select_related(
-        "community", "zone", "declared_by"
+        "community", "zone", "declared_by", "source_proposal"
     ).prefetch_related("equipment_accesses__item", "equipment_accesses__deployment").order_by("-declared_at")
     from toto.locations.models import Route, Zone
     from toto.socialhub.models import Community
+    from toto.assembly.models import AssemblyProposal, AssemblyProposalType, AssemblyStatus
     available_routes = Route.objects.order_by("name")
     all_communities = Community.objects.order_by("name")
     all_zones = Zone.objects.order_by("name")
+
+    # Pending/passed emergency declaration proposals for this event
+    pending_emergency_proposals = AssemblyProposal.objects.filter(
+        proposal_type=AssemblyProposalType.EMERGENCY_DECLARATION,
+        metadata__event_id=event.pk,
+    ).exclude(status__in=[AssemblyStatus.REJECTED, AssemblyStatus.EXPIRED]).order_by("-created_at")
 
     # Build escalation / hierarchy data for Cytoscape
     escalation_nodes = []
@@ -407,6 +482,7 @@ def event_detail(request, pk):
         "emergency_level_choices": EmergencyStatus.LEVEL_CHOICES,
         "all_communities": all_communities,
         "all_zones": all_zones,
+        "pending_emergency_proposals": pending_emergency_proposals,
         "escalation_nodes": json.dumps(escalation_nodes),
         "escalation_edges": json.dumps(escalation_edges),
         "mission_timeline": json.dumps(mission_timeline),
@@ -563,7 +639,7 @@ def deployment_detail(request, pk):
     ).order_by("status", "responder__person__display_name")
 
     interventions = deployment.interventions.select_related(
-        "assigned_to__person", "reported_by", "kanban_task"
+        "assigned_to__person", "reported_by", "kanban_task", "detection", "intervention_type"
     ).order_by("priority", "status")
 
     available_responders = Responder.objects.filter(
@@ -586,8 +662,20 @@ def deployment_detail(request, pk):
     dep_routes = deployment.routes.select_related("route").order_by("route_type")
     from toto.locations.models import Route
     from toto.inventory.models import RealWorldObject
+    from toto.detections.models import Detection
     available_routes = Route.objects.order_by("name")
     available_items = RealWorldObject.objects.select_related("location", "object_type").order_by("name")
+
+    # Detections from the event's source report evidence
+    event = deployment.event
+    report_detections = Detection.objects.filter(
+        mobilization_evidence__report__mobilization_events=event
+    ).distinct().select_related("category").order_by("-start_time")
+
+    # Detections already linked to this deployment's interventions
+    linked_detection_ids = set(
+        interventions.exclude(detection=None).values_list("detection_id", flat=True)
+    )
 
     return _render(request, "mobilization/deployment_detail.html", {
         "deployment": deployment,
@@ -601,6 +689,8 @@ def deployment_detail(request, pk):
         "available_routes": available_routes,
         "available_items": available_items,
         "route_type_choices": DeploymentRoute.ROUTE_TYPE_CHOICES,
+        "report_detections": report_detections,
+        "linked_detection_ids": linked_detection_ids,
     })
 
 
@@ -666,6 +756,7 @@ def deployment_complete(request, pk):
 def intervention_create(request, pk):
     deployment = get_object_or_404(Deployment, pk=pk)
     from toto.kanban.models import Task
+    from toto.detections.models import Detection
     mission_tasks = []
     if deployment.kanban_mission:
         mission_tasks = list(deployment.kanban_mission.tasks.select_related("column").order_by("position"))
@@ -674,16 +765,27 @@ def intervention_create(request, pk):
         status__in=("assigned", "confirmed", "active")
     ).select_related("responder__person")
 
+    intervention_types = InterventionType.objects.order_by("order", "name")
+
+    # Detections linked to this event's community/report evidence, or the event's area
+    event = deployment.event
+    event_detections = Detection.objects.filter(
+        mobilization_evidence__report__mobilization_events=event
+    ).distinct().select_related("category").order_by("-start_time")[:30]
+
     if request.method == "POST":
         title = request.POST.get("title", "").strip()
-        intervention_type = request.POST.get("intervention_type", "other")
+        intervention_type_id = request.POST.get("intervention_type") or None
         priority = request.POST.get("priority", "normal")
         description = request.POST.get("description", "")
         is_required = request.POST.get("is_required") == "1"
         task_id = request.POST.get("kanban_task")
         responder_id = request.POST.get("assigned_to")
+        detection_id = request.POST.get("detection") or None
         task = Task.objects.filter(pk=task_id).first() if task_id else None
         responder = Responder.objects.filter(pk=responder_id).first() if responder_id else None
+        intervention_type = InterventionType.objects.filter(pk=intervention_type_id).first() if intervention_type_id else None
+        detection = Detection.objects.filter(pk=detection_id).first() if detection_id else None
         person = _person(request)
 
         if not title:
@@ -699,6 +801,7 @@ def intervention_create(request, pk):
                 kanban_task=task,
                 assigned_to=responder,
                 reported_by=person,
+                detection=detection,
             )
             messages.success(request, f'Intervention "{iv.title}" created.')
             return redirect("mobilization:deployment_detail", pk=pk)
@@ -707,7 +810,8 @@ def intervention_create(request, pk):
         "deployment": deployment,
         "mission_tasks": mission_tasks,
         "available_responders": available_responders,
-        "intervention_type_choices": Intervention.INTERVENTION_TYPE_CHOICES,
+        "intervention_types": intervention_types,
+        "event_detections": event_detections,
         "priority_choices": [("low", "Low"), ("normal", "Normal"), ("high", "High"), ("urgent", "Urgent")],
     })
 
@@ -849,15 +953,21 @@ def deployment_equipment_add(request, pk):
 
 
 # ---------------------------------------------------------------------------
-# Emergency status
+# Emergency status — must go through assembly proposal
 # ---------------------------------------------------------------------------
 
 @login_required
 @require_POST
-def emergency_status_declare(request, pk):
+def emergency_status_propose(request, pk):
+    """
+    Creates an AssemblyProposal of type 'emg_declare' for this event.
+    The actual EmergencyStatus is only created once the proposal passes and
+    a coordinator clicks 'Activate' (emergency_proposal_activate view).
+    """
     event = get_object_or_404(MobilizationEvent, pk=pk)
     from toto.socialhub.models import Community
     from toto.locations.models import Zone
+    from toto.assembly.models import AssemblyProposal, AssemblyProposalType, AssemblyStatus
 
     community_id = request.POST.get("community") or None
     zone_id = request.POST.get("zone") or None
@@ -873,28 +983,80 @@ def emergency_status_declare(request, pk):
     person = _person(request)
 
     if not community and not zone:
-        messages.error(request, "Select a community or zone.")
+        messages.error(request, "Select a community or zone to propose emergency for.")
         return redirect("mobilization:event_detail", pk=pk)
 
+    target = str(community or zone)
+    proposal_community = community or (zone.community if hasattr(zone, "community") and zone.community_id else event.community)
+
+    AssemblyProposal.objects.create(
+        community=proposal_community,
+        proposal_type=AssemblyProposalType.EMERGENCY_DECLARATION,
+        status=AssemblyStatus.OPEN,
+        title=f"Emergency Declaration — {target} ({event.title})",
+        body=notes,
+        opened_by=person,
+        metadata={
+            "event_id": event.pk,
+            "community_id": community.pk if community else None,
+            "zone_id": zone.pk if zone else None,
+            "level": level,
+            "allows_asset_requisition": allows_asset,
+            "allows_inventory_access": allows_inventory,
+            "allows_route_commandeering": allows_routes,
+            "emergency_tax_rate": tax_rate,
+        },
+    )
+    messages.success(request, f"Emergency declaration proposal submitted for {target}. Assembly must vote to approve.")
+    return redirect("mobilization:event_detail", pk=pk)
+
+
+@login_required
+@require_POST
+def emergency_proposal_activate(request, pk, proposal_pk):
+    """
+    Activates (enacts) a passed emergency declaration proposal, creating the EmergencyStatus.
+    Only allowed if the proposal has status=passed.
+    """
+    event = get_object_or_404(MobilizationEvent, pk=pk)
+    from toto.assembly.models import AssemblyProposal, AssemblyStatus
+    from toto.socialhub.models import Community
+    from toto.locations.models import Zone
+
+    proposal = get_object_or_404(AssemblyProposal, pk=proposal_pk)
+    if proposal.status != AssemblyStatus.PASSED:
+        messages.error(request, "Proposal has not passed assembly vote.")
+        return redirect("mobilization:event_detail", pk=pk)
+
+    if EmergencyStatus.objects.filter(source_proposal=proposal).exists():
+        messages.warning(request, "Emergency already activated for this proposal.")
+        return redirect("mobilization:event_detail", pk=pk)
+
+    meta = proposal.metadata or {}
+    community = Community.objects.filter(pk=meta.get("community_id")).first()
+    zone = Zone.objects.filter(pk=meta.get("zone_id")).first()
+    person = _person(request)
+
     try:
-        tax_rate_val = float(tax_rate) if tax_rate else None
-    except ValueError:
+        tax_rate_val = float(meta["emergency_tax_rate"]) if meta.get("emergency_tax_rate") else None
+    except (ValueError, TypeError):
         tax_rate_val = None
 
     EmergencyStatus.objects.create(
         event=event,
         community=community,
         zone=zone,
-        level=level,
+        level=meta.get("level", "warning"),
         declared_by=person,
-        notes=notes,
-        allows_asset_requisition=allows_asset,
-        allows_inventory_access=allows_inventory,
-        allows_route_commandeering=allows_routes,
+        notes=proposal.body,
+        allows_asset_requisition=meta.get("allows_asset_requisition", True),
+        allows_inventory_access=meta.get("allows_inventory_access", True),
+        allows_route_commandeering=meta.get("allows_route_commandeering", False),
         emergency_tax_rate=tax_rate_val,
+        source_proposal=proposal,
     )
-    target = str(community or zone)
-    messages.success(request, f"Emergency declared for {target}.")
+    target = str(community or zone or "—")
+    messages.success(request, f"Emergency status activated for {target}.")
     return redirect("mobilization:event_detail", pk=pk)
 
 

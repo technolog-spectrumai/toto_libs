@@ -240,25 +240,31 @@
   </div>
 
   {# — Emergency status — #}
-  <div x-data="{ declareOpen: false }"
+  <div x-data="{ proposeOpen: false }"
        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
        class="rounded-lg border p-5 shadow-sm">
-    <div class="mb-4 flex items-center justify-between">
-      <h3 class="font-bold flex items-center gap-2">
-        <i class="fa-solid fa-triangle-exclamation"></i> {% trans "Emergency Status" %} ({{ emergency_statuses|length }})
-      </h3>
-      <button type="button" @click="declareOpen = !declareOpen"
-              :class="darkMode ? 'bg-warn-dark text-primary-bg-dark' : 'bg-warn-light text-primary-bg-light'"
-              class="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold hover:opacity-80">
-        <i class="fa-solid fa-siren-on"></i> {% trans "Declare" %}
+    <div class="mb-4 flex items-center justify-between gap-3">
+      <div>
+        <h3 class="font-bold flex items-center gap-2">
+          <i class="fa-solid fa-triangle-exclamation"></i> {% trans "Emergency Status" %} ({{ emergency_statuses|length }})
+        </h3>
+        <p class="mt-0.5 text-xs opacity-50">{% trans "Emergency declarations require assembly vote before activation." %}</p>
+      </div>
+      <button type="button" @click="proposeOpen = !proposeOpen"
+              :class="darkMode ? 'border-warn-dark text-warn-dark' : 'border-warn-light text-warn-light'"
+              class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold hover:opacity-80">
+        <i class="fa-solid fa-file-circle-plus"></i> {% trans "Propose" %}
       </button>
     </div>
 
-    {# Declare form #}
-    <div x-show="declareOpen" x-cloak
-         :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
-         class="mb-4 rounded-lg p-4">
-      <form method="post" action="{% url 'mobilization:emergency_status_declare' event.pk %}"
+    {# Propose form — creates an AssemblyProposal, not a direct EmergencyStatus #}
+    <div x-show="proposeOpen" x-cloak
+         :class="darkMode ? 'bg-primary-bg-dark border-warn-dark/30' : 'bg-primary-bg-light border-warn-light/30'"
+         class="mb-4 rounded-lg border p-4">
+      <div class="mb-3 text-xs font-semibold opacity-60 uppercase tracking-wide flex items-center gap-1.5">
+        <i class="fa-solid fa-vote-yea"></i>{% trans "Submit for Assembly Vote" %}
+      </div>
+      <form method="post" action="{% url 'mobilization:emergency_status_propose' event.pk %}"
             class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {% csrf_token %}
         <select name="level"
@@ -302,10 +308,44 @@
         <button type="submit"
                 :class="darkMode ? 'bg-warn-dark text-primary-bg-dark' : 'bg-warn-light text-primary-bg-light'"
                 class="rounded-lg px-4 py-2 text-sm font-semibold hover:opacity-90">
-          {% trans "Declare Emergency" %}
+          <i class="fa-solid fa-paper-plane mr-1"></i>{% trans "Submit Proposal" %}
         </button>
       </form>
     </div>
+
+    {# Pending / passed proposals waiting for activation #}
+    {% if pending_emergency_proposals %}
+      <div class="mb-4 space-y-2">
+        <div class="text-xs font-semibold uppercase tracking-wide opacity-50">{% trans "Assembly Proposals" %}</div>
+        {% for prop in pending_emergency_proposals %}
+          <div :class="darkMode ? 'bg-primary-bg-dark border-warn-dark/20' : 'bg-primary-bg-light border-warn-light/20'"
+               class="flex items-center justify-between gap-3 rounded-lg border p-3">
+            <div class="min-w-0">
+              <div class="font-semibold text-sm truncate">{{ prop.title }}</div>
+              <div class="mt-0.5 flex flex-wrap gap-2 text-xs opacity-60">
+                <span class="capitalize">{{ prop.get_status_display }}</span>
+                {% with tally=prop.tally %}
+                  <span><i class="fa-solid fa-thumbs-up mr-0.5"></i>{{ tally.yes }}</span>
+                  <span><i class="fa-solid fa-thumbs-down mr-0.5"></i>{{ tally.no }}</span>
+                {% endwith %}
+              </div>
+            </div>
+            {% if prop.status == "passed" %}
+              <form method="post" action="{% url 'mobilization:emergency_proposal_activate' event.pk prop.pk %}">
+                {% csrf_token %}
+                <button type="submit"
+                        :class="darkMode ? 'bg-warn-dark text-primary-bg-dark' : 'bg-warn-light text-primary-bg-light'"
+                        class="shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold hover:opacity-90">
+                  <i class="fa-solid fa-siren-on mr-1"></i>{% trans "Activate Emergency" %}
+                </button>
+              </form>
+            {% else %}
+              <span class="shrink-0 text-xs opacity-40 italic">{% trans "Awaiting vote" %}</span>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
 
     <div class="space-y-3">
       {% for es in emergency_statuses %}
@@ -330,6 +370,11 @@
                 <span>{% trans "Declared" %} {{ es.declared_at|date:"M d, H:i" }}</span>
                 {% if es.declared_by %}<span>{% trans "by" %} {{ es.declared_by }}</span>{% endif %}
                 {% if es.emergency_tax_rate %}<span><i class="fa-solid fa-percent mr-1"></i>{{ es.emergency_tax_rate|floatformat:2 }}% tax</span>{% endif %}
+                {% if es.source_proposal %}
+                  <span :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+                    <i class="fa-solid fa-vote-yea mr-0.5"></i>{% trans "Assembly approved" %}
+                  </span>
+                {% endif %}
               </div>
               <div class="flex flex-wrap gap-2 text-xs opacity-70 mt-1">
                 {% if es.allows_asset_requisition %}<span class="rounded border border-current/15 px-1.5 py-0.5"><i class="fa-solid fa-coins mr-1"></i>Assets</span>{% endif %}

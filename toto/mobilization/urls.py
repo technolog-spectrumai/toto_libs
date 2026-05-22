@@ -8,6 +8,8 @@ urlpatterns = [
 
     # Responders
     path("responders/", views.responder_list, name="responder_list"),
+    path("responders/recruit/", views.responder_recruit, name="responder_recruit"),
+    path("responders/call-in/", views.responder_callin, name="responder_callin"),
     path("responders/<int:pk>/", views.responder_detail, name="responder_detail"),
 
     # Reports
@@ -40,8 +42,9 @@ urlpatterns = [
     path("events/<int:pk>/evac-routes/add/", views.evac_route_add, name="evac_route_add"),
     path("events/<int:pk>/evac-routes/<int:route_pk>/status/", views.evac_route_status, name="evac_route_status"),
 
-    # Emergency status
-    path("events/<int:pk>/emergency/declare/", views.emergency_status_declare, name="emergency_status_declare"),
+    # Emergency status — declaration must pass through assembly
+    path("events/<int:pk>/emergency/propose/", views.emergency_status_propose, name="emergency_status_propose"),
+    path("events/<int:pk>/emergency/proposal/<int:proposal_pk>/activate/", views.emergency_proposal_activate, name="emergency_proposal_activate"),
     path("events/<int:pk>/emergency/<int:es_pk>/lift/", views.emergency_status_lift, name="emergency_status_lift"),
     path("events/<int:pk>/emergency/<int:es_pk>/equipment/", views.emergency_equipment_authorize, name="emergency_equipment_authorize"),
 
