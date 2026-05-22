@@ -61,7 +61,7 @@
               <span><i class="fa-solid fa-bolt mr-1"></i>
                 <a href="{% url 'mobilization:event_detail' dep.event.pk %}" class="underline">{{ dep.event.title }}</a>
               </span>
-              <span class="capitalize">{{ dep.deployment_type|replace:"_" " " }}</span>
+              <span class="capitalize">{{ dep.get_deployment_type_display }}</span>
               {% if dep.kanban_mission %}<span><i class="fa-solid fa-crosshairs mr-1"></i>{{ dep.kanban_mission }}</span>{% endif %}
               <span>{{ dep.created_at|date:"M d, Y" }}</span>
             </div>

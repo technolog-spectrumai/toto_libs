@@ -18,9 +18,19 @@
         <div class="flex flex-wrap items-center gap-2">
           {% include "mobilization/partials/status_badge.html" with status=deployment.status %}
           {% include "mobilization/partials/priority_badge.html" with priority=deployment.priority %}
-          <span class="rounded border border-current/20 px-2 py-0.5 text-xs capitalize">{{ deployment.deployment_type|replace:"_" " " }}</span>
+          <span class="rounded border border-current/20 px-2 py-0.5 text-xs capitalize">{{ deployment.get_deployment_type_display }}</span>
           <span class="text-xs opacity-60"><i class="fa-solid fa-people-roof mr-1"></i>{{ deployment.community }}</span>
+          {% if deployment.is_hybrid %}
+            <span class="rounded border border-current/20 px-2 py-0.5 text-xs">
+              <i class="fa-solid fa-code-branch mr-1"></i>Hybrid{% if deployment.hybrid_time_percent %} — {{ deployment.hybrid_time_percent }}% time{% endif %}
+            </span>
+          {% endif %}
         </div>
+        {% if deployment.per_diem_amount %}
+          <div class="text-xs opacity-60">
+            <i class="fa-solid fa-coins mr-1"></i>Per diem: {{ deployment.per_diem_amount }}{% if deployment.per_diem_asset %} {{ deployment.per_diem_asset }}{% endif %}
+          </div>
+        {% endif %}
       </div>
       <div class="flex flex-wrap gap-2">
         <a href="{% url 'mobilization:intervention_create' deployment.pk %}"
@@ -68,9 +78,7 @@
                   <div class="flex items-center justify-between gap-2">
                     <span class="font-semibold text-sm">{{ task.title }}</span>
                     <div class="flex shrink-0 items-center gap-1.5">
-                      {# Fibonacci weight badge #}
                       <span class="rounded border border-current/20 px-2 py-0.5 text-xs font-mono">{{ task.weight_label }}</span>
-                      {# Status #}
                       {% if task.completed_at %}
                         <span :class="darkMode ? 'text-success-dark' : 'text-success-light'" class="text-xs"><i class="fa-solid fa-check-circle"></i></span>
                       {% else %}
@@ -92,18 +100,13 @@
       <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
            class="rounded-lg border p-5 shadow-sm">
         <div class="mb-4 flex items-center justify-between">
-          <h3 class="flex items-center gap-2 font-bold"><i class="fa-solid fa-list-check"></i> {% trans "Interventions" %}</h3>
-          <span class="text-xs opacity-60">
-            {{ interventions|length }} total ·
-            {% with done=interventions|dictsort:"status"|slice:":100" %}
-              {% for iv in interventions %}{% if iv.status == "done" %}✓{% endif %}{% endfor %}
-            {% endwith %}
-          </span>
+          <h3 class="flex items-center gap-2 font-bold"><i class="fa-solid fa-list-check"></i> {% trans "Interventions" %} ({{ interventions|length }})</h3>
         </div>
 
-        <div class="space-y-2">
+        <div class="space-y-3">
           {% for iv in interventions %}
-            <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
+            <div x-data="{ reviewOpen: false }"
+                 :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <div class="flex flex-wrap items-center gap-2">
                   {% if iv.is_required %}
@@ -113,28 +116,177 @@
                   {% include "mobilization/partials/status_badge.html" with status=iv.status %}
                   {% include "mobilization/partials/priority_badge.html" with priority=iv.priority %}
                 </div>
-                {% if iv.status != "done" and iv.status != "cancelled" %}
-                  <form method="post" action="{% url 'mobilization:intervention_complete' iv.pk %}">
-                    {% csrf_token %}
-                    <button type="submit"
+                <div class="flex items-center gap-2">
+                  {% if iv.status != "done" and iv.status != "cancelled" %}
+                    <form method="post" action="{% url 'mobilization:intervention_complete' iv.pk %}">
+                      {% csrf_token %}
+                      <button type="submit"
+                              :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                              class="rounded-lg border px-2 py-1 text-xs font-semibold hover:opacity-80">
+                        <i class="fa-solid fa-check mr-1"></i>Done
+                      </button>
+                    </form>
+                  {% endif %}
+                  {% if iv.status == "done" and not iv.reviewer %}
+                    <button type="button" @click="reviewOpen = !reviewOpen"
                             :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
                             class="rounded-lg border px-2 py-1 text-xs font-semibold hover:opacity-80">
-                      <i class="fa-solid fa-check mr-1"></i>Done
+                      <i class="fa-solid fa-star mr-1"></i>Review
                     </button>
-                  </form>
-                {% endif %}
+                  {% endif %}
+                </div>
               </div>
               <div class="mt-1.5 flex flex-wrap gap-2 text-xs opacity-60">
-                <span class="capitalize">{{ iv.intervention_type|replace:"_" " " }}</span>
+                <span class="capitalize">{{ iv.get_intervention_type_display }}</span>
                 {% if iv.assigned_to %}<span><i class="fa-solid fa-user-shield mr-1"></i>{{ iv.assigned_to.person }}</span>{% endif %}
                 {% if iv.kanban_task %}<span><i class="fa-solid fa-link mr-1"></i>{{ iv.kanban_task.title }}</span>{% endif %}
+                {% if iv.estimated_cost %}<span><i class="fa-solid fa-receipt mr-1"></i>Est. {{ iv.estimated_cost }}{% if iv.cost_asset %} {{ iv.cost_asset }}{% endif %}</span>{% endif %}
+                {% if iv.actual_cost %}<span><i class="fa-solid fa-coins mr-1"></i>Actual {{ iv.actual_cost }}</span>{% endif %}
+                {% if iv.cost_center %}<span><i class="fa-solid fa-building mr-1"></i>{{ iv.cost_center }}</span>{% endif %}
               </div>
-              {% if iv.outcome_notes %}
-                <p class="mt-2 text-xs opacity-70">{{ iv.outcome_notes }}</p>
+              {% if iv.effect_description %}
+                <p class="mt-1.5 text-xs opacity-70"><i class="fa-solid fa-bolt mr-1"></i>{{ iv.effect_description }}</p>
               {% endif %}
+              {% if iv.outcome_notes %}
+                <p class="mt-1 text-xs opacity-70">{{ iv.outcome_notes }}</p>
+              {% endif %}
+              {# Reviewer info #}
+              {% if iv.reviewer %}
+                <div class="mt-2 flex items-center gap-1.5 text-xs"
+                     :class="darkMode ? 'text-success-dark' : 'text-success-light'">
+                  <i class="fa-solid fa-star"></i>
+                  Reviewed by {{ iv.reviewer }}
+                  {% if iv.reward_amount %} · Reward: {{ iv.reward_amount }}{% if iv.reward_asset %} {{ iv.reward_asset }}{% endif %}{% endif %}
+                </div>
+              {% endif %}
+              {# Inline review form #}
+              <div x-show="reviewOpen" x-cloak class="mt-3 border-t border-current/10 pt-3">
+                <form method="post" action="{% url 'mobilization:intervention_review' iv.pk %}" class="space-y-2">
+                  {% csrf_token %}
+                  <textarea name="effect_description" placeholder="{% trans "Effect / impact description..." %}" rows="2"
+                            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                            class="w-full rounded-lg border px-3 py-2 text-xs"></textarea>
+                  <div class="flex gap-2">
+                    <input type="number" name="reward_amount" placeholder="{% trans "Reward amount" %}" step="0.01"
+                           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                           class="w-36 rounded-lg border px-3 py-1.5 text-xs">
+                    <button type="submit"
+                            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                            class="rounded-lg px-3 py-1.5 text-xs font-semibold">
+                      {% trans "Save Review" %}
+                    </button>
+                  </div>
+                </form>
+              </div>
             </div>
           {% empty %}
             <p class="text-sm opacity-60">{% trans "No interventions yet." %}</p>
+          {% endfor %}
+        </div>
+      </div>
+
+      {# — Deployment routes — #}
+      <div x-data="{ addRouteOpen: false }"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-5 shadow-sm">
+        <div class="mb-3 flex items-center justify-between">
+          <h3 class="flex items-center gap-2 font-bold"><i class="fa-solid fa-route"></i> {% trans "Routes" %} ({{ dep_routes|length }})</h3>
+          {% if deployment.status != "completed" and deployment.status != "cancelled" %}
+            <button type="button" @click="addRouteOpen = !addRouteOpen"
+                    :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                    class="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-semibold hover:opacity-80">
+              <i class="fa-solid fa-plus"></i> {% trans "Add" %}
+            </button>
+          {% endif %}
+        </div>
+        <div x-show="addRouteOpen" x-cloak class="mb-3 grid gap-2 sm:grid-cols-3">
+          <form method="post" action="{% url 'mobilization:deployment_route_add' deployment.pk %}" class="contents">
+            {% csrf_token %}
+            <select name="route"
+                    :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                    class="rounded-lg border px-3 py-2 text-xs">
+              <option value="">{% trans "Select route..." %}</option>
+              {% for r in available_routes %}
+                <option value="{{ r.pk }}">{{ r.name }}</option>
+              {% endfor %}
+            </select>
+            <select name="route_type"
+                    :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                    class="rounded-lg border px-3 py-2 text-xs">
+              {% for val, label in route_type_choices %}
+                <option value="{{ val }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+            <button type="submit"
+                    :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                    class="rounded-lg px-4 py-2 text-xs font-semibold">{% trans "Add" %}</button>
+          </form>
+        </div>
+        <div class="space-y-2">
+          {% for dr in dep_routes %}
+            <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="flex items-center gap-3 rounded-lg p-2.5">
+              <i class="fa-solid fa-route text-xs opacity-50 shrink-0"></i>
+              <div>
+                <span class="font-semibold text-sm">{{ dr.route.name }}</span>
+                <span class="ml-2 text-xs opacity-60">{{ dr.get_route_type_display }}</span>
+              </div>
+            </div>
+          {% empty %}
+            <p class="text-sm opacity-60">{% trans "No routes assigned." %}</p>
+          {% endfor %}
+        </div>
+      </div>
+
+      {# — Equipment — #}
+      <div x-data="{ addEquipOpen: false }"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-5 shadow-sm">
+        <div class="mb-3 flex items-center justify-between">
+          <h3 class="flex items-center gap-2 font-bold"><i class="fa-solid fa-toolbox"></i> {% trans "Equipment" %} ({{ equipment|length }})</h3>
+          {% if deployment.status != "completed" and deployment.status != "cancelled" %}
+            <button type="button" @click="addEquipOpen = !addEquipOpen"
+                    :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                    class="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-semibold hover:opacity-80">
+              <i class="fa-solid fa-plus"></i> {% trans "Add" %}
+            </button>
+          {% endif %}
+        </div>
+        <div x-show="addEquipOpen" x-cloak class="mb-3 grid gap-2 sm:grid-cols-3">
+          <form method="post" action="{% url 'mobilization:deployment_equipment_add' deployment.pk %}" class="contents">
+            {% csrf_token %}
+            <select name="item"
+                    :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                    class="rounded-lg border px-3 py-2 text-xs">
+              <option value="">{% trans "Select item..." %}</option>
+              {% for obj in available_items %}
+                <option value="{{ obj.pk }}">{{ obj.name }}</option>
+              {% endfor %}
+            </select>
+            <input type="number" name="quantity" value="1" min="0.01" step="0.01"
+                   :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                   class="rounded-lg border px-3 py-2 text-xs">
+            <button type="submit"
+                    :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                    class="rounded-lg px-4 py-2 text-xs font-semibold">{% trans "Allocate" %}</button>
+          </form>
+        </div>
+        <div class="space-y-2">
+          {% for eq in equipment %}
+            <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
+              <div class="flex items-center justify-between gap-2">
+                <div>
+                  <span class="font-semibold text-sm">{{ eq.item.name }}</span>
+                  <span class="ml-2 text-xs opacity-60">× {{ eq.quantity }}</span>
+                  {% if eq.item.object_type %}<span class="ml-1 text-xs opacity-50">· {{ eq.item.object_type }}</span>{% endif %}
+                </div>
+                {% if eq.item.location %}
+                  <span class="text-xs opacity-60 shrink-0"><i class="fa-solid fa-warehouse mr-1"></i>{{ eq.item.location }}</span>
+                {% endif %}
+              </div>
+              {% if eq.notes %}<p class="mt-1 text-xs opacity-60">{{ eq.notes }}</p>{% endif %}
+            </div>
+          {% empty %}
+            <p class="text-sm opacity-60">{% trans "No equipment allocated." %}</p>
           {% endfor %}
         </div>
       </div>
@@ -216,6 +368,9 @@
         {% if deployment.coordinator %}<div><i class="fa-solid fa-user-tie mr-1"></i>{% trans "Coordinator" %}: {{ deployment.coordinator }}</div>{% endif %}
         <div>{% trans "Created" %} {{ deployment.created_at|date:"M d, Y H:i" }}</div>
         <div>{% trans "Updated" %} {{ deployment.updated_at|date:"M d, Y H:i" }}</div>
+        {% if deployment.per_diem_amount %}
+          <div><i class="fa-solid fa-coins mr-1"></i>Per diem: {{ deployment.per_diem_amount }}{% if deployment.per_diem_asset %} {{ deployment.per_diem_asset }}{% endif %}</div>
+        {% endif %}
         {% if deployment.notes %}
           <p class="border-t border-current/10 pt-2 mt-2">{{ deployment.notes }}</p>
         {% endif %}

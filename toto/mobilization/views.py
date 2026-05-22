@@ -17,6 +17,9 @@ from .models import (
     MobilizationEvent,
     Deployment,
     DeploymentAssignment,
+    DeploymentEquipment,
+    DeploymentRoute,
+    EvacuationRoute,
     Intervention,
 )
 from . import services
@@ -109,16 +112,16 @@ def responder_list(request):
     if q:
         qs = qs.filter(person__display_name__icontains=q)
 
-    status_counts = {
-        s: Responder.objects.filter(current_status=s).count()
-        for s in ("available", "responding", "standby", "off_duty", "unavailable")
-    }
+    status_counts_list = [
+        (val, label, Responder.objects.filter(current_status=val).count())
+        for val, label in Responder.CURRENT_STATUS_CHOICES
+    ]
 
     return _render(request, "mobilization/responder_list.html", {
         "responders": qs.order_by("current_status", "person__display_name"),
         "status_filter": status_filter,
         "q": q,
-        "status_counts": status_counts,
+        "status_counts_list": status_counts_list,
         "status_choices": Responder.CURRENT_STATUS_CHOICES,
     })
 
@@ -351,12 +354,50 @@ def event_detail(request, pk):
             ).order_by("-urgency", "-impact")
         )
 
+    evac_routes = event.evac_routes.select_related("route").order_by("route_type", "name")
+    from toto.locations.models import Route
+    available_routes = Route.objects.order_by("name")
+
+    # Build escalation / hierarchy data for Cytoscape
+    escalation_nodes = []
+    escalation_edges = []
+    if event.coordinator:
+        escalation_nodes.append({"data": {"id": f"coord_{event.coordinator_id}", "label": str(event.coordinator), "type": "coordinator"}})
+    for dep in deployments:
+        dep_id = f"dep_{dep.pk}"
+        escalation_nodes.append({"data": {"id": dep_id, "label": dep.title, "type": "deployment", "status": dep.status}})
+        if event.coordinator:
+            escalation_edges.append({"data": {"source": f"coord_{event.coordinator_id}", "target": dep_id}})
+        for a in dep.assignments.filter(role="lead").select_related("responder__person"):
+            lead_id = f"lead_{a.pk}"
+            escalation_nodes.append({"data": {"id": lead_id, "label": str(a.responder.person), "type": "lead"}})
+            escalation_edges.append({"data": {"source": dep_id, "target": lead_id}})
+
+    # Mission timeline data for Chart.js
+    mission_timeline = []
+    if campaign_missions:
+        for m in campaign_missions:
+            mission_timeline.append({
+                "label": m.title,
+                "urgency": m.urgency,
+                "impact": m.impact,
+                "task_count": m.tasks.count(),
+                "done_count": m.tasks.filter(completed_at__isnull=False).count(),
+            })
+
     return _render(request, "mobilization/event_detail.html", {
         "event": event,
         "deployments": deployments,
         "campaign": campaign,
         "campaign_missions": campaign_missions,
         "map_data_url": f"/mobilization/events/{pk}/map-data/",
+        "evac_routes": evac_routes,
+        "available_routes": available_routes,
+        "evac_route_type_choices": EvacuationRoute.ROUTE_TYPE_CHOICES,
+        "evac_status_choices": EvacuationRoute.STATUS_CHOICES,
+        "escalation_nodes": json.dumps(escalation_nodes),
+        "escalation_edges": json.dumps(escalation_edges),
+        "mission_timeline": json.dumps(mission_timeline),
     })
 
 
@@ -529,6 +570,13 @@ def deployment_detail(request, pk):
             mission.tasks.select_related("assignee", "column").order_by("column__position", "position")
         )
 
+    equipment = deployment.equipment.select_related("item__location", "item__object_type").order_by("item__name")
+    dep_routes = deployment.routes.select_related("route").order_by("route_type")
+    from toto.locations.models import Route
+    from toto.inventory.models import RealWorldObject
+    available_routes = Route.objects.order_by("name")
+    available_items = RealWorldObject.objects.select_related("location", "object_type").order_by("name")
+
     return _render(request, "mobilization/deployment_detail.html", {
         "deployment": deployment,
         "assignments": assignments,
@@ -536,6 +584,11 @@ def deployment_detail(request, pk):
         "available_responders": available_responders,
         "mission": mission,
         "mission_tasks": mission_tasks,
+        "equipment": equipment,
+        "dep_routes": dep_routes,
+        "available_routes": available_routes,
+        "available_items": available_items,
+        "route_type_choices": DeploymentRoute.ROUTE_TYPE_CHOICES,
     })
 
 
@@ -658,3 +711,126 @@ def intervention_complete(request, pk):
     except Exception as e:
         messages.error(request, str(e))
     return redirect("mobilization:deployment_detail", pk=intervention.deployment_id)
+
+
+@login_required
+@require_POST
+def intervention_review(request, pk):
+    intervention = get_object_or_404(Intervention, pk=pk)
+    person = _person(request)
+    effect_description = request.POST.get("effect_description", "")
+    reward_amount = request.POST.get("reward_amount") or None
+    reward_asset_id = request.POST.get("reward_asset") or None
+
+    if reward_amount:
+        try:
+            reward_amount = float(reward_amount)
+        except ValueError:
+            reward_amount = None
+
+    from toto.assets.models import Asset
+    reward_asset = Asset.objects.filter(pk=reward_asset_id).first() if reward_asset_id else None
+
+    intervention.reviewer = person
+    intervention.reviewed_at = timezone.now()
+    if effect_description:
+        intervention.effect_description = effect_description
+    if reward_amount is not None:
+        intervention.reward_amount = reward_amount
+    if reward_asset:
+        intervention.reward_asset = reward_asset
+    intervention.save()
+    messages.success(request, "Intervention reviewed.")
+    return redirect("mobilization:deployment_detail", pk=intervention.deployment_id)
+
+
+# ---------------------------------------------------------------------------
+# Evacuation routes
+# ---------------------------------------------------------------------------
+
+@login_required
+@require_POST
+def evac_route_add(request, pk):
+    event = get_object_or_404(MobilizationEvent, pk=pk)
+    from toto.locations.models import Route
+    route_id = request.POST.get("route")
+    name = request.POST.get("name", "").strip()
+    route_type = request.POST.get("route_type", "evacuation")
+    notes = request.POST.get("notes", "")
+
+    route = Route.objects.filter(pk=route_id).first() if route_id else None
+    if not route or not name:
+        messages.error(request, "Route and name are required.")
+    else:
+        EvacuationRoute.objects.create(
+            event=event, route=route, name=name,
+            route_type=route_type, notes=notes,
+        )
+        messages.success(request, f'Evacuation route "{name}" added.')
+    return redirect("mobilization:event_detail", pk=pk)
+
+
+@login_required
+@require_POST
+def evac_route_status(request, pk, route_pk):
+    evac_route = get_object_or_404(EvacuationRoute, pk=route_pk, event_id=pk)
+    status = request.POST.get("status", "active")
+    evac_route.status = status
+    evac_route.save()
+    messages.success(request, f"Route status updated to {status}.")
+    return redirect("mobilization:event_detail", pk=pk)
+
+
+# ---------------------------------------------------------------------------
+# Deployment routes
+# ---------------------------------------------------------------------------
+
+@login_required
+@require_POST
+def deployment_route_add(request, pk):
+    deployment = get_object_or_404(Deployment, pk=pk)
+    from toto.locations.models import Route
+    route_id = request.POST.get("route")
+    route_type = request.POST.get("route_type", "primary")
+    notes = request.POST.get("notes", "")
+
+    route = Route.objects.filter(pk=route_id).first() if route_id else None
+    if not route:
+        messages.error(request, "Route is required.")
+    else:
+        DeploymentRoute.objects.get_or_create(
+            deployment=deployment, route=route,
+            defaults={"route_type": route_type, "notes": notes},
+        )
+        messages.success(request, "Route added to deployment.")
+    return redirect("mobilization:deployment_detail", pk=pk)
+
+
+# ---------------------------------------------------------------------------
+# Deployment equipment
+# ---------------------------------------------------------------------------
+
+@login_required
+@require_POST
+def deployment_equipment_add(request, pk):
+    deployment = get_object_or_404(Deployment, pk=pk)
+    from toto.inventory.models import RealWorldObject
+    item_id = request.POST.get("item")
+    quantity = request.POST.get("quantity", "1")
+    notes = request.POST.get("notes", "")
+
+    item = RealWorldObject.objects.filter(pk=item_id).first() if item_id else None
+    try:
+        quantity = float(quantity) if quantity else 1
+    except ValueError:
+        quantity = 1
+
+    if not item:
+        messages.error(request, "Item is required.")
+    else:
+        DeploymentEquipment.objects.get_or_create(
+            deployment=deployment, item=item,
+            defaults={"quantity": quantity, "notes": notes},
+        )
+        messages.success(request, f"{item.name} added to deployment equipment.")
+    return redirect("mobilization:deployment_detail", pk=pk)

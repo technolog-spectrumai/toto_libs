@@ -50,9 +50,9 @@
       <i class="fa-solid fa-bars-progress"></i> {% trans "Report Pipeline" %}
     </h2>
     <div class="grid grid-cols-3 gap-3 sm:grid-cols-6">
-      {% for status, label in report_counts.items %}
+      {% for status, cnt in report_counts.items %}
         <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3 text-center">
-          <div class="text-2xl font-bold">{{ report_counts|default_if_none:"0" }}</div>
+          <div class="text-2xl font-bold">{{ cnt }}</div>
           <div class="mt-1 text-xs opacity-60 capitalize">{{ status }}</div>
         </div>
       {% endfor %}

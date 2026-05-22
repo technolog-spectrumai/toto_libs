@@ -23,6 +23,11 @@
         <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-3xl font-bold">{{ event.title }}</h2>
         <div class="flex flex-wrap items-center gap-2 text-sm">
           {% include "mobilization/partials/status_badge.html" with status=event.status %}
+          {% if event.is_hybrid %}
+            <span class="rounded border border-current/20 px-2 py-0.5 text-xs">
+              <i class="fa-solid fa-code-branch mr-1"></i>{% trans "Hybrid" %}
+            </span>
+          {% endif %}
           {% if event.incident_type %}
             <span class="rounded border border-current/20 px-2 py-0.5 text-xs">
               <i class="{{ event.incident_type.icon }} mr-1"></i>{{ event.incident_type.name }}
@@ -88,6 +93,11 @@
                     <span>Impact: {{ m.impact_label }}</span>
                     {% if m.location %}<span><i class="fa-solid fa-map-pin mr-1"></i>{{ m.location }}</span>{% endif %}
                   </div>
+                  {# Mini map for this mission #}
+                  {% if m.location and m.location.geometry %}
+                    <div id="mission-map-{{ m.pk }}" class="mt-2 rounded h-28 w-full overflow-hidden"
+                         data-lat="{{ m.location.geometry.y }}" data-lng="{{ m.location.geometry.x }}"></div>
+                  {% endif %}
                   {# Mission tasks summary #}
                   {% with tasks=m.tasks.all %}
                     {% if tasks %}
@@ -128,6 +138,107 @@
     </aside>
   </div>
 
+  {# — Mission timeline chart — #}
+  {% if campaign_missions %}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-5 shadow-sm">
+      <h3 class="mb-4 font-bold flex items-center gap-2"><i class="fa-solid fa-chart-gantt"></i> {% trans "Mission Progress" %}</h3>
+      <canvas id="missionTimelineChart" height="100"></canvas>
+    </div>
+  {% endif %}
+
+  {# — Escalation tree — #}
+  {% if escalation_nodes %}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-5 shadow-sm">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-bold flex items-center gap-2"><i class="fa-solid fa-sitemap"></i> {% trans "Command Structure" %}</h3>
+        <div class="flex gap-2 text-xs opacity-60">
+          <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-full bg-blue-500"></span>Coordinator</span>
+          <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-full bg-green-500"></span>Deployment</span>
+          <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-full bg-amber-500"></span>Lead</span>
+        </div>
+      </div>
+      <div id="escalation-tree" class="h-64 w-full rounded-lg"
+           :style="darkMode ? 'background: var(--primary-bg-dark)' : 'background: var(--primary-bg-light)'"></div>
+    </div>
+  {% endif %}
+
+  {# — Evacuation routes — #}
+  <div x-data="{ addRouteOpen: false }" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5 shadow-sm">
+    <div class="mb-4 flex items-center justify-between">
+      <h3 class="font-bold flex items-center gap-2"><i class="fa-solid fa-route"></i> {% trans "Evacuation Routes" %} ({{ evac_routes|length }})</h3>
+      <button type="button" @click="addRouteOpen = !addRouteOpen"
+              :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+              class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold hover:opacity-80">
+        <i class="fa-solid fa-plus"></i> {% trans "Add Route" %}
+      </button>
+    </div>
+
+    {# Add route form #}
+    <div x-show="addRouteOpen" x-cloak class="mb-4 rounded-lg border border-current/10 p-4">
+      <form method="post" action="{% url 'mobilization:evac_route_add' event.pk %}" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {% csrf_token %}
+        <input name="name" placeholder="{% trans "Route name" %}" required
+               :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+               class="rounded-lg border px-3 py-2 text-sm">
+        <select name="route"
+                :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                class="rounded-lg border px-3 py-2 text-sm">
+          <option value="">{% trans "Select route..." %}</option>
+          {% for r in available_routes %}
+            <option value="{{ r.pk }}">{{ r.name }}</option>
+          {% endfor %}
+        </select>
+        <select name="route_type"
+                :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                class="rounded-lg border px-3 py-2 text-sm">
+          {% for val, label in evac_route_type_choices %}
+            <option value="{{ val }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="rounded-lg px-4 py-2 text-sm font-semibold hover:opacity-90">
+          {% trans "Add" %}
+        </button>
+      </form>
+    </div>
+
+    <div class="space-y-2">
+      {% for er in evac_routes %}
+        <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="flex items-center justify-between gap-3 rounded-lg p-3">
+          <div class="flex items-center gap-3">
+            <i class="fa-solid fa-route text-sm opacity-60"></i>
+            <div>
+              <div class="font-semibold text-sm">{{ er.name }}</div>
+              <div class="text-xs opacity-60">{{ er.get_route_type_display }} · {{ er.route.name }}</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            {% include "mobilization/partials/status_badge.html" with status=er.status %}
+            <form method="post" action="{% url 'mobilization:evac_route_status' event.pk er.pk %}">
+              {% csrf_token %}
+              {% if er.status == "planned" %}
+                <input type="hidden" name="status" value="active">
+                <button type="submit" class="text-xs underline hover:opacity-80"><i class="fa-solid fa-play mr-1"></i>Activate</button>
+              {% elif er.status == "active" %}
+                <input type="hidden" name="status" value="blocked">
+                <button type="submit" class="text-xs underline hover:opacity-80"><i class="fa-solid fa-ban mr-1"></i>Block</button>
+              {% elif er.status == "blocked" %}
+                <input type="hidden" name="status" value="cleared">
+                <button type="submit" class="text-xs underline hover:opacity-80"><i class="fa-solid fa-check mr-1"></i>Clear</button>
+              {% endif %}
+            </form>
+          </div>
+        </div>
+      {% empty %}
+        <p class="text-sm opacity-60">{% trans "No evacuation routes defined." %}</p>
+      {% endfor %}
+    </div>
+  </div>
+
   {# — Deployments — #}
   <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
        class="rounded-lg border p-5 shadow-sm">
@@ -152,7 +263,10 @@
             </div>
             <div class="mt-2 flex flex-wrap gap-2 text-xs opacity-60">
               {% include "mobilization/partials/priority_badge.html" with priority=dep.priority %}
-              <span class="capitalize">{{ dep.deployment_type|replace:"_" " " }}</span>
+              <span class="capitalize">{{ dep.get_deployment_type_display }}</span>
+              {% if dep.is_hybrid %}
+                <span><i class="fa-solid fa-code-branch mr-1"></i>Hybrid{% if dep.hybrid_time_percent %} {{ dep.hybrid_time_percent }}%{% endif %}</span>
+              {% endif %}
             </div>
             <div class="mt-2 text-xs opacity-50">
               {{ dep.assignments.count }} {% trans "assigned" %} · {{ dep.interventions.count }} {% trans "interventions" %}
@@ -167,58 +281,147 @@
 
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
 <script>
 document.addEventListener("DOMContentLoaded", function () {
   const isDark = localStorage.getItem("darkMode") === "true";
+  const gridColor = isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)";
+  const textColor = isDark ? "#e2e8f0" : "#374151";
 
+  // ── Operational map ──────────────────────────────────────────────────────
   const lightTiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19, attribution: "&copy; OpenStreetMap contributors"
   });
   const darkTiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
     maxZoom: 19, attribution: "&copy; OpenStreetMap contributors &copy; CARTO"
   });
-
   const map = L.map("mob-map", { zoomControl: false }).setView([52.0, 19.0], 6);
   L.control.zoom({ position: "bottomright" }).addTo(map);
   (isDark ? darkTiles : lightTiles).addTo(map);
-
   const bounds = [];
 
   fetch("{{ map_data_url }}")
     .then(r => r.json())
     .then(data => {
-      if (!data.features || data.features.length === 0) return;
-
+      if (!data.features || !data.features.length) return;
       data.features.forEach(f => {
         const props = f.properties;
-
         if (props.kind === "campaign_zone") {
-          const layer = L.geoJSON(f, {
-            style: { color: props.color, weight: 2.5, fillOpacity: 0.15 }
-          }).bindPopup(`<strong>${props.label}</strong><br>Campaign Zone`).addTo(map);
+          const layer = L.geoJSON(f, { style: { color: props.color, weight: 2.5, fillOpacity: 0.15 } })
+            .bindPopup(`<strong>${props.label}</strong><br>Campaign Zone`).addTo(map);
           layer.getBounds && bounds.push(...Object.values(layer.getBounds()));
-
         } else if (props.kind === "mission") {
           const colors = { planned: "#94a3b8", active: "#22c55e", paused: "#f59e0b", completed: "#6366f1", cancelled: "#ef4444" };
-          const col = colors[props.status] || "#94a3b8";
           const icon = L.divIcon({
-            html: `<div style="background:${col};width:14px;height:14px;border-radius:50%;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,.4)"></div>`,
+            html: `<div style="background:${colors[props.status]||"#94a3b8"};width:14px;height:14px;border-radius:50%;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,.4)"></div>`,
             className: "", iconSize: [14, 14], iconAnchor: [7, 7]
           });
-          const urgencyLabel = ["","Low","Medium","High"][props.urgency] || props.urgency;
-          const impactLabel = ["","Low","Medium","High"][props.impact] || props.impact;
-          const marker = L.marker([f.geometry.coordinates[1], f.geometry.coordinates[0]], { icon })
-            .bindPopup(`<strong>${props.label}</strong><br>Deployment: ${props.deployment}<br>Urgency: ${urgencyLabel} · Impact: ${impactLabel}<br>Status: ${props.status}`)
+          L.marker([f.geometry.coordinates[1], f.geometry.coordinates[0]], { icon })
+            .bindPopup(`<strong>${props.label}</strong><br>Deployment: ${props.deployment}<br>Status: ${props.status}`)
             .addTo(map);
           bounds.push([f.geometry.coordinates[1], f.geometry.coordinates[0]]);
         }
       });
+      if (bounds.length) try { map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 }); } catch(e) {}
+    }).catch(() => {});
 
-      if (bounds.length) {
-        try { map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 }); } catch(e) {}
-      }
-    })
-    .catch(() => {});
+  // ── Per-mission mini maps ─────────────────────────────────────────────────
+  document.querySelectorAll("[id^='mission-map-']").forEach(el => {
+    const lat = parseFloat(el.dataset.lat);
+    const lng = parseFloat(el.dataset.lng);
+    if (!lat || !lng) return;
+    const miniMap = L.map(el, { zoomControl: false, attributionControl: false, dragging: false, scrollWheelZoom: false })
+      .setView([lat, lng], 13);
+    (isDark ? L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", { maxZoom: 19 })
+            : L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 })).addTo(miniMap);
+    L.circleMarker([lat, lng], { radius: 7, color: "#22c55e", fillOpacity: 0.9 }).addTo(miniMap);
+  });
+
+  // ── Mission timeline chart ────────────────────────────────────────────────
+  const timelineEl = document.getElementById("missionTimelineChart");
+  if (timelineEl) {
+    const timelineData = {{ mission_timeline|safe }};
+    if (timelineData.length) {
+      new Chart(timelineEl, {
+        type: "bar",
+        data: {
+          labels: timelineData.map(d => d.label),
+          datasets: [
+            {
+              label: "Done",
+              data: timelineData.map(d => d.done_count),
+              backgroundColor: isDark ? "rgba(34,197,94,0.8)" : "rgba(16,185,129,0.8)",
+              borderRadius: 4,
+            },
+            {
+              label: "Remaining",
+              data: timelineData.map(d => d.task_count - d.done_count),
+              backgroundColor: isDark ? "rgba(99,102,241,0.3)" : "rgba(79,70,229,0.2)",
+              borderRadius: 4,
+            }
+          ]
+        },
+        options: {
+          indexAxis: "y",
+          responsive: true,
+          plugins: { legend: { position: "bottom" } },
+          scales: {
+            x: { stacked: true, grid: { color: gridColor }, ticks: { color: textColor, stepSize: 1 } },
+            y: { stacked: true, grid: { display: false }, ticks: { color: textColor } }
+          }
+        }
+      });
+    }
+  }
+
+  // ── Escalation tree (Cytoscape) ───────────────────────────────────────────
+  const cyEl = document.getElementById("escalation-tree");
+  if (cyEl && typeof cytoscape !== "undefined") {
+    const nodes = {{ escalation_nodes|safe }};
+    const edges = {{ escalation_edges|safe }};
+    if (nodes.length) {
+      const typeColors = {
+        coordinator: isDark ? "#6366f1" : "#4f46e5",
+        deployment:  isDark ? "#22c55e" : "#16a34a",
+        lead:        isDark ? "#f59e0b" : "#d97706",
+      };
+      const cy = cytoscape({
+        container: cyEl,
+        elements: { nodes, edges },
+        style: [
+          {
+            selector: "node",
+            style: {
+              "background-color": ele => typeColors[ele.data("type")] || "#94a3b8",
+              "label": "data(label)",
+              "color": textColor,
+              "font-size": "10px",
+              "text-valign": "bottom",
+              "text-halign": "center",
+              "text-margin-y": 4,
+              "width": 28,
+              "height": 28,
+            }
+          },
+          {
+            selector: "edge",
+            style: {
+              "width": 1.5,
+              "line-color": isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.12)",
+              "target-arrow-color": isDark ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.2)",
+              "target-arrow-shape": "triangle",
+              "curve-style": "bezier",
+            }
+          }
+        ],
+        layout: { name: "breadthfirst", directed: true, padding: 20, spacingFactor: 1.2 },
+        userZoomingEnabled: false,
+        userPanningEnabled: false,
+        boxSelectionEnabled: false,
+      });
+    }
+  }
 });
 </script>
 {% endblock %}
