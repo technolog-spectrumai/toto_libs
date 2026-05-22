@@ -6,6 +6,86 @@
 {% block start_script %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
 <style>[x-cloak]{display:none!important}</style>
+{{ fee_current_data|json_script:"fee-current-data" }}
+{{ fee_history_data|json_script:"fee-history-data" }}
+<script>
+  document.addEventListener('alpine:init', () => {
+    const _currentData = JSON.parse(document.getElementById('fee-current-data').textContent);
+    const _historyData = JSON.parse(document.getElementById('fee-history-data').textContent);
+
+    function _chartColors(isDark) {
+      return {
+        grid: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)',
+        tick: isDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.45)',
+      };
+    }
+
+    Alpine.data('feeCurrentChart', () => ({
+      empty: !_currentData.datasets || _currentData.datasets.length === 0,
+      init() {
+        if (this.empty) return;
+        const isDark = document.documentElement.dataset.theme === 'dark'
+          || document.body.classList.contains('dark')
+          || window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const { grid, tick } = _chartColors(isDark);
+        new Chart(document.getElementById('feeCurrentChart'), {
+          type: 'bar',
+          data: _currentData,
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: { callbacks: { label: ctx => ` ${ctx.parsed.y} bps` } },
+            },
+            scales: {
+              x: { ticks: { color: tick, font: { size: 11 } }, grid: { color: grid } },
+              y: { ticks: { color: tick, font: { size: 11 }, callback: v => v + ' bps' }, grid: { color: grid } },
+            },
+          },
+        });
+      },
+    }));
+
+    Alpine.data('feeHistoryChart', () => ({
+      empty: !_historyData.labels || _historyData.labels.length < 2,
+      init() {
+        if (this.empty) return;
+        const isDark = document.documentElement.dataset.theme === 'dark'
+          || document.body.classList.contains('dark')
+          || window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const { grid, tick } = _chartColors(isDark);
+        new Chart(document.getElementById('feeHistoryChart'), {
+          type: 'line',
+          data: _historyData,
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+              legend: {
+                position: 'bottom',
+                labels: { color: tick, boxWidth: 12, padding: 16, font: { size: 11 } },
+              },
+              tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y} bps` } },
+            },
+            scales: {
+              x: {
+                type: 'category',
+                ticks: { color: tick, font: { size: 11 } },
+                grid: { color: grid },
+              },
+              y: {
+                ticks: { color: tick, font: { size: 11 }, callback: v => v + ' bps' },
+                grid: { color: grid },
+              },
+            },
+          },
+        });
+      },
+    }));
+  });
+</script>
 {% endblock %}
 
 {% block content %}
@@ -88,25 +168,44 @@
       </div>
     </div>
 
-    <!-- Fee history chart -->
+    <!-- Current active fees bar chart -->
     <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
       class="rounded-2xl border p-5 shadow-sm sm:p-6"
-      x-data="feeChart()" x-init="init()">
+      x-data="feeCurrentChart()" x-init="init()">
 
-      <div class="mb-4 flex items-center justify-between gap-4">
-        <div>
-          <h2 class="flex items-center gap-2 text-lg font-bold">
-            <i class="fa-solid fa-chart-line"></i>
-            Tax Rate History
-          </h2>
-          <p class="mt-1 text-xs opacity-60">Fee (basis points) per community/asset over time. 100 bps = 1%.</p>
-        </div>
+      <div class="mb-4">
+        <h2 class="flex items-center gap-2 text-lg font-bold">
+          <i class="fa-solid fa-chart-bar"></i>
+          Active Tax Rates
+        </h2>
+        <p class="mt-1 text-xs opacity-60">Current fee in basis points per community/asset. 100 bps = 1%.</p>
+      </div>
+
+      <div class="relative h-56">
+        <canvas id="feeCurrentChart"></canvas>
+        <p x-show="empty" class="absolute inset-0 flex items-center justify-center text-sm italic opacity-50">
+          No active fee records.
+        </p>
+      </div>
+    </section>
+
+    <!-- Fee history line chart (only when ≥2 data points) -->
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-2xl border p-5 shadow-sm sm:p-6"
+      x-data="feeHistoryChart()" x-init="init()">
+
+      <div class="mb-4">
+        <h2 class="flex items-center gap-2 text-lg font-bold">
+          <i class="fa-solid fa-chart-line"></i>
+          Tax Rate History
+        </h2>
+        <p class="mt-1 text-xs opacity-60">Fee changes over time per community/asset.</p>
       </div>
 
       <div class="relative h-64">
-        <canvas id="feeHistoryChart"></canvas>
+        <canvas id="feeHistoryChart" x-show="!empty"></canvas>
         <p x-show="empty" class="absolute inset-0 flex items-center justify-center text-sm italic opacity-50">
-          No fee records yet.
+          Not enough history yet (need at least 2 fee records across time).
         </p>
       </div>
     </section>
@@ -204,59 +303,3 @@
 
 {% endblock %}
 
-{% block end_script %}
-<script>
-const _feeChartData = {{ fee_chart_data }};
-
-function feeChart() {
-  return {
-    empty: !_feeChartData.datasets || _feeChartData.datasets.length === 0,
-    init() {
-      if (this.empty) return;
-      const isDark = document.documentElement.classList.contains('dark') ||
-        document.body.getAttribute('x-bind:data-dark') === 'true' ||
-        (window.Alpine && Alpine.store && Alpine.store('darkMode'));
-
-      const gridColor = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)';
-      const tickColor = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.45)';
-
-      new Chart(document.getElementById('feeHistoryChart'), {
-        type: 'line',
-        data: _feeChartData,
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          interaction: { mode: 'index', intersect: false },
-          plugins: {
-            legend: {
-              position: 'bottom',
-              labels: { color: tickColor, boxWidth: 12, padding: 16, font: { size: 11 } },
-            },
-            tooltip: {
-              callbacks: {
-                label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y} bps`,
-              },
-            },
-          },
-          scales: {
-            x: {
-              type: 'category',
-              ticks: { color: tickColor, font: { size: 11 } },
-              grid: { color: gridColor },
-            },
-            y: {
-              ticks: {
-                color: tickColor,
-                font: { size: 11 },
-                callback: v => v + ' bps',
-              },
-              grid: { color: gridColor },
-            },
-          },
-        },
-      });
-    },
-  };
-}
-</script>
-{% endblock %}

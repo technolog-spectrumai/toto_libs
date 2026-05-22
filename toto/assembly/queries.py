@@ -64,39 +64,78 @@ def community_assembly_summaries():
     return communities
 
 
+PALETTE = [
+    "#6366f1", "#f59e0b", "#10b981", "#ef4444", "#3b82f6",
+    "#8b5cf6", "#ec4899", "#14b8a6", "#f97316", "#84cc16",
+]
+
+
+def fee_current_chart_data() -> str:
+    """Bar chart of all active fees (current snapshot)."""
+    fees = list(
+        CommunityTransactionFee.objects
+        .filter(active=True)
+        .select_related("asset", "community")
+        .order_by("community__name", "asset__unit_name")
+    )
+    if not fees:
+        return json.dumps({"labels": [], "datasets": []})
+
+    labels = [
+        f"{f.community.name} — {f.asset.unit_name if f.asset else 'blanket'}"
+        for f in fees
+    ]
+    colors = [PALETTE[i % len(PALETTE)] for i in range(len(fees))]
+    return json.dumps({
+        "labels": labels,
+        "datasets": [{
+            "label": "Fee (bps)",
+            "data": [f.fee_bps for f in fees],
+            "backgroundColor": colors,
+            "borderColor": colors,
+            "borderWidth": 1,
+            "borderRadius": 6,
+        }],
+    })
+
+
 def fee_history_chart_data() -> str:
     """
-    Returns Chart.js-ready JSON for a scatter/line chart of fee_bps over time,
-    grouped by asset (or 'blanket').
+    Line chart of fee changes over time, one series per community+asset.
+    Uses explicit labels (sorted unique dates) so category scale works correctly.
+    Only meaningful when there are >=2 records.
     """
-    fees = (
+    fees = list(
         CommunityTransactionFee.objects
         .select_related("asset", "community")
         .order_by("created_at")
     )
+    if not fees:
+        return json.dumps({"labels": [], "datasets": []})
 
-    series: dict[str, list[dict]] = defaultdict(list)
+    # Collect sorted unique date labels
+    all_dates = sorted({f.created_at.strftime("%Y-%m-%d") for f in fees})
+
+    # Group by series
+    series: dict[str, dict[str, int]] = defaultdict(dict)
     for fee in fees:
-        label = f"{fee.community.name} — {fee.asset.unit_name if fee.asset else 'blanket'}"
-        series[label].append({
-            "x": fee.created_at.strftime("%Y-%m-%d"),
-            "y": fee.fee_bps,
-        })
+        key = f"{fee.community.name} — {fee.asset.unit_name if fee.asset else 'blanket'}"
+        date = fee.created_at.strftime("%Y-%m-%d")
+        series[key][date] = fee.fee_bps
 
     datasets = []
-    palette = [
-        "#6366f1", "#f59e0b", "#10b981", "#ef4444", "#3b82f6",
-        "#8b5cf6", "#ec4899", "#14b8a6", "#f97316", "#84cc16",
-    ]
-    for i, (label, points) in enumerate(series.items()):
-        color = palette[i % len(palette)]
+    for i, (label, date_map) in enumerate(series.items()):
+        color = PALETTE[i % len(PALETTE)]
+        # Fill value for each label date (None = gap)
+        data = [date_map.get(d) for d in all_dates]
         datasets.append({
             "label": label,
-            "data": points,
+            "data": data,
             "borderColor": color,
             "backgroundColor": color + "33",
             "tension": 0.3,
-            "pointRadius": 4,
+            "pointRadius": 5,
+            "spanGaps": True,
         })
 
-    return json.dumps({"datasets": datasets})
+    return json.dumps({"labels": all_dates, "datasets": datasets})

@@ -1395,15 +1395,15 @@ print(json.dumps({
         self._er(r2, edges[("Review", "Accept")], False)
         self._er(r2, edges[("Review", "Reject")], True,  timedelta(hours=1, minutes=1))
 
-        # Run 3 — paused, awaiting human, 5 minutes ago
+        # Run 3 — running, review node pending (human-task concept removed in spine redesign)
         r3 = WorkflowRun.objects.create(
-            workflow=wf, status=WorkflowRun.PAUSED,
+            workflow=wf, status=WorkflowRun.RUNNING,
             input_data={"data": {"item_id": 77}},
             started_at=now - timedelta(minutes=6),
         )
         score_out_pending = {"data": {"score": 61.9, "item_id": 77}, "routes": ["review"]}
         nr_score = self._nr(r3, nodes["Score"],  WorkflowNodeRun.COMPLETED, r3.input_data,      score_out_pending, timedelta(minutes=6),  timedelta(minutes=5, seconds=45))
-        nr_human = self._nr(r3, nodes["Review"], WorkflowNodeRun.WAITING,   score_out_pending,  None,              timedelta(minutes=5, seconds=45))
+        nr_human = self._nr(r3, nodes["Review"], WorkflowNodeRun.PENDING,   score_out_pending,  None,              timedelta(minutes=5, seconds=45))
         self._er(r3, edges[("Score", "Review")], True, timedelta(minutes=5, seconds=45))
         self.stdout.write(self.style.SUCCESS("Seeded 3 runs: Human Approval Gate"))
 

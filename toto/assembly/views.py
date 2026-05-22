@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
@@ -24,7 +26,7 @@ from .models import (
     PollTax,
     PollTaxPayment,
 )
-from .queries import community_assembly_summaries, fee_history_chart_data, overview_stats
+from .queries import community_assembly_summaries, fee_current_chart_data, fee_history_chart_data, overview_stats
 
 
 def _render(request, template, context):
@@ -36,7 +38,8 @@ def assembly_overview(request):
     return _render(request, "assembly/overview.html", {
         "stats": overview_stats(),
         "communities": community_assembly_summaries(),
-        "fee_chart_data": fee_history_chart_data(),
+        "fee_current_data": json.loads(fee_current_chart_data()),
+        "fee_history_data": json.loads(fee_history_chart_data()),
     })
 
 
