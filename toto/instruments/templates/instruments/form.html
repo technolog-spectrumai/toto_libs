@@ -1,0 +1,57 @@
+{% extends "instruments/base.html" %}
+{% load i18n %}
+
+{% block instruments_title %}{{ title }}{% endblock %}
+
+{% block instruments_content %}
+<div class="space-y-6">
+  <a href="{% url 'instruments:instrument_list' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+    <i class="fa-solid fa-arrow-left"></i> {% trans "All instruments" %}
+  </a>
+
+  <h2 class="text-2xl font-bold">{{ title }}</h2>
+
+  <form method="post"
+        class="rounded-xl border p-6 shadow-sm space-y-5"
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+    <div class="rounded-lg border px-4 py-3 text-sm font-semibold border-red-400 text-red-600">
+      {{ form.non_field_errors }}
+    </div>
+    {% endif %}
+
+    <div class="grid gap-5 sm:grid-cols-2">
+      {% for field in form %}
+        <div class="{% if field.name in 'terms metadata release_condition' %}sm:col-span-2{% endif %}">
+          <label for="{{ field.id_for_label }}"
+                 class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {{ field.label }}{% if field.field.required %} <span class="text-red-500">*</span>{% endif %}
+          </label>
+          {{ field }}
+          {% if field.help_text %}
+            <p class="mt-1 text-xs opacity-50">{{ field.help_text }}</p>
+          {% endif %}
+          {% for error in field.errors %}
+            <p class="mt-1 text-xs font-semibold text-red-500">{{ error }}</p>
+          {% endfor %}
+        </div>
+      {% endfor %}
+    </div>
+
+    <div class="flex items-center gap-3 pt-2">
+      <button type="submit"
+              class="rounded-lg px-5 py-2.5 text-sm font-bold shadow-sm transition hover:opacity-90"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'">
+        <i class="fa-solid fa-floppy-disk mr-1"></i> {% trans "Save" %}
+      </button>
+      <a href="{% url 'instruments:instrument_list' %}"
+         class="rounded-lg border px-5 py-2.5 text-sm font-semibold transition hover:opacity-80"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+        {% trans "Cancel" %}
+      </a>
+    </div>
+  </form>
+</div>
+{% endblock %}

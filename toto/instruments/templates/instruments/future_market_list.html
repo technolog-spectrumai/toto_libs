@@ -1,0 +1,63 @@
+{% extends "instruments/base.html" %}
+{% load i18n %}
+
+{% block instruments_title %}{% trans "Future Markets" %}{% endblock %}
+
+{% block instruments_content %}
+<div class="space-y-6">
+
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <h2 class="text-2xl font-bold">{% trans "Future Markets" %}</h2>
+      <p class="text-sm opacity-60">{% trans "Standardised futures markets and their contract specs." %}</p>
+    </div>
+    <a href="{% url 'instruments:future_market_create' %}"
+       class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'">
+      <i class="fa-solid fa-plus"></i> {% trans "New market" %}
+    </a>
+  </div>
+
+  <section class="space-y-3">
+    {% for market in markets %}
+      <article class="rounded-xl border p-5 shadow-sm transition hover:shadow-md"
+               :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div class="space-y-2">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="font-bold text-lg" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">{{ market.code }}</span>
+              {% if market.name %}<span class="text-sm opacity-60">{{ market.name }}</span>{% endif %}
+              <span class="rounded-full px-2 py-0.5 text-xs font-semibold
+                {% if market.active %}bg-green-500/15 text-green-600{% else %}bg-gray-500/15 text-gray-500{% endif %}">
+                {% if market.active %}{% trans "Active" %}{% else %}{% trans "Inactive" %}{% endif %}
+              </span>
+            </div>
+            <div class="grid gap-3 sm:grid-cols-3 text-sm">
+              <div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Underlying" %}</div><div class="font-semibold">{{ market.underlying_asset.unit_name }}</div></div>
+              <div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Contract size" %}</div><div class="font-semibold">{{ market.contract_size_display }}</div></div>
+              <div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Settlement" %}</div><div class="font-semibold">{{ market.settlement_asset.unit_name }} · {{ market.get_settlement_type_display }}</div></div>
+              <div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Initial margin" %}</div><div class="font-semibold">{{ market.initial_margin_bps }} bps</div></div>
+              <div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Maintenance margin" %}</div><div class="font-semibold">{{ market.maintenance_margin_bps }} bps</div></div>
+              <div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Contracts" %}</div><div class="font-semibold">{{ market.contracts.count }}</div></div>
+            </div>
+          </div>
+        </div>
+      </article>
+    {% empty %}
+      <div class="rounded-xl border p-10 text-center text-sm opacity-50"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+        <i class="fa-solid fa-chart-line mb-3 text-3xl block opacity-30"></i>
+        {% trans "No future markets yet." %}
+        <div class="mt-4">
+          <a href="{% url 'instruments:future_market_create' %}"
+             class="rounded-lg px-4 py-2 text-sm font-semibold"
+             :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'">
+            {% trans "Create first market" %}
+          </a>
+        </div>
+      </div>
+    {% endfor %}
+  </section>
+
+</div>
+{% endblock %}

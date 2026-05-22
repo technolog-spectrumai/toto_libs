@@ -1,0 +1,166 @@
+{% extends "instruments/base.html" %}
+{% load i18n %}
+
+{% block instruments_title %}{% trans "Instruments" %}{% endblock %}
+
+{% block instruments_content %}
+<div class="space-y-6">
+
+  <!-- Stats -->
+  <div class="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
+    <div class="rounded-xl border p-4 shadow-sm" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <div class="text-2xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">{{ counts.total }}</div>
+      <div class="text-xs uppercase tracking-wide opacity-60">{% trans "Total" %}</div>
+    </div>
+    <div class="rounded-xl border p-4 shadow-sm" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <div class="text-2xl font-bold text-green-500">{{ counts.active }}</div>
+      <div class="text-xs uppercase tracking-wide opacity-60">{% trans "Active" %}</div>
+    </div>
+    <div class="rounded-xl border p-4 shadow-sm" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <div class="text-2xl font-bold opacity-60">{{ counts.draft }}</div>
+      <div class="text-xs uppercase tracking-wide opacity-60">{% trans "Draft" %}</div>
+    </div>
+    <div class="rounded-xl border p-4 shadow-sm" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <div class="text-2xl font-bold text-blue-500">{{ counts.settled }}</div>
+      <div class="text-xs uppercase tracking-wide opacity-60">{% trans "Settled" %}</div>
+    </div>
+    <div class="rounded-xl border p-4 shadow-sm" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <div class="text-2xl font-bold">{{ counts.escrows }}</div>
+      <div class="text-xs uppercase tracking-wide opacity-60">{% trans "Escrows" %}</div>
+    </div>
+  </div>
+
+  <!-- Type breakdown -->
+  <div class="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+    {% for type_key, type_label in type_choices %}
+    <a
+      href="?type={{ type_key }}{% if status %}&status={{ status }}{% endif %}"
+      class="rounded-lg border px-3 py-2 text-center text-xs font-semibold transition hover:opacity-80
+        {% if instrument_type == type_key %}ring-2 ring-current{% endif %}"
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      {{ type_label }}
+    </a>
+    {% endfor %}
+  </div>
+
+  <!-- Filters -->
+  <form method="get" class="flex flex-wrap items-end gap-3">
+    {% if instrument_type %}<input type="hidden" name="type" value="{{ instrument_type }}">{% endif %}
+    <div class="flex-1 min-w-[140px]">
+      <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Status" %}</label>
+      <select name="status" onchange="this.form.submit()"
+        class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20"
+        :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'">
+        <option value="">{% trans "All statuses" %}</option>
+        {% for val, label in status_choices %}
+          <option value="{{ val }}" {% if status == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% if instrument_type or status %}
+    <a href="{% url 'instruments:instrument_list' %}"
+       class="rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      {% trans "Clear" %}
+    </a>
+    {% endif %}
+  </form>
+
+  <!-- Instrument list -->
+  <section class="space-y-2">
+    {% if instrument_type or status %}
+    <p class="text-xs opacity-50">
+      {% trans "Showing" %} {{ instruments|length }}
+      {% if instrument_type %}· {{ instrument_type }}{% endif %}
+      {% if status %}· {{ status }}{% endif %}
+    </p>
+    {% endif %}
+
+    {% for instrument in instruments %}
+      <article
+        class="group rounded-xl border p-4 shadow-sm transition hover:shadow-md"
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div class="space-y-1">
+            <div class="flex flex-wrap items-center gap-2">
+              <a
+                href="{% url 'instruments:instrument_detail' instrument.pk %}"
+                class="font-bold underline-offset-4 transition hover:underline"
+                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+                {{ instrument.reference }}
+              </a>
+              <span class="rounded border border-current/20 px-2 py-0.5 text-xs font-semibold opacity-70">
+                {{ instrument.get_instrument_type_display }}
+              </span>
+              <span class="rounded px-2 py-0.5 text-xs font-semibold
+                {% if instrument.status == 'active' %}bg-green-500/15 text-green-600
+                {% elif instrument.status == 'draft' %}bg-gray-500/15 text-gray-500
+                {% elif instrument.status == 'settled' %}bg-blue-500/15 text-blue-600
+                {% elif instrument.status == 'defaulted' or instrument.status == 'cancelled' %}bg-red-500/15 text-red-600
+                {% else %}bg-yellow-500/15 text-yellow-600{% endif %}">
+                {{ instrument.get_status_display }}
+              </span>
+            </div>
+            <div class="text-xs opacity-50">
+              {% if instrument.issuer %}{{ instrument.issuer }}{% endif %}
+              {% if instrument.starts_at %}· {% trans "from" %} {{ instrument.starts_at|date:"M d, Y" }}{% endif %}
+              {% if instrument.ends_at %}– {{ instrument.ends_at|date:"M d, Y" }}{% endif %}
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="text-xs opacity-40">{{ instrument.created_at|date:"M d, Y H:i" }}</span>
+            <a
+              href="{% url 'instruments:instrument_detail' instrument.pk %}"
+              class="rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80"
+              :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'">
+              {% trans "View" %}
+            </a>
+          </div>
+        </div>
+      </article>
+    {% empty %}
+      <div class="rounded-xl border p-10 text-center text-sm opacity-50"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+        <i class="fa-solid fa-file-contract mb-3 text-3xl block opacity-30"></i>
+        {% trans "No instruments found." %}
+        <div class="mt-4">
+          <a href="{% url 'instruments:instrument_create' %}"
+             class="rounded-lg px-4 py-2 text-sm font-semibold"
+             :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'">
+            {% trans "Create first instrument" %}
+          </a>
+        </div>
+      </div>
+    {% endfor %}
+  </section>
+
+  <!-- Quick links -->
+  <section class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <a href="{% url 'instruments:escrow_create' %}"
+       class="flex items-center gap-3 rounded-xl border p-4 text-sm font-semibold shadow-sm transition hover:opacity-80"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <i class="fa-solid fa-lock text-lg opacity-60"></i>
+      <span>{% trans "New Escrow" %}</span>
+    </a>
+    <a href="{% url 'instruments:forward_create' %}"
+       class="flex items-center gap-3 rounded-xl border p-4 text-sm font-semibold shadow-sm transition hover:opacity-80"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <i class="fa-solid fa-arrow-right-arrow-left text-lg opacity-60"></i>
+      <span>{% trans "New Forward" %}</span>
+    </a>
+    <a href="{% url 'instruments:timelock_create' %}"
+       class="flex items-center gap-3 rounded-xl border p-4 text-sm font-semibold shadow-sm transition hover:opacity-80"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <i class="fa-solid fa-clock text-lg opacity-60"></i>
+      <span>{% trans "New Timelock" %}</span>
+    </a>
+    <a href="{% url 'instruments:staking_create' %}"
+       class="flex items-center gap-3 rounded-xl border p-4 text-sm font-semibold shadow-sm transition hover:opacity-80"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <i class="fa-solid fa-layer-group text-lg opacity-60"></i>
+      <span>{% trans "New Staking" %}</span>
+    </a>
+  </section>
+
+</div>
+{% endblock %}
