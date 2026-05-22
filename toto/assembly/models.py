@@ -16,6 +16,7 @@ class AssemblyProposalType(models.TextChoices):
     RULE = "rule", "Rule"
     ASSET_TAX = "asset_tax", "Asset Transaction Tax"
     EMERGENCY_DECLARATION = "emg_declare", "Emergency Declaration"
+    MAGISTRATE_ELECTION = "mag_elect", "Magistrate Election"
 
 
 class AssemblyStatus(models.TextChoices):

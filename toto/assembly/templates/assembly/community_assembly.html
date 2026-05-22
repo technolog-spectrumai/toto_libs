@@ -371,6 +371,24 @@
                   </form>
                 {% endif %}
               </div>
+            {% elif item.proposal.status == 'passed' and item.proposal.proposal_type == 'mag_elect' %}
+              {# Passed magistrate election — show confirm button #}
+              {% if not item.proposal.elected_magistrates.exists %}
+                <div class="mt-3">
+                  <form method="post" action="{% url 'magistrate:elect_confirm' item.proposal.pk %}">
+                    {% csrf_token %}
+                    <button type="submit"
+                      :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                      class="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold hover:opacity-90">
+                      <i class="fa-solid fa-gavel"></i> Confirm Election &amp; Seat Magistrate
+                    </button>
+                  </form>
+                </div>
+              {% else %}
+                <div class="mt-2 text-xs opacity-50">
+                  <i class="fa-solid fa-check-circle mr-1"></i>Election confirmed — magistrate seated
+                </div>
+              {% endif %}
             {% endif %}
           </article>
           {% endfor %}
@@ -383,6 +401,88 @@
         </div>
       {% endif %}
     </section>
+
+    <!-- Magistrate Election -->
+    {% if magistrate_roles %}
+    <section x-data="{ electOpen: false }"
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-2xl border p-5 shadow-sm space-y-4">
+      <div class="flex items-center justify-between">
+        <h2 class="flex items-center gap-2 text-lg font-bold">
+          <i class="fa-solid fa-building-columns"></i> Magistrate Election
+        </h2>
+        <div class="flex gap-2">
+          <a href="{% url 'magistrate:overview' %}"
+             :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+             class="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-semibold hover:opacity-80">
+            <i class="fa-solid fa-users-gear"></i> View Magistrates
+          </a>
+          <button type="button" @click="electOpen = !electOpen"
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                  class="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold hover:opacity-90">
+            <i class="fa-solid fa-plus"></i> Nominate
+          </button>
+        </div>
+      </div>
+
+      <p class="text-xs opacity-60">
+        Propose a federal agent to hold a magistrate office. The nomination goes to an assembly vote.
+        Once passed, click <em>Confirm Election</em> on the proposal to seat the magistrate.
+        Only <strong>federal agents</strong> may hold office.
+      </p>
+
+      <div x-show="electOpen" x-cloak
+           :class="darkMode ? 'border-accent-1/50 bg-sunken-dark' : 'border-accent-2/50 bg-sunken-light'"
+           class="rounded-xl border p-4">
+        <form method="post" action="{% url 'magistrate:elect_propose' community.slug %}" class="space-y-4">
+          {% csrf_token %}
+          <div class="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label class="mb-1 block text-xs font-semibold uppercase opacity-60">Nominee (federal agent)</label>
+              <select name="nominee_id" required
+                      :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                      class="w-full rounded-lg border px-3 py-2 text-sm">
+                <option value="">— select nominee —</option>
+                {% for n in eligible_nominees %}
+                  <option value="{{ n.id }}">{{ n.display_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div>
+              <label class="mb-1 block text-xs font-semibold uppercase opacity-60">Role</label>
+              <select name="role_id" required
+                      :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                      class="w-full rounded-lg border px-3 py-2 text-sm">
+                <option value="">— select role —</option>
+                {% for role in magistrate_roles %}
+                  <option value="{{ role.pk }}">{{ role.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div>
+              <label class="mb-1 block text-xs font-semibold uppercase opacity-60">Term (months)</label>
+              <input type="number" name="term_months" value="12" min="1" max="60"
+                     :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                     class="w-full rounded-lg border px-3 py-2 text-sm">
+            </div>
+            <div>
+              <label class="mb-1 block text-xs font-semibold uppercase opacity-60">Voting closes (optional)</label>
+              <input type="date" name="closes_date"
+                     :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                     class="w-full rounded-lg border px-3 py-2 text-sm">
+            </div>
+          </div>
+          <div class="flex justify-end gap-2">
+            <button type="button" @click="electOpen = false"
+                    class="rounded-lg border border-current/20 px-3 py-1.5 text-xs font-semibold">Cancel</button>
+            <button type="submit"
+                    :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                    class="rounded-lg px-4 py-1.5 text-xs font-semibold">Submit Nomination</button>
+          </div>
+        </form>
+      </div>
+    </section>
+    {% endif %}
 
     <!-- Rules & Fees side-by-side -->
     <div class="grid gap-6 sm:grid-cols-2">

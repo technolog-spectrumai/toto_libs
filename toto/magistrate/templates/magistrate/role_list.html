@@ -1,0 +1,54 @@
+{% extends "magistrate/base.html" %}
+{% load i18n %}
+
+{% block mag_title %}{% trans "Magistrate Roles" %}{% endblock %}
+
+{% block mag_content %}
+<div class="space-y-4">
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5 shadow-sm">
+    <h2 class="mb-5 text-lg font-bold flex items-center gap-2">
+      <i class="fa-solid fa-scroll"></i> {% trans "Magistrate Roles" %}
+    </h2>
+
+    <div class="space-y-4">
+      {% for role in roles %}
+        <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-4">
+          <div class="flex items-start justify-between gap-4">
+            <div class="flex items-center gap-3">
+              <div :class="darkMode ? 'bg-accent-dark/15' : 'bg-accent-light/15'"
+                   class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg">
+                <i class="{{ role.icon }} text-lg" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+              </div>
+              <div>
+                <div class="font-bold text-base">{{ role.name }}</div>
+                {% if role.description %}
+                  <p class="mt-0.5 text-sm opacity-70">{{ role.description }}</p>
+                {% endif %}
+              </div>
+            </div>
+            <div class="shrink-0 text-xs opacity-50">
+              {{ role.active_count }} {% trans "active" %}
+            </div>
+          </div>
+
+          {% if role.oversight_domains %}
+            <div class="mt-3 flex flex-wrap gap-1.5">
+              {% for domain in role.oversight_domains %}
+                <span :class="darkMode ? 'border-accent-1 text-accent-dark' : 'border-accent-2 text-accent-light'"
+                      class="rounded border px-2 py-0.5 text-xs font-semibold">
+                  {{ domain }}
+                </span>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </div>
+      {% empty %}
+        <p class="text-sm opacity-60">{% trans "No roles defined. Run ingress_magistrate to seed them." %}</p>
+      {% endfor %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}

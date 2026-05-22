@@ -141,6 +141,9 @@ def _enact_proposal(proposal: AssemblyProposal) -> AssemblyDecision:
             active=True,
         )
 
+    # Magistrate election — proposal passes; seat is confirmed via magistrate:elect_confirm
+    # (separate action so the nominator can review before the seat is activated)
+
     return decision
 
 
@@ -178,12 +181,40 @@ def community_assembly(request, slug):
 
     import json
     from toto.assets.models import Asset
+    from toto.people.models import Person as PersonModel
     is_federal_agent = getattr(person, "is_federal_agent", False)
     is_federal_tribe_member = person.communities.filter(is_federal_tribe=True).exists()
     quorum_fraction = _get_quorum_fraction(community)
     available_assets_json = json.dumps(
         list(Asset.objects.order_by("name").values("id", "name", "unit_name"))
     )
+
+    # Magistrate election support
+    magistrate_roles = []
+    eligible_nominees = []
+    passed_elections = []
+    try:
+        from toto.magistrate.models import MagistrateRole
+        magistrate_roles = list(MagistrateRole.objects.order_by("order", "name"))
+        eligible_nominees = list(
+            PersonModel.objects.filter(is_federal_agent=True)
+            .order_by("display_name")
+            .values("id", "display_name")
+        )
+        passed_elections = list(
+            AssemblyProposal.objects.filter(
+                community=community,
+                proposal_type=AssemblyProposalType.MAGISTRATE_ELECTION,
+                status=AssemblyStatus.PASSED,
+            ).exclude(elected_magistrates__isnull=False)
+        )
+    except Exception:
+        pass
+
+    proposal_type_choices = [
+        (val, label) for val, label in AssemblyProposalType.choices
+        if val != AssemblyProposalType.MAGISTRATE_ELECTION
+    ]
 
     return _render(request, "assembly/community_assembly.html", {
         "community": community,
@@ -197,9 +228,12 @@ def community_assembly(request, slug):
         "is_federal_agent": is_federal_agent,
         "is_federal_tribe_member": is_federal_tribe_member,
         "quorum_fraction_pct": int(quorum_fraction * 100),
-        "assembly_proposal_types": AssemblyProposalType.choices,
+        "assembly_proposal_types": proposal_type_choices,
         "vote_choices": AssemblyVoteChoice.choices,
         "available_assets_json": available_assets_json,
+        "magistrate_roles": magistrate_roles,
+        "eligible_nominees": eligible_nominees,
+        "passed_elections": passed_elections,
     })
 
 
