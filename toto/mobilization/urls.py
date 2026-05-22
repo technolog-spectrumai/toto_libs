@@ -26,6 +26,7 @@ urlpatterns = [
     path("events/<int:pk>/", views.event_detail, name="event_detail"),
     path("events/<int:pk>/deployment/new/", views.deployment_create, name="deployment_create"),
     path("events/<int:pk>/map-data/", views.event_map_data, name="event_map_data"),
+    path("deployments/<int:pk>/map-data/", views.deployment_map_data, name="deployment_map_data"),
 
     # Deployments
     path("deployments/", views.deployment_list, name="deployment_list"),

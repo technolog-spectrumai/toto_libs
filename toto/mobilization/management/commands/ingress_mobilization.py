@@ -81,7 +81,7 @@ SCENARIOS = [
         "event_status": "active",
         "incident": "flood",
         "hours_ago": 18,
-        "emergency": {"level": "critical_emergency", "tax_rate": "0.0350"},
+        "emergency": {"level": "critical_emergency", "tax_rate": "0.0350", "zone_name": "Warsaw Old Town Zone"},
         "deployments": [
             {
                 "title": "North Bank Evacuation Team",
@@ -137,7 +137,7 @@ SCENARIOS = [
         "event_status": "active",
         "incident": "fire",
         "hours_ago": 6,
-        "emergency": {"level": "emergency", "tax_rate": "0.0200"},
+        "emergency": {"level": "emergency", "tax_rate": "0.0200", "zone_name": "Warsaw Old Town Zone"},
         "deployments": [
             {
                 "title": "Perimeter Control Team",
@@ -325,6 +325,7 @@ class Command(IngressCommand):
             created_deployments.extend(deps)
 
         self._award_achievements(responders, achievement_cache, created_deployments)
+        self._enrich_with_locations()
 
         print(
             f"✔  Mobilization ingress complete: {len(SCENARIOS)} scenarios, "
@@ -520,11 +521,19 @@ class Command(IngressCommand):
         emrg_data = scenario.get("emergency")
         if emrg_data:
             emrg_status = emrg_data.get("status", "active")
+            # Resolve optional zone by name
+            emrg_zone = None
+            if emrg_data.get("zone_name"):
+                try:
+                    from toto.locations.models import Zone as _Zone
+                    emrg_zone = _Zone.objects.filter(name=emrg_data["zone_name"]).first()
+                except Exception:
+                    pass
             es, es_created = EmergencyStatus.objects.get_or_create(
                 event=event,
                 community=community,
                 defaults={
-                    "zone": None,
+                    "zone": emrg_zone,
                     "level": emrg_data["level"],
                     "status": emrg_status,
                     "declared_by": coordinator,
@@ -653,6 +662,127 @@ class Command(IngressCommand):
 
         print(f"  ✔ Scenario: {scenario['event_title']} ({len(created_deployments)} deployments)")
         return created_deployments
+
+    # ── Location + equipment enrichment ──────────────────────────────────
+
+    def _enrich_with_locations(self):  # noqa: C901
+        """
+        Post-scenario hook: wires up Warsaw-area map data so every page has
+        visible markers — kanban mission address, campaign zone, defibrillator
+        equipment, evac routes, and deployment→mission links.
+        """
+        # ── Imports ──
+        try:
+            from toto.kanban.models import Mission, Campaign
+            from toto.locations.models import Address, Zone, Route
+            from toto.inventory.models import ObjectType, RealWorldObject
+        except Exception as e:
+            print(f"  ⚠  Location enrichment skipped (import error): {e}")
+            return
+
+        addr_royal_castle = Address.objects.filter(street="Royal Castle", locality_name="Warsaw").first()
+        addr_palace_culture = Address.objects.filter(street="Palace of Culture and Science", locality_name="Warsaw").first()
+        warsaw_zone = Zone.objects.filter(name="Warsaw Old Town Zone").first()
+        polish_trail = Route.objects.filter(name="Polish Royal Trail").first()
+
+        # ── 1. "Mitigate Active Detections" mission → Warsaw Royal Castle address ──
+        mission = Mission.objects.filter(title="Mitigate Active Detections").first()
+        if mission:
+            if addr_royal_castle and not mission.location_id:
+                mission.location = addr_royal_castle
+                mission.save(update_fields=["location"])
+                print("  ✔ Added Warsaw Royal Castle address to 'Mitigate Active Detections' mission")
+
+            # ── 2. "Field Response" campaign → Warsaw Old Town Zone ──
+            if warsaw_zone and mission.campaign_id:
+                campaign = mission.campaign
+                if not campaign.zone_id:
+                    campaign.zone = warsaw_zone
+                    campaign.save(update_fields=["zone"])
+                    print("  ✔ Added Warsaw Old Town Zone to 'Field Response' campaign")
+
+            # ── 3. Link flood event → campaign, flood deployment → mission ──
+            flood_event = MobilizationEvent.objects.filter(title="Riverside Flood Response 2026").first()
+            if flood_event:
+                if mission.campaign_id and not flood_event.kanban_campaign_id:
+                    flood_event.kanban_campaign = mission.campaign
+                    flood_event.save(update_fields=["kanban_campaign"])
+                    print("  ✔ Linked 'Riverside Flood Response 2026' → 'Field Response' campaign")
+                evac_dep = flood_event.deployments.filter(title="North Bank Evacuation Team").first()
+                if evac_dep and not evac_dep.kanban_mission_id:
+                    evac_dep.kanban_mission = mission
+                    evac_dep.save(update_fields=["kanban_mission"])
+                    print("  ✔ Linked 'North Bank Evacuation Team' deployment → 'Mitigate Active Detections' mission")
+
+                # ── 4. Ensure flood event has Polish Royal Trail as evac route ──
+                if polish_trail:
+                    EvacuationRoute.objects.get_or_create(
+                        event=flood_event,
+                        route=polish_trail,
+                        defaults={
+                            "name": "Polish Royal Trail — Emergency Evacuation Corridor",
+                            "route_type": "evacuation",
+                            "status": "active",
+                            "notes": "Primary evacuation corridor through Warsaw Old Town towards Krakow.",
+                        },
+                    )
+                    if evac_dep:
+                        DeploymentRoute.objects.get_or_create(
+                            deployment=evac_dep,
+                            route=polish_trail,
+                            defaults={
+                                "route_type": "primary",
+                                "notes": "Main route for North Bank evacuation buses.",
+                            },
+                        )
+                    print(f"  ✔ Added 'Polish Royal Trail' as evac/deployment route for flood event")
+        else:
+            print("  ℹ  'Mitigate Active Detections' mission not found — run ingress_detections first for full kanban links")
+
+        # ── 5. Defibrillator at Warsaw Palace of Culture ──
+        if not addr_palace_culture:
+            print("  ⚠  Warsaw Palace of Culture address not found — run ingress_locations first")
+        else:
+            med_type, _ = ObjectType.objects.get_or_create(
+                slug="medical-equipment",
+                defaults={
+                    "name": "Medical Equipment",
+                    "description": "Medical devices and emergency health equipment.",
+                },
+            )
+            aed, aed_created = RealWorldObject.objects.get_or_create(
+                slug="aed-warsaw-palace",
+                defaults={
+                    "name": "Automated External Defibrillator",
+                    "object_type": med_type,
+                    "description": (
+                        "AED unit stationed at Warsaw Palace of Culture and Science. "
+                        "Certified for public emergency use. Available for medical deployments."
+                    ),
+                    "location": addr_palace_culture,
+                },
+            )
+            if aed_created:
+                print("  ✔ Created Automated External Defibrillator at Warsaw Palace of Culture")
+            # Update location if it was created without one
+            elif not aed.location_id and addr_palace_culture:
+                aed.location = addr_palace_culture
+                aed.save(update_fields=["location"])
+
+            med_dep = Deployment.objects.filter(title="Medical Response — Contamination Exposure").first()
+            if med_dep:
+                eq, eq_created = DeploymentEquipment.objects.get_or_create(
+                    deployment=med_dep,
+                    item=aed,
+                    defaults={
+                        "quantity": 2,
+                        "notes": "AED units — stored at Warsaw Palace of Culture. Deploy to treatment area on arrival.",
+                    },
+                )
+                if eq_created:
+                    print("  ✔ Assigned AED to 'Medical Response — Contamination Exposure'")
+            else:
+                print("  ⚠  'Medical Response — Contamination Exposure' deployment not found")
 
     # ── Achievement awards ────────────────────────────────────────────────
 

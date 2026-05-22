@@ -474,6 +474,13 @@ def event_detail(request, pk):
         "campaign": campaign,
         "campaign_missions": campaign_missions,
         "map_data_url": f"/mobilization/events/{pk}/map-data/",
+        "layer_toggles": [
+            ("deployments",     "Deployments",      "fa-solid fa-users-gear",          "accent"),
+            ("evac_routes",     "Evac Routes",       "fa-solid fa-route",               "success"),
+            ("emergency_zones", "Emergency Zones",   "fa-solid fa-triangle-exclamation","warn"),
+            ("detections",      "Detections",        "fa-solid fa-circle-exclamation",  "caution"),
+            ("campaign_zone",   "Campaign Zone",     "fa-solid fa-draw-polygon",        "accent"),
+        ],
         "evac_routes": evac_routes,
         "available_routes": available_routes,
         "evac_route_type_choices": EvacuationRoute.ROUTE_TYPE_CHOICES,
@@ -498,6 +505,7 @@ def event_map_data(request, pk):
 
     features = []
 
+    # ── Campaign zone ──
     campaign = event.kanban_campaign
     if campaign and campaign.zone:
         zone = campaign.zone
@@ -508,14 +516,11 @@ def event_map_data(request, pk):
         if geom:
             features.append({
                 "type": "Feature",
-                "properties": {
-                    "kind": "campaign_zone",
-                    "label": campaign.name,
-                    "color": "#3b82f6",
-                },
+                "properties": {"kind": "campaign_zone", "label": campaign.name},
                 "geometry": geom,
             })
 
+    # ── Deployments (mission point markers) ──
     deployments = event.deployments.select_related(
         "kanban_mission__location", "kanban_mission__route"
     ).prefetch_related("interventions")
@@ -528,19 +533,197 @@ def event_map_data(request, pk):
             except Exception:
                 pt = None
             if pt:
+                done = sum(1 for iv in dep.interventions.all() if iv.status == "done")
+                total = dep.interventions.count()
                 features.append({
                     "type": "Feature",
                     "properties": {
-                        "kind": "mission",
-                        "label": dep.kanban_mission.title,
-                        "deployment": dep.title,
-                        "urgency": dep.kanban_mission.urgency,
-                        "impact": dep.kanban_mission.impact,
+                        "kind": "deployment",
+                        "label": dep.title,
                         "status": dep.status,
-                        "color": _deployment_color(dep.status),
+                        "priority": dep.priority,
+                        "type": dep.get_deployment_type_display(),
+                        "interventions_done": done,
+                        "interventions_total": total,
+                        "is_hybrid": dep.is_hybrid,
                     },
                     "geometry": pt,
                 })
+
+    # ── Evacuation routes (line geometry) ──
+    evac_routes = event.evac_routes.select_related("route")
+    for er in evac_routes:
+        if not er.route_id:
+            continue
+        try:
+            geom = json.loads(er.route.geometry.geojson) if er.route.geometry else None
+        except Exception:
+            geom = None
+        if geom:
+            features.append({
+                "type": "Feature",
+                "properties": {
+                    "kind": "evac_route",
+                    "label": er.name,
+                    "route_type": er.route_type,
+                    "status": er.status,
+                },
+                "geometry": geom,
+            })
+
+    # ── Emergency zones (community/zone geometry) ──
+    emergency_statuses = event.emergency_statuses.select_related("community__territory", "zone")
+    for es in emergency_statuses:
+        geom = None
+        label = ""
+        try:
+            if es.zone and es.zone.geometry:
+                geom = json.loads(es.zone.geometry.geojson)
+                label = str(es.zone)
+            elif es.community and hasattr(es.community, "territory") and es.community.territory and es.community.territory.geometry:
+                geom = json.loads(es.community.territory.geometry.geojson)
+                label = str(es.community)
+        except Exception:
+            geom = None
+        if geom:
+            features.append({
+                "type": "Feature",
+                "properties": {
+                    "kind": "emergency_zone",
+                    "label": label,
+                    "level": es.level,
+                    "status": es.status,
+                },
+                "geometry": geom,
+            })
+
+    # ── Detection markers (from report evidence) ──
+    from toto.detections.models import Detection
+    detections = Detection.objects.filter(
+        mobilization_evidence__report__mobilization_events=event
+    ).distinct().select_related("address", "zone")
+    for det in detections:
+        pt = None
+        try:
+            if det.address and det.address.geometry:
+                pt = json.loads(det.address.geometry.geojson)
+            elif det.zone and det.zone.geometry:
+                # use centroid of zone polygon
+                centroid = det.zone.geometry.centroid
+                pt = json.loads(centroid.geojson)
+        except Exception:
+            pt = None
+        if pt:
+            features.append({
+                "type": "Feature",
+                "properties": {
+                    "kind": "detection",
+                    "label": det.title,
+                    "severity": det.severity,
+                    "detection_type": det.detection_type,
+                    "status": det.status,
+                },
+                "geometry": pt,
+            })
+
+    return JsonResponse({"type": "FeatureCollection", "features": features})
+
+
+@login_required
+def deployment_map_data(request, pk):
+    deployment = get_object_or_404(
+        Deployment.objects.select_related(
+            "kanban_mission__location",
+        ),
+        pk=pk,
+    )
+
+    features = []
+
+    # ── Mission location marker ──
+    if deployment.kanban_mission and deployment.kanban_mission.location:
+        addr = deployment.kanban_mission.location
+        try:
+            pt = json.loads(addr.geometry.geojson) if addr.geometry else None
+        except Exception:
+            pt = None
+        if pt:
+            features.append({
+                "type": "Feature",
+                "properties": {
+                    "kind": "mission",
+                    "label": deployment.kanban_mission.title,
+                    "status": deployment.status,
+                },
+                "geometry": pt,
+            })
+
+    # ── Deployment routes (line geometry) ──
+    dep_routes = deployment.routes.select_related("route")
+    for dr in dep_routes:
+        try:
+            geom = json.loads(dr.route.geometry.geojson) if dr.route.geometry else None
+        except Exception:
+            geom = None
+        if geom:
+            features.append({
+                "type": "Feature",
+                "properties": {
+                    "kind": "dep_route",
+                    "label": dr.route.name,
+                    "route_type": dr.route_type,
+                },
+                "geometry": geom,
+            })
+
+    # ── Equipment storage locations ──
+    equipment = deployment.equipment.select_related("item__location")
+    for eq in equipment:
+        item = eq.item
+        if not item.location_id:
+            continue
+        try:
+            pt = json.loads(item.location.geometry.geojson) if item.location.geometry else None
+        except Exception:
+            pt = None
+        if pt:
+            features.append({
+                "type": "Feature",
+                "properties": {
+                    "kind": "equipment",
+                    "label": item.name,
+                    "quantity": float(eq.quantity),
+                },
+                "geometry": pt,
+            })
+
+    # ── Intervention detection markers ──
+    interventions = deployment.interventions.select_related("detection__address", "detection__zone")
+    for iv in interventions:
+        if not iv.detection_id:
+            continue
+        det = iv.detection
+        pt = None
+        try:
+            if det.address and det.address.geometry:
+                pt = json.loads(det.address.geometry.geojson)
+            elif det.zone and det.zone.geometry:
+                centroid = det.zone.geometry.centroid
+                pt = json.loads(centroid.geojson)
+        except Exception:
+            pt = None
+        if pt:
+            features.append({
+                "type": "Feature",
+                "properties": {
+                    "kind": "detection",
+                    "label": det.title,
+                    "severity": det.severity,
+                    "intervention": iv.title,
+                    "status": det.status,
+                },
+                "geometry": pt,
+            })
 
     return JsonResponse({"type": "FeatureCollection", "features": features})
 
@@ -691,6 +874,13 @@ def deployment_detail(request, pk):
         "route_type_choices": DeploymentRoute.ROUTE_TYPE_CHOICES,
         "report_detections": report_detections,
         "linked_detection_ids": linked_detection_ids,
+        "map_data_url": f"/mobilization/deployments/{pk}/map-data/",
+        "dep_layer_toggles": [
+            ("mission",     "Mission",    "fa-solid fa-crosshairs",          "accent"),
+            ("dep_routes",  "Routes",     "fa-solid fa-route",               "success"),
+            ("equipment",   "Equipment",  "fa-solid fa-toolbox",             "caution"),
+            ("detections",  "Detections", "fa-solid fa-circle-exclamation",  "warn"),
+        ],
     })
 
 

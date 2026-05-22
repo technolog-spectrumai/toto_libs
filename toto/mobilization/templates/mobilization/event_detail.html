@@ -52,12 +52,38 @@
   <div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
 
     {# Map #}
-    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    <div x-data="{
+           layers: { deployments: true, evac_routes: true, emergency_zones: true, detections: true, campaign_zone: true },
+           toggle(key) { this.layers[key] = !this.layers[key]; window.mobMapToggle && window.mobMapToggle(key, this.layers[key]); }
+         }"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
          class="overflow-hidden rounded-lg border shadow-sm">
-      <div class="flex items-center justify-between border-b border-current/10 px-4 py-3">
-        <h3 class="font-bold flex items-center gap-2"><i class="fa-solid fa-map-location-dot"></i> {% trans "Operational Map" %}</h3>
-        <span class="text-xs opacity-60">{% trans "Campaign zone + mission locations" %}</span>
+
+      {# Header + layer toggles #}
+      <div class="border-b border-current/10 px-4 py-3 space-y-2">
+        <div class="flex items-center justify-between">
+          <h3 class="font-bold flex items-center gap-2">
+            <i class="fa-solid fa-map-location-dot"></i> {% trans "Operational Map" %}
+          </h3>
+          <span class="text-xs opacity-50">{% trans "Toggle layers" %}</span>
+        </div>
+        <div class="flex flex-wrap gap-x-4 gap-y-1.5">
+          {# Oya-style layer checkboxes #}
+          {% for key, label, icon, color_class in layer_toggles %}
+            <label class="flex cursor-pointer select-none items-center gap-1.5"
+                   @click.prevent="toggle('{{ key }}')">
+              <span class="relative flex h-4 w-4 shrink-0 items-center justify-center rounded border transition"
+                    :class="layers['{{ key }}']
+                      ? (darkMode ? 'bg-{{ color_class }}-dark border-{{ color_class }}-dark' : 'bg-{{ color_class }}-light border-{{ color_class }}-light')
+                      : 'border-current/30'">
+                <i x-show="layers['{{ key }}']" class="fa-solid fa-check text-[9px] text-white leading-none"></i>
+              </span>
+              <span class="text-xs"><i class="{{ icon }} mr-0.5 opacity-70"></i>{{ label }}</span>
+            </label>
+          {% endfor %}
+        </div>
       </div>
+
       <div id="mob-map" class="h-[480px] w-full"></div>
     </div>
 
@@ -504,40 +530,107 @@ document.addEventListener("DOMContentLoaded", function () {
   const textColor = isDark ? "#e2e8f0" : "#374151";
 
   // ── Operational map ──────────────────────────────────────────────────────
-  const lightTiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19, attribution: "&copy; OpenStreetMap contributors"
-  });
-  const darkTiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-    maxZoom: 19, attribution: "&copy; OpenStreetMap contributors &copy; CARTO"
-  });
-  const map = L.map("mob-map", { zoomControl: false }).setView([52.0, 19.0], 6);
+  const map = L.map("mob-map", { zoomControl: false }).setView([20.0, 0.0], 2);
   L.control.zoom({ position: "bottomright" }).addTo(map);
-  (isDark ? darkTiles : lightTiles).addTo(map);
-  const bounds = [];
+  L.tileLayer(
+    isDark ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+           : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    { maxZoom: 19, attribution: "&copy; OpenStreetMap contributors" + (isDark ? " &copy; CARTO" : "") }
+  ).addTo(map);
+
+  const STATUS_COLORS = { planned:"#94a3b8", active:"#22c55e", paused:"#f59e0b", completed:"#6366f1", cancelled:"#ef4444" };
+  const SEV_COLORS    = { low:"#94a3b8", medium:"#f59e0b", high:"#f97316", critical:"#ef4444" };
+  const ROUTE_COLORS  = { evacuation:"#22c55e", supply:"#f59e0b", medical:"#ec4899", patrol:"#6366f1", primary:"#3b82f6", alternate:"#94a3b8" };
+  const EMRG_COLORS   = { watch:"#f59e0b", warning:"#f97316", emergency:"#ef4444", critical_emergency:"#7f1d1d" };
+
+  function makeIcon(bg, size, shape, label) {
+    const s = size || 14;
+    const inner = shape === "diamond"
+      ? `<div style="background:${bg};width:${s}px;height:${s}px;transform:rotate(45deg);border:2px solid rgba(255,255,255,.85);box-shadow:0 1px 4px rgba(0,0,0,.5)"></div>`
+      : `<div style="background:${bg};width:${s}px;height:${s}px;border-radius:${shape==='square'?'3px':'50%'};border:2px solid rgba(255,255,255,.85);box-shadow:0 1px 4px rgba(0,0,0,.5)"></div>`;
+    const wrapper = label
+      ? `<div style="display:flex;flex-direction:column;align-items:center;gap:2px">${inner}<span style="background:${bg};color:#fff;font-size:9px;padding:1px 4px;border-radius:3px;white-space:nowrap;max-width:80px;overflow:hidden;text-overflow:ellipsis;box-shadow:0 1px 3px rgba(0,0,0,.4)">${label}</span></div>`
+      : inner;
+    const anchor = label ? [s/2, s] : [s/2, s/2];
+    return L.divIcon({ html: wrapper, className: "", iconSize: [s, s], iconAnchor: anchor });
+  }
+
+  // Layer groups — one per toggle category
+  const mapGroups = {
+    campaign_zone:   L.layerGroup(),
+    deployments:     L.layerGroup(),
+    evac_routes:     L.layerGroup(),
+    emergency_zones: L.layerGroup(),
+    detections:      L.layerGroup(),
+  };
+  Object.values(mapGroups).forEach(g => g.addTo(map));
+
+  // Expose toggle function for Alpine checkboxes
+  window.mobMapToggle = (key, visible) => {
+    const g = mapGroups[key];
+    if (!g) return;
+    visible ? g.addTo(map) : map.removeLayer(g);
+  };
+
+  const allBounds = [];
+
+  function pushBounds(latlng) { allBounds.push(latlng); }
 
   fetch("{{ map_data_url }}")
     .then(r => r.json())
     .then(data => {
       if (!data.features || !data.features.length) return;
       data.features.forEach(f => {
-        const props = f.properties;
-        if (props.kind === "campaign_zone") {
-          const layer = L.geoJSON(f, { style: { color: props.color, weight: 2.5, fillOpacity: 0.15 } })
-            .bindPopup(`<strong>${props.label}</strong><br>Campaign Zone`).addTo(map);
-          layer.getBounds && bounds.push(...Object.values(layer.getBounds()));
-        } else if (props.kind === "mission") {
-          const colors = { planned: "#94a3b8", active: "#22c55e", paused: "#f59e0b", completed: "#6366f1", cancelled: "#ef4444" };
-          const icon = L.divIcon({
-            html: `<div style="background:${colors[props.status]||"#94a3b8"};width:14px;height:14px;border-radius:50%;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,.4)"></div>`,
-            className: "", iconSize: [14, 14], iconAnchor: [7, 7]
-          });
-          L.marker([f.geometry.coordinates[1], f.geometry.coordinates[0]], { icon })
-            .bindPopup(`<strong>${props.label}</strong><br>Deployment: ${props.deployment}<br>Status: ${props.status}`)
-            .addTo(map);
-          bounds.push([f.geometry.coordinates[1], f.geometry.coordinates[0]]);
+        const p = f.properties;
+        const g = f.geometry;
+        if (!g) return;
+
+        if (p.kind === "campaign_zone") {
+          L.geoJSON(f, {
+            style: { color: "#6366f1", weight: 2, fillOpacity: isDark ? 0.08 : 0.06, dashArray: "6 4" }
+          }).bindPopup(`<strong>${p.label}</strong><br><em>Campaign Zone</em>`).addTo(mapGroups.campaign_zone);
+
+        } else if (p.kind === "deployment") {
+          const bg = STATUS_COLORS[p.status] || "#94a3b8";
+          const latlng = [g.coordinates[1], g.coordinates[0]];
+          const popup = `<strong>${p.label}</strong>
+            <br>Type: ${p.type}
+            <br>Status: <strong>${p.status}</strong>
+            <br>Priority: ${p.priority}
+            <br>Interventions: ${p.interventions_done}/${p.interventions_total} done
+            ${p.is_hybrid ? "<br><em>Hybrid deployment</em>" : ""}`;
+          L.marker(latlng, { icon: makeIcon(bg, 16, "circle") })
+            .bindPopup(popup).addTo(mapGroups.deployments);
+          pushBounds(latlng);
+
+        } else if (p.kind === "evac_route") {
+          const color = ROUTE_COLORS[p.route_type] || "#94a3b8";
+          const opacity = p.status === "blocked" ? 0.35 : 0.85;
+          L.geoJSON(f, {
+            style: { color, weight: 3, opacity, dashArray: p.status === "planned" ? "8 4" : null }
+          }).bindPopup(`<strong>${p.label}</strong><br>Type: ${p.route_type}<br>Status: ${p.status}`)
+            .addTo(mapGroups.evac_routes);
+
+        } else if (p.kind === "emergency_zone") {
+          const color = EMRG_COLORS[p.level] || "#ef4444";
+          L.geoJSON(f, {
+            style: { color, weight: 2.5, fillColor: color, fillOpacity: isDark ? 0.12 : 0.08, dashArray: "4 3" }
+          }).bindPopup(`<strong>${p.label}</strong><br>Level: ${p.level}<br>Status: ${p.status}`)
+            .addTo(mapGroups.emergency_zones);
+
+        } else if (p.kind === "detection") {
+          const bg = SEV_COLORS[p.severity] || "#94a3b8";
+          const latlng = [g.coordinates[1], g.coordinates[0]];
+          L.marker(latlng, { icon: makeIcon(bg, 12, "diamond") })
+            .bindPopup(`<strong>${p.label}</strong><br>Severity: ${p.severity}<br>Status: ${p.status}`)
+            .addTo(mapGroups.detections);
+          pushBounds(latlng);
         }
       });
-      if (bounds.length) try { map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 }); } catch(e) {}
+
+      if (allBounds.length) {
+        try { map.fitBounds(allBounds, { padding: [48, 48], maxZoom: 14 }); } catch(e) {}
+      }
     }).catch(() => {});
 
   // ── Per-mission mini maps ─────────────────────────────────────────────────

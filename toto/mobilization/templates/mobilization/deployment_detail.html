@@ -3,6 +3,12 @@
 
 {% block mob_title %}{{ deployment.title }}{% endblock %}
 
+{% block start_script %}
+{{ block.super }}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+{% endblock %}
+
 {% block mob_content %}
 <div x-data="{ completeOpen: false, forceComplete: false }" class="space-y-6">
 
@@ -50,6 +56,40 @@
     {% if deployment.objective %}
       <p class="mt-4 border-t border-current/10 pt-4 text-sm opacity-80">{{ deployment.objective }}</p>
     {% endif %}
+  </div>
+
+  {# — Operational map — #}
+  <div x-data="{
+         layers: { mission: true, dep_routes: true, equipment: true, detections: true },
+         toggle(key) { this.layers[key] = !this.layers[key]; window.depMapToggle && window.depMapToggle(key, this.layers[key]); }
+       }"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="overflow-hidden rounded-lg border shadow-sm">
+
+    <div class="border-b border-current/10 px-4 py-3 space-y-2">
+      <div class="flex items-center justify-between">
+        <h3 class="font-bold flex items-center gap-2">
+          <i class="fa-solid fa-map-location-dot"></i> {% trans "Operational Map" %}
+        </h3>
+        <span class="text-xs opacity-50">{% trans "Toggle layers" %}</span>
+      </div>
+      <div class="flex flex-wrap gap-x-4 gap-y-1.5">
+        {% for key, label, icon, color_class in dep_layer_toggles %}
+          <label class="flex cursor-pointer select-none items-center gap-1.5"
+                 @click.prevent="toggle('{{ key }}')">
+            <span class="relative flex h-4 w-4 shrink-0 items-center justify-center rounded border transition"
+                  :class="layers['{{ key }}']
+                    ? (darkMode ? 'bg-{{ color_class }}-dark border-{{ color_class }}-dark' : 'bg-{{ color_class }}-light border-{{ color_class }}-light')
+                    : 'border-current/30'">
+              <i x-show="layers['{{ key }}']" class="fa-solid fa-check text-[9px] text-white leading-none"></i>
+            </span>
+            <span class="text-xs"><i class="{{ icon }} mr-0.5 opacity-70"></i>{{ label }}</span>
+          </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div id="dep-map" class="h-[380px] w-full"></div>
   </div>
 
   <div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
@@ -451,4 +491,104 @@
   </div>
 
 </div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const isDark = localStorage.getItem("darkMode") === "true";
+
+  const map = L.map("dep-map", { zoomControl: false }).setView([20.0, 0.0], 2);
+  L.control.zoom({ position: "bottomright" }).addTo(map);
+  L.tileLayer(
+    isDark ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+           : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    { maxZoom: 19, attribution: "&copy; OpenStreetMap contributors" + (isDark ? " &copy; CARTO" : "") }
+  ).addTo(map);
+
+  const SEV_COLORS   = { low:"#94a3b8", medium:"#f59e0b", high:"#f97316", critical:"#ef4444" };
+  const ROUTE_COLORS = { primary:"#3b82f6", alternate:"#94a3b8", supply:"#f59e0b", retreat:"#ef4444", other:"#6366f1" };
+
+  function makeIcon(bg, size, shape, label) {
+    const s = size || 14;
+    const inner = shape === "diamond"
+      ? `<div style="background:${bg};width:${s}px;height:${s}px;transform:rotate(45deg);border:2px solid rgba(255,255,255,.85);box-shadow:0 1px 4px rgba(0,0,0,.5)"></div>`
+      : `<div style="background:${bg};width:${s}px;height:${s}px;border-radius:${shape==='square'?'3px':'50%'};border:2px solid rgba(255,255,255,.85);box-shadow:0 1px 4px rgba(0,0,0,.5)"></div>`;
+    const wrapper = label
+      ? `<div style="display:flex;flex-direction:column;align-items:center;gap:2px">${inner}<span style="background:${bg};color:#fff;font-size:9px;padding:1px 4px;border-radius:3px;white-space:nowrap;max-width:80px;overflow:hidden;text-overflow:ellipsis;box-shadow:0 1px 3px rgba(0,0,0,.4)">${label}</span></div>`
+      : inner;
+    const anchor = label ? [s/2, s] : [s/2, s/2];
+    return L.divIcon({ html: wrapper, className: "", iconSize: [s, s], iconAnchor: anchor });
+  }
+
+  const mapGroups = {
+    mission:    L.layerGroup(),
+    dep_routes: L.layerGroup(),
+    equipment:  L.layerGroup(),
+    detections: L.layerGroup(),
+  };
+  Object.values(mapGroups).forEach(g => g.addTo(map));
+
+  window.depMapToggle = (key, visible) => {
+    const g = mapGroups[key];
+    if (!g) return;
+    visible ? g.addTo(map) : map.removeLayer(g);
+  };
+
+  const boundsAccum = L.latLngBounds([]);
+
+  function pushCoords(coords) {
+    if (!Array.isArray(coords) || !coords.length) return;
+    if (Array.isArray(coords[0])) {
+      coords.forEach(pushCoords);
+    } else {
+      boundsAccum.extend([coords[1], coords[0]]);
+    }
+  }
+
+  fetch("{{ map_data_url }}")
+    .then(r => r.json())
+    .then(data => {
+      if (!data.features || !data.features.length) return;
+      data.features.forEach(f => {
+        const p = f.properties;
+        const g = f.geometry;
+        if (!g) return;
+
+        if (p.kind === "mission") {
+          const latlng = [g.coordinates[1], g.coordinates[0]];
+          L.marker(latlng, { icon: makeIcon("#6366f1", 16, "square", p.label) })
+            .bindPopup(`<strong>${p.label}</strong><br><em>Mission location</em>`)
+            .addTo(mapGroups.mission);
+          boundsAccum.extend(latlng);
+
+        } else if (p.kind === "dep_route") {
+          const color = ROUTE_COLORS[p.route_type] || "#94a3b8";
+          L.geoJSON(f, {
+            style: { color, weight: 3, opacity: 0.85, dashArray: p.route_type === "alternate" ? "8 4" : null }
+          }).bindPopup(`<strong>${p.label}</strong><br>Type: ${p.route_type}`)
+            .addTo(mapGroups.dep_routes);
+          pushCoords(g.coordinates);
+
+        } else if (p.kind === "equipment") {
+          const latlng = [g.coordinates[1], g.coordinates[0]];
+          L.marker(latlng, { icon: makeIcon("#f59e0b", 14, "square", p.label) })
+            .bindPopup(`<strong>${p.label}</strong><br>Qty: ${p.quantity}`)
+            .addTo(mapGroups.equipment);
+          boundsAccum.extend(latlng);
+
+        } else if (p.kind === "detection") {
+          const bg = SEV_COLORS[p.severity] || "#94a3b8";
+          const latlng = [g.coordinates[1], g.coordinates[0]];
+          L.marker(latlng, { icon: makeIcon(bg, 12, "diamond") })
+            .bindPopup(`<strong>${p.label}</strong><br>Severity: ${p.severity}<br>Intervention: ${p.intervention || "—"}`)
+            .addTo(mapGroups.detections);
+          boundsAccum.extend(latlng);
+        }
+      });
+
+      if (boundsAccum.isValid()) {
+        map.fitBounds(boundsAccum, { padding: [48, 48], maxZoom: 14 });
+      }
+    }).catch(() => {});
+});
+</script>
 {% endblock %}
