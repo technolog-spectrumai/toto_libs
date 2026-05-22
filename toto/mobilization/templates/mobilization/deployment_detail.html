@@ -1,0 +1,251 @@
+{% extends "mobilization/base.html" %}
+{% load i18n %}
+
+{% block mob_title %}{{ deployment.title }}{% endblock %}
+
+{% block mob_content %}
+<div x-data="{ completeOpen: false, forceComplete: false }" class="space-y-6">
+
+  {# — Header — #}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-6 shadow-sm">
+    <a href="{% url 'mobilization:event_detail' deployment.event.pk %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+      <i class="fa-solid fa-arrow-left"></i> {{ deployment.event.title }}
+    </a>
+    <div class="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div class="space-y-2">
+        <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-3xl font-bold">{{ deployment.title }}</h2>
+        <div class="flex flex-wrap items-center gap-2">
+          {% include "mobilization/partials/status_badge.html" with status=deployment.status %}
+          {% include "mobilization/partials/priority_badge.html" with priority=deployment.priority %}
+          <span class="rounded border border-current/20 px-2 py-0.5 text-xs capitalize">{{ deployment.deployment_type|replace:"_" " " }}</span>
+          <span class="text-xs opacity-60"><i class="fa-solid fa-people-roof mr-1"></i>{{ deployment.community }}</span>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <a href="{% url 'mobilization:intervention_create' deployment.pk %}"
+           :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+           class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold hover:opacity-80">
+          <i class="fa-solid fa-plus"></i> {% trans "Add Intervention" %}
+        </a>
+        {% if deployment.status != "completed" %}
+          <button type="button" @click="completeOpen = true"
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                  class="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold hover:opacity-90">
+            <i class="fa-solid fa-flag-checkered"></i> {% trans "Complete" %}
+          </button>
+        {% endif %}
+      </div>
+    </div>
+    {% if deployment.objective %}
+      <p class="mt-4 border-t border-current/10 pt-4 text-sm opacity-80">{{ deployment.objective }}</p>
+    {% endif %}
+  </div>
+
+  <div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+
+    <section class="space-y-5">
+
+      {# — Kanban Mission data — #}
+      {% if mission %}
+        <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border p-5 shadow-sm">
+          <h3 class="mb-4 flex items-center gap-2 font-bold"><i class="fa-solid fa-crosshairs"></i> {% trans "Linked Mission" %}: {{ mission }}</h3>
+          <div class="flex flex-wrap items-center gap-2 mb-3">
+            {% include "mobilization/partials/eisenhower_cell.html" with urgency=mission.urgency impact=mission.impact %}
+            <span class="text-xs opacity-60">Urgency: {{ mission.urgency_label }}</span>
+            <span class="text-xs opacity-60">Impact: {{ mission.impact_label }}</span>
+            {% if mission.campaign %}
+              <span class="text-xs opacity-60"><i class="fa-solid fa-flag mr-1"></i>{{ mission.campaign }}</span>
+            {% endif %}
+          </div>
+
+          {% if mission_tasks %}
+            <h4 class="mt-4 mb-2 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Tasks" %}</h4>
+            <div class="space-y-2">
+              {% for task in mission_tasks %}
+                <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="font-semibold text-sm">{{ task.title }}</span>
+                    <div class="flex shrink-0 items-center gap-1.5">
+                      {# Fibonacci weight badge #}
+                      <span class="rounded border border-current/20 px-2 py-0.5 text-xs font-mono">{{ task.weight_label }}</span>
+                      {# Status #}
+                      {% if task.completed_at %}
+                        <span :class="darkMode ? 'text-success-dark' : 'text-success-light'" class="text-xs"><i class="fa-solid fa-check-circle"></i></span>
+                      {% else %}
+                        <span class="rounded border border-current/15 px-1.5 py-0.5 text-xs">{{ task.column }}</span>
+                      {% endif %}
+                    </div>
+                  </div>
+                  {% if task.assignee %}
+                    <div class="mt-1 text-xs opacity-60"><i class="fa-solid fa-user mr-1"></i>{{ task.assignee }}</div>
+                  {% endif %}
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </div>
+      {% endif %}
+
+      {# — Interventions — #}
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-5 shadow-sm">
+        <div class="mb-4 flex items-center justify-between">
+          <h3 class="flex items-center gap-2 font-bold"><i class="fa-solid fa-list-check"></i> {% trans "Interventions" %}</h3>
+          <span class="text-xs opacity-60">
+            {{ interventions|length }} total ·
+            {% with done=interventions|dictsort:"status"|slice:":100" %}
+              {% for iv in interventions %}{% if iv.status == "done" %}✓{% endif %}{% endfor %}
+            {% endwith %}
+          </span>
+        </div>
+
+        <div class="space-y-2">
+          {% for iv in interventions %}
+            <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="flex flex-wrap items-center gap-2">
+                  {% if iv.is_required %}
+                    <i class="fa-solid fa-asterisk text-xs opacity-60" title="Required"></i>
+                  {% endif %}
+                  <span class="font-semibold text-sm">{{ iv.title }}</span>
+                  {% include "mobilization/partials/status_badge.html" with status=iv.status %}
+                  {% include "mobilization/partials/priority_badge.html" with priority=iv.priority %}
+                </div>
+                {% if iv.status != "done" and iv.status != "cancelled" %}
+                  <form method="post" action="{% url 'mobilization:intervention_complete' iv.pk %}">
+                    {% csrf_token %}
+                    <button type="submit"
+                            :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                            class="rounded-lg border px-2 py-1 text-xs font-semibold hover:opacity-80">
+                      <i class="fa-solid fa-check mr-1"></i>Done
+                    </button>
+                  </form>
+                {% endif %}
+              </div>
+              <div class="mt-1.5 flex flex-wrap gap-2 text-xs opacity-60">
+                <span class="capitalize">{{ iv.intervention_type|replace:"_" " " }}</span>
+                {% if iv.assigned_to %}<span><i class="fa-solid fa-user-shield mr-1"></i>{{ iv.assigned_to.person }}</span>{% endif %}
+                {% if iv.kanban_task %}<span><i class="fa-solid fa-link mr-1"></i>{{ iv.kanban_task.title }}</span>{% endif %}
+              </div>
+              {% if iv.outcome_notes %}
+                <p class="mt-2 text-xs opacity-70">{{ iv.outcome_notes }}</p>
+              {% endif %}
+            </div>
+          {% empty %}
+            <p class="text-sm opacity-60">{% trans "No interventions yet." %}</p>
+          {% endfor %}
+        </div>
+      </div>
+
+    </section>
+
+    <aside class="space-y-5">
+
+      {# — Assign responder — #}
+      {% if deployment.status != "completed" and deployment.status != "cancelled" %}
+        <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border p-5 shadow-sm">
+          <h3 class="mb-3 font-bold flex items-center gap-2"><i class="fa-solid fa-user-plus"></i> {% trans "Assign Responder" %}</h3>
+          <form method="post" action="{% url 'mobilization:assignment_create' deployment.pk %}" class="space-y-3">
+            {% csrf_token %}
+            <select name="responder"
+                    :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                    class="w-full rounded-lg border px-3 py-2 text-sm">
+              <option value="">{% trans "Select responder..." %}</option>
+              {% for r in available_responders %}
+                <option value="{{ r.pk }}">{{ r.person }} ({{ r.get_current_status_display }})</option>
+              {% endfor %}
+            </select>
+            <select name="role"
+                    :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                    class="w-full rounded-lg border px-3 py-2 text-sm">
+              {% for val, label in deployment.assignments.model.ROLE_CHOICES %}
+                <option value="{{ val }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+            <button type="submit"
+                    :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                    class="w-full rounded-lg px-4 py-2 text-sm font-semibold hover:opacity-90">
+              {% trans "Assign" %}
+            </button>
+          </form>
+        </div>
+      {% endif %}
+
+      {# — Assignments — #}
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-5 shadow-sm">
+        <h3 class="mb-3 font-bold flex items-center gap-2"><i class="fa-solid fa-users"></i> {% trans "Assignments" %} ({{ assignments|length }})</h3>
+        <div class="space-y-2">
+          {% for a in assignments %}
+            <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
+              <div class="flex items-center justify-between gap-2">
+                <div>
+                  <div class="font-semibold text-sm">{{ a.responder.person }}</div>
+                  <div class="text-xs opacity-60">{{ a.get_role_display }}</div>
+                </div>
+                {% include "mobilization/partials/status_badge.html" with status=a.status %}
+              </div>
+              {% if a.status == "assigned" or a.status == "confirmed" %}
+                <form method="post" action="{% url 'mobilization:assignment_activate' deployment.pk a.pk %}" class="mt-2">
+                  {% csrf_token %}
+                  <button type="submit" class="text-xs underline hover:opacity-80">
+                    <i class="fa-solid fa-play mr-1"></i>{% trans "Activate" %}
+                  </button>
+                </form>
+              {% elif a.status == "active" %}
+                <form method="post" action="{% url 'mobilization:assignment_release' deployment.pk a.pk %}" class="mt-2">
+                  {% csrf_token %}
+                  <button type="submit" class="text-xs underline hover:opacity-80">
+                    <i class="fa-solid fa-right-from-bracket mr-1"></i>{% trans "Release" %}
+                  </button>
+                </form>
+              {% endif %}
+            </div>
+          {% empty %}
+            <p class="text-sm opacity-60">{% trans "No responders assigned." %}</p>
+          {% endfor %}
+        </div>
+      </div>
+
+      {# — Notes / meta — #}
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-5 shadow-sm text-xs space-y-1.5 opacity-70">
+        {% if deployment.coordinator %}<div><i class="fa-solid fa-user-tie mr-1"></i>{% trans "Coordinator" %}: {{ deployment.coordinator }}</div>{% endif %}
+        <div>{% trans "Created" %} {{ deployment.created_at|date:"M d, Y H:i" }}</div>
+        <div>{% trans "Updated" %} {{ deployment.updated_at|date:"M d, Y H:i" }}</div>
+        {% if deployment.notes %}
+          <p class="border-t border-current/10 pt-2 mt-2">{{ deployment.notes }}</p>
+        {% endif %}
+      </div>
+
+    </aside>
+  </div>
+
+  {# — Complete modal — #}
+  <div x-show="completeOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4">
+    <div @click.outside="completeOpen = false"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="w-full max-w-md rounded-lg border p-5 shadow-2xl">
+      <h3 class="text-xl font-bold flex items-center gap-2"><i class="fa-solid fa-flag-checkered"></i> {% trans "Complete Deployment?" %}</h3>
+      <p class="mt-3 text-sm opacity-75">{% trans "Remaining required interventions must be done/cancelled, unless you force-complete." %}</p>
+      <form method="post" action="{% url 'mobilization:deployment_complete' deployment.pk %}" class="mt-5 space-y-3">
+        {% csrf_token %}
+        <label class="flex items-center gap-2 text-sm">
+          <input type="checkbox" name="force" value="1" x-model="forceComplete" class="rounded">
+          {% trans "Force complete (ignore pending required interventions)" %}
+        </label>
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" @click="completeOpen = false" class="rounded-lg border border-current/20 px-4 py-2 text-sm font-semibold">{% trans "Cancel" %}</button>
+          <button type="submit"
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                  class="rounded-lg px-4 py-2 text-sm font-semibold">{% trans "Complete" %}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

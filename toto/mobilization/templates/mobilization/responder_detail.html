@@ -1,0 +1,118 @@
+{% extends "mobilization/base.html" %}
+{% load i18n %}
+
+{% block mob_title %}{{ responder.person }}{% endblock %}
+
+{% block mob_content %}
+<div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+
+  <section class="space-y-5">
+    {# — Header card — #}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-6 shadow-sm">
+      <a href="{% url 'mobilization:responder_list' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+        <i class="fa-solid fa-arrow-left"></i> {% trans "Responders" %}
+      </a>
+      <div class="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div class="space-y-2">
+          <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-3xl font-bold">
+            {{ responder.person }}
+          </h2>
+          <div class="flex flex-wrap items-center gap-2">
+            {% include "mobilization/partials/status_badge.html" with status=responder.current_status %}
+            {% if responder.is_trained %}<span class="rounded border border-current/20 px-2 py-0.5 text-xs"><i class="fa-solid fa-graduation-cap mr-1"></i>Trained</span>{% endif %}
+            {% if responder.is_background_checked %}<span class="rounded border border-current/20 px-2 py-0.5 text-xs"><i class="fa-solid fa-shield-check mr-1"></i>Background checked</span>{% endif %}
+            {% if not responder.is_active %}<span class="rounded border border-red-400/50 px-2 py-0.5 text-xs text-red-500">Inactive</span>{% endif %}
+          </div>
+        </div>
+      </div>
+      {% if responder.notes %}
+        <p class="mt-4 border-t border-current/10 pt-4 text-sm opacity-80">{{ responder.notes }}</p>
+      {% endif %}
+    </div>
+
+    {# — Skills — #}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-5 shadow-sm">
+      <h3 class="mb-4 flex items-center gap-2 font-bold"><i class="fa-solid fa-star"></i> {% trans "Skills" %}</h3>
+      {% if responder.skills.all %}
+        <div class="grid gap-3 sm:grid-cols-2">
+          {% for rs in responder.skills.all %}
+            <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
+              <div class="font-semibold text-sm">{{ rs.skill.title }}</div>
+              <div class="mt-1 flex flex-wrap items-center gap-2 text-xs opacity-70">
+                <span class="rounded border border-current/20 px-2 py-0.5">{{ rs.get_level_display }}</span>
+                {% if rs.verified_by %}<span>{% trans "Verified by" %} {{ rs.verified_by }}</span>{% endif %}
+                {% if rs.verified_at %}<span>{{ rs.verified_at|date:"M d, Y" }}</span>{% endif %}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-sm opacity-60">{% trans "No skills recorded." %}</p>
+      {% endif %}
+    </div>
+
+    {# — Assignment history — #}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-5 shadow-sm">
+      <h3 class="mb-4 flex items-center gap-2 font-bold"><i class="fa-solid fa-clock-rotate-left"></i> {% trans "Recent Assignments" %}</h3>
+      <div class="space-y-3">
+        {% for a in recent_assignments %}
+          <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
+            <div class="flex items-center justify-between gap-2">
+              <a href="{% url 'mobilization:deployment_detail' a.deployment.pk %}"
+                 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                 class="font-semibold text-sm underline hover:opacity-80">{{ a.deployment.title }}</a>
+              {% include "mobilization/partials/status_badge.html" with status=a.status %}
+            </div>
+            <div class="mt-1 text-xs opacity-60 capitalize">{{ a.get_role_display }}</div>
+          </div>
+        {% empty %}
+          <p class="text-sm opacity-60">{% trans "No assignments." %}</p>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <aside class="space-y-5">
+    {# — Active assignments — #}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-5 shadow-sm">
+      <h3 class="mb-3 font-bold flex items-center gap-2"><i class="fa-solid fa-bolt"></i> {% trans "Currently Active" %}</h3>
+      {% if active_assignments %}
+        {% for a in active_assignments %}
+          <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="mt-2 rounded-lg p-3 text-sm">
+            <a href="{% url 'mobilization:deployment_detail' a.deployment.pk %}"
+               :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+               class="font-semibold underline">{{ a.deployment.title }}</a>
+            <div class="text-xs opacity-60 mt-1">{{ a.deployment.event.community }}</div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <p class="text-sm opacity-60">{% trans "Not currently deployed." %}</p>
+      {% endif %}
+    </div>
+
+    {# — Communities — #}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-5 shadow-sm">
+      <h3 class="mb-3 font-bold flex items-center gap-2"><i class="fa-solid fa-people-roof"></i> {% trans "Communities" %}</h3>
+      {% for c in responder.communities.all %}
+        <div class="mt-2 text-sm">{{ c }}</div>
+      {% empty %}
+        <p class="text-sm opacity-60">{% trans "No communities." %}</p>
+      {% endfor %}
+    </div>
+
+    {# — Timestamps — #}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-5 shadow-sm text-sm space-y-2 opacity-70">
+      {% if responder.last_status_changed_at %}
+        <div><i class="fa-solid fa-rotate-right mr-1"></i> Status changed {{ responder.last_status_changed_at|date:"M d, Y H:i" }}</div>
+      {% endif %}
+      <div><i class="fa-solid fa-calendar mr-1"></i> Joined {{ responder.created_at|date:"M d, Y" }}</div>
+    </div>
+  </aside>
+</div>
+{% endblock %}

@@ -1,0 +1,88 @@
+{% extends "mobilization/base.html" %}
+{% load i18n %}
+
+{% block mob_title %}{% trans "Events" %}{% endblock %}
+
+{% block mob_content %}
+<div class="grid gap-5 lg:grid-cols-[260px_minmax(0,1fr)]">
+
+  <aside :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-5 shadow-sm space-y-5">
+    <form method="get" class="space-y-4">
+      <div>
+        <label class="mb-1 block text-sm font-semibold">{% trans "Search" %}</label>
+        <input type="search" name="q" value="{{ q }}"
+               :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+               class="w-full rounded-lg border px-3 py-2 text-sm outline-none">
+      </div>
+      <div>
+        <label class="mb-1 block text-sm font-semibold">{% trans "Status" %}</label>
+        <select name="status"
+                :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                class="w-full rounded-lg border px-3 py-2 text-sm">
+          <option value="">{% trans "All" %}</option>
+          {% for val, label in status_choices %}
+            <option value="{{ val }}" {% if status_filter == val %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button type="submit"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="w-full rounded-lg px-4 py-2 text-sm font-semibold hover:opacity-90">
+        <i class="fa-solid fa-filter mr-1"></i> {% trans "Filter" %}
+      </button>
+    </form>
+
+    <div>
+      <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Status" %}</h3>
+      {% for s, cnt in status_counts.items %}
+        <a href="?status={{ s }}"
+           :class="darkMode ? 'bg-primary-bg-dark hover:opacity-80' : 'bg-primary-bg-light hover:opacity-80'"
+           class="mt-1.5 flex items-center justify-between rounded-lg px-3 py-2 text-sm transition capitalize">
+          <span>{{ s }}</span>
+          <span class="font-bold">{{ cnt }}</span>
+        </a>
+      {% endfor %}
+    </div>
+  </aside>
+
+  <section class="space-y-3">
+    {% for event in events %}
+      <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-primary-bg-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-primary-bg-light'"
+               class="rounded-lg border p-5 shadow-sm transition">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div class="space-y-2">
+            <div class="flex flex-wrap items-center gap-2">
+              <span :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-lg font-bold">{{ event.title }}</span>
+              {% include "mobilization/partials/status_badge.html" with status=event.status %}
+            </div>
+            <div class="flex flex-wrap gap-3 text-xs opacity-60">
+              <span><i class="fa-solid fa-people-roof mr-1"></i>{{ event.community }}</span>
+              {% if event.incident_type %}<span><i class="{{ event.incident_type.icon }} mr-1"></i>{{ event.incident_type.name }}</span>{% endif %}
+              {% if event.kanban_campaign %}<span><i class="fa-solid fa-flag mr-1"></i>{{ event.kanban_campaign }}</span>{% endif %}
+              {% if event.coordinator %}<span><i class="fa-solid fa-user-tie mr-1"></i>{{ event.coordinator }}</span>{% endif %}
+              <span>{{ event.created_at|date:"M d, Y" }}</span>
+            </div>
+          </div>
+          <a href="{% url 'mobilization:event_detail' event.pk %}"
+             :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+             class="inline-flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold hover:opacity-80">
+            <i class="fa-solid fa-arrow-right"></i>
+          </a>
+        </div>
+        {% if event.description %}
+          <p class="mt-3 text-sm opacity-70">{{ event.description|truncatewords:25 }}</p>
+        {% endif %}
+      </article>
+    {% empty %}
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-10 text-center shadow-sm">
+        <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="fa-solid fa-bolt-slash text-4xl"></i>
+        <h2 class="mt-4 text-xl font-bold">{% trans "No events found" %}</h2>
+        <p class="mt-1 text-sm opacity-70">{% trans "Enact a report to create a mobilization event." %}</p>
+      </div>
+    {% endfor %}
+  </section>
+
+</div>
+{% endblock %}

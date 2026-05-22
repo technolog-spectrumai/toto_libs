@@ -1,0 +1,19 @@
+{% if priority == "urgent" %}
+  <span :class="darkMode ? 'text-red-300' : 'text-red-700'"
+        class="inline-flex items-center gap-1 text-xs font-semibold">
+    <i class="fa-solid fa-angles-up"></i> Urgent
+  </span>
+{% elif priority == "high" %}
+  <span :class="darkMode ? 'text-amber-300' : 'text-amber-700'"
+        class="inline-flex items-center gap-1 text-xs font-semibold">
+    <i class="fa-solid fa-angle-up"></i> High
+  </span>
+{% elif priority == "low" %}
+  <span class="inline-flex items-center gap-1 text-xs font-semibold opacity-60">
+    <i class="fa-solid fa-angle-down"></i> Low
+  </span>
+{% else %}
+  <span class="inline-flex items-center gap-1 text-xs font-semibold opacity-70">
+    <i class="fa-solid fa-minus"></i> Normal
+  </span>
+{% endif %}

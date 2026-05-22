@@ -1,0 +1,218 @@
+{% extends "mobilization/base.html" %}
+{% load i18n %}
+
+{% block mob_title %}{% trans "Overview" %}{% endblock %}
+
+{% block mob_content %}
+<div x-data="{}" class="space-y-6">
+
+  {# — Stat cards — #}
+  <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+    {% include "mobilization/partials/stat_card.html" with icon="fa-solid fa-user-shield" label="Active Responders" value=responder_count color="accent" %}
+    {% include "mobilization/partials/stat_card.html" with icon="fa-solid fa-circle-check" label="Available" value=available_count color="success" %}
+    {% include "mobilization/partials/stat_card.html" with icon="fa-solid fa-person-running" label="Responding" value=responding_count color="warn" %}
+    {% include "mobilization/partials/stat_card.html" with icon="fa-solid fa-file-pen" label="Draft Reports" value=report_counts.draft color="neutral" %}
+    {% include "mobilization/partials/stat_card.html" with icon="fa-solid fa-hourglass-half" label="Submitted" value=report_counts.submitted color="warn" %}
+    {% include "mobilization/partials/stat_card.html" with icon="fa-solid fa-bolt" label="Enacted" value=report_counts.enacted color="accent" %}
+  </div>
+
+  {# — Charts row — #}
+  <div class="grid gap-5 lg:grid-cols-3">
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-5 shadow-sm">
+      <h2 class="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide opacity-60">
+        <i class="fa-solid fa-triangle-exclamation"></i> {% trans "Severity Distribution" %}
+      </h2>
+      <canvas id="severityChart" height="200"></canvas>
+    </div>
+
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-5 shadow-sm">
+      <h2 class="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide opacity-60">
+        <i class="fa-solid fa-people-group"></i> {% trans "Deployment Types" %}
+      </h2>
+      <canvas id="deploymentTypeChart" height="200"></canvas>
+    </div>
+
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-5 shadow-sm">
+      <h2 class="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide opacity-60">
+        <i class="fa-solid fa-bolt"></i> {% trans "Incident Types" %}
+      </h2>
+      <canvas id="incidentTypeChart" height="200"></canvas>
+    </div>
+  </div>
+
+  {# — Report status panel — #}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5 shadow-sm">
+    <h2 class="mb-4 flex items-center gap-2 font-bold">
+      <i class="fa-solid fa-bars-progress"></i> {% trans "Report Pipeline" %}
+    </h2>
+    <div class="grid grid-cols-3 gap-3 sm:grid-cols-6">
+      {% for status, label in report_counts.items %}
+        <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3 text-center">
+          <div class="text-2xl font-bold">{{ report_counts|default_if_none:"0" }}</div>
+          <div class="mt-1 text-xs opacity-60 capitalize">{{ status }}</div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  {# — Active events + recent reports — #}
+  <div class="grid gap-5 lg:grid-cols-2">
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-5 shadow-sm">
+      <div class="mb-4 flex items-center justify-between">
+        <h2 class="flex items-center gap-2 font-bold">
+          <i class="fa-solid fa-bolt"></i> {% trans "Active Events" %}
+        </h2>
+        <a href="{% url 'mobilization:event_list' %}?status=active"
+           :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+           class="text-xs underline">{% trans "All" %}</a>
+      </div>
+      <div class="space-y-3">
+        {% for event in active_events %}
+          <a href="{% url 'mobilization:event_detail' event.pk %}"
+             :class="darkMode ? 'bg-primary-bg-dark hover:opacity-80' : 'bg-primary-bg-light hover:opacity-80'"
+             class="block rounded-lg p-3 transition">
+            <div class="flex items-center justify-between gap-2">
+              <span class="truncate font-semibold text-sm">{{ event.title }}</span>
+              <span class="shrink-0 rounded border border-current/20 px-2 py-0.5 text-xs">{{ event.community }}</span>
+            </div>
+            <div class="mt-1 flex items-center gap-2 text-xs opacity-60">
+              {% if event.incident_type %}<span>{{ event.incident_type.name }}</span>{% endif %}
+              {% if event.coordinator %}<span>· {{ event.coordinator }}</span>{% endif %}
+            </div>
+          </a>
+        {% empty %}
+          <p class="text-sm opacity-60">{% trans "No active events." %}</p>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-5 shadow-sm">
+      <div class="mb-4 flex items-center justify-between">
+        <h2 class="flex items-center gap-2 font-bold">
+          <i class="fa-solid fa-file-lines"></i> {% trans "Recent Reports" %}
+        </h2>
+        <a href="{% url 'mobilization:report_list' %}"
+           :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+           class="text-xs underline">{% trans "All" %}</a>
+      </div>
+      <div class="space-y-3">
+        {% for report in recent_reports %}
+          <a href="{% url 'mobilization:report_detail' report.pk %}"
+             :class="darkMode ? 'bg-primary-bg-dark hover:opacity-80' : 'bg-primary-bg-light hover:opacity-80'"
+             class="block rounded-lg p-3 transition">
+            <div class="flex items-center justify-between gap-2">
+              <span class="truncate font-semibold text-sm">{{ report.title }}</span>
+              {% include "mobilization/partials/severity_badge.html" with severity=report.severity %}
+            </div>
+            <div class="mt-1 flex items-center gap-2 text-xs opacity-60">
+              <span class="capitalize">{{ report.status }}</span>
+              {% if report.incident_type %}<span>· {{ report.incident_type.name }}</span>{% endif %}
+              <span>· {{ report.community }}</span>
+            </div>
+          </a>
+        {% empty %}
+          <p class="text-sm opacity-60">{% trans "No reports yet." %}</p>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  {# — Active deployments — #}
+  {% if active_deployments %}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-5 shadow-sm">
+      <div class="mb-4 flex items-center justify-between">
+        <h2 class="flex items-center gap-2 font-bold">
+          <i class="fa-solid fa-people-group"></i> {% trans "Active Deployments" %}
+        </h2>
+        <a href="{% url 'mobilization:deployment_list' %}?status=active"
+           :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+           class="text-xs underline">{% trans "All" %}</a>
+      </div>
+      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {% for dep in active_deployments %}
+          <a href="{% url 'mobilization:deployment_detail' dep.pk %}"
+             :class="darkMode ? 'bg-primary-bg-dark hover:opacity-80' : 'bg-primary-bg-light hover:opacity-80'"
+             class="block rounded-lg p-3 transition">
+            <div class="font-semibold text-sm truncate">{{ dep.title }}</div>
+            <div class="mt-1 text-xs opacity-60 capitalize">{{ dep.deployment_type }} · {{ dep.community }}</div>
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+  const isDark = localStorage.getItem("darkMode") === "true";
+  const gridColor = isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)";
+  const textColor = isDark ? "#e2e8f0" : "#374151";
+
+  Chart.defaults.color = textColor;
+  Chart.defaults.borderColor = gridColor;
+
+  const severityData = {{ severity_data|safe }};
+  const depTypeData = {{ deployment_type_data|safe }};
+  const incidentTypeData = {{ incident_type_data|safe }};
+
+  // Severity donut
+  new Chart(document.getElementById("severityChart"), {
+    type: "doughnut",
+    data: {
+      labels: ["Low", "Medium", "High", "Critical"],
+      datasets: [{
+        data: [severityData.low, severityData.medium, severityData.high, severityData.critical],
+        backgroundColor: ["#22c55e", "#f59e0b", "#ef4444", "#7c3aed"],
+        borderWidth: 0,
+      }]
+    },
+    options: { plugins: { legend: { position: "bottom" } }, cutout: "60%" }
+  });
+
+  // Deployment type bar
+  new Chart(document.getElementById("deploymentTypeChart"), {
+    type: "bar",
+    data: {
+      labels: depTypeData.map(d => d.deployment_type.replace(/_/g, " ")),
+      datasets: [{
+        data: depTypeData.map(d => d.count),
+        backgroundColor: isDark ? "rgba(99,102,241,0.7)" : "rgba(79,70,229,0.7)",
+        borderRadius: 6,
+      }]
+    },
+    options: {
+      indexAxis: "y",
+      plugins: { legend: { display: false } },
+      scales: { x: { grid: { color: gridColor } }, y: { grid: { display: false } } }
+    }
+  });
+
+  // Incident type bar
+  new Chart(document.getElementById("incidentTypeChart"), {
+    type: "bar",
+    data: {
+      labels: incidentTypeData.map(d => d.incident_type__name || "Unknown"),
+      datasets: [{
+        data: incidentTypeData.map(d => d.count),
+        backgroundColor: isDark ? "rgba(34,197,94,0.7)" : "rgba(16,185,129,0.7)",
+        borderRadius: 6,
+      }]
+    },
+    options: {
+      indexAxis: "y",
+      plugins: { legend: { display: false } },
+      scales: { x: { grid: { color: gridColor } }, y: { grid: { display: false } } }
+    }
+  });
+})();
+</script>
+{% endblock %}

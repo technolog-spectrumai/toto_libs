@@ -1,0 +1,224 @@
+{% extends "mobilization/base.html" %}
+{% load i18n %}
+
+{% block mob_title %}{{ event.title }}{% endblock %}
+
+{% block start_script %}
+{{ block.super }}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+{% endblock %}
+
+{% block mob_content %}
+<div class="space-y-6">
+
+  {# — Header — #}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-6 shadow-sm">
+    <a href="{% url 'mobilization:event_list' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+      <i class="fa-solid fa-arrow-left"></i> {% trans "Events" %}
+    </a>
+    <div class="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div class="space-y-2">
+        <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-3xl font-bold">{{ event.title }}</h2>
+        <div class="flex flex-wrap items-center gap-2 text-sm">
+          {% include "mobilization/partials/status_badge.html" with status=event.status %}
+          {% if event.incident_type %}
+            <span class="rounded border border-current/20 px-2 py-0.5 text-xs">
+              <i class="{{ event.incident_type.icon }} mr-1"></i>{{ event.incident_type.name }}
+            </span>
+          {% endif %}
+          <span class="text-xs opacity-60"><i class="fa-solid fa-people-roof mr-1"></i>{{ event.community }}</span>
+          {% if event.coordinator %}<span class="text-xs opacity-60"><i class="fa-solid fa-user-tie mr-1"></i>{{ event.coordinator }}</span>{% endif %}
+        </div>
+      </div>
+      <a href="{% url 'mobilization:deployment_create' event.pk %}"
+         :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+         class="inline-flex shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold hover:opacity-90">
+        <i class="fa-solid fa-plus"></i> {% trans "New Deployment" %}
+      </a>
+    </div>
+    {% if event.description %}
+      <p class="mt-4 border-t border-current/10 pt-4 text-sm opacity-80">{{ event.description }}</p>
+    {% endif %}
+  </div>
+
+  {# — Map + Campaign overview — #}
+  <div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
+
+    {# Map #}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="overflow-hidden rounded-lg border shadow-sm">
+      <div class="flex items-center justify-between border-b border-current/10 px-4 py-3">
+        <h3 class="font-bold flex items-center gap-2"><i class="fa-solid fa-map-location-dot"></i> {% trans "Operational Map" %}</h3>
+        <span class="text-xs opacity-60">{% trans "Campaign zone + mission locations" %}</span>
+      </div>
+      <div id="mob-map" class="h-[480px] w-full"></div>
+    </div>
+
+    {# Campaign / linked data #}
+    <aside class="space-y-5">
+      {# Campaign #}
+      {% if campaign %}
+        <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border p-5 shadow-sm">
+          <h3 class="mb-3 font-bold flex items-center gap-2"><i class="fa-solid fa-flag"></i> {% trans "Campaign" %}</h3>
+          <div class="text-sm space-y-1">
+            <div class="font-semibold text-base">{{ campaign.name }}</div>
+            {% if campaign.zone %}<div class="text-xs opacity-60"><i class="fa-solid fa-map mr-1"></i>Zone: {{ campaign.zone.name }}</div>{% endif %}
+            {% if campaign.start_date %}<div class="text-xs opacity-60">{{ campaign.start_date }} – {{ campaign.end_date|default:"ongoing" }}</div>{% endif %}
+            {% if campaign.description %}<p class="mt-2 text-xs opacity-70">{{ campaign.description|truncatewords:30 }}</p>{% endif %}
+          </div>
+        </div>
+
+        {# Missions with Eisenhower grid #}
+        {% if campaign_missions %}
+          <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+               class="rounded-lg border p-5 shadow-sm">
+            <h3 class="mb-3 font-bold flex items-center gap-2"><i class="fa-solid fa-crosshairs"></i> {% trans "Missions" %}</h3>
+            <div class="space-y-2">
+              {% for m in campaign_missions %}
+                <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="font-semibold text-sm">{{ m.title }}</span>
+                    {% include "mobilization/partials/eisenhower_cell.html" with urgency=m.urgency impact=m.impact %}
+                  </div>
+                  <div class="mt-1.5 flex flex-wrap gap-2 text-xs opacity-60">
+                    <span>Urgency: {{ m.urgency_label }}</span>
+                    <span>Impact: {{ m.impact_label }}</span>
+                    {% if m.location %}<span><i class="fa-solid fa-map-pin mr-1"></i>{{ m.location }}</span>{% endif %}
+                  </div>
+                  {# Mission tasks summary #}
+                  {% with tasks=m.tasks.all %}
+                    {% if tasks %}
+                      <div class="mt-2 border-t border-current/10 pt-2 space-y-1">
+                        {% for t in tasks|slice:":4" %}
+                          <div class="flex items-center justify-between text-xs opacity-70">
+                            <span class="truncate">{{ t.title }}</span>
+                            <span class="shrink-0 rounded border border-current/15 px-1.5 py-0.5">{{ t.weight_label }}</span>
+                          </div>
+                        {% endfor %}
+                        {% if tasks.count > 4 %}
+                          <div class="text-xs opacity-50">+{{ tasks.count|add:"-4" }} more tasks</div>
+                        {% endif %}
+                      </div>
+                    {% endif %}
+                  {% endwith %}
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
+      {% else %}
+        <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border p-5 shadow-sm">
+          <p class="text-sm opacity-60"><i class="fa-solid fa-flag mr-1"></i> {% trans "No campaign linked." %}</p>
+        </div>
+      {% endif %}
+
+      {# Linked scheduled event #}
+      {% if event.scheduled_event %}
+        <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border p-5 shadow-sm text-sm">
+          <h3 class="mb-2 font-bold flex items-center gap-2"><i class="fa-solid fa-calendar-days"></i> {% trans "Scheduled Event" %}</h3>
+          <div class="font-semibold">{{ event.scheduled_event.title }}</div>
+          <div class="text-xs opacity-60 mt-1">{{ event.scheduled_event.start_time|date:"M d, Y H:i" }}</div>
+        </div>
+      {% endif %}
+    </aside>
+  </div>
+
+  {# — Deployments — #}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5 shadow-sm">
+    <div class="mb-4 flex items-center justify-between">
+      <h3 class="font-bold flex items-center gap-2 text-lg"><i class="fa-solid fa-people-group"></i> {% trans "Deployments" %} ({{ deployments|length }})</h3>
+      <a href="{% url 'mobilization:deployment_create' event.pk %}"
+         :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+         class="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-semibold hover:opacity-80">
+        <i class="fa-solid fa-plus"></i> {% trans "Add" %}
+      </a>
+    </div>
+
+    {% if deployments %}
+      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {% for dep in deployments %}
+          <a href="{% url 'mobilization:deployment_detail' dep.pk %}"
+             :class="darkMode ? 'bg-primary-bg-dark hover:opacity-80' : 'bg-primary-bg-light hover:opacity-80'"
+             class="block rounded-lg p-4 transition">
+            <div class="flex items-start justify-between gap-2">
+              <span class="font-semibold text-sm leading-snug">{{ dep.title }}</span>
+              {% include "mobilization/partials/status_badge.html" with status=dep.status %}
+            </div>
+            <div class="mt-2 flex flex-wrap gap-2 text-xs opacity-60">
+              {% include "mobilization/partials/priority_badge.html" with priority=dep.priority %}
+              <span class="capitalize">{{ dep.deployment_type|replace:"_" " " }}</span>
+            </div>
+            <div class="mt-2 text-xs opacity-50">
+              {{ dep.assignments.count }} {% trans "assigned" %} · {{ dep.interventions.count }} {% trans "interventions" %}
+            </div>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="text-sm opacity-60">{% trans "No deployments yet." %}</p>
+    {% endif %}
+  </div>
+
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const isDark = localStorage.getItem("darkMode") === "true";
+
+  const lightTiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19, attribution: "&copy; OpenStreetMap contributors"
+  });
+  const darkTiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+    maxZoom: 19, attribution: "&copy; OpenStreetMap contributors &copy; CARTO"
+  });
+
+  const map = L.map("mob-map", { zoomControl: false }).setView([52.0, 19.0], 6);
+  L.control.zoom({ position: "bottomright" }).addTo(map);
+  (isDark ? darkTiles : lightTiles).addTo(map);
+
+  const bounds = [];
+
+  fetch("{{ map_data_url }}")
+    .then(r => r.json())
+    .then(data => {
+      if (!data.features || data.features.length === 0) return;
+
+      data.features.forEach(f => {
+        const props = f.properties;
+
+        if (props.kind === "campaign_zone") {
+          const layer = L.geoJSON(f, {
+            style: { color: props.color, weight: 2.5, fillOpacity: 0.15 }
+          }).bindPopup(`<strong>${props.label}</strong><br>Campaign Zone`).addTo(map);
+          layer.getBounds && bounds.push(...Object.values(layer.getBounds()));
+
+        } else if (props.kind === "mission") {
+          const colors = { planned: "#94a3b8", active: "#22c55e", paused: "#f59e0b", completed: "#6366f1", cancelled: "#ef4444" };
+          const col = colors[props.status] || "#94a3b8";
+          const icon = L.divIcon({
+            html: `<div style="background:${col};width:14px;height:14px;border-radius:50%;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,.4)"></div>`,
+            className: "", iconSize: [14, 14], iconAnchor: [7, 7]
+          });
+          const urgencyLabel = ["","Low","Medium","High"][props.urgency] || props.urgency;
+          const impactLabel = ["","Low","Medium","High"][props.impact] || props.impact;
+          const marker = L.marker([f.geometry.coordinates[1], f.geometry.coordinates[0]], { icon })
+            .bindPopup(`<strong>${props.label}</strong><br>Deployment: ${props.deployment}<br>Urgency: ${urgencyLabel} · Impact: ${impactLabel}<br>Status: ${props.status}`)
+            .addTo(map);
+          bounds.push([f.geometry.coordinates[1], f.geometry.coordinates[0]]);
+        }
+      });
+
+      if (bounds.length) {
+        try { map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 }); } catch(e) {}
+      }
+    })
+    .catch(() => {});
+});
+</script>
+{% endblock %}

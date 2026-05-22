@@ -1,0 +1,95 @@
+{% extends "mobilization/base.html" %}
+{% load i18n %}
+
+{% block mob_title %}{% trans "Responders" %}{% endblock %}
+
+{% block mob_content %}
+<div class="grid gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
+
+  <aside :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-5 shadow-sm space-y-5">
+    <form method="get" class="space-y-4">
+      <div>
+        <label class="mb-1 block text-sm font-semibold">{% trans "Search" %}</label>
+        <input type="search" name="q" value="{{ q }}" placeholder="{% trans "Name..." %}"
+               :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+               class="w-full rounded-lg border px-3 py-2 text-sm outline-none">
+      </div>
+      <div>
+        <label class="mb-1 block text-sm font-semibold">{% trans "Status" %}</label>
+        <select name="status"
+                :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                class="w-full rounded-lg border px-3 py-2 text-sm">
+          <option value="">{% trans "All statuses" %}</option>
+          {% for val, label in status_choices %}
+            <option value="{{ val }}" {% if status_filter == val %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button type="submit"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="w-full rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-90">
+        <i class="fa-solid fa-filter mr-1"></i> {% trans "Filter" %}
+      </button>
+    </form>
+
+    <div>
+      <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Status counts" %}</h3>
+      <div class="space-y-2">
+        {% for val, label in status_choices %}
+          <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="flex items-center justify-between rounded-lg px-3 py-2 text-sm">
+            <span>{{ label }}</span>
+            <span class="font-bold">{{ status_counts|default_if_none:0 }}</span>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </aside>
+
+  <section class="space-y-3">
+    {% for r in responders %}
+      <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-primary-bg-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-primary-bg-light'"
+               class="rounded-lg border p-5 shadow-sm transition">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div class="space-y-1.5">
+            <div class="flex flex-wrap items-center gap-2">
+              <span :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-lg font-bold">
+                {{ r.person }}
+              </span>
+              {% include "mobilization/partials/status_badge.html" with status=r.current_status %}
+              {% if not r.is_active %}
+                <span class="rounded border border-current/20 px-2 py-0.5 text-xs opacity-60">{% trans "Inactive" %}</span>
+              {% endif %}
+              {% if r.is_trained %}
+                <span class="rounded border border-current/20 px-2 py-0.5 text-xs"><i class="fa-solid fa-graduation-cap mr-1"></i>Trained</span>
+              {% endif %}
+              {% if r.is_background_checked %}
+                <span class="rounded border border-current/20 px-2 py-0.5 text-xs"><i class="fa-solid fa-shield-check mr-1"></i>Checked</span>
+              {% endif %}
+            </div>
+            <div class="flex flex-wrap gap-3 text-xs opacity-60">
+              {% for skill in r.skills.all|slice:":4" %}
+                <span class="rounded border border-current/15 px-2 py-0.5">{{ skill.skill.title }} ({{ skill.get_level_display }})</span>
+              {% endfor %}
+              {% if r.communities.count %}<span>{{ r.communities.count }} communities</span>{% endif %}
+            </div>
+          </div>
+          <a href="{% url 'mobilization:responder_detail' r.pk %}"
+             :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+             class="inline-flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold hover:opacity-80">
+            <i class="fa-solid fa-arrow-right"></i> {% trans "View" %}
+          </a>
+        </div>
+      </article>
+    {% empty %}
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-10 text-center shadow-sm">
+        <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="fa-solid fa-user-slash text-4xl"></i>
+        <h2 class="mt-4 text-xl font-bold">{% trans "No responders found" %}</h2>
+        <p class="mt-1 text-sm opacity-70">{% trans "Adjust the filters or add responders via admin." %}</p>
+      </div>
+    {% endfor %}
+  </section>
+
+</div>
+{% endblock %}

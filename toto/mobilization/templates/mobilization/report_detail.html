@@ -1,0 +1,220 @@
+{% extends "mobilization/base.html" %}
+{% load i18n %}
+
+{% block mob_title %}{{ report.title }}{% endblock %}
+
+{% block mob_content %}
+<div x-data="{ rejectOpen: false, enactOpen: false }" class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+
+  <section class="space-y-5">
+    {# — Header — #}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-6 shadow-sm">
+      <a href="{% url 'mobilization:report_list' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+        <i class="fa-solid fa-arrow-left"></i> {% trans "Reports" %}
+      </a>
+      <div class="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div class="space-y-2">
+          <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-3xl font-bold">{{ report.title }}</h2>
+          <div class="flex flex-wrap items-center gap-2">
+            {% include "mobilization/partials/status_badge.html" with status=report.status %}
+            {% include "mobilization/partials/severity_badge.html" with severity=report.severity %}
+            {% if report.incident_type %}
+              <span class="rounded border border-current/20 px-2 py-0.5 text-xs">
+                <i class="{{ report.incident_type.icon }} mr-1"></i>{{ report.incident_type.name }}
+              </span>
+            {% endif %}
+            <span class="text-xs opacity-60">{{ report.community }}</span>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap gap-2">
+          {% if report.status == "draft" %}
+            <form method="post" action="{% url 'mobilization:report_submit' report.pk %}">
+              {% csrf_token %}
+              <button type="submit"
+                      :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                      class="rounded-lg px-4 py-2 text-sm font-semibold hover:opacity-90">
+                <i class="fa-solid fa-paper-plane mr-1"></i> {% trans "Submit" %}
+              </button>
+            </form>
+          {% endif %}
+          {% if report.status == "submitted" and can_enact %}
+            <form method="post" action="{% url 'mobilization:report_review' report.pk %}">
+              {% csrf_token %}
+              <button type="submit"
+                      :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                      class="rounded-lg border px-4 py-2 text-sm font-semibold hover:opacity-80">
+                <i class="fa-solid fa-magnifying-glass mr-1"></i> {% trans "Mark Reviewed" %}
+              </button>
+            </form>
+          {% endif %}
+          {% if report.status in "submitted reviewed" and can_enact %}
+            <button type="button" @click="enactOpen = true"
+                    :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                    class="rounded-lg px-4 py-2 text-sm font-semibold hover:opacity-90">
+              <i class="fa-solid fa-gavel mr-1"></i> {% trans "Enact" %}
+            </button>
+            <button type="button" @click="rejectOpen = true"
+                    :class="darkMode ? 'border-warn-dark text-warn-dark' : 'border-warn-light text-warn-light'"
+                    class="rounded-lg border px-4 py-2 text-sm font-semibold hover:opacity-80">
+              <i class="fa-solid fa-ban mr-1"></i> {% trans "Reject" %}
+            </button>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    {# — Summary / Justification — #}
+    {% if report.summary or report.justification %}
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-5 shadow-sm space-y-4">
+        {% if report.summary %}
+          <div>
+            <h3 class="text-sm font-bold uppercase tracking-wide opacity-60 mb-2">{% trans "Summary" %}</h3>
+            <p class="text-sm leading-7">{{ report.summary }}</p>
+          </div>
+        {% endif %}
+        {% if report.justification %}
+          <div>
+            <h3 class="text-sm font-bold uppercase tracking-wide opacity-60 mb-2">{% trans "Justification" %}</h3>
+            <p class="text-sm leading-7">{{ report.justification }}</p>
+          </div>
+        {% endif %}
+        {% if report.decision_notes %}
+          <div>
+            <h3 class="text-sm font-bold uppercase tracking-wide opacity-60 mb-2">{% trans "Decision Notes" %}</h3>
+            <p class="text-sm leading-7 opacity-80">{{ report.decision_notes }}</p>
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    {# — Evidence — #}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-5 shadow-sm">
+      <h3 class="mb-4 flex items-center gap-2 font-bold"><i class="fa-solid fa-magnifying-glass"></i> {% trans "Evidence" %}</h3>
+      {% if evidence %}
+        <div class="space-y-3">
+          {% for ev in evidence %}
+            <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="font-semibold text-sm">{{ ev.detection.title }}</span>
+                <span class="rounded border border-current/20 px-2 py-0.5 text-xs capitalize">{{ ev.evidence_role }}</span>
+                {% include "mobilization/partials/severity_badge.html" with severity=ev.detection.severity %}
+                <span class="text-xs opacity-60">Weight: {{ ev.weight }}</span>
+              </div>
+              {% if ev.note %}<p class="mt-2 text-xs opacity-70">{{ ev.note }}</p>{% endif %}
+              <div class="mt-1 text-xs opacity-50">
+                {% if ev.added_by %}{% trans "Added by" %} {{ ev.added_by }}{% endif %}
+                {{ ev.added_at|date:"M d, Y" }}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-sm opacity-60">{% trans "No evidence attached." %}</p>
+      {% endif %}
+    </div>
+
+    {# — Linked events — #}
+    {% if linked_events %}
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-5 shadow-sm">
+        <h3 class="mb-4 flex items-center gap-2 font-bold"><i class="fa-solid fa-bolt"></i> {% trans "Mobilization Events" %}</h3>
+        {% for ev in linked_events %}
+          <a href="{% url 'mobilization:event_detail' ev.pk %}"
+             :class="darkMode ? 'bg-primary-bg-dark hover:opacity-80' : 'bg-primary-bg-light hover:opacity-80'"
+             class="mt-2 block rounded-lg p-3 text-sm transition">
+            <div class="flex items-center justify-between gap-2">
+              <span class="font-semibold">{{ ev.title }}</span>
+              {% include "mobilization/partials/status_badge.html" with status=ev.status %}
+            </div>
+          </a>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </section>
+
+  <aside class="space-y-5">
+    {# — People — #}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-5 shadow-sm text-sm space-y-3">
+      <h3 class="font-bold flex items-center gap-2"><i class="fa-solid fa-users"></i> {% trans "People" %}</h3>
+      {% if report.submitted_by %}<div class="opacity-70"><span class="font-semibold">{% trans "Submitted by" %}:</span> {{ report.submitted_by }}</div>{% endif %}
+      {% if report.reviewed_by %}<div class="opacity-70"><span class="font-semibold">{% trans "Reviewed by" %}:</span> {{ report.reviewed_by }}</div>{% endif %}
+      {% if report.enacted_by %}<div class="opacity-70"><span class="font-semibold">{% trans "Enacted by" %}:</span> {{ report.enacted_by }}</div>{% endif %}
+    </div>
+
+    {# — Timestamps — #}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-5 shadow-sm text-xs space-y-2 opacity-70">
+      <div>Created {{ report.created_at|date:"M d, Y H:i" }}</div>
+      <div>Updated {{ report.updated_at|date:"M d, Y H:i" }}</div>
+      {% if report.enacted_at %}<div :class="darkMode ? 'text-success-dark' : 'text-success-light'">Enacted {{ report.enacted_at|date:"M d, Y H:i" }}</div>{% endif %}
+      {% if report.rejected_at %}<div :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">Rejected {{ report.rejected_at|date:"M d, Y H:i" }}</div>{% endif %}
+    </div>
+
+    {# — Quick create event if enacted — #}
+    {% if report.status == "enacted" and not linked_events %}
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-5 shadow-sm">
+        <h3 class="mb-3 font-bold text-sm">{% trans "No event yet" %}</h3>
+        <form method="post" action="{% url 'mobilization:report_enact' report.pk %}">
+          {% csrf_token %}
+          <input type="hidden" name="create_event" value="1">
+          <button type="submit"
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                  class="w-full rounded-lg px-4 py-2 text-sm font-semibold hover:opacity-90">
+            <i class="fa-solid fa-plus mr-1"></i> {% trans "Create Event" %}
+          </button>
+        </form>
+      </div>
+    {% endif %}
+  </aside>
+
+  {# — Enact modal — #}
+  <div x-show="enactOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4">
+    <div @click.outside="enactOpen = false"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="w-full max-w-md rounded-lg border p-5 shadow-2xl">
+      <h3 class="text-xl font-bold flex items-center gap-2"><i class="fa-solid fa-gavel"></i> {% trans "Enact Report?" %}</h3>
+      <p class="mt-3 text-sm opacity-75">{% trans "This will mark the report as enacted. Optionally create a mobilization event." %}</p>
+      <form method="post" action="{% url 'mobilization:report_enact' report.pk %}" class="mt-5 space-y-3">
+        {% csrf_token %}
+        <label class="flex items-center gap-2 text-sm">
+          <input type="checkbox" name="create_event" value="1" class="rounded"> {% trans "Also create a mobilization event" %}
+        </label>
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" @click="enactOpen = false" class="rounded-lg border border-current/20 px-4 py-2 text-sm font-semibold">{% trans "Cancel" %}</button>
+          <button type="submit"
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                  class="rounded-lg px-4 py-2 text-sm font-semibold">{% trans "Enact" %}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {# — Reject modal — #}
+  <div x-show="rejectOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4">
+    <div @click.outside="rejectOpen = false"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="w-full max-w-md rounded-lg border p-5 shadow-2xl">
+      <h3 class="text-xl font-bold flex items-center gap-2"><i class="fa-solid fa-ban"></i> {% trans "Reject Report?" %}</h3>
+      <form method="post" action="{% url 'mobilization:report_reject' report.pk %}" class="mt-4 space-y-3">
+        {% csrf_token %}
+        <textarea name="notes" rows="3" placeholder="{% trans "Reason for rejection..." %}"
+                  :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                  class="w-full rounded-lg border px-3 py-2 text-sm"></textarea>
+        <div class="flex justify-end gap-2">
+          <button type="button" @click="rejectOpen = false" class="rounded-lg border border-current/20 px-4 py-2 text-sm font-semibold">{% trans "Cancel" %}</button>
+          <button type="submit"
+                  :class="darkMode ? 'bg-warn-dark text-primary-bg-dark' : 'bg-warn-light text-primary-bg-light'"
+                  class="rounded-lg px-4 py-2 text-sm font-semibold">{% trans "Reject" %}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

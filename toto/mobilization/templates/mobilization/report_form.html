@@ -1,0 +1,94 @@
+{% extends "mobilization/base.html" %}
+{% load i18n %}
+
+{% block mob_title %}{% trans "New Report" %}{% endblock %}
+
+{% block mob_content %}
+<div class="mx-auto max-w-2xl">
+  <a href="{% url 'mobilization:report_list' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+    <i class="fa-solid fa-arrow-left"></i> {% trans "Reports" %}
+  </a>
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="mt-4 rounded-lg border p-6 shadow-sm">
+    <h2 class="text-2xl font-bold flex items-center gap-2">
+      <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="fa-solid fa-file-plus"></i>
+      {% trans "New Mobilization Report" %}
+    </h2>
+
+    <form method="post" class="mt-6 space-y-5">
+      {% csrf_token %}
+
+      <div>
+        <label class="mb-1 block text-sm font-semibold">{% trans "Community" %} *</label>
+        <select name="community" required
+                :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                class="w-full rounded-lg border px-3 py-2 text-sm">
+          <option value="">{% trans "Select community..." %}</option>
+          {% for c in communities %}
+            <option value="{{ c.pk }}">{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label class="mb-1 block text-sm font-semibold">{% trans "Title" %} *</label>
+        <input type="text" name="title" required placeholder="{% trans "Brief title for this report" %}"
+               :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+               class="w-full rounded-lg border px-3 py-2 text-sm">
+      </div>
+
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label class="mb-1 block text-sm font-semibold">{% trans "Incident Type" %}</label>
+          <select name="incident_type"
+                  :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                  class="w-full rounded-lg border px-3 py-2 text-sm">
+            <option value="">{% trans "Select type..." %}</option>
+            {% for it in incident_types %}
+              <option value="{{ it.pk }}">{{ it.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div>
+          <label class="mb-1 block text-sm font-semibold">{% trans "Initial Severity" %}</label>
+          <select name="severity"
+                  :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                  class="w-full rounded-lg border px-3 py-2 text-sm">
+            {% for val, label in severity_choices %}
+              <option value="{{ val }}" {% if val == "low" %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label class="mb-1 block text-sm font-semibold">{% trans "Summary" %}</label>
+        <textarea name="summary" rows="3" placeholder="{% trans "Concise description of the situation..." %}"
+                  :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                  class="w-full rounded-lg border px-3 py-2 text-sm"></textarea>
+      </div>
+
+      <div>
+        <label class="mb-1 block text-sm font-semibold">{% trans "Justification" %}</label>
+        <textarea name="justification" rows="3" placeholder="{% trans "Why is mobilization needed?" %}"
+                  :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                  class="w-full rounded-lg border px-3 py-2 text-sm"></textarea>
+      </div>
+
+      <div class="flex justify-end gap-2 border-t border-current/10 pt-4">
+        <a href="{% url 'mobilization:report_list' %}"
+           class="rounded-lg border border-current/20 px-4 py-2 text-sm font-semibold hover:opacity-80">
+          {% trans "Cancel" %}
+        </a>
+        <button type="submit"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="rounded-lg px-5 py-2 text-sm font-semibold hover:opacity-90">
+          <i class="fa-solid fa-floppy-disk mr-1"></i> {% trans "Save Draft" %}
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
