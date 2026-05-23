@@ -16,156 +16,304 @@
   x-data="queryViewer()"
   x-init="init()"
   :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
-  class="min-h-screen px-6 py-10 transition-colors duration-300"
+  class="min-h-screen px-5 py-8 transition-colors duration-300"
 >
-  <div class="max-w-5xl mx-auto space-y-8">
+  <div class="mx-auto max-w-7xl space-y-6">
 
-    <!-- Header -->
-    <div
-      class="p-8 rounded-2xl shadow-xl border text-center sticky top-0 z-10 backdrop-blur-md space-y-4"
-      :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
-    >
-      <h2
-        class="text-4xl font-extrabold tracking-tight"
-        :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-      >
-        Cypher Query Viewer
-      </h2>
-
-      <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
-        <label class="text-sm font-medium whitespace-nowrap">Query:</label>
-        <select
-          x-model="selectedId"
-          @change="selectQuery()"
-          class="text-sm border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 shadow-sm w-52"
-          :class="darkMode
-            ? 'bg-primary-bg-dark text-text-main-dark border-accent-1 focus:ring-accent-dark'
-            : 'bg-primary-bg-light text-text-main-light border-accent-2 focus:ring-accent-light'"
-        >
-          <option value="">Select a query…</option>
-          <template x-for="q in queries" :key="q.id">
-            <option :value="String(q.id)" x-text="q.name"></option>
-          </template>
-        </select>
-
-        <button
-          x-show="selectedId"
-          @click="runQuery()"
-          :disabled="running"
-          class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition disabled:opacity-50"
-          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90' : 'bg-accent-light text-primary-bg-light hover:opacity-90'"
-        >
-          <svg x-show="running" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
-          </svg>
-          <i x-show="!running" class="fa-solid fa-play text-xs"></i>
-          <span x-text="running ? runStatus : 'Run'"></span>
-        </button>
+    <!-- Page header -->
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h1 class="text-3xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+          <i class="fa-solid fa-database mr-2 text-2xl"></i>Cypher Queries
+        </h1>
+        <p class="mt-1 text-sm opacity-60">Run saved Cypher queries against Neo4j and inspect the graph.</p>
       </div>
-
-      <p x-show="error" x-text="error" class="text-red-500 text-sm font-medium"></p>
-    </div>
-
-    <!-- Query details (shown on select, no run needed) -->
-    <div
-      x-show="queryInfo"
-      x-transition
-      class="p-6 rounded-xl shadow-md border"
-      :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
-    >
-      <h3
-        class="text-xl font-bold mb-1"
-        :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-        x-text="queryInfo?.name"
-      ></h3>
-      <p
-        x-show="queryInfo?.description"
-        x-text="queryInfo?.description"
-        class="text-sm opacity-60 mb-4"
-      ></p>
-
-      <h4 class="text-xs font-semibold uppercase tracking-wider opacity-50 mb-2">Cypher</h4>
-      <pre
-        class="p-4 rounded-lg border overflow-auto text-sm font-mono leading-relaxed"
-        :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
-        x-text="queryInfo?.query"
-      ></pre>
-
-      <div class="mt-3 flex flex-wrap gap-4 text-xs opacity-40">
-        <span
-          x-show="graphLoaded"
-          x-text="`${nodeCount} node${nodeCount === 1 ? '' : 's'} · ${edgeCount} edge${edgeCount === 1 ? '' : 's'}`"
-        ></span>
-        <span
-          x-show="queryInfo?.last_run_at"
-          x-text="queryInfo?.last_run_at ? 'last run ' + new Date(queryInfo.last_run_at).toLocaleString() : ''"
-        ></span>
-      </div>
-    </div>
-
-    <!-- Graph canvas -->
-    <div x-show="graphLoaded" x-transition>
-      <div
-        id="cy"
-        style="width:100%;height:620px;border-radius:12px;"
-        :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
-        class="border shadow-inner"
-      ></div>
-    </div>
-
-    <!-- Element detail panel -->
-    <div
-      x-show="selectedElement"
-      x-transition
-      class="p-6 rounded-xl shadow-md border"
-      :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
-    >
-      <div class="flex items-center justify-between mb-4">
-        <h3
-          class="font-bold text-lg"
-          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-          x-text="selectedElement?.label || selectedElement?.type || 'Details'"
-        ></h3>
-        <button @click="selectedElement = null" class="text-xl leading-none opacity-50 hover:opacity-100 transition">&times;</button>
-      </div>
-      <dl class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
-        <template x-for="[k, v] in Object.entries(selectedElement?.props || {})" :key="k">
-          <template x-if="v !== null && v !== undefined && v !== ''">
-            <div class="contents">
-              <dt class="font-medium opacity-60 whitespace-nowrap" x-text="k"></dt>
-              <dd class="font-mono break-all" x-text="v"></dd>
-            </div>
-          </template>
-        </template>
-      </dl>
-      <p
-        x-show="Object.keys(selectedElement?.props || {}).length === 0"
-        class="text-sm opacity-40 italic"
-      >No properties.</p>
-    </div>
-
-    {% if request.user.is_superuser %}
-    <div class="flex justify-end">
+      {% if request.user.is_superuser %}
       <a
         href="{% url 'ravioli:projection_sync' %}"
-        class="inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium opacity-60 transition hover:opacity-100"
-        :class="darkMode ? 'text-warn-dark hover:bg-bubble-bg-dark' : 'text-warn-light hover:bg-bubble-bg-light'"
+        :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2 text-text-main-light'"
+        class="inline-flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80"
       >
-        <i class="fa-solid fa-arrows-rotate"></i>
-        Go to sync view
+        <i class="fa-solid fa-arrows-rotate"></i> Sync view
       </a>
+      {% endif %}
     </div>
-    {% endif %}
 
-    <div class="text-center">
-      <a
-        href="{% url 'core:dashboard' %}"
-        class="inline-block px-5 py-2 rounded-lg font-semibold text-sm hover:opacity-90 transition"
-        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-      >
-        Back to Dashboard
-      </a>
+    <!-- Two-column layout -->
+    <div class="grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)]">
+
+      <!-- ── Sidebar ── -->
+      <aside class="space-y-4">
+
+        <!-- Query list -->
+        <section
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="rounded-lg border p-4 shadow-sm"
+        >
+          <h3 class="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide opacity-60">
+            <i class="fa-solid fa-list"></i> Queries
+          </h3>
+
+          {% if queries %}
+          <div class="space-y-1">
+            {% for q in queries %}
+            <button
+              @click="selectQueryId('{{ q.id }}')"
+              class="w-full rounded-lg px-3 py-2.5 text-left text-sm transition"
+              :class="selectedId === '{{ q.id }}'
+                ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light')
+                : (darkMode ? 'hover:bg-primary-bg-dark' : 'hover:bg-primary-bg-light')"
+            >
+              <div class="font-semibold leading-tight">{{ q.name }}</div>
+              {% with r=results_by_query|default_if_none:"" %}
+              {% endwith %}
+              <div class="mt-0.5 flex flex-wrap items-center gap-2 text-xs opacity-60"
+                   :class="selectedId === '{{ q.id }}' ? 'opacity-80' : ''">
+                {% with q_id=q.id %}
+                {% endwith %}
+                <span x-show="getQueryMeta('{{ q.id }}')?.last_run_at"
+                      x-text="getQueryMeta('{{ q.id }}')?.last_run_at ? new Date(getQueryMeta('{{ q.id }}').last_run_at).toLocaleDateString() : ''"></span>
+                <span x-show="getQueryMeta('{{ q.id }}')?.cached_node_count !== null"
+                      x-text="getQueryMeta('{{ q.id }}')?.cached_node_count !== null ? getQueryMeta('{{ q.id }}').cached_node_count + ' nodes' : ''"></span>
+              </div>
+            </button>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div
+            :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+            class="rounded-lg border border-dashed p-5 text-center text-sm italic opacity-60"
+          >
+            No queries saved yet.
+          </div>
+          {% endif %}
+
+          <!-- Run button -->
+          <div x-show="selectedId" class="mt-3 border-t border-current/10 pt-3">
+            <button
+              @click="runQuery()"
+              :disabled="running"
+              class="w-full inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition disabled:opacity-50"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90' : 'bg-accent-light text-primary-bg-light hover:opacity-90'"
+            >
+              <svg x-show="running" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+              </svg>
+              <i x-show="!running" class="fa-solid fa-play text-xs"></i>
+              <span x-text="running ? runStatus : 'Run'"></span>
+            </button>
+          </div>
+        </section>
+
+        <!-- Metrics -->
+        <section
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="rounded-lg border p-4 shadow-sm"
+        >
+          <h3 class="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide opacity-60">
+            <i class="fa-solid fa-chart-bar"></i> Stats
+          </h3>
+
+          <div class="space-y-2">
+
+            <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="flex items-center gap-3 rounded-lg p-3">
+              <div :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg">
+                <i class="fa-solid fa-database text-sm" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+              </div>
+              <div>
+                <div class="text-2xl font-bold">{{ queries|length }}</div>
+                <div class="text-xs opacity-60">Saved queries</div>
+              </div>
+            </div>
+
+            <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="flex items-center gap-3 rounded-lg p-3">
+              <div :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg">
+                <i class="fa-solid fa-circle-check text-sm" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+              </div>
+              <div>
+                <div class="text-2xl font-bold">{{ run_stats.succeeded|default:0 }}</div>
+                <div class="text-xs opacity-60">Runs succeeded</div>
+              </div>
+            </div>
+
+            <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="flex items-center gap-3 rounded-lg p-3">
+              <div :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg">
+                <i class="fa-solid fa-circle-xmark text-sm" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
+              </div>
+              <div>
+                <div class="text-2xl font-bold">{{ run_stats.failed|default:0 }}</div>
+                <div class="text-xs opacity-60">Runs failed</div>
+              </div>
+            </div>
+
+            <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="flex items-center gap-3 rounded-lg p-3">
+              <div :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg">
+                <i class="fa-solid fa-circle-nodes text-sm" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+              </div>
+              <div>
+                <div class="text-2xl font-bold">{{ total_nodes }}</div>
+                <div class="text-xs opacity-60">Nodes retrieved</div>
+              </div>
+            </div>
+
+            <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="flex items-center gap-3 rounded-lg p-3">
+              <div :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg">
+                <i class="fa-solid fa-arrow-right-arrow-left text-sm" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+              </div>
+              <div>
+                <div class="text-2xl font-bold">{{ total_edges }}</div>
+                <div class="text-xs opacity-60">Edges retrieved</div>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        <div class="text-center">
+          <a
+            href="{% url 'core:dashboard' %}"
+            :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+            class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80"
+          >
+            <i class="fa-solid fa-arrow-left"></i> Dashboard
+          </a>
+        </div>
+
+      </aside>
+
+      <!-- ── Main content ── -->
+      <main class="space-y-5">
+
+        <!-- Error banner -->
+        <div
+          x-show="error"
+          x-transition
+          :class="darkMode ? 'border-warn-dark bg-warn-dark/10 text-warn-dark' : 'border-warn-light bg-warn-light/10 text-warn-light'"
+          class="flex items-start gap-3 rounded-lg border p-4 text-sm"
+        >
+          <i class="fa-solid fa-triangle-exclamation mt-0.5 shrink-0"></i>
+          <div>
+            <span class="font-semibold">Error — </span>
+            <span x-text="error"></span>
+          </div>
+          <button @click="error = null" class="ml-auto shrink-0 text-lg leading-none opacity-60 hover:opacity-100">&times;</button>
+        </div>
+
+        <!-- Empty state -->
+        <div
+          x-show="!selectedId"
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="rounded-lg border border-dashed p-12 text-center shadow-sm"
+        >
+          <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="fa-solid fa-database text-4xl opacity-40"></i>
+          <h2 class="mt-4 text-xl font-bold">Select a query</h2>
+          <p class="mt-1 text-sm opacity-60">Choose a query from the sidebar, then click Run to execute it.</p>
+        </div>
+
+        <!-- Query details card -->
+        <article
+          x-show="queryInfo"
+          x-transition
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="rounded-lg border p-5 shadow-sm"
+        >
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div class="min-w-0 space-y-1">
+              <h2
+                class="text-2xl font-bold"
+                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                x-text="queryInfo?.name"
+              ></h2>
+              <p x-show="queryInfo?.description" x-text="queryInfo?.description" class="text-sm opacity-60"></p>
+            </div>
+
+            <div class="flex flex-wrap gap-2 shrink-0">
+              <span
+                x-show="queryInfo?.last_run_at"
+                class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-0.5 text-xs"
+                x-text="queryInfo?.last_run_at ? 'Last run ' + new Date(queryInfo.last_run_at).toLocaleString() : ''"
+              ></span>
+              <span
+                x-show="graphLoaded"
+                :class="darkMode ? 'bg-accent-dark/20 text-accent-dark' : 'bg-accent-light/20 text-accent-light'"
+                class="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-semibold"
+              >
+                <i class="fa-solid fa-circle-nodes"></i>
+                <span x-text="`${nodeCount} nodes · ${edgeCount} edges`"></span>
+              </span>
+            </div>
+          </div>
+
+          <div class="mt-4 border-t border-current/10 pt-4">
+            <div class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-50">Cypher</div>
+            <pre
+              class="overflow-auto rounded-lg border p-4 font-mono text-sm leading-relaxed"
+              :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+              x-text="queryInfo?.query"
+            ></pre>
+          </div>
+        </article>
+
+        <!-- Graph canvas -->
+        <div x-show="graphLoaded" x-transition>
+          <div
+            :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+            class="rounded-lg border shadow-sm overflow-hidden"
+          >
+            <div class="flex items-center justify-between border-b border-current/10 px-4 py-2 text-xs opacity-60">
+              <span><i class="fa-solid fa-diagram-project mr-1"></i>Graph</span>
+              <span x-text="`${nodeCount} nodes · ${edgeCount} edges`"></span>
+            </div>
+            <div id="cy" style="width:100%;height:580px;"></div>
+          </div>
+        </div>
+
+        <!-- Element detail panel -->
+        <article
+          x-show="selectedElement"
+          x-transition
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="rounded-lg border p-5 shadow-sm"
+        >
+          <div class="mb-4 flex items-center justify-between">
+            <h3
+              class="flex items-center gap-2 text-lg font-bold"
+              :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+            >
+              <i class="fa-solid fa-circle-info text-base"></i>
+              <span x-text="selectedElement?.label || selectedElement?.type || 'Element'"></span>
+            </h3>
+            <button
+              @click="selectedElement = null"
+              :class="darkMode ? 'border-accent-1 hover:bg-primary-bg-dark' : 'border-accent-2 hover:bg-primary-bg-light'"
+              class="rounded-lg border px-2 py-1 text-xs font-semibold transition"
+            >
+              <i class="fa-solid fa-xmark"></i> Close
+            </button>
+          </div>
+
+          <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 text-sm">
+            <template x-for="[k, v] in Object.entries(selectedElement?.props || {})" :key="k">
+              <template x-if="v !== null && v !== undefined && v !== ''">
+                <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
+                  <div class="text-xs uppercase tracking-wide opacity-50 mb-0.5" x-text="k"></div>
+                  <div class="font-semibold font-mono break-all text-sm" x-text="v"></div>
+                </div>
+              </template>
+            </template>
+          </div>
+
+          <p
+            x-show="Object.keys(selectedElement?.props || {}).length === 0"
+            :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+            class="rounded-lg border border-dashed p-4 text-center text-sm italic opacity-60"
+          >
+            No properties on this element.
+          </p>
+        </article>
+
+      </main>
     </div>
 
   </div>
@@ -195,6 +343,15 @@ function queryViewer() {
       this.queries = JSON.parse(document.getElementById('ravioli-queries').textContent);
     },
 
+    getQueryMeta(id) {
+      return this.queries.find(q => String(q.id) === String(id)) || null;
+    },
+
+    selectQueryId(id) {
+      this.selectedId = String(id);
+      this.selectQuery();
+    },
+
     selectQuery() {
       this.error = null;
       this.graphLoaded = false;
@@ -202,7 +359,7 @@ function queryViewer() {
       if (this.cy) { this.cy.destroy(); this.cy = null; }
       this._stopPolling();
 
-      const meta = this._meta();
+      const meta = this.getQueryMeta(this.selectedId);
       if (!meta) { this.queryInfo = null; return; }
 
       this.queryInfo = {
@@ -211,10 +368,6 @@ function queryViewer() {
         query: meta.query,
         last_run_at: meta.last_run_at || null,
       };
-    },
-
-    _meta() {
-      return this.queries.find(q => String(q.id) === String(this.selectedId)) || null;
     },
 
     async runQuery() {
@@ -226,13 +379,10 @@ function queryViewer() {
       this.selectedElement = null;
       if (this.cy) { this.cy.destroy(); this.cy = null; }
 
-      const runUrl = RUN_QUERY_URL.replace('{id}', this.selectedId);
+      const url = RUN_QUERY_URL.replace('{id}', this.selectedId);
       let runId;
       try {
-        const res = await fetch(runUrl, {
-          method: 'POST',
-          headers: { 'X-CSRFToken': CSRF_TOKEN },
-        });
+        const res = await fetch(url, { method: 'POST', headers: { 'X-CSRFToken': CSRF_TOKEN } });
         const data = await res.json();
         if (!res.ok || data.error) throw new Error(data.error || `Error ${res.status}`);
         runId = data.run_id;
@@ -276,7 +426,7 @@ function queryViewer() {
     },
 
     async _loadCachedResult() {
-      this.runStatus = 'Loading result…';
+      this.runStatus = 'Loading…';
       const url = CACHED_DATA_URL.replace('{id}', this.selectedId);
       try {
         const res = await fetch(url);
@@ -286,16 +436,18 @@ function queryViewer() {
         this.nodeCount = data.nodes.length;
         this.edgeCount = data.edges.length;
 
-        if (this.queryInfo) {
-          this.queryInfo.last_run_at = data.last_run_at;
+        if (this.queryInfo) this.queryInfo.last_run_at = data.last_run_at;
+
+        const meta = this.getQueryMeta(this.selectedId);
+        if (meta) {
+          meta.last_run_at = data.last_run_at;
+          meta.cached_node_count = data.nodes.length;
+          meta.cached_edge_count = data.edges.length;
         }
 
         await this.$nextTick();
         this._renderGraph(data.nodes, data.edges);
         this.graphLoaded = true;
-
-        const meta = this._meta();
-        if (meta) meta.last_run_at = data.last_run_at;
       } catch (e) {
         this.error = e.message;
       } finally {
@@ -314,37 +466,35 @@ function queryViewer() {
       const nodeBorder = dark ? tw['accent-dark']     : tw['accent-light'];
       const nodeText   = dark ? tw['text-main-dark']  : tw['text-main-light'];
 
-      const elements = [
-        ...nodes.map(n => ({
-          data: {
-            id: n.id,
-            label: n.props.name || n.props.title || n.labels.join(', '),
-            props: n.props,
-            type: n.labels.join(', '),
-          },
-        })),
-        ...edges.map(e => ({
-          data: {
-            id: e.id,
-            source: e.start,
-            target: e.end,
-            label: e.type,
-            props: e.props,
-            type: e.type,
-          },
-        })),
-      ];
-
       const self = this;
       this.cy = cytoscape({
         container: document.getElementById('cy'),
-        elements,
+        elements: [
+          ...nodes.map(n => ({
+            data: {
+              id: n.id,
+              label: n.props.name || n.props.title || n.labels.join(', '),
+              props: n.props,
+              type: n.labels.join(', '),
+            },
+          })),
+          ...edges.map(e => ({
+            data: {
+              id: e.id,
+              source: e.start,
+              target: e.end,
+              label: e.type,
+              props: e.props,
+              type: e.type,
+            },
+          })),
+        ],
         style: [
           {
             selector: 'node',
             style: {
               'background-color': nodeBg,
-              'background-opacity': 0.85,
+              'background-opacity': 0.9,
               'border-width': 2,
               'border-color': nodeBorder,
               'label': 'data(label)',
@@ -372,12 +522,7 @@ function queryViewer() {
           },
           {
             selector: ':selected',
-            style: {
-              'border-width': 4,
-              'border-color': nodeBorder,
-              'line-color': nodeBorder,
-              'target-arrow-color': nodeBorder,
-            },
+            style: { 'border-width': 4, 'border-color': nodeBorder },
           },
         ],
         layout: { name: 'cose', animate: true, padding: 30 },

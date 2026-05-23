@@ -16,15 +16,16 @@ def superuser_required(view_func):
 
 
 def query_unified_view(request):
-    from .models import CypherQueryResult
+    from django.db.models import Count, Q
 
-    queries = CypherQuery.objects.all().order_by("name")
+    from .models import CypherQueryResult
+    from toto.workflows.models import WorkflowRun
+
+    queries = list(CypherQuery.objects.all().order_by("name"))
 
     results_by_query = {
         r.query_id: r
-        for r in CypherQueryResult.objects.filter(query__in=queries).only(
-            "query_id", "last_run_at", "result_nodes", "result_edges"
-        )
+        for r in CypherQueryResult.objects.filter(query__in=queries)
     }
 
     queries_json = json.dumps([
@@ -52,16 +53,24 @@ def query_unified_view(request):
         for q in queries
     ])
 
-    selected_id = request.GET.get("query")
-    selected_query = None
-    if selected_id:
-        selected_query = get_object_or_404(CypherQuery, pk=selected_id)
+    run_stats = WorkflowRun.objects.filter(
+        workflow__slug="ravioli-run-cypher-query"
+    ).aggregate(
+        total=Count("id"),
+        succeeded=Count("id", filter=Q(status=WorkflowRun.COMPLETED)),
+        failed=Count("id", filter=Q(status=WorkflowRun.FAILED)),
+    )
+
+    total_nodes = sum(len(r.result_nodes or []) for r in results_by_query.values())
+    total_edges = sum(len(r.result_edges or []) for r in results_by_query.values())
 
     context = PageProcessor().decorate(
         {
             "queries": queries,
             "queries_json": queries_json,
-            "selected_query": selected_query,
+            "run_stats": run_stats,
+            "total_nodes": total_nodes,
+            "total_edges": total_edges,
         },
         request,
     )
