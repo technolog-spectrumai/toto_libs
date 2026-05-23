@@ -5,7 +5,11 @@ from django import forms
 from django.contrib import admin
 from django.utils.timezone import now
 
-from .models import Project, Column, Task, Sprint, Mission, Campaign, DocumentationPage, DocumentationSection
+from .models import (
+    Project, Column, Task, Sprint, Mission, Campaign,
+    DocumentationPage, DocumentationSection,
+    Practitioner, PractitionerAllowance,
+)
 from toto.core.batch import BatchAction
 from toto.events.models import ScheduledEvent
 from toto.verbena.admin import SectionInlineMixin, PageAdminMixin
@@ -15,14 +19,19 @@ class PrettyJSONTextarea(forms.Textarea):
     def format_value(self, value):
         if value in (None, ""):
             return ""
-
         if isinstance(value, str):
             return value
-
         return json.dumps(value, indent=2, ensure_ascii=False)
 
 
-# 🧠 Project Admin with Inline Campaigns
+# ── Project ──────────────────────────────────────────────────────────────────
+
+class PractitionerInline(admin.TabularInline):
+    model = Practitioner
+    extra = 1
+    fields = ("person", "role", "is_active")
+
+
 class CampaignInline(admin.TabularInline):
     model = Campaign
     extra = 1
@@ -32,18 +41,48 @@ class CampaignInline(admin.TabularInline):
 
 @admin.register(Project)
 class ProjectAdmin(admin.ModelAdmin):
-    list_display = ("name", "owner")
+    list_display = ("name", "owner", "practitioner_count")
     search_fields = ("name", "description")
-    filter_horizontal = ("collaborators",)
-    inlines = [CampaignInline]
+    inlines = [CampaignInline, PractitionerInline]
+
+    def practitioner_count(self, obj):
+        return obj.practitioners.filter(is_active=True).count()
+    practitioner_count.short_description = "Practitioners"
 
 
-# 🧱 Column Admin with Inline Tasks
+# ── Practitioner ──────────────────────────────────────────────────────────────
+
+class PractitionerAllowanceInline(admin.TabularInline):
+    model = PractitionerAllowance
+    extra = 0
+    fields = ("allowance_type", "asset", "amount_base_units", "payer_account", "recipient_account", "active")
+    raw_id_fields = ("asset", "payer_account", "recipient_account")
+
+
+@admin.register(Practitioner)
+class PractitionerAdmin(admin.ModelAdmin):
+    list_display = ("person", "project", "role", "is_active")
+    list_filter = ("role", "is_active", "project")
+    search_fields = ("person__display_name", "project__name")
+    raw_id_fields = ("person", "project")
+    inlines = [PractitionerAllowanceInline]
+
+
+@admin.register(PractitionerAllowance)
+class PractitionerAllowanceAdmin(admin.ModelAdmin):
+    list_display = ("practitioner", "allowance_type", "asset", "amount_base_units", "active", "valid_from", "valid_until")
+    list_filter = ("allowance_type", "active")
+    raw_id_fields = ("practitioner", "asset", "payer_account", "recipient_account")
+
+
+# ── Column ────────────────────────────────────────────────────────────────────
+
 class TaskInlineForColumn(admin.TabularInline):
     model = Task
     extra = 1
     fields = ("title", "assignee", "due_date", "position", "sprint", "weight", "mission")
     ordering = ("position",)
+    raw_id_fields = ("assignee", "mission", "sprint")
 
 
 @admin.register(Column)
@@ -51,10 +90,12 @@ class ColumnAdmin(admin.ModelAdmin):
     list_display = ("name", "project", "position", "can_add_task")
     list_filter = ("project",)
     ordering = ("position",)
+    filter_horizontal = ("auditors",)
     inlines = [TaskInlineForColumn]
 
 
-# 📣 Campaign Admin with Inline Missions
+# ── Campaign ──────────────────────────────────────────────────────────────────
+
 class MissionInline(admin.TabularInline):
     model = Mission
     extra = 1
@@ -65,10 +106,7 @@ class MissionInline(admin.TabularInline):
 class CampaignAdminForm(forms.ModelForm):
     metadata = forms.JSONField(
         required=False,
-        widget=PrettyJSONTextarea(attrs={
-            "rows": 10,
-            "class": "vLargeTextField",
-        }),
+        widget=PrettyJSONTextarea(attrs={"rows": 10, "class": "vLargeTextField"}),
     )
 
     class Meta:
@@ -87,11 +125,11 @@ class CampaignAdmin(admin.ModelAdmin):
 
     def mission_count(self, obj):
         return obj.missions.count()
-
     mission_count.short_description = "Missions"
 
 
-# 📄 Documentation Page Inline (metadata only — used inside MissionAdmin)
+# ── Mission ───────────────────────────────────────────────────────────────────
+
 class DocumentationPageInline(admin.StackedInline):
     model = DocumentationPage
     extra = 0
@@ -99,26 +137,22 @@ class DocumentationPageInline(admin.StackedInline):
     prepopulated_fields = {"slug": ("title",)}
 
 
-# 📝 Documentation Section Inline (Trix editor)
 class DocumentationSectionInline(SectionInlineMixin):
     model = DocumentationSection
 
 
-# 🎯 Mission Admin with Inline Tasks
 class TaskInlineForMission(admin.TabularInline):
     model = Task
     extra = 1
     fields = ("title", "column", "assignee", "due_date", "position", "sprint", "weight")
     ordering = ("position",)
+    raw_id_fields = ("assignee", "column", "sprint")
 
 
 class MissionAdminForm(forms.ModelForm):
     metadata = forms.JSONField(
         required=False,
-        widget=PrettyJSONTextarea(attrs={
-            "rows": 10,
-            "class": "vLargeTextField",
-        }),
+        widget=PrettyJSONTextarea(attrs={"rows": 10, "class": "vLargeTextField"}),
     )
 
     class Meta:
@@ -137,26 +171,19 @@ class MissionAdmin(admin.ModelAdmin):
 
     def task_count(self, obj):
         return obj.tasks.count()
-
     task_count.short_description = "Tasks"
 
 
-# 📝 Task Admin with JSON textarea and Event Conversion
+# ── Task ──────────────────────────────────────────────────────────────────────
+
 class TaskAdminForm(forms.ModelForm):
     description = forms.CharField(
         required=False,
-        widget=forms.Textarea(attrs={
-            "rows": 4,
-            "class": "vLargeTextField",
-        }),
+        widget=forms.Textarea(attrs={"rows": 4, "class": "vLargeTextField"}),
     )
-
     metadata = forms.JSONField(
         required=False,
-        widget=PrettyJSONTextarea(attrs={
-            "rows": 10,
-            "class": "vLargeTextField",
-        }),
+        widget=PrettyJSONTextarea(attrs={"rows": 10, "class": "vLargeTextField"}),
     )
 
     class Meta:
@@ -168,20 +195,13 @@ class TaskAdminForm(forms.ModelForm):
 class TaskAdmin(admin.ModelAdmin):
     form = TaskAdminForm
     list_display = (
-        "title",
-        "column",
-        "sprint",
-        "mission",
-        "assignee",
-        "reviewer",
-        "due_date",
-        "position",
-        "weight",
-        "completed_at",
+        "title", "column", "sprint", "mission",
+        "assignee", "reviewer", "due_date", "position", "weight", "completed_at",
     )
     list_filter = ("due_date", "sprint", "mission")
     search_fields = ("title", "description")
     ordering = ("position",)
+    raw_id_fields = ("assignee", "reviewer", "mission", "column", "sprint")
     actions = ["convert_to_event"]
 
     @admin.action(description="Convert selected tasks to events")
@@ -192,47 +212,30 @@ class TaskAdmin(admin.ModelAdmin):
                 if task.mission
                 else None
             )
-
             if not venture:
                 raise ValueError(
                     f"Task '{task.title}' has no venture via its mission/campaign/project."
                 )
-
+            owner_person = task.assignee.person if task.assignee else None
             event = ScheduledEvent.objects.create(
                 title=task.title,
                 description=task.description or "",
                 start_time=task.sprint.start_time if task.sprint else now(),
                 end_time=task.due_date if task.due_date else now() + timedelta(days=1),
-                owner=task.assignee,
+                owner=owner_person,
                 category=None,
                 public=False,
             )
-            if task.assignee:
-                event.organizers.add(task.assignee)
+            if owner_person:
+                event.organizers.add(owner_person)
             return event
 
         result = BatchAction(queryset).run(convert_one)
-
-        BatchAction.display_messages(
-            result,
-            self.message_user,
-            request,
-            verb="convert to event",
-        )
+        BatchAction.display_messages(result, self.message_user, request, verb="convert to event")
 
 
-# 📄 Documentation Page Admin
-@admin.register(DocumentationPage)
-class DocumentationPageAdmin(PageAdminMixin):
-    list_display = ("title", "mission", "is_manual", "created_at")
-    list_filter = ("is_manual",)
-    search_fields = ["title", "description", "mission__title"]
-    autocomplete_fields = ("mission",)
-    readonly_fields = ["created_at"]
-    inlines = [DocumentationSectionInline]
+# ── Sprint ────────────────────────────────────────────────────────────────────
 
-
-# 🚀 Sprint Admin with Event Conversion
 @admin.register(Sprint)
 class SprintAdmin(admin.ModelAdmin):
     list_display = ("name", "project", "start_time", "end_time")
@@ -244,12 +247,8 @@ class SprintAdmin(admin.ModelAdmin):
     def convert_to_event(self, request, queryset):
         def convert_one(sprint):
             venture = getattr(sprint.project, "venture", None)
-
             if not venture:
-                raise ValueError(
-                    f"Sprint '{sprint.name}' has no venture via its project."
-                )
-
+                raise ValueError(f"Sprint '{sprint.name}' has no venture via its project.")
             event = ScheduledEvent.objects.create(
                 title=f"Sprint: {sprint.name}",
                 description=f"Linked to project: {sprint.project.name}",
@@ -264,10 +263,16 @@ class SprintAdmin(admin.ModelAdmin):
             return event
 
         result = BatchAction(queryset).run(convert_one)
+        BatchAction.display_messages(result, self.message_user, request, verb="convert to event")
 
-        BatchAction.display_messages(
-            result,
-            self.message_user,
-            request,
-            verb="convert to event",
-        )
+
+# ── Documentation ─────────────────────────────────────────────────────────────
+
+@admin.register(DocumentationPage)
+class DocumentationPageAdmin(PageAdminMixin):
+    list_display = ("title", "mission", "is_manual", "created_at")
+    list_filter = ("is_manual",)
+    search_fields = ["title", "description", "mission__title"]
+    autocomplete_fields = ("mission",)
+    readonly_fields = ["created_at"]
+    inlines = [DocumentationSectionInline]

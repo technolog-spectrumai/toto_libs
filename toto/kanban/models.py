@@ -1,18 +1,16 @@
 from django.db import models
-from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 from toto.core.domain import DomainEntity
 from toto.people.models import Person
 from toto.verbena.models import AbstractPage, AbstractSection
 
 
-# 3‑level hierarchy for missions
 THREE_SCALE = [
     (1, "Low"),
     (2, "Medium"),
     (3, "High"),
 ]
 
-# Fibonacci scale for task weight
 FIB_SCALE = [
     (1, "Tiny"),
     (2, "Small"),
@@ -22,18 +20,15 @@ FIB_SCALE = [
 ]
 
 
-# 📁 Project
 class Project(DomainEntity):
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     owner = models.ForeignKey(Person, on_delete=models.CASCADE)
-    collaborators = models.ManyToManyField(User, related_name='collaborating_projects')
 
     def __str__(self):
         return self.name
 
 
-# 📦 Column
 class Column(DomainEntity):
     graph_node_type = "TaskStatus"
     project = models.ForeignKey(Project, on_delete=models.CASCADE, db_column="belongs_to_project")
@@ -41,24 +36,22 @@ class Column(DomainEntity):
     position = models.PositiveIntegerField()
     can_add_task = models.BooleanField(default=False)
     auditors = models.ManyToManyField(
-        User,
+        "Practitioner",
         related_name="audited_columns",
         blank=True,
-        help_text="Users who can move tasks into this column"
+        help_text="Practitioners who can move tasks into this column.",
     )
 
     def __str__(self):
         return self.name
 
 
-# 📣 Campaign
 class Campaign(DomainEntity):
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="campaigns")
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     start_date = models.DateField(null=True, blank=True)
     end_date = models.DateField(null=True, blank=True)
-
     owner = models.ForeignKey(Person, on_delete=models.SET_NULL, null=True, blank=True)
     metadata = models.JSONField(blank=True, null=True)
     zone = models.ForeignKey(
@@ -67,46 +60,32 @@ class Campaign(DomainEntity):
         null=True,
         blank=True,
         related_name="campaigns",
-        help_text="Operational zone for this campaign, if it is geographically scoped.",
     )
 
     def __str__(self):
         return self.name
 
 
-# 🎯 Mission
 class Mission(DomainEntity):
     campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name="missions")
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
-
-    urgency = models.IntegerField(
-        choices=THREE_SCALE,
-        default=2  # Medium
-    )
-    impact = models.IntegerField(
-        choices=THREE_SCALE,
-        default=2  # Medium
-    )
-
+    urgency = models.IntegerField(choices=THREE_SCALE, default=2)
+    impact = models.IntegerField(choices=THREE_SCALE, default=2)
     location = models.ForeignKey(
         "locations.Address",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name="missions",
-        help_text="Specific mission location, if applicable.",
     )
-
     route = models.ForeignKey(
         "locations.Route",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name="missions",
-        help_text="Route connected to this mission, if movement is involved.",
     )
-
     owner = models.ForeignKey(Person, on_delete=models.SET_NULL, null=True, blank=True)
     metadata = models.JSONField(blank=True, null=True)
 
@@ -126,8 +105,6 @@ class Mission(DomainEntity):
         return self.campaign.zone
 
 
-
-# 🚀 Sprint
 class Sprint(DomainEntity):
     name = models.CharField(max_length=100)
     project = models.ForeignKey(Project, on_delete=models.CASCADE)
@@ -138,17 +115,53 @@ class Sprint(DomainEntity):
         return self.name
 
 
-# 📝 Task
+class Practitioner(DomainEntity):
+    """A Person's participation in a specific Project."""
+
+    ROLE_CONTRIBUTOR = "contributor"
+    ROLE_REVIEWER = "reviewer"
+    ROLE_AUDITOR = "auditor"
+    ROLE_MANAGER = "manager"
+    ROLE_OBSERVER = "observer"
+
+    ROLE_CHOICES = [
+        (ROLE_CONTRIBUTOR, "Contributor"),
+        (ROLE_REVIEWER, "Reviewer"),
+        (ROLE_AUDITOR, "Auditor"),
+        (ROLE_MANAGER, "Manager"),
+        (ROLE_OBSERVER, "Observer"),
+    ]
+
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="practitioners")
+    person = models.ForeignKey(Person, on_delete=models.CASCADE, related_name="project_practitioner_roles")
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default=ROLE_CONTRIBUTOR)
+    is_active = models.BooleanField(default=True)
+    metadata = models.JSONField(blank=True, null=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["project", "person"], name="unique_practitioner_per_project"),
+        ]
+
+    def __str__(self):
+        return f"{self.person} in {self.project} as {self.role}"
+
+
 class Task(DomainEntity):
     mission = models.ForeignKey(Mission, on_delete=models.CASCADE, related_name="tasks")
-    column = models.ForeignKey(Column, on_delete=models.CASCADE, related_name='tasks')
-    sprint = models.ForeignKey(Sprint, on_delete=models.SET_NULL, null=True, blank=True, related_name='tasks')
-
+    column = models.ForeignKey(Column, on_delete=models.CASCADE, related_name="tasks")
+    sprint = models.ForeignKey(Sprint, on_delete=models.SET_NULL, null=True, blank=True, related_name="tasks")
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
-    assignee = models.ForeignKey(Person, on_delete=models.SET_NULL, null=True, blank=True)
+    assignee = models.ForeignKey(
+        Practitioner,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="assigned_tasks",
+    )
     reviewer = models.ForeignKey(
-        Person,
+        Practitioner,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -157,12 +170,7 @@ class Task(DomainEntity):
     )
     due_date = models.DateField(null=True, blank=True)
     position = models.PositiveIntegerField(default=0)
-
-    weight = models.IntegerField(
-        choices=FIB_SCALE,
-        default=1  # Tiny
-    )
-
+    weight = models.IntegerField(choices=FIB_SCALE, default=1)
     metadata = models.JSONField(blank=True, null=True)
     completed_at = models.DateTimeField(null=True, blank=True)
 
@@ -173,8 +181,133 @@ class Task(DomainEntity):
     def weight_label(self):
         return dict(FIB_SCALE).get(self.weight, self.weight)
 
+    def clean(self):
+        if not self.mission_id:
+            return
+        try:
+            project = self.mission.campaign.project
+        except (Mission.DoesNotExist, Campaign.DoesNotExist, Project.DoesNotExist):
+            return
 
-# 📄 Documentation Page
+        if self.column_id and self.column.project_id != project.pk:
+            raise ValidationError({"column": "Column must belong to the same project as the task."})
+
+        if self.sprint_id and self.sprint.project_id != project.pk:
+            raise ValidationError({"sprint": "Sprint must belong to the same project as the task."})
+
+        if self.assignee_id and self.assignee.project_id != project.pk:
+            raise ValidationError({"assignee": "Assignee must be a practitioner in this project."})
+
+        if self.reviewer_id and self.reviewer.project_id != project.pk:
+            raise ValidationError({"reviewer": "Reviewer must be a practitioner in this project."})
+
+
+class PractitionerAllowance(DomainEntity):
+    ALLOWANCE_TYPE_CHOICES = [
+        ("per_diem", "Per Diem"),
+        ("hourly", "Hourly"),
+        ("fixed", "Fixed"),
+        ("travel", "Travel"),
+        ("meal", "Meal"),
+        ("other", "Other"),
+    ]
+
+    practitioner = models.ForeignKey(Practitioner, on_delete=models.CASCADE, related_name="allowances")
+    payer_account = models.ForeignKey(
+        "assets.LedgerAccount",
+        on_delete=models.PROTECT,
+        related_name="kanban_allowances_to_pay",
+        help_text="Account that pays this allowance. Defaults to the project owner's wallet.",
+    )
+    recipient_account = models.ForeignKey(
+        "assets.LedgerAccount",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="kanban_allowances_to_receive",
+        help_text="Account that receives the allowance. Resolved from practitioner if blank.",
+    )
+    asset = models.ForeignKey(
+        "assets.Asset",
+        on_delete=models.PROTECT,
+        related_name="kanban_practitioner_allowances",
+    )
+    amount_base_units = models.BigIntegerField(
+        help_text="Amount in the asset's smallest unit (no decimals, no floats).",
+    )
+    allowance_type = models.CharField(max_length=20, choices=ALLOWANCE_TYPE_CHOICES, default="fixed")
+    valid_from = models.DateField(null=True, blank=True)
+    valid_until = models.DateField(null=True, blank=True)
+    active = models.BooleanField(default=True)
+    metadata = models.JSONField(blank=True, null=True)
+
+    def __str__(self):
+        return f"{self.allowance_type} allowance for {self.practitioner} ({self.amount_base_units} {self.asset})"
+
+    @property
+    def amount_display(self):
+        from toto.assets.models import from_base_units
+        return from_base_units(self.amount_base_units, self.asset.decimals)
+
+    @classmethod
+    def default_payer_account_for(cls, project):
+        """Return the project owner's primary LedgerAccount, or None."""
+        try:
+            from toto.assets.models import LedgerAccount
+            owner = project.owner
+            if owner and owner.user_id:
+                return LedgerAccount.objects.filter(owner=owner.user, active=True).order_by("pk").first()
+        except Exception:
+            pass
+        return None
+
+    def clean(self):
+        if self.amount_base_units is not None and self.amount_base_units <= 0:
+            raise ValidationError({"amount_base_units": "Amount must be greater than zero."})
+
+        if self.asset_id:
+            try:
+                from toto.assets.models import Asset
+                asset = Asset.objects.get(pk=self.asset_id)
+                if not asset.active:
+                    raise ValidationError({"asset": "Asset must be active."})
+            except Asset.DoesNotExist:
+                pass
+
+        if self.payer_account_id:
+            try:
+                from toto.assets.models import LedgerAccount
+                acct = LedgerAccount.objects.get(pk=self.payer_account_id)
+                if not acct.active:
+                    raise ValidationError({"payer_account": "Payer account must be active."})
+            except LedgerAccount.DoesNotExist:
+                pass
+
+        if self.recipient_account_id:
+            try:
+                from toto.assets.models import LedgerAccount
+                acct = LedgerAccount.objects.get(pk=self.recipient_account_id)
+                if not acct.active:
+                    raise ValidationError({"recipient_account": "Recipient account must be active."})
+            except LedgerAccount.DoesNotExist:
+                pass
+
+        if self.payer_account_id and self.recipient_account_id and self.payer_account_id == self.recipient_account_id:
+            raise ValidationError("Payer and recipient accounts must differ.")
+
+        if self.valid_from and self.valid_until and self.valid_until < self.valid_from:
+            raise ValidationError({"valid_until": "valid_until must be on or after valid_from."})
+
+    def to_obligation_kwargs(self):
+        """Return kwargs suitable for assets.services.assets.create_obligation."""
+        return {
+            "debtor_account": self.payer_account,
+            "creditor_account": self.recipient_account,
+            "asset": self.asset,
+            "amount_base_units": self.amount_base_units,
+        }
+
+
 class DocumentationPage(AbstractPage):
     mission = models.OneToOneField(
         Mission,
@@ -195,7 +328,6 @@ class DocumentationPage(AbstractPage):
         return reverse("kanban:documentation_page_detail", args=[self.pk])
 
 
-# 📝 Documentation Section
 class DocumentationSection(AbstractSection):
     page = models.ForeignKey(
         DocumentationPage,

@@ -19,7 +19,7 @@ class BaseMetricsCalculator:
                 "mission__campaign",
                 "column",
                 "sprint",
-                "assignee",
+                "assignee__person",
             )
         )
 
@@ -192,9 +192,9 @@ class SprintMetricsCalculator(BaseMetricsCalculator):
     def get_assignee_items(self):
         assignees = (
             self.tasks
-            .values("assignee_id", "assignee__display_name")
+            .values("assignee_id", "assignee__person__display_name")
             .distinct()
-            .order_by("assignee__display_name")
+            .order_by("assignee__person__display_name")
         )
 
         items = []
@@ -208,7 +208,7 @@ class SprintMetricsCalculator(BaseMetricsCalculator):
                 assignee_tasks = self.tasks.filter(assignee__isnull=True)
 
             items.append({
-                "label": assignee["assignee__display_name"] or "Unassigned",
+                "label": assignee["assignee__person__display_name"] or "Unassigned",
                 **self.task_summary(assignee_tasks),
             })
 
@@ -261,7 +261,7 @@ class MissionMetricsCalculator(BaseMetricsCalculator):
                 "tasks",
                 "tasks__column",
                 "tasks__sprint",
-                "tasks__assignee",
+                "tasks__assignee__person",
             )
             .order_by("campaign__name", "title")
         )

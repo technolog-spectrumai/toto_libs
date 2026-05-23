@@ -3,7 +3,7 @@ from datetime import timedelta
 
 from django.utils import timezone
 
-from toto.kanban.models import Campaign, Column, Mission, Project, Task
+from toto.kanban.models import Campaign, Column, Mission, Practitioner, Project, Task
 from toto.people.models import Person
 
 
@@ -46,6 +46,16 @@ def detection_map_feature(detection):
     }
 
 
+def _get_or_create_practitioner(project, person, role):
+    """Get or create a Practitioner for person in project. role wins only on creation."""
+    prac, created = Practitioner.objects.get_or_create(
+        project=project,
+        person=person,
+        defaults={"role": role, "is_active": True},
+    )
+    return prac
+
+
 def ensure_detection_mitigation_task(detection, *, owner=None, reviewer=None):
     if detection.mitigation_task_id:
         return detection.mitigation_task
@@ -62,8 +72,9 @@ def ensure_detection_mitigation_task(detection, *, owner=None, reviewer=None):
             "owner": owner,
         },
     )
-    if owner.user_id:
-        project.collaborators.add(owner.user)
+
+    # Ensure owner has a practitioner seat
+    owner_prac = _get_or_create_practitioner(project, owner, Practitioner.ROLE_MANAGER)
 
     columns = {}
     for name, position, can_add in [
@@ -76,13 +87,9 @@ def ensure_detection_mitigation_task(detection, *, owner=None, reviewer=None):
             Column,
             project=project,
             name=name,
-            defaults={
-                "position": position,
-                "can_add_task": can_add,
-            },
+            defaults={"position": position, "can_add_task": can_add},
         )
-        if owner.user_id:
-            column.auditors.add(owner.user)
+        column.auditors.add(owner_prac)
         columns[name] = column
 
     campaign, _ = first_or_create(
@@ -110,12 +117,16 @@ def ensure_detection_mitigation_task(detection, *, owner=None, reviewer=None):
         },
     )
 
+    reviewer_prac = None
+    if reviewer is not None:
+        reviewer_prac = _get_or_create_practitioner(project, reviewer, Practitioner.ROLE_REVIEWER)
+
     task = Task.objects.create(
         mission=mission,
         column=columns["To Do"],
         title=f"Mitigate: {detection.title}",
         description=detection.description,
-        reviewer=reviewer,
+        reviewer=reviewer_prac,
         due_date=(timezone.now() + timedelta(days=3)).date(),
         weight=3 if detection.severity in ("high", "critical") else 2,
         metadata={
@@ -160,25 +171,28 @@ def create_detection_help_task(
     )
     if not column:
         column = Column.objects.create(project=project, name="To Do", position=1, can_add_task=True)
+
     metadata = {
         "source": "detection_help",
         "detection_id": str(detection.pk),
         "severity": detection.severity,
     }
     if owner:
-        metadata["requested_by"] = {
-            "id": owner.pk,
-            "name": str(owner),
-        }
+        metadata["requested_by"] = {"id": owner.pk, "name": str(owner)}
     skills = skill_metadata(required_skills)
     if skills:
         metadata["required_skills"] = skills
+
+    reviewer_prac = None
+    if reviewer is not None:
+        reviewer_prac = _get_or_create_practitioner(project, reviewer, Practitioner.ROLE_REVIEWER)
+
     task = Task.objects.create(
         mission=mission,
         column=column,
         title=title or f"Help with: {detection.title}",
         description=description or detection.description,
-        reviewer=reviewer,
+        reviewer=reviewer_prac,
         due_date=(timezone.now() + timedelta(days=3)).date(),
         weight=3 if detection.severity in ("high", "critical") else 2,
         metadata=metadata,

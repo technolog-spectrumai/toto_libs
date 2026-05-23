@@ -14,7 +14,7 @@ from django.utils import timezone
 from toto.ui import PageProcessor
 from toto.kanban.forms import TaskCreateForm
 from toto.kanban.metrics import SprintMetricsCalculator, MissionMetricsCalculator
-from toto.kanban.models import Project, Column, Task, Sprint, Mission, DocumentationPage
+from toto.kanban.models import Project, Column, Task, Sprint, Mission, DocumentationPage, Practitioner
 from toto.kanban.plugins.mission_plugins import MissionPlugin
 from toto.verbena.views import PageDetailMixin
 
@@ -110,8 +110,8 @@ class ProjectDetailView(LoginRequiredMixin, DetailView):
                 "tasks__mission__campaign__zone__territory",
                 "tasks__mission__location",
                 "tasks__mission__route",
-                "tasks__assignee",
-                "tasks__reviewer",
+                "tasks__assignee__person",
+                "tasks__reviewer__person",
                 "tasks__sprint",
                 "tasks__column",
                 "tasks__detection_mitigations",
@@ -119,7 +119,7 @@ class ProjectDetailView(LoginRequiredMixin, DetailView):
         )
 
         for column in columns:
-            column.is_auditor = column.auditors.filter(id=self.request.user.id).exists()
+            column.is_auditor = column.auditors.filter(person__user=self.request.user).exists()
 
         context.update({
             "columns": columns,
@@ -145,7 +145,7 @@ class ProjectListView(LoginRequiredMixin, ListView):
             Project.objects
             .filter(
                 Q(owner__user=user) |
-                Q(collaborators=user)
+                Q(practitioners__person__user=user, practitioners__is_active=True)
             )
             .distinct()
         )
@@ -239,7 +239,7 @@ class BacklogView(LoginRequiredMixin, DetailView):
                 "tasks",
                 "tasks__column",
                 "tasks__sprint",
-                "tasks__assignee",
+                "tasks__assignee__person",
             )
         )
 
@@ -412,7 +412,7 @@ def promote_task(request, project_id, task_id):
     project = get_object_or_404(Project, id=project_id)
 
     task = get_object_or_404(
-        Task.objects.select_related("column", "mission", "mission__campaign", "reviewer__user"),
+        Task.objects.select_related("column", "mission", "mission__campaign", "reviewer__person__user"),
         id=task_id,
         mission__campaign__project=project,
     )
@@ -423,7 +423,7 @@ def promote_task(request, project_id, task_id):
         messages.warning(request, "Task is already in the last column.")
         return redirect("kanban:project_detail", pk=project_id)
 
-    if not next_column.auditors.filter(id=request.user.id).exists():
+    if not next_column.auditors.filter(person__user=request.user).exists():
         messages.error(
             request,
             "You are not allowed to promote tasks into this column.",
@@ -434,7 +434,9 @@ def promote_task(request, project_id, task_id):
         project=project,
         position__gt=next_column.position,
     ).exists()
-    reviewer_user_id = getattr(getattr(task.reviewer, "user", None), "id", None)
+    reviewer_user_id = getattr(
+        getattr(getattr(task.reviewer, "person", None), "user", None), "id", None
+    )
     if is_terminal_column and reviewer_user_id and reviewer_user_id != request.user.id:
         messages.error(
             request,
@@ -468,7 +470,7 @@ def demote_task(request, project_id, task_id):
         messages.warning(request, "Task is already in the first column.")
         return redirect("kanban:project_detail", pk=project_id)
 
-    if not previous_column.auditors.filter(id=request.user.id).exists():
+    if not previous_column.auditors.filter(person__user=request.user).exists():
         messages.error(
             request,
             "You are not allowed to demote tasks into this column.",
@@ -704,8 +706,8 @@ class MissionDetailView(LoginRequiredMixin, DetailView):
                 "tasks",
                 "tasks__column",
                 "tasks__sprint",
-                "tasks__assignee",
-                "tasks__reviewer",
+                "tasks__assignee__person",
+                "tasks__reviewer__person",
                 "tasks__detection_mitigations",
                 "tasks__detection_mitigations__category",
                 "tasks__detection_mitigations__address",

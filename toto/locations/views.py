@@ -323,7 +323,7 @@ def zone_detail(request, pk):
             "mission__campaign__project",
             "column",
             "sprint",
-            "assignee",
+            "assignee__person",
         )
         .order_by("mission__campaign__name", "mission__title", "position", "title")
     )

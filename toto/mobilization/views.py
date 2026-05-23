@@ -420,7 +420,7 @@ def event_detail(request, pk):
         from toto.kanban.models import Mission, Task
         campaign_missions = list(
             campaign.missions.select_related("location", "route", "owner").prefetch_related(
-                "tasks__assignee"
+                "tasks__assignee__person"
             ).order_by("-urgency", "-impact")
         )
 
@@ -838,7 +838,7 @@ def deployment_detail(request, pk):
     if mission:
         from toto.kanban.models import Task
         mission_tasks = list(
-            mission.tasks.select_related("assignee", "column").order_by("column__position", "position")
+            mission.tasks.select_related("assignee__person", "column").order_by("column__position", "position")
         )
 
     equipment = deployment.equipment.select_related("item__location", "item__object_type").order_by("item__name")
