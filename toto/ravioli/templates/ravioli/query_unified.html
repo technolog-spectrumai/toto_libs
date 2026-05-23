@@ -6,9 +6,10 @@
 {% block content %}
 <script id="ravioli-queries" type="application/json">{{ queries_json|safe }}</script>
 <script>
-  const RUN_QUERY_URL    = "{% url 'ravioli:run_cypher_query'  99999 %}".replace('/99999/', '/{id}/');
-  const CACHED_DATA_URL  = "{% url 'ravioli:query_cached_data' 99999 %}".replace('/99999/', '/{id}/');
-  const WORKFLOW_RUN_URL = "{% url 'workflows:api_run_detail'  99999 %}".replace('/99999/', '/{id}/');
+  const RUN_QUERY_URL        = "{% url 'ravioli:run_cypher_query'       99999 %}".replace('/99999/', '/{id}/');
+  const CACHED_DATA_URL      = "{% url 'ravioli:query_cached_data'      99999 %}".replace('/99999/', '/{id}/');
+  const WORKFLOW_API_URL     = "{% url 'workflows:api_run_detail'       99999 %}".replace('/99999/', '/{id}/');
+  const WORKFLOW_DETAIL_URL  = "{% url 'workflows:workflow_run_detail'  99999 %}".replace('/99999/', '/{id}/');
   const CSRF_TOKEN = "{{ csrf_token }}";
 </script>
 
@@ -398,19 +399,18 @@ function queryViewer() {
     },
 
     _pollRun(runId) {
-      const url = WORKFLOW_RUN_URL.replace('{id}', runId);
+      const apiUrl    = WORKFLOW_API_URL.replace('{id}', runId);
+      const detailUrl = WORKFLOW_DETAIL_URL.replace('{id}', runId);
       this._pollTimer = setInterval(async () => {
         try {
-          const res = await fetch(url);
+          const res = await fetch(apiUrl);
           const data = await res.json();
           if (data.status === 'completed') {
             this._stopPolling();
             await this._loadCachedResult();
           } else if (data.status === 'failed') {
             this._stopPolling();
-            this.error = data.error || 'Query run failed.';
-            this.running = false;
-            this.runStatus = '';
+            window.location.href = detailUrl;
           }
         } catch (e) {
           this._stopPolling();
