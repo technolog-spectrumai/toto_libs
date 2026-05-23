@@ -4,7 +4,7 @@
 {% block instruments_title %}{% trans "New Staking Position" %}{% endblock %}
 
 {% block instruments_content %}
-<div class="space-y-6 max-w-3xl">
+<div class="space-y-6 max-w-5xl">
 
   <div>
     <a href="{% url 'instruments:instrument_list' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
@@ -13,8 +13,9 @@
   </div>
 
   <div class="flex items-center gap-3">
-    <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/10">
-      <i class="fa-solid fa-layer-group text-indigo-500"></i>
+    <div class="flex h-10 w-10 items-center justify-center rounded-xl"
+         :class="darkMode ? 'bg-accent-dark/10' : 'bg-accent-light/10'">
+      <i class="fa-solid fa-layer-group" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
     </div>
     <div>
       <h2 class="text-2xl font-bold">{% trans "New Staking Position" %}</h2>
@@ -25,39 +26,44 @@
   <form method="post" class="space-y-5">
     {% csrf_token %}
     {% if form.non_field_errors %}
-    <div class="rounded-lg border border-red-400 px-4 py-3 text-sm font-semibold text-red-600">{{ form.non_field_errors }}</div>
+    <div class="rounded-lg border px-4 py-3 text-sm font-semibold"
+         :class="darkMode ? 'border-warn-dark/40 bg-warn-dark/10 text-warn-dark' : 'border-warn-light/40 bg-warn-light/10 text-warn-light'">
+      {{ form.non_field_errors }}
+    </div>
     {% endif %}
 
-    <!-- Instrument -->
+    <!-- Name -->
     <fieldset class="rounded-xl border p-5 space-y-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
-      <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Instrument" %}</legend>
-      <div>
-        <label for="{{ form.instrument.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.instrument.label }} <span class="text-red-400">*</span></label>
-        {{ form.instrument }}
-        <p class="mt-1 text-xs opacity-50">{% trans "Must be a draft instrument of type Staking." %}</p>
-        {% for e in form.instrument.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+      <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Name" %}</legend>
+      <div class="space-y-2">
+        <label for="{{ form.name.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.name.label }} <span class="text-red-400">*</span></label>
+        {{ form.name }}
+        <p class="text-xs opacity-50">{{ form.name.help_text }}</p>
+        {% for e in form.name.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
       </div>
     </fieldset>
 
     <!-- Accounts -->
     <fieldset class="rounded-xl border p-5 space-y-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
       <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Accounts" %}</legend>
-      <div class="grid gap-4 sm:grid-cols-2">
-        <div>
-          <label for="{{ form.staker_account.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
-            <i class="fa-solid fa-user mr-1 text-indigo-400"></i>{{ form.staker_account.label }} <span class="text-red-400">*</span>
+      <div class="grid gap-x-8 gap-y-4 sm:grid-cols-2">
+        <div class="space-y-2">
+          <label for="{{ form.staker_account.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+            <i class="fa-solid fa-user mr-1" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+            {{ form.staker_account.label }} <span class="text-red-400">*</span>
           </label>
           {{ form.staker_account }}
-          <p class="mt-1 text-xs opacity-50">{% trans "Stakes from this account." %}</p>
-          {% for e in form.staker_account.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+          <p class="text-xs opacity-50">{% trans "Stakes from this account." %}</p>
+          {% for e in form.staker_account.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
         </div>
-        <div>
-          <label for="{{ form.staking_account.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
-            <i class="fa-solid fa-vault mr-1 text-indigo-400"></i>{{ form.staking_account.label }} <span class="text-red-400">*</span>
+        <div class="space-y-2">
+          <label for="{{ form.staking_account.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+            <i class="fa-solid fa-vault mr-1" :class="darkMode ? 'text-caution-dark' : 'text-caution-light'"></i>
+            {{ form.staking_account.label }} <span class="text-red-400">*</span>
           </label>
           {{ form.staking_account }}
-          <p class="mt-1 text-xs opacity-50">{% trans "Pool/vault that holds staked tokens." %}</p>
-          {% for e in form.staking_account.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+          <p class="text-xs opacity-50">{% trans "Pool/vault that holds staked tokens." %}</p>
+          {% for e in form.staking_account.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
         </div>
       </div>
     </fieldset>
@@ -65,17 +71,17 @@
     <!-- Staked asset -->
     <fieldset class="rounded-xl border p-5 space-y-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
       <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Staked Asset" %}</legend>
-      <div class="grid gap-4 sm:grid-cols-2">
-        <div>
-          <label for="{{ form.staked_asset.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.staked_asset.label }} <span class="text-red-400">*</span></label>
+      <div class="grid gap-x-8 gap-y-4 sm:grid-cols-2">
+        <div class="space-y-2">
+          <label for="{{ form.staked_asset.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.staked_asset.label }} <span class="text-red-400">*</span></label>
           {{ form.staked_asset }}
-          {% for e in form.staked_asset.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+          {% for e in form.staked_asset.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
         </div>
-        <div>
-          <label for="{{ form.staked_amount_base_units.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.staked_amount_base_units.label }} <span class="text-red-400">*</span></label>
+        <div class="space-y-2">
+          <label for="{{ form.staked_amount_base_units.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.staked_amount_base_units.label }} <span class="text-red-400">*</span></label>
           {{ form.staked_amount_base_units }}
-          <p class="mt-1 text-xs opacity-50">{% trans "Amount in base units." %}</p>
-          {% for e in form.staked_amount_base_units.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+          <p class="text-xs opacity-50">{% trans "Amount in base units." %}</p>
+          {% for e in form.staked_amount_base_units.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
         </div>
       </div>
     </fieldset>
@@ -83,46 +89,46 @@
     <!-- Rewards -->
     <fieldset class="rounded-xl border p-5 space-y-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
       <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Rewards" %}</legend>
-      <div class="grid gap-4 sm:grid-cols-2">
-        <div>
-          <label for="{{ form.reward_asset.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.reward_asset.label }} <span class="text-red-400">*</span></label>
+      <div class="grid gap-x-8 gap-y-4 sm:grid-cols-2">
+        <div class="space-y-2">
+          <label for="{{ form.reward_asset.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.reward_asset.label }} <span class="text-red-400">*</span></label>
           {{ form.reward_asset }}
-          {% for e in form.reward_asset.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+          {% for e in form.reward_asset.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
         </div>
-        <div>
-          <label for="{{ form.reward_rate_bps.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.reward_rate_bps.label }}</label>
+        <div class="space-y-2">
+          <label for="{{ form.reward_rate_bps.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.reward_rate_bps.label }}</label>
           {{ form.reward_rate_bps }}
-          <p class="mt-1 text-xs opacity-50">{% trans "Annual rate in basis points. 500 bps = 5%." %}</p>
-          {% for e in form.reward_rate_bps.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+          <p class="text-xs opacity-50">{% trans "Annual rate in basis points. 500 bps = 5%." %}</p>
+          {% for e in form.reward_rate_bps.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
         </div>
       </div>
     </fieldset>
 
-    <!-- Lock & Metadata -->
+    <!-- Lock period & Metadata -->
     <fieldset class="rounded-xl border p-5 space-y-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
       <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Lock Period & Metadata" %}</legend>
-      <div class="grid gap-4 sm:grid-cols-2">
-        <div>
-          <label for="{{ form.locked_until.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.locked_until.label }}</label>
+      <div class="grid gap-x-8 gap-y-4 sm:grid-cols-2">
+        <div class="space-y-2">
+          <label for="{{ form.locked_until.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.locked_until.label }}</label>
           {{ form.locked_until }}
-          <p class="mt-1 text-xs opacity-50">{% trans "Cannot unstake before this time. Leave blank for no lock." %}</p>
-          {% for e in form.locked_until.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+          <p class="text-xs opacity-50">{% trans "Cannot unstake before this time. Leave blank for no lock." %}</p>
+          {% for e in form.locked_until.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
         </div>
-        <div>
-          <label for="{{ form.unstaked_at.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.unstaked_at.label }}</label>
+        <div class="space-y-2">
+          <label for="{{ form.unstaked_at.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.unstaked_at.label }}</label>
           {{ form.unstaked_at }}
-          <p class="mt-1 text-xs opacity-50">{% trans "Leave blank — set automatically on unstaking." %}</p>
-          {% for e in form.unstaked_at.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+          <p class="text-xs opacity-50">{% trans "Leave blank — set automatically on unstaking." %}</p>
+          {% for e in form.unstaked_at.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
         </div>
-        <div class="sm:col-span-2">
-          <label for="{{ form.metadata.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.metadata.label }}</label>
+        <div class="space-y-2 sm:col-span-2">
+          <label for="{{ form.metadata.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.metadata.label }}</label>
           {{ form.metadata }}
-          {% for e in form.metadata.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+          {% for e in form.metadata.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
         </div>
       </div>
     </fieldset>
 
-    <div class="flex items-center gap-3">
+    <div class="flex flex-wrap items-center gap-3">
       <button type="submit" class="rounded-lg px-5 py-2.5 text-sm font-bold shadow-sm transition hover:opacity-90"
               :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'">
         <i class="fa-solid fa-layer-group mr-1"></i> {% trans "Create staking position" %}

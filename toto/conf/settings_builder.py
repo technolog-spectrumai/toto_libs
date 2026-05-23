@@ -112,6 +112,20 @@ def _default_middleware(services: dict) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+def _build_beat_schedule() -> dict:
+    from celery.schedules import crontab
+    return {
+        "pay-daily-allowances": {
+            "task": "toto.kanban.tasks.pay_daily_allowances",
+            "schedule": crontab(hour=17, minute=0, day_of_week="1-5"),
+        },
+        "process-due-subscriptions": {
+            "task": "toto.instruments.tasks.process_due_subscriptions",
+            "schedule": crontab(minute=0),  # every hour
+        },
+    }
+
+
 # Main builder
 # ---------------------------------------------------------------------------
 
@@ -242,6 +256,7 @@ def build_settings(base_dir: Path, config_path: str | Path | None = None) -> dic
             "CELERY_RESULT_BACKEND": os.getenv("CELERY_RESULT_BACKEND", broker_url),
             "CELERY_TASK_TRACK_STARTED": True,
             "CELERY_TASK_TIME_LIMIT": 60 * 30,
+            "CELERY_BEAT_SCHEDULE": _build_beat_schedule(),
         }
 
     # ---------------------------------------------------------- websockets

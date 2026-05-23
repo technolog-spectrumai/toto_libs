@@ -1,0 +1,160 @@
+{% extends "instruments/base.html" %}
+{% load i18n %}
+
+{% block instruments_title %}{% trans "New Subscription" %}{% endblock %}
+
+{% block instruments_content %}
+<div class="space-y-6 max-w-5xl">
+
+  <div>
+    <a href="{% url 'instruments:instrument_list' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+      <i class="fa-solid fa-arrow-left"></i> {% trans "All instruments" %}
+    </a>
+  </div>
+
+  <div class="flex items-center gap-3">
+    <div class="flex h-10 w-10 items-center justify-center rounded-xl"
+         :class="darkMode ? 'bg-success-dark/10' : 'bg-success-light/10'">
+      <i class="fa-solid fa-arrows-rotate" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+    </div>
+    <div>
+      <h2 class="text-2xl font-bold">{% trans "New Subscription" %}</h2>
+      <p class="text-sm opacity-60">{% trans "Recurring payment instrument charged automatically each billing period." %}</p>
+    </div>
+  </div>
+
+  <form method="post" class="space-y-5">
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+    <div class="rounded-lg border px-4 py-3 text-sm font-semibold"
+         :class="darkMode ? 'border-warn-dark/40 bg-warn-dark/10 text-warn-dark' : 'border-warn-light/40 bg-warn-light/10 text-warn-light'">
+      {{ form.non_field_errors }}
+    </div>
+    {% endif %}
+
+    <!-- Name -->
+    <fieldset class="rounded-xl border p-5 space-y-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Name" %}</legend>
+      <div class="space-y-2">
+        <label for="{{ form.name.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+          {{ form.name.label }} <span class="text-red-400">*</span>
+        </label>
+        {{ form.name }}
+        <p class="text-xs opacity-50">{{ form.name.help_text }}</p>
+        {% for e in form.name.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
+      </div>
+    </fieldset>
+
+    <!-- Accounts -->
+    <fieldset class="rounded-xl border p-5 space-y-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Accounts" %}</legend>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label for="{{ form.subscriber_account.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
+            <i class="fa-solid fa-user mr-1" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+            {{ form.subscriber_account.label }} <span class="text-red-400">*</span>
+          </label>
+          {{ form.subscriber_account }}
+          <p class="mt-1 text-xs opacity-50">{% trans "Account that pays each period." %}</p>
+          {% for e in form.subscriber_account.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
+        </div>
+        <div>
+          <label for="{{ form.provider_account.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
+            <i class="fa-solid fa-building mr-1" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+            {{ form.provider_account.label }} <span class="text-red-400">*</span>
+          </label>
+          {{ form.provider_account }}
+          <p class="mt-1 text-xs opacity-50">{% trans "Account that receives each payment." %}</p>
+          {% for e in form.provider_account.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
+        </div>
+      </div>
+    </fieldset>
+
+    <!-- Payment terms -->
+    <fieldset class="rounded-xl border p-5 space-y-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Payment Terms" %}</legend>
+      <div class="grid gap-4 sm:grid-cols-3">
+        <div>
+          <label for="{{ form.asset.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {{ form.asset.label }} <span class="text-red-400">*</span>
+          </label>
+          {{ form.asset }}
+          {% for e in form.asset.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
+        </div>
+        <div>
+          <label for="{{ form.amount_base_units.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {{ form.amount_base_units.label }} <span class="text-red-400">*</span>
+          </label>
+          {{ form.amount_base_units }}
+          <p class="mt-1 text-xs opacity-50">{% trans "In asset base units (no decimals)." %}</p>
+          {% for e in form.amount_base_units.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
+        </div>
+        <div>
+          <label for="{{ form.billing_cycle.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {{ form.billing_cycle.label }} <span class="text-red-400">*</span>
+          </label>
+          {{ form.billing_cycle }}
+          {% for e in form.billing_cycle.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
+        </div>
+      </div>
+    </fieldset>
+
+    <!-- Period start -->
+    <fieldset class="rounded-xl border p-5 space-y-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">
+        {% trans "Period Start" %} <span class="text-red-400">*</span>
+      </legend>
+      <div class="grid gap-x-8 gap-y-4 sm:grid-cols-2">
+        {% for subwidget in form.current_period_start %}
+        <div class="space-y-2">
+          <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {% if forloop.first %}{% trans "Date" %}{% else %}{% trans "Time" %}{% endif %}
+          </label>
+          {{ subwidget }}
+        </div>
+        {% endfor %}
+      </div>
+      <p class="text-xs opacity-50">{{ form.current_period_start.help_text }}</p>
+      {% for e in form.current_period_start.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
+    </fieldset>
+
+    <!-- Trial period -->
+    <fieldset class="rounded-xl border p-5 space-y-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Trial Period" %}</legend>
+      <div class="grid gap-x-8 gap-y-4 sm:grid-cols-2">
+        {% for subwidget in form.trial_ends_at %}
+        <div class="space-y-2">
+          <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {% if forloop.first %}{% trans "Trial end date" %}{% else %}{% trans "Trial end time" %}{% endif %}
+          </label>
+          {{ subwidget }}
+        </div>
+        {% endfor %}
+      </div>
+      <p class="text-xs opacity-50">{{ form.trial_ends_at.help_text }}</p>
+      {% for e in form.trial_ends_at.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
+    </fieldset>
+
+    <!-- Metadata -->
+    <fieldset class="rounded-xl border p-5 space-y-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Metadata" %}</legend>
+      <div>
+        <label for="{{ form.metadata.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.metadata.label }}</label>
+        {{ form.metadata }}
+        {% for e in form.metadata.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
+      </div>
+    </fieldset>
+
+    <div class="flex flex-wrap items-center gap-3">
+      <button type="submit" class="rounded-lg px-5 py-2.5 text-sm font-bold shadow-sm transition hover:opacity-90"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'">
+        <i class="fa-solid fa-arrows-rotate mr-1"></i> {% trans "Create subscription" %}
+      </button>
+      <a href="{% url 'instruments:instrument_list' %}" class="rounded-lg border px-5 py-2.5 text-sm font-semibold transition hover:opacity-80"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+        {% trans "Cancel" %}
+      </a>
+    </div>
+  </form>
+</div>
+{% endblock %}

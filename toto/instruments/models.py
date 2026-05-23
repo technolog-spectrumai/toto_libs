@@ -24,6 +24,7 @@ class InstrumentType(models.TextChoices):
     FUTURE = "future", "Future"
     OPTION = "option", "Option"
     REVENUE_SHARE = "revenue_share", "Revenue Share"
+    SUBSCRIPTION = "subscription", "Subscription"
     VESTING = "vesting", "Vesting"
     STAKING = "staking", "Staking"
 
@@ -673,3 +674,149 @@ class OptionContract(models.Model):
     @property
     def premium_display(self):
         return from_base_units(self.premium_base_units, self.payment_asset.decimals)
+
+
+# ---------------------------------------------------------------------------
+# Subscription
+# ---------------------------------------------------------------------------
+
+class BillingCycle(models.TextChoices):
+    DAILY = "daily", "Daily"
+    WEEKLY = "weekly", "Weekly"
+    MONTHLY = "monthly", "Monthly"
+    QUARTERLY = "quarterly", "Quarterly"
+    YEARLY = "yearly", "Yearly"
+
+
+class SubscriptionStatus(models.TextChoices):
+    TRIALING = "trialing", "Trialing"
+    ACTIVE = "active", "Active"
+    PAST_DUE = "past_due", "Past Due"
+    PAUSED = "paused", "Paused"
+    CANCELLED = "cancelled", "Cancelled"
+
+
+class SubscriptionContract(models.Model):
+    instrument = models.OneToOneField(
+        FinancialInstrument,
+        on_delete=models.PROTECT,
+        related_name="subscription_contract",
+    )
+    subscriber_account = models.ForeignKey(
+        "assets.LedgerAccount",
+        on_delete=models.PROTECT,
+        related_name="subscriptions_as_subscriber",
+    )
+    provider_account = models.ForeignKey(
+        "assets.LedgerAccount",
+        on_delete=models.PROTECT,
+        related_name="subscriptions_as_provider",
+    )
+    asset = models.ForeignKey(
+        "assets.Asset",
+        on_delete=models.PROTECT,
+        related_name="subscription_contracts",
+    )
+    amount_base_units = models.BigIntegerField(
+        help_text="Amount charged per billing period, in asset base units.",
+    )
+    billing_cycle = models.CharField(
+        max_length=20,
+        choices=BillingCycle.choices,
+        default=BillingCycle.MONTHLY,
+    )
+    trial_ends_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="If set, no payment is collected until this datetime.",
+    )
+    current_period_start = models.DateTimeField()
+    current_period_end = models.DateTimeField()
+    next_billing_at = models.DateTimeField(db_index=True)
+    cancel_at_period_end = models.BooleanField(default=False)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(
+        max_length=20,
+        choices=SubscriptionStatus.choices,
+        default=SubscriptionStatus.ACTIVE,
+    )
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status", "next_billing_at"]),
+            models.Index(fields=["subscriber_account", "status"]),
+            models.Index(fields=["provider_account", "status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.instrument.reference}: {self.billing_cycle} {self.amount_display} {self.asset.unit_name}"
+
+    def clean(self):
+        if self.amount_base_units is not None and self.amount_base_units <= 0:
+            raise ValidationError({"amount_base_units": "Amount must be positive."})
+        if (self.subscriber_account_id and self.provider_account_id
+                and self.subscriber_account_id == self.provider_account_id):
+            raise ValidationError("Subscriber and provider accounts must be different.")
+        if (self.current_period_end and self.current_period_start
+                and self.current_period_end <= self.current_period_start):
+            raise ValidationError({"current_period_end": "Period end must be after period start."})
+
+    @property
+    def amount_display(self) -> Decimal:
+        return from_base_units(self.amount_base_units, self.asset.decimals)
+
+    @property
+    def is_in_trial(self) -> bool:
+        return bool(self.trial_ends_at and timezone.now() < self.trial_ends_at)
+
+
+class SubscriptionPaymentStatus(models.TextChoices):
+    PENDING = "pending", "Pending"
+    PAID = "paid", "Paid"
+    FAILED = "failed", "Failed"
+
+
+class SubscriptionPayment(models.Model):
+    subscription = models.ForeignKey(
+        SubscriptionContract,
+        on_delete=models.PROTECT,
+        related_name="payments",
+    )
+    transaction = models.ForeignKey(
+        "assets.LedgerTransaction",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="subscription_payments",
+    )
+    period_start = models.DateTimeField()
+    period_end = models.DateTimeField()
+    amount_base_units = models.BigIntegerField()
+    status = models.CharField(
+        max_length=20,
+        choices=SubscriptionPaymentStatus.choices,
+        default=SubscriptionPaymentStatus.PENDING,
+    )
+    attempted_at = models.DateTimeField(null=True, blank=True)
+    paid_at = models.DateTimeField(null=True, blank=True)
+    failure_reason = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-period_start"]
+        unique_together = [("subscription", "period_start")]
+        indexes = [
+            models.Index(fields=["subscription", "status"]),
+            models.Index(fields=["status", "period_start"]),
+        ]
+
+    def __str__(self):
+        return f"{self.subscription.instrument.reference} — {self.period_start.date()} ({self.status})"
+
+    @property
+    def amount_display(self) -> Decimal:
+        return from_base_units(self.amount_base_units, self.subscription.asset.decimals)

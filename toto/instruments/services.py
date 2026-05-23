@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+from datetime import timedelta
 from decimal import Decimal
 
+from dateutil.relativedelta import relativedelta
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
 from toto.assets.backend import get_backend
-from toto.assets.models import Obligation, ObligationStatus, to_base_units
+from toto.assets.models import Obligation, ObligationStatus, from_base_units, to_base_units
 
 from .models import (
+    BillingCycle,
     EscrowContract,
     EscrowStatus,
     FinancialInstrument,
@@ -21,6 +24,10 @@ from .models import (
     InstrumentStatus,
     InstrumentType,
     OptionContract,
+    SubscriptionContract,
+    SubscriptionPayment,
+    SubscriptionPaymentStatus,
+    SubscriptionStatus,
     VestingContract,
     StakingPosition,
 )
@@ -291,3 +298,214 @@ class StakingService:
         position.instrument.save(update_fields=["status", "updated_at"])
         record_execution(instrument=position.instrument, action="unstake", status=InstrumentExecutionStatus.SUCCESS, transaction_obj=tx)
         return tx
+
+
+class SubscriptionService:
+    @staticmethod
+    def _next_period_end(dt, cycle: str):
+        if cycle == BillingCycle.DAILY:
+            return dt + timedelta(days=1)
+        if cycle == BillingCycle.WEEKLY:
+            return dt + timedelta(weeks=1)
+        if cycle == BillingCycle.MONTHLY:
+            return dt + relativedelta(months=1)
+        if cycle == BillingCycle.QUARTERLY:
+            return dt + relativedelta(months=3)
+        if cycle == BillingCycle.YEARLY:
+            return dt + relativedelta(years=1)
+        raise ValidationError(f"Unknown billing cycle: {cycle}")
+
+    @staticmethod
+    @transaction.atomic
+    def activate(subscription: SubscriptionContract):
+        instrument = subscription.instrument
+        if instrument.status != InstrumentStatus.DRAFT:
+            raise ValidationError("Only draft subscriptions can be activated.")
+
+        now = timezone.now()
+        period_end = SubscriptionService._next_period_end(subscription.current_period_start, subscription.billing_cycle)
+        is_trialing = bool(subscription.trial_ends_at and subscription.trial_ends_at > now)
+
+        subscription.current_period_end = period_end
+        subscription.next_billing_at = subscription.trial_ends_at if is_trialing else period_end
+        subscription.status = SubscriptionStatus.TRIALING if is_trialing else SubscriptionStatus.ACTIVE
+        subscription.save(update_fields=["current_period_end", "next_billing_at", "status", "updated_at"])
+
+        instrument.status = InstrumentStatus.ACTIVE
+        instrument.save(update_fields=["status", "updated_at"])
+
+        if not is_trialing:
+            SubscriptionPayment.objects.create(
+                subscription=subscription,
+                period_start=subscription.current_period_start,
+                period_end=period_end,
+                amount_base_units=subscription.amount_base_units,
+                status=SubscriptionPaymentStatus.PENDING,
+            )
+
+        record_execution(
+            instrument=instrument,
+            action="activate",
+            status=InstrumentExecutionStatus.SUCCESS,
+            result_data={"next_billing_at": subscription.next_billing_at.isoformat()},
+        )
+        return subscription
+
+    @staticmethod
+    @transaction.atomic
+    def bill(subscription: SubscriptionContract, *, reference: str | None = None):
+        """Charge the subscriber for the current period and advance to the next."""
+        if subscription.status not in {SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE, SubscriptionStatus.TRIALING}:
+            raise ValidationError(f"Cannot bill a {subscription.get_status_display()} subscription.")
+
+        instrument = subscription.instrument
+        now = timezone.now()
+
+        payment, _ = SubscriptionPayment.objects.select_for_update().get_or_create(
+            subscription=subscription,
+            period_start=subscription.current_period_start,
+            defaults={
+                "period_end": subscription.current_period_end,
+                "amount_base_units": subscription.amount_base_units,
+                "status": SubscriptionPaymentStatus.PENDING,
+            },
+        )
+
+        if payment.status == SubscriptionPaymentStatus.PAID:
+            raise ValidationError("This period has already been paid.")
+
+        payment.attempted_at = now
+
+        ref = reference or (
+            f"{instrument.reference}-BILL-{subscription.current_period_start.date().isoformat()}"
+        )
+
+        try:
+            tx = get_backend().transfer_asset(
+                asset=subscription.asset,
+                sender_account=subscription.subscriber_account,
+                receiver_account=subscription.provider_account,
+                amount=from_base_units(subscription.amount_base_units, subscription.asset.decimals),
+                reference=ref,
+                description=(
+                    f"Subscription {instrument.reference} — "
+                    f"{subscription.current_period_start.date()} to {subscription.current_period_end.date()}"
+                ),
+                metadata={
+                    "instrument": instrument.reference,
+                    "action": "subscription_bill",
+                    "period_start": subscription.current_period_start.isoformat(),
+                    "period_end": subscription.current_period_end.isoformat(),
+                },
+            )
+        except ValidationError as exc:
+            payment.status = SubscriptionPaymentStatus.FAILED
+            payment.failure_reason = str(exc)
+            payment.save(update_fields=["status", "failure_reason", "attempted_at"])
+            subscription.status = SubscriptionStatus.PAST_DUE
+            subscription.save(update_fields=["status", "updated_at"])
+            record_execution(
+                instrument=instrument,
+                action="bill",
+                status=InstrumentExecutionStatus.FAILED,
+                error_message=str(exc),
+            )
+            raise
+
+        payment.transaction = tx
+        payment.status = SubscriptionPaymentStatus.PAID
+        payment.paid_at = now
+        payment.save(update_fields=["transaction", "status", "paid_at", "attempted_at"])
+
+        if subscription.cancel_at_period_end:
+            subscription.status = SubscriptionStatus.CANCELLED
+            subscription.cancelled_at = now
+            instrument.status = InstrumentStatus.SETTLED
+            subscription.save(update_fields=["status", "cancelled_at", "updated_at"])
+            instrument.save(update_fields=["status", "updated_at"])
+        else:
+            new_start = subscription.current_period_end
+            new_end = SubscriptionService._next_period_end(new_start, subscription.billing_cycle)
+            subscription.current_period_start = new_start
+            subscription.current_period_end = new_end
+            subscription.next_billing_at = new_end
+            subscription.status = SubscriptionStatus.ACTIVE
+            subscription.save(update_fields=[
+                "current_period_start", "current_period_end",
+                "next_billing_at", "status", "updated_at",
+            ])
+            SubscriptionPayment.objects.create(
+                subscription=subscription,
+                period_start=new_start,
+                period_end=new_end,
+                amount_base_units=subscription.amount_base_units,
+                status=SubscriptionPaymentStatus.PENDING,
+            )
+
+        record_execution(
+            instrument=instrument,
+            action="bill",
+            status=InstrumentExecutionStatus.SUCCESS,
+            transaction_obj=tx,
+            result_data={"transaction_reference": tx.reference},
+        )
+        return tx
+
+    @staticmethod
+    @transaction.atomic
+    def cancel(subscription: SubscriptionContract, *, at_period_end: bool = True):
+        if subscription.status == SubscriptionStatus.CANCELLED:
+            raise ValidationError("Subscription is already cancelled.")
+
+        instrument = subscription.instrument
+        if at_period_end:
+            subscription.cancel_at_period_end = True
+            subscription.save(update_fields=["cancel_at_period_end", "updated_at"])
+        else:
+            subscription.status = SubscriptionStatus.CANCELLED
+            subscription.cancelled_at = timezone.now()
+            instrument.status = InstrumentStatus.CANCELLED
+            subscription.save(update_fields=["status", "cancelled_at", "updated_at"])
+            instrument.save(update_fields=["status", "updated_at"])
+
+        record_execution(
+            instrument=instrument,
+            action="cancel",
+            status=InstrumentExecutionStatus.SUCCESS,
+            input_data={"at_period_end": at_period_end},
+        )
+        return subscription
+
+    @staticmethod
+    @transaction.atomic
+    def pause(subscription: SubscriptionContract):
+        if subscription.status != SubscriptionStatus.ACTIVE:
+            raise ValidationError("Only active subscriptions can be paused.")
+
+        subscription.status = SubscriptionStatus.PAUSED
+        subscription.instrument.status = InstrumentStatus.PAUSED
+        subscription.save(update_fields=["status", "updated_at"])
+        subscription.instrument.save(update_fields=["status", "updated_at"])
+        record_execution(instrument=subscription.instrument, action="pause", status=InstrumentExecutionStatus.SUCCESS)
+        return subscription
+
+    @staticmethod
+    @transaction.atomic
+    def resume(subscription: SubscriptionContract):
+        if subscription.status != SubscriptionStatus.PAUSED:
+            raise ValidationError("Only paused subscriptions can be resumed.")
+
+        now = timezone.now()
+        new_end = SubscriptionService._next_period_end(now, subscription.billing_cycle)
+        subscription.current_period_start = now
+        subscription.current_period_end = new_end
+        subscription.next_billing_at = new_end
+        subscription.status = SubscriptionStatus.ACTIVE
+        subscription.instrument.status = InstrumentStatus.ACTIVE
+        subscription.save(update_fields=[
+            "current_period_start", "current_period_end",
+            "next_billing_at", "status", "updated_at",
+        ])
+        subscription.instrument.save(update_fields=["status", "updated_at"])
+        record_execution(instrument=subscription.instrument, action="resume", status=InstrumentExecutionStatus.SUCCESS)
+        return subscription

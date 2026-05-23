@@ -1,6 +1,7 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
@@ -18,6 +19,7 @@ from .forms import (
     OptionContractForm,
     RevenueShareContractForm,
     StakingPositionForm,
+    SubscriptionContractForm,
     VestingContractForm,
 )
 from .models import (
@@ -29,15 +31,31 @@ from .models import (
     InstrumentType,
     OptionContract,
     StakingPosition,
+    SubscriptionContract,
 )
 from .queries import dashboard_counts, list_instruments
-from .services import EscrowService, ForwardService, OptionService, StakingService
+from .services import EscrowService, ForwardService, OptionService, StakingService, SubscriptionService
 
 
 def instruments_render(request, template_name, context):
     if PageProcessor:
         context = PageProcessor().decorate(context, request)
     return render(request, template_name, context)
+
+
+def _create_instrument_and_contract(form, instrument_type, user):
+    """Auto-create a FinancialInstrument then attach and save the contract form."""
+    with transaction.atomic():
+        instrument = FinancialInstrument.objects.create(
+            reference=form.cleaned_data["name"],
+            instrument_type=instrument_type,
+            status=InstrumentStatus.DRAFT,
+            issuer=user if user.is_authenticated else None,
+        )
+        contract = form.save(commit=False)
+        contract.instrument = instrument
+        contract.save()
+    return instrument
 
 
 def instrument_list(request):
@@ -82,9 +100,9 @@ def escrow_create(request):
     if request.method == "POST":
         form = EscrowContractForm(request.POST)
         if form.is_valid():
-            escrow = form.save()
+            instrument = _create_instrument_and_contract(form, InstrumentType.ESCROW, request.user)
             messages.success(request, "Escrow created.")
-            return redirect("instruments:instrument_detail", pk=escrow.instrument_id)
+            return redirect("instruments:instrument_detail", pk=instrument.pk)
     else:
         form = EscrowContractForm()
     return instruments_render(request, "instruments/escrow_form.html", {"form": form})
@@ -133,9 +151,9 @@ def forward_create(request):
     if request.method == "POST":
         form = ForwardContractForm(request.POST)
         if form.is_valid():
-            fwd = form.save()
+            instrument = _create_instrument_and_contract(form, InstrumentType.FORWARD, request.user)
             messages.success(request, "Forward contract created.")
-            return redirect("instruments:instrument_detail", pk=fwd.instrument_id)
+            return redirect("instruments:instrument_detail", pk=instrument.pk)
     else:
         form = ForwardContractForm()
     return instruments_render(request, "instruments/forward_form.html", {"form": form})
@@ -185,9 +203,9 @@ def future_contract_create(request):
     if request.method == "POST":
         form = FutureContractForm(request.POST)
         if form.is_valid():
-            fc = form.save()
+            instrument = _create_instrument_and_contract(form, InstrumentType.FUTURE, request.user)
             messages.success(request, "Future contract created.")
-            return redirect("instruments:instrument_detail", pk=fc.instrument_id)
+            return redirect("instruments:instrument_detail", pk=instrument.pk)
     else:
         form = FutureContractForm()
     return instruments_render(request, "instruments/future_contract_form.html", {"form": form})
@@ -200,9 +218,9 @@ def option_create(request):
     if request.method == "POST":
         form = OptionContractForm(request.POST)
         if form.is_valid():
-            opt = form.save()
+            instrument = _create_instrument_and_contract(form, InstrumentType.OPTION, request.user)
             messages.success(request, "Option contract created.")
-            return redirect("instruments:instrument_detail", pk=opt.instrument_id)
+            return redirect("instruments:instrument_detail", pk=instrument.pk)
     else:
         form = OptionContractForm()
     return instruments_render(request, "instruments/option_form.html", {"form": form})
@@ -234,9 +252,9 @@ def vesting_create(request):
     if request.method == "POST":
         form = VestingContractForm(request.POST)
         if form.is_valid():
-            vc = form.save()
+            instrument = _create_instrument_and_contract(form, InstrumentType.VESTING, request.user)
             messages.success(request, "Vesting contract created.")
-            return redirect("instruments:instrument_detail", pk=vc.instrument_id)
+            return redirect("instruments:instrument_detail", pk=instrument.pk)
     else:
         form = VestingContractForm()
     return instruments_render(request, "instruments/vesting_form.html", {"form": form})
@@ -249,9 +267,9 @@ def revenue_share_create(request):
     if request.method == "POST":
         form = RevenueShareContractForm(request.POST)
         if form.is_valid():
-            rev = form.save()
+            instrument = _create_instrument_and_contract(form, InstrumentType.REVENUE_SHARE, request.user)
             messages.success(request, "Revenue share contract created.")
-            return redirect("instruments:instrument_detail", pk=rev.instrument_id)
+            return redirect("instruments:instrument_detail", pk=instrument.pk)
     else:
         form = RevenueShareContractForm()
     return instruments_render(request, "instruments/revenue_share_form.html", {"form": form})
@@ -264,9 +282,9 @@ def staking_create(request):
     if request.method == "POST":
         form = StakingPositionForm(request.POST)
         if form.is_valid():
-            stk = form.save()
+            instrument = _create_instrument_and_contract(form, InstrumentType.STAKING, request.user)
             messages.success(request, "Staking position created.")
-            return redirect("instruments:instrument_detail", pk=stk.instrument_id)
+            return redirect("instruments:instrument_detail", pk=instrument.pk)
     else:
         form = StakingPositionForm()
     return instruments_render(request, "instruments/staking_form.html", {"form": form})
@@ -305,6 +323,99 @@ def staking_unstake(request, pk):
     try:
         StakingService.unstake(stk)
         messages.success(request, "Assets unstaked.")
+    except ValidationError as exc:
+        messages.error(request, "; ".join(exc.messages))
+    return redirect("instruments:instrument_detail", pk=pk)
+
+
+# ── Subscription ──────────────────────────────────────────────────────────────
+
+@login_required
+def subscription_create(request):
+    if request.method == "POST":
+        form = SubscriptionContractForm(request.POST)
+        if form.is_valid():
+            instrument = _create_instrument_and_contract(form, InstrumentType.SUBSCRIPTION, request.user)
+            messages.success(request, "Subscription created.")
+            return redirect("instruments:instrument_detail", pk=instrument.pk)
+    else:
+        form = SubscriptionContractForm()
+    return instruments_render(request, "instruments/subscription_form.html", {"form": form})
+
+
+@require_POST
+@login_required
+def subscription_activate(request, pk):
+    instrument = get_object_or_404(
+        FinancialInstrument.objects.select_related("subscription_contract__asset"),
+        pk=pk,
+    )
+    sub = getattr(instrument, "subscription_contract", None)
+    if not sub:
+        messages.error(request, "No subscription contract attached.")
+        return redirect("instruments:instrument_detail", pk=pk)
+    try:
+        SubscriptionService.activate(sub)
+        messages.success(request, "Subscription activated.")
+    except ValidationError as exc:
+        messages.error(request, "; ".join(exc.messages))
+    return redirect("instruments:instrument_detail", pk=pk)
+
+
+@require_POST
+@login_required
+def subscription_cancel(request, pk):
+    instrument = get_object_or_404(
+        FinancialInstrument.objects.select_related("subscription_contract"),
+        pk=pk,
+    )
+    sub = getattr(instrument, "subscription_contract", None)
+    if not sub:
+        messages.error(request, "No subscription contract attached.")
+        return redirect("instruments:instrument_detail", pk=pk)
+    at_period_end = request.POST.get("at_period_end", "1") != "0"
+    try:
+        SubscriptionService.cancel(sub, at_period_end=at_period_end)
+        msg = "Subscription will cancel at period end." if at_period_end else "Subscription cancelled immediately."
+        messages.success(request, msg)
+    except ValidationError as exc:
+        messages.error(request, "; ".join(exc.messages))
+    return redirect("instruments:instrument_detail", pk=pk)
+
+
+@require_POST
+@login_required
+def subscription_pause(request, pk):
+    instrument = get_object_or_404(
+        FinancialInstrument.objects.select_related("subscription_contract"),
+        pk=pk,
+    )
+    sub = getattr(instrument, "subscription_contract", None)
+    if not sub:
+        messages.error(request, "No subscription contract attached.")
+        return redirect("instruments:instrument_detail", pk=pk)
+    try:
+        SubscriptionService.pause(sub)
+        messages.success(request, "Subscription paused.")
+    except ValidationError as exc:
+        messages.error(request, "; ".join(exc.messages))
+    return redirect("instruments:instrument_detail", pk=pk)
+
+
+@require_POST
+@login_required
+def subscription_resume(request, pk):
+    instrument = get_object_or_404(
+        FinancialInstrument.objects.select_related("subscription_contract"),
+        pk=pk,
+    )
+    sub = getattr(instrument, "subscription_contract", None)
+    if not sub:
+        messages.error(request, "No subscription contract attached.")
+        return redirect("instruments:instrument_detail", pk=pk)
+    try:
+        SubscriptionService.resume(sub)
+        messages.success(request, "Subscription resumed.")
     except ValidationError as exc:
         messages.error(request, "; ".join(exc.messages))
     return redirect("instruments:instrument_detail", pk=pk)

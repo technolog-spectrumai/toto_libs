@@ -309,6 +309,141 @@
   {% endwith %}
   {% endif %}
 
+  <!-- ── Subscription ─────────────────────────────────────── -->
+  {% if instrument.subscription_contract %}
+  {% with sub=instrument.subscription_contract %}
+  <section class="rounded-xl border p-5 shadow-sm space-y-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+    <h2 class="flex items-center gap-2 text-xl font-bold">
+      <i class="fa-solid fa-arrows-rotate opacity-60"></i> {% trans "Subscription Contract" %}
+    </h2>
+
+    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 text-sm">
+      <div>
+        <div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Status" %}</div>
+        <div class="font-semibold">
+          <span class="rounded px-2 py-0.5 text-xs font-semibold
+            {% if sub.status == 'trialing' %}bg-cyan-500/15 text-cyan-600
+            {% elif sub.status == 'past_due' %}bg-orange-500/15 text-orange-600
+            {% elif sub.status == 'paused' %}bg-yellow-500/15 text-yellow-600
+            {% elif sub.status == 'cancelled' %}bg-red-500/15 text-red-600
+            {% elif sub.status != 'active' %}bg-gray-500/15 text-gray-500{% endif %}"
+            {% if sub.status == 'active' %}:class="darkMode ? 'bg-success-dark/15 text-success-dark' : 'bg-success-light/15 text-success-light'"{% endif %}>
+            {{ sub.get_status_display }}
+          </span>
+          {% if sub.cancel_at_period_end and sub.status != 'cancelled' %}
+          <span class="ml-1 text-xs text-orange-500 font-normal">({% trans "cancels at period end" %})</span>
+          {% endif %}
+        </div>
+      </div>
+      <div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Amount" %}</div><div class="font-semibold">{{ sub.amount_display }} {{ sub.asset.unit_name }}</div></div>
+      <div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Cycle" %}</div><div class="font-semibold">{{ sub.get_billing_cycle_display }}</div></div>
+      <div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Subscriber" %}</div><div class="font-semibold">{{ sub.subscriber_account.code }}</div></div>
+      <div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Provider" %}</div><div class="font-semibold">{{ sub.provider_account.code }}</div></div>
+      <div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Asset" %}</div><div class="font-semibold">{{ sub.asset.unit_name }}</div></div>
+      <div>
+        <div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Current period" %}</div>
+        <div class="font-semibold text-xs">{{ sub.current_period_start|date:"M d, Y H:i" }} – {{ sub.current_period_end|date:"M d, Y H:i" }}</div>
+      </div>
+      <div>
+        <div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Next billing" %}</div>
+        <div class="font-semibold">{{ sub.next_billing_at|date:"M d, Y H:i" }}</div>
+      </div>
+      {% if sub.trial_ends_at %}
+      <div>
+        <div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Trial ends" %}</div>
+        <div class="font-semibold {% if sub.is_in_trial %}text-cyan-500{% endif %}">
+          {{ sub.trial_ends_at|date:"M d, Y H:i" }}
+          {% if sub.is_in_trial %}<span class="text-xs ml-1">({% trans "active" %})</span>{% endif %}
+        </div>
+      </div>
+      {% endif %}
+      {% if sub.cancelled_at %}
+      <div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Cancelled at" %}</div><div class="font-semibold text-red-500">{{ sub.cancelled_at|date:"M d, Y H:i" }}</div></div>
+      {% endif %}
+    </div>
+
+    <!-- Actions -->
+    <div class="flex flex-wrap gap-2 pt-1">
+      {% if instrument.status == 'draft' %}
+      <form method="post" action="{% url 'instruments:subscription_activate' instrument.pk %}">{% csrf_token %}
+        <button class="rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'">
+          <i class="fa-solid fa-play"></i> {% trans "Activate" %}
+        </button>
+      </form>
+      {% endif %}
+      {% if sub.status == 'active' %}
+      <form method="post" action="{% url 'instruments:subscription_pause' instrument.pk %}">{% csrf_token %}
+        <button class="rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-90"
+                :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+          <i class="fa-solid fa-pause"></i> {% trans "Pause" %}
+        </button>
+      </form>
+      {% endif %}
+      {% if sub.status == 'paused' %}
+      <form method="post" action="{% url 'instruments:subscription_resume' instrument.pk %}">{% csrf_token %}
+        <button class="rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'">
+          <i class="fa-solid fa-play"></i> {% trans "Resume" %}
+        </button>
+      </form>
+      {% endif %}
+      {% if sub.status != 'cancelled' %}
+      <form method="post" action="{% url 'instruments:subscription_cancel' instrument.pk %}">{% csrf_token %}
+        <input type="hidden" name="at_period_end" value="1">
+        <button class="rounded-lg border px-4 py-2 text-sm font-semibold text-orange-500 border-orange-400 transition hover:opacity-90">
+          <i class="fa-solid fa-clock"></i> {% trans "Cancel at period end" %}
+        </button>
+      </form>
+      <form method="post" action="{% url 'instruments:subscription_cancel' instrument.pk %}">{% csrf_token %}
+        <input type="hidden" name="at_period_end" value="0">
+        <button class="rounded-lg border px-4 py-2 text-sm font-semibold text-red-500 border-red-400 transition hover:opacity-90">
+          <i class="fa-solid fa-ban"></i> {% trans "Cancel immediately" %}
+        </button>
+      </form>
+      {% endif %}
+    </div>
+
+    <!-- Payment history -->
+    {% with payments=sub.payments.select_related %}
+    {% if payments %}
+    <div>
+      <div class="text-xs uppercase opacity-50 mb-2">{% trans "Payment history" %}</div>
+      <div class="space-y-1.5">
+        {% for payment in payments %}
+        <div class="rounded-lg px-3 py-2.5 text-sm" :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="space-y-0.5">
+              <div class="text-xs opacity-60">{{ payment.period_start|date:"M d, Y" }} – {{ payment.period_end|date:"M d, Y" }}</div>
+              <div class="font-semibold">{{ payment.amount_display }} {{ sub.asset.unit_name }}</div>
+            </div>
+            <div class="flex items-center gap-2 text-xs">
+              <span class="rounded px-2 py-0.5 font-semibold
+                {% if payment.status == 'failed' %}bg-red-500/15 text-red-600
+                {% elif payment.status != 'paid' %}bg-yellow-500/15 text-yellow-600{% endif %}"
+                {% if payment.status == 'paid' %}:class="darkMode ? 'bg-success-dark/15 text-success-dark' : 'bg-success-light/15 text-success-light'"{% endif %}>
+                {{ payment.get_status_display }}
+              </span>
+              {% if payment.paid_at %}<span class="opacity-50">{{ payment.paid_at|date:"M d, Y H:i" }}</span>{% endif %}
+              {% if payment.transaction %}
+              <a href="{% url 'assets:transaction_detail' payment.transaction.pk %}"
+                 class="underline opacity-60 hover:opacity-100">{{ payment.transaction.reference }}</a>
+              {% endif %}
+            </div>
+          </div>
+          {% if payment.failure_reason %}
+          <p class="mt-1 text-xs text-red-500">{{ payment.failure_reason }}</p>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+    {% endwith %}
+  </section>
+  {% endwith %}
+  {% endif %}
+
   <!-- ── Obligations ────────────────────────────────────── -->
   {% if instrument.obligation_links.exists %}
   <section class="rounded-xl border p-5 shadow-sm space-y-3" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">

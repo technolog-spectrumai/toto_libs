@@ -14,6 +14,7 @@ def dashboard_counts():
         "options": qs.filter(instrument_type=InstrumentType.OPTION).count(),
         "vesting": qs.filter(instrument_type=InstrumentType.VESTING).count(),
         "staking": qs.filter(instrument_type=InstrumentType.STAKING).count(),
+        "subscriptions": qs.filter(instrument_type=InstrumentType.SUBSCRIPTION).count(),
     }
 
 

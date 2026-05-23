@@ -13,7 +13,7 @@
       <div class="text-xs uppercase tracking-wide opacity-60">{% trans "Total" %}</div>
     </div>
     <div class="rounded-xl border p-4 shadow-sm" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
-      <div class="text-2xl font-bold text-green-500">{{ counts.active }}</div>
+      <div class="text-2xl font-bold" :class="darkMode ? 'text-success-dark' : 'text-success-light'">{{ counts.active }}</div>
       <div class="text-xs uppercase tracking-wide opacity-60">{% trans "Active" %}</div>
     </div>
     <div class="rounded-xl border p-4 shadow-sm" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
@@ -21,7 +21,7 @@
       <div class="text-xs uppercase tracking-wide opacity-60">{% trans "Draft" %}</div>
     </div>
     <div class="rounded-xl border p-4 shadow-sm" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
-      <div class="text-2xl font-bold text-blue-500">{{ counts.settled }}</div>
+      <div class="text-2xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">{{ counts.settled }}</div>
       <div class="text-xs uppercase tracking-wide opacity-60">{% trans "Settled" %}</div>
     </div>
     <div class="rounded-xl border p-4 shadow-sm" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
@@ -92,12 +92,10 @@
               <span class="rounded border border-current/20 px-2 py-0.5 text-xs font-semibold opacity-70">
                 {{ instrument.get_instrument_type_display }}
               </span>
-              <span class="rounded px-2 py-0.5 text-xs font-semibold
-                {% if instrument.status == 'active' %}bg-green-500/15 text-green-600
-                {% elif instrument.status == 'draft' %}bg-gray-500/15 text-gray-500
-                {% elif instrument.status == 'settled' %}bg-blue-500/15 text-blue-600
-                {% elif instrument.status == 'defaulted' or instrument.status == 'cancelled' %}bg-red-500/15 text-red-600
-                {% else %}bg-yellow-500/15 text-yellow-600{% endif %}">
+              <span class="rounded px-2 py-0.5 text-xs font-semibold"
+                :class="darkMode
+                  ? '{% if instrument.status == 'active' %}bg-success-dark/15 text-success-dark{% elif instrument.status == 'draft' %}opacity-50{% elif instrument.status == 'settled' or instrument.status == 'paused' %}bg-accent-dark/15 text-accent-dark{% elif instrument.status == 'defaulted' or instrument.status == 'cancelled' %}bg-warn-dark/15 text-warn-dark{% else %}bg-caution-dark/15 text-caution-dark{% endif %}'
+                  : '{% if instrument.status == 'active' %}bg-success-light/15 text-success-light{% elif instrument.status == 'draft' %}opacity-50{% elif instrument.status == 'settled' or instrument.status == 'paused' %}bg-accent-light/15 text-accent-light{% elif instrument.status == 'defaulted' or instrument.status == 'cancelled' %}bg-warn-light/15 text-warn-light{% else %}bg-caution-light/15 text-caution-light{% endif %}'">
                 {{ instrument.get_status_display }}
               </span>
             </div>
@@ -138,6 +136,11 @@
              class="rounded-lg border px-4 py-2 text-sm font-semibold"
              :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
             {% trans "New Vesting" %}
+          </a>
+          <a href="{% url 'instruments:subscription_create' %}"
+             class="rounded-lg border px-4 py-2 text-sm font-semibold"
+             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+            {% trans "New Subscription" %}
           </a>
         </div>
       </div>
@@ -181,6 +184,12 @@
        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
       <i class="fa-solid fa-layer-group text-lg text-indigo-500"></i>
       <span>{% trans "New Staking" %}</span>
+    </a>
+    <a href="{% url 'instruments:subscription_create' %}"
+       class="flex items-center gap-3 rounded-xl border p-4 text-sm font-semibold shadow-sm transition hover:opacity-80"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <i class="fa-solid fa-arrows-rotate text-lg" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+      <span>{% trans "New Subscription" %}</span>
     </a>
   </section>
 
