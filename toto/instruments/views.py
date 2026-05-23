@@ -16,6 +16,10 @@ from .forms import (
     ForwardContractForm,
     FutureContractForm,
     FutureMarketForm,
+    LeaseChargeForm,
+    LeaseContractForm,
+    LeaseMetricForm,
+    LeaseTariffForm,
     OptionContractForm,
     RevenueShareContractForm,
     StakingPositionForm,
@@ -29,12 +33,15 @@ from .models import (
     FutureMarket,
     InstrumentStatus,
     InstrumentType,
+    LeaseCharge,
+    LeaseContract,
+    LeaseMetric,
     OptionContract,
     StakingPosition,
     SubscriptionContract,
 )
-from .queries import dashboard_counts, list_instruments
-from .services import EscrowService, ForwardService, OptionService, StakingService, SubscriptionService
+from .queries import dashboard_counts, list_instruments, list_lease_charges, list_lease_tariffs
+from .services import EscrowService, ForwardService, LeaseService, OptionService, StakingService, SubscriptionService
 
 
 def instruments_render(request, template_name, context):
@@ -419,3 +426,201 @@ def subscription_resume(request, pk):
     except ValidationError as exc:
         messages.error(request, "; ".join(exc.messages))
     return redirect("instruments:instrument_detail", pk=pk)
+
+
+# ── Lease ──────────────────────────────────────────────────────────────────
+
+@login_required
+def lease_list(request):
+    status = request.GET.get("status") or None
+    qs = LeaseContract.objects.select_related(
+        "instrument", "lessee_account", "lessor_account", "payment_asset", "leased_asset"
+    ).order_by("-created_at")
+    if status:
+        qs = qs.filter(status=status)
+    from .models import LeaseStatus
+    return instruments_render(request, "instruments/lease_list.html", {
+        "leases": qs[:100],
+        "status": status,
+        "status_choices": LeaseStatus.choices,
+        "total": LeaseContract.objects.count(),
+        "active_count": LeaseContract.objects.filter(status="active").count(),
+        "draft_count": LeaseContract.objects.filter(status="draft").count(),
+    })
+
+
+@login_required
+def lease_detail(request, pk):
+    lease = get_object_or_404(
+        LeaseContract.objects.select_related(
+            "instrument", "lessee_account", "lessor_account",
+            "leased_asset", "payment_asset", "revenue_account",
+        ),
+        pk=pk,
+    )
+    tariffs = list_lease_tariffs(lease)
+    charges = list_lease_charges(lease)
+    executions = lease.instrument.executions.all()
+    return instruments_render(request, "instruments/lease_detail.html", {
+        "lease": lease,
+        "tariffs": tariffs,
+        "charges": charges,
+        "executions": executions,
+    })
+
+
+@login_required
+def lease_create(request):
+    if request.method == "POST":
+        form = LeaseContractForm(request.POST)
+        if form.is_valid():
+            instrument = _create_instrument_and_contract(form, InstrumentType.LEASE, request.user)
+            messages.success(request, "Lease created.")
+            return redirect("instruments:lease_detail", pk=instrument.lease_contract.pk)
+    else:
+        form = LeaseContractForm()
+    return instruments_render(request, "instruments/lease_form.html", {"form": form})
+
+
+@login_required
+def lease_metric_create(request):
+    if request.method == "POST":
+        form = LeaseMetricForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Lease metric created.")
+            return redirect("instruments:lease_list")
+    else:
+        form = LeaseMetricForm()
+    return instruments_render(request, "instruments/lease_metric_form.html", {"form": form})
+
+
+@login_required
+def lease_tariff_create(request, lease_pk):
+    lease = get_object_or_404(LeaseContract, pk=lease_pk)
+    if request.method == "POST":
+        form = LeaseTariffForm(request.POST)
+        if form.is_valid():
+            tariff = form.save(commit=False)
+            tariff.lease = lease
+            try:
+                tariff.full_clean()
+                tariff.save()
+                messages.success(request, "Tariff added.")
+                return redirect("instruments:lease_detail", pk=lease.pk)
+            except Exception as exc:
+                messages.error(request, str(exc))
+    else:
+        form = LeaseTariffForm()
+    return instruments_render(request, "instruments/lease_tariff_form.html", {
+        "form": form, "lease": lease,
+    })
+
+
+@login_required
+def lease_charge_create(request, lease_pk):
+    lease = get_object_or_404(
+        LeaseContract.objects.select_related("instrument", "payment_asset"),
+        pk=lease_pk,
+    )
+    if request.method == "POST":
+        form = LeaseChargeForm(request.POST, lease=lease)
+        if form.is_valid():
+            try:
+                LeaseService.record_metered_charge(
+                    lease=lease,
+                    metric=form.cleaned_data["metric"],
+                    raw_quantity=form.cleaned_data["raw_quantity"],
+                    source_type=form.cleaned_data.get("source_type", ""),
+                    source_id=form.cleaned_data.get("source_id", ""),
+                )
+                messages.success(request, "Metered charge recorded.")
+                return redirect("instruments:lease_detail", pk=lease.pk)
+            except Exception as exc:
+                messages.error(request, str(exc))
+    else:
+        form = LeaseChargeForm(lease=lease)
+    return instruments_render(request, "instruments/lease_charge_form.html", {
+        "form": form, "lease": lease,
+    })
+
+
+@require_POST
+@login_required
+def lease_activate(request, pk):
+    lease = get_object_or_404(
+        LeaseContract.objects.select_related("instrument"),
+        pk=pk,
+    )
+    try:
+        LeaseService.activate(lease)
+        messages.success(request, "Lease activated.")
+    except Exception as exc:
+        messages.error(request, str(exc))
+    return redirect("instruments:lease_detail", pk=lease.pk)
+
+
+@require_POST
+@login_required
+def lease_cancel(request, pk):
+    lease = get_object_or_404(
+        LeaseContract.objects.select_related("instrument"),
+        pk=pk,
+    )
+    try:
+        LeaseService.cancel(lease)
+        messages.success(request, "Lease cancelled.")
+    except Exception as exc:
+        messages.error(request, str(exc))
+    return redirect("instruments:lease_detail", pk=lease.pk)
+
+
+@require_POST
+@login_required
+def lease_charge_fixed(request, pk):
+    lease = get_object_or_404(
+        LeaseContract.objects.select_related(
+            "instrument", "payment_asset", "lessee_account", "revenue_account"
+        ),
+        pk=pk,
+    )
+    try:
+        LeaseService.charge_fixed_fee(lease)
+        messages.success(request, "Fixed fee charged.")
+    except Exception as exc:
+        messages.error(request, str(exc))
+    return redirect("instruments:lease_detail", pk=lease.pk)
+
+
+@require_POST
+@login_required
+def lease_charge_collect(request, charge_pk):
+    charge = get_object_or_404(
+        LeaseCharge.objects.select_related(
+            "lease__instrument", "lease__payment_asset",
+            "lease__lessee_account", "lease__revenue_account",
+            "metric",
+        ),
+        pk=charge_pk,
+    )
+    try:
+        LeaseService.charge_pending_charge(charge)
+        messages.success(request, "Charge collected.")
+    except Exception as exc:
+        messages.error(request, str(exc))
+    return redirect("instruments:lease_detail", pk=charge.lease.pk)
+
+
+@require_POST
+@login_required
+def lease_charge_waive(request, charge_pk):
+    charge = get_object_or_404(
+        LeaseCharge.objects.select_related("lease__instrument"),
+        pk=charge_pk,
+    )
+    try:
+        LeaseService.waive_charge(charge)
+        messages.success(request, "Charge waived.")
+    except Exception as exc:
+        messages.error(request, str(exc))
+    return redirect("instruments:lease_detail", pk=charge.lease.pk)

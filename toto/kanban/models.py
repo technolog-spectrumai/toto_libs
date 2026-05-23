@@ -136,6 +136,18 @@ class Practitioner(DomainEntity):
     person = models.ForeignKey(Person, on_delete=models.CASCADE, related_name="project_practitioner_roles")
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default=ROLE_CONTRIBUTOR)
     is_active = models.BooleanField(default=True)
+    default_income_account = models.ForeignKey(
+        "assets.LedgerAccount",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="practitioner_income_accounts",
+        help_text="Default account receiving salary, vesting releases, bonuses, revenue-share payouts, or lease/subscription payments.",
+    )
+    work_description = models.TextField(
+        blank=True,
+        help_text="Free-text description of this practitioner's role or services in the project.",
+    )
     metadata = models.JSONField(blank=True, null=True)
 
     class Meta:

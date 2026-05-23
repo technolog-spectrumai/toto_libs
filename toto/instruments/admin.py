@@ -9,6 +9,10 @@ from .models import (
     FutureMarket,
     InstrumentExecution,
     InstrumentObligation,
+    LeaseCharge,
+    LeaseContract,
+    LeaseMetric,
+    LeaseTariff,
     OptionContract,
     RevenueShareContract,
     RevenueShareRecipient,
@@ -90,3 +94,54 @@ admin.site.register(VestingContract)
 admin.site.register(StakingPosition)
 admin.site.register(InstrumentObligation)
 admin.site.register(InstrumentExecution)
+
+
+# ---------------------------------------------------------------------------
+# Lease admin
+# ---------------------------------------------------------------------------
+
+class LeaseTariffInline(admin.TabularInline):
+    model = LeaseTariff
+    extra = 0
+    readonly_fields = ["created_at", "updated_at"]
+
+
+class LeaseChargeInline(admin.TabularInline):
+    model = LeaseCharge
+    extra = 0
+    readonly_fields = ["created_at", "charged_at"]
+    show_change_link = True
+
+
+@admin.register(LeaseContract)
+class LeaseContractAdmin(admin.ModelAdmin):
+    list_display = [
+        "instrument", "billing_mode", "status", "lessee_account",
+        "lessor_account", "next_billing_at", "created_at",
+    ]
+    list_filter = ["status", "billing_mode", "billing_period"]
+    search_fields = ["instrument__reference"]
+    readonly_fields = ["created_at", "updated_at", "activated_at", "cancelled_at"]
+    inlines = [LeaseTariffInline, LeaseChargeInline]
+
+
+@admin.register(LeaseMetric)
+class LeaseMetricAdmin(admin.ModelAdmin):
+    list_display = ["code", "name", "kind", "unit", "step", "active"]
+    list_filter = ["kind", "active"]
+    search_fields = ["code", "name"]
+
+
+@admin.register(LeaseTariff)
+class LeaseTariffAdmin(admin.ModelAdmin):
+    list_display = ["lease", "metric", "price_per_step_base_units", "rounding_mode", "active"]
+    list_filter = ["rounding_mode", "active"]
+    readonly_fields = ["created_at", "updated_at"]
+
+
+@admin.register(LeaseCharge)
+class LeaseChargeAdmin(admin.ModelAdmin):
+    list_display = ["lease", "metric", "raw_quantity", "amount_base_units", "status", "charged_at"]
+    list_filter = ["status"]
+    search_fields = ["lease__instrument__reference"]
+    readonly_fields = ["created_at", "charged_at"]

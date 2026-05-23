@@ -27,6 +27,7 @@ class InstrumentType(models.TextChoices):
     SUBSCRIPTION = "subscription", "Subscription"
     VESTING = "vesting", "Vesting"
     STAKING = "staking", "Staking"
+    LEASE = "lease", "Lease"
 
 
 class FinancialInstrument(models.Model):
@@ -820,3 +821,231 @@ class SubscriptionPayment(models.Model):
     @property
     def amount_display(self) -> Decimal:
         return from_base_units(self.amount_base_units, self.subscription.asset.decimals)
+
+
+# ---------------------------------------------------------------------------
+# Lease
+# ---------------------------------------------------------------------------
+
+class BillingMode(models.TextChoices):
+    FIXED = "fixed", "Fixed"
+    METERED = "metered", "Metered"
+    MIXED = "mixed", "Mixed"
+
+
+class BillingPeriod(models.TextChoices):
+    ONCE = "once", "Once"
+    DAILY = "daily", "Daily"
+    WEEKLY = "weekly", "Weekly"
+    MONTHLY = "monthly", "Monthly"
+    YEARLY = "yearly", "Yearly"
+    CUSTOM = "custom", "Custom"
+
+
+class LeaseStatus(models.TextChoices):
+    DRAFT = "draft", "Draft"
+    ACTIVE = "active", "Active"
+    PAUSED = "paused", "Paused"
+    EXPIRED = "expired", "Expired"
+    CANCELLED = "cancelled", "Cancelled"
+    DEFAULTED = "defaulted", "Defaulted"
+
+
+class LeaseContract(models.Model):
+    instrument = models.OneToOneField(
+        FinancialInstrument, on_delete=models.PROTECT, related_name="lease_contract"
+    )
+    lessor_account = models.ForeignKey(
+        "assets.LedgerAccount", on_delete=models.PROTECT, related_name="leases_as_lessor"
+    )
+    lessee_account = models.ForeignKey(
+        "assets.LedgerAccount", on_delete=models.PROTECT, related_name="leases_as_lessee"
+    )
+    leased_asset = models.ForeignKey(
+        "assets.Asset", on_delete=models.PROTECT, related_name="leases_as_subject"
+    )
+    payment_asset = models.ForeignKey(
+        "assets.Asset", on_delete=models.PROTECT, related_name="leases_as_payment"
+    )
+    revenue_account = models.ForeignKey(
+        "assets.LedgerAccount", on_delete=models.PROTECT, related_name="leases_as_revenue"
+    )
+    billing_mode = models.CharField(
+        max_length=20, choices=BillingMode.choices, default=BillingMode.FIXED
+    )
+    fixed_fee_base_units = models.BigIntegerField(default=0)
+    billing_period = models.CharField(
+        max_length=20, choices=BillingPeriod.choices, default=BillingPeriod.MONTHLY
+    )
+    starts_at = models.DateTimeField()
+    ends_at = models.DateTimeField(null=True, blank=True)
+    next_billing_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    status = models.CharField(
+        max_length=20, choices=LeaseStatus.choices, default=LeaseStatus.DRAFT
+    )
+    activated_at = models.DateTimeField(null=True, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def clean(self):
+        if self.fixed_fee_base_units is not None and self.fixed_fee_base_units < 0:
+            raise ValidationError({"fixed_fee_base_units": "Fixed fee cannot be negative."})
+        if self.billing_mode == BillingMode.FIXED and (
+            self.fixed_fee_base_units is None or self.fixed_fee_base_units <= 0
+        ):
+            raise ValidationError(
+                {"fixed_fee_base_units": "Fixed billing mode requires a positive fixed fee."}
+            )
+        if self.ends_at and self.starts_at and self.ends_at <= self.starts_at:
+            raise ValidationError({"ends_at": "ends_at must be after starts_at."})
+        if (
+            self.lessor_account_id
+            and self.lessee_account_id
+            and self.lessor_account_id == self.lessee_account_id
+        ):
+            raise ValidationError("Lessor and lessee accounts must differ.")
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status", "next_billing_at"]),
+            models.Index(fields=["lessor_account", "status"]),
+            models.Index(fields=["lessee_account", "status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.instrument.reference} (lease)"
+
+
+class MetricKind(models.TextChoices):
+    TIME = "time", "Time"
+    USAGE = "usage", "Usage"
+    UNIT = "unit", "Unit"
+
+
+class LeaseMetric(models.Model):
+    code = models.CharField(max_length=50, unique=True)
+    name = models.CharField(max_length=255)
+    kind = models.CharField(max_length=20, choices=MetricKind.choices)
+    unit = models.CharField(max_length=50)
+    step = models.DecimalField(max_digits=18, decimal_places=6, default=1)
+    allow_fractional_quantity = models.BooleanField(default=False)
+    active = models.BooleanField(default=True)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    def clean(self):
+        if self.step is not None and self.step <= 0:
+            raise ValidationError({"step": "Step must be positive."})
+
+    def __str__(self):
+        return f"{self.code} ({self.unit})"
+
+    class Meta:
+        ordering = ["code"]
+
+
+class RoundingMode(models.TextChoices):
+    EXACT = "exact", "Exact"
+    ROUND_UP_STEP = "round_up_step", "Round Up to Step"
+    ROUND_DOWN_STEP = "round_down_step", "Round Down to Step"
+
+
+class LeaseTariff(models.Model):
+    lease = models.ForeignKey(
+        LeaseContract, on_delete=models.PROTECT, related_name="tariffs"
+    )
+    metric = models.ForeignKey(
+        LeaseMetric, on_delete=models.PROTECT, related_name="tariffs"
+    )
+    price_per_step_base_units = models.BigIntegerField()
+    minimum_charge_base_units = models.BigIntegerField(default=0)
+    rounding_mode = models.CharField(
+        max_length=20, choices=RoundingMode.choices, default=RoundingMode.ROUND_UP_STEP
+    )
+    active = models.BooleanField(default=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def clean(self):
+        if self.lease_id and self.lease.billing_mode == BillingMode.FIXED:
+            raise ValidationError(
+                "Tariffs can only be added to metered or mixed leases."
+            )
+        if (
+            self.price_per_step_base_units is not None
+            and self.price_per_step_base_units <= 0
+        ):
+            raise ValidationError(
+                {"price_per_step_base_units": "Price per step must be positive."}
+            )
+        if (
+            self.minimum_charge_base_units is not None
+            and self.minimum_charge_base_units < 0
+        ):
+            raise ValidationError(
+                {"minimum_charge_base_units": "Minimum charge cannot be negative."}
+            )
+
+    class Meta:
+        unique_together = [("lease", "metric")]
+        ordering = ["lease", "metric"]
+
+
+class ChargeStatus(models.TextChoices):
+    PENDING = "pending", "Pending"
+    CHARGED = "charged", "Charged"
+    WAIVED = "waived", "Waived"
+    FAILED = "failed", "Failed"
+
+
+class LeaseCharge(models.Model):
+    lease = models.ForeignKey(
+        LeaseContract, on_delete=models.PROTECT, related_name="charges"
+    )
+    tariff = models.ForeignKey(
+        LeaseTariff, on_delete=models.PROTECT, related_name="charges"
+    )
+    metric = models.ForeignKey(
+        LeaseMetric, on_delete=models.PROTECT, related_name="charges"
+    )
+    raw_quantity = models.DecimalField(max_digits=18, decimal_places=6)
+    billed_quantity = models.DecimalField(max_digits=18, decimal_places=6)
+    billed_steps = models.DecimalField(max_digits=18, decimal_places=6)
+    amount_base_units = models.BigIntegerField()
+    status = models.CharField(
+        max_length=20, choices=ChargeStatus.choices, default=ChargeStatus.PENDING
+    )
+    source_type = models.CharField(max_length=100, blank=True)
+    source_id = models.CharField(max_length=255, blank=True)
+    transaction = models.ForeignKey(
+        "assets.LedgerTransaction",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="lease_charges",
+    )
+    charged_at = models.DateTimeField(null=True, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def clean(self):
+        if self.raw_quantity is not None and self.raw_quantity <= 0:
+            raise ValidationError({"raw_quantity": "Raw quantity must be positive."})
+        if self.billed_quantity is not None and self.billed_quantity <= 0:
+            raise ValidationError({"billed_quantity": "Billed quantity must be positive."})
+        if self.billed_steps is not None and self.billed_steps <= 0:
+            raise ValidationError({"billed_steps": "Billed steps must be positive."})
+        if self.amount_base_units is not None and self.amount_base_units <= 0:
+            raise ValidationError({"amount_base_units": "Amount must be positive."})
+        if self.tariff_id and self.metric_id and self.tariff.metric_id != self.metric_id:
+            raise ValidationError("Charge metric must match tariff metric.")
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["lease", "status"]),
+            models.Index(fields=["status", "created_at"]),
+        ]

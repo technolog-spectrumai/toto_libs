@@ -1,0 +1,93 @@
+{% extends "instruments/base.html" %}
+{% load i18n %}
+
+{% block instruments_title %}{% trans "Record Usage" %}{% endblock %}
+
+{% block instruments_content %}
+<div class="space-y-6 max-w-5xl">
+
+  <div>
+    <a href="{% url 'instruments:lease_detail' lease.pk %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+      <i class="fa-solid fa-arrow-left"></i> {% trans "Back to lease" %}
+    </a>
+  </div>
+
+  <div class="flex items-center gap-3">
+    <div class="flex h-10 w-10 items-center justify-center rounded-xl"
+         :class="darkMode ? 'bg-success-dark/10' : 'bg-success-light/10'">
+      <i class="fa-solid fa-chart-line" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+    </div>
+    <div>
+      <h2 class="text-2xl font-bold">{% trans "Record Usage" %}</h2>
+      <p class="text-sm opacity-60">
+        {% blocktrans with ref=lease.instrument.reference %}Record a metered usage event for lease {{ ref }}.{% endblocktrans %}
+      </p>
+    </div>
+  </div>
+
+  <form method="post" class="space-y-5">
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+    <div class="rounded-lg border px-4 py-3 text-sm font-semibold"
+         :class="darkMode ? 'border-warn-dark/40 bg-warn-dark/10 text-warn-dark' : 'border-warn-light/40 bg-warn-light/10 text-warn-light'">
+      {{ form.non_field_errors }}
+    </div>
+    {% endif %}
+
+    <fieldset class="rounded-xl border p-5 space-y-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Usage Event" %}</legend>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label for="{{ form.metric.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {{ form.metric.label }} <span class="text-red-400">*</span>
+          </label>
+          {{ form.metric }}
+          <p class="mt-1 text-xs opacity-50">{{ form.metric.help_text }}</p>
+          {% for e in form.metric.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
+        </div>
+        <div>
+          <label for="{{ form.raw_quantity.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {{ form.raw_quantity.label }} <span class="text-red-400">*</span>
+          </label>
+          {{ form.raw_quantity }}
+          <p class="mt-1 text-xs opacity-50">{{ form.raw_quantity.help_text }}</p>
+          {% for e in form.raw_quantity.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset class="rounded-xl border p-5 space-y-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Source (optional)" %}</legend>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label for="{{ form.source_type.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {{ form.source_type.label }}
+          </label>
+          {{ form.source_type }}
+          <p class="mt-1 text-xs opacity-50">{{ form.source_type.help_text }}</p>
+          {% for e in form.source_type.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
+        </div>
+        <div>
+          <label for="{{ form.source_id.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {{ form.source_id.label }}
+          </label>
+          {{ form.source_id }}
+          <p class="mt-1 text-xs opacity-50">{{ form.source_id.help_text }}</p>
+          {% for e in form.source_id.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
+        </div>
+      </div>
+    </fieldset>
+
+    <div class="flex flex-wrap items-center gap-3">
+      <button type="submit" class="rounded-lg px-5 py-2.5 text-sm font-bold shadow-sm transition hover:opacity-90"
+              :class="darkMode ? 'bg-success-dark text-primary-bg-dark' : 'bg-success-light text-white'">
+        <i class="fa-solid fa-chart-line mr-1"></i> {% trans "Record usage" %}
+      </button>
+      <a href="{% url 'instruments:lease_detail' lease.pk %}" class="rounded-lg border px-5 py-2.5 text-sm font-semibold transition hover:opacity-80"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+        {% trans "Cancel" %}
+      </a>
+    </div>
+  </form>
+</div>
+{% endblock %}

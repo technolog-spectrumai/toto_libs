@@ -1,0 +1,274 @@
+{% extends "instruments/base.html" %}
+{% load i18n %}
+
+{% block instruments_title %}{{ lease.instrument.reference }}{% endblock %}
+
+{% block instruments_content %}
+<div class="space-y-6 max-w-5xl">
+
+  <a href="{% url 'instruments:lease_list' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+    <i class="fa-solid fa-arrow-left"></i> {% trans "All leases" %}
+  </a>
+
+  <!-- Header -->
+  <article class="rounded-xl border p-6 shadow-sm" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+    <div class="flex flex-wrap items-start justify-between gap-4">
+      <div>
+        <div class="flex flex-wrap items-center gap-2 mb-2">
+          <h1 class="text-3xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+            {{ lease.instrument.reference }}
+          </h1>
+          <span class="rounded-lg border border-current/20 px-2.5 py-1 text-sm font-semibold opacity-60">{% trans "Lease" %}</span>
+          <span class="rounded-lg px-2.5 py-1 text-sm font-semibold"
+            {% if lease.status == 'active' %}:class="darkMode ? 'bg-success-dark/15 text-success-dark' : 'bg-success-light/15 text-success-light'"
+            {% elif lease.status == 'cancelled' or lease.status == 'defaulted' %}:class="darkMode ? 'bg-warn-dark/15 text-warn-dark' : 'bg-warn-light/15 text-warn-light'"
+            {% elif lease.status == 'paused' or lease.status == 'expired' %}:class="darkMode ? 'bg-caution-dark/15 text-caution-dark' : 'bg-caution-light/15 text-caution-light'"
+            {% else %}:class="darkMode ? 'bg-primary-bg-dark/50 text-text-main-dark/60' : 'bg-gray-100 text-gray-500'"
+            {% endif %}>
+            {{ lease.get_status_display }}
+          </span>
+          <span class="rounded border border-current/20 px-2.5 py-1 text-sm opacity-60">
+            {{ lease.get_billing_mode_display }} · {{ lease.get_billing_period_display }}
+          </span>
+        </div>
+
+        <div class="grid gap-4 sm:grid-cols-3 text-sm mt-4">
+          <div>
+            <div class="text-xs uppercase tracking-wide opacity-50 mb-0.5">{% trans "Lessor" %}</div>
+            <div class="font-semibold">{{ lease.lessor_account.code }}</div>
+          </div>
+          <div>
+            <div class="text-xs uppercase tracking-wide opacity-50 mb-0.5">{% trans "Lessee" %}</div>
+            <div class="font-semibold">{{ lease.lessee_account.code }}</div>
+          </div>
+          <div>
+            <div class="text-xs uppercase tracking-wide opacity-50 mb-0.5">{% trans "Revenue account" %}</div>
+            <div class="font-semibold">{{ lease.revenue_account.code }}</div>
+          </div>
+          <div>
+            <div class="text-xs uppercase tracking-wide opacity-50 mb-0.5">{% trans "Leased asset" %}</div>
+            <div class="font-semibold">{{ lease.leased_asset.unit_name }}</div>
+          </div>
+          <div>
+            <div class="text-xs uppercase tracking-wide opacity-50 mb-0.5">{% trans "Payment asset" %}</div>
+            <div class="font-semibold">{{ lease.payment_asset.unit_name }}</div>
+          </div>
+          {% if lease.billing_mode != 'metered' %}
+          <div>
+            <div class="text-xs uppercase tracking-wide opacity-50 mb-0.5">{% trans "Fixed fee (base units)" %}</div>
+            <div class="font-semibold">{{ lease.fixed_fee_base_units }}</div>
+          </div>
+          {% endif %}
+          <div>
+            <div class="text-xs uppercase tracking-wide opacity-50 mb-0.5">{% trans "Starts" %}</div>
+            <div class="font-semibold">{{ lease.starts_at|date:"M d, Y H:i" }}</div>
+          </div>
+          {% if lease.ends_at %}
+          <div>
+            <div class="text-xs uppercase tracking-wide opacity-50 mb-0.5">{% trans "Ends" %}</div>
+            <div class="font-semibold">{{ lease.ends_at|date:"M d, Y H:i" }}</div>
+          </div>
+          {% endif %}
+          {% if lease.next_billing_at %}
+          <div>
+            <div class="text-xs uppercase tracking-wide opacity-50 mb-0.5">{% trans "Next billing" %}</div>
+            <div class="font-semibold">{{ lease.next_billing_at|date:"M d, Y H:i" }}</div>
+          </div>
+          {% endif %}
+          {% if lease.activated_at %}
+          <div>
+            <div class="text-xs uppercase tracking-wide opacity-50 mb-0.5">{% trans "Activated" %}</div>
+            <div class="font-semibold" :class="darkMode ? 'text-success-dark' : 'text-success-light'">{{ lease.activated_at|date:"M d, Y H:i" }}</div>
+          </div>
+          {% endif %}
+          {% if lease.cancelled_at %}
+          <div>
+            <div class="text-xs uppercase tracking-wide opacity-50 mb-0.5">{% trans "Cancelled" %}</div>
+            <div class="font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ lease.cancelled_at|date:"M d, Y H:i" }}</div>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Action buttons -->
+    <div class="flex flex-wrap gap-2 mt-5">
+      {% if lease.status == 'draft' %}
+      <form method="post" action="{% url 'instruments:lease_activate' lease.pk %}">{% csrf_token %}
+        <button class="rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90"
+                :class="darkMode ? 'bg-success-dark text-primary-bg-dark' : 'bg-success-light text-white'">
+          <i class="fa-solid fa-play"></i> {% trans "Activate" %}
+        </button>
+      </form>
+      {% endif %}
+      {% if lease.status == 'active' and lease.billing_mode != 'metered' %}
+      <form method="post" action="{% url 'instruments:lease_charge_fixed' lease.pk %}">{% csrf_token %}
+        <button class="rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'">
+          <i class="fa-solid fa-circle-dollar-to-slot"></i> {% trans "Charge fixed fee" %}
+        </button>
+      </form>
+      {% endif %}
+      {% if lease.status == 'active' and lease.billing_mode != 'fixed' %}
+      <a href="{% url 'instruments:lease_charge_create' lease.pk %}"
+         class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+        <i class="fa-solid fa-plus"></i> {% trans "Record usage" %}
+      </a>
+      {% endif %}
+      <a href="{% url 'instruments:lease_tariff_create' lease.pk %}"
+         class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+        <i class="fa-solid fa-tags"></i> {% trans "Add tariff" %}
+      </a>
+      {% if lease.status in 'active,paused,draft' %}
+      <form method="post" action="{% url 'instruments:lease_cancel' lease.pk %}">{% csrf_token %}
+        <button class="rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-90"
+                :class="darkMode ? 'border-warn-dark text-warn-dark' : 'border-warn-light text-warn-light'">
+          <i class="fa-solid fa-ban"></i> {% trans "Cancel" %}
+        </button>
+      </form>
+      {% endif %}
+    </div>
+  </article>
+
+  <!-- Tariffs -->
+  <section class="rounded-xl border p-5 shadow-sm space-y-3" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+    <h2 class="flex items-center gap-2 text-xl font-bold">
+      <i class="fa-solid fa-tags opacity-60"></i> {% trans "Tariffs" %}
+    </h2>
+    {% if tariffs %}
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-xs uppercase tracking-wide opacity-50 border-b" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+            <th class="text-left pb-2 pr-4">{% trans "Metric" %}</th>
+            <th class="text-left pb-2 pr-4">{% trans "Price/step (base)" %}</th>
+            <th class="text-left pb-2 pr-4">{% trans "Min charge (base)" %}</th>
+            <th class="text-left pb-2 pr-4">{% trans "Rounding" %}</th>
+            <th class="text-left pb-2">{% trans "Active" %}</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y" :class="darkMode ? 'divide-accent-1/30' : 'divide-accent-2/30'">
+          {% for tariff in tariffs %}
+          <tr>
+            <td class="py-2 pr-4 font-semibold">{{ tariff.metric.code }}</td>
+            <td class="py-2 pr-4">{{ tariff.price_per_step_base_units }}</td>
+            <td class="py-2 pr-4">{{ tariff.minimum_charge_base_units }}</td>
+            <td class="py-2 pr-4 text-xs opacity-70">{{ tariff.get_rounding_mode_display }}</td>
+            <td class="py-2">
+              {% if tariff.active %}
+              <span :class="darkMode ? 'text-success-dark' : 'text-success-light'"><i class="fa-solid fa-check"></i></span>
+              {% else %}
+              <span class="opacity-40"><i class="fa-solid fa-xmark"></i></span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-sm opacity-50">{% trans "No tariffs configured." %}</p>
+    {% endif %}
+  </section>
+
+  <!-- Charges -->
+  <section class="rounded-xl border p-5 shadow-sm space-y-3" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+    <h2 class="flex items-center gap-2 text-xl font-bold">
+      <i class="fa-solid fa-receipt opacity-60"></i> {% trans "Charges" %}
+    </h2>
+    {% if charges %}
+    <div class="space-y-2">
+      {% for charge in charges %}
+      <div class="rounded-lg px-4 py-3 text-sm" :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <span class="font-semibold">{{ charge.metric.code }}</span>
+            <span class="ml-2 text-xs opacity-60">{{ charge.raw_quantity }} {{ charge.metric.unit }} → {{ charge.billed_quantity }} billed · {{ charge.amount_base_units }} base units</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="rounded px-2 py-0.5 text-xs font-semibold"
+              {% if charge.status == 'charged' %}:class="darkMode ? 'bg-success-dark/15 text-success-dark' : 'bg-success-light/15 text-success-light'"
+              {% elif charge.status == 'pending' %}:class="darkMode ? 'bg-caution-dark/15 text-caution-dark' : 'bg-caution-light/15 text-caution-light'"
+              {% elif charge.status == 'waived' %}:class="darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'"
+              {% else %}:class="darkMode ? 'bg-warn-dark/15 text-warn-dark' : 'bg-warn-light/15 text-warn-light'"
+              {% endif %}>
+              {{ charge.get_status_display }}
+            </span>
+            {% if charge.status == 'pending' %}
+            <form method="post" action="{% url 'instruments:lease_charge_collect' charge.pk %}">{% csrf_token %}
+              <button class="rounded px-2 py-1 text-xs font-semibold transition hover:opacity-80"
+                      :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'">
+                <i class="fa-solid fa-bolt"></i> {% trans "Collect" %}
+              </button>
+            </form>
+            <form method="post" action="{% url 'instruments:lease_charge_waive' charge.pk %}">{% csrf_token %}
+              <button class="rounded border px-2 py-1 text-xs font-semibold transition hover:opacity-80"
+                      :class="darkMode ? 'border-caution-dark text-caution-dark' : 'border-caution-light text-caution-light'">
+                <i class="fa-solid fa-hand"></i> {% trans "Waive" %}
+              </button>
+            </form>
+            {% endif %}
+            {% if charge.charged_at %}
+            <span class="text-xs opacity-50">{{ charge.charged_at|date:"M d, Y H:i" }}</span>
+            {% endif %}
+          </div>
+        </div>
+        {% if charge.source_type or charge.source_id %}
+        <div class="mt-1 text-xs opacity-50">
+          {% trans "Source" %}: {{ charge.source_type }}{% if charge.source_id %}#{{ charge.source_id }}{% endif %}
+        </div>
+        {% endif %}
+        {% if charge.transaction %}
+        <div class="mt-1 text-xs opacity-50">
+          <a href="{% url 'assets:transaction_detail' charge.transaction.pk %}" class="underline hover:opacity-80">
+            {{ charge.transaction.reference }}
+          </a>
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-sm opacity-50">{% trans "No charges recorded." %}</p>
+    {% endif %}
+  </section>
+
+  <!-- Executions -->
+  <section class="rounded-xl border p-5 shadow-sm space-y-3" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+    <h2 class="flex items-center gap-2 text-xl font-bold">
+      <i class="fa-solid fa-terminal opacity-60"></i> {% trans "Executions" %}
+    </h2>
+    <div class="space-y-2">
+      {% for execution in executions %}
+      <div class="rounded-lg px-4 py-3 text-sm" :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <span class="font-semibold">{{ execution.action }}</span>
+          <div class="flex items-center gap-2 text-xs opacity-60">
+            <span class="rounded px-1.5 py-0.5
+              {% if execution.status == 'success' %}bg-green-500/15 text-green-600{% else %}bg-red-500/15 text-red-600{% endif %}">
+              {{ execution.get_status_display }}
+            </span>
+            {{ execution.created_at|date:"M d, Y H:i" }}
+          </div>
+        </div>
+        {% if execution.error_message %}
+        <p class="mt-1 text-xs text-red-500">{{ execution.error_message }}</p>
+        {% endif %}
+        {% if execution.transaction %}
+        <p class="mt-1 text-xs opacity-50">
+          <a href="{% url 'assets:transaction_detail' execution.transaction.pk %}" class="underline hover:opacity-80">
+            {{ execution.transaction.reference }}
+          </a>
+        </p>
+        {% endif %}
+      </div>
+      {% empty %}
+      <p class="text-sm opacity-50">{% trans "No executions yet." %}</p>
+      {% endfor %}
+    </div>
+  </section>
+
+</div>
+{% endblock %}

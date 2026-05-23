@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 from decimal import Decimal
+from math import ceil
 
 from dateutil.relativedelta import relativedelta
 from django.core.exceptions import ValidationError
@@ -13,6 +14,8 @@ from toto.assets.models import Obligation, ObligationStatus, from_base_units, to
 
 from .models import (
     BillingCycle,
+    BillingMode,
+    ChargeStatus,
     EscrowContract,
     EscrowStatus,
     FinancialInstrument,
@@ -23,7 +26,12 @@ from .models import (
     InstrumentObligationRole,
     InstrumentStatus,
     InstrumentType,
+    LeaseCharge,
+    LeaseContract,
+    LeaseStatus,
+    LeaseTariff,
     OptionContract,
+    RoundingMode,
     SubscriptionContract,
     SubscriptionPayment,
     SubscriptionPaymentStatus,
@@ -509,3 +517,174 @@ class SubscriptionService:
         subscription.instrument.save(update_fields=["status", "updated_at"])
         record_execution(instrument=subscription.instrument, action="resume", status=InstrumentExecutionStatus.SUCCESS)
         return subscription
+
+
+class LeaseService:
+    @staticmethod
+    @transaction.atomic
+    def activate(lease: LeaseContract):
+        if lease.status != LeaseStatus.DRAFT:
+            raise ValidationError("Only draft leases can be activated.")
+        now = timezone.now()
+        lease.status = LeaseStatus.ACTIVE
+        lease.activated_at = now
+        lease.next_billing_at = max(lease.starts_at, now)
+        lease.instrument.status = InstrumentStatus.ACTIVE
+        lease.instrument.save(update_fields=["status", "updated_at"])
+        lease.save(update_fields=["status", "activated_at", "next_billing_at", "updated_at"])
+        record_execution(
+            instrument=lease.instrument,
+            action="lease_activate",
+            status=InstrumentExecutionStatus.SUCCESS,
+            result_data={"status": lease.status},
+        )
+
+    @staticmethod
+    @transaction.atomic
+    def cancel(lease: LeaseContract):
+        if lease.status not in (LeaseStatus.ACTIVE, LeaseStatus.PAUSED, LeaseStatus.DRAFT):
+            raise ValidationError("Cannot cancel a lease in its current state.")
+        lease.status = LeaseStatus.CANCELLED
+        lease.cancelled_at = timezone.now()
+        lease.instrument.status = InstrumentStatus.CANCELLED
+        lease.instrument.save(update_fields=["status", "updated_at"])
+        lease.save(update_fields=["status", "cancelled_at", "updated_at"])
+        record_execution(
+            instrument=lease.instrument,
+            action="lease_cancel",
+            status=InstrumentExecutionStatus.SUCCESS,
+        )
+
+    @staticmethod
+    @transaction.atomic
+    def charge_fixed_fee(lease: LeaseContract):
+        if lease.status != LeaseStatus.ACTIVE:
+            raise ValidationError("Lease must be active to charge fixed fee.")
+        if lease.billing_mode == BillingMode.METERED:
+            raise ValidationError("Metered leases do not have a fixed fee.")
+        if lease.fixed_fee_base_units <= 0:
+            raise ValidationError("Fixed fee must be positive.")
+        amount = from_base_units(lease.fixed_fee_base_units, lease.payment_asset.decimals)
+        ref = f"{lease.instrument.reference}-FIXED-{timezone.now().strftime('%Y%m%d%H%M%S')}"
+        tx = get_backend().transfer_asset(
+            asset=lease.payment_asset,
+            sender_account=lease.lessee_account,
+            receiver_account=lease.revenue_account,
+            amount=amount,
+            reference=ref,
+            description=f"Fixed fee for lease {lease.instrument.reference}",
+            metadata={
+                "instrument": lease.instrument.reference,
+                "action": "lease_fixed_fee",
+            },
+        )
+        record_execution(
+            instrument=lease.instrument,
+            action="lease_charge_fixed",
+            status=InstrumentExecutionStatus.SUCCESS,
+            transaction_obj=tx,
+            result_data={"amount_base_units": lease.fixed_fee_base_units},
+        )
+        return tx
+
+    @staticmethod
+    def calculate_metered_charge(
+        tariff: LeaseTariff, raw_quantity: Decimal
+    ) -> tuple[Decimal, Decimal, int]:
+        """Returns (billed_quantity, billed_steps, amount_base_units)."""
+        step = tariff.metric.step
+        if tariff.rounding_mode == RoundingMode.ROUND_UP_STEP:
+            billed_steps = ceil(raw_quantity / step)
+        elif tariff.rounding_mode == RoundingMode.ROUND_DOWN_STEP:
+            billed_steps = int(raw_quantity / step)
+        else:  # exact
+            billed_steps = raw_quantity / step
+        billed_quantity = Decimal(str(billed_steps)) * step
+        amount_base_units = int(billed_steps) * tariff.price_per_step_base_units
+        amount_base_units = max(amount_base_units, tariff.minimum_charge_base_units)
+        return billed_quantity, Decimal(str(billed_steps)), amount_base_units
+
+    @staticmethod
+    @transaction.atomic
+    def record_metered_charge(
+        lease: LeaseContract,
+        metric,
+        raw_quantity: Decimal,
+        source_type: str = "",
+        source_id: str = "",
+        metadata=None,
+    ) -> LeaseCharge:
+        if lease.status != LeaseStatus.ACTIVE:
+            raise ValidationError("Lease must be active to record a charge.")
+        tariff = LeaseTariff.objects.get(lease=lease, metric=metric, active=True)
+        billed_qty, billed_steps, amount = LeaseService.calculate_metered_charge(
+            tariff, raw_quantity
+        )
+        charge = LeaseCharge.objects.create(
+            lease=lease,
+            tariff=tariff,
+            metric=metric,
+            raw_quantity=raw_quantity,
+            billed_quantity=billed_qty,
+            billed_steps=billed_steps,
+            amount_base_units=amount,
+            status=ChargeStatus.PENDING,
+            source_type=source_type,
+            source_id=source_id,
+            metadata=metadata or {},
+        )
+        record_execution(
+            instrument=lease.instrument,
+            action="lease_record_charge",
+            status=InstrumentExecutionStatus.SUCCESS,
+            result_data={"charge_id": charge.pk, "amount_base_units": amount},
+        )
+        return charge
+
+    @staticmethod
+    @transaction.atomic
+    def charge_pending_charge(charge: LeaseCharge):
+        if charge.status != ChargeStatus.PENDING:
+            raise ValidationError("Only pending charges can be collected.")
+        amount = from_base_units(
+            charge.amount_base_units, charge.lease.payment_asset.decimals
+        )
+        ref = f"{charge.lease.instrument.reference}-METERED-{charge.pk}"
+        tx = get_backend().transfer_asset(
+            asset=charge.lease.payment_asset,
+            sender_account=charge.lease.lessee_account,
+            receiver_account=charge.lease.revenue_account,
+            amount=amount,
+            reference=ref,
+            description=f"Metered charge #{charge.pk} for {charge.metric.code}",
+            metadata={
+                "instrument": charge.lease.instrument.reference,
+                "charge_id": charge.pk,
+            },
+        )
+        charge.status = ChargeStatus.CHARGED
+        charge.transaction = tx
+        charge.charged_at = timezone.now()
+        charge.save(update_fields=["status", "transaction", "charged_at"])
+        record_execution(
+            instrument=charge.lease.instrument,
+            action="lease_collect_charge",
+            status=InstrumentExecutionStatus.SUCCESS,
+            transaction_obj=tx,
+            result_data={"charge_id": charge.pk},
+        )
+        return tx
+
+    @staticmethod
+    @transaction.atomic
+    def waive_charge(charge: LeaseCharge):
+        if charge.status != ChargeStatus.PENDING:
+            raise ValidationError("Only pending charges can be waived.")
+        charge.status = ChargeStatus.WAIVED
+        charge.save(update_fields=["status"])
+        record_execution(
+            instrument=charge.lease.instrument,
+            action="lease_waive_charge",
+            status=InstrumentExecutionStatus.SUCCESS,
+            result_data={"charge_id": charge.pk},
+        )

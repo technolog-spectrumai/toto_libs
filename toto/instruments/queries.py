@@ -1,4 +1,13 @@
-from .models import FinancialInstrument, InstrumentStatus, InstrumentType
+from django.db import models as _models
+
+from .models import (
+    FinancialInstrument,
+    InstrumentStatus,
+    InstrumentType,
+    LeaseCharge,
+    LeaseContract,
+    LeaseTariff,
+)
 
 
 def dashboard_counts():
@@ -25,3 +34,35 @@ def list_instruments(*, instrument_type=None, status=None):
     if status:
         qs = qs.filter(status=status)
     return qs
+
+
+# ---------------------------------------------------------------------------
+# Lease queries
+# ---------------------------------------------------------------------------
+
+def list_active_leases():
+    return LeaseContract.objects.filter(status="active").select_related(
+        "instrument", "lessee_account", "lessor_account", "payment_asset", "leased_asset"
+    )
+
+
+def list_account_leases(account):
+    return LeaseContract.objects.filter(
+        _models.Q(lessor_account=account) | _models.Q(lessee_account=account)
+    ).select_related("instrument")
+
+
+def list_lease_charges(lease):
+    return LeaseCharge.objects.filter(lease=lease).select_related(
+        "tariff", "metric", "transaction"
+    )
+
+
+def list_pending_lease_charges():
+    return LeaseCharge.objects.filter(status="pending").select_related(
+        "lease__instrument", "lease__payment_asset", "metric"
+    )
+
+
+def list_lease_tariffs(lease):
+    return LeaseTariff.objects.filter(lease=lease).select_related("metric")
