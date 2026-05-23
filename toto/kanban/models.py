@@ -153,7 +153,7 @@ class Practitioner(DomainEntity):
         return f"{self.person} ({self.role})"
 
 
-class ProjectCommitment(DomainEntity):
+class ProjectCommitment(models.Model):
     """Links a Practitioner to a Project and tracks their time commitment."""
 
     practitioner = models.ForeignKey(Practitioner, on_delete=models.CASCADE, related_name="commitments")
@@ -167,6 +167,8 @@ class ProjectCommitment(DomainEntity):
     start_date = models.DateField(null=True, blank=True)
     end_date = models.DateField(null=True, blank=True)
     metadata = models.JSONField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         constraints = [
@@ -434,8 +436,8 @@ class ProjectTokenization(models.Model):
     class Meta:
         ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=["status"]),
-            models.Index(fields=["created_at"]),
+            models.Index(fields=["status"], name="kanban_proj_status_idx"),
+            models.Index(fields=["created_at"], name="kanban_proj_created_idx"),
         ]
 
     def __str__(self):

@@ -6,7 +6,7 @@ from django.contrib.gis.geos import Point
 from django.utils import timezone
 
 from toto.ingress import IngressCommand
-from toto.kanban.models import Campaign, Column, Mission, Practitioner, Project, Task
+from toto.kanban.models import Campaign, Column, Mission, Practitioner, Project, ProjectCommitment, Task
 from toto.locations.models import Address
 from toto.people.models import Person
 
@@ -200,19 +200,29 @@ class Command(IngressCommand):
             name="Detection Mitigation",
             defaults={
                 "description": "Kanban project for detection mitigation and help requests.",
-                "owner": owner,
+                "project_lead": owner,
             },
         )
         if created:
             self.stdout.write("  + kanban project Detection Mitigation")
 
         owner_prac, _ = Practitioner.objects.get_or_create(
-            project=project, person=owner,
+            person=owner,
             defaults={"role": Practitioner.ROLE_MANAGER, "is_active": True},
         )
+        ProjectCommitment.objects.get_or_create(
+            practitioner=owner_prac,
+            project=project,
+            defaults={"hours_per_day": 8, "is_active": True},
+        )
         tester_prac, _ = Practitioner.objects.get_or_create(
-            project=project, person=people["tester"],
+            person=people["tester"],
             defaults={"role": Practitioner.ROLE_CONTRIBUTOR, "is_active": True},
+        )
+        ProjectCommitment.objects.get_or_create(
+            practitioner=tester_prac,
+            project=project,
+            defaults={"hours_per_day": 4, "is_active": True},
         )
         auditor_practitioners = [owner_prac, tester_prac]
 

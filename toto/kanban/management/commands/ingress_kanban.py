@@ -6,7 +6,7 @@ from django.utils import timezone
 
 from toto.kanban.models import (
     Campaign, Column, DocumentationPage, DocumentationSection,
-    Mission, Practitioner, Project, Sprint, Task,
+    Mission, Practitioner, Project, ProjectCommitment, Sprint, Task,
 )
 from toto.people.models import Person
 from toto.locations.models import Address, Zone, Route
@@ -42,17 +42,25 @@ class Command(IngressCommand):
         project = Project.objects.create(
             name="Demo Project",
             description="A sample project for Kanban demo",
-            owner=member1,
+            project_lead=member1,
         )
 
         # ── Practitioners ─────────────────────────────────────────────────
         prac1, _ = Practitioner.objects.get_or_create(
-            project=project, person=member1,
+            person=member1,
             defaults={"role": Practitioner.ROLE_MANAGER, "is_active": True},
         )
+        ProjectCommitment.objects.get_or_create(
+            practitioner=prac1, project=project,
+            defaults={"hours_per_day": 8, "is_active": True},
+        )
         prac2, _ = Practitioner.objects.get_or_create(
-            project=project, person=member2,
+            person=member2,
             defaults={"role": Practitioner.ROLE_CONTRIBUTOR, "is_active": True},
+        )
+        ProjectCommitment.objects.get_or_create(
+            practitioner=prac2, project=project,
+            defaults={"hours_per_day": 4, "is_active": True},
         )
         practitioners = [prac1, prac2]
 
@@ -65,8 +73,12 @@ class Command(IngressCommand):
                 founder = Person.objects.filter(display_name__icontains="founder").first()
             if founder and founder not in (member1, member2):
                 founder_prac, _ = Practitioner.objects.get_or_create(
-                    project=project, person=founder,
+                    person=founder,
                     defaults={"role": Practitioner.ROLE_MANAGER, "is_active": True},
+                )
+                ProjectCommitment.objects.get_or_create(
+                    practitioner=founder_prac, project=project,
+                    defaults={"hours_per_day": 8, "is_active": True},
                 )
                 practitioners.append(founder_prac)
                 print(f"✔  Founder Practitioner: {founder_prac}")

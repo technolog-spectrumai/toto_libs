@@ -87,8 +87,8 @@ nodes:
 links:
   - from_label: KanbanProject
     to_label: Person
-    relation: OWNED_BY
-    source: owner
+    relation: LED_BY
+    source: project_lead
     cardinality: one
     nullable: true
 

@@ -3,7 +3,7 @@ from datetime import timedelta
 
 from django.utils import timezone
 
-from toto.kanban.models import Campaign, Column, Mission, Practitioner, Project, Task
+from toto.kanban.models import Campaign, Column, Mission, Practitioner, Project, ProjectCommitment, Task
 from toto.people.models import Person
 
 
@@ -47,11 +47,15 @@ def detection_map_feature(detection):
 
 
 def _get_or_create_practitioner(project, person, role):
-    """Get or create a Practitioner for person in project. role wins only on creation."""
-    prac, created = Practitioner.objects.get_or_create(
-        project=project,
+    """Get or create a Practitioner for person, ensuring a ProjectCommitment to project."""
+    prac, _ = Practitioner.objects.get_or_create(
         person=person,
         defaults={"role": role, "is_active": True},
+    )
+    ProjectCommitment.objects.get_or_create(
+        practitioner=prac,
+        project=project,
+        defaults={"hours_per_day": 4, "is_active": True},
     )
     return prac
 
@@ -69,7 +73,7 @@ def ensure_detection_mitigation_task(detection, *, owner=None, reviewer=None):
         name="Detection Mitigation",
         defaults={
             "description": "Kanban project for detection mitigation and help requests.",
-            "owner": owner,
+            "project_lead": owner,
         },
     )
 
