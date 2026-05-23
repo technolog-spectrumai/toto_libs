@@ -195,6 +195,7 @@ class WorkflowNode(models.Model):
     workflow = models.ForeignKey(Workflow, on_delete=models.CASCADE, related_name="nodes")
     node_type = models.CharField(max_length=20, choices=NODE_TYPES)
     label = models.CharField(max_length=255, blank=True)
+    task_name = models.CharField(max_length=255, blank=True)
     lambda_function = models.ForeignKey(
         "workflows.LambdaFunction",
         null=True,

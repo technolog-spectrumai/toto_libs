@@ -34,7 +34,7 @@ class Command(IngressCommand):
                 workflow=wf,
                 node_type=WorkflowNode.PREDEFINED_TASK,
                 label="Generate projection plan",
-                config={"task_name": "ravioli_generate_plan"},
+                task_name="ravioli_generate_plan",
                 position_x=0,
                 position_y=0,
             )
@@ -42,7 +42,7 @@ class Command(IngressCommand):
                 workflow=wf,
                 node_type=WorkflowNode.PREDEFINED_TASK,
                 label="Apply projection plan",
-                config={"task_name": "ravioli_apply_plan"},
+                task_name="ravioli_apply_plan",
                 position_x=300,
                 position_y=0,
             )
@@ -64,7 +64,7 @@ class Command(IngressCommand):
                 workflow=wf3,
                 node_type=WorkflowNode.PREDEFINED_TASK,
                 label="Generate projection plan",
-                config={"task_name": "ravioli_generate_plan"},
+                task_name="ravioli_generate_plan",
                 position_x=0,
                 position_y=0,
             )
@@ -85,7 +85,7 @@ class Command(IngressCommand):
                 workflow=wf4,
                 node_type=WorkflowNode.PREDEFINED_TASK,
                 label="Apply projection plan",
-                config={"task_name": "ravioli_apply_plan"},
+                task_name="ravioli_apply_plan",
                 position_x=0,
                 position_y=0,
             )
@@ -108,7 +108,7 @@ class Command(IngressCommand):
                 workflow=wf2,
                 node_type=WorkflowNode.PREDEFINED_TASK,
                 label="Clear ravioli-owned data",
-                config={"task_name": "ravioli_clear_db"},
+                task_name="ravioli_clear_db",
                 position_x=0,
                 position_y=0,
             )

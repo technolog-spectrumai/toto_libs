@@ -250,9 +250,9 @@ class WorkflowExecutor:
     def _run_predefined_task(self, node_run: WorkflowNodeRun) -> dict:
         from toto.workflows.predefined_tasks import run
 
-        task_name = node_run.node.config.get("task_name")
+        task_name = node_run.node.task_name
         if not task_name:
-            raise ValueError("Predefined task node is missing 'task_name' in config.")
+            raise ValueError("Predefined task node has no task_name set.")
         return run(task_name, node_run.input_data or {})
 
     def _activate_outgoing_edges(self, node_run: WorkflowNodeRun) -> None:
