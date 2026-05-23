@@ -11,6 +11,7 @@ class Command(IngressCommand):
     help = "Seed TexLab with a default workspace, bucket, and sample files"
 
     def process(self):
+        self._ensure_workflows()
 
         if not self.full:
             return
@@ -141,3 +142,26 @@ Hello from TexLab!
         # Done
         # ---------------------------------------------------------
         self.stdout.write(self.style.SUCCESS("✅ TexLab seeding complete."))
+
+    def _ensure_workflows(self):
+        from toto.workflows.models import Workflow, WorkflowNode
+
+        wf, created = Workflow.objects.get_or_create(
+            slug="texlab-compile-latex",
+            defaults={
+                "name": "TexLab Compile LaTeX",
+                "description": "Compile a LaTeX file to PDF and store the result.",
+            },
+        )
+        if created:
+            WorkflowNode.objects.create(
+                workflow=wf,
+                node_type=WorkflowNode.PREDEFINED_TASK,
+                label="Compile LaTeX",
+                task_name="texlab_compile_latex",
+                position_x=0,
+                position_y=0,
+            )
+            self.stdout.write(self.style.SUCCESS("📄 Created workflow: TexLab Compile LaTeX"))
+        else:
+            self.stdout.write(self.style.WARNING("ℹ️  Workflow 'TexLab Compile LaTeX' already exists"))

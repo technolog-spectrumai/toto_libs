@@ -1,5 +1,6 @@
 {% extends "oya/base.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block title %}{{ file.vault_file.title }} – {{ workspace.name }}{% endblock %}
 
@@ -112,7 +113,8 @@
 
     <!-- ── Status bar ──────────────────────────────────────── -->
     <div id="status-bar" class="hidden rounded-xl border px-4 py-3 text-sm"
-         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         style="flex-shrink: 0;">
 
       <!-- Running -->
       <div id="status-running" class="hidden items-center gap-3">
@@ -146,6 +148,65 @@
       </div>
 
     </div>
+
+    <!-- ── Compile history ───────────────────────────────────── -->
+    {% if compile_runs %}
+    <div x-data="{ open: false }"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-xl border shadow-sm overflow-hidden" style="flex-shrink: 0;">
+
+      <!-- Toggle header -->
+      <button @click="open = !open"
+              class="w-full flex items-center justify-between gap-3 px-4 py-3 text-sm transition hover:opacity-80">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-clock-rotate-left text-xs opacity-50"></i>
+          <span class="font-semibold text-sm">{% trans "Compile history" %}</span>
+          <span :class="darkMode ? 'border-accent-1 bg-primary-bg-dark/60' : 'border-accent-2 bg-primary-bg-light/60'"
+                class="rounded-full border px-2 py-0.5 text-[10px] font-bold">{{ compile_runs|length }}</span>
+        </div>
+        <i class="fa-solid fa-chevron-down text-xs opacity-40 transition-transform"
+           :class="open ? 'rotate-180' : ''"></i>
+      </button>
+
+      <!-- Rows -->
+      <div x-show="open" x-transition x-cloak class="border-t border-current/10">
+        {% for run in compile_runs %}
+        <div :class="darkMode ? 'border-accent-1/30 hover:bg-primary-bg-dark/30' : 'border-accent-2/30 hover:bg-primary-bg-light/30'"
+             class="flex items-center gap-3 px-4 py-2.5 border-b last:border-0 transition-colors">
+
+          <!-- Status dot -->
+          <span class="h-2 w-2 rounded-full shrink-0
+            {% if run.status == 'success' %}bg-green-500{% elif run.status == 'failed' %}bg-red-400{% elif run.status == 'running' %}bg-yellow-400{% else %}bg-current opacity-30{% endif %}">
+          </span>
+
+          <!-- Status label -->
+          <span class="text-xs font-semibold w-14 shrink-0
+            {% if run.status == 'success' %}opacity-80{% elif run.status == 'failed' %}text-red-400{% else %}opacity-60{% endif %}">
+            {{ run.status }}
+          </span>
+
+          <!-- Time -->
+          <span class="text-xs opacity-45 flex-1">{{ run.started_at|date:"Y-m-d H:i" }}</span>
+
+          <!-- Duration -->
+          {% if run.finished_at %}
+          <span class="text-xs opacity-40 shrink-0">
+            {{ run.started_at|timesince:run.finished_at }}
+          </span>
+          {% endif %}
+
+          <!-- PDF link -->
+          {% if run.pdf_url %}
+          <a href="{{ run.pdf_url }}" target="_blank"
+             :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+             class="text-xs underline underline-offset-2 shrink-0 hover:opacity-80">PDF</a>
+          {% endif %}
+
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
 
   </div>
 </div>
@@ -369,32 +430,63 @@ document.getElementById("delete-file").addEventListener("click", async () => {
 {% if can_compile %}
 <script>
 // ── Compile ────────────────────────────────────────────────
-const compileBtn  = document.getElementById("compile-file");
-const statusBar   = document.getElementById("status-bar");
-const statusRun   = document.getElementById("status-running");
+const compileBtn      = document.getElementById("compile-file");
+const statusBar       = document.getElementById("status-bar");
+const statusRun       = document.getElementById("status-running");
 const statusRunDetail = document.getElementById("status-running-detail");
-const statusOk    = document.getElementById("status-success");
-const statusErr   = document.getElementById("status-error");
-const statusLog   = document.getElementById("status-error-log");
-const statusPdf   = document.getElementById("status-pdf-link");
-const statusBaseUrl = "{% url 'texlab:compile_status' run_id=0 %}";
+const statusOk        = document.getElementById("status-success");
+const statusErr       = document.getElementById("status-error");
+const statusLog       = document.getElementById("status-error-log");
+const statusPdf       = document.getElementById("status-pdf-link");
+const COMPILE_STATUS_URL  = "{% url 'texlab:compile_status' run_id=0 %}".replace("/0/", "/{id}/");
+const WORKFLOW_API_URL    = "{% url 'workflows:api_run_detail' 99999 %}".replace("/99999/", "/{id}/");
+const WORKFLOW_DETAIL_URL = "{% url 'workflows:workflow_run_detail' 99999 %}".replace("/99999/", "/{id}/");
 
 function showStatus(mode) {
   statusBar.classList.remove("hidden");
   statusBar.classList.add("flex");
   statusRun.classList.toggle("hidden", mode !== "running");
-  statusRun.classList.toggle("flex", mode === "running");
+  statusRun.classList.toggle("flex",   mode === "running");
   statusOk.classList.toggle("hidden",  mode !== "ok");
   statusOk.classList.toggle("flex",    mode === "ok");
   statusErr.classList.toggle("hidden", mode !== "err");
   statusErr.classList.toggle("flex",   mode === "err");
 }
 
-async function pollCompileStatus(runId) {
-  const url = statusBaseUrl.replace("/0/", `/${runId}/`);
+async function pollWorkflowRun(workflowRunId, compileRunId) {
+  const apiUrl    = WORKFLOW_API_URL.replace("{id}", workflowRunId);
+  const detailUrl = WORKFLOW_DETAIL_URL.replace("{id}", workflowRunId);
 
   for (let attempt = 0; attempt < 120; attempt += 1) {
-    const res = await fetch(url, { credentials: "same-origin" });
+    const res  = await fetch(apiUrl, { credentials: "same-origin" });
+    const data = await res.json();
+
+    if (data.status === "completed") {
+      const statusRes  = await fetch(COMPILE_STATUS_URL.replace("{id}", compileRunId), { credentials: "same-origin" });
+      const statusData = await statusRes.json();
+      if (statusData.pdf_url) statusPdf.href = statusData.pdf_url;
+      showStatus("ok");
+      return;
+    }
+
+    if (data.status === "failed") {
+      window.location.href = detailUrl;
+      return;
+    }
+
+    statusRunDetail.textContent = data.status || "running";
+    await new Promise(resolve => setTimeout(resolve, 1500));
+  }
+
+  statusLog.textContent = "Compilation is still running. Check the compile history again in a moment.";
+  showStatus("err");
+}
+
+async function pollCompileStatus(runId) {
+  const url = COMPILE_STATUS_URL.replace("{id}", runId);
+
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    const res  = await fetch(url, { credentials: "same-origin" });
     const data = await res.json();
 
     if (data.status === "success") {
@@ -451,7 +543,9 @@ compileBtn.addEventListener("click", async () => {
     });
     const data = await res.json();
 
-    if (data.status === "queued" && data.run_id) {
+    if (data.status === "queued" && data.workflow_run_id) {
+      await pollWorkflowRun(data.workflow_run_id, data.run_id);
+    } else if (data.status === "queued" && data.run_id) {
       await pollCompileStatus(data.run_id);
     } else if (data.status === "ok" || data.pdf_url) {
       if (data.pdf_url) statusPdf.href = data.pdf_url;

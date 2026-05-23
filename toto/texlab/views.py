@@ -29,9 +29,12 @@ class WorkspaceListView(LoginRequiredMixin, ListView):
     login_url = reverse_lazy("core:login")
 
     def get_queryset(self):
-        # Workspaces belong to buckets → buckets belong to owners
+        from django.db.models import Count
         return LatexWorkspace.objects.filter(
             bucket__owner=self.request.user
+        ).annotate(
+            file_count=Count("files", distinct=True),
+            compile_count=Count("compile_runs", distinct=True),
         ).order_by("name")
 
     def get_context_data(self, **kwargs):
@@ -56,15 +59,28 @@ class WorkspaceDetailView(LoginRequiredMixin, DetailView):
         )
 
     def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
+        from django.db.models import Count, Q
+        from .models import CompileRun
 
+        context = super().get_context_data(**kwargs)
         workspace = self.get_object()
 
-        # Files no longer have filename → sort by vault_file.title
-        context["files"] = workspace.files.select_related("vault_file").order_by(
-            "vault_file__title"
+        files = list(workspace.files.select_related("vault_file").order_by("vault_file__title"))
+
+        latest_run_map = {}
+        for r in CompileRun.objects.filter(workspace=workspace).order_by("latex_file_id", "-started_at"):
+            if r.latex_file_id not in latest_run_map:
+                latest_run_map[r.latex_file_id] = r
+
+        compile_stats = CompileRun.objects.filter(workspace=workspace).aggregate(
+            total=Count("id"),
+            succeeded=Count("id", filter=Q(status=CompileRun.SUCCESS)),
+            failed=Count("id", filter=Q(status=CompileRun.FAILED)),
         )
 
+        context["files"] = files
+        context["latest_run_map"] = latest_run_map
+        context["compile_stats"] = compile_stats
         return PageProcessor().decorate(context, self.request)
 
 
@@ -159,6 +175,18 @@ def compile_latex(request, file_id):
     )
 
     if celery_available():
+        from toto.workflows.models import Workflow, WorkflowRun
+        from toto.workflows.tasks import start_workflow_run_task
+
+        wf = Workflow.objects.filter(slug="texlab-compile-latex").first()
+        if wf is not None:
+            wf_run = WorkflowRun.objects.create(
+                workflow=wf,
+                input_data={"data": {"file_id": file_id, "run_id": run.id}},
+            )
+            start_workflow_run_task.delay(wf_run.pk)
+            return JsonResponse({"status": "queued", "run_id": run.id, "workflow_run_id": wf_run.id})
+
         compile_latex_task.delay(file_id, run.id)
         return JsonResponse({"status": "queued", "run_id": run.id})
 
