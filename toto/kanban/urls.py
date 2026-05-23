@@ -12,6 +12,8 @@ from .views import (
     demote_task,
     SprintMetricsView,
     DocumentationPageDetailView,
+    project_tokenize,
+    project_tokenization_default,
 )
 
 app_name = "kanban"
@@ -83,5 +85,17 @@ urlpatterns = [
         "projects/<int:pk>/sprint-metrics/",
         SprintMetricsView.as_view(),
         name="sprint_metrics",
+    ),
+
+    path(
+        "project/<int:pk>/tokenize/",
+        project_tokenize,
+        name="project_tokenize",
+    ),
+
+    path(
+        "project/tokenization/<int:pk>/default/",
+        project_tokenization_default,
+        name="project_tokenization_default",
     ),
 ]

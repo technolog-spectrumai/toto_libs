@@ -9,6 +9,7 @@ from .models import (
     Project, Column, Task, Sprint, Mission, Campaign,
     DocumentationPage, DocumentationSection,
     Practitioner, PractitionerAllowance, ProjectCommitment,
+    ProjectTokenization,
 )
 from toto.core.batch import BatchAction
 from toto.events.models import ScheduledEvent
@@ -42,13 +43,22 @@ class CampaignInline(admin.TabularInline):
 
 @admin.register(Project)
 class ProjectAdmin(admin.ModelAdmin):
-    list_display = ("name", "owner", "commitment_count")
+    list_display = ("name", "project_lead", "commitment_count")
     search_fields = ("name", "description")
     inlines = [CampaignInline, ProjectCommitmentInline]
 
     def commitment_count(self, obj):
         return obj.commitments.filter(is_active=True).count()
     commitment_count.short_description = "Practitioners"
+
+
+@admin.register(ProjectTokenization)
+class ProjectTokenizationAdmin(admin.ModelAdmin):
+    list_display = ("project", "asset", "status", "supervisor", "created_at")
+    list_filter = ("status",)
+    search_fields = ("project__name", "asset__unit_name")
+    raw_id_fields = ("project", "asset", "supervisor", "defaulted_by")
+    readonly_fields = ("created_at",)
 
 
 # ── Practitioner ──────────────────────────────────────────────────────────────
@@ -270,12 +280,12 @@ class SprintAdmin(admin.ModelAdmin):
                 description=f"Linked to project: {sprint.project.name}",
                 start_time=sprint.start_time or now(),
                 end_time=sprint.end_time or now() + timedelta(days=7),
-                owner=sprint.project.owner,
+                owner=sprint.project.project_lead,
                 category=None,
                 public=False,
             )
-            if sprint.project.owner:
-                event.organizers.add(sprint.project.owner)
+            if sprint.project.project_lead:
+                event.organizers.add(sprint.project.project_lead)
             return event
 
         result = BatchAction(queryset).run(convert_one)

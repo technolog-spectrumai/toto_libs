@@ -1,5 +1,7 @@
 import json
 
+from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.http import HttpResponseForbidden
 from django.views.generic import DetailView, ListView, UpdateView, CreateView, DeleteView
 from django.contrib.auth.models import AnonymousUser
@@ -7,14 +9,18 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db.models import Q, Sum
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.views.decorators.http import require_POST
 
 from toto.ui import PageProcessor
-from toto.kanban.forms import TaskCreateForm
+from toto.kanban.forms import TaskCreateForm, ProjectTokenizationCreateForm, ProjectTokenizationDefaultForm
 from toto.kanban.metrics import SprintMetricsCalculator, MissionMetricsCalculator
-from toto.kanban.models import Project, Column, Task, Sprint, Mission, DocumentationPage, Practitioner
+from toto.kanban.models import (
+    Project, Column, Task, Sprint, Mission, DocumentationPage, Practitioner,
+    ProjectTokenization, ProjectTokenizationStatus,
+)
 from toto.kanban.plugins.mission_plugins import MissionPlugin
 from toto.verbena.views import PageDetailMixin
 
@@ -121,10 +127,15 @@ class ProjectDetailView(LoginRequiredMixin, DetailView):
         for column in columns:
             column.is_auditor = column.auditors.filter(person__user=self.request.user).exists()
 
+        tokenization = getattr(project, "tokenization", None)
+        default_form = ProjectTokenizationDefaultForm()
+
         context.update({
             "columns": columns,
             "sprints": sprints,
             "selected_sprint": selected_sprint,
+            "tokenization": tokenization,
+            "default_form": default_form,
         })
 
         return context
@@ -793,3 +804,95 @@ class DocumentationPageDetailView(PageDetailMixin, DetailView):
         context["back_label"] = self.object.mission.title
         context["page_type_label"] = "Documentation"
         return PageProcessor().decorate(context, self.request)
+
+
+# ---------------------------------------------------------------------------
+# Project Tokenization
+# ---------------------------------------------------------------------------
+
+@login_required
+def project_tokenize(request, pk):
+    project = get_object_or_404(Project.objects.select_related("project_lead"), pk=pk)
+
+    existing = getattr(project, "tokenization", None)
+    if existing:
+        messages.info(request, "This project is already tokenized.")
+        return redirect("assets:asset_detail", pk=existing.asset_id)
+
+    if request.method == "POST":
+        form = ProjectTokenizationCreateForm(request.POST, project=project)
+        if form.is_valid():
+            data = form.cleaned_data
+            metadata = data.get("metadata") or {}
+            try:
+                with transaction.atomic():
+                    from toto.assets.services.assets import create_asset
+                    asset = create_asset(
+                        name=data["asset_name"],
+                        unit_name=data["unit_name"],
+                        total_supply=data["total_supply"],
+                        decimals=data["decimals"],
+                        reserve_account=data["reserve_account"],
+                        reference=f"project-{project.pk}-{data['unit_name'].lower()}",
+                        description=f"Token for project: {project.name}",
+                        metadata={
+                            **metadata,
+                            "tokenized_project_id": project.pk,
+                            "tokenized_project_name": project.name,
+                        },
+                    )
+                    asset.is_currency = data.get("is_currency", False)
+                    asset.backing_document = data.get("backing_document", "")
+                    asset.minting_authority = data.get("minting_authority", "")
+                    asset.save(update_fields=["is_currency", "backing_document", "minting_authority", "updated_at"])
+                    ProjectTokenization.objects.create(
+                        project=project,
+                        asset=asset,
+                        supervisor=data.get("supervisor"),
+                        metadata=metadata,
+                    )
+            except ValidationError as exc:
+                form.add_error(None, exc.messages[0] if hasattr(exc, "messages") else str(exc))
+            else:
+                messages.success(request, f"{project.name} tokenized as {asset.unit_name}.")
+                return redirect("assets:asset_detail", pk=asset.pk)
+    else:
+        slug = "".join(ch for ch in project.name.upper() if ch.isalnum())[:12] or f"PRJ{project.pk}"
+        form = ProjectTokenizationCreateForm(
+            project=project,
+            initial={
+                "asset_name": f"{project.name} Token",
+                "unit_name": slug,
+                "decimals": 0,
+                "total_supply": 1000000,
+                "backing_document": project.description,
+            },
+        )
+
+    context = PageProcessor().decorate({"project": project, "form": form}, request)
+    return render(request, "kanban/project_tokenize.html", context)
+
+
+@require_POST
+@login_required
+def project_tokenization_default(request, pk):
+    tokenization = get_object_or_404(
+        ProjectTokenization.objects.select_related("asset", "project"),
+        pk=pk,
+    )
+
+    if tokenization.status == ProjectTokenizationStatus.DEFAULTED:
+        messages.warning(request, "Tokenization is already defaulted.")
+        return redirect("kanban:project_detail", pk=tokenization.project_id)
+
+    form = ProjectTokenizationDefaultForm(request.POST)
+    if form.is_valid():
+        tokenization.status = ProjectTokenizationStatus.DEFAULTED
+        tokenization.default_reason = form.cleaned_data["reason"]
+        tokenization.default_note = form.cleaned_data.get("note", "")
+        tokenization.defaulted_at = timezone.now()
+        tokenization.defaulted_by = request.user
+        tokenization.save(update_fields=["status", "default_reason", "default_note", "defaulted_at", "defaulted_by"])
+        messages.success(request, f"Tokenization for {tokenization.project.name} has been defaulted.")
+
+    return redirect("kanban:project_detail", pk=tokenization.project_id)

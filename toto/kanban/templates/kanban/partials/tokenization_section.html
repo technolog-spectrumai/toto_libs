@@ -1,0 +1,163 @@
+{% load i18n %}
+{% comment %}
+  Context: project, tokenization (may be None), default_form
+{% endcomment %}
+
+{% if tokenization %}
+
+  {% if tokenization.is_defaulted %}
+  <!-- Defaulted badge -->
+  <section
+    :class="darkMode ? 'border-warn-dark/70 bg-bubble-bg-dark' : 'border-warn-light/70 bg-bubble-bg-light'"
+    class="rounded-2xl border p-4 shadow-sm sm:p-5">
+
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div>
+        <h2 class="flex items-center gap-2 text-lg font-bold">
+          <i
+            :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
+            class="fa-solid fa-circle-xmark"></i>
+          {% trans "Tokenization defaulted" %}
+        </h2>
+
+        <p class="mt-1 text-sm opacity-70">
+          {% trans "Asset" %}:
+          <a
+            href="{% url 'assets:asset_detail' tokenization.asset_id %}"
+            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+            class="underline-offset-4 transition hover:underline">
+            {{ tokenization.asset.unit_name }}
+          </a>
+          &mdash; {{ tokenization.get_default_reason_display }}
+        </p>
+      </div>
+
+      <a
+        href="{% url 'assets:asset_detail' tokenization.asset_id %}"
+        :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+        class="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-semibold shadow-sm transition hover:opacity-85">
+        <i class="fa-solid fa-coins"></i>
+        {% trans "View asset" %}
+      </a>
+    </div>
+  </section>
+
+  {% else %}
+  <!-- Active tokenization -->
+  <section
+    :class="darkMode ? 'border-success-dark/70 bg-bubble-bg-dark' : 'border-success-light/70 bg-bubble-bg-light'"
+    class="rounded-2xl border p-4 shadow-sm sm:p-5"
+    x-data="{ showDefault: false }">
+
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div>
+        <h2 class="flex items-center gap-2 text-lg font-bold">
+          <i
+            :class="darkMode ? 'text-success-dark' : 'text-success-light'"
+            class="fa-solid fa-circle-check"></i>
+          {% trans "Project tokenized" %}
+        </h2>
+
+        <p class="mt-1 text-sm opacity-70">
+          {% trans "Asset" %}:
+          <a
+            href="{% url 'assets:asset_detail' tokenization.asset_id %}"
+            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+            class="font-semibold underline-offset-4 transition hover:underline">
+            {{ tokenization.asset.unit_name }}
+          </a>
+          &mdash; {{ tokenization.asset.name }}
+        </p>
+      </div>
+
+      <div class="flex shrink-0 flex-wrap gap-2">
+        <a
+          href="{% url 'assets:asset_detail' tokenization.asset_id %}"
+          :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-coins"></i>
+          {% trans "View asset" %}
+        </a>
+
+        <button
+          type="button"
+          @click="showDefault = !showDefault"
+          :class="darkMode ? 'border-warn-dark/70 text-warn-dark' : 'border-warn-light/70 text-warn-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg border bg-transparent px-3 py-1.5 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+          {% trans "Default" %}
+        </button>
+      </div>
+    </div>
+
+    <!-- Default form (collapsible) -->
+    <div x-show="showDefault" x-cloak class="mt-4">
+      <div
+        :class="darkMode ? 'border-warn-dark/50 bg-sunken-dark' : 'border-warn-light/50 bg-sunken-light'"
+        class="rounded-xl border p-4">
+        <p class="mb-3 text-sm font-semibold opacity-80">
+          {% trans "Mark this tokenization as defaulted. This cannot be undone." %}
+        </p>
+
+        <form
+          method="post"
+          action="{% url 'kanban:project_tokenization_default' tokenization.pk %}">
+          {% csrf_token %}
+          <div class="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-70">
+                {% trans "Reason" %}
+              </label>
+              {{ default_form.reason }}
+            </div>
+            <div>
+              <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-70">
+                {% trans "Note" %}
+              </label>
+              {{ default_form.note }}
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            :class="darkMode ? 'bg-warn-dark text-primary-bg-dark' : 'bg-warn-light text-primary-bg-light'"
+            class="mt-3 inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-bold shadow-sm transition hover:opacity-90">
+            <i class="fa-solid fa-circle-xmark"></i>
+            {% trans "Confirm default" %}
+          </button>
+        </form>
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
+{% else %}
+<!-- Not yet tokenized -->
+<section
+  :class="darkMode ? 'border-caution-dark/60 bg-bubble-bg-dark' : 'border-caution-light/60 bg-bubble-bg-light'"
+  class="rounded-2xl border border-dashed p-4 shadow-sm sm:p-5">
+
+  <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div>
+      <h2 class="flex items-center gap-2 text-lg font-bold">
+        <i
+          :class="darkMode ? 'text-caution-dark' : 'text-caution-light'"
+          class="fa-solid fa-coins"></i>
+        {% trans "Tokenization" %}
+      </h2>
+
+      <p class="mt-1 text-sm opacity-70">
+        {% trans "This project has not been tokenized yet. Create an asset to represent it on the ledger." %}
+      </p>
+    </div>
+
+    <a
+      href="{% url 'kanban:project_tokenize' project.pk %}"
+      :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+      class="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+      <i class="fa-solid fa-wand-magic-sparkles"></i>
+      {% trans "Tokenize project" %}
+    </a>
+  </div>
+</section>
+{% endif %}

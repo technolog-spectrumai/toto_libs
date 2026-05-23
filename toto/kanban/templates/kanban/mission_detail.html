@@ -307,14 +307,14 @@
           </div>
 
           <div>
-            <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Project owner" %}</p>
+            <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Project Lead" %}</p>
             <p class="mt-1 font-semibold">
-              {% if project.owner %}
+              {% if project.project_lead %}
                 <a
-                  href="{% url 'socialhub:profile_details' project.owner.slug %}"
+                  href="{% url 'socialhub:profile_details' project.project_lead.slug %}"
                   :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
                   class="font-semibold underline-offset-4 transition hover:underline hover:opacity-80">
-                  {{ project.owner.display_name }}
+                  {{ project.project_lead.display_name }}
                 </a>
               {% else %}
                 {% trans "Unassigned" %}

@@ -23,7 +23,7 @@ FIB_SCALE = [
 class Project(DomainEntity):
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
-    owner = models.ForeignKey(Person, on_delete=models.CASCADE)
+    project_lead = models.ForeignKey(Person, on_delete=models.CASCADE)
 
     def __str__(self):
         return self.name
@@ -279,7 +279,7 @@ class PractitionerAllowance(DomainEntity):
         """Return the project owner's primary LedgerAccount, or None."""
         try:
             from toto.assets.models import LedgerAccount
-            owner = project.owner
+            owner = project.project_lead
             if owner and owner.user_id:
                 return LedgerAccount.objects.filter(owner=owner.user, active=True).order_by("pk").first()
         except Exception:
@@ -367,3 +367,83 @@ class DocumentationSection(AbstractSection):
 
     def __str__(self):
         return f"{self.page.title} – {self.title or 'Section'}"
+
+
+# ---------------------------------------------------------------------------
+# Project Tokenization
+# ---------------------------------------------------------------------------
+
+class ProjectTokenizationStatus(models.TextChoices):
+    ACTIVE = "active", "Active"
+    DEFAULTED = "defaulted", "Defaulted"
+
+
+class ProjectTokenizationDefaultReason(models.TextChoices):
+    NO_LONGER_EXISTS = "no_longer_exists", "Project no longer exists"
+    DISSOLVED = "dissolved", "Project dissolved"
+    OTHER = "other", "Other"
+
+
+class ProjectTokenizationQuerySet(models.QuerySet):
+    def delete(self):
+        raise ValidationError("Project tokenization records are permanent and cannot be deleted.")
+
+
+class ProjectTokenization(models.Model):
+    objects = ProjectTokenizationQuerySet.as_manager()
+
+    project = models.OneToOneField(
+        Project,
+        on_delete=models.PROTECT,
+        related_name="tokenization",
+    )
+    asset = models.OneToOneField(
+        "assets.Asset",
+        on_delete=models.PROTECT,
+        related_name="project_tokenization",
+    )
+    supervisor = models.ForeignKey(
+        Person,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="supervised_project_tokenizations",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=ProjectTokenizationStatus.choices,
+        default=ProjectTokenizationStatus.ACTIVE,
+    )
+    default_reason = models.CharField(
+        max_length=40,
+        choices=ProjectTokenizationDefaultReason.choices,
+        blank=True,
+    )
+    default_note = models.TextField(blank=True)
+    defaulted_at = models.DateTimeField(null=True, blank=True)
+    defaulted_by = models.ForeignKey(
+        "auth.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="defaulted_project_tokenizations",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status"]),
+            models.Index(fields=["created_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.project} tokenized as {self.asset.unit_name}"
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Project tokenization records are permanent and cannot be deleted.")
+
+    @property
+    def is_defaulted(self) -> bool:
+        return self.status == ProjectTokenizationStatus.DEFAULTED

@@ -63,7 +63,7 @@
           </h1>
 
           <p class="mt-1 text-sm opacity-70">
-            {% blocktrans with owner=project.owner %}Owner: {{ owner }}{% endblocktrans %}
+            {% blocktrans with lead=project.project_lead %}Lead: {{ lead }}{% endblocktrans %}
           </p>
         </div>
       </div>
@@ -158,6 +158,9 @@
         </form>
       </div>
     </section>
+
+    <!-- Tokenization -->
+    {% include "kanban/partials/tokenization_section.html" with project=project tokenization=tokenization default_form=default_form %}
 
     <!-- Board Columns -->
     <section>
