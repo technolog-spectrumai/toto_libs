@@ -1,0 +1,54 @@
+app: competence
+
+nodes:
+  - label: SkillGroup
+    model: toto.competence.models.SkillGroup
+    uuid_field: id
+    fields:
+      title: title
+      slug: slug
+      description: description
+      order: order
+
+  - label: SkillBadge
+    model: toto.competence.models.SkillBadge
+    uuid_field: id
+    fields:
+      title: title
+      slug: slug
+      description: description
+      icon: icon
+      order: order
+
+  - label: Experience
+    model: toto.competence.models.Experience
+    uuid_field: id
+    fields:
+      title: title
+      institution: institution
+      place: place
+      is_current: is_current
+      description: description
+      order: order
+
+links:
+  - from_label: SkillBadge
+    to_label: SkillGroup
+    relation: IN_GROUP
+    source: group
+    cardinality: one
+    nullable: false
+
+  - from_label: SkillBadge
+    to_label: SkillBadge
+    relation: REQUIRES
+    via_model: toto.competence.models.SkillBadgePrerequisite
+    from_field: badge
+    to_field: prerequisite
+
+  - from_label: Experience
+    to_label: Person
+    relation: EXPERIENCE_OF
+    source: person
+    cardinality: one
+    nullable: false

@@ -1,7 +1,9 @@
 from django.urls import path
 from .views import (
     apply_projection_plan_view,
+    clear_db_view,
     create_projection_plan,
+    full_sync_view,
     query_unified_view,
     query_graph_data,
     projection_plan_detail,
@@ -27,4 +29,6 @@ urlpatterns = [
         name="apply_projection_plan",
     ),
     path("projections/run-stream/", run_projection_stream, name="run_projection_stream"),
+    path("projections/full-sync/", full_sync_view, name="full_sync"),
+    path("projections/clear-db/", clear_db_view, name="clear_db"),
 ]

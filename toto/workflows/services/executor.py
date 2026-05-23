@@ -92,6 +92,8 @@ class WorkflowExecutor:
                 output = self._run_join(node_run)
             elif node.node_type == WorkflowNode.REPORT:
                 output = self._run_report(node_run)
+            elif node.node_type == WorkflowNode.PREDEFINED_TASK:
+                output = self._run_predefined_task(node_run)
             else:
                 raise ValueError(f"Unknown node_type: {node.node_type!r}")
         except Exception as exc:
@@ -244,6 +246,14 @@ class WorkflowExecutor:
         from .reports import create_report_from_node_run
 
         return create_report_from_node_run(node_run)
+
+    def _run_predefined_task(self, node_run: WorkflowNodeRun) -> dict:
+        from toto.workflows.predefined_tasks import run
+
+        task_name = node_run.node.config.get("task_name")
+        if not task_name:
+            raise ValueError("Predefined task node is missing 'task_name' in config.")
+        return run(task_name, node_run.input_data or {})
 
     def _activate_outgoing_edges(self, node_run: WorkflowNodeRun) -> None:
         node = node_run.node

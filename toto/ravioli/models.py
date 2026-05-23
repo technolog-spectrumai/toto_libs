@@ -86,11 +86,13 @@ class GraphChangeEvent(models.Model):
 
 class GraphProjectionPlan(models.Model):
     STATUS_READY = "ready"
+    STATUS_APPLYING = "applying"
     STATUS_APPLIED = "applied"
     STATUS_FAILED = "failed"
 
     STATUS_CHOICES = [
         (STATUS_READY, "Ready"),
+        (STATUS_APPLYING, "Applying…"),
         (STATUS_APPLIED, "Applied"),
         (STATUS_FAILED, "Failed"),
     ]

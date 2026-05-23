@@ -561,4 +561,22 @@
   </div>
 </div>
 {% include "workflows/workflow_graph_scripts.html" %}
+
+{% if run.status == 'running' or run.status == 'pending' %}
+<script>
+  (function () {
+    var tid = setInterval(function () {
+      fetch("{% url 'workflows:api_run_detail' run.id %}")
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (data.status !== 'running' && data.status !== 'pending') {
+            clearInterval(tid);
+            window.location.reload();
+          }
+        })
+        .catch(function () { clearInterval(tid); });
+    }, 2000);
+  })();
+</script>
+{% endif %}
 {% endblock %}

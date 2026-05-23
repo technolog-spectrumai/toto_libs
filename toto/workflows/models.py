@@ -182,12 +182,14 @@ class WorkflowNode(models.Model):
     SPLIT = "split"
     JOIN = "join"
     REPORT = "report"
+    PREDEFINED_TASK = "predefined_task"
 
     NODE_TYPES = [
         (LAMBDA, "Lambda"),
         (SPLIT, "Split"),
         (JOIN, "Join"),
         (REPORT, "Report"),
+        (PREDEFINED_TASK, "Predefined Task"),
     ]
 
     workflow = models.ForeignKey(Workflow, on_delete=models.CASCADE, related_name="nodes")

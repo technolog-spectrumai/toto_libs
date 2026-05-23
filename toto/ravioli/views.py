@@ -7,6 +7,7 @@ from django.shortcuts import redirect, render, get_object_or_404
 from django.views.decorators.http import require_GET, require_POST
 
 from .models import CypherQuery, GraphProjectionPlan
+from toto.celery_utils import celery_available
 from toto.ui import PageProcessor
 
 
@@ -47,17 +48,15 @@ def projection_sync_view(request):
 @require_POST
 @superuser_required
 def create_projection_plan(request):
-    from .connection import Neo4jClient, is_enabled
+    from .connection import is_enabled
     from .loader import load_all_configs, validate_configs
-    from .planner import create_projection_plan as build_projection_plan
 
     selected_labels = request.POST.getlist("models")
     if not selected_labels:
         messages.warning(request, "Select at least one graph label.")
         return redirect("ravioli:projection_sync")
 
-    configs = load_all_configs()
-    errors = validate_configs(configs)
+    errors = validate_configs(load_all_configs())
     if errors:
         messages.error(request, "Graph config is invalid: " + "; ".join(errors))
         return redirect("ravioli:projection_sync")
@@ -66,21 +65,21 @@ def create_projection_plan(request):
         messages.error(request, "RAVIOLI_ENABLED is False — cannot connect to Neo4j.")
         return redirect("ravioli:projection_sync")
 
-    client = Neo4jClient()
-    try:
-        plan = build_projection_plan(
-            client,
-            labels=selected_labels,
-            configs=configs,
-        )
-    except Exception as exc:
-        messages.error(request, f"Could not create projection plan: {exc}")
+    if not celery_available():
+        messages.error(request, "No Celery worker is running — cannot generate plan.")
         return redirect("ravioli:projection_sync")
-    finally:
-        client.close()
 
-    messages.success(request, f"Projection plan #{plan.pk} created.")
-    return redirect("ravioli:projection_plan_detail", plan_id=plan.pk)
+    try:
+        run = _trigger_workflow(
+            "ravioli-generate-plan",
+            input_data={"data": {"labels": selected_labels}},
+        )
+    except RuntimeError as exc:
+        messages.error(request, str(exc))
+        return redirect("ravioli:projection_sync")
+
+    messages.success(request, f"Plan generation started (run #{run.pk}) for {len(selected_labels)} labels.")
+    return redirect("workflows:workflow_run_detail", run_id=run.pk)
 
 
 @superuser_required
@@ -116,8 +115,7 @@ def projection_plan_detail(request, plan_id):
 @require_POST
 @superuser_required
 def apply_projection_plan_view(request, plan_id):
-    from .connection import Neo4jClient, is_enabled
-    from .planner import apply_projection_plan
+    from .connection import is_enabled
 
     plan = get_object_or_404(GraphProjectionPlan, pk=plan_id)
 
@@ -129,20 +127,81 @@ def apply_projection_plan_view(request, plan_id):
         messages.error(request, "RAVIOLI_ENABLED is False — cannot connect to Neo4j.")
         return redirect("ravioli:projection_plan_detail", plan_id=plan.pk)
 
-    client = Neo4jClient()
-    try:
-        apply_projection_plan(client, plan)
-    except Exception as exc:
-        plan.status = GraphProjectionPlan.STATUS_FAILED
-        plan.error = str(exc)
-        plan.save(update_fields=["status", "error", "updated_at"])
-        messages.error(request, f"Could not apply projection plan: {exc}")
-    else:
-        messages.success(request, f"Projection plan #{plan.pk} applied.")
-    finally:
-        client.close()
+    if not celery_available():
+        messages.error(request, "No Celery worker is running — cannot apply plan.")
+        return redirect("ravioli:projection_plan_detail", plan_id=plan.pk)
 
-    return redirect("ravioli:projection_plan_detail", plan_id=plan.pk)
+    try:
+        run = _trigger_workflow(
+            "ravioli-apply-plan",
+            input_data={"data": {"plan_id": plan.pk}},
+        )
+    except RuntimeError as exc:
+        messages.error(request, str(exc))
+        return redirect("ravioli:projection_plan_detail", plan_id=plan.pk)
+
+    messages.success(request, f"Plan #{plan.pk} apply started (run #{run.pk}).")
+    return redirect("workflows:workflow_run_detail", run_id=run.pk)
+
+
+def _trigger_workflow(slug: str, input_data: dict | None = None) -> "WorkflowRun":
+    from toto.workflows.models import Workflow, WorkflowRun
+    from toto.workflows.tasks import start_workflow_run_task
+
+    wf = Workflow.objects.filter(slug=slug).first()
+    if wf is None:
+        raise RuntimeError(
+            f"Workflow '{slug}' not found — run ingress_ravioli to create it."
+        )
+    run = WorkflowRun.objects.create(workflow=wf, input_data=input_data or {})
+    start_workflow_run_task.delay(run.pk)
+    return run
+
+
+@require_POST
+@superuser_required
+def full_sync_view(request):
+    from .connection import is_enabled
+
+    if not is_enabled():
+        messages.error(request, "RAVIOLI_ENABLED is False — cannot connect to Neo4j.")
+        return redirect("ravioli:projection_sync")
+
+    if not celery_available():
+        messages.error(request, "No Celery worker is running — cannot run full sync.")
+        return redirect("ravioli:projection_sync")
+
+    try:
+        run = _trigger_workflow("ravioli-sync")
+    except RuntimeError as exc:
+        messages.error(request, str(exc))
+        return redirect("ravioli:projection_sync")
+
+    messages.success(request, f"Full sync started (run #{run.pk}) — generate + apply for all labels.")
+    return redirect("workflows:workflow_run_detail", run_id=run.pk)
+
+
+@require_POST
+@superuser_required
+def clear_db_view(request):
+    from .connection import is_enabled
+
+    if not is_enabled():
+        messages.error(request, "RAVIOLI_ENABLED is False — cannot connect to Neo4j.")
+        return redirect("ravioli:projection_sync")
+
+    if not celery_available():
+        messages.error(request, "No Celery worker is running — cannot clear database.")
+        return redirect("ravioli:projection_sync")
+
+    try:
+        run = _trigger_workflow("ravioli-clear-db")
+    except RuntimeError as exc:
+        messages.error(request, str(exc))
+        return redirect("ravioli:projection_sync")
+
+    messages.warning(request, f"Clear DB started (run #{run.pk}) — deleting all ravioli-owned data.")
+    return redirect("workflows:workflow_run_detail", run_id=run.pk)
 
 
 def query_graph_data(request, query_id):

@@ -9,3 +9,4 @@ class RavioliConfig(AppConfig):
         from .signals import register_graph_signals
 
         register_graph_signals()
+        from . import predefined_tasks  # noqa: F401 — registers ravioli workflow tasks
