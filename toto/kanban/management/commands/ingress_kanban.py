@@ -1,6 +1,7 @@
 from datetime import timedelta
 import random
 
+from django.contrib.auth import get_user_model
 from django.utils import timezone
 
 from toto.kanban.models import (
@@ -54,6 +55,22 @@ class Command(IngressCommand):
             defaults={"role": Practitioner.ROLE_CONTRIBUTOR, "is_active": True},
         )
         practitioners = [prac1, prac2]
+
+        # Ensure the admin/founder also has a Practitioner seat so they can see this board
+        User = get_user_model()
+        admin_user = User.objects.filter(is_superuser=True).order_by("id").first()
+        if admin_user:
+            founder = Person.objects.filter(user=admin_user).first()
+            if not founder:
+                founder = Person.objects.filter(display_name__icontains="founder").first()
+            if founder and founder not in (member1, member2):
+                founder_prac, _ = Practitioner.objects.get_or_create(
+                    project=project, person=founder,
+                    defaults={"role": Practitioner.ROLE_MANAGER, "is_active": True},
+                )
+                practitioners.append(founder_prac)
+                print(f"✔  Founder Practitioner: {founder_prac}")
+
         print(f"✔  Practitioners: {prac1}, {prac2}")
 
         # ── Columns ───────────────────────────────────────────────────────

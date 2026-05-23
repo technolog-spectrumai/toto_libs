@@ -6,7 +6,7 @@ from django.contrib.gis.geos import Point
 from django.utils import timezone
 
 from toto.ingress import IngressCommand
-from toto.kanban.models import Campaign, Column, Mission, Project, Task
+from toto.kanban.models import Campaign, Column, Mission, Practitioner, Project, Task
 from toto.locations.models import Address
 from toto.people.models import Person
 
@@ -206,10 +206,16 @@ class Command(IngressCommand):
         if created:
             self.stdout.write("  + kanban project Detection Mitigation")
 
-        if people["tester"].user_id:
-            project.collaborators.add(people["tester"].user)
+        owner_prac, _ = Practitioner.objects.get_or_create(
+            project=project, person=owner,
+            defaults={"role": Practitioner.ROLE_MANAGER, "is_active": True},
+        )
+        tester_prac, _ = Practitioner.objects.get_or_create(
+            project=project, person=people["tester"],
+            defaults={"role": Practitioner.ROLE_CONTRIBUTOR, "is_active": True},
+        )
+        auditor_practitioners = [owner_prac, tester_prac]
 
-        auditor_users = [person.user for person in (owner, people["tester"]) if person.user_id]
         columns = {}
         for name, position, can_add in [
             ("To Do", 1, True),
@@ -223,8 +229,7 @@ class Command(IngressCommand):
                 name=name,
                 defaults={"position": position, "can_add_task": can_add},
             )
-            if auditor_users:
-                column.auditors.set(auditor_users)
+            column.auditors.set(auditor_practitioners)
             if created:
                 self.stdout.write(f"  + kanban column {name}")
             columns[name] = column
@@ -273,7 +278,7 @@ class Command(IngressCommand):
                 defaults={
                     "description": detection.description,
                     "column": columns["To Do"],
-                    "reviewer": owner,
+                    "reviewer": owner_prac,
                     "due_date": (timezone.now() + timedelta(days=3)).date(),
                     "position": position,
                     "weight": 3 if detection.severity in ("high", "critical") else 2,

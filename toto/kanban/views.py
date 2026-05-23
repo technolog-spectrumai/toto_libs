@@ -141,6 +141,9 @@ class ProjectListView(LoginRequiredMixin, ListView):
         if isinstance(user, AnonymousUser) or not user.is_authenticated:
             return Project.objects.none()
 
+        if user.is_superuser or user.is_staff:
+            return Project.objects.all().distinct()
+
         return (
             Project.objects
             .filter(
