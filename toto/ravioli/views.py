@@ -17,6 +17,7 @@ def superuser_required(view_func):
 
 def query_unified_view(request):
     queries = CypherQuery.objects.all().order_by("name")
+    queries_json = json.dumps(list(queries.values("id", "name", "description")))
 
     selected_id = request.GET.get("query")
     selected_query = None
@@ -24,7 +25,11 @@ def query_unified_view(request):
         selected_query = get_object_or_404(CypherQuery, pk=selected_id)
 
     context = PageProcessor().decorate(
-        {"queries": queries, "selected_query": selected_query},
+        {
+            "queries": queries,
+            "queries_json": queries_json,
+            "selected_query": selected_query,
+        },
         request,
     )
     return render(request, "ravioli/query_unified.html", context)
@@ -231,6 +236,7 @@ def query_graph_data(request, query_id):
         "selected_query": {
             "id": selected_query.id,
             "name": selected_query.name,
+            "description": selected_query.description,
         },
     })
 

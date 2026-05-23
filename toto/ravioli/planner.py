@@ -5,13 +5,7 @@ from .loader import import_model, load_all_configs
 from .projection import _get_value, _neo4j_property_value, link_key
 
 
-META_PROPS = {
-    "ravioli_owned",
-    "ravioli_label",
-    "ravioli_from_label",
-    "ravioli_to_label",
-    "ravioli_uuid",
-}
+META_PROPS = {"ravioli_uuid"}
 
 
 def _jsonable(value):
@@ -244,7 +238,6 @@ class ProjectionPlanner:
                     "label": label,
                     "uuid": uuid,
                     "props": clean_props(record["props"]),
-                    "owned": bool((record["props"] or {}).get("ravioli_owned")),
                 }
         return actual
 
@@ -279,7 +272,6 @@ class ProjectionPlanner:
                 "to_label": to_label,
                 "to_uuid": str(record["to_uuid"]),
                 "props": clean_props(record["props"]),
-                "owned": bool((record["props"] or {}).get("ravioli_owned")),
                 "link_key": link_key(link_def),
             }
             rel["key"] = self._direct_relationship_key(rel)
@@ -310,7 +302,6 @@ class ProjectionPlanner:
                 "to_uuid": str(record["to_uuid"]),
                 "ravioli_uuid": str(record["ravioli_uuid"]),
                 "props": clean_props(record["props"]),
-                "owned": bool((record["props"] or {}).get("ravioli_owned")),
                 "link_key": link_key(link_def),
             }
             rel["key"] = self._junction_relationship_key(rel)
@@ -342,20 +333,12 @@ class ProjectionPlanner:
                     continue
 
                 changes = prop_changes(expected["props"], actual["props"])
-                if changes or not actual["owned"]:
-                    diff["nodes"]["update"].append({
-                        **expected,
-                        "changes": changes,
-                        "claim": not actual["owned"],
-                    })
+                if changes:
+                    diff["nodes"]["update"].append({**expected, "changes": changes})
 
             for uuid, actual in graph_nodes.items():
-                if uuid in nodes:
-                    continue
-                if actual["owned"]:
+                if uuid not in nodes:
                     diff["nodes"]["delete"].append(actual)
-                else:
-                    diff["nodes"]["ignored"].append(actual)
 
         for key, expected in expected_relationships.items():
             actual = actual_relationships.get(key)
@@ -368,21 +351,16 @@ class ProjectionPlanner:
                 expected["from_uuid"] != actual["from_uuid"]
                 or expected["to_uuid"] != actual["to_uuid"]
             )
-            if changes or endpoint_changed or not actual["owned"]:
+            if changes or endpoint_changed:
                 diff["relationships"]["update"].append({
                     **expected,
                     "changes": changes,
                     "endpoint_changed": endpoint_changed,
-                    "claim": not actual["owned"],
                 })
 
         for key, actual in actual_relationships.items():
-            if key in expected_relationships:
-                continue
-            if actual["owned"]:
+            if key not in expected_relationships:
                 diff["relationships"]["delete"].append(actual)
-            else:
-                diff["relationships"]["ignored"].append(actual)
 
         totals = {
             "expected_nodes": sum(len(nodes) for nodes in expected_nodes.values()),
@@ -465,27 +443,14 @@ class ProjectionPlanApplier:
     def upsert_node(self, node):
         label = node["label"]
         self.client.run_cypher(
-            (
-                f"MERGE (n:{label} {{uuid: $uuid}}) "
-                "SET n.ravioli_owned = true, "
-                "n.ravioli_label = $label, "
-                "n += $props"
-            ),
-            {
-                "uuid": node["uuid"],
-                "label": label,
-                "props": neo4j_props(node.get("props", {})),
-            },
+            f"MERGE (n:{label} {{uuid: $uuid}}) SET n += $props",
+            {"uuid": node["uuid"], "props": neo4j_props(node.get("props", {}))},
         )
 
     def delete_node(self, node):
         label = node["label"]
         self.client.run_cypher(
-            (
-                f"MATCH (n:{label} {{uuid: $uuid}}) "
-                "WHERE coalesce(n.ravioli_owned, false) = true "
-                "DETACH DELETE n"
-            ),
+            f"MATCH (n:{label} {{uuid: $uuid}}) DETACH DELETE n",
             {"uuid": node["uuid"]},
         )
 
