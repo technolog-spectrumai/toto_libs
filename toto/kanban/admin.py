@@ -8,7 +8,7 @@ from django.utils.timezone import now
 from .models import (
     Project, Column, Task, Sprint, Mission, Campaign,
     DocumentationPage, DocumentationSection,
-    Practitioner, PractitionerAllowance,
+    Practitioner, PractitionerAllowance, ProjectCommitment,
 )
 from toto.core.batch import BatchAction
 from toto.events.models import ScheduledEvent
@@ -26,10 +26,11 @@ class PrettyJSONTextarea(forms.Textarea):
 
 # ── Project ──────────────────────────────────────────────────────────────────
 
-class PractitionerInline(admin.TabularInline):
-    model = Practitioner
+class ProjectCommitmentInline(admin.TabularInline):
+    model = ProjectCommitment
     extra = 1
-    fields = ("person", "role", "is_active")
+    fields = ("practitioner", "hours_per_day", "is_active", "start_date", "end_date")
+    raw_id_fields = ("practitioner",)
 
 
 class CampaignInline(admin.TabularInline):
@@ -41,13 +42,13 @@ class CampaignInline(admin.TabularInline):
 
 @admin.register(Project)
 class ProjectAdmin(admin.ModelAdmin):
-    list_display = ("name", "owner", "practitioner_count")
+    list_display = ("name", "owner", "commitment_count")
     search_fields = ("name", "description")
-    inlines = [CampaignInline, PractitionerInline]
+    inlines = [CampaignInline, ProjectCommitmentInline]
 
-    def practitioner_count(self, obj):
-        return obj.practitioners.filter(is_active=True).count()
-    practitioner_count.short_description = "Practitioners"
+    def commitment_count(self, obj):
+        return obj.commitments.filter(is_active=True).count()
+    commitment_count.short_description = "Practitioners"
 
 
 # ── Practitioner ──────────────────────────────────────────────────────────────
@@ -59,13 +60,28 @@ class PractitionerAllowanceInline(admin.TabularInline):
     raw_id_fields = ("asset", "payer_account", "recipient_account")
 
 
+class PractitionerCommitmentInline(admin.TabularInline):
+    model = ProjectCommitment
+    extra = 0
+    fields = ("project", "hours_per_day", "is_active", "start_date", "end_date")
+    raw_id_fields = ("project",)
+
+
 @admin.register(Practitioner)
 class PractitionerAdmin(admin.ModelAdmin):
-    list_display = ("person", "project", "role", "is_active")
-    list_filter = ("role", "is_active", "project")
-    search_fields = ("person__display_name", "project__name")
-    raw_id_fields = ("person", "project")
-    inlines = [PractitionerAllowanceInline]
+    list_display = ("person", "role", "is_active")
+    list_filter = ("role", "is_active")
+    search_fields = ("person__display_name",)
+    raw_id_fields = ("person", "default_income_account")
+    inlines = [PractitionerAllowanceInline, PractitionerCommitmentInline]
+
+
+@admin.register(ProjectCommitment)
+class ProjectCommitmentAdmin(admin.ModelAdmin):
+    list_display = ("practitioner", "project", "hours_per_day", "is_active", "start_date", "end_date")
+    list_filter = ("is_active", "project")
+    search_fields = ("practitioner__person__display_name", "project__name")
+    raw_id_fields = ("practitioner", "project")
 
 
 @admin.register(PractitionerAllowance)
