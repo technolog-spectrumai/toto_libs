@@ -126,6 +126,7 @@ class FileDisplayView(LoginRequiredMixin, DetailView):
         context["compile_runs"] = (
             CompileRun.objects
             .filter(latex_file=latex_file)
+            .select_related("workflow_run")
             .order_by("-started_at")[:10]
         )
         return PageProcessor().decorate(context, self.request)
@@ -184,6 +185,8 @@ def compile_latex(request, file_id):
                 workflow=wf,
                 input_data={"data": {"file_id": file_id, "run_id": run.id}},
             )
+            run.workflow_run = wf_run
+            run.save(update_fields=["workflow_run"])
             start_workflow_run_task.delay(wf_run.pk)
             return JsonResponse({"status": "queued", "run_id": run.id, "workflow_run_id": wf_run.id})
 

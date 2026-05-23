@@ -87,6 +87,12 @@ class CompileRun(models.Model):
         null=True, blank=True,
         related_name="compile_runs",
     )
+    workflow_run = models.ForeignKey(
+        "workflows.WorkflowRun",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="compile_runs",
+    )
     task_id    = models.CharField(max_length=255, blank=True)
     status     = models.CharField(max_length=20, choices=STATUS_CHOICES, default=PENDING)
     log        = models.TextField(blank=True)

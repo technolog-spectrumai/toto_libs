@@ -112,40 +112,58 @@
     </div>
 
     <!-- ── Status bar ──────────────────────────────────────── -->
-    <div id="status-bar" class="hidden rounded-xl border px-4 py-3 text-sm"
+    <div id="status-bar" class="hidden rounded-xl border text-sm overflow-hidden"
          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
          style="flex-shrink: 0;">
 
-      <!-- Running -->
-      <div id="status-running" class="hidden items-center gap-3">
-        <i class="fa-solid fa-spinner fa-spin shrink-0"
-           :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
-        <span class="font-semibold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">Compiling</span>
-        <span id="status-running-detail" class="text-xs opacity-60">queued</span>
-      </div>
+      <!-- Main row: state + workflow link -->
+      <div class="flex items-center gap-3 px-4 py-3">
 
-      <!-- Success -->
-      <div id="status-success" class="hidden items-center gap-3">
-        <i class="fa-solid fa-circle-check shrink-0"
-           :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
-        <span class="font-semibold" :class="darkMode ? 'text-success-dark' : 'text-success-light'">Compiled</span>
-        <a id="status-pdf-link" href="#" target="_blank"
-           :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-           class="underline underline-offset-2 hover:opacity-80">Open PDF</a>
-      </div>
+        <!-- State panels -->
+        <div class="flex-1 min-w-0">
+          <!-- Running -->
+          <div id="status-running" class="hidden items-center gap-2">
+            <i class="fa-solid fa-spinner fa-spin shrink-0"
+               :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+            <span class="font-semibold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">Compiling</span>
+            <span id="status-running-detail" class="text-xs opacity-60">queued</span>
+          </div>
 
-      <!-- Error -->
-      <div id="status-error" class="hidden gap-3">
-        <div class="flex items-center gap-3 cursor-pointer" id="status-error-header">
-          <i class="fa-solid fa-circle-xmark shrink-0"
-             :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
-          <span class="font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">Compile error</span>
-          <span class="text-xs opacity-60">click to expand log</span>
-          <i id="status-chevron" class="fa-solid fa-chevron-down text-xs opacity-60 ml-auto transition-transform"></i>
+          <!-- Success -->
+          <div id="status-success" class="hidden items-center gap-2">
+            <i class="fa-solid fa-circle-check shrink-0"
+               :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+            <span class="font-semibold" :class="darkMode ? 'text-success-dark' : 'text-success-light'">Compiled</span>
+            <a id="status-pdf-link" href="#" target="_blank"
+               :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+               class="underline underline-offset-2 hover:opacity-80">Open PDF</a>
+          </div>
+
+          <!-- Error -->
+          <div id="status-error" class="hidden gap-2">
+            <div class="flex items-center gap-2 cursor-pointer" id="status-error-header">
+              <i class="fa-solid fa-circle-xmark shrink-0"
+                 :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
+              <span class="font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">Compile error</span>
+              <span class="text-xs opacity-60">click to expand log</span>
+              <i id="status-chevron" class="fa-solid fa-chevron-down text-xs opacity-60 ml-auto transition-transform"></i>
+            </div>
+          </div>
         </div>
-        <pre id="status-error-log"
-             class="hidden mt-2 max-h-64 overflow-auto rounded-lg border border-current/10 p-3 text-xs whitespace-pre-wrap opacity-75"></pre>
+
+        <!-- Workflow link — always right-aligned, shown when workflow_run_id available -->
+        <a id="status-workflow-link" href="#" target="_blank"
+           :class="darkMode ? 'border-accent-1 bg-primary-bg-dark/50 text-text-main-dark' : 'border-accent-2 bg-primary-bg-light/50 text-text-main-light'"
+           class="hidden shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold transition hover:opacity-80">
+          <i class="fa-solid fa-diagram-project opacity-70"></i>
+          Workflow run
+        </a>
+
       </div>
+
+      <!-- Expandable error log -->
+      <pre id="status-error-log"
+           class="hidden border-t border-current/10 px-4 py-3 max-h-64 overflow-auto text-xs whitespace-pre-wrap opacity-75"></pre>
 
     </div>
 
@@ -200,6 +218,14 @@
           <a href="{{ run.pdf_url }}" target="_blank"
              :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
              class="text-xs underline underline-offset-2 shrink-0 hover:opacity-80">PDF</a>
+          {% endif %}
+
+          <!-- Workflow run link -->
+          {% if run.workflow_run_id %}
+          <a href="{% url 'workflows:workflow_run_detail' run.workflow_run_id %}" target="_blank"
+             class="text-xs underline underline-offset-2 shrink-0 opacity-45 hover:opacity-80">
+            <i class="fa-solid fa-diagram-project mr-0.5"></i>run
+          </a>
           {% endif %}
 
         </div>
@@ -438,13 +464,13 @@ const statusOk        = document.getElementById("status-success");
 const statusErr       = document.getElementById("status-error");
 const statusLog       = document.getElementById("status-error-log");
 const statusPdf       = document.getElementById("status-pdf-link");
+const wfLink          = document.getElementById("status-workflow-link");
 const COMPILE_STATUS_URL  = "{% url 'texlab:compile_status' run_id=0 %}".replace("/0/", "/{id}/");
 const WORKFLOW_API_URL    = "{% url 'workflows:api_run_detail' 99999 %}".replace("/99999/", "/{id}/");
 const WORKFLOW_DETAIL_URL = "{% url 'workflows:workflow_run_detail' 99999 %}".replace("/99999/", "/{id}/");
 
 function showStatus(mode) {
   statusBar.classList.remove("hidden");
-  statusBar.classList.add("flex");
   statusRun.classList.toggle("hidden", mode !== "running");
   statusRun.classList.toggle("flex",   mode === "running");
   statusOk.classList.toggle("hidden",  mode !== "ok");
@@ -453,9 +479,22 @@ function showStatus(mode) {
   statusErr.classList.toggle("flex",   mode === "err");
 }
 
+function showWorkflowLink(detailUrl) {
+  console.log("[texlab] showWorkflowLink", detailUrl);
+  wfLink.href = detailUrl;
+  wfLink.classList.remove("hidden");
+  wfLink.classList.add("inline-flex");
+}
+
+function hideWorkflowLink() {
+  wfLink.classList.add("hidden");
+  wfLink.classList.remove("inline-flex");
+}
+
 async function pollWorkflowRun(workflowRunId, compileRunId) {
   const apiUrl    = WORKFLOW_API_URL.replace("{id}", workflowRunId);
   const detailUrl = WORKFLOW_DETAIL_URL.replace("{id}", workflowRunId);
+  showWorkflowLink(detailUrl);
 
   for (let attempt = 0; attempt < 120; attempt += 1) {
     const res  = await fetch(apiUrl, { credentials: "same-origin" });
@@ -511,15 +550,15 @@ async function pollCompileStatus(runId) {
 
 // Expandable log
 document.getElementById("status-error-header").addEventListener("click", () => {
-  const open = !statusLog.classList.contains("hidden");
-  statusLog.classList.toggle("hidden", open);
-  document.getElementById("status-chevron").style.transform = open ? "" : "rotate(180deg)";
+  const isHidden = statusLog.classList.contains("hidden");
+  statusLog.classList.toggle("hidden", !isHidden);
+  document.getElementById("status-chevron").style.transform = isHidden ? "rotate(180deg)" : "";
 });
 
 compileBtn.addEventListener("click", async () => {
   statusBar.classList.add("hidden");
-  statusBar.classList.remove("flex");
   statusLog.classList.add("hidden");
+  hideWorkflowLink();
 
   compileBtn.disabled = true;
   compileBtn.style.opacity = "0.5";
@@ -543,6 +582,7 @@ compileBtn.addEventListener("click", async () => {
     });
     const data = await res.json();
 
+    console.log("[texlab] compile response", data);
     if (data.status === "queued" && data.workflow_run_id) {
       await pollWorkflowRun(data.workflow_run_id, data.run_id);
     } else if (data.status === "queued" && data.run_id) {
