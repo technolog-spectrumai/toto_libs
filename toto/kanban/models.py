@@ -116,7 +116,7 @@ class Sprint(DomainEntity):
 
 
 class Practitioner(DomainEntity):
-    """A Person's participation in a specific Project."""
+    """A professional profile for a Person, independent of any specific project."""
 
     ROLE_CONTRIBUTOR = "contributor"
     ROLE_REVIEWER = "reviewer"
@@ -132,8 +132,7 @@ class Practitioner(DomainEntity):
         (ROLE_OBSERVER, "Observer"),
     ]
 
-    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="practitioners")
-    person = models.ForeignKey(Person, on_delete=models.CASCADE, related_name="project_practitioner_roles")
+    person = models.ForeignKey(Person, on_delete=models.CASCADE, related_name="practitioner_profiles")
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default=ROLE_CONTRIBUTOR)
     is_active = models.BooleanField(default=True)
     default_income_account = models.ForeignKey(
@@ -150,13 +149,32 @@ class Practitioner(DomainEntity):
     )
     metadata = models.JSONField(blank=True, null=True)
 
+    def __str__(self):
+        return f"{self.person} ({self.role})"
+
+
+class ProjectCommitment(DomainEntity):
+    """Links a Practitioner to a Project and tracks their time commitment."""
+
+    practitioner = models.ForeignKey(Practitioner, on_delete=models.CASCADE, related_name="commitments")
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="commitments")
+    hours_per_day = models.DecimalField(
+        max_digits=4,
+        decimal_places=2,
+        help_text="Number of hours per day committed to this project.",
+    )
+    is_active = models.BooleanField(default=True)
+    start_date = models.DateField(null=True, blank=True)
+    end_date = models.DateField(null=True, blank=True)
+    metadata = models.JSONField(blank=True, null=True)
+
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=["project", "person"], name="unique_practitioner_per_project"),
+            models.UniqueConstraint(fields=["practitioner", "project"], name="unique_commitment_per_project"),
         ]
 
     def __str__(self):
-        return f"{self.person} in {self.project} as {self.role}"
+        return f"{self.practitioner} → {self.project} ({self.hours_per_day}h/day)"
 
 
 class Task(DomainEntity):
@@ -207,11 +225,6 @@ class Task(DomainEntity):
         if self.sprint_id and self.sprint.project_id != project.pk:
             raise ValidationError({"sprint": "Sprint must belong to the same project as the task."})
 
-        if self.assignee_id and self.assignee.project_id != project.pk:
-            raise ValidationError({"assignee": "Assignee must be a practitioner in this project."})
-
-        if self.reviewer_id and self.reviewer.project_id != project.pk:
-            raise ValidationError({"reviewer": "Reviewer must be a practitioner in this project."})
 
 
 class PractitionerAllowance(DomainEntity):
