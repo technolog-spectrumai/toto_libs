@@ -60,17 +60,23 @@ def ravioli_clear_db(input_data: dict) -> dict:
 
     client = Neo4jClient()
     try:
-        rel_result = client.run_cypher(
-            "MATCH ()-[r]->() WHERE coalesce(r.ravioli_owned, false) = true "
-            "DELETE r RETURN count(r) AS deleted"
+        # Count first, then delete separately — can't reference deleted entities in RETURN.
+        rel_count = client.run_cypher(
+            "MATCH ()-[r]->() WHERE r.ravioli_from_label IS NOT NULL "
+            "RETURN count(*) AS cnt"
+        )[0]["cnt"]
+        client.run_cypher(
+            "MATCH ()-[r]->() WHERE r.ravioli_from_label IS NOT NULL DELETE r"
         )
-        node_result = client.run_cypher(
-            "MATCH (n) WHERE coalesce(n.ravioli_owned, false) = true "
-            "DETACH DELETE n RETURN count(n) AS deleted"
+
+        node_count = client.run_cypher(
+            "MATCH (n) WHERE n.ravioli_label IS NOT NULL "
+            "RETURN count(*) AS cnt"
+        )[0]["cnt"]
+        client.run_cypher(
+            "MATCH (n) WHERE n.ravioli_label IS NOT NULL DETACH DELETE n"
         )
     finally:
         client.close()
 
-    rels = rel_result[0]["deleted"] if rel_result else 0
-    nodes = node_result[0]["deleted"] if node_result else 0
-    return {"data": {"relationships_deleted": rels, "nodes_deleted": nodes}}
+    return {"data": {"relationships_deleted": rel_count, "nodes_deleted": node_count}}
