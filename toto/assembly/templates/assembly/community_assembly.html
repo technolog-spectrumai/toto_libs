@@ -41,22 +41,61 @@
             Tax exempt
           </span>
         {% endif %}
-        {% if has_voting_rights %}
+        {% if is_senator %}
+          <a href="{% url 'assembly:senate_review' community.slug %}"
+             class="inline-flex items-center gap-2 rounded-lg border border-purple-400/40 bg-purple-500/10 px-4 py-2 text-sm font-semibold text-purple-600 shadow-sm hover:opacity-80">
+            <i class="fa-solid fa-landmark-dome"></i>
+            {% trans "You sit in the Senate — go to your chamber" %}
+          </a>
+        {% elif has_voting_rights %}
           <span
             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
             class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm">
             <i class="fa-solid fa-check-circle text-green-500"></i>
-            Voting rights active
+            {% trans "Voting rights active" %}
           </span>
         {% else %}
           <span
             class="inline-flex items-center gap-2 rounded-lg border border-yellow-400/40 bg-yellow-500/10 px-4 py-2 text-sm font-semibold text-yellow-600 shadow-sm">
             <i class="fa-solid fa-triangle-exclamation"></i>
-            Poll tax due
+            {% trans "Poll tax due" %}
           </span>
         {% endif %}
       </div>
     </header>
+
+    <!-- Senate pending notice -->
+    {% if pending_senate %}
+    <section class="rounded-2xl border border-purple-400/30 bg-purple-500/5 p-5 shadow-sm">
+      <h2 class="mb-3 flex items-center gap-2 text-base font-bold text-purple-700 dark:text-purple-300">
+        <i class="fa-solid fa-landmark-dome"></i>
+        {% trans "Awaiting Senate Review" %}
+      </h2>
+      <div class="space-y-2">
+        {% for p in pending_senate %}
+          <div class="flex items-center justify-between gap-3 rounded-lg border border-purple-300/20 bg-purple-50/50 px-4 py-2 dark:bg-purple-900/10">
+            <div>
+              <div class="font-semibold text-sm">{{ p.title }}</div>
+              {% if p.senate_deadline %}
+                <div class="text-xs opacity-50">
+                  {% trans "Senate deadline:" %} {{ p.senate_deadline|date:"Y-m-d H:i" }}
+                </div>
+              {% endif %}
+            </div>
+            {% if p.senate_deadline and p.senate_deadline <= now %}
+              <form method="post" action="{% url 'assembly:senate_confirm' community.slug p.pk %}">
+                {% csrf_token %}
+                <button type="submit"
+                        class="inline-flex items-center gap-1 rounded border border-green-400/40 bg-green-500/10 px-3 py-1 text-xs font-semibold text-green-700 hover:opacity-80">
+                  <i class="fa-solid fa-check"></i> {% trans "Enact" %}
+                </button>
+              </form>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
 
     <!-- Poll Taxes -->
     {% if poll_taxes %}

@@ -13,6 +13,8 @@ from django.views.decorators.http import require_POST
 from toto.socialhub.models import Community
 from toto.ui import PageProcessor
 
+from datetime import timedelta
+
 from .models import (
     AssemblyDecision,
     AssemblyProposal,
@@ -21,10 +23,12 @@ from .models import (
     AssemblyVote,
     AssemblyVoteChoice,
     CommunityAssemblyConfig,
+    CommunitySenate,
     CommunityRule,
     CommunityTransactionFee,
     PollTax,
     PollTaxPayment,
+    SenateVeto,
 )
 from .queries import community_assembly_summaries, fee_current_chart_data, fee_history_chart_data, overview_stats
 
@@ -65,7 +69,18 @@ def _is_poll_tax_exempt(person) -> bool:
     return False
 
 
+def _is_senator(person, community) -> bool:
+    """Senators sit in the upper chamber only — not the popular assembly."""
+    try:
+        senate = community.senate
+        return senate.is_active and senate.members.filter(pk=person.pk).exists()
+    except CommunitySenate.DoesNotExist:
+        return False
+
+
 def _has_voting_rights(person, community) -> bool:
+    if _is_senator(person, community):
+        return False  # senators deliberate in the senate, not the popular assembly
     if _is_poll_tax_exempt(person):
         return True
     active_taxes = PollTax.objects.filter(community=community, active=True)
@@ -83,6 +98,25 @@ def _get_quorum_fraction(community) -> float:
         return float(community.assembly_config.quorum_fraction)
     except CommunityAssemblyConfig.DoesNotExist:
         return 0.51
+
+
+def _route_passed_proposal(proposal: AssemblyProposal) -> str:
+    """
+    After a proposal clears the popular vote quorum, check whether the community
+    has an active senate. If yes, park the proposal for senate review; otherwise
+    enact immediately.  Returns 'enacted' or 'pending_senate'.
+    """
+    try:
+        senate = proposal.community.senate
+        if senate.is_active:
+            proposal.status = AssemblyStatus.PENDING_SENATE
+            proposal.senate_deadline = timezone.now() + timedelta(days=senate.veto_window_days)
+            proposal.save(update_fields=["status", "senate_deadline"])
+            return "pending_senate"
+    except CommunitySenate.DoesNotExist:
+        pass
+    _enact_proposal(proposal)
+    return "enacted"
 
 
 def _enact_proposal(proposal: AssemblyProposal) -> AssemblyDecision:
@@ -151,6 +185,17 @@ def _enact_proposal(proposal: AssemblyProposal) -> AssemblyDecision:
                 _Magistrate.objects.filter(
                     pk=mag_id, status__in=["active", "suspended"]
                 ).update(status="impeached")
+            except Exception:
+                pass
+
+    elif proposal.proposal_type == AssemblyProposalType.SENATE_APPOINTMENT:
+        nominee_id = proposal.metadata.get("nominee_id")
+        if nominee_id:
+            try:
+                from toto.people.models import Person as _Person
+                nominee = _Person.objects.get(pk=nominee_id)
+                senate = proposal.community.senate
+                senate.members.add(nominee)
             except Exception:
                 pass
 
@@ -238,6 +283,13 @@ def community_assembly(request, slug):
     except Exception:
         pass
 
+    is_senator = _is_senator(person, community)
+    pending_senate = (
+        AssemblyProposal.objects
+        .filter(community=community, status=AssemblyStatus.PENDING_SENATE)
+        .order_by("senate_deadline")
+    ) if not is_senator else []
+
     return _render(request, "assembly/community_assembly.html", {
         "community": community,
         "person": person,
@@ -247,6 +299,8 @@ def community_assembly(request, slug):
         "poll_taxes": poll_taxes,
         "decisions": AssemblyDecision.objects.filter(community=community).order_by("-created_at")[:20],
         "has_voting_rights": _has_voting_rights(person, community),
+        "is_senator": is_senator,
+        "pending_senate": pending_senate,
         "is_federal_agent": is_federal_agent,
         "is_federal_tribe_member": is_federal_tribe_member,
         "quorum_fraction_pct": int(quorum_fraction * 100),
@@ -336,8 +390,11 @@ def proposal_vote(request, slug, proposal_id):
         no = tally[AssemblyVoteChoice.NO]
         total = yes + no
         if total > 0 and (yes / total) >= quorum_fraction:
-            _enact_proposal(proposal)
-            messages.success(request, "Proposal passed and enacted.")
+            outcome = _route_passed_proposal(proposal)
+            if outcome == "pending_senate":
+                messages.success(request, "Proposal passed the popular vote — now awaiting senate review.")
+            else:
+                messages.success(request, "Proposal passed and enacted.")
             return redirect("assembly:community_assembly", slug=slug)
         if total > 0 and (no / total) > (1 - quorum_fraction):
             proposal.status = AssemblyStatus.REJECTED
@@ -364,8 +421,11 @@ def proposal_close(request, slug, proposal_id):
         no = tally[AssemblyVoteChoice.NO]
         total = yes + no
         if total > 0 and (yes / total) >= quorum_fraction:
-            _enact_proposal(proposal)
-            messages.success(request, "Proposal closed — passed and enacted.")
+            outcome = _route_passed_proposal(proposal)
+            if outcome == "pending_senate":
+                messages.success(request, "Proposal closed — passed popular vote, now awaiting senate review.")
+            else:
+                messages.success(request, "Proposal closed — passed and enacted.")
         else:
             proposal.status = AssemblyStatus.REJECTED
             proposal.save(update_fields=["status"])
@@ -403,4 +463,198 @@ def poll_tax_pay(request, slug, poll_tax_id):
         total_paid_base_units=total,
     )
     messages.success(request, f"Poll tax paid for {label}. Voting rights unlocked.")
+    return redirect("assembly:community_assembly", slug=slug)
+
+
+# ---------------------------------------------------------------------------
+# Senate
+# ---------------------------------------------------------------------------
+
+@require_POST
+@login_required
+def senate_nominate(request, slug):
+    """Any community member proposes a senate appointment via the popular assembly."""
+    community = get_object_or_404(Community, slug=slug)
+    person = _require_member(request, community)
+
+    try:
+        senate = community.senate
+        if not senate.is_active:
+            messages.error(request, "This community does not have an active senate.")
+            return redirect("assembly:community_assembly", slug=slug)
+    except CommunitySenate.DoesNotExist:
+        messages.error(request, "This community does not have a senate.")
+        return redirect("assembly:community_assembly", slug=slug)
+
+    nominee_id = request.POST.get("nominee_id", "").strip()
+    closes_date = request.POST.get("closes_date", "").strip()
+
+    from toto.people.models import Person as PersonModel
+    nominee = get_object_or_404(PersonModel, pk=nominee_id)
+
+    if senate.members.filter(pk=nominee.pk).exists():
+        messages.info(request, f"{nominee} is already a senator.")
+        return redirect("assembly:community_assembly", slug=slug)
+
+    closes_at = None
+    if closes_date:
+        from django.utils.dateparse import parse_datetime
+        closes_at = parse_datetime(f"{closes_date}T23:59:00")
+
+    AssemblyProposal.objects.create(
+        community=community,
+        proposal_type=AssemblyProposalType.SENATE_APPOINTMENT,
+        title=f"Appoint {nominee} to the Senate",
+        body=request.POST.get("reason", f"Proposal to appoint {nominee} as senator of {community}."),
+        status=AssemblyStatus.OPEN,
+        opened_by=person,
+        opens_at=timezone.now(),
+        closes_at=closes_at,
+        metadata={"nominee_id": str(nominee.pk)},
+    )
+    messages.success(request, f"Senate appointment proposal for {nominee} submitted for assembly vote.")
+    return redirect("assembly:community_assembly", slug=slug)
+
+
+@require_POST
+@login_required
+def senate_appoint_federal(request, slug):
+    """A federal agent directly seats a senator, bypassing the assembly vote."""
+    community = get_object_or_404(Community, slug=slug)
+    person = getattr(request.user, "community_profile", None)
+    if not person or not getattr(person, "is_federal_agent", False):
+        raise PermissionDenied
+
+    try:
+        senate = community.senate
+    except CommunitySenate.DoesNotExist:
+        messages.error(request, "This community does not have a senate. Create one in admin first.")
+        return redirect("assembly:community_assembly", slug=slug)
+
+    nominee_id = request.POST.get("nominee_id", "").strip()
+    reason = request.POST.get("reason", "").strip()
+
+    from toto.people.models import Person as PersonModel
+    nominee = get_object_or_404(PersonModel, pk=nominee_id)
+
+    senate.members.add(nominee)
+    messages.success(request, f"{nominee} seated in the senate by federal authority.")
+    return redirect("assembly:senate_review", slug=slug)
+
+
+def _require_senator(request, community):
+    """Person must be an explicit senate member for this community."""
+    person = getattr(request.user, "community_profile", None)
+    if not person:
+        raise PermissionDenied
+    try:
+        senate = community.senate
+        if not senate.is_active or not senate.members.filter(pk=person.pk).exists():
+            raise PermissionDenied
+    except CommunitySenate.DoesNotExist:
+        raise PermissionDenied
+    return person
+
+
+@login_required
+def senate_review(request, slug):
+    """Senate members' view: all proposals awaiting senate review for this community."""
+    community = get_object_or_404(Community, slug=slug)
+    person = _require_senator(request, community)
+
+    try:
+        senate = community.senate
+    except CommunitySenate.DoesNotExist:
+        messages.error(request, "This community does not have an active senate.")
+        return redirect("assembly:community_assembly", slug=slug)
+
+    pending = (
+        AssemblyProposal.objects
+        .filter(community=community, status=AssemblyStatus.PENDING_SENATE)
+        .order_by("senate_deadline")
+    )
+    vetoed = (
+        AssemblyProposal.objects
+        .filter(community=community, status=AssemblyStatus.VETOED)
+        .select_related("senate_veto__senator")
+        .order_by("-senate_veto__vetoed_at")[:20]
+    )
+
+    return render(request, "assembly/senate_review.html", PageProcessor().decorate({
+        "community": community,
+        "senate": senate,
+        "person": person,
+        "pending_proposals": pending,
+        "vetoed_proposals": vetoed,
+        "now": timezone.now(),
+    }, request))
+
+
+@require_POST
+@login_required
+def senate_veto(request, slug, proposal_id):
+    """A senator blocks a proposal that passed the popular assembly."""
+    community = get_object_or_404(Community, slug=slug)
+    person = _require_senator(request, community)
+
+    try:
+        senate = community.senate
+        if not senate.is_active:
+            raise PermissionDenied
+    except CommunitySenate.DoesNotExist:
+        raise PermissionDenied
+
+    proposal = get_object_or_404(
+        AssemblyProposal,
+        pk=proposal_id,
+        community=community,
+        status=AssemblyStatus.PENDING_SENATE,
+    )
+
+    if proposal.senate_deadline and timezone.now() > proposal.senate_deadline:
+        messages.error(request, "The senate veto window has expired — this proposal can no longer be blocked.")
+        return redirect("assembly:senate_review", slug=slug)
+
+    if SenateVeto.objects.filter(proposal=proposal).exists():
+        messages.info(request, "This proposal has already been vetoed.")
+        return redirect("assembly:senate_review", slug=slug)
+
+    reason = request.POST.get("reason", "").strip()
+
+    with db_transaction.atomic():
+        SenateVeto.objects.create(proposal=proposal, senator=person, reason=reason)
+        proposal.status = AssemblyStatus.VETOED
+        proposal.save(update_fields=["status"])
+
+    messages.success(request, f"Senate veto recorded. '{proposal.title}' will not be enacted.")
+    return redirect("assembly:senate_review", slug=slug)
+
+
+@require_POST
+@login_required
+def senate_confirm(request, slug, proposal_id):
+    """
+    After the veto window expires with no veto, any community member can trigger
+    enactment. Acts as the 'clock ran out, senate did not block' confirmation.
+    """
+    community = get_object_or_404(Community, slug=slug)
+    _require_member(request, community)
+
+    proposal = get_object_or_404(
+        AssemblyProposal,
+        pk=proposal_id,
+        community=community,
+        status=AssemblyStatus.PENDING_SENATE,
+    )
+
+    if not proposal.senate_deadline or timezone.now() <= proposal.senate_deadline:
+        messages.error(request, "The senate review window has not yet expired.")
+        return redirect("assembly:community_assembly", slug=slug)
+
+    if SenateVeto.objects.filter(proposal=proposal).exists():
+        messages.error(request, "This proposal was vetoed by the senate.")
+        return redirect("assembly:community_assembly", slug=slug)
+
+    _enact_proposal(proposal)
+    messages.success(request, f"Senate window expired without veto — '{proposal.title}' enacted.")
     return redirect("assembly:community_assembly", slug=slug)

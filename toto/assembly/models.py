@@ -18,13 +18,16 @@ class AssemblyProposalType(models.TextChoices):
     EMERGENCY_DECLARATION = "emg_declare", "Emergency Declaration"
     MAGISTRATE_ELECTION = "mag_elect", "Magistrate Election"
     IMPEACHMENT = "impeach", "Impeachment"
+    SENATE_APPOINTMENT = "senate_appoint", "Senate Appointment"
 
 
 class AssemblyStatus(models.TextChoices):
     DRAFT = "draft", "Draft"
     OPEN = "open", "Open"
+    PENDING_SENATE = "pending_senate", "Pending Senate Review"
     PASSED = "passed", "Passed"
     REJECTED = "rejected", "Rejected"
+    VETOED = "vetoed", "Vetoed by Senate"
     EXPIRED = "expired", "Expired"
 
 
@@ -86,6 +89,10 @@ class AssemblyProposal(models.Model):
     )
     opens_at = models.DateTimeField(null=True, blank=True)
     closes_at = models.DateTimeField(null=True, blank=True)
+    senate_deadline = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Set when proposal passes popular vote and enters senate review. Senate must veto before this deadline or the proposal is enacted.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     metadata = models.JSONField(default=dict, blank=True)
 
@@ -380,3 +387,69 @@ class PollTaxPayment(models.Model):
 
     def __str__(self):
         return f"{self.person} – {self.poll_tax.community} {self.period_label} ({self.total_paid_base_units})"
+
+
+class CommunitySenate(models.Model):
+    """
+    Optional upper chamber for a community's bi-cameral assembly.
+    Senators are managed explicitly via the 'members' M2M — independent of
+    community.senior_members or community.members.
+    The senate's only power is to veto proposals that passed the popular assembly,
+    within the configured veto window.
+    A person cannot vote in both chambers: senators are excluded from popular assembly voting.
+    """
+    community = models.OneToOneField(
+        "socialhub.Community",
+        on_delete=models.CASCADE,
+        related_name="senate",
+    )
+    is_active = models.BooleanField(default=True)
+    veto_window_days = models.PositiveIntegerField(
+        default=7,
+        help_text="Days the senate has to veto a proposal after it passes the popular assembly.",
+    )
+    members = models.ManyToManyField(
+        "people.Person",
+        blank=True,
+        related_name="senate_memberships",
+        help_text="Senators. A senator is excluded from voting in the popular assembly.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Community senate"
+        verbose_name_plural = "Community senates"
+
+    def __str__(self):
+        status = "active" if self.is_active else "inactive"
+        return f"Senate of {self.community} ({status}, {self.veto_window_days}d window)"
+
+
+class SenateVeto(models.Model):
+    """
+    A veto cast by a senator (senior member) against a proposal that passed
+    the popular assembly and is awaiting senate review.
+    One veto is sufficient to block enactment. The first senator to veto wins.
+    """
+    proposal = models.OneToOneField(
+        AssemblyProposal,
+        on_delete=models.CASCADE,
+        related_name="senate_veto",
+    )
+    senator = models.ForeignKey(
+        "people.Person",
+        on_delete=models.CASCADE,
+        related_name="senate_vetoes",
+    )
+    reason = models.TextField(
+        blank=True,
+        help_text="Public explanation of why the senate is blocking this proposal.",
+    )
+    vetoed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Senate veto"
+        verbose_name_plural = "Senate vetoes"
+
+    def __str__(self):
+        return f"Veto of '{self.proposal.title}' by {self.senator}"

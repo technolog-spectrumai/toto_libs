@@ -5,10 +5,12 @@ from .models import (
     AssemblyProposal,
     AssemblyVote,
     CommunityAssemblyConfig,
+    CommunitySenate,
     CommunityRule,
     CommunityTransactionFee,
     PollTax,
     PollTaxPayment,
+    SenateVeto,
 )
 
 
@@ -83,3 +85,20 @@ class PollTaxPaymentAdmin(admin.ModelAdmin):
     list_filter = ("period_label", "paid_at")
     search_fields = ("person__display_name", "poll_tax__community__name")
     readonly_fields = ("paid_at",)
+
+
+@admin.register(CommunitySenate)
+class CommunitySenateAdmin(admin.ModelAdmin):
+    list_display = ("community", "is_active", "veto_window_days", "created_at")
+    list_editable = ("is_active", "veto_window_days")
+    raw_id_fields = ("community",)
+    filter_horizontal = ("members",)
+    search_fields = ("community__name",)
+
+
+@admin.register(SenateVeto)
+class SenateVetoAdmin(admin.ModelAdmin):
+    list_display = ("proposal", "senator", "vetoed_at")
+    raw_id_fields = ("proposal", "senator")
+    readonly_fields = ("vetoed_at",)
+    search_fields = ("proposal__title", "senator__display_name")

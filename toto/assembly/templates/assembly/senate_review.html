@@ -1,0 +1,141 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}Senate — {{ community.name }}{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-3xl space-y-6 px-4 py-8">
+
+  {# Header #}
+  <div class="flex items-center justify-between gap-4">
+    <div>
+      <div class="text-xs font-semibold uppercase tracking-wide opacity-50">{{ community.name }}</div>
+      <h1 class="mt-0.5 flex items-center gap-2 text-2xl font-bold">
+        <i class="fa-solid fa-landmark-dome"></i>
+        {% trans "Senate" %}
+      </h1>
+      <p class="mt-1 text-sm opacity-60">
+        {% trans "Upper chamber — veto window:" %} {{ senate.veto_window_days }} {% trans "days" %}
+      </p>
+    </div>
+    <a href="{% url 'assembly:community_assembly' community.slug %}"
+       :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+       class="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold hover:opacity-80">
+      <i class="fa-solid fa-arrow-left"></i> {% trans "Popular Assembly" %}
+    </a>
+  </div>
+
+  {# Senator banner #}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-xl border p-4 flex items-center gap-3">
+    <i class="fa-solid fa-scroll shrink-0" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+    <p class="text-sm">
+      {% blocktrans with name=person %}You are seated as <strong>Senator {{ name }}</strong>. You may veto any proposal below before its deadline. One veto is sufficient to block enactment.{% endblocktrans %}
+    </p>
+  </div>
+
+  {# Pending proposals #}
+  <section>
+    <h2 class="mb-3 flex items-center gap-2 text-lg font-bold">
+      <i class="fa-solid fa-hourglass-half opacity-70"></i>
+      {% trans "Awaiting Senate Review" %}
+    </h2>
+
+    {% if pending_proposals %}
+      <div class="space-y-3">
+        {% for proposal in pending_proposals %}
+          {% with expired=proposal.senate_deadline|default_if_none:now < now %}
+          <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+               class="rounded-xl border p-5 shadow-sm">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div class="flex-1 min-w-0">
+                <div class="font-semibold">{{ proposal.title }}</div>
+                <div class="mt-0.5 text-xs opacity-50">
+                  {{ proposal.get_proposal_type_display }}
+                  {% if proposal.senate_deadline %}
+                    · {% trans "Veto deadline:" %}
+                    <span class="{% if proposal.senate_deadline < now %}text-red-500 font-semibold{% endif %}">
+                      {{ proposal.senate_deadline|date:"Y-m-d H:i" }}
+                    </span>
+                    {% if proposal.senate_deadline < now %}
+                      ({% trans "expired" %})
+                    {% endif %}
+                  {% endif %}
+                </div>
+                {% if proposal.body %}
+                  <p class="mt-2 text-sm opacity-70">{{ proposal.body|truncatechars:200 }}</p>
+                {% endif %}
+              </div>
+              <div class="flex shrink-0 flex-col gap-2">
+                {% if proposal.senate_deadline and proposal.senate_deadline > now %}
+                  {# Veto button + inline form #}
+                  <details class="group">
+                    <summary class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-red-400/40 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-600 hover:opacity-80">
+                      <i class="fa-solid fa-hand text-xs"></i> {% trans "Issue Veto" %}
+                    </summary>
+                    <div class="mt-2 rounded-lg border border-red-300/30 bg-red-50/50 p-3 dark:bg-red-900/10">
+                      <form method="post" action="{% url 'assembly:senate_veto' community.slug proposal.pk %}">
+                        {% csrf_token %}
+                        <label class="mb-1 block text-xs font-semibold uppercase opacity-60">{% trans "Reason (public record)" %}</label>
+                        <textarea name="reason" rows="2" placeholder="{% trans "State the grounds for the veto…" %}"
+                                  class="w-full rounded border border-current/20 bg-transparent px-3 py-2 text-sm"></textarea>
+                        <button type="submit"
+                                class="mt-2 inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-xs font-bold text-white hover:opacity-90">
+                          <i class="fa-solid fa-ban"></i> {% trans "Confirm Veto" %}
+                        </button>
+                      </form>
+                    </div>
+                  </details>
+                {% elif proposal.senate_deadline and proposal.senate_deadline <= now %}
+                  <form method="post" action="{% url 'assembly:senate_confirm' community.slug proposal.pk %}">
+                    {% csrf_token %}
+                    <button type="submit"
+                            :class="darkMode ? 'border-success-dark/50 text-success-dark' : 'border-success-light/50 text-success-light'"
+                            class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold hover:opacity-80">
+                      <i class="fa-solid fa-check"></i> {% trans "Window Expired — Enact" %}
+                    </button>
+                  </form>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+          {% endwith %}
+        {% endfor %}
+      </div>
+    {% else %}
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-xl border border-dashed p-8 text-center">
+        <i class="fa-solid fa-check-double mb-2 text-2xl opacity-30"></i>
+        <p class="text-sm italic opacity-60">{% trans "No proposals awaiting senate review." %}</p>
+      </div>
+    {% endif %}
+  </section>
+
+  {# Vetoed proposals #}
+  {% if vetoed_proposals %}
+  <section>
+    <h2 class="mb-3 flex items-center gap-2 text-lg font-bold">
+      <i class="fa-solid fa-ban opacity-50"></i>
+      {% trans "Vetoed Proposals" %}
+    </h2>
+    <div class="space-y-2">
+      {% for proposal in vetoed_proposals %}
+        <div :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'"
+             class="rounded-xl p-4">
+          <div class="font-semibold text-sm opacity-60 line-through">{{ proposal.title }}</div>
+          {% with veto=proposal.senate_veto %}
+            <div class="mt-1 text-xs opacity-50">
+              {% trans "Vetoed by" %} {{ veto.senator }} · {{ veto.vetoed_at|date:"Y-m-d" }}
+            </div>
+            {% if veto.reason %}
+              <p class="mt-1 text-xs italic opacity-60">{{ veto.reason }}</p>
+            {% endif %}
+          {% endwith %}
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+</div>
+{% endblock %}
