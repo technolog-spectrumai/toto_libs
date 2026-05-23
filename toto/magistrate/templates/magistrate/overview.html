@@ -17,18 +17,23 @@
 
     function _chartColors() {
       const isDark = document.documentElement.dataset.theme === 'dark'
-        || document.body.classList.contains('dark')
-        || window.matchMedia('(prefers-color-scheme: dark)').matches;
+        || document.body.classList.contains('dark');
       return {
-        grid: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)',
-        tick: isDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.45)',
+        grid: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.08)',
+        tick: isDark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.65)',
       };
+    }
+
+    function _destroyChart(id) {
+      const existing = Chart.getChart(id);
+      if (existing) existing.destroy();
     }
 
     Alpine.data('seatsByRoleChart', () => ({
       empty: !_roleData.labels || _roleData.labels.length === 0,
       init() {
         if (this.empty) return;
+        _destroyChart('seatsByRoleChart');
         const { grid, tick } = _chartColors();
         new Chart(document.getElementById('seatsByRoleChart'), {
           type: 'bar',
@@ -57,6 +62,7 @@
       empty: !_statusData.datasets || _statusData.datasets[0].data.every(v => v === 0),
       init() {
         if (this.empty) return;
+        _destroyChart('seatsByStatusChart');
         const { tick } = _chartColors();
         new Chart(document.getElementById('seatsByStatusChart'), {
           type: 'doughnut',
@@ -80,6 +86,7 @@
       empty: !_reportData.datasets || _reportData.datasets[0].data.every(v => v === 0),
       init() {
         if (this.empty) return;
+        _destroyChart('reportsByStatusChart');
         const { grid, tick } = _chartColors();
         new Chart(document.getElementById('reportsByStatusChart'), {
           type: 'bar',

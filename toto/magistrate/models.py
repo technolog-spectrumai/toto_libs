@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from decimal import Decimal
+
 from django.core.exceptions import ValidationError
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.utils import timezone
 from django.utils.text import slugify
@@ -75,6 +78,10 @@ class MagistrateRole(models.Model):
     overseeing_productivity = models.BooleanField(
         default=False,
         help_text="Holder oversees community productivity, work assignments, and labour standards.",
+    )
+    can_set_fines = models.BooleanField(
+        default=False,
+        help_text="Holder may levy infraction fines on community members within their oversight domains. Bounded by the community max-fine-pct setting.",
     )
 
     order = models.PositiveIntegerField(default=0)
@@ -202,6 +209,7 @@ class MagistrateDecision(models.Model):
         ("logistics_order",        "Logistics Order"),
         ("interior_directive",     "Interior Directive"),
         ("productivity_directive", "Productivity Directive"),
+        ("infraction_fine",        "Infraction Fine"),
         ("general",                "General Directive"),
     ]
     STATUS_CHOICES = [
@@ -288,3 +296,122 @@ class MagistrateReport(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class CommunityMagistrateSettings(models.Model):
+    """
+    Per-community configuration for the magistrate system.
+    Created by admin when the magistrate app is activated for a community.
+    """
+    community = models.OneToOneField(
+        "socialhub.Community",
+        on_delete=models.CASCADE,
+        related_name="magistrate_settings",
+    )
+    max_fine_pct = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal("10.00"),
+        validators=[MinValueValidator(Decimal("0")), MaxValueValidator(Decimal("100"))],
+        help_text="Maximum infraction fine a magistrate may levy, expressed as a percentage of the target's assessed holdings (0–100).",
+    )
+    fine_collection_account = models.ForeignKey(
+        "assets.LedgerAccount",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="magistrate_fine_collections",
+        help_text="Ledger account that receives collected fines. If unset, fines are recorded but the transfer must be processed manually.",
+    )
+
+    class Meta:
+        verbose_name = "Community magistrate settings"
+        verbose_name_plural = "Community magistrate settings"
+
+    def __str__(self):
+        return f"Magistrate settings — {self.community} (max fine: {self.max_fine_pct}%)"
+
+
+class MagistrateFine(models.Model):
+    """
+    Infraction fine levied by a magistrate against a community member.
+    Linked to the public decision ledger. May be contested before the tribunal.
+    """
+    STATUS_CHOICES = [
+        ("issued",              "Issued — Obligation Pending"),
+        ("obligation_created",  "Obligation Created"),
+        ("pending_collection",  "Pending — No Collection Account"),
+        ("contested",           "Contested at Tribunal"),
+        ("overturned",          "Overturned"),
+    ]
+
+    decision = models.OneToOneField(
+        MagistrateDecision,
+        on_delete=models.CASCADE,
+        related_name="fine_detail",
+    )
+    target_person = models.ForeignKey(
+        "people.Person",
+        on_delete=models.CASCADE,
+        related_name="magistrate_fines_received",
+    )
+    target_account = models.ForeignKey(
+        "assets.LedgerAccount",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="magistrate_fines_debited",
+    )
+    asset = models.ForeignKey(
+        "assets.Asset",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="magistrate_fines",
+    )
+    authority_domain = models.CharField(
+        max_length=60,
+        blank=True,
+        help_text="The magistrate oversight domain under which this fine was issued (e.g. 'Finance', 'Trade').",
+    )
+    fine_pct = models.DecimalField(
+        max_digits=5, decimal_places=2,
+        help_text="Percentage of assessed holdings applied as a fine.",
+    )
+    basis_amount_display = models.DecimalField(
+        max_digits=24, decimal_places=8, default=Decimal("0"),
+        help_text="Assessed holding balance at the time of the fine.",
+    )
+    fine_amount_display = models.DecimalField(
+        max_digits=24, decimal_places=8, default=Decimal("0"),
+        help_text="Actual fine amount (fine_pct % of basis).",
+    )
+    infraction = models.TextField(help_text="Description of the infraction.")
+    obligation = models.ForeignKey(
+        "assets.Obligation",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="magistrate_fine",
+        help_text="The asset obligation created to enforce this fine (mirrors tribunal fine pattern).",
+    )
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default="issued", db_index=True)
+    contested_at = models.DateTimeField(null=True, blank=True)
+    overturned_at = models.DateTimeField(null=True, blank=True)
+    overturned_by = models.ForeignKey(
+        "people.Person",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="overturned_magistrate_fines",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Magistrate fine"
+        verbose_name_plural = "Magistrate fines"
+
+    def __str__(self):
+        return f"Fine on {self.target_person} ({self.fine_pct}%) — {self.decision.community}"

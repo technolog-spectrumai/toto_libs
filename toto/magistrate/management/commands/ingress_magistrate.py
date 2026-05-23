@@ -17,11 +17,13 @@ ROLES = [
         "icon": "fa-solid fa-star",
         "description": (
             "Chief executive magistrate. Oversees mobilization, public order, and legislation. "
-            "May act on emergency declarations without a full assembly vote."
+            "May act on emergency declarations without a full assembly vote. "
+            "May levy infraction fines as the senior executive authority."
         ),
         "overseeing_mobilization": True,
         "overseeing_public_order": True,
         "overseeing_legislation": True,
+        "can_set_fines": True,
         "order": 1,
     },
     {
@@ -58,6 +60,7 @@ ROLES = [
         ),
         "overseeing_finance": True,
         "overseeing_trade": True,
+        "can_set_fines": True,
         "order": 4,
     },
     {
@@ -71,6 +74,7 @@ ROLES = [
         "overseeing_trade": True,
         "overseeing_public_order": True,
         "overseeing_merchandise": True,
+        "can_set_fines": True,
         "order": 5,
     },
     {
@@ -271,6 +275,7 @@ class Command(IngressCommand):
                     "overseeing_logistics": r.get("overseeing_logistics", False),
                     "overseeing_interior": r.get("overseeing_interior", False),
                     "overseeing_productivity": r.get("overseeing_productivity", False),
+                    "can_set_fines": r.get("can_set_fines", False),
                     "order": r["order"],
                 },
             )

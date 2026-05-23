@@ -1,11 +1,21 @@
 from django.contrib import admin
 
-from .models import Magistrate, MagistrateDecision, MagistrateReport, MagistrateRole
+from .models import (
+    CommunityMagistrateSettings, Magistrate, MagistrateDecision,
+    MagistrateFine, MagistrateReport, MagistrateRole,
+)
 
 
 @admin.register(MagistrateRole)
 class MagistrateRoleAdmin(admin.ModelAdmin):
-    list_display = ("name", "slug", "overseeing_mobilization", "overseeing_tribunal", "overseeing_trade", "overseeing_merchandise", "overseeing_finance", "overseeing_public_order", "overseeing_legislation", "order")
+    list_display = (
+        "name", "slug",
+        "overseeing_mobilization", "overseeing_tribunal", "overseeing_trade",
+        "overseeing_merchandise", "overseeing_finance", "overseeing_public_order",
+        "overseeing_legislation", "overseeing_education", "overseeing_relations",
+        "overseeing_logistics", "overseeing_interior", "overseeing_productivity",
+        "can_set_fines", "order",
+    )
     list_editable = ("order",)
     prepopulated_fields = {"slug": ("name",)}
     search_fields = ("name",)
@@ -47,3 +57,20 @@ class MagistrateDecisionAdmin(admin.ModelAdmin):
     raw_id_fields = ("magistrate", "community", "reviewed_by")
     ordering = ("-created_at",)
     readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(CommunityMagistrateSettings)
+class CommunityMagistrateSettingsAdmin(admin.ModelAdmin):
+    list_display = ("community", "max_fine_pct", "fine_collection_account")
+    raw_id_fields = ("community", "fine_collection_account")
+    search_fields = ("community__name",)
+
+
+@admin.register(MagistrateFine)
+class MagistrateFineAdmin(admin.ModelAdmin):
+    list_display = ("target_person", "fine_pct", "fine_amount_display", "asset", "status", "decision", "created_at")
+    list_filter = ("status", "asset")
+    search_fields = ("target_person__display_name", "infraction", "decision__title")
+    raw_id_fields = ("decision", "target_person", "target_account", "asset", "obligation", "overturned_by")
+    readonly_fields = ("created_at", "updated_at")
+    ordering = ("-created_at",)

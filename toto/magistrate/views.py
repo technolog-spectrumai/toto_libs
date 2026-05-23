@@ -13,7 +13,10 @@ from toto.assembly.models import AssemblyProposal, AssemblyProposalType, Assembl
 from toto.socialhub.models import Community
 from toto.ui import PageProcessor
 
-from .models import Magistrate, MagistrateDecision, MagistrateReport, MagistrateRole
+from .models import (
+    CommunityMagistrateSettings, Magistrate, MagistrateDecision,
+    MagistrateFine, MagistrateReport, MagistrateRole,
+)
 from .queries import overview_stats, reports_by_status_chart_data, seats_by_role_chart_data, seats_by_status_chart_data
 
 
@@ -178,6 +181,7 @@ def _domain_actions(role):
         actions.append(("interior_directive", "Interior Directive", "fa-solid fa-compass", "accent"))
     if role.overseeing_productivity:
         actions.append(("productivity_directive", "Productivity Directive", "fa-solid fa-briefcase", "success"))
+    # overseeing_fines is handled by a dedicated form, not a quick-action button
     actions.append(("general", "General Directive", "fa-solid fa-scroll", "accent"))
     return actions
 
@@ -203,6 +207,35 @@ def magistrate_dashboard(request, pk):
     if mag.term_end:
         days_remaining = max(0, (mag.term_end - timezone.now().date()).days)
 
+    # Fines context — only loaded when the role has overseeing_fines
+    community_members = []
+    available_assets = []
+    max_fine_pct = None
+    issued_fines = []
+    if mag.role.can_set_fines:
+        try:
+            community_members = list(
+                mag.community.members.select_related("user").order_by("display_name")
+            )
+        except Exception:
+            pass
+        try:
+            from toto.assets.models import Asset
+            available_assets = list(Asset.objects.filter(active=True).order_by("name"))
+        except Exception:
+            pass
+        try:
+            settings_obj = mag.community.magistrate_settings
+            max_fine_pct = settings_obj.max_fine_pct
+        except CommunityMagistrateSettings.DoesNotExist:
+            max_fine_pct = 10
+        issued_fines = list(
+            MagistrateFine.objects
+            .filter(decision__magistrate=mag)
+            .select_related("target_person", "asset", "decision")
+            .order_by("-created_at")[:20]
+        )
+
     return _render(request, "magistrate/my_dashboard.html", {
         "mag": mag,
         "decisions": decisions[:25],
@@ -211,6 +244,10 @@ def magistrate_dashboard(request, pk):
         "active_decisions_count": decisions.filter(status="active").count(),
         "days_remaining": days_remaining,
         "reports_pending": mag.reports.filter(status="submitted").count(),
+        "community_members": community_members,
+        "available_assets": available_assets,
+        "max_fine_pct": max_fine_pct,
+        "issued_fines": issued_fines,
     })
 
 
@@ -492,3 +529,153 @@ def report_acknowledge(request, report_pk):
 
     messages.success(request, f'Report "{report.title}" acknowledged.')
     return redirect("magistrate:detail", pk=report.magistrate_id)
+
+
+# ---------------------------------------------------------------------------
+# Infraction fines
+# ---------------------------------------------------------------------------
+
+@login_required
+@require_POST
+def issue_fine(request, pk):
+    from decimal import Decimal, InvalidOperation
+    import uuid
+
+    mag = get_object_or_404(
+        Magistrate.objects.select_related("person", "role", "community"),
+        pk=pk,
+    )
+    person = _person(request)
+    if mag.person != person:
+        raise PermissionDenied
+    if not mag.is_active:
+        messages.error(request, "Your term has ended or your seat is not currently active.")
+        return redirect("magistrate:my_dashboard", pk=pk)
+    if not mag.role.can_set_fines:
+        raise PermissionDenied
+
+    # Load community max
+    try:
+        settings_obj = mag.community.magistrate_settings
+        max_pct = settings_obj.max_fine_pct
+        collection_account = settings_obj.fine_collection_account
+    except CommunityMagistrateSettings.DoesNotExist:
+        max_pct = Decimal("10")
+        collection_account = None
+
+    # Parse inputs
+    try:
+        fine_pct = Decimal(request.POST.get("fine_pct", "0"))
+    except InvalidOperation:
+        messages.error(request, "Invalid fine percentage.")
+        return redirect("magistrate:my_dashboard", pk=pk)
+
+    if fine_pct <= 0 or fine_pct > max_pct:
+        messages.error(request, f"Fine percentage must be between 0.01 and {max_pct}%.")
+        return redirect("magistrate:my_dashboard", pk=pk)
+
+    target_id = request.POST.get("target_person", "").strip()
+    asset_id = request.POST.get("asset", "").strip()
+    authority_domain = request.POST.get("authority_domain", "").strip()
+    infraction = request.POST.get("infraction", "").strip()
+    title = request.POST.get("title", "").strip() or f"Infraction Fine — {mag.community}"
+
+    if not infraction:
+        messages.error(request, "Infraction description is required.")
+        return redirect("magistrate:my_dashboard", pk=pk)
+
+    from toto.people.models import Person as PersonModel
+    try:
+        target = PersonModel.objects.get(
+            pk=target_id,
+            communities__in=[mag.community],
+        )
+    except (PersonModel.DoesNotExist, ValueError):
+        messages.error(request, "Target person not found in this community.")
+        return redirect("magistrate:my_dashboard", pk=pk)
+
+    if target == person:
+        messages.error(request, "You cannot fine yourself.")
+        return redirect("magistrate:my_dashboard", pk=pk)
+
+    from toto.assets.models import Asset, AssetHolding, LedgerAccount, from_base_units
+    try:
+        asset = Asset.objects.get(pk=asset_id, active=True)
+    except (Asset.DoesNotExist, ValueError):
+        messages.error(request, "Asset not found or inactive.")
+        return redirect("magistrate:my_dashboard", pk=pk)
+
+    # Find the richest holding of this asset for the target user
+    target_account = None
+    basis_display = Decimal("0")
+    if target.user_id:
+        holding = (
+            AssetHolding.objects
+            .filter(asset=asset, account__user_id=target.user_id, account__active=True)
+            .order_by("-balance_base_units")
+            .select_related("account")
+            .first()
+        )
+        if holding:
+            target_account = holding.account
+            basis_display = from_base_units(holding.balance_base_units, asset.decimals)
+
+    fine_display = (fine_pct / Decimal("100")) * basis_display
+
+    from django.db import transaction as db_transaction
+    with db_transaction.atomic():
+        decision = MagistrateDecision.objects.create(
+            magistrate=mag,
+            community=mag.community,
+            decision_type="infraction_fine",
+            title=title,
+            body=infraction,
+            metadata={
+                "target_person_id": target.pk,
+                "target_person_name": str(target),
+                "asset_unit": asset.unit_name,
+                "fine_pct": str(fine_pct),
+                "basis_display": str(basis_display),
+                "fine_amount_display": str(fine_display),
+            },
+        )
+
+        obligation = None
+        status = "pending_collection"
+
+        if target_account and collection_account and fine_display > 0:
+            try:
+                from toto.assets.services.assets import create_obligation
+                due_at = timezone.now() + timedelta(days=14)
+                obligation = create_obligation(
+                    reference=f"mag-fine-{decision.pk}-{uuid.uuid4().hex[:8]}",
+                    debtor_account=target_account,
+                    creditor_account=collection_account,
+                    asset=asset,
+                    amount=fine_display,
+                    due_at=due_at,
+                    order_reference=f"mag-decision-{decision.pk}",
+                )
+                status = "obligation_created"
+            except Exception:
+                status = "pending_collection"
+        elif target_account:
+            status = "issued"
+
+        MagistrateFine.objects.create(
+            decision=decision,
+            target_person=target,
+            target_account=target_account,
+            asset=asset,
+            authority_domain=authority_domain,
+            fine_pct=fine_pct,
+            basis_amount_display=basis_display,
+            fine_amount_display=fine_display,
+            infraction=infraction,
+            obligation=obligation,
+            status=status,
+        )
+
+    obligation_note = "Payment obligation created (due in 14 days)." if status == "obligation_created" else "Recorded — no collection account configured, manual settlement required."
+    messages.success(request, f"Fine of {fine_pct}% ({fine_display} {asset.unit_name}) recorded in the decision ledger. {obligation_note}")
+    return redirect("magistrate:my_dashboard", pk=pk)
