@@ -6,6 +6,8 @@ from .views import (
     full_sync_view,
     query_unified_view,
     query_graph_data,
+    query_cached_data,
+    run_cypher_query_view,
     projection_plan_detail,
     projection_sync_view,
     run_projection_stream,
@@ -16,6 +18,8 @@ app_name = "ravioli"
 urlpatterns = [
     path("queries/unified/", query_unified_view, name="query_unified"),
     path("queries/<int:query_id>/data/", query_graph_data, name="query_graph_data"),
+    path("queries/<int:query_id>/cached/", query_cached_data, name="query_cached_data"),
+    path("queries/<int:query_id>/run/", run_cypher_query_view, name="run_cypher_query"),
     path("projections/", projection_sync_view, name="projection_sync"),
     path("projections/plans/", create_projection_plan, name="create_projection_plan"),
     path(

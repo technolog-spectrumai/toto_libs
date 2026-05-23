@@ -7,13 +7,7 @@ class Command(IngressCommand):
 
     def process(self):
         self._ensure_workflows()
-
-        if not self.full:
-            return
-
-        self.stdout.write(self.style.WARNING("🚀 Seeding Ravioli…"))
         self._ensure_cypher_queries()
-        self.stdout.write(self.style.SUCCESS("✅ Ravioli seeding complete."))
 
     def _ensure_workflows(self):
         from toto.workflows.models import Workflow, WorkflowEdge, WorkflowNode
@@ -115,6 +109,27 @@ class Command(IngressCommand):
             self.stdout.write(self.style.SUCCESS("📊 Created workflow: Ravioli Clear DB"))
         else:
             self.stdout.write(self.style.WARNING("ℹ️  Workflow 'Ravioli Clear DB' already exists"))
+
+        # --- Ravioli Run Cypher Query: single node ---
+        wf5, created5 = Workflow.objects.get_or_create(
+            slug="ravioli-run-cypher-query",
+            defaults={
+                "name": "Ravioli Run Cypher Query",
+                "description": "Run a saved Cypher query against Neo4j and cache its results.",
+            },
+        )
+        if created5:
+            WorkflowNode.objects.create(
+                workflow=wf5,
+                node_type=WorkflowNode.PREDEFINED_TASK,
+                label="Run Cypher query",
+                task_name="ravioli_run_cypher_query",
+                position_x=0,
+                position_y=0,
+            )
+            self.stdout.write(self.style.SUCCESS("📊 Created workflow: Ravioli Run Cypher Query"))
+        else:
+            self.stdout.write(self.style.WARNING("ℹ️  Workflow 'Ravioli Run Cypher Query' already exists"))
 
     def _ensure_cypher_queries(self):
         query_text = """

@@ -466,16 +466,11 @@ class ProjectionPlanApplier:
                 f"MATCH (a:{rel['from_label']} {{uuid: $from_uuid}}) "
                 f"MATCH (b:{rel['to_label']} {{uuid: $to_uuid}}) "
                 f"MERGE (a)-[r:{rel['relation']}]->(b) "
-                "SET r.ravioli_owned = true, "
-                "r.ravioli_from_label = $from_label, "
-                "r.ravioli_to_label = $to_label, "
-                "r += $props"
+                "SET r += $props"
             ),
             {
                 "from_uuid": rel["from_uuid"],
                 "to_uuid": rel["to_uuid"],
-                "from_label": rel["from_label"],
-                "to_label": rel["to_label"],
                 "props": neo4j_props(rel.get("props", {})),
             },
         )
@@ -489,19 +484,13 @@ class ProjectionPlanApplier:
             (
                 f"MATCH (a:{rel['from_label']} {{uuid: $from_uuid}}) "
                 f"MATCH (b:{rel['to_label']} {{uuid: $to_uuid}}) "
-                f"MERGE (a)-[r:{rel['relation']} "
-                "{ravioli_uuid: $rel_uuid}]->(b) "
-                "SET r.ravioli_owned = true, "
-                "r.ravioli_from_label = $from_label, "
-                "r.ravioli_to_label = $to_label, "
-                "r += $props"
+                f"CREATE (a)-[r:{rel['relation']} {{ravioli_uuid: $rel_uuid}}]->(b) "
+                "SET r += $props"
             ),
             {
                 "from_uuid": rel["from_uuid"],
                 "to_uuid": rel["to_uuid"],
                 "rel_uuid": rel["ravioli_uuid"],
-                "from_label": rel["from_label"],
-                "to_label": rel["to_label"],
                 "props": neo4j_props(rel.get("props", {})),
             },
         )
@@ -509,12 +498,7 @@ class ProjectionPlanApplier:
     def delete_relationship(self, rel):
         if rel["kind"] == "junction":
             self.client.run_cypher(
-                (
-                    f"MATCH ()-[r:{rel['relation']} "
-                    "{ravioli_uuid: $rel_uuid}]->() "
-                    "WHERE coalesce(r.ravioli_owned, false) = true "
-                    "DELETE r"
-                ),
+                f"MATCH ()-[r:{rel['relation']} {{ravioli_uuid: $rel_uuid}}]->() DELETE r",
                 {"rel_uuid": rel["ravioli_uuid"]},
             )
             return
@@ -523,12 +507,7 @@ class ProjectionPlanApplier:
             (
                 f"MATCH (a:{rel['from_label']} {{uuid: $from_uuid}})"
                 f"-[r:{rel['relation']}]->"
-                f"(b:{rel['to_label']} {{uuid: $to_uuid}}) "
-                "WHERE coalesce(r.ravioli_owned, false) = true "
-                "DELETE r"
+                f"(b:{rel['to_label']} {{uuid: $to_uuid}}) DELETE r"
             ),
-            {
-                "from_uuid": rel["from_uuid"],
-                "to_uuid": rel["to_uuid"],
-            },
+            {"from_uuid": rel["from_uuid"], "to_uuid": rel["to_uuid"]},
         )

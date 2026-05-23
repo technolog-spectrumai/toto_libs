@@ -15,7 +15,11 @@ class CypherQuery(models.Model):
 
 
 class CypherQueryResult(models.Model):
-    query = models.ForeignKey(CypherQuery, on_delete=models.CASCADE)
+    query = models.ForeignKey(CypherQuery, on_delete=models.CASCADE, related_name="results")
+    result_nodes = models.JSONField(null=True, blank=True)
+    result_edges = models.JSONField(null=True, blank=True)
+    last_run_at = models.DateTimeField(null=True, blank=True)
+    error = models.TextField(blank=True)
 
     class Meta:
         verbose_name = "Graph Viewer"

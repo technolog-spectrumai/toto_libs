@@ -51,11 +51,7 @@ class Command(BaseCommand):
                     for value in model.objects.values_list(uuid_field, flat=True)
                 )
                 records = client.run_cypher(
-                    (
-                        f"MATCH (n:{label}) "
-                        "WHERE coalesce(n.ravioli_owned, false) = true "
-                        "RETURN n.uuid AS uuid"
-                    )
+                    f"MATCH (n:{label}) WHERE n.uuid IS NOT NULL RETURN n.uuid AS uuid"
                 )
                 graph_uuids = {
                     str(record["uuid"])

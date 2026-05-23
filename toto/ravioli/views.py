@@ -16,8 +16,41 @@ def superuser_required(view_func):
 
 
 def query_unified_view(request):
+    from .models import CypherQueryResult
+
     queries = CypherQuery.objects.all().order_by("name")
-    queries_json = json.dumps(list(queries.values("id", "name", "description")))
+
+    results_by_query = {
+        r.query_id: r
+        for r in CypherQueryResult.objects.filter(query__in=queries).only(
+            "query_id", "last_run_at", "result_nodes", "result_edges"
+        )
+    }
+
+    queries_json = json.dumps([
+        {
+            "id": q.id,
+            "name": q.name,
+            "description": q.description,
+            "query": q.query,
+            "last_run_at": (
+                results_by_query[q.id].last_run_at.isoformat()
+                if q.id in results_by_query and results_by_query[q.id].last_run_at
+                else None
+            ),
+            "cached_node_count": (
+                len(results_by_query[q.id].result_nodes or [])
+                if q.id in results_by_query
+                else None
+            ),
+            "cached_edge_count": (
+                len(results_by_query[q.id].result_edges or [])
+                if q.id in results_by_query
+                else None
+            ),
+        }
+        for q in queries
+    ])
 
     selected_id = request.GET.get("query")
     selected_query = None
@@ -210,10 +243,12 @@ def clear_db_view(request):
 
 
 def query_graph_data(request, query_id):
+    from django.utils import timezone
+
     from .connection import Neo4jClient, is_enabled
+    from .models import CypherQueryResult
 
     selected_query = CypherQuery.objects.get(id=query_id)
-    queries = CypherQuery.objects.all().values("id", "name")
 
     if not is_enabled():
         return JsonResponse(
@@ -228,11 +263,54 @@ def query_graph_data(request, query_id):
     finally:
         client.close()
 
+    CypherQueryResult.objects.update_or_create(
+        query=selected_query,
+        defaults={
+            "result_nodes": nodes,
+            "result_edges": edges,
+            "last_run_at": timezone.now(),
+            "error": "",
+        },
+    )
+
     return JsonResponse({
         "nodes": nodes,
         "edges": edges,
         "query": selected_query.query,
-        "queries": list(queries),
+        "selected_query": {
+            "id": selected_query.id,
+            "name": selected_query.name,
+            "description": selected_query.description,
+        },
+    })
+
+
+@require_POST
+def run_cypher_query_view(request, query_id):
+    selected_query = get_object_or_404(CypherQuery, pk=query_id)
+    try:
+        run = _trigger_workflow(
+            "ravioli-run-cypher-query",
+            input_data={"data": {"query_id": selected_query.pk}},
+        )
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=500)
+    return JsonResponse({"run_id": run.pk})
+
+
+@require_GET
+def query_cached_data(request, query_id):
+    from .models import CypherQueryResult
+
+    selected_query = get_object_or_404(CypherQuery, pk=query_id)
+    result = CypherQueryResult.objects.filter(query=selected_query).first()
+    if result is None or result.result_nodes is None:
+        return JsonResponse({"error": "No cached result available."}, status=404)
+    return JsonResponse({
+        "nodes": result.result_nodes,
+        "edges": result.result_edges or [],
+        "query": selected_query.query,
+        "last_run_at": result.last_run_at.isoformat() if result.last_run_at else None,
         "selected_query": {
             "id": selected_query.id,
             "name": selected_query.name,

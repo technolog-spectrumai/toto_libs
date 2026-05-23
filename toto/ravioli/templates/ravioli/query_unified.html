@@ -4,9 +4,12 @@
 {% block title %}Cypher Queries{% endblock %}
 
 {% block content %}
-<script id="ravioli-queries" type="application/json">{{ queries_json }}</script>
+<script id="ravioli-queries" type="application/json">{{ queries_json|safe }}</script>
 <script>
-  const GRAPH_DATA_URL = "{% url 'ravioli:query_graph_data' 99999 %}".replace('/99999/', '/{id}/');
+  const RUN_QUERY_URL    = "{% url 'ravioli:run_cypher_query'  99999 %}".replace('/99999/', '/{id}/');
+  const CACHED_DATA_URL  = "{% url 'ravioli:query_cached_data' 99999 %}".replace('/99999/', '/{id}/');
+  const WORKFLOW_RUN_URL = "{% url 'workflows:api_run_detail'  99999 %}".replace('/99999/', '/{id}/');
+  const CSRF_TOKEN = "{{ csrf_token }}";
 </script>
 
 <div
@@ -29,11 +32,11 @@
         Cypher Query Viewer
       </h2>
 
-      <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
+      <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
         <label class="text-sm font-medium whitespace-nowrap">Query:</label>
         <select
           x-model="selectedId"
-          @change="loadQuery()"
+          @change="selectQuery()"
           class="text-sm border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 shadow-sm w-52"
           :class="darkMode
             ? 'bg-primary-bg-dark text-text-main-dark border-accent-1 focus:ring-accent-dark'
@@ -45,19 +48,26 @@
           </template>
         </select>
 
-        <div x-show="loading" class="flex items-center gap-2 text-sm opacity-60">
-          <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <button
+          x-show="selectedId"
+          @click="runQuery()"
+          :disabled="running"
+          class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition disabled:opacity-50"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90' : 'bg-accent-light text-primary-bg-light hover:opacity-90'"
+        >
+          <svg x-show="running" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
           </svg>
-          Loading…
-        </div>
+          <i x-show="!running" class="fa-solid fa-play text-xs"></i>
+          <span x-text="running ? runStatus : 'Run'"></span>
+        </button>
       </div>
 
       <p x-show="error" x-text="error" class="text-red-500 text-sm font-medium"></p>
     </div>
 
-    <!-- Query details -->
+    <!-- Query details (shown on select, no run needed) -->
     <div
       x-show="queryInfo"
       x-transition
@@ -82,15 +92,20 @@
         x-text="queryInfo?.query"
       ></pre>
 
-      <p
-        x-show="graphLoaded"
-        class="mt-3 text-xs opacity-40"
-        x-text="`${nodeCount} node${nodeCount === 1 ? '' : 's'} · ${edgeCount} edge${edgeCount === 1 ? '' : 's'}`"
-      ></p>
+      <div class="mt-3 flex flex-wrap gap-4 text-xs opacity-40">
+        <span
+          x-show="graphLoaded"
+          x-text="`${nodeCount} node${nodeCount === 1 ? '' : 's'} · ${edgeCount} edge${edgeCount === 1 ? '' : 's'}`"
+        ></span>
+        <span
+          x-show="queryInfo?.last_run_at"
+          x-text="queryInfo?.last_run_at ? 'last run ' + new Date(queryInfo.last_run_at).toLocaleString() : ''"
+        ></span>
+      </div>
     </div>
 
     <!-- Graph canvas -->
-    <div x-show="selectedId" x-transition>
+    <div x-show="graphLoaded" x-transition>
       <div
         id="cy"
         style="width:100%;height:620px;border-radius:12px;"
@@ -112,12 +127,8 @@
           :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
           x-text="selectedElement?.label || selectedElement?.type || 'Details'"
         ></h3>
-        <button
-          @click="selectedElement = null"
-          class="text-xl leading-none opacity-50 hover:opacity-100 transition"
-        >&times;</button>
+        <button @click="selectedElement = null" class="text-xl leading-none opacity-50 hover:opacity-100 transition">&times;</button>
       </div>
-
       <dl class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
         <template x-for="[k, v] in Object.entries(selectedElement?.props || {})" :key="k">
           <template x-if="v !== null && v !== undefined && v !== ''">
@@ -168,58 +179,128 @@
 function queryViewer() {
   return {
     queries: [],
-    selectedId: '{{ selected_query.id|default:"" }}',
+    selectedId: '',
     queryInfo: null,
-    loading: false,
+    running: false,
+    runStatus: '',
     error: null,
     graphLoaded: false,
     nodeCount: 0,
     edgeCount: 0,
     selectedElement: null,
     cy: null,
+    _pollTimer: null,
 
     init() {
       this.queries = JSON.parse(document.getElementById('ravioli-queries').textContent);
-      if (this.selectedId) {
-        this.loadQuery();
-      }
     },
 
-    async loadQuery() {
-      if (!this.selectedId) {
-        this.queryInfo = null;
-        this.graphLoaded = false;
-        this.selectedElement = null;
-        if (this.cy) { this.cy.destroy(); this.cy = null; }
-        return;
-      }
-
-      this.loading = true;
+    selectQuery() {
       this.error = null;
       this.graphLoaded = false;
       this.selectedElement = null;
+      if (this.cy) { this.cy.destroy(); this.cy = null; }
+      this._stopPolling();
 
-      const url = GRAPH_DATA_URL.replace('{id}', this.selectedId);
+      const meta = this._meta();
+      if (!meta) { this.queryInfo = null; return; }
+
+      this.queryInfo = {
+        name: meta.name,
+        description: meta.description || '',
+        query: meta.query,
+        last_run_at: meta.last_run_at || null,
+      };
+    },
+
+    _meta() {
+      return this.queries.find(q => String(q.id) === String(this.selectedId)) || null;
+    },
+
+    async runQuery() {
+      if (!this.selectedId || this.running) return;
+      this.running = true;
+      this.runStatus = 'Queuing…';
+      this.error = null;
+      this.graphLoaded = false;
+      this.selectedElement = null;
+      if (this.cy) { this.cy.destroy(); this.cy = null; }
+
+      const runUrl = RUN_QUERY_URL.replace('{id}', this.selectedId);
+      let runId;
+      try {
+        const res = await fetch(runUrl, {
+          method: 'POST',
+          headers: { 'X-CSRFToken': CSRF_TOKEN },
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || `Error ${res.status}`);
+        runId = data.run_id;
+      } catch (e) {
+        this.error = e.message;
+        this.running = false;
+        this.runStatus = '';
+        return;
+      }
+
+      this.runStatus = 'Running…';
+      this._pollRun(runId);
+    },
+
+    _pollRun(runId) {
+      const url = WORKFLOW_RUN_URL.replace('{id}', runId);
+      this._pollTimer = setInterval(async () => {
+        try {
+          const res = await fetch(url);
+          const data = await res.json();
+          if (data.status === 'completed') {
+            this._stopPolling();
+            await this._loadCachedResult();
+          } else if (data.status === 'failed') {
+            this._stopPolling();
+            this.error = data.error || 'Query run failed.';
+            this.running = false;
+            this.runStatus = '';
+          }
+        } catch (e) {
+          this._stopPolling();
+          this.error = e.message;
+          this.running = false;
+          this.runStatus = '';
+        }
+      }, 2000);
+    },
+
+    _stopPolling() {
+      if (this._pollTimer) { clearInterval(this._pollTimer); this._pollTimer = null; }
+    },
+
+    async _loadCachedResult() {
+      this.runStatus = 'Loading result…';
+      const url = CACHED_DATA_URL.replace('{id}', this.selectedId);
       try {
         const res = await fetch(url);
         const data = await res.json();
-        if (!res.ok || data.error) throw new Error(data.error || `Server error ${res.status}`);
+        if (!res.ok || data.error) throw new Error(data.error || `Error ${res.status}`);
 
-        this.queryInfo = {
-          name: data.selected_query.name,
-          description: data.selected_query.description || '',
-          query: data.query,
-        };
         this.nodeCount = data.nodes.length;
         this.edgeCount = data.edges.length;
+
+        if (this.queryInfo) {
+          this.queryInfo.last_run_at = data.last_run_at;
+        }
 
         await this.$nextTick();
         this._renderGraph(data.nodes, data.edges);
         this.graphLoaded = true;
+
+        const meta = this._meta();
+        if (meta) meta.last_run_at = data.last_run_at;
       } catch (e) {
         this.error = e.message;
       } finally {
-        this.loading = false;
+        this.running = false;
+        this.runStatus = '';
       }
     },
 
@@ -229,10 +310,9 @@ function queryViewer() {
       const tw = tailwind.config.theme.extend.colors;
       const dark = localStorage.getItem('darkMode') === 'true';
 
-      const nodeBg     = dark ? tw['bubble-bg-dark']    : tw['bubble-bg-light'];
-      const nodeBorder = dark ? tw['accent-dark']        : tw['accent-light'];
-      const nodeText   = dark ? tw['text-main-dark']     : tw['text-main-light'];
-      const edgeColor  = nodeBorder;
+      const nodeBg     = dark ? tw['bubble-bg-dark'] : tw['bubble-bg-light'];
+      const nodeBorder = dark ? tw['accent-dark']     : tw['accent-light'];
+      const nodeText   = dark ? tw['text-main-dark']  : tw['text-main-light'];
 
       const elements = [
         ...nodes.map(n => ({
@@ -280,21 +360,21 @@ function queryViewer() {
             selector: 'edge',
             style: {
               'width': 1.5,
-              'line-color': edgeColor,
-              'target-arrow-color': edgeColor,
+              'line-color': nodeBorder,
+              'target-arrow-color': nodeBorder,
               'target-arrow-shape': 'triangle',
               'curve-style': 'bezier',
               'label': 'data(label)',
               'font-size': '9px',
-              'color': edgeColor,
+              'color': nodeBorder,
               'text-rotation': 'autorotate',
             },
           },
           {
             selector: ':selected',
             style: {
-              'border-color': nodeBorder,
               'border-width': 4,
+              'border-color': nodeBorder,
               'line-color': nodeBorder,
               'target-arrow-color': nodeBorder,
             },
@@ -303,12 +383,8 @@ function queryViewer() {
         layout: { name: 'cose', animate: true, padding: 30 },
       });
 
-      this.cy.on('tap', 'node, edge', function(evt) {
-        self.selectedElement = evt.target.data();
-      });
-      this.cy.on('tap', function(evt) {
-        if (evt.target === self.cy) self.selectedElement = null;
-      });
+      this.cy.on('tap', 'node, edge', function(evt) { self.selectedElement = evt.target.data(); });
+      this.cy.on('tap', function(evt) { if (evt.target === self.cy) self.selectedElement = null; });
     },
   };
 }

@@ -250,17 +250,8 @@ class ProjectionRunner:
         props = {k: _get_value(obj, v) for k, v in field_map.items()}
 
         self.client.run_cypher(
-            (
-                f"MERGE (n:{label} {{uuid: $uuid}}) "
-                "SET n.ravioli_owned = true, "
-                "n.ravioli_label = $ravioli_label, "
-                "n += $props"
-            ),
-            {
-                "uuid": uuid,
-                "ravioli_label": label,
-                "props": props,
-            },
+            f"MERGE (n:{label} {{uuid: $uuid}}) SET n += $props",
+            {"uuid": uuid, "props": props},
         )
 
     def project_node_by_label(self, label, uuid):
@@ -330,10 +321,7 @@ class ProjectionRunner:
         merge_query = (
             f"MATCH (a:{from_label} {{uuid: $f}}) "
             f"MATCH (b:{to_label} {{uuid: $t}}) "
-            f"MERGE (a)-[r:{relation}]->(b) "
-            "SET r.ravioli_owned = true, "
-            "r.ravioli_from_label = $from_label, "
-            "r.ravioli_to_label = $to_label"
+            f"MERGE (a)-[r:{relation}]->(b)"
         )
         clear_query = (
             f"MATCH (a:{from_label} {{uuid: $uuid}})"
@@ -345,11 +333,7 @@ class ProjectionRunner:
         # Clear stale relationships before re-syncing this source object.
         self.client.run_cypher(clear_query, {"uuid": from_uuid})
 
-        params_base = {
-            "f": from_uuid,
-            "from_label": from_label,
-            "to_label": to_label,
-        }
+        params_base = {"f": from_uuid}
 
         if cardinality == "many":
             for related in getattr(obj, source_field).all():
@@ -432,18 +416,13 @@ class ProjectionRunner:
             (
                 f"MATCH (a:{from_label} {{uuid: $f}}) "
                 f"MATCH (b:{to_label} {{uuid: $t}}) "
-                f"MERGE (a)-[r:{relation} {{ravioli_uuid: $rel_uuid}}]->(b) "
-                "SET r.ravioli_owned = true, "
-                "r.ravioli_from_label = $from_label, "
-                "r.ravioli_to_label = $to_label, "
-                "r += $props"
+                f"CREATE (a)-[r:{relation} {{ravioli_uuid: $rel_uuid}}]->(b) "
+                "SET r += $props"
             ),
             {
                 "f": str(getattr(from_obj, from_uuid_field)),
                 "t": str(getattr(to_obj, to_uuid_field)),
                 "rel_uuid": rel_uuid,
-                "from_label": from_label,
-                "to_label": to_label,
                 "props": props,
             },
         )
