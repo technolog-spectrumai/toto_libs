@@ -1,0 +1,159 @@
+app: assembly
+
+nodes:
+  - label: AssemblyProposal
+    model: toto.assembly.models.AssemblyProposal
+    uuid_field: id
+    fields:
+      proposal_type: proposal_type
+      title: title
+      body: body
+      status: status
+      is_repeal: is_repeal
+      opens_at: opens_at
+      closes_at: closes_at
+
+  - label: AssemblyVote
+    model: toto.assembly.models.AssemblyVote
+    uuid_field: id
+    fields:
+      vote: vote
+
+  - label: AssemblyDecision
+    model: toto.assembly.models.AssemblyDecision
+    uuid_field: id
+    fields:
+      decision_type: decision_type
+      title: title
+      content_hash: content_hash
+
+  - label: CommunityRule
+    model: toto.assembly.models.CommunityRule
+    uuid_field: id
+    fields:
+      title: title
+      text: text
+      active: active
+
+  - label: CommunityTransactionFee
+    model: toto.assembly.models.CommunityTransactionFee
+    uuid_field: id
+    fields:
+      fee_bps: fee_bps
+      set_by: set_by
+      active: active
+
+  - label: PollTax
+    model: toto.assembly.models.PollTax
+    uuid_field: id
+    fields:
+      head_amount_base_units: head_amount_base_units
+      wealth_rate_bps: wealth_rate_bps
+      period: period
+      active: active
+
+links:
+  - from_label: AssemblyProposal
+    to_label: Community
+    relation: PROPOSED_IN
+    source: community
+    cardinality: one
+    nullable: false
+
+  - from_label: AssemblyProposal
+    to_label: Person
+    relation: OPENED_BY
+    source: opened_by
+    cardinality: one
+    nullable: true
+
+  - from_label: AssemblyVote
+    to_label: AssemblyProposal
+    relation: VOTE_ON
+    source: proposal
+    cardinality: one
+    nullable: false
+
+  - from_label: AssemblyVote
+    to_label: Person
+    relation: VOTED_BY
+    source: voter
+    cardinality: one
+    nullable: false
+
+  - from_label: AssemblyDecision
+    to_label: Community
+    relation: ENACTED_IN
+    source: community
+    cardinality: one
+    nullable: false
+
+  - from_label: AssemblyDecision
+    to_label: AssemblyProposal
+    relation: STEMS_FROM
+    source: proposal
+    cardinality: one
+    nullable: true
+
+  - from_label: CommunityRule
+    to_label: Community
+    relation: GOVERNS
+    source: community
+    cardinality: one
+    nullable: false
+
+  - from_label: CommunityRule
+    to_label: AssemblyDecision
+    relation: ENACTED_BY
+    source: decision
+    cardinality: one
+    nullable: true
+
+  - from_label: CommunityTransactionFee
+    to_label: Community
+    relation: APPLIES_TO
+    source: community
+    cardinality: one
+    nullable: false
+
+  - from_label: CommunityTransactionFee
+    to_label: Asset
+    relation: FEE_FOR_ASSET
+    source: asset
+    cardinality: one
+    nullable: true
+
+  - from_label: CommunityTransactionFee
+    to_label: AssemblyDecision
+    relation: ENACTED_BY
+    source: decision
+    cardinality: one
+    nullable: true
+
+  - from_label: PollTax
+    to_label: Community
+    relation: LEVIED_IN
+    source: community
+    cardinality: one
+    nullable: false
+
+  - from_label: PollTax
+    to_label: Asset
+    relation: PAID_IN
+    source: payment_asset
+    cardinality: one
+    nullable: false
+
+  - from_label: PollTax
+    to_label: Asset
+    relation: WEALTH_MEASURED_IN
+    source: wealth_asset
+    cardinality: one
+    nullable: true
+
+  - from_label: PollTax
+    to_label: AssemblyDecision
+    relation: ENACTED_BY
+    source: decision
+    cardinality: one
+    nullable: true

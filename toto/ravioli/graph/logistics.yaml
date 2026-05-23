@@ -1,0 +1,93 @@
+app: logistics
+
+nodes:
+  - label: LogisticsTransport
+    model: toto.logistics.models.Transport
+    uuid_field: uid
+    fields:
+      name: name
+      carrier: carrier
+      mode: mode
+      identifier: identifier
+      is_active: is_active
+
+  - label: LogisticsPackage
+    model: toto.logistics.models.Package
+    uuid_field: uid
+    fields:
+      tracking_number: tracking_number
+      carrier: carrier
+      status: status
+      description: description
+
+  - label: LogisticsPackageEvent
+    model: toto.logistics.models.PackageEvent
+    uuid_field: uid
+    fields:
+      status: status
+      note: note
+      occurred_at: occurred_at
+
+links:
+  - from_label: LogisticsTransport
+    to_label: Address
+    relation: CURRENTLY_AT
+    source: current_location
+    cardinality: one
+    nullable: true
+
+  - from_label: LogisticsTransport
+    to_label: Address
+    relation: DEPARTS_FROM
+    source: origin
+    cardinality: one
+    nullable: true
+
+  - from_label: LogisticsTransport
+    to_label: Address
+    relation: HEADING_TO
+    source: destination
+    cardinality: one
+    nullable: true
+
+  - from_label: LogisticsPackage
+    to_label: LogisticsTransport
+    relation: CARRIED_BY
+    source: transport
+    cardinality: one
+    nullable: true
+
+  - from_label: LogisticsPackage
+    to_label: Address
+    relation: SHIPS_FROM
+    source: origin
+    cardinality: one
+    nullable: true
+
+  - from_label: LogisticsPackage
+    to_label: Address
+    relation: SHIPS_TO
+    source: destination
+    cardinality: one
+    nullable: true
+
+  - from_label: LogisticsPackageEvent
+    to_label: LogisticsPackage
+    relation: EVENT_FOR
+    source: package
+    cardinality: one
+    nullable: false
+
+  - from_label: LogisticsPackageEvent
+    to_label: LogisticsTransport
+    relation: ON_TRANSPORT
+    source: transport
+    cardinality: one
+    nullable: true
+
+  - from_label: LogisticsPackageEvent
+    to_label: Address
+    relation: OCCURRED_AT
+    source: location
+    cardinality: one
+    nullable: true

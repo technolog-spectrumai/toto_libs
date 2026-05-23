@@ -1,0 +1,26 @@
+app: memo
+
+nodes:
+  - label: MemoDeck
+    model: toto.memo.models.MemoDeck
+    uuid_field: slug
+    fields:
+      title: title
+      slug: slug
+      description: description
+
+  - label: MemoCard
+    model: toto.memo.models.MemoCard
+    uuid_field: id
+    fields:
+      title: title
+      content: content
+      order: order
+
+links:
+  - from_label: MemoCard
+    to_label: MemoDeck
+    relation: BELONGS_TO_DECK
+    source: deck
+    cardinality: one
+    nullable: false

@@ -11,15 +11,18 @@ nodes:
       established_year: established_year
       is_autonomous: is_autonomous
       is_foreign: is_foreign
+      is_federal_tribe: is_federal_tribe
 
   - label: Person
-    model: toto.socialhub.models.Person
+    model: toto.people.models.Person
     uuid_field: uid
     fields:
       display_name: display_name
       email: email
       phone: phone
-      date_of_birth: date_of_birth
+      date_of_birth:
+        source: date_of_birth
+        transform: str
 
   - label: CommunityNewsTopic
     model: toto.socialhub.models.CommunityNewsTopic
@@ -35,6 +38,14 @@ nodes:
       title: title
       content: content
       visibility: visibility
+      created_at: created_at
+
+  - label: MembershipApplication
+    model: toto.socialhub.models.MembershipApplication
+    uuid_field: id
+    fields:
+      email: email
+      status: status
       created_at: created_at
 
 links:
@@ -110,3 +121,10 @@ links:
     source: address
     cardinality: one
     nullable: true
+
+  - from_label: MembershipApplication
+    to_label: Community
+    relation: APPLIED_TO
+    source: community
+    cardinality: one
+    nullable: false

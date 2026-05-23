@@ -1,0 +1,155 @@
+app: magistrate
+
+nodes:
+  - label: MagistrateRole
+    model: toto.magistrate.models.MagistrateRole
+    uuid_field: slug
+    fields:
+      name: name
+      slug: slug
+      description: description
+      overseeing_mobilization: overseeing_mobilization
+      overseeing_tribunal: overseeing_tribunal
+      overseeing_trade: overseeing_trade
+      overseeing_finance: overseeing_finance
+      overseeing_public_order: overseeing_public_order
+      overseeing_legislation: overseeing_legislation
+      overseeing_merchandise: overseeing_merchandise
+      overseeing_logistics: overseeing_logistics
+      can_set_fines: can_set_fines
+
+  - label: Magistrate
+    model: toto.magistrate.models.Magistrate
+    uuid_field: id
+    fields:
+      status: status
+      term_start:
+        source: term_start
+        transform: str
+      term_end:
+        source: term_end
+        transform: str
+
+  - label: MagistrateDecision
+    model: toto.magistrate.models.MagistrateDecision
+    uuid_field: id
+    fields:
+      decision_type: decision_type
+      title: title
+      body: body
+      status: status
+
+  - label: MagistrateReport
+    model: toto.magistrate.models.MagistrateReport
+    uuid_field: id
+    fields:
+      title: title
+      status: status
+
+  - label: MagistrateFine
+    model: toto.magistrate.models.MagistrateFine
+    uuid_field: id
+    fields:
+      authority_domain: authority_domain
+      fine_pct: fine_pct
+      infraction: infraction
+      status: status
+
+links:
+  - from_label: Magistrate
+    to_label: Person
+    relation: HELD_BY
+    source: person
+    cardinality: one
+    nullable: false
+
+  - from_label: Magistrate
+    to_label: MagistrateRole
+    relation: HOLDS_ROLE
+    source: role
+    cardinality: one
+    nullable: false
+
+  - from_label: Magistrate
+    to_label: Community
+    relation: SERVES_COMMUNITY
+    source: community
+    cardinality: one
+    nullable: false
+
+  - from_label: Magistrate
+    to_label: AssemblyProposal
+    relation: ELECTED_VIA
+    source: source_proposal
+    cardinality: one
+    nullable: true
+
+  - from_label: MagistrateDecision
+    to_label: Magistrate
+    relation: ISSUED_BY
+    source: magistrate
+    cardinality: one
+    nullable: false
+
+  - from_label: MagistrateDecision
+    to_label: Community
+    relation: APPLIES_TO
+    source: community
+    cardinality: one
+    nullable: false
+
+  - from_label: MagistrateDecision
+    to_label: Person
+    relation: REVIEWED_BY
+    source: reviewed_by
+    cardinality: one
+    nullable: true
+
+  - from_label: MagistrateReport
+    to_label: Magistrate
+    relation: SUBMITTED_BY
+    source: magistrate
+    cardinality: one
+    nullable: false
+
+  - from_label: MagistrateReport
+    to_label: Person
+    relation: ACKNOWLEDGED_BY
+    source: acknowledged_by
+    cardinality: one
+    nullable: true
+
+  - from_label: MagistrateFine
+    to_label: MagistrateDecision
+    relation: ISSUED_VIA
+    source: decision
+    cardinality: one
+    nullable: false
+
+  - from_label: MagistrateFine
+    to_label: Person
+    relation: LEVIED_ON
+    source: target_person
+    cardinality: one
+    nullable: false
+
+  - from_label: MagistrateFine
+    to_label: LedgerAccount
+    relation: DEBITED_FROM
+    source: target_account
+    cardinality: one
+    nullable: true
+
+  - from_label: MagistrateFine
+    to_label: Asset
+    relation: DENOMINATED_IN
+    source: asset
+    cardinality: one
+    nullable: true
+
+  - from_label: MagistrateFine
+    to_label: Obligation
+    relation: ENFORCED_BY
+    source: obligation
+    cardinality: one
+    nullable: true

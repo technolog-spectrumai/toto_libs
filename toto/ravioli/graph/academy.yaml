@@ -1,0 +1,200 @@
+app: academy
+
+nodes:
+  - label: AcademyTeacher
+    model: toto.academy.models.Teacher
+    uuid_field: id
+    fields:
+      title: title
+      bio: bio
+      is_active: is_active
+
+  - label: AcademyCourse
+    model: toto.academy.models.Course
+    uuid_field: slug
+    fields:
+      title: title
+      slug: slug
+      description: description
+      is_published: is_published
+      order: order
+
+  - label: AcademyCourseModule
+    model: toto.academy.models.CourseModule
+    uuid_field: id
+    fields:
+      title: title
+      slug: slug
+      description: description
+      order: order
+
+  - label: AcademyLesson
+    model: toto.academy.models.Lesson
+    uuid_field: id
+    fields:
+      title: title
+      slug: slug
+      summary: summary
+      order: order
+
+  - label: AcademyStudent
+    model: toto.academy.models.Student
+    uuid_field: id
+    fields:
+      created_at: created_at
+
+  - label: AcademyCertificate
+    model: toto.academy.models.Certificate
+    uuid_field: id
+    fields:
+      title: title
+      description: description
+      granted_at: granted_at
+
+  - label: AcademyCohort
+    model: toto.academy.models.Cohort
+    uuid_field: id
+    fields:
+      title: title
+      slug: slug
+      is_active: is_active
+
+  - label: AcademyLearningPath
+    model: toto.academy.models.LearningPath
+    uuid_field: slug
+    fields:
+      title: title
+      slug: slug
+      description: description
+      is_published: is_published
+      order: order
+
+links:
+  - from_label: AcademyTeacher
+    to_label: Person
+    relation: PROFILE_OF
+    source: person
+    cardinality: one
+    nullable: false
+
+  - from_label: AcademyCourse
+    to_label: AcademyTeacher
+    relation: OWNED_BY
+    source: owner
+    cardinality: one
+    nullable: true
+
+  - from_label: AcademyCourseModule
+    to_label: AcademyCourse
+    relation: MODULE_OF
+    source: course
+    cardinality: one
+    nullable: false
+
+  - from_label: AcademyCourseModule
+    to_label: AcademyTeacher
+    relation: OWNED_BY
+    source: owner
+    cardinality: one
+    nullable: true
+
+  - from_label: AcademyCourseModule
+    to_label: Quiz
+    relation: HAS_EXAM
+    source: exam
+    cardinality: one
+    nullable: true
+
+  - from_label: AcademyCourseModule
+    to_label: PalimpsestPage
+    relation: LINKED_PAGE
+    source: verbena_page
+    cardinality: one
+    nullable: true
+
+  - from_label: AcademyCourseModule
+    to_label: Quiz
+    relation: HAS_QUIZ
+    source: attached_quizzes
+    cardinality: many
+
+  - from_label: AcademyLesson
+    to_label: AcademyCourseModule
+    relation: LESSON_OF
+    source: module
+    cardinality: one
+    nullable: false
+
+  - from_label: AcademyLesson
+    to_label: AcademyTeacher
+    relation: OWNED_BY
+    source: owner
+    cardinality: one
+    nullable: true
+
+  - from_label: AcademyLesson
+    to_label: MemoDeck
+    relation: USES_LECTURE
+    source: lecture
+    cardinality: one
+    nullable: false
+
+  - from_label: AcademyLesson
+    to_label: Quiz
+    relation: HAS_QUIZ
+    source: attached_quizzes
+    cardinality: many
+
+  - from_label: AcademyStudent
+    to_label: Person
+    relation: PROFILE_OF
+    source: person
+    cardinality: one
+    nullable: false
+
+  - from_label: AcademyStudent
+    to_label: AcademyCourse
+    relation: ENROLLED_IN
+    source: enrolled_courses
+    cardinality: many
+
+  - from_label: AcademyCertificate
+    to_label: Person
+    relation: AWARDED_TO
+    source: person
+    cardinality: one
+    nullable: false
+
+  - from_label: AcademyCertificate
+    to_label: AcademyCourse
+    relation: AWARDED_FOR
+    source: course
+    cardinality: one
+    nullable: true
+
+  - from_label: AcademyCertificate
+    to_label: Quiz
+    relation: EXAM_PASSED
+    source: exam
+    cardinality: one
+    nullable: true
+
+  - from_label: AcademyCohort
+    to_label: AcademyCourse
+    relation: COHORT_OF
+    source: course
+    cardinality: one
+    nullable: false
+
+  - from_label: AcademyCohort
+    to_label: AcademyTeacher
+    relation: TAUGHT_BY
+    source: teacher
+    cardinality: one
+    nullable: true
+
+  - from_label: AcademyLearningPath
+    to_label: SkillBadge
+    relation: REQUIRES_BADGE
+    source: badges
+    cardinality: many

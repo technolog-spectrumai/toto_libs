@@ -68,6 +68,22 @@ nodes:
         transform: default_dict
       completed_at: completed_at
 
+  - label: KanbanDocPage
+    model: toto.kanban.models.DocumentationPage
+    uuid_field: uid
+    fields:
+      title: title
+      slug: slug
+      is_manual: is_manual
+
+  - label: KanbanDocSection
+    model: toto.kanban.models.DocumentationSection
+    uuid_field: uid
+    fields:
+      title: title
+      content: content
+      order: order
+
 links:
   - from_label: KanbanProject
     to_label: Person
@@ -145,3 +161,17 @@ links:
     source: assignee
     cardinality: one
     nullable: true
+
+  - from_label: KanbanDocPage
+    to_label: KanbanMission
+    relation: DOCUMENTS
+    source: mission
+    cardinality: one
+    nullable: false
+
+  - from_label: KanbanDocSection
+    to_label: KanbanDocPage
+    relation: SECTION_OF
+    source: page
+    cardinality: one
+    nullable: false

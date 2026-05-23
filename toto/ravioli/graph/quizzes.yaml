@@ -1,0 +1,66 @@
+app: quizzes
+
+nodes:
+  - label: Quiz
+    model: toto.quizzes.models.Quiz
+    uuid_field: id
+    fields:
+      title: title
+      slug: slug
+      description: description
+      is_published: is_published
+      is_official: is_official
+      order: order
+
+  - label: QuizQuestion
+    model: toto.quizzes.models.QuizQuestion
+    uuid_field: id
+    fields:
+      text: text
+      is_multiple_choice: is_multiple_choice
+      order: order
+
+  - label: QuizTrait
+    model: toto.quizzes.models.QuizTrait
+    uuid_field: slug
+    fields:
+      title: title
+      slug: slug
+      description: description
+      order: order
+
+  - label: QuizAttempt
+    model: toto.quizzes.models.QuizAttempt
+    uuid_field: id
+    fields:
+      started_at: started_at
+      completed_at: completed_at
+
+links:
+  - from_label: Quiz
+    to_label: Person
+    relation: OWNED_BY
+    source: owner
+    cardinality: one
+    nullable: true
+
+  - from_label: QuizQuestion
+    to_label: Quiz
+    relation: BELONGS_TO_QUIZ
+    source: quiz
+    cardinality: one
+    nullable: false
+
+  - from_label: QuizAttempt
+    to_label: Quiz
+    relation: ATTEMPTS_QUIZ
+    source: quiz
+    cardinality: one
+    nullable: false
+
+  - from_label: QuizAttempt
+    to_label: Person
+    relation: TAKEN_BY
+    source: participant
+    cardinality: one
+    nullable: false

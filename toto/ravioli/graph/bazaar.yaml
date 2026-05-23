@@ -1,0 +1,307 @@
+app: bazaar
+
+nodes:
+  - label: BazaarShop
+    model: toto.bazaar.models.Shop
+    uuid_field: uid
+    fields:
+      name: name
+      slug: slug
+      description: description
+      is_active: is_active
+      currency: currency
+
+  - label: BazaarVendor
+    model: toto.bazaar.models.Vendor
+    uuid_field: uid
+    fields:
+      display_name: display_name
+      slug: slug
+      bio: bio
+      status: status
+      website: website
+
+  - label: BazaarProductCategory
+    model: toto.bazaar.models.ProductCategory
+    uuid_field: uid
+    fields:
+      name: name
+      slug: slug
+      description: description
+      position: position
+      is_active: is_active
+
+  - label: BazaarProduct
+    model: toto.bazaar.models.Product
+    uuid_field: uid
+    fields:
+      name: name
+      slug: slug
+      summary: summary
+      product_type: product_type
+      status: status
+      price: price
+      currency: currency
+      stock_quantity: stock_quantity
+      is_featured: is_featured
+      is_public: is_public
+      is_regulated: is_regulated
+
+  - label: BazaarProductVariant
+    model: toto.bazaar.models.ProductVariant
+    uuid_field: uid
+    fields:
+      name: name
+      sku: sku
+      stock_quantity: stock_quantity
+      is_active: is_active
+
+  - label: BazaarOrder
+    model: toto.bazaar.models.Order
+    uuid_field: uid
+    fields:
+      order_number: order_number
+      status: status
+      payment_status: payment_status
+      fulfillment_status: fulfillment_status
+      currency: currency
+      total_amount: total_amount
+      payment_method: payment_method
+
+  - label: BazaarOrderItem
+    model: toto.bazaar.models.OrderItem
+    uuid_field: uid
+    fields:
+      product_name_snapshot: product_name_snapshot
+      quantity: quantity
+      unit_price: unit_price
+      total_price: total_price
+
+  - label: BazaarShipment
+    model: toto.bazaar.models.Shipment
+    uuid_field: uid
+    fields:
+      tracking_number: tracking_number
+      carrier: carrier
+      status: status
+
+  - label: BazaarProductReview
+    model: toto.bazaar.models.ProductReview
+    uuid_field: uid
+    fields:
+      rating: rating
+      title: title
+      body: body
+      status: status
+
+  - label: BazaarMarketCustodian
+    model: toto.bazaar.models.MarketCustodian
+    uuid_field: uid
+    fields:
+      name: name
+      description: description
+      scope: scope
+      is_active: is_active
+
+links:
+  - from_label: BazaarShop
+    to_label: Person
+    relation: OWNED_BY
+    source: owner
+    cardinality: one
+    nullable: true
+
+  - from_label: BazaarShop
+    to_label: Community
+    relation: BELONGS_TO_COMMUNITY
+    source: community
+    cardinality: one
+    nullable: true
+
+  - from_label: BazaarShop
+    to_label: Address
+    relation: LOCATED_AT
+    source: location
+    cardinality: one
+    nullable: true
+
+  - from_label: BazaarVendor
+    to_label: BazaarShop
+    relation: OPERATES_IN
+    source: shop
+    cardinality: one
+    nullable: false
+
+  - from_label: BazaarVendor
+    to_label: Person
+    relation: REPRESENTS
+    source: person
+    cardinality: one
+    nullable: true
+
+  - from_label: BazaarVendor
+    to_label: Address
+    relation: LOCATED_AT
+    source: location
+    cardinality: one
+    nullable: true
+
+  - from_label: BazaarVendor
+    to_label: Territory
+    relation: OPERATES_IN_TERRITORY
+    source: territory
+    cardinality: one
+    nullable: true
+
+  - from_label: BazaarProductCategory
+    to_label: BazaarShop
+    relation: BELONGS_TO_SHOP
+    source: shop
+    cardinality: one
+    nullable: false
+
+  - from_label: BazaarProductCategory
+    to_label: BazaarProductCategory
+    relation: HAS_PARENT
+    source: parent
+    cardinality: one
+    nullable: true
+
+  - from_label: BazaarProduct
+    to_label: BazaarShop
+    relation: SOLD_IN
+    source: shop
+    cardinality: one
+    nullable: false
+
+  - from_label: BazaarProduct
+    to_label: BazaarVendor
+    relation: LISTED_BY
+    source: vendor
+    cardinality: one
+    nullable: true
+
+  - from_label: BazaarProduct
+    to_label: BazaarProductCategory
+    relation: IN_CATEGORY
+    source: category
+    cardinality: one
+    nullable: true
+
+  - from_label: BazaarProduct
+    to_label: Zone
+    relation: DELIVERS_TO
+    source: delivery_zones
+    cardinality: many
+
+  - from_label: BazaarProductVariant
+    to_label: BazaarProduct
+    relation: VARIANT_OF
+    source: product
+    cardinality: one
+    nullable: false
+
+  - from_label: BazaarOrder
+    to_label: BazaarShop
+    relation: PLACED_IN
+    source: shop
+    cardinality: one
+    nullable: false
+
+  - from_label: BazaarOrder
+    to_label: Person
+    relation: ORDERED_BY
+    source: customer_profile
+    cardinality: one
+    nullable: true
+
+  - from_label: BazaarOrder
+    to_label: Address
+    relation: SHIPPED_TO
+    source: shipping_address
+    cardinality: one
+    nullable: true
+
+  - from_label: BazaarOrder
+    to_label: Address
+    relation: BILLED_TO
+    source: billing_address
+    cardinality: one
+    nullable: true
+
+  - from_label: BazaarOrderItem
+    to_label: BazaarOrder
+    relation: PART_OF_ORDER
+    source: order
+    cardinality: one
+    nullable: false
+
+  - from_label: BazaarOrderItem
+    to_label: BazaarProduct
+    relation: CONTAINS_PRODUCT
+    source: product
+    cardinality: one
+    nullable: true
+
+  - from_label: BazaarOrderItem
+    to_label: BazaarVendor
+    relation: FULFILLED_BY
+    source: vendor
+    cardinality: one
+    nullable: true
+
+  - from_label: BazaarShipment
+    to_label: BazaarOrder
+    relation: SHIPS_ORDER
+    source: order
+    cardinality: one
+    nullable: false
+
+  - from_label: BazaarShipment
+    to_label: BazaarVendor
+    relation: DISPATCHED_BY
+    source: vendor
+    cardinality: one
+    nullable: true
+
+  - from_label: BazaarShipment
+    to_label: Address
+    relation: SHIPS_FROM
+    source: origin_address
+    cardinality: one
+    nullable: true
+
+  - from_label: BazaarShipment
+    to_label: Address
+    relation: SHIPS_TO
+    source: destination_address
+    cardinality: one
+    nullable: true
+
+  - from_label: BazaarProductReview
+    to_label: BazaarProduct
+    relation: REVIEWS
+    source: product
+    cardinality: one
+    nullable: false
+
+  - from_label: BazaarProductReview
+    to_label: Person
+    relation: WRITTEN_BY
+    source: person
+    cardinality: one
+    nullable: true
+
+  - from_label: BazaarMarketCustodian
+    to_label: BazaarShop
+    relation: OVERSEES_SHOP
+    source: shop
+    cardinality: one
+    nullable: false
+
+  - from_label: BazaarMarketCustodian
+    to_label: Person
+    relation: MANAGED_BY
+    source: person
+    cardinality: one
+    nullable: true

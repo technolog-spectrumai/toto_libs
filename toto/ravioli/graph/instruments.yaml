@@ -1,0 +1,326 @@
+app: instruments
+
+nodes:
+  - label: FinancialInstrument
+    model: toto.instruments.models.FinancialInstrument
+    uuid_field: reference
+    fields:
+      reference: reference
+      instrument_type: instrument_type
+      status: status
+      starts_at: starts_at
+      ends_at: ends_at
+
+  - label: EscrowContract
+    model: toto.instruments.models.EscrowContract
+    uuid_field: id
+    fields:
+      amount_base_units: amount_base_units
+      status: status
+      order_reference: order_reference
+
+  - label: ForwardContract
+    model: toto.instruments.models.ForwardContract
+    uuid_field: id
+    fields:
+      quantity_base_units: quantity_base_units
+      payment_amount_base_units: payment_amount_base_units
+      settlement_type: settlement_type
+      settlement_at: settlement_at
+
+  - label: FutureMarket
+    model: toto.instruments.models.FutureMarket
+    uuid_field: code
+    fields:
+      code: code
+      name: name
+      contract_size_base_units: contract_size_base_units
+      settlement_type: settlement_type
+      initial_margin_bps: initial_margin_bps
+      maintenance_margin_bps: maintenance_margin_bps
+      active: active
+
+  - label: FutureContract
+    model: toto.instruments.models.FutureContract
+    uuid_field: id
+    fields:
+      contract_count: contract_count
+      entry_price_base_units: entry_price_base_units
+      settlement_at: settlement_at
+
+  - label: RevenueShareContract
+    model: toto.instruments.models.RevenueShareContract
+    uuid_field: id
+    fields:
+      active_from: active_from
+      active_until: active_until
+
+  - label: VestingContract
+    model: toto.instruments.models.VestingContract
+    uuid_field: id
+    fields:
+      total_amount_base_units: total_amount_base_units
+      released_amount_base_units: released_amount_base_units
+      start_at: start_at
+      cliff_at: cliff_at
+      end_at: end_at
+      release_frequency: release_frequency
+
+  - label: StakingPosition
+    model: toto.instruments.models.StakingPosition
+    uuid_field: id
+    fields:
+      staked_amount_base_units: staked_amount_base_units
+      reward_rate_bps: reward_rate_bps
+      locked_until: locked_until
+
+  - label: OptionContract
+    model: toto.instruments.models.OptionContract
+    uuid_field: id
+    fields:
+      option_type: option_type
+      style: style
+      quantity_base_units: quantity_base_units
+      strike_price_base_units: strike_price_base_units
+      premium_base_units: premium_base_units
+      settlement_type: settlement_type
+      expiry_at: expiry_at
+
+links:
+  - from_label: FinancialInstrument
+    to_label: LedgerAccount
+    relation: CONTRACT_ACCOUNT
+    source: contract_account
+    cardinality: one
+    nullable: true
+
+  - from_label: EscrowContract
+    to_label: FinancialInstrument
+    relation: INSTRUMENT
+    source: instrument
+    cardinality: one
+    nullable: false
+
+  - from_label: EscrowContract
+    to_label: LedgerAccount
+    relation: BUYER_ACCOUNT
+    source: buyer_account
+    cardinality: one
+    nullable: false
+
+  - from_label: EscrowContract
+    to_label: LedgerAccount
+    relation: SELLER_ACCOUNT
+    source: seller_account
+    cardinality: one
+    nullable: false
+
+  - from_label: EscrowContract
+    to_label: LedgerAccount
+    relation: ESCROW_ACCOUNT
+    source: escrow_account
+    cardinality: one
+    nullable: false
+
+  - from_label: EscrowContract
+    to_label: Asset
+    relation: DENOMINATED_IN
+    source: asset
+    cardinality: one
+    nullable: false
+
+  - from_label: ForwardContract
+    to_label: FinancialInstrument
+    relation: INSTRUMENT
+    source: instrument
+    cardinality: one
+    nullable: false
+
+  - from_label: ForwardContract
+    to_label: LedgerAccount
+    relation: BUYER_ACCOUNT
+    source: buyer_account
+    cardinality: one
+    nullable: false
+
+  - from_label: ForwardContract
+    to_label: LedgerAccount
+    relation: SELLER_ACCOUNT
+    source: seller_account
+    cardinality: one
+    nullable: false
+
+  - from_label: ForwardContract
+    to_label: Asset
+    relation: UNDERLYING_ASSET
+    source: underlying_asset
+    cardinality: one
+    nullable: false
+
+  - from_label: ForwardContract
+    to_label: Asset
+    relation: PAYMENT_ASSET
+    source: payment_asset
+    cardinality: one
+    nullable: false
+
+  - from_label: FutureMarket
+    to_label: Asset
+    relation: UNDERLYING_ASSET
+    source: underlying_asset
+    cardinality: one
+    nullable: false
+
+  - from_label: FutureMarket
+    to_label: Asset
+    relation: SETTLEMENT_ASSET
+    source: settlement_asset
+    cardinality: one
+    nullable: false
+
+  - from_label: FutureContract
+    to_label: FinancialInstrument
+    relation: INSTRUMENT
+    source: instrument
+    cardinality: one
+    nullable: false
+
+  - from_label: FutureContract
+    to_label: FutureMarket
+    relation: IN_MARKET
+    source: market
+    cardinality: one
+    nullable: false
+
+  - from_label: FutureContract
+    to_label: LedgerAccount
+    relation: LONG_ACCOUNT
+    source: long_account
+    cardinality: one
+    nullable: false
+
+  - from_label: FutureContract
+    to_label: LedgerAccount
+    relation: SHORT_ACCOUNT
+    source: short_account
+    cardinality: one
+    nullable: false
+
+  - from_label: RevenueShareContract
+    to_label: FinancialInstrument
+    relation: INSTRUMENT
+    source: instrument
+    cardinality: one
+    nullable: false
+
+  - from_label: RevenueShareContract
+    to_label: LedgerAccount
+    relation: REVENUE_SOURCE
+    source: revenue_account
+    cardinality: one
+    nullable: false
+
+  - from_label: RevenueShareContract
+    to_label: Asset
+    relation: REVENUE_ASSET
+    source: revenue_asset
+    cardinality: one
+    nullable: false
+
+  - from_label: VestingContract
+    to_label: FinancialInstrument
+    relation: INSTRUMENT
+    source: instrument
+    cardinality: one
+    nullable: false
+
+  - from_label: VestingContract
+    to_label: LedgerAccount
+    relation: GRANTED_BY
+    source: grantor_account
+    cardinality: one
+    nullable: false
+
+  - from_label: VestingContract
+    to_label: LedgerAccount
+    relation: GRANTED_TO
+    source: beneficiary_account
+    cardinality: one
+    nullable: false
+
+  - from_label: VestingContract
+    to_label: Asset
+    relation: VESTS_ASSET
+    source: asset
+    cardinality: one
+    nullable: false
+
+  - from_label: StakingPosition
+    to_label: FinancialInstrument
+    relation: INSTRUMENT
+    source: instrument
+    cardinality: one
+    nullable: false
+
+  - from_label: StakingPosition
+    to_label: LedgerAccount
+    relation: STAKER_ACCOUNT
+    source: staker_account
+    cardinality: one
+    nullable: false
+
+  - from_label: StakingPosition
+    to_label: LedgerAccount
+    relation: STAKING_POOL
+    source: staking_account
+    cardinality: one
+    nullable: false
+
+  - from_label: StakingPosition
+    to_label: Asset
+    relation: STAKED_ASSET
+    source: staked_asset
+    cardinality: one
+    nullable: false
+
+  - from_label: StakingPosition
+    to_label: Asset
+    relation: REWARD_ASSET
+    source: reward_asset
+    cardinality: one
+    nullable: false
+
+  - from_label: OptionContract
+    to_label: FinancialInstrument
+    relation: INSTRUMENT
+    source: instrument
+    cardinality: one
+    nullable: false
+
+  - from_label: OptionContract
+    to_label: LedgerAccount
+    relation: BUYER_ACCOUNT
+    source: buyer_account
+    cardinality: one
+    nullable: false
+
+  - from_label: OptionContract
+    to_label: LedgerAccount
+    relation: WRITER_ACCOUNT
+    source: writer_account
+    cardinality: one
+    nullable: false
+
+  - from_label: OptionContract
+    to_label: Asset
+    relation: UNDERLYING_ASSET
+    source: underlying_asset
+    cardinality: one
+    nullable: false
+
+  - from_label: OptionContract
+    to_label: Asset
+    relation: PAYMENT_ASSET
+    source: payment_asset
+    cardinality: one
+    nullable: false

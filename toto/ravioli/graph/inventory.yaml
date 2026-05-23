@@ -1,0 +1,96 @@
+app: inventory
+
+nodes:
+  - label: InventoryObjectType
+    model: toto.inventory.models.ObjectType
+    uuid_field: uid
+    fields:
+      name: name
+      slug: slug
+      description: description
+
+  - label: InventoryObject
+    model: toto.inventory.models.RealWorldObject
+    uuid_field: uid
+    fields:
+      name: name
+      slug: slug
+      description: description
+      quantity: quantity
+      unit: unit
+      estimated_value: estimated_value
+
+  - label: InventorySite
+    model: toto.inventory.models.InventorySite
+    uuid_field: uid
+    fields:
+      name: name
+      slug: slug
+      site_type: site_type
+      is_active: is_active
+
+  - label: StorageLocation
+    model: toto.inventory.models.StorageLocation
+    uuid_field: uid
+    fields:
+      name: name
+      code: code
+      location_type: location_type
+      is_active: is_active
+
+links:
+  - from_label: InventoryObject
+    to_label: InventoryObjectType
+    relation: IS_TYPE
+    source: object_type
+    cardinality: one
+    nullable: true
+
+  - from_label: InventoryObject
+    to_label: Person
+    relation: OWNED_BY
+    source: owner
+    cardinality: one
+    nullable: true
+
+  - from_label: InventoryObject
+    to_label: Person
+    relation: IN_CUSTODY_OF
+    source: custodian
+    cardinality: one
+    nullable: true
+
+  - from_label: InventoryObject
+    to_label: Person
+    relation: VERIFIED_BY
+    source: verified_by
+    cardinality: one
+    nullable: true
+
+  - from_label: InventoryObject
+    to_label: Address
+    relation: LOCATED_AT
+    source: location
+    cardinality: one
+    nullable: true
+
+  - from_label: InventorySite
+    to_label: Person
+    relation: OPERATED_BY
+    source: operator
+    cardinality: one
+    nullable: true
+
+  - from_label: InventorySite
+    to_label: Address
+    relation: LOCATED_AT
+    source: address
+    cardinality: one
+    nullable: true
+
+  - from_label: StorageLocation
+    to_label: InventorySite
+    relation: PART_OF_SITE
+    source: site
+    cardinality: one
+    nullable: false

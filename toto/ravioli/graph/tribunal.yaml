@@ -1,0 +1,217 @@
+app: tribunal
+
+nodes:
+  - label: TribunalCase
+    model: toto.tribunal.models.TribunalCase
+    uuid_field: uid
+    fields:
+      title: title
+      slug: slug
+      case_number: case_number
+      reason: reason
+      description: description
+      status: status
+      priority: priority
+
+  - label: TribunalParty
+    model: toto.tribunal.models.TribunalParty
+    uuid_field: uid
+    fields:
+      role: role
+      statement: statement
+
+  - label: TribunalClaim
+    model: toto.tribunal.models.TribunalClaim
+    uuid_field: uid
+    fields:
+      claim_type: claim_type
+      summary: summary
+      description: description
+      requested_resolution: requested_resolution
+      amount: amount
+
+  - label: TribunalEvidence
+    model: toto.tribunal.models.TribunalEvidence
+    uuid_field: uid
+    fields:
+      evidence_type: evidence_type
+      title: title
+      description: description
+      file_hash: file_hash
+      external_reference: external_reference
+
+  - label: JurySession
+    model: toto.tribunal.models.JurySession
+    uuid_field: uid
+    fields:
+      status: status
+      outcome: outcome
+      opens_at: opens_at
+      closes_at: closes_at
+      required_votes: required_votes
+      note: note
+
+  - label: JuryVote
+    model: toto.tribunal.models.JuryVote
+    uuid_field: uid
+    fields:
+      vote: vote
+      reason: reason
+
+  - label: TribunalRuling
+    model: toto.tribunal.models.TribunalRuling
+    uuid_field: uid
+    fields:
+      title: title
+      decision: decision
+      reasoning: reasoning
+      resolution_type: resolution_type
+      amount_awarded: amount_awarded
+      fine_amount: fine_amount
+
+links:
+  - from_label: TribunalCase
+    to_label: Person
+    relation: OPENED_BY
+    source: opened_by
+    cardinality: one
+    nullable: true
+
+  - from_label: TribunalCase
+    to_label: Person
+    relation: ASSIGNED_TO
+    source: assigned_to
+    cardinality: one
+    nullable: true
+
+  - from_label: TribunalCase
+    to_label: InventoryObject
+    relation: CONCERNS_OBJECT
+    source: related_object
+    cardinality: one
+    nullable: true
+
+  - from_label: TribunalCase
+    to_label: BazaarOrder
+    relation: CONCERNS_ORDER
+    source: related_order
+    cardinality: one
+    nullable: true
+
+  - from_label: TribunalParty
+    to_label: TribunalCase
+    relation: PARTY_IN
+    source: case
+    cardinality: one
+    nullable: false
+
+  - from_label: TribunalParty
+    to_label: Person
+    relation: REPRESENTED_BY
+    source: person
+    cardinality: one
+    nullable: true
+
+  - from_label: TribunalClaim
+    to_label: TribunalCase
+    relation: CLAIM_IN
+    source: case
+    cardinality: one
+    nullable: false
+
+  - from_label: TribunalClaim
+    to_label: TribunalParty
+    relation: FILED_BY
+    source: claimant
+    cardinality: one
+    nullable: true
+
+  - from_label: TribunalEvidence
+    to_label: TribunalCase
+    relation: EVIDENCE_FOR
+    source: case
+    cardinality: one
+    nullable: false
+
+  - from_label: TribunalEvidence
+    to_label: TribunalParty
+    relation: SUBMITTED_BY
+    source: submitted_by
+    cardinality: one
+    nullable: true
+
+  - from_label: TribunalEvidence
+    to_label: InventoryObject
+    relation: RELATES_TO_OBJECT
+    source: related_object
+    cardinality: one
+    nullable: true
+
+  - from_label: JurySession
+    to_label: TribunalCase
+    relation: SESSION_FOR
+    source: case
+    cardinality: one
+    nullable: false
+
+  - from_label: JurySession
+    to_label: Person
+    relation: CREATED_BY
+    source: created_by
+    cardinality: one
+    nullable: true
+
+  - from_label: JurySession
+    to_label: Person
+    relation: HAS_JUROR
+    source: jurors
+    cardinality: many
+
+  - from_label: JuryVote
+    to_label: JurySession
+    relation: VOTE_IN
+    source: session
+    cardinality: one
+    nullable: false
+
+  - from_label: JuryVote
+    to_label: Person
+    relation: VOTED_BY
+    source: juror
+    cardinality: one
+    nullable: true
+
+  - from_label: TribunalRuling
+    to_label: TribunalCase
+    relation: RULING_FOR
+    source: case
+    cardinality: one
+    nullable: false
+
+  - from_label: TribunalRuling
+    to_label: Person
+    relation: DECIDED_BY
+    source: decided_by
+    cardinality: one
+    nullable: true
+
+  - from_label: TribunalRuling
+    to_label: LedgerAccount
+    relation: FINE_DEBTOR
+    source: fine_debtor_account
+    cardinality: one
+    nullable: true
+
+  - from_label: TribunalRuling
+    to_label: LedgerAccount
+    relation: FINE_CREDITOR
+    source: fine_creditor_account
+    cardinality: one
+    nullable: true
+
+  - from_label: TribunalRuling
+    to_label: Obligation
+    relation: ENFORCED_BY
+    source: fine_obligation
+    cardinality: one
+    nullable: true

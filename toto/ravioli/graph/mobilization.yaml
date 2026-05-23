@@ -1,0 +1,312 @@
+app: mobilization
+
+nodes:
+  - label: IncidentType
+    model: toto.mobilization.models.IncidentType
+    uuid_field: slug
+    fields:
+      name: name
+      slug: slug
+      description: description
+
+  - label: InterventionType
+    model: toto.mobilization.models.InterventionType
+    uuid_field: slug
+    fields:
+      name: name
+      slug: slug
+      description: description
+
+  - label: AchievementBadge
+    model: toto.mobilization.models.AchievementBadge
+    uuid_field: slug
+    fields:
+      name: name
+      slug: slug
+      description: description
+      category: category
+
+  - label: Responder
+    model: toto.mobilization.models.Responder
+    uuid_field: id
+    fields:
+      is_active: is_active
+      is_trained: is_trained
+      is_background_checked: is_background_checked
+      current_status: current_status
+
+  - label: MobilizationReport
+    model: toto.mobilization.models.MobilizationReport
+    uuid_field: id
+    fields:
+      title: title
+      status: status
+      severity: severity
+      summary: summary
+
+  - label: MobilizationEvent
+    model: toto.mobilization.models.MobilizationEvent
+    uuid_field: id
+    fields:
+      title: title
+      status: status
+      description: description
+      is_hybrid: is_hybrid
+
+  - label: Deployment
+    model: toto.mobilization.models.Deployment
+    uuid_field: id
+    fields:
+      title: title
+      deployment_type: deployment_type
+      priority: priority
+      status: status
+      objective: objective
+      is_hybrid: is_hybrid
+
+  - label: DeploymentAssignment
+    model: toto.mobilization.models.DeploymentAssignment
+    uuid_field: id
+    fields:
+      role: role
+      status: status
+
+  - label: EvacuationRoute
+    model: toto.mobilization.models.EvacuationRoute
+    uuid_field: id
+    fields:
+      name: name
+      route_type: route_type
+      status: status
+      notes: notes
+
+  - label: Intervention
+    model: toto.mobilization.models.Intervention
+    uuid_field: id
+    fields:
+      title: title
+      priority: priority
+      status: status
+      description: description
+      is_required: is_required
+      effect_description: effect_description
+
+  - label: EmergencyStatus
+    model: toto.mobilization.models.EmergencyStatus
+    uuid_field: id
+    fields:
+      level: level
+      status: status
+      allows_asset_requisition: allows_asset_requisition
+      allows_inventory_access: allows_inventory_access
+      allows_route_commandeering: allows_route_commandeering
+
+links:
+  - from_label: Responder
+    to_label: Person
+    relation: PROFILE_OF
+    source: person
+    cardinality: one
+    nullable: false
+
+  - from_label: Responder
+    to_label: Community
+    relation: SERVES_COMMUNITY
+    source: communities
+    cardinality: many
+
+  - from_label: MobilizationReport
+    to_label: Community
+    relation: REPORTED_IN
+    source: community
+    cardinality: one
+    nullable: false
+
+  - from_label: MobilizationReport
+    to_label: IncidentType
+    relation: OF_INCIDENT_TYPE
+    source: incident_type
+    cardinality: one
+    nullable: true
+
+  - from_label: MobilizationReport
+    to_label: Person
+    relation: SUBMITTED_BY
+    source: submitted_by
+    cardinality: one
+    nullable: true
+
+  - from_label: MobilizationReport
+    to_label: Person
+    relation: REVIEWED_BY
+    source: reviewed_by
+    cardinality: one
+    nullable: true
+
+  - from_label: MobilizationEvent
+    to_label: Community
+    relation: OCCURS_IN
+    source: community
+    cardinality: one
+    nullable: false
+
+  - from_label: MobilizationEvent
+    to_label: MobilizationReport
+    relation: TRIGGERED_BY
+    source: source_report
+    cardinality: one
+    nullable: true
+
+  - from_label: MobilizationEvent
+    to_label: IncidentType
+    relation: OF_INCIDENT_TYPE
+    source: incident_type
+    cardinality: one
+    nullable: true
+
+  - from_label: MobilizationEvent
+    to_label: Person
+    relation: COORDINATED_BY
+    source: coordinator
+    cardinality: one
+    nullable: true
+
+  - from_label: MobilizationEvent
+    to_label: Event
+    relation: LINKED_EVENT
+    source: scheduled_event
+    cardinality: one
+    nullable: true
+
+  - from_label: MobilizationEvent
+    to_label: KanbanCampaign
+    relation: LINKED_CAMPAIGN
+    source: kanban_campaign
+    cardinality: one
+    nullable: true
+
+  - from_label: Deployment
+    to_label: MobilizationEvent
+    relation: PART_OF_EVENT
+    source: event
+    cardinality: one
+    nullable: false
+
+  - from_label: Deployment
+    to_label: Community
+    relation: DEPLOYED_BY
+    source: community
+    cardinality: one
+    nullable: false
+
+  - from_label: Deployment
+    to_label: Person
+    relation: COORDINATED_BY
+    source: coordinator
+    cardinality: one
+    nullable: true
+
+  - from_label: Deployment
+    to_label: KanbanMission
+    relation: LINKED_MISSION
+    source: kanban_mission
+    cardinality: one
+    nullable: true
+
+  - from_label: DeploymentAssignment
+    to_label: Deployment
+    relation: ASSIGNED_TO
+    source: deployment
+    cardinality: one
+    nullable: false
+
+  - from_label: DeploymentAssignment
+    to_label: Responder
+    relation: ASSIGNS_RESPONDER
+    source: responder
+    cardinality: one
+    nullable: false
+
+  - from_label: DeploymentAssignment
+    to_label: Person
+    relation: ASSIGNED_BY
+    source: assigned_by
+    cardinality: one
+    nullable: true
+
+  - from_label: EvacuationRoute
+    to_label: MobilizationEvent
+    relation: USED_IN_EVENT
+    source: event
+    cardinality: one
+    nullable: false
+
+  - from_label: EvacuationRoute
+    to_label: Route
+    relation: USES_ROUTE
+    source: route
+    cardinality: one
+    nullable: false
+
+  - from_label: Intervention
+    to_label: Deployment
+    relation: PART_OF_DEPLOYMENT
+    source: deployment
+    cardinality: one
+    nullable: false
+
+  - from_label: Intervention
+    to_label: InterventionType
+    relation: OF_TYPE
+    source: intervention_type
+    cardinality: one
+    nullable: true
+
+  - from_label: Intervention
+    to_label: Responder
+    relation: ASSIGNED_TO
+    source: assigned_to
+    cardinality: one
+    nullable: true
+
+  - from_label: Intervention
+    to_label: Person
+    relation: REPORTED_BY
+    source: reported_by
+    cardinality: one
+    nullable: true
+
+  - from_label: EmergencyStatus
+    to_label: MobilizationEvent
+    relation: DECLARED_FOR
+    source: event
+    cardinality: one
+    nullable: false
+
+  - from_label: EmergencyStatus
+    to_label: Community
+    relation: AFFECTS_COMMUNITY
+    source: community
+    cardinality: one
+    nullable: true
+
+  - from_label: EmergencyStatus
+    to_label: Zone
+    relation: AFFECTS_ZONE
+    source: zone
+    cardinality: one
+    nullable: true
+
+  - from_label: EmergencyStatus
+    to_label: Person
+    relation: DECLARED_BY
+    source: declared_by
+    cardinality: one
+    nullable: true
+
+  - from_label: EmergencyStatus
+    to_label: AssemblyProposal
+    relation: AUTHORIZED_BY
+    source: source_proposal
+    cardinality: one
+    nullable: true
