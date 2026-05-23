@@ -1,0 +1,501 @@
+{% extends "magistrate/base.html" %}
+{% load i18n %}
+
+{% block mag_title %}Command Console — {{ mag.role.name }}{% endblock %}
+
+{% block mag_content %}
+<div class="space-y-6"
+     x-data="{
+       decisionOpen: false,
+       dtype: '',
+       dtypeLabel: '',
+       dtypeIcon: 'fa-solid fa-scroll',
+       body: '',
+       openDecision(type, label, icon) {
+         this.dtype = type;
+         this.dtypeLabel = label;
+         this.dtypeIcon = icon || 'fa-solid fa-scroll';
+         this.body = '';
+         this.decisionOpen = true;
+         this.$nextTick(() => { const t = this.$el.querySelector('[name=title]'); if (t) t.focus(); });
+       }
+     }">
+
+  {# — Accountability banner — #}
+  <div :class="darkMode ? 'border-warn-dark/40 bg-warn-dark/10' : 'border-warn-light/40 bg-warn-light/10'"
+       class="rounded-xl border p-4 flex items-start gap-3">
+    <i class="fa-solid fa-triangle-exclamation mt-0.5 shrink-0 text-lg"
+       :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
+    <div>
+      <div class="font-bold text-sm" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">
+        {% trans "Extended Authority — Heightened Accountability" %}
+      </div>
+      <p class="mt-0.5 text-xs opacity-75">
+        {% trans "This console grants you fast executive powers that bypass the normal assembly vote. Every decision you issue is immediately entered into the public decision ledger and is subject to assembly review. Decisions may trigger formal scrutiny, a review vote, or impeachment proceedings. With greater power comes greater responsibility." %}
+      </p>
+    </div>
+  </div>
+
+  {# — Header card — #}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-xl border p-5 shadow-sm">
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div class="flex items-center gap-3">
+        <div :class="darkMode ? 'bg-accent-dark/15' : 'bg-accent-light/15'"
+             class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg">
+          <i class="{{ mag.role.icon }} text-xl" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+        </div>
+        <div>
+          <div class="text-xs font-semibold uppercase tracking-wide opacity-50">{{ mag.role.name }} · {{ mag.community }}</div>
+          <h2 class="text-xl font-bold">{{ mag.person }}</h2>
+          <div class="mt-1 flex flex-wrap gap-1">
+            {% for domain in mag.role.oversight_domains %}
+              <span :class="darkMode ? 'border-accent-1 text-accent-dark' : 'border-accent-2 text-accent-light'"
+                    class="rounded border px-1.5 py-0.5 text-[10px] font-semibold">{{ domain }}</span>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-2 shrink-0">
+        <a href="{% url 'magistrate:detail' mag.pk %}"
+           :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+           class="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold hover:opacity-80">
+          <i class="fa-solid fa-id-card"></i> {% trans "Full Profile" %}
+        </a>
+        <a href="{% url 'assembly:community_assembly' mag.community.slug %}"
+           :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+           class="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold hover:opacity-80">
+          <i class="fa-solid fa-landmark"></i> {% trans "Assembly" %}
+        </a>
+      </div>
+    </div>
+  </div>
+
+  {# — Stats row — #}
+  <div class="grid grid-cols-3 gap-3">
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-xl border p-4 shadow-sm text-center">
+      <div class="text-2xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">{{ active_decisions_count }}</div>
+      <div class="mt-1 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Active Decisions" %}</div>
+    </div>
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-xl border p-4 shadow-sm text-center">
+      <div class="text-2xl font-bold text-yellow-500">{{ reports_pending }}</div>
+      <div class="mt-1 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Reports Pending" %}</div>
+    </div>
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-xl border p-4 shadow-sm text-center">
+      {% if days_remaining is not None %}
+        <div class="text-2xl font-bold {% if days_remaining < 30 %}text-red-500{% elif days_remaining < 90 %}text-yellow-500{% else %}text-green-500{% endif %}">{{ days_remaining }}</div>
+        <div class="mt-1 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Days Remaining" %}</div>
+      {% else %}
+        <div class="text-2xl font-bold opacity-40">∞</div>
+        <div class="mt-1 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "No Term End" %}</div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# — Domain sections — #}
+  {% if mag.role.overseeing_mobilization %}
+  <section :class="darkMode ? 'border-warn-dark/40 bg-bubble-bg-dark' : 'border-warn-light/40 bg-bubble-bg-light'"
+           class="rounded-xl border p-5 shadow-sm">
+    <div class="mb-3 flex items-center gap-2">
+      <i class="fa-solid fa-shield-halved" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
+      <h3 class="font-bold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{% trans "Mobilization Authority" %}</h3>
+      {% if role_stats.active_deployments is not None %}
+        <span class="ml-auto text-xs opacity-60">{{ role_stats.active_deployments }} {% trans "active deployments" %}</span>
+      {% endif %}
+    </div>
+    <p class="mb-3 text-xs opacity-60">{% trans "Issue mobilization calls and emergency declarations without awaiting a full assembly vote. Each action is recorded." %}</p>
+    <div class="flex flex-wrap gap-2">
+      <button type="button"
+              @click="openDecision('mobilization_call', '{% trans "Mobilization Call" %}', 'fa-solid fa-shield-halved')"
+              :class="darkMode ? 'border-warn-dark/50 text-warn-dark' : 'border-warn-light/50 text-warn-light'"
+              class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold hover:opacity-80">
+        <i class="fa-solid fa-shield-halved"></i> {% trans "Issue Mobilization Call" %}
+      </button>
+      <button type="button"
+              @click="openDecision('emergency_declare', '{% trans "Emergency Declaration" %}', 'fa-solid fa-triangle-exclamation')"
+              :class="darkMode ? 'bg-warn-dark/20 border-warn-dark/50 text-warn-dark' : 'bg-warn-light/10 border-warn-light/50 text-warn-light'"
+              class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold hover:opacity-80">
+        <i class="fa-solid fa-triangle-exclamation"></i> {% trans "Declare Emergency" %}
+      </button>
+      <a href="{% url 'mobilization:overview' %}"
+         :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+         class="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold hover:opacity-80">
+        <i class="fa-solid fa-arrow-right"></i> {% trans "Mobilization" %}
+      </a>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if mag.role.overseeing_tribunal %}
+  <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-xl border p-5 shadow-sm">
+    <div class="mb-3 flex items-center gap-2">
+      <i class="fa-solid fa-gavel" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+      <h3 class="font-bold">{% trans "Tribunal Oversight" %}</h3>
+      {% if role_stats.active_tribunal_cases is not None %}
+        <span class="ml-auto text-xs opacity-60">{{ role_stats.active_tribunal_cases }} {% trans "active cases" %}</span>
+      {% endif %}
+    </div>
+    <p class="mb-3 text-xs opacity-60">{% trans "Issue tribunal orders binding on ongoing proceedings. Orders are subject to challenge before the same tribunal." %}</p>
+    <div class="flex flex-wrap gap-2">
+      <button type="button"
+              @click="openDecision('tribunal_order', '{% trans "Tribunal Order" %}', 'fa-solid fa-gavel')"
+              :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+              class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold hover:opacity-80">
+        <i class="fa-solid fa-gavel"></i> {% trans "Issue Tribunal Order" %}
+      </button>
+      <a href="{% url 'tribunal:dashboard' %}"
+         :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+         class="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold hover:opacity-80">
+        <i class="fa-solid fa-arrow-right"></i> {% trans "Tribunal" %}
+      </a>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if mag.role.overseeing_trade %}
+  <section :class="darkMode ? 'border-success-dark/40 bg-bubble-bg-dark' : 'border-success-light/40 bg-bubble-bg-light'"
+           class="rounded-xl border p-5 shadow-sm">
+    <div class="mb-3 flex items-center gap-2">
+      <i class="fa-solid fa-store" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+      <h3 class="font-bold" :class="darkMode ? 'text-success-dark' : 'text-success-light'">{% trans "Trade Authority" %}</h3>
+    </div>
+    <p class="mb-3 text-xs opacity-60">{% trans "Issue binding trade orders, or order a trade reversal. A reversal does not delete the original ledger entry — it creates a mandatory counter-trade with a fine on the offending party. Both orders and reversals may be contested before the tribunal." %}</p>
+    <div class="flex flex-wrap gap-2">
+      <button type="button"
+              @click="openDecision('trade_order', '{% trans "Trade Order" %}', 'fa-solid fa-store')"
+              :class="darkMode ? 'border-success-dark/50 text-success-dark' : 'border-success-light/50 text-success-light'"
+              class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold hover:opacity-80">
+        <i class="fa-solid fa-store"></i> {% trans "Issue Trade Order" %}
+      </button>
+      <button type="button"
+              @click="openDecision('trade_reversal', '{% trans "Trade Reversal Order" %}', 'fa-solid fa-rotate-left')"
+              :class="darkMode ? 'border-warn-dark/50 text-warn-dark' : 'border-warn-light/50 text-warn-light'"
+              class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold hover:opacity-80">
+        <i class="fa-solid fa-rotate-left"></i> {% trans "Issue Trade Reversal" %}
+      </button>
+      <a href="{% url 'bourse:exchange_center' %}"
+         :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+         class="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold hover:opacity-80">
+        <i class="fa-solid fa-arrow-right"></i> {% trans "Bourse" %}
+      </a>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if mag.role.overseeing_merchandise %}
+  <section :class="darkMode ? 'border-caution-dark/40 bg-bubble-bg-dark' : 'border-caution-light/40 bg-bubble-bg-light'"
+           class="rounded-xl border p-5 shadow-sm">
+    <div class="mb-3 flex items-center gap-2">
+      <i class="fa-solid fa-magnifying-glass" :class="darkMode ? 'text-caution-dark' : 'text-caution-light'"></i>
+      <h3 class="font-bold" :class="darkMode ? 'text-caution-dark' : 'text-caution-light'">{% trans "Merchandise Quality" %}</h3>
+    </div>
+    <p class="mb-3 text-xs opacity-60">{% trans "Impose quality fines on merchants whose goods do not meet community standards. Each fine is a public decision and may be contested before the tribunal by the affected party." %}</p>
+    <div class="flex flex-wrap gap-2">
+      <button type="button"
+              @click="openDecision('merchandise_fine', '{% trans "Merchandise Quality Fine" %}', 'fa-solid fa-magnifying-glass')"
+              :class="darkMode ? 'border-caution-dark/50 text-caution-dark' : 'border-caution-light/50 text-caution-light'"
+              class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold hover:opacity-80">
+        <i class="fa-solid fa-magnifying-glass"></i> {% trans "Issue Quality Fine" %}
+      </button>
+      <a href="{% url 'tribunal:dashboard' %}"
+         :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+         class="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold hover:opacity-80">
+        <i class="fa-solid fa-arrow-right"></i> {% trans "Tribunal" %}
+      </a>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if mag.role.overseeing_finance %}
+  <section :class="darkMode ? 'border-success-dark/40 bg-bubble-bg-dark' : 'border-success-light/40 bg-bubble-bg-light'"
+           class="rounded-xl border p-5 shadow-sm">
+    <div class="mb-3 flex items-center gap-2">
+      <i class="fa-solid fa-coins" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+      <h3 class="font-bold" :class="darkMode ? 'text-success-dark' : 'text-success-light'">{% trans "Finance Oversight" %}</h3>
+      {% if role_stats.active_fees is not None %}
+        <span class="ml-auto text-xs opacity-60">{{ role_stats.active_fees }} {% trans "active fees" %}{% if role_stats.active_poll_taxes %} · {{ role_stats.active_poll_taxes }} {% trans "poll taxes" %}{% endif %}</span>
+      {% endif %}
+    </div>
+    <p class="mb-3 text-xs opacity-60">{% trans "Issue financial directives on fees, taxation, and community treasury. All directives enter the community ledger." %}</p>
+    <div class="flex flex-wrap gap-2">
+      <button type="button"
+              @click="openDecision('finance_directive', '{% trans "Finance Directive" %}', 'fa-solid fa-coins')"
+              :class="darkMode ? 'border-success-dark/50 text-success-dark' : 'border-success-light/50 text-success-light'"
+              class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold hover:opacity-80">
+        <i class="fa-solid fa-coins"></i> {% trans "Issue Finance Directive" %}
+      </button>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if mag.role.overseeing_public_order %}
+  <section :class="darkMode ? 'border-caution-dark/40 bg-bubble-bg-dark' : 'border-caution-light/40 bg-bubble-bg-light'"
+           class="rounded-xl border p-5 shadow-sm">
+    <div class="mb-3 flex items-center gap-2">
+      <i class="fa-solid fa-shield-cat" :class="darkMode ? 'text-caution-dark' : 'text-caution-light'"></i>
+      <h3 class="font-bold" :class="darkMode ? 'text-caution-dark' : 'text-caution-light'">{% trans "Public Order" %}</h3>
+      {% if role_stats.active_detections is not None %}
+        <span class="ml-auto text-xs opacity-60">{{ role_stats.active_detections }} {% trans "active detections" %}</span>
+      {% endif %}
+    </div>
+    <p class="mb-3 text-xs opacity-60">{% trans "Issue public order directives. These have immediate effect on community safety and detection responses." %}</p>
+    <div class="flex flex-wrap gap-2">
+      <button type="button"
+              @click="openDecision('public_order_directive', '{% trans "Public Order Directive" %}', 'fa-solid fa-shield-cat')"
+              :class="darkMode ? 'border-caution-dark/50 text-caution-dark' : 'border-caution-light/50 text-caution-light'"
+              class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold hover:opacity-80">
+        <i class="fa-solid fa-shield-cat"></i> {% trans "Issue Public Order Directive" %}
+      </button>
+      <a href="{% url 'detections:detection-list' %}"
+         :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+         class="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold hover:opacity-80">
+        <i class="fa-solid fa-arrow-right"></i> {% trans "Detections" %}
+      </a>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if mag.role.overseeing_legislation %}
+  <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-xl border p-5 shadow-sm">
+    <div class="mb-3 flex items-center gap-2">
+      <i class="fa-solid fa-feather-pointed" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+      <h3 class="font-bold">{% trans "Legislation" %}</h3>
+      {% if role_stats.open_proposals is not None %}
+        <span class="ml-auto text-xs opacity-60">{{ role_stats.open_proposals }} {% trans "open proposals" %}</span>
+      {% endif %}
+    </div>
+    <p class="mb-3 text-xs opacity-60">{% trans "Issue fast-track legislation directives. These are subject to assembly ratification within 7 days or are automatically revoked." %}</p>
+    <div class="flex flex-wrap gap-2">
+      <button type="button"
+              @click="openDecision('legislation_fast_track', '{% trans "Legislation Fast-Track" %}', 'fa-solid fa-feather-pointed')"
+              :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+              class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold hover:opacity-80">
+        <i class="fa-solid fa-feather-pointed"></i> {% trans "Issue Fast-Track Directive" %}
+      </button>
+      <a href="{% url 'assembly:community_assembly' mag.community.slug %}"
+         :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+         class="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold hover:opacity-80">
+        <i class="fa-solid fa-arrow-right"></i> {% trans "Assembly" %}
+      </a>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if mag.role.overseeing_education %}
+  <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-xl border p-5 shadow-sm">
+    <div class="mb-3 flex items-center gap-2">
+      <i class="fa-solid fa-graduation-cap" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+      <h3 class="font-bold">{% trans "Education Oversight" %}</h3>
+    </div>
+    <p class="mb-3 text-xs opacity-60">{% trans "Issue directives on community academies, knowledge programmes, and civic standards. Fast-track educational legislation to the assembly." %}</p>
+    <div class="flex flex-wrap gap-2">
+      <button type="button"
+              @click="openDecision('education_directive', '{% trans "Education Directive" %}', 'fa-solid fa-graduation-cap')"
+              :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+              class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold hover:opacity-80">
+        <i class="fa-solid fa-graduation-cap"></i> {% trans "Issue Education Directive" %}
+      </button>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if mag.role.overseeing_relations %}
+  <section :class="darkMode ? 'border-success-dark/40 bg-bubble-bg-dark' : 'border-success-light/40 bg-bubble-bg-light'"
+           class="rounded-xl border p-5 shadow-sm">
+    <div class="mb-3 flex items-center gap-2">
+      <i class="fa-solid fa-handshake" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+      <h3 class="font-bold" :class="darkMode ? 'text-success-dark' : 'text-success-light'">{% trans "Inter-Community Relations" %}</h3>
+    </div>
+    <p class="mb-3 text-xs opacity-60">{% trans "Issue directives on external treaties, inter-community agreements, and diplomatic liaisons. Acts as the assembly's official envoy." %}</p>
+    <div class="flex flex-wrap gap-2">
+      <button type="button"
+              @click="openDecision('relations_directive', '{% trans "Relations Directive" %}', 'fa-solid fa-handshake')"
+              :class="darkMode ? 'border-success-dark/50 text-success-dark' : 'border-success-light/50 text-success-light'"
+              class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold hover:opacity-80">
+        <i class="fa-solid fa-handshake"></i> {% trans "Issue Relations Directive" %}
+      </button>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if mag.role.overseeing_logistics %}
+  <section :class="darkMode ? 'border-caution-dark/40 bg-bubble-bg-dark' : 'border-caution-light/40 bg-bubble-bg-light'"
+           class="rounded-xl border p-5 shadow-sm">
+    <div class="mb-3 flex items-center gap-2">
+      <i class="fa-solid fa-truck-fast" :class="darkMode ? 'text-caution-dark' : 'text-caution-light'"></i>
+      <h3 class="font-bold" :class="darkMode ? 'text-caution-dark' : 'text-caution-light'">{% trans "Logistics & Supply" %}</h3>
+    </div>
+    <p class="mb-3 text-xs opacity-60">{% trans "Issue logistics orders governing supply chains, transport routes, and flow of goods across community infrastructure." %}</p>
+    <div class="flex flex-wrap gap-2">
+      <button type="button"
+              @click="openDecision('logistics_order', '{% trans "Logistics Order" %}', 'fa-solid fa-truck-fast')"
+              :class="darkMode ? 'border-caution-dark/50 text-caution-dark' : 'border-caution-light/50 text-caution-light'"
+              class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold hover:opacity-80">
+        <i class="fa-solid fa-truck-fast"></i> {% trans "Issue Logistics Order" %}
+      </button>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if mag.role.overseeing_interior %}
+  <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-xl border p-5 shadow-sm">
+    <div class="mb-3 flex items-center gap-2">
+      <i class="fa-solid fa-compass" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+      <h3 class="font-bold">{% trans "Interior & Movement" %}</h3>
+    </div>
+    <p class="mb-3 text-xs opacity-60">{% trans "Issue directives governing internal travel, location access, and movement of persons within community territory. May restrict or permit transit through controlled zones." %}</p>
+    <div class="flex flex-wrap gap-2">
+      <button type="button"
+              @click="openDecision('interior_directive', '{% trans "Interior Directive" %}', 'fa-solid fa-compass')"
+              :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+              class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold hover:opacity-80">
+        <i class="fa-solid fa-compass"></i> {% trans "Issue Interior Directive" %}
+      </button>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if mag.role.overseeing_productivity %}
+  <section :class="darkMode ? 'border-success-dark/40 bg-bubble-bg-dark' : 'border-success-light/40 bg-bubble-bg-light'"
+           class="rounded-xl border p-5 shadow-sm">
+    <div class="mb-3 flex items-center gap-2">
+      <i class="fa-solid fa-briefcase" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+      <h3 class="font-bold" :class="darkMode ? 'text-success-dark' : 'text-success-light'">{% trans "Productivity & Work" %}</h3>
+    </div>
+    <p class="mb-3 text-xs opacity-60">{% trans "Issue directives on community work assignments, labour standards, and productivity programmes. May set mandatory output targets and review community work-record compliance." %}</p>
+    <div class="flex flex-wrap gap-2">
+      <button type="button"
+              @click="openDecision('productivity_directive', '{% trans "Productivity Directive" %}', 'fa-solid fa-briefcase')"
+              :class="darkMode ? 'border-success-dark/50 text-success-dark' : 'border-success-light/50 text-success-light'"
+              class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold hover:opacity-80">
+        <i class="fa-solid fa-briefcase"></i> {% trans "Issue Productivity Directive" %}
+      </button>
+    </div>
+  </section>
+  {% endif %}
+
+  {# — General directive — #}
+  <div class="flex justify-end">
+    <button type="button"
+            @click="openDecision('general', '{% trans "General Directive" %}', 'fa-solid fa-scroll')"
+            :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+            class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold hover:opacity-80">
+      <i class="fa-solid fa-scroll"></i> {% trans "Issue General Directive" %}
+    </button>
+  </div>
+
+  {# — Decision form (slide-down panel) — #}
+  <div x-show="decisionOpen" x-cloak
+       x-transition:enter="transition ease-out duration-200"
+       x-transition:enter-start="opacity-0 -translate-y-2"
+       x-transition:enter-end="opacity-100 translate-y-0"
+       :class="darkMode ? 'border-warn-dark/50 bg-warn-dark/10' : 'border-warn-light/50 bg-warn-light/10'"
+       class="rounded-xl border p-5 shadow-sm">
+    <div class="mb-4 flex items-center justify-between">
+      <h3 class="flex items-center gap-2 font-bold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">
+        <i :class="dtypeIcon"></i>
+        <span x-text="dtypeLabel"></span>
+      </h3>
+      <button type="button" @click="decisionOpen = false" class="text-xs opacity-60 hover:opacity-100">
+        <i class="fa-solid fa-times"></i>
+      </button>
+    </div>
+    <p class="mb-4 text-xs opacity-70">
+      {% trans "This decision will be recorded immediately in the public ledger and the assembly may review, challenge, or trigger an impeachment proceeding based on it." %}
+    </p>
+    <form method="post" action="{% url 'magistrate:make_decision' mag.pk %}" class="space-y-3">
+      {% csrf_token %}
+      <input type="hidden" name="decision_type" :value="dtype">
+      <div>
+        <label class="mb-1 block text-xs font-semibold uppercase opacity-60">{% trans "Title" %}</label>
+        <input type="text" name="title" required
+               :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+               class="w-full rounded-lg border px-3 py-2 text-sm">
+      </div>
+      <div>
+        <label class="mb-1 block text-xs font-semibold uppercase opacity-60">{% trans "Full text / rationale" %}</label>
+        <textarea name="body" rows="4"
+                  :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                  class="w-full rounded-lg border px-3 py-2 text-sm"></textarea>
+      </div>
+      <div class="flex justify-end gap-2">
+        <button type="button" @click="decisionOpen = false"
+                class="rounded-lg border border-current/20 px-4 py-2 text-xs font-semibold">
+          {% trans "Cancel" %}
+        </button>
+        <button type="submit"
+                :class="darkMode ? 'bg-warn-dark text-primary-bg-dark' : 'bg-warn-light text-primary-bg-light'"
+                class="inline-flex items-center gap-2 rounded-lg px-5 py-2 text-xs font-bold hover:opacity-90">
+          <i class="fa-solid fa-gavel"></i> {% trans "Issue & Record Decision" %}
+        </button>
+      </div>
+    </form>
+  </div>
+
+  {# — Decision Ledger — #}
+  <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-xl border p-5 shadow-sm">
+    <h3 class="mb-4 flex items-center gap-2 font-bold text-lg">
+      <i class="fa-solid fa-book-open"></i> {% trans "Decision Ledger" %}
+      <span class="ml-auto text-xs font-normal opacity-50">{% trans "Publicly visible · Assembly reviewable" %}</span>
+    </h3>
+
+    {% if decisions %}
+      <div class="space-y-2">
+        {% for d in decisions %}
+          <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+               class="rounded-lg p-4">
+            <div class="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <div class="font-semibold text-sm">{{ d.title }}</div>
+                <div class="mt-0.5 text-xs opacity-50">
+                  {{ d.type_label }} · {{ d.created_at|date:"Y-m-d H:i" }}
+                </div>
+              </div>
+              <div class="flex items-center gap-2 shrink-0">
+                <span class="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase
+                  {% if d.status == 'active' %}
+                    " :class="darkMode ? 'bg-success-dark/20 text-success-dark' : 'bg-success-light/20 text-success-light'">
+                  {% elif d.status == 'revoked' %}
+                    border border-current/20 opacity-40">
+                  {% else %}
+                    " :class="darkMode ? 'bg-caution-dark/20 text-caution-dark' : 'bg-caution-light/20 text-caution-light'">
+                  {% endif %}
+                  {{ d.get_status_display }}
+                </span>
+                {% if d.status == 'active' %}
+                  <form method="post" action="{% url 'magistrate:revoke_decision' d.pk %}">
+                    {% csrf_token %}
+                    <button type="submit"
+                            class="inline-flex items-center gap-1 rounded border border-red-400/30 bg-red-500/10 px-2 py-1 text-xs font-semibold text-red-600 hover:opacity-80">
+                      <i class="fa-solid fa-ban text-[10px]"></i> {% trans "Revoke" %}
+                    </button>
+                  </form>
+                {% endif %}
+              </div>
+            </div>
+            {% if d.body %}
+              <p class="mt-2 text-xs opacity-60 line-clamp-2">{{ d.body }}</p>
+            {% endif %}
+            {% if d.reviewed_by %}
+              <div class="mt-1 text-xs opacity-40">
+                <i class="fa-solid fa-eye mr-1"></i>{% trans "Reviewed by" %} {{ d.reviewed_by }} · {{ d.reviewed_at|date:"M d, Y" }}
+              </div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="text-sm italic opacity-60">{% trans "No decisions issued yet." %}</p>
+    {% endif %}
+  </section>
+
+</div>
+{% endblock %}

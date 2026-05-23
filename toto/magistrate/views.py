@@ -13,7 +13,7 @@ from toto.assembly.models import AssemblyProposal, AssemblyProposalType, Assembl
 from toto.socialhub.models import Community
 from toto.ui import PageProcessor
 
-from .models import Magistrate, MagistrateReport, MagistrateRole
+from .models import Magistrate, MagistrateDecision, MagistrateReport, MagistrateRole
 from .queries import overview_stats, reports_by_status_chart_data, seats_by_role_chart_data, seats_by_status_chart_data
 
 
@@ -76,6 +76,12 @@ def magistrate_detail(request, pk):
     )
     reports = mag.reports.select_related("acknowledged_by").order_by("-created_at")
     person = _person(request)
+    community = mag.community
+    can_impeach = (
+        mag.is_active
+        and mag.person != person
+        and community.members.filter(pk=person.pk).exists()
+    )
 
     return _render(request, "magistrate/magistrate_detail.html", {
         "mag": mag,
@@ -83,7 +89,245 @@ def magistrate_detail(request, pk):
         "person": person,
         "can_report": mag.person == person,
         "can_acknowledge": person != mag.person,
+        "can_impeach": can_impeach,
     })
+
+
+# ---------------------------------------------------------------------------
+# Command console (power view — magistrate-only)
+# ---------------------------------------------------------------------------
+
+def _collect_role_stats(mag):
+    stats = {}
+    role = mag.role
+    community = mag.community
+
+    if role.overseeing_mobilization:
+        try:
+            from toto.mobilization.models import Deployment
+            stats["active_deployments"] = Deployment.objects.filter(status="active").count()
+        except Exception:
+            pass
+
+    if role.overseeing_tribunal:
+        try:
+            from toto.tribunal.models import TribunalCase
+            stats["active_tribunal_cases"] = TribunalCase.objects.filter(
+                status__in=["open", "in_progress"]
+            ).count()
+        except Exception:
+            pass
+
+    if role.overseeing_public_order:
+        try:
+            from toto.detections.models import Detection
+            stats["active_detections"] = Detection.objects.filter(status="active").count()
+        except Exception:
+            pass
+
+    if role.overseeing_finance or role.overseeing_legislation:
+        try:
+            from toto.assembly.models import (
+                AssemblyProposal, AssemblyStatus,
+                CommunityTransactionFee, PollTax,
+            )
+            if role.overseeing_finance:
+                stats["active_fees"] = CommunityTransactionFee.objects.filter(
+                    community=community, active=True
+                ).count()
+                stats["active_poll_taxes"] = PollTax.objects.filter(
+                    community=community, active=True
+                ).count()
+            if role.overseeing_legislation:
+                stats["open_proposals"] = AssemblyProposal.objects.filter(
+                    community=community, status=AssemblyStatus.OPEN
+                ).count()
+        except Exception:
+            pass
+
+    return stats
+
+
+def _domain_actions(role):
+    actions = []
+    if role.overseeing_mobilization:
+        actions += [
+            ("mobilization_call",  "Mobilization Call",       "fa-solid fa-shield-halved",       "warn"),
+            ("emergency_declare",  "Emergency Declaration",   "fa-solid fa-triangle-exclamation", "warn"),
+        ]
+    if role.overseeing_tribunal:
+        actions.append(("tribunal_order", "Tribunal Order", "fa-solid fa-gavel", "accent"))
+    if role.overseeing_trade:
+        actions.append(("trade_order", "Trade Order", "fa-solid fa-store", "success"))
+        actions.append(("trade_reversal", "Trade Reversal Order", "fa-solid fa-rotate-left", "warn"))
+    if role.overseeing_merchandise:
+        actions.append(("merchandise_fine", "Merchandise Quality Fine", "fa-solid fa-magnifying-glass", "caution"))
+    if role.overseeing_finance:
+        actions.append(("finance_directive", "Finance Directive", "fa-solid fa-coins", "success"))
+    if role.overseeing_public_order:
+        actions.append(("public_order_directive", "Public Order Directive", "fa-solid fa-shield-cat", "caution"))
+    if role.overseeing_legislation:
+        actions.append(("legislation_fast_track", "Legislation Fast-Track", "fa-solid fa-feather-pointed", "accent"))
+    if role.overseeing_education:
+        actions.append(("education_directive", "Education Directive", "fa-solid fa-graduation-cap", "accent"))
+    if role.overseeing_relations:
+        actions.append(("relations_directive", "Relations Directive", "fa-solid fa-handshake", "success"))
+    if role.overseeing_logistics:
+        actions.append(("logistics_order", "Logistics Order", "fa-solid fa-truck-fast", "caution"))
+    if role.overseeing_interior:
+        actions.append(("interior_directive", "Interior Directive", "fa-solid fa-compass", "accent"))
+    if role.overseeing_productivity:
+        actions.append(("productivity_directive", "Productivity Directive", "fa-solid fa-briefcase", "success"))
+    actions.append(("general", "General Directive", "fa-solid fa-scroll", "accent"))
+    return actions
+
+
+@login_required
+def magistrate_dashboard(request, pk):
+    mag = get_object_or_404(
+        Magistrate.objects.select_related("person", "role", "community"),
+        pk=pk,
+    )
+    person = _person(request)
+    if mag.person != person:
+        raise PermissionDenied
+
+    decisions = (
+        MagistrateDecision.objects
+        .filter(magistrate=mag)
+        .select_related("reviewed_by")
+        .order_by("-created_at")
+    )
+
+    days_remaining = None
+    if mag.term_end:
+        days_remaining = max(0, (mag.term_end - timezone.now().date()).days)
+
+    return _render(request, "magistrate/my_dashboard.html", {
+        "mag": mag,
+        "decisions": decisions[:25],
+        "role_stats": _collect_role_stats(mag),
+        "domain_actions": _domain_actions(mag.role),
+        "active_decisions_count": decisions.filter(status="active").count(),
+        "days_remaining": days_remaining,
+        "reports_pending": mag.reports.filter(status="submitted").count(),
+    })
+
+
+@login_required
+@require_POST
+def make_decision(request, pk):
+    mag = get_object_or_404(Magistrate, pk=pk)
+    person = _person(request)
+    if mag.person != person:
+        raise PermissionDenied
+    if not mag.is_active:
+        messages.error(request, "Your term has ended or you are not currently active.")
+        return redirect("magistrate:my_dashboard", pk=pk)
+
+    decision_type = request.POST.get("decision_type", "general")
+    title = request.POST.get("title", "").strip()
+    body = request.POST.get("body", "").strip()
+
+    if not title:
+        messages.error(request, "Decision title is required.")
+        return redirect("magistrate:my_dashboard", pk=pk)
+
+    valid_types = [t for t, _ in MagistrateDecision.DECISION_TYPES]
+    if decision_type not in valid_types:
+        decision_type = "general"
+
+    MagistrateDecision.objects.create(
+        magistrate=mag,
+        community=mag.community,
+        decision_type=decision_type,
+        title=title,
+        body=body,
+    )
+    messages.success(request, f'Decision "{title}" entered in the ledger. The assembly may review it.')
+    return redirect("magistrate:my_dashboard", pk=pk)
+
+
+@login_required
+@require_POST
+def revoke_decision(request, decision_pk):
+    decision = get_object_or_404(MagistrateDecision, pk=decision_pk)
+    person = _person(request)
+    if decision.magistrate.person != person:
+        raise PermissionDenied
+    if decision.status != "active":
+        messages.info(request, "This decision is not active.")
+        return redirect("magistrate:my_dashboard", pk=decision.magistrate_id)
+    decision.status = "revoked"
+    decision.save(update_fields=["status", "updated_at"])
+    messages.success(request, f'Decision "{decision.title}" revoked.')
+    return redirect("magistrate:my_dashboard", pk=decision.magistrate_id)
+
+
+@login_required
+@require_POST
+def review_decision(request, decision_pk):
+    decision = get_object_or_404(
+        MagistrateDecision.objects.select_related("magistrate__person", "community"),
+        pk=decision_pk,
+    )
+    person = _person(request)
+    community = decision.community
+    if not community.members.filter(pk=person.pk).exists():
+        raise PermissionDenied
+    if decision.magistrate.person == person:
+        messages.error(request, "You cannot review your own decisions.")
+        return redirect("assembly:community_assembly", slug=community.slug)
+    if decision.status != "active":
+        messages.info(request, "Only active decisions can be marked as reviewed.")
+        return redirect("assembly:community_assembly", slug=community.slug)
+    decision.status = "reviewed"
+    decision.reviewed_by = person
+    decision.reviewed_at = timezone.now()
+    decision.save(update_fields=["status", "reviewed_by", "reviewed_at", "updated_at"])
+    messages.success(request, f'Decision "{decision.title}" acknowledged by assembly.')
+    return redirect("assembly:community_assembly", slug=community.slug)
+
+
+@login_required
+@require_POST
+def impeach_propose(request, pk):
+    mag = get_object_or_404(
+        Magistrate.objects.select_related("community", "person", "role"), pk=pk
+    )
+    person = _person(request)
+    community = mag.community
+
+    if not community.members.filter(pk=person.pk).exists():
+        raise PermissionDenied
+    if mag.person == person:
+        messages.error(request, "You cannot propose your own impeachment.")
+        return redirect("magistrate:detail", pk=pk)
+    if not mag.is_active:
+        messages.error(request, "This magistrate is not currently active.")
+        return redirect("magistrate:detail", pk=pk)
+
+    reason = request.POST.get("reason", "").strip()
+    closes_date = request.POST.get("closes_date", "").strip()
+    closes_at = None
+    if closes_date:
+        from django.utils.dateparse import parse_datetime
+        closes_at = parse_datetime(f"{closes_date}T23:59:00")
+
+    from toto.assembly.models import AssemblyProposal, AssemblyProposalType, AssemblyStatus
+    AssemblyProposal.objects.create(
+        community=community,
+        proposal_type=AssemblyProposalType.IMPEACHMENT,
+        title=f"Impeach {mag.person} ({mag.role.name})",
+        body=reason or f"Proposal to remove {mag.person} from the office of {mag.role.name} in {community}.",
+        status=AssemblyStatus.OPEN,
+        opened_by=person,
+        opens_at=timezone.now(),
+        closes_at=closes_at,
+        metadata={"magistrate_id": mag.pk},
+    )
+    messages.success(request, f"Impeachment proposal for {mag.person} submitted to the assembly for vote.")
+    return redirect("assembly:community_assembly", slug=community.slug)
 
 
 # ---------------------------------------------------------------------------

@@ -52,6 +52,30 @@ class MagistrateRole(models.Model):
         default=False,
         help_text="Holder may propose and fast-track legislation.",
     )
+    overseeing_merchandise = models.BooleanField(
+        default=False,
+        help_text="Holder may inspect merchandise quality and impose fines. Fines may be contested before the tribunal.",
+    )
+    overseeing_education = models.BooleanField(
+        default=False,
+        help_text="Holder oversees community education, academies, and knowledge standards.",
+    )
+    overseeing_relations = models.BooleanField(
+        default=False,
+        help_text="Holder oversees inter-community diplomatic relations, treaties, and external liaisons.",
+    )
+    overseeing_logistics = models.BooleanField(
+        default=False,
+        help_text="Holder oversees logistics, supply chains, and transport operations.",
+    )
+    overseeing_interior = models.BooleanField(
+        default=False,
+        help_text="Holder oversees internal travel, location access, and movement of persons within community territory.",
+    )
+    overseeing_productivity = models.BooleanField(
+        default=False,
+        help_text="Holder oversees community productivity, work assignments, and labour standards.",
+    )
 
     order = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -78,6 +102,12 @@ class MagistrateRole(models.Model):
             ("overseeing_finance", "Finance"),
             ("overseeing_public_order", "Public Order"),
             ("overseeing_legislation", "Legislation"),
+            ("overseeing_merchandise", "Merchandise Quality"),
+            ("overseeing_education", "Education"),
+            ("overseeing_relations", "Inter-Community Relations"),
+            ("overseeing_logistics", "Logistics"),
+            ("overseeing_interior", "Interior & Movement"),
+            ("overseeing_productivity", "Productivity & Work"),
         ]
         return [label for field, label in mapping if getattr(self, field)]
 
@@ -150,6 +180,69 @@ class Magistrate(models.Model):
         if self.term_end and timezone.now().date() > self.term_end:
             return False
         return True
+
+
+class MagistrateDecision(models.Model):
+    """
+    Fast executive decision issued by an active magistrate.
+    Enters the community decision ledger immediately and is subject to assembly review.
+    """
+    DECISION_TYPES = [
+        ("mobilization_call",      "Mobilization Call"),
+        ("emergency_declare",      "Emergency Declaration"),
+        ("tribunal_order",         "Tribunal Order"),
+        ("trade_order",            "Trade Order"),
+        ("finance_directive",      "Finance Directive"),
+        ("public_order_directive", "Public Order Directive"),
+        ("legislation_fast_track", "Legislation Fast-Track"),
+        ("trade_reversal",         "Trade Reversal Order"),
+        ("merchandise_fine",       "Merchandise Quality Fine"),
+        ("education_directive",    "Education Directive"),
+        ("relations_directive",    "Relations Directive"),
+        ("logistics_order",        "Logistics Order"),
+        ("interior_directive",     "Interior Directive"),
+        ("productivity_directive", "Productivity Directive"),
+        ("general",                "General Directive"),
+    ]
+    STATUS_CHOICES = [
+        ("active",   "Active"),
+        ("revoked",  "Revoked"),
+        ("reviewed", "Reviewed by Assembly"),
+    ]
+
+    magistrate = models.ForeignKey(
+        Magistrate, on_delete=models.CASCADE, related_name="decisions",
+    )
+    community = models.ForeignKey(
+        "socialhub.Community", on_delete=models.CASCADE, related_name="magistrate_decisions",
+    )
+    decision_type = models.CharField(max_length=30, choices=DECISION_TYPES, db_index=True)
+    title = models.CharField(max_length=255)
+    body = models.TextField(blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="active", db_index=True)
+    reviewed_by = models.ForeignKey(
+        "people.Person", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="reviewed_magistrate_decisions",
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Magistrate decision"
+        verbose_name_plural = "Magistrate decisions"
+        indexes = [
+            models.Index(fields=["community", "status"]),
+        ]
+
+    def __str__(self):
+        return self.title
+
+    @property
+    def type_label(self) -> str:
+        return dict(self.DECISION_TYPES).get(self.decision_type, self.decision_type)
 
 
 class MagistrateReport(models.Model):

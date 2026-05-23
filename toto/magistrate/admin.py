@@ -1,11 +1,11 @@
 from django.contrib import admin
 
-from .models import Magistrate, MagistrateReport, MagistrateRole
+from .models import Magistrate, MagistrateDecision, MagistrateReport, MagistrateRole
 
 
 @admin.register(MagistrateRole)
 class MagistrateRoleAdmin(admin.ModelAdmin):
-    list_display = ("name", "slug", "overseeing_mobilization", "overseeing_tribunal", "overseeing_trade", "overseeing_finance", "overseeing_public_order", "overseeing_legislation", "order")
+    list_display = ("name", "slug", "overseeing_mobilization", "overseeing_tribunal", "overseeing_trade", "overseeing_merchandise", "overseeing_finance", "overseeing_public_order", "overseeing_legislation", "order")
     list_editable = ("order",)
     prepopulated_fields = {"slug": ("name",)}
     search_fields = ("name",)
@@ -37,3 +37,13 @@ class MagistrateReportAdmin(admin.ModelAdmin):
     search_fields = ("title", "magistrate__person__display_name")
     raw_id_fields = ("magistrate", "acknowledged_by")
     ordering = ("-created_at",)
+
+
+@admin.register(MagistrateDecision)
+class MagistrateDecisionAdmin(admin.ModelAdmin):
+    list_display = ("title", "decision_type", "magistrate", "community", "status", "created_at")
+    list_filter = ("decision_type", "status", "community")
+    search_fields = ("title", "magistrate__person__display_name", "body")
+    raw_id_fields = ("magistrate", "community", "reviewed_by")
+    ordering = ("-created_at",)
+    readonly_fields = ("created_at", "updated_at")

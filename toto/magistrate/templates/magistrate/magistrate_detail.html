@@ -50,6 +50,14 @@
         {% endif %}
       </div>
 
+      {% if can_report and mag.is_active %}
+        <a href="{% url 'magistrate:my_dashboard' mag.pk %}"
+           :class="darkMode ? 'bg-warn-dark text-primary-bg-dark' : 'bg-warn-light text-primary-bg-light'"
+           class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold shadow-sm hover:opacity-90">
+          <i class="fa-solid fa-terminal"></i> {% trans "Command Console" %}
+        </a>
+      {% endif %}
+
       {% if mag.source_proposal %}
         <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
              class="rounded-lg p-3 text-xs space-y-1 min-w-48">
@@ -243,6 +251,58 @@
 
     </aside>
   </div>
+
+  {# — Impeachment — #}
+  {% if can_impeach %}
+  <section x-data="{ impeachOpen: false }"
+           :class="darkMode ? 'border-warn-dark/30 bg-bubble-bg-dark' : 'border-warn-light/30 bg-bubble-bg-light'"
+           class="rounded-lg border p-5 shadow-sm">
+    <div class="flex items-center justify-between">
+      <div>
+        <h3 class="font-bold flex items-center gap-2 text-sm"
+            :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">
+          <i class="fa-solid fa-gavel"></i> {% trans "Propose Impeachment" %}
+        </h3>
+        <p class="mt-0.5 text-xs opacity-60">
+          {% trans "Submit an impeachment proposal to the community assembly. The assembly votes — if quorum passes, this magistrate is removed from office." %}
+        </p>
+      </div>
+      <button type="button" @click="impeachOpen = !impeachOpen"
+              :class="darkMode ? 'border-warn-dark/50 text-warn-dark' : 'border-warn-light/50 text-warn-light'"
+              class="shrink-0 inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-semibold hover:opacity-80">
+        <i class="fa-solid fa-gavel"></i> {% trans "Impeach" %}
+      </button>
+    </div>
+
+    <div x-show="impeachOpen" x-cloak class="mt-4">
+      <form method="post" action="{% url 'magistrate:impeach_propose' mag.pk %}" class="space-y-3">
+        {% csrf_token %}
+        <div>
+          <label class="mb-1 block text-xs font-semibold uppercase opacity-60">{% trans "Reason / grounds for impeachment" %}</label>
+          <textarea name="reason" rows="3" required
+                    :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                    class="w-full rounded-lg border px-3 py-2 text-sm"
+                    placeholder="{% trans "Describe the grounds for removal..." %}"></textarea>
+        </div>
+        <div>
+          <label class="mb-1 block text-xs font-semibold uppercase opacity-60">{% trans "Voting deadline (optional)" %}</label>
+          <input type="date" name="closes_date"
+                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                 class="rounded-lg border px-3 py-2 text-sm">
+        </div>
+        <div class="flex justify-end gap-2">
+          <button type="button" @click="impeachOpen = false"
+                  class="rounded-lg border border-current/20 px-3 py-1.5 text-xs font-semibold">{% trans "Cancel" %}</button>
+          <button type="submit"
+                  :class="darkMode ? 'bg-warn-dark text-primary-bg-dark' : 'bg-warn-light text-primary-bg-light'"
+                  class="rounded-lg px-4 py-1.5 text-xs font-semibold">
+            <i class="fa-solid fa-gavel mr-1"></i>{% trans "Submit to Assembly" %}
+          </button>
+        </div>
+      </form>
+    </div>
+  </section>
+  {% endif %}
 
 </div>
 {% endblock %}

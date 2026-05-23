@@ -141,8 +141,18 @@ def _enact_proposal(proposal: AssemblyProposal) -> AssemblyDecision:
             active=True,
         )
 
-    # Magistrate election — proposal passes; seat is confirmed via magistrate:elect_confirm
-    # (separate action so the nominator can review before the seat is activated)
+    # Magistrate election — confirmed via separate magistrate:elect_confirm action
+    # Magistrate impeachment — immediately updates the seat status
+    elif proposal.proposal_type == AssemblyProposalType.IMPEACHMENT:
+        mag_id = proposal.metadata.get("magistrate_id")
+        if mag_id:
+            try:
+                from toto.magistrate.models import Magistrate as _Magistrate
+                _Magistrate.objects.filter(
+                    pk=mag_id, status__in=["active", "suspended"]
+                ).update(status="impeached")
+            except Exception:
+                pass
 
     return decision
 
@@ -213,8 +223,20 @@ def community_assembly(request, slug):
 
     proposal_type_choices = [
         (val, label) for val, label in AssemblyProposalType.choices
-        if val != AssemblyProposalType.MAGISTRATE_ELECTION
+        if val not in (AssemblyProposalType.MAGISTRATE_ELECTION, AssemblyProposalType.IMPEACHMENT)
     ]
+
+    magistrate_decisions = []
+    try:
+        from toto.magistrate.models import MagistrateDecision
+        magistrate_decisions = list(
+            MagistrateDecision.objects
+            .filter(community=community)
+            .select_related("magistrate__person", "magistrate__role", "reviewed_by")
+            .order_by("-created_at")[:15]
+        )
+    except Exception:
+        pass
 
     return _render(request, "assembly/community_assembly.html", {
         "community": community,
@@ -234,6 +256,7 @@ def community_assembly(request, slug):
         "magistrate_roles": magistrate_roles,
         "eligible_nominees": eligible_nominees,
         "passed_elections": passed_elections,
+        "magistrate_decisions": magistrate_decisions,
     })
 
 

@@ -54,7 +54,7 @@ ROLES = [
         "icon": "fa-solid fa-coins",
         "description": (
             "Financial officer. Oversees community finances, taxation, and trade. "
-            "Reports treasury status to the assembly each quarter."
+            "May order trade reversals (with mandatory fine) and reports treasury status to the assembly each quarter."
         ),
         "overseeing_finance": True,
         "overseeing_trade": True,
@@ -65,12 +65,71 @@ ROLES = [
         "slug": "aedile",
         "icon": "fa-solid fa-building-columns",
         "description": (
-            "Public works and order magistrate. Oversees infrastructure, public spaces, "
-            "and local commerce."
+            "Public works and market magistrate. Oversees infrastructure, public spaces, "
+            "and local commerce. May inspect merchandise quality and impose fines contestable before the tribunal."
         ),
         "overseeing_trade": True,
         "overseeing_public_order": True,
+        "overseeing_merchandise": True,
         "order": 5,
+    },
+    {
+        "name": "Censor",
+        "slug": "censor",
+        "icon": "fa-solid fa-graduation-cap",
+        "description": (
+            "Overseer of education and civic standards. Maintains the quality of community academies, "
+            "knowledge programmes, and may fast-track educational legislation."
+        ),
+        "overseeing_education": True,
+        "overseeing_legislation": True,
+        "order": 6,
+    },
+    {
+        "name": "Propraetor",
+        "slug": "propraetor",
+        "icon": "fa-solid fa-handshake",
+        "description": (
+            "Diplomatic magistrate. Oversees inter-community relations, external treaties, "
+            "and liaison with other communities on behalf of the assembly."
+        ),
+        "overseeing_relations": True,
+        "order": 7,
+    },
+    {
+        "name": "Curator",
+        "slug": "curator",
+        "icon": "fa-solid fa-truck-fast",
+        "description": (
+            "Supply and logistics magistrate. Oversees transport operations, supply chains, "
+            "and the flow of goods across community routes."
+        ),
+        "overseeing_logistics": True,
+        "overseeing_public_order": True,
+        "order": 8,
+    },
+    {
+        "name": "Praetor",
+        "slug": "praetor",
+        "icon": "fa-solid fa-compass",
+        "description": (
+            "Interior magistrate. Oversees internal travel, location access, and the "
+            "movement of persons within community territory. May restrict or permit transit through controlled zones."
+        ),
+        "overseeing_interior": True,
+        "overseeing_public_order": True,
+        "order": 9,
+    },
+    {
+        "name": "Procurator",
+        "slug": "procurator",
+        "icon": "fa-solid fa-briefcase",
+        "description": (
+            "Productivity magistrate. Oversees community work assignments, labour standards, "
+            "and output compliance. May set mandatory productivity targets and review work records."
+        ),
+        "overseeing_productivity": True,
+        "order": 10,
     },
 ]
 
@@ -146,7 +205,51 @@ class Command(IngressCommand):
                     created += 1
                     self._seed_reports(mag)
 
+        self._seed_founder_prefect()
         print(f"✔  Magistrate ingress complete: {MagistrateRole.objects.count()} roles, {created} new seats.")
+
+    def _seed_founder_prefect(self):
+        """Assign the admin user's Person (Founder) as Prefect in the first community — for testing."""
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        admin_user = User.objects.filter(is_superuser=True).order_by("id").first()
+        if not admin_user:
+            return
+
+        founder = Person.objects.filter(user=admin_user).first()
+        if not founder:
+            # Try by common names
+            founder = Person.objects.filter(display_name__icontains="founder").first()
+        if not founder:
+            print("  ⚠  No founder/admin Person found for Prefect seed.")
+            return
+
+        if not founder.is_federal_agent:
+            founder.is_federal_agent = True
+            founder.save(update_fields=["is_federal_agent"])
+
+        prefect_role = MagistrateRole.objects.filter(slug="prefect").first()
+        community = Community.objects.first()
+        if not prefect_role or not community:
+            return
+
+        today = timezone.now().date()
+        mag, created = Magistrate.objects.get_or_create(
+            person=founder,
+            role=prefect_role,
+            community=community,
+            defaults={
+                "status": "active",
+                "term_start": today,
+                "term_end": today + timedelta(days=365),
+                "elected_at": timezone.now(),
+                "notes": "Seeded by ingress for testing — founder Prefect seat.",
+            },
+        )
+        if created:
+            print(f"  ✔  {founder} seated as Prefect in {community} (testing seat).")
+        else:
+            print(f"  ·  Founder Prefect seat already exists.")
 
     def _seed_roles(self):
         for r in ROLES:
@@ -162,6 +265,12 @@ class Command(IngressCommand):
                     "overseeing_finance": r.get("overseeing_finance", False),
                     "overseeing_public_order": r.get("overseeing_public_order", False),
                     "overseeing_legislation": r.get("overseeing_legislation", False),
+                    "overseeing_merchandise": r.get("overseeing_merchandise", False),
+                    "overseeing_education": r.get("overseeing_education", False),
+                    "overseeing_relations": r.get("overseeing_relations", False),
+                    "overseeing_logistics": r.get("overseeing_logistics", False),
+                    "overseeing_interior": r.get("overseeing_interior", False),
+                    "overseeing_productivity": r.get("overseeing_productivity", False),
                     "order": r["order"],
                 },
             )
