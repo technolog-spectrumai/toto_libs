@@ -1,9 +1,11 @@
+from datetime import timedelta
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 
 from toto.assets.models import LedgerAccount, LedgerTransaction
-from toto.assets.services.assets import create_asset, reverse_transaction, transfer_asset
+from toto.assets.services.assets import create_asset, create_obligation, reverse_transaction, transfer_asset
 from toto.ingress import IngressCommand
 
 
@@ -21,6 +23,7 @@ class Command(IngressCommand):
             self._seed_transfers(assets, accounts)
             self._seed_user_wallets(accounts, assets)
 
+        self._seed_founder_obligations(accounts, assets)
         self.stdout.write(self.style.SUCCESS("✅  Asset ledger ingress complete."))
 
     # ------------------------------------------------------------------ #
@@ -361,5 +364,112 @@ class Command(IngressCommand):
             try:
                 transfer_asset(**spec)
                 self.stdout.write(f"  + distribution {ref}")
+            except Exception as exc:
+                self.stdout.write(self.style.ERROR(f"  ✗ {ref}: {exc}"))
+
+    # ------------------------------------------------------------------ #
+    # Founder obligations (always — for testing obligation UI)            #
+    # ------------------------------------------------------------------ #
+
+    def _seed_founder_obligations(self, accounts: dict, assets: dict):
+        from django.contrib.auth import get_user_model
+        from toto.assets.models import Obligation
+
+        User = get_user_model()
+        admin = User.objects.filter(is_superuser=True).order_by("id").first()
+        if not admin:
+            self.stdout.write(self.style.WARNING("  ⚠ No superuser found — skipping founder obligations."))
+            return
+
+        # Get or create a ledger account linked to the admin user
+        founder_account, created = LedgerAccount.objects.get_or_create(
+            code="founder",
+            defaults={
+                "name": f"Founder — {admin.get_full_name() or admin.username}",
+                "account_type": "user",
+                "active": True,
+                "user": admin,
+            },
+        )
+        if not created and founder_account.user_id != admin.pk:
+            founder_account.user = admin
+            founder_account.save(update_fields=["user"])
+        if created:
+            self.stdout.write(f"  + account founder (linked to {admin})")
+
+        treasury = accounts.get("treasury")
+        tpln = assets.get("TPLN")
+        tusd = assets.get("TUSD")
+
+        # Fund founder account so obligations are meaningful
+        funding = []
+        if tpln:
+            funding.append(dict(
+                asset=tpln, sender_account=accounts["reserve_main"],
+                receiver_account=founder_account,
+                amount=Decimal("8000.00"),
+                reference="dist-tpln-founder-001",
+                description="TPLN allocation to Founder",
+            ))
+        if tusd:
+            funding.append(dict(
+                asset=tusd, sender_account=accounts["reserve_main"],
+                receiver_account=founder_account,
+                amount=Decimal("3000.00"),
+                reference="dist-tusd-founder-001",
+                description="TUSD allocation to Founder",
+            ))
+
+        for spec in funding:
+            ref = spec["reference"]
+            if LedgerTransaction.objects.filter(reference=ref).exists():
+                self.stdout.write(self.style.WARNING(f"  ⚠ skipped existing funding {ref}"))
+                continue
+            try:
+                transfer_asset(**spec)
+                self.stdout.write(f"  + funding {ref}")
+            except Exception as exc:
+                self.stdout.write(self.style.ERROR(f"  ✗ {ref}: {exc}"))
+
+        # Test obligations against founder account → treasury
+        obligation_specs = []
+        if tpln and treasury:
+            obligation_specs.append(dict(
+                reference="test-obligation-founder-tpln-001",
+                debtor_account=founder_account,
+                creditor_account=treasury,
+                asset=tpln,
+                amount=Decimal("250.00"),
+                due_at=timezone.now() + timedelta(days=14),
+                order_reference="test-fine-001",
+            ))
+        if tusd and treasury:
+            obligation_specs.append(dict(
+                reference="test-obligation-founder-tusd-001",
+                debtor_account=founder_account,
+                creditor_account=treasury,
+                asset=tusd,
+                amount=Decimal("100.00"),
+                due_at=timezone.now() + timedelta(days=7),
+                order_reference="test-fine-002",
+            ))
+            obligation_specs.append(dict(
+                reference="test-obligation-founder-tusd-overdue-001",
+                debtor_account=founder_account,
+                creditor_account=treasury,
+                asset=tusd,
+                amount=Decimal("75.00"),
+                due_at=timezone.now() - timedelta(days=3),
+                order_reference="test-fine-003",
+            ))
+
+        for spec in obligation_specs:
+            ref = spec["reference"]
+            if Obligation.objects.filter(reference=ref).exists():
+                self.stdout.write(self.style.WARNING(f"  ⚠ skipped existing obligation {ref}"))
+                continue
+            try:
+                create_obligation(**spec)
+                self.stdout.write(f"  + obligation {ref}")
             except Exception as exc:
                 self.stdout.write(self.style.ERROR(f"  ✗ {ref}: {exc}"))

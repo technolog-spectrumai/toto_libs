@@ -7,7 +7,7 @@ from toto.ingress import IngressCommand
 from toto.people.models import Person
 from toto.socialhub.models import Community
 
-from toto.magistrate.models import Magistrate, MagistrateReport, MagistrateRole
+from toto.magistrate.models import CommunityMagistrateSettings, Magistrate, MagistrateReport, MagistrateRole
 
 
 ROLES = [
@@ -210,6 +210,7 @@ class Command(IngressCommand):
                     self._seed_reports(mag)
 
         self._seed_founder_prefect()
+        self._seed_community_settings(communities[:3])
         print(f"✔  Magistrate ingress complete: {MagistrateRole.objects.count()} roles, {created} new seats.")
 
     def _seed_founder_prefect(self):
@@ -254,6 +255,28 @@ class Command(IngressCommand):
             print(f"  ✔  {founder} seated as Prefect in {community} (testing seat).")
         else:
             print(f"  ·  Founder Prefect seat already exists.")
+
+    def _seed_community_settings(self, communities):
+        """Create CommunityMagistrateSettings for each community, using the treasury account as collector."""
+        try:
+            from toto.assets.models import LedgerAccount
+            treasury = LedgerAccount.objects.filter(code="treasury").first()
+        except Exception:
+            treasury = None
+
+        for community in communities:
+            _, created = CommunityMagistrateSettings.objects.get_or_create(
+                community=community,
+                defaults={
+                    "max_fine_pct": 10,
+                    "fine_collection_account": treasury,
+                },
+            )
+            if created:
+                acct_label = treasury.code if treasury else "none"
+                print(f"  ✔  Magistrate settings for {community}: max 10%, collection → {acct_label}")
+            else:
+                print(f"  ·  Magistrate settings already exist for {community}")
 
     def _seed_roles(self):
         for r in ROLES:
