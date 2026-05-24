@@ -13,7 +13,6 @@
       uploading: false,
       error: null,
       results: null,
-      selectedDirectory: '',
       recentUploads: [],
 
       init() {
@@ -39,12 +38,9 @@
 
         const formData = new FormData();
         formData.append('file', file);
-        if (this.selectedDirectory) {
-          formData.append('directory_id', this.selectedDirectory);
-        }
 
         try {
-          const response = await fetch("{% url 'vault:gateway_upload' gateway.bucket.slug %}", {
+          const response = await fetch("{% url 'vault:gateway_upload' gateway.directory_id %}", {
             method: 'POST',
             headers: { 'X-CSRFToken': '{{ csrf_token }}' },
             body: formData,
@@ -112,26 +108,18 @@
     <!-- Upload zone -->
     <section class="space-y-4">
 
-      <!-- Directory picker -->
-      {% if directories %}
-      <div class="flex items-center gap-3">
-        <label :class="darkMode ? 'text-text-main-dark' : 'text-text-main-light'"
-               class="text-xs font-semibold opacity-65 whitespace-nowrap shrink-0">
-          {% trans "Upload location" %}
-        </label>
-        <select
-          x-model="selectedDirectory"
-          :class="darkMode
-            ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'
-            : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
-          class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20 transition shadow-sm">
-          <option value="">{% trans "Root" %} ({{ gateway.bucket.name }})</option>
-          {% for dir in directories %}
-            <option value="{{ dir.id }}">{{ dir.label }}</option>
-          {% endfor %}
-        </select>
+      <!-- Target directory indicator -->
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="flex items-center gap-3 rounded-lg border px-4 py-3 text-sm shadow-sm">
+        <i class="fa-solid fa-folder-arrow-up opacity-60"></i>
+        <span class="opacity-65 text-xs font-semibold uppercase tracking-wide shrink-0">
+          {% trans "Upload destination" %}
+        </span>
+        <span class="font-semibold font-mono">
+          {% if target_dir_path %}{{ target_dir_path }}{% else %}{% trans "Root" %} ({{ gateway.bucket.name }}){% endif %}
+        </span>
       </div>
-      {% endif %}
 
       <!-- Drop zone -->
       <div

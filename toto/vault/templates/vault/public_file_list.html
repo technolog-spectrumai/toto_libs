@@ -137,15 +137,6 @@
           </a>
         {% endif %}
 
-        <!-- Gateway upload buttons -->
-        {% for gw in gateways %}
-          <a href="{{ gw.url }}"
-             :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-             class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-            <i class="fa-solid fa-upload"></i>
-            {% trans "Upload to" %} {{ gw.name }}
-          </a>
-        {% endfor %}
       </div>
     </header>
 
@@ -203,9 +194,17 @@
                           x-text="`${item.n_files} file${item.n_files !== 1 ? 's' : ''}`"></span>
                   </span>
 
-                  <span x-show="item.locked" class="ml-auto text-xs opacity-40">
+                  <span x-show="item.locked" class="text-xs opacity-40 ml-1">
                     <i class="fa-solid fa-lock"></i>
                   </span>
+
+                  <a x-show="item.upload_url" :href="item.upload_url" @click.stop
+                     :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                     class="ml-auto inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold transition hover:opacity-85 shrink-0">
+                    <i class="fa-solid fa-upload text-xs"></i>
+                    {% trans "Upload" %}
+                  </a>
+                  <span x-show="!item.upload_url" class="ml-auto"></span>
                 </div>
               </template>
 

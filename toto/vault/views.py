@@ -27,7 +27,7 @@ class PublicFileListView(TemplateView):
     """
     template_name = "vault/public_file_list.html"
 
-    def _build_flat_items(self, dirs, files):
+    def _build_flat_items(self, dirs, files, dir_gateway_map):
         by_parent = {}
         for d in dirs:
             pid = d.parent_id
@@ -59,6 +59,7 @@ class PublicFileListView(TemplateView):
                     "n_files": n_files,
                     "n_dirs": n_dirs,
                     "locked": d.allowed_users.exists(),
+                    "upload_url": dir_gateway_map.get(d.pk, ""),
                 })
                 visit(d.pk, depth + 1)
                 for f in sorted(files_by_dir.get(d.pk, []), key=lambda x: x.title):
@@ -111,20 +112,19 @@ class PublicFileListView(TemplateView):
         if bucket_slug:
             file_qs = file_qs.filter(bucket__slug=bucket_slug)
 
-        flat_items = self._build_flat_items(accessible_dirs, list(file_qs))
+        # Map directory_pk → gateway page URL (directory is always set now)
+        dir_gateway_map = {
+            gw.directory_id: reverse("vault:gateway_page", kwargs={"dir_pk": gw.directory_id})
+            for gw in FileGateway.objects.only("directory_id")
+        }
+
+        flat_items = self._build_flat_items(accessible_dirs, list(file_qs), dir_gateway_map)
 
         context["flat_items"] = flat_items
         context["buckets"] = Bucket.objects.all()
         context["selected_bucket"] = bucket_slug
         context["total_files"] = sum(1 for i in flat_items if i["t"] == "file")
         context["total_dirs"] = sum(1 for i in flat_items if i["t"] == "dir")
-        context["gateways"] = [
-            {
-                "name": gw.bucket.name,
-                "url": reverse("vault:gateway_page", kwargs={"bucket_slug": gw.bucket.slug}),
-            }
-            for gw in FileGateway.objects.select_related("bucket").all()
-        ]
         return PageProcessor().decorate(context, self.request)
 
 
@@ -162,8 +162,10 @@ class FileGatewayPageView(LoginRequiredMixin, DetailView):
     context_object_name = "gateway"
 
     def get_object(self):
-        bucket_slug = self.kwargs.get("bucket_slug")
-        return get_object_or_404(FileGateway, bucket__slug=bucket_slug)
+        return get_object_or_404(
+            FileGateway.objects.select_related("directory__bucket", "bucket"),
+            directory_id=self.kwargs["dir_pk"],
+        )
 
     def get(self, request, *args, **kwargs):
         gateway = self.get_object()
@@ -176,35 +178,28 @@ class FileGatewayPageView(LoginRequiredMixin, DetailView):
         gateway = self.get_object()
         user = self.request.user
 
-        all_dirs = list(
-            VaultDirectory.objects.filter(bucket=gateway.bucket)
-            .prefetch_related("allowed_users")
-        )
-        all_dirs_by_pk = {d.pk: d for d in all_dirs}
+        all_dirs = list(VaultDirectory.objects.filter(bucket=gateway.bucket))
+        dirs_by_pk = {d.pk: d for d in all_dirs}
 
         def get_full_path(d):
             parts = []
             node = d
             while node is not None:
                 parts.append(node.name)
-                node = all_dirs_by_pk.get(node.parent_id) if node.parent_id else None
+                node = dirs_by_pk.get(node.parent_id) if node.parent_id else None
             return "/".join(reversed(parts))
 
-        accessible_dirs = [d for d in all_dirs if d.user_can_access(user)]
-        context["directories"] = sorted(
-            [{"id": d.pk, "label": get_full_path(d)} for d in accessible_dirs],
-            key=lambda x: x["label"],
-        )
+        context["target_dir_path"] = get_full_path(gateway.directory)
 
         recent = VaultFile.objects.filter(
-            bucket=gateway.bucket, owner=user
+            directory=gateway.directory, owner=user
         ).select_related("directory").order_by("-uploaded_at")[:10]
 
         context["recent_uploads_list"] = [
             {
                 "title": f.title,
                 "file_type": f.file_type,
-                "location": get_full_path(f.directory) if f.directory else "Root",
+                "location": get_full_path(f.directory) if f.directory else "—",
                 "uploaded": f.uploaded_at.strftime("%Y-%m-%d %H:%M"),
                 "public": f.is_public,
             }
@@ -218,8 +213,11 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
     """
     Handle uploads to a bucket through a gateway.
     """
-    def post(self, request, bucket_slug):
-        gateway = get_object_or_404(FileGateway, bucket__slug=bucket_slug)
+    def post(self, request, dir_pk):
+        gateway = get_object_or_404(
+            FileGateway.objects.select_related("directory", "bucket"),
+            directory_id=dir_pk,
+        )
 
         if gateway.allowed_users.exists() and request.user not in gateway.allowed_users.all():
             return JsonResponse({"error": "You are not allowed to use this gateway"}, status=403)
@@ -234,16 +232,7 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
                 "error": f"File too large ({uploaded_file.size / (1024*1024):.1f} MB). Max is {gateway.max_file_size / 1024:.1f} MB."
             }, status=400)
 
-        directory = None
-        directory_id = request.POST.get("directory_id")
-        if directory_id:
-            directory = get_object_or_404(
-                VaultDirectory.objects.prefetch_related("allowed_users"),
-                pk=directory_id,
-                bucket=gateway.bucket,
-            )
-            if not directory.user_can_access(request.user):
-                return JsonResponse({"error": "You do not have access to this directory"}, status=403)
+        directory = gateway.directory  # set at model level by admin
 
         mime, _ = mimetypes.guess_type(uploaded_file.name)
         file_type = VaultFile.detect_type(mime)
@@ -261,16 +250,21 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
         vault_file.content_hash = vault_file.create_hash()
         vault_file.save()
 
-        all_dirs = list(VaultDirectory.objects.filter(bucket=gateway.bucket))
-        all_dirs_by_pk = {d.pk: d for d in all_dirs}
+        if directory:
+            all_dirs = list(VaultDirectory.objects.filter(bucket=gateway.bucket))
+            dirs_by_pk = {d.pk: d for d in all_dirs}
 
-        def get_full_path(d):
-            parts = []
-            node = d
-            while node is not None:
-                parts.append(node.name)
-                node = all_dirs_by_pk.get(node.parent_id) if node.parent_id else None
-            return "/".join(reversed(parts))
+            def get_full_path(d):
+                parts = []
+                node = d
+                while node is not None:
+                    parts.append(node.name)
+                    node = dirs_by_pk.get(node.parent_id) if node.parent_id else None
+                return "/".join(reversed(parts))
+
+            location = get_full_path(directory)
+        else:
+            location = "Root"
 
         return JsonResponse({
             "result": {
@@ -278,7 +272,7 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
                 "key": vault_file.key,
                 "bucket": gateway.bucket.slug,
                 "file_type": vault_file.file_type,
-                "location": get_full_path(directory) if directory else "Root",
+                "location": location,
                 "public": vault_file.is_public,
                 "public_url": vault_file.get_public_url(),
                 "size": f"{uploaded_file.size / (1024*1024):.2f} MB",
@@ -390,14 +384,11 @@ class BucketMetricsView(LoginRequiredMixin, TemplateView):
         week_ago = timezone.now() - timedelta(days=7)
         recent_count = VaultFile.objects.filter(bucket=bucket, uploaded_at__gte=week_ago).count()
 
-        try:
-            gateway = bucket.gateway
-        except FileGateway.DoesNotExist:
-            gateway = None
+        gateways = list(bucket.gateways.select_related("directory").all())
 
         context.update({
             "bucket": bucket,
-            "gateway": gateway,
+            "gateways": gateways,
             "total_files": total_files,
             "total_dirs": total_dirs,
             "public_files": public_files,

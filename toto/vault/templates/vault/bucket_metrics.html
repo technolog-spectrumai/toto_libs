@@ -37,12 +37,12 @@
           </h1>
           <p class="mt-1 text-sm opacity-55">
             {% trans "Owner" %}: {{ bucket.owner.username }}
-            {% if gateway %}
+            {% for gw in gateways %}
               &middot; <i class="fa-solid fa-upload text-xs"></i>
-              <a href="{% url 'vault:gateway_page' bucket.slug %}"
+              <a href="{% url 'vault:gateway_page' gw.directory_id %}"
                  :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-                 class="hover:underline">{% trans "Gateway" %}: {{ gateway.name }}</a>
-            {% endif %}
+                 class="hover:underline">{{ gw.name }}</a>
+            {% endfor %}
           </p>
         </div>
       </div>
@@ -54,14 +54,14 @@
           <i class="fa-solid fa-folder-open"></i>
           {% trans "Browse" %}
         </a>
-        {% if gateway %}
-          <a href="{% url 'vault:gateway_page' bucket.slug %}"
+        {% for gw in gateways %}
+          <a href="{% url 'vault:gateway_page' gw.directory_id %}"
              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
              class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-90">
             <i class="fa-solid fa-upload"></i>
-            {% trans "Upload" %}
+            {{ gw.directory.name }}
           </a>
-        {% endif %}
+        {% endfor %}
       </div>
     </header>
 

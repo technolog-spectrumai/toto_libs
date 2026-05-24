@@ -4,7 +4,6 @@ from django.core.files.base import ContentFile
 from django.utils.text import slugify
 from toto.ingress import IngressCommand
 from toto.vault.models import VaultFile, Bucket, FileGateway, VaultDirectory
-import random
 
 
 class Command(IngressCommand):
@@ -150,27 +149,30 @@ class Command(IngressCommand):
 
         self.stdout.write(self.style.SUCCESS("Demo files seeded."))
 
-        # ── Gateways ─────────────────────────────────────────────────────
-        buckets = list(Bucket.objects.all())
-        sample_count = min(len(buckets), random.randint(3, 5))
-        selected_buckets = random.sample(buckets, sample_count)
+        # ── Gateways (one per directory, no root uploads) ────────────────
+        #
+        # Seed three specific directories with upload gateways so that demo
+        # data reflects the 1-to-1 directory→gateway constraint.
 
-        for bucket in selected_buckets:
+        gateway_dirs = [
+            (contracts_dir,  "Legal Contracts Upload",   "Submit new vendor or client contracts here."),
+            (reports,        "Finance Reports Upload",    "Submit quarterly financial reports here."),
+            (logos_dir,      "Media Logos Upload",        "Upload brand logo assets here."),
+        ]
+
+        for directory, name, description in gateway_dirs:
             gateway, created = FileGateway.objects.get_or_create(
-                bucket=bucket,
+                directory=directory,
                 defaults={
-                    "name": slugify(f"gateway for {bucket.name}"),
-                    "description": f"Upload gateway for bucket '{bucket.name}'",
+                    "name": name,
+                    "description": description,
                     "make_public": True,
-                }
+                },
             )
-            allowed = random.sample(users, random.randint(1, min(3, len(users))))
-            gateway.allowed_users.set(allowed)
-            gateway.save()
-
+            gateway.allowed_users.set([user])
             if created:
-                self.stdout.write(self.style.SUCCESS(f"Created gateway for bucket: {bucket.name}"))
+                self.stdout.write(self.style.SUCCESS(f"Created gateway: {name} → {directory.full_path()}"))
             else:
-                self.stdout.write(f"Gateway already exists for bucket: {bucket.name}")
+                self.stdout.write(f"Gateway already exists: {name}")
 
         self.stdout.write(self.style.SUCCESS("All vault demo data seeded."))

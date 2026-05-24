@@ -151,17 +151,24 @@ class VaultFile(models.Model):
 
 class FileGateway(models.Model):
     """
-    A user-facing upload gateway that routes uploaded files into a specific bucket.
-    Each bucket may have only one gateway.
+    A user-facing upload gateway tied to exactly one directory.
+    One gateway per directory; root-level uploads are not allowed via gateway.
     """
 
     name = models.CharField(max_length=200)
 
-    # 1-to-1 relationship with Bucket
-    bucket = models.OneToOneField(
+    # Each directory may have at most one gateway.
+    directory = models.OneToOneField(
+        'VaultDirectory',
+        on_delete=models.CASCADE,
+        related_name='gateway',
+    )
+
+    # Denormalised for easy filtering — must always equal directory.bucket.
+    bucket = models.ForeignKey(
         Bucket,
         on_delete=models.CASCADE,
-        related_name="gateway"
+        related_name='gateways',
     )
 
     # Who can use this gateway
@@ -172,12 +179,12 @@ class FileGateway(models.Model):
 
     make_public = models.BooleanField(
         default=False,
-        help_text="If enabled, all files uploaded through this gateway become public."
+        help_text="If enabled, all files uploaded through this gateway become public.",
     )
 
     max_file_size = models.PositiveIntegerField(
         default=10 * 1024,
-        help_text="Maximum allowed file size in KB"
+        help_text="Maximum allowed file size in KB.",
     )
 
     class Meta:
@@ -185,7 +192,18 @@ class FileGateway(models.Model):
         verbose_name_plural = "File Gateways"
 
     def __str__(self):
-        return f"Gateway for bucket: {self.bucket.name}"
+        return f"Gateway → {self.directory}"
+
+    def save(self, *args, **kwargs):
+        # Keep bucket in sync with directory so queries on bucket stay valid.
+        if self.directory_id:
+            self.bucket_id = (
+                VaultDirectory.objects
+                .filter(pk=self.directory_id)
+                .values_list('bucket_id', flat=True)
+                .first()
+            )
+        super().save(*args, **kwargs)
 
 
 class VaultDirectory(models.Model):

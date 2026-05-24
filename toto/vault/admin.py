@@ -131,27 +131,31 @@ class VaultFileAdmin(admin.ModelAdmin):
 
 @admin.register(FileGateway)
 class FileGatewayAdmin(admin.ModelAdmin):
-    list_display = ("name", "bucket", "make_public", "max_file_size")
-    list_filter = ("bucket", "allowed_users", "make_public")
-    search_fields = ("name", "description")
-    ordering = ("bucket",)
+    list_display = ("name", "directory_path", "bucket", "make_public", "max_file_size")
+    list_filter = ("bucket", "make_public")
+    search_fields = ("name", "description", "directory__name")
+    ordering = ("bucket", "directory__name")
 
     filter_horizontal = ("allowed_users",)
 
     fieldsets = (
         ("Gateway Info", {
-            "fields": ("name", "bucket", "description"),
-            "description": "Each bucket may have only one gateway."
+            "fields": ("name", "directory", "description"),
+            "description": "One gateway per directory. Bucket is auto-set from the directory.",
         }),
         ("Access Control", {
             "fields": ("allowed_users", "make_public"),
-            "description": "If enabled, all uploaded files become public automatically."
+            "description": "If enabled, all uploaded files become public automatically.",
         }),
         ("Upload Limits", {
             "fields": ("max_file_size",),
-            "description": "Maximum allowed file size in KB."
+            "description": "Maximum allowed file size in KB.",
         }),
     )
+
+    def directory_path(self, obj):
+        return obj.directory.full_path() if obj.directory_id else "—"
+    directory_path.short_description = "Directory"
 
 
 @admin.register(VaultDirectory)
