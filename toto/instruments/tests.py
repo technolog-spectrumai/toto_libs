@@ -656,3 +656,181 @@ class InstrumentWithoutSubtypeTests(TestCase):
     def test_amortize_view_requires_login(self):
         response = self.client.post("/instruments/amortizations/1/amortize/")
         self.assertEqual(response.status_code, 302)
+
+
+# ---------------------------------------------------------------------------
+# ingress_instruments --deploy-contracts
+# ---------------------------------------------------------------------------
+
+_DEMO_TYPES = [
+    "subscription",
+    "lease",
+    "amortization",
+    "vesting",
+    "escrow",
+    "forward",
+    "option",
+    "staking",
+    "revenue_share",
+]
+
+_FORBIDDEN_NODES = [
+    "type: transfer",
+    "type: oblig",
+    "type: record",
+    "type: get_state",
+    "type: set_state",
+    "type: account",
+    "type: asset",
+    "type: amount",
+    "type: balance",
+    "type: decimal",
+    "type: txn",
+    "type: gtxn",
+    "type: inner_begin",
+    "type: inner_set",
+    "type: inner_submit",
+]
+
+
+def _ref(itype: str) -> str:
+    return f"demo-{itype.replace('_', '-')}-001"
+
+
+def _run_ingress(*extra_args):
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    out = StringIO()
+    call_command("ingress_instruments", *extra_args, stdout=out)
+    return out.getvalue()
+
+
+class IngressInstrumentsTests(TestCase):
+    """Tests for ingress_instruments --deploy-contracts."""
+
+    def test_deploy_contracts_creates_contract_for_each_type(self):
+        _run_ingress("--deploy-contracts")
+        for itype in _DEMO_TYPES:
+            instr = FinancialInstrument.objects.get(reference=_ref(itype))
+            self.assertIsNotNone(
+                instr.contract_id, f"{itype}: no contract after deploy"
+            )
+
+    def test_deploy_is_idempotent(self):
+        _run_ingress("--deploy-contracts")
+        from toto.assets.models import Contract
+
+        count_after_first = Contract.objects.count()
+        _run_ingress("--deploy-contracts")
+        self.assertEqual(Contract.objects.count(), count_after_first)
+
+    def test_force_contracts_updates_existing_code(self):
+        _run_ingress("--deploy-contracts")
+        instr = FinancialInstrument.objects.select_related("contract").get(
+            reference=_ref("subscription")
+        )
+        instr.contract.code = "tampered_xyz"
+        instr.contract.save(update_fields=["code"])
+
+        _run_ingress("--force-contracts")
+
+        instr.contract.refresh_from_db()
+        self.assertNotEqual(instr.contract.code, "tampered_xyz")
+        self.assertIn("language: lapis", instr.contract.code)
+
+    def test_force_contracts_updates_metadata(self):
+        _run_ingress("--deploy-contracts")
+        instr = FinancialInstrument.objects.select_related("contract").get(
+            reference=_ref("lease")
+        )
+        instr.contract.metadata = {}
+        instr.contract.save(update_fields=["metadata"])
+
+        _run_ingress("--force-contracts")
+
+        instr.contract.refresh_from_db()
+        self.assertTrue(instr.contract.metadata.get("ingress_deployed_contract"))
+
+    def test_all_deployed_contracts_validate(self):
+        from toto.assets.lapis.compiler import LapisCompiler
+        from toto.assets.lapis.loader import loads_contract
+
+        _run_ingress("--deploy-contracts")
+        compiler = LapisCompiler()
+        for itype in _DEMO_TYPES:
+            instr = FinancialInstrument.objects.select_related("contract").get(
+                reference=_ref(itype)
+            )
+            self.assertIsNotNone(instr.contract, f"{itype}: no contract")
+            tree = loads_contract(instr.contract.code, fmt="yaml")
+            try:
+                compiler.validate_contract(tree)
+            except Exception as exc:
+                self.fail(f"{itype}: Lapis validation failed — {exc}")
+
+    def test_no_ledger_transaction_created_by_deploy(self):
+        from toto.assets.models import LedgerTransaction
+
+        _run_ingress()
+        before = LedgerTransaction.objects.count()
+        _run_ingress("--deploy-contracts")
+        self.assertEqual(LedgerTransaction.objects.count(), before)
+
+    def test_no_ledger_entry_created_by_deploy(self):
+        from toto.assets.models import LedgerEntry
+
+        _run_ingress()
+        before = LedgerEntry.objects.count()
+        _run_ingress("--deploy-contracts")
+        self.assertEqual(LedgerEntry.objects.count(), before)
+
+    def test_revenue_share_demo_has_recipient(self):
+        from toto.instruments.models import RevenueShareContract
+
+        _run_ingress("--deploy-contracts")
+        instr = FinancialInstrument.objects.get(reference=_ref("revenue_share"))
+        rs = RevenueShareContract.objects.get(instrument=instr)
+        self.assertGreater(rs.recipients.count(), 0)
+
+    def test_revenue_share_deploys_successfully(self):
+        _run_ingress("--deploy-contracts")
+        instr = FinancialInstrument.objects.get(reference=_ref("revenue_share"))
+        self.assertIsNotNone(instr.contract_id)
+
+    def test_no_forbidden_macro_nodes(self):
+        _run_ingress("--deploy-contracts")
+        for itype in _DEMO_TYPES:
+            instr = FinancialInstrument.objects.select_related("contract").get(
+                reference=_ref(itype)
+            )
+            if not instr.contract:
+                continue
+            code = instr.contract.code
+            for bad in _FORBIDDEN_NODES:
+                self.assertNotIn(bad, code, f"{itype}: found forbidden node '{bad}'")
+
+    def test_ingress_metadata_markers_set(self):
+        _run_ingress("--deploy-contracts")
+        for itype in _DEMO_TYPES:
+            instr = FinancialInstrument.objects.select_related("contract").get(
+                reference=_ref(itype)
+            )
+            meta = instr.contract.metadata
+            self.assertTrue(
+                meta.get("ingress_deployed_contract"),
+                f"{itype}: ingress_deployed_contract not set",
+            )
+            self.assertEqual(
+                meta.get("ingress_source"),
+                "ingress_instruments",
+                f"{itype}: ingress_source wrong",
+            )
+
+    def test_without_deploy_flag_no_contracts_created(self):
+        from toto.assets.models import Contract
+
+        before = Contract.objects.count()
+        _run_ingress()
+        self.assertEqual(Contract.objects.count(), before)
