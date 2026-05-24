@@ -6,6 +6,47 @@
 
 {% block start_script %}
 <style>[x-cloak] { display: none !important; }</style>
+<script>
+  document.addEventListener('alpine:init', () => {
+    Alpine.data('vaultTree', () => {
+      const raw = document.getElementById('vault-items');
+      const items = raw ? JSON.parse(raw.textContent) : [];
+      const dirMap = {};
+      for (const item of items) {
+        if (item.t === 'dir') dirMap[item.id] = item;
+      }
+      return {
+        items,
+        dirMap,
+        openDirs: {},
+        toggle(id) {
+          if (this.openDirs[id]) {
+            this.openDirs[id] = false;
+            this.closeDescendants(id);
+          } else {
+            this.openDirs[id] = true;
+          }
+        },
+        closeDescendants(dirId) {
+          for (const item of this.items) {
+            if (item.t === 'dir' && item.pid === dirId) {
+              this.openDirs[item.id] = false;
+              this.closeDescendants(item.id);
+            }
+          }
+        },
+        isVisible(item) {
+          if (item.pid === null || item.pid === undefined) return true;
+          if (!this.openDirs[item.pid]) return false;
+          const parent = this.dirMap[item.pid];
+          if (!parent) return true;
+          return this.isVisible(parent);
+        },
+        isOpen(id) { return !!this.openDirs[id]; },
+      };
+    });
+  });
+</script>
 {% endblock %}
 
 {% block content %}
@@ -58,38 +99,140 @@
           </select>
         </form>
 
-        {% if files %}
+        <!-- File / dir counts -->
+        {% if total_files or total_dirs %}
           <div
             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
             class="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm shadow-sm">
-            <i class="fa-solid fa-file opacity-60"></i>
-            <span class="font-bold">{{ paginator.count }}</span>
-            <span class="opacity-65">{% trans "files" %}</span>
+            {% if total_dirs %}
+              <i class="fa-solid fa-folder opacity-60"></i>
+              <span class="font-bold">{{ total_dirs }}</span>
+              <span class="opacity-65">{% trans "dirs" %}</span>
+            {% endif %}
+            {% if total_dirs and total_files %}
+              <span class="opacity-30">·</span>
+            {% endif %}
+            {% if total_files %}
+              <i class="fa-solid fa-file opacity-60"></i>
+              <span class="font-bold">{{ total_files }}</span>
+              <span class="opacity-65">{% trans "files" %}</span>
+            {% endif %}
           </div>
         {% endif %}
 
-        {% if gateways %}
-          {% for gw in gateways %}
-            <a href="{{ gw.url }}"
-               :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-               class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-              <i class="fa-solid fa-upload"></i>
-              {% trans "Upload to" %} {{ gw.name }}
-            </a>
-          {% endfor %}
-        {% endif %}
+        <!-- Gateway upload buttons -->
+        {% for gw in gateways %}
+          <a href="{{ gw.url }}"
+             :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+             class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+            <i class="fa-solid fa-upload"></i>
+            {% trans "Upload to" %} {{ gw.name }}
+          </a>
+        {% endfor %}
       </div>
     </header>
 
-    <!-- File table partial -->
-    {% include "vault/partials/_file_table.html" with files=files %}
+    <!-- JSON data island -->
+    {{ flat_items|json_script:"vault-items" }}
 
-    <!-- Pagination -->
-    {% if selected_bucket %}
-      {% include "oya/partials/_server_pagination.html" with extra_query="&bucket="|add:selected_bucket %}
-    {% else %}
-      {% include "oya/partials/_server_pagination.html" with extra_query="" %}
-    {% endif %}
+    <!-- Tree -->
+    <div x-data="vaultTree()">
+
+      <!-- Empty state -->
+      <template x-if="items.length === 0">
+        <div
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="rounded-xl border border-dashed p-12 text-center shadow-sm">
+          <i class="fa-solid fa-folder-open text-3xl opacity-20"></i>
+          <p class="mt-4 text-sm font-semibold opacity-55">{% trans "No public files available." %}</p>
+        </div>
+      </template>
+
+      <!-- Tree container -->
+      <template x-if="items.length > 0">
+        <div
+          :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+          class="overflow-hidden rounded-xl border shadow-sm">
+
+          <template x-for="item in items" :key="`${item.t}-${item.id}`">
+            <div x-show="isVisible(item)">
+
+              <!-- Directory row -->
+              <template x-if="item.t === 'dir'">
+                <div
+                  @click="toggle(item.id)"
+                  :style="`padding-left: calc(${item.depth} * 1.5rem + 0.75rem)`"
+                  :class="darkMode
+                    ? 'border-b border-accent-1/40 hover:bg-bubble-bg-dark'
+                    : 'border-b border-accent-2/40 hover:bg-bubble-bg-light'"
+                  class="flex items-center gap-2 cursor-pointer py-3 pr-4 transition-colors duration-150 select-none">
+
+                  <i class="fa-solid fa-chevron-right w-3 shrink-0 text-xs opacity-40 transition-transform duration-200"
+                     :class="isOpen(item.id) ? 'rotate-90' : ''"></i>
+
+                  <i class="fa-solid shrink-0"
+                     :class="[
+                       isOpen(item.id) ? 'fa-folder-open' : 'fa-folder',
+                       darkMode ? 'text-accent-dark' : 'text-accent-light'
+                     ]"></i>
+
+                  <span class="font-semibold text-sm" x-text="item.name"></span>
+
+                  <span class="flex items-center gap-2 text-xs opacity-40 ml-1">
+                    <span x-show="item.n_dirs > 0"
+                          x-text="`${item.n_dirs} dir${item.n_dirs !== 1 ? 's' : ''}`"></span>
+                    <span x-show="item.n_dirs > 0 && item.n_files > 0" class="opacity-60">·</span>
+                    <span x-show="item.n_files > 0"
+                          x-text="`${item.n_files} file${item.n_files !== 1 ? 's' : ''}`"></span>
+                  </span>
+
+                  <span x-show="item.locked" class="ml-auto text-xs opacity-40">
+                    <i class="fa-solid fa-lock"></i>
+                  </span>
+                </div>
+              </template>
+
+              <!-- File row -->
+              <template x-if="item.t === 'file'">
+                <div
+                  :style="`padding-left: calc(${item.depth} * 1.5rem + 0.75rem)`"
+                  :class="darkMode
+                    ? 'border-b border-accent-1/20 hover:bg-bubble-bg-dark/50'
+                    : 'border-b border-accent-2/20 hover:bg-bubble-bg-light/50'"
+                  class="flex items-center gap-3 py-2.5 pr-4 text-sm transition-colors duration-150">
+
+                  <i class="fa-regular fa-file w-3 shrink-0 text-xs opacity-30"></i>
+
+                  <span class="font-medium truncate flex-1 min-w-0" x-text="item.title"></span>
+
+                  <span class="shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold uppercase"
+                        :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
+                        x-text="item.file_type"></span>
+
+                  <span class="hidden sm:block text-xs opacity-50 shrink-0" x-text="item.owner"></span>
+
+                  <span class="hidden md:block text-xs opacity-50 shrink-0" x-text="item.uploaded"></span>
+
+                  <span x-show="item.encrypted"
+                        class="text-green-500 text-xs shrink-0">
+                    <i class="fa-solid fa-lock"></i>
+                  </span>
+
+                  <a x-show="item.url" :href="item.url" @click.stop
+                     :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                     class="inline-flex items-center gap-1 text-xs font-semibold hover:underline underline-offset-2 shrink-0">
+                    <i class="fa-solid fa-download"></i>
+                  </a>
+                </div>
+              </template>
+
+            </div>
+          </template>
+
+        </div>
+      </template>
+
+    </div>
 
   </div>
 </div>

@@ -67,6 +67,10 @@ class VaultFile(models.Model):
     is_public = models.BooleanField(default=False, help_text="If true, file is visible to others")
     notes = models.TextField(blank=True, null=True)
     bucket = models.ForeignKey(Bucket, on_delete=models.SET_NULL, null=True, blank=True, related_name='files')
+    directory = models.ForeignKey(
+        'VaultDirectory', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='files'
+    )
 
     class Meta:
         verbose_name = "Vault File"
@@ -182,3 +186,57 @@ class FileGateway(models.Model):
 
     def __str__(self):
         return f"Gateway for bucket: {self.bucket.name}"
+
+
+class VaultDirectory(models.Model):
+    """
+    A named folder inside a Bucket. May be nested (parent → subdirectories).
+    Access is restricted to allowed_users when the whitelist is non-empty.
+    """
+
+    name = models.CharField(max_length=200)
+    bucket = models.ForeignKey(Bucket, on_delete=models.CASCADE, related_name='directories')
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='owned_directories')
+    parent = models.ForeignKey(
+        'self', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='subdirectories'
+    )
+    allowed_users = models.ManyToManyField(
+        User, blank=True, related_name='accessible_directories',
+        help_text="Leave empty to allow all authenticated users."
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Vault Directory"
+        verbose_name_plural = "Vault Directories"
+        unique_together = ('bucket', 'parent', 'name')
+
+    def __str__(self):
+        return self.full_path()
+
+    def full_path(self):
+        parts = []
+        node = self
+        while node is not None:
+            parts.append(node.name)
+            node = node.parent
+        return "/".join(reversed(parts))
+
+    def breadcrumb(self):
+        """Return list of VaultDirectory from root down to self."""
+        crumbs = []
+        node = self
+        while node is not None:
+            crumbs.append(node)
+            node = node.parent
+        return list(reversed(crumbs))
+
+    def user_can_access(self, user):
+        if not user or not user.is_authenticated:
+            return not self.allowed_users.exists()
+        if user.is_superuser:
+            return True
+        if not self.allowed_users.exists():
+            return True
+        return self.allowed_users.filter(pk=user.pk).exists()
