@@ -35,23 +35,25 @@ class VaultFile(models.Model):
         ('video', 'Video'),
     ]
 
-    MIME_MAP = {
-        "pdf": "pdf",
-        "image": "image",
-        "html": "html",
-        "json": "json",
-        "svg": "svg",
-    }
-
     @classmethod
     def detect_type(cls, mime: str) -> str:
         if not mime:
             return "text"
-
-        for key, value in cls.MIME_MAP.items():
-            if key in mime:
-                return value
-
+        mime = mime.lower()
+        if "pdf" in mime:
+            return "pdf"
+        if mime == "image/svg+xml":
+            return "svg"
+        if mime.startswith("image/"):
+            return "image"
+        if "html" in mime:
+            return "html"
+        if "json" in mime:
+            return "json"
+        if mime.startswith("audio/"):
+            return "audio"
+        if mime.startswith("video/"):
+            return "video"
         return "text"
 
     owner = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -110,10 +112,9 @@ class VaultFile(models.Model):
     def get_strategy(self):
         if self.file_type == 'pdf':
             return PdfStrategy()
-        elif self.file_type == 'image':
+        if self.file_type == 'image':
             return ImageStrategy()
-        else:
-            return TextStrategy()
+        return TextStrategy()
 
     def encrypt(self, password: str, owner_password=None):
         if self.is_encrypted:

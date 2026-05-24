@@ -68,13 +68,15 @@
           </div>
         {% endif %}
 
-        {% if gateway_url %}
-          <a href="{{ gateway_url }}"
-             :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-             class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-            <i class="fa-solid fa-upload"></i>
-            {% trans "Upload" %}{% if selected_bucket %} {{ bucket_display_name }}{% endif %}
-          </a>
+        {% if gateways %}
+          {% for gw in gateways %}
+            <a href="{{ gw.url }}"
+               :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+               class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+              <i class="fa-solid fa-upload"></i>
+              {% trans "Upload to" %} {{ gw.name }}
+            </a>
+          {% endfor %}
         {% endif %}
       </div>
     </header>

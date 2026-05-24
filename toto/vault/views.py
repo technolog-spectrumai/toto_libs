@@ -44,6 +44,14 @@ class PublicFileListView(ListView):
                 gateway_url = reverse("vault:gateway_page", kwargs={"bucket_slug": bucket.slug})
         context["gateway_url"] = gateway_url
 
+        context["gateways"] = [
+            {
+                "name": gw.bucket.name,
+                "url": reverse("vault:gateway_page", kwargs={"bucket_slug": gw.bucket.slug}),
+            }
+            for gw in FileGateway.objects.select_related("bucket").all()
+        ]
+
         return PageProcessor().decorate(context, self.request)
 
 

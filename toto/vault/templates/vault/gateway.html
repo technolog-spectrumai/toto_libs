@@ -37,7 +37,6 @@
             headers: { "X-CSRFToken": "{{ csrf_token }}" },
             body: formData
           });
-          console.log("RAW RESPONSE:", response);
 
           const data = await response.json();
 
@@ -63,88 +62,115 @@
   :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
   class="min-h-screen px-6 py-10 transition-colors duration-300"
 >
+  <div class="max-w-4xl mx-auto space-y-8">
 
-  <div class="max-w-4xl mx-auto space-y-12">
-
-    <!-- 🏷️ Gateway Header -->
-    <section>
-      <div class="p-6 rounded-lg shadow-md border text-center"
-           :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
-
-        <h2 class="text-3xl font-bold mb-2"
-            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
-          {{ gateway.name }}
-        </h2>
-
+    <!-- Header -->
+    <div>
+      <a href="{% url 'core:dashboard' %}"
+         class="inline-flex items-center gap-2 text-sm underline hover:opacity-80 mb-4">
+        <i class="fa-solid fa-arrow-left"></i> Dashboard
+      </a>
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="p-6 rounded-xl border shadow-sm text-center">
+        <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+           class="text-xs font-semibold uppercase tracking-wide mb-1">
+          <i class="fa-solid fa-vault mr-1"></i> File Gateway
+        </p>
+        <h1 class="text-3xl font-bold">{{ gateway.name }}</h1>
         {% if gateway.description %}
-          <p class="text-sm opacity-70">{{ gateway.description }}</p>
+          <p class="mt-2 text-sm opacity-65">{{ gateway.description }}</p>
         {% endif %}
       </div>
-    </section>
+    </div>
 
-    <!-- 📤 Upload Zone -->
+    <!-- Upload zone -->
     <section>
       <div
-        class="border-2 border-dashed rounded-lg p-12 text-center cursor-pointer transition"
+        class="border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition"
         @dragover.prevent="dragging = true"
         @dragleave="dragging = false"
         @drop.prevent="handleDrop($event)"
         @click="$refs.fileInput.click()"
         :class="dragging
-          ? (darkMode ? 'bg-bubble-bg-dark border-accent-dark' : 'bg-bubble-bg-light border-accent-light')
+          ? (darkMode ? 'border-accent-dark bg-bubble-bg-dark' : 'border-accent-light bg-bubble-bg-light')
           : (darkMode ? 'border-accent-1' : 'border-accent-2')">
 
-        <p class="text-lg font-semibold mb-2">Drop a file here</p>
-        <p class="text-sm opacity-70">or click to select</p>
+        <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+           class="fa-solid fa-cloud-arrow-up text-4xl opacity-60 mb-3"></i>
+        <p class="text-lg font-semibold">Drop a file here</p>
+        <p class="text-sm opacity-60 mt-1">or click to select</p>
 
         <input type="file" class="hidden" x-ref="fileInput" @change="handleFileSelect">
       </div>
 
       {% widthratio gateway.max_file_size 1024 1 as max_mb %}
-      <p class="text-sm opacity-70 mt-2">
-        Max file size: {{ max_mb }} MB
-      </p>
+      <p class="text-xs opacity-55 mt-2 text-center">Max file size: {{ max_mb }} MB</p>
 
-      <!-- Uploading -->
+      <!-- Uploading spinner -->
       <template x-if="uploading">
-        <p class="mt-4 text-center opacity-70">Uploading…</p>
+        <div class="mt-5 flex items-center justify-center gap-3 text-sm opacity-70">
+          <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+          </svg>
+          <span>Uploading…</span>
+        </div>
       </template>
 
       <!-- Error -->
       <template x-if="error">
-        <p class="mt-4 text-center text-red-600" x-text="error"></p>
+        <div
+          x-transition
+          :class="darkMode ? 'border-warn-dark bg-warn-dark/10 text-warn-dark' : 'border-warn-light bg-warn-light/10 text-warn-light'"
+          class="mt-5 flex items-start gap-3 rounded-lg border p-4 text-sm">
+          <i class="fa-solid fa-triangle-exclamation mt-0.5 shrink-0"></i>
+          <span x-text="error"></span>
+        </div>
       </template>
     </section>
 
-    <!-- 📄 Results -->
+    <!-- Upload result -->
     <section x-show="results" x-transition>
-      <div class="p-6 rounded-lg shadow-md border"
-           :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-xl border p-6 shadow-sm">
 
-        <h3 class="text-xl font-semibold mb-4">Upload Result</h3>
+        <h3 class="flex items-center gap-2 text-lg font-bold mb-4"
+            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+          <i class="fa-solid fa-circle-check text-base"></i>
+          Upload successful
+        </h3>
 
-        <pre class="p-4 rounded text-sm whitespace-pre-wrap"
-             :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
-             x-text="JSON.stringify(results, null, 2)">
-        </pre>
+        <div class="grid gap-3 sm:grid-cols-2 text-sm">
+          <template x-for="[k, v] in Object.entries(results || {})" :key="k">
+            <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
+              <div class="text-xs uppercase tracking-wide opacity-50 mb-0.5" x-text="k"></div>
+              <div class="font-semibold font-mono break-all" x-text="v"></div>
+            </div>
+          </template>
+        </div>
+
+        <div class="mt-4 pt-4 border-t border-current/10">
+          <a
+            :href="`{% url 'vault:public_list' %}?bucket={{ gateway.bucket.slug }}`"
+            :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+            class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+            <i class="fa-solid fa-folder-open"></i>
+            View files in {{ gateway.bucket.name }}
+          </a>
+        </div>
       </div>
     </section>
 
-    <!-- 🔙 Back -->
-    <section class="text-center space-x-3">
-
+    <!-- Actions -->
+    <section x-show="!results" class="flex flex-wrap justify-center gap-3">
       <a href="{% url 'vault:public_list' %}?bucket={{ gateway.bucket.slug }}"
-         class="inline-block px-5 py-2 rounded-lg font-semibold text-sm hover:opacity-90 transition"
-         :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'">
-        View Files in {{ gateway.bucket.name }}
+         :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+         class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+        <i class="fa-solid fa-folder-open"></i>
+        View files in {{ gateway.bucket.name }}
       </a>
-
-      <a href="/"
-         class="inline-block px-5 py-2 rounded-lg font-semibold text-sm hover:opacity-90 transition"
-         :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'">
-        Back to Home
-      </a>
-
     </section>
 
   </div>
