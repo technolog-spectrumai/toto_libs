@@ -54,6 +54,14 @@ class FinancialInstrument(models.Model):
         related_name="financial_instruments",
         help_text="Contract/vault/margin account used by this instrument, if applicable.",
     )
+    contract = models.OneToOneField(
+        "assets.Contract",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="financial_instrument",
+        help_text="Lapis smart-contract generated from this instrument's parameters.",
+    )
     starts_at = models.DateTimeField(null=True, blank=True)
     ends_at = models.DateTimeField(null=True, blank=True)
     terms = models.JSONField(default=dict, blank=True)

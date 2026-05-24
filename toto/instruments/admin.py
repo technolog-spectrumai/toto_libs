@@ -1,4 +1,6 @@
 from django.contrib import admin
+from django.urls import reverse
+from django.utils.html import format_html
 
 from .models import (
     AmortizationContract,
@@ -34,10 +36,27 @@ class InstrumentExecutionInline(admin.TabularInline):
 
 @admin.register(FinancialInstrument)
 class FinancialInstrumentAdmin(admin.ModelAdmin):
-    list_display = ("reference", "instrument_type", "status", "issuer", "contract_account", "created_at")
+    list_display = ("reference", "instrument_type", "status", "issuer", "contract_account", "contract_link", "obligation_count", "created_at")
     list_filter = ("instrument_type", "status", "created_at")
     search_fields = ("reference", "issuer__username", "contract_account__code")
+    readonly_fields = ("contract_link", "obligation_count")
     inlines = [InstrumentObligationInline, InstrumentExecutionInline]
+
+    @admin.display(description="Contract")
+    def contract_link(self, obj):
+        c = obj.contract
+        if not c:
+            return "—"
+        url = reverse("admin:assets_contract_change", args=[c.pk])
+        return format_html('<a href="{}">{}</a>', url, c.name)
+
+    @admin.display(description="Obligations")
+    def obligation_count(self, obj):
+        c = obj.contract
+        if not c:
+            return "—"
+        obligations = c.metadata.get("obligations", [])
+        return len(obligations)
 
 
 @admin.register(EscrowContract)

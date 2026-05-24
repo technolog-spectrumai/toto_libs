@@ -406,6 +406,241 @@ class AmortizationTests(TestCase):
         response = self.client.post("/instruments/amortizations/1/activate/")
         self.assertEqual(response.status_code, 302)
 
+
+# ---------------------------------------------------------------------------
+# Lapis contract generation
+# ---------------------------------------------------------------------------
+
+def _make_ledger_account(code):
+    from toto.assets.models import LedgerAccount
+    return LedgerAccount.objects.create(code=code, name=code, account_type="user", active=True)
+
+
+def _make_asset(code, reserve):
+    from decimal import Decimal
+    from toto.assets.services.assets import create_asset
+    return create_asset(
+        name=code, unit_name=code, total_supply=Decimal("1000"),
+        decimals=0, reserve_account=reserve, reference=f"create-{code.lower()}",
+    )
+
+
+class SubscriptionContractGenerationTests(TestCase):
+    def setUp(self):
+        self.reserve = _make_ledger_account("lc-reserve")
+        self.subscriber = _make_ledger_account("lc-subscriber")
+        self.provider = _make_ledger_account("lc-provider")
+        self.asset = _make_asset("LCT", self.reserve)
+
+        from toto.instruments.models import FinancialInstrument, SubscriptionContract
+        from datetime import timedelta
+        now = timezone.now()
+        self.instrument = FinancialInstrument.objects.create(
+            reference="SUB-LC-001", instrument_type="subscription",
+        )
+        self.sub = SubscriptionContract.objects.create(
+            instrument=self.instrument,
+            subscriber_account=self.subscriber,
+            provider_account=self.provider,
+            asset=self.asset,
+            amount_base_units=500,
+            billing_cycle="monthly",
+            current_period_start=now,
+            current_period_end=now + timedelta(days=30),
+            next_billing_at=now + timedelta(days=30),
+        )
+
+    def test_sync_creates_linked_contract(self):
+        from toto.instruments.lapis_contracts import sync_contract_for_instrument
+        contract = sync_contract_for_instrument(self.instrument)
+        self.instrument.refresh_from_db()
+        self.assertIsNotNone(contract.pk)
+        self.assertEqual(self.instrument.contract_id, contract.pk)
+
+    def test_generated_lapis_validates(self):
+        from toto.instruments.lapis_contracts import render_lapis_for_instrument
+        from toto.assets.lapis.loader import loads_contract
+        from toto.assets.lapis.compiler import LapisCompiler
+        code = render_lapis_for_instrument(self.instrument)
+        tree = loads_contract(code, fmt="yaml")
+        LapisCompiler().validate_contract(tree)
+
+    def test_generated_lapis_has_body_key_on_all_actions(self):
+        from toto.instruments.lapis_contracts import render_lapis_for_instrument
+        from toto.assets.lapis.loader import loads_contract
+        code = render_lapis_for_instrument(self.instrument)
+        tree = loads_contract(code, fmt="yaml")
+        for name, action in tree["actions"].items():
+            self.assertIn("body", action, f"Action '{name}' missing body")
+
+    def test_generated_lapis_has_no_macro_nodes(self):
+        from toto.instruments.lapis_contracts import render_lapis_for_instrument
+        code = render_lapis_for_instrument(self.instrument)
+        for bad in ("type: oblig", "type: transfer", "type: record",
+                    "type: account", "type: asset", "type: amount", "type: balance",
+                    "type: get_state", "type: set_state", "type: decimal"):
+            self.assertNotIn(bad, code, f"Found forbidden node: {bad}")
+
+    def test_generated_lapis_has_bill_period_action(self):
+        from toto.instruments.lapis_contracts import render_lapis_for_instrument
+        from toto.assets.lapis.loader import loads_contract
+        code = render_lapis_for_instrument(self.instrument)
+        tree = loads_contract(code, fmt="yaml")
+        self.assertIn("bill_period", tree["actions"])
+
+    def test_metadata_has_obligation_memory(self):
+        from toto.instruments.lapis_contracts import build_contract_metadata_for_instrument
+        meta = build_contract_metadata_for_instrument(self.instrument)
+        self.assertIn("obligations", meta)
+        self.assertEqual(len(meta["obligations"]), 1)
+        self.assertEqual(meta["obligations"][0]["role"], "recurring_payment")
+        self.assertEqual(meta["obligations"][0]["amount_base_units"], 500)
+
+    def test_sync_is_idempotent(self):
+        from toto.instruments.lapis_contracts import sync_contract_for_instrument
+        c1 = sync_contract_for_instrument(self.instrument)
+        c2 = sync_contract_for_instrument(self.instrument)
+        self.assertEqual(c1.pk, c2.pk)
+
+    def test_sync_does_not_create_ledger_transaction(self):
+        from toto.assets.models import LedgerTransaction
+        from toto.instruments.lapis_contracts import sync_contract_for_instrument
+        before = LedgerTransaction.objects.count()
+        sync_contract_for_instrument(self.instrument)
+        self.assertEqual(LedgerTransaction.objects.count(), before)
+
+    def test_sync_does_not_create_ledger_entry(self):
+        from toto.assets.models import LedgerEntry
+        from toto.instruments.lapis_contracts import sync_contract_for_instrument
+        before = LedgerEntry.objects.count()
+        sync_contract_for_instrument(self.instrument)
+        self.assertEqual(LedgerEntry.objects.count(), before)
+
+    def test_build_contract_is_noop_if_already_linked(self):
+        from toto.instruments.lapis_contracts import build_contract_for_instrument, sync_contract_for_instrument
+        c1 = sync_contract_for_instrument(self.instrument)
+        c2 = build_contract_for_instrument(self.instrument)
+        self.assertEqual(c1.pk, c2.pk)
+
+
+class ForwardContractGenerationTests(TestCase):
+    def setUp(self):
+        from datetime import timedelta
+        self.reserve = _make_ledger_account("fwd-reserve")
+        self.buyer = _make_ledger_account("fwd-buyer")
+        self.seller = _make_ledger_account("fwd-seller")
+        self.underlying = _make_asset("FWDU", self.reserve)
+        self.payment_asset = _make_asset("FWDP", self.reserve)
+
+        from toto.instruments.models import FinancialInstrument, ForwardContract
+        self.instrument = FinancialInstrument.objects.create(
+            reference="FWD-LC-001", instrument_type="forward",
+        )
+        self.fwd = ForwardContract.objects.create(
+            instrument=self.instrument,
+            buyer_account=self.buyer,
+            seller_account=self.seller,
+            underlying_asset=self.underlying,
+            quantity_base_units=100,
+            payment_asset=self.payment_asset,
+            payment_amount_base_units=5000,
+            settlement_at=timezone.now() + timedelta(days=30),
+        )
+
+    def test_forward_generates_linked_contract(self):
+        from toto.instruments.lapis_contracts import sync_contract_for_instrument
+        contract = sync_contract_for_instrument(self.instrument)
+        self.assertIsNotNone(contract.pk)
+
+    def test_forward_lapis_validates(self):
+        from toto.instruments.lapis_contracts import render_lapis_for_instrument
+        from toto.assets.lapis.loader import loads_contract
+        from toto.assets.lapis.compiler import LapisCompiler
+        code = render_lapis_for_instrument(self.instrument)
+        LapisCompiler().validate_contract(loads_contract(code, fmt="yaml"))
+
+    def test_forward_lapis_has_no_oblig_node(self):
+        from toto.instruments.lapis_contracts import render_lapis_for_instrument
+        code = render_lapis_for_instrument(self.instrument)
+        self.assertNotIn("type: oblig", code)
+
+    def test_forward_metadata_has_two_obligations(self):
+        from toto.instruments.lapis_contracts import build_contract_metadata_for_instrument
+        meta = build_contract_metadata_for_instrument(self.instrument)
+        obligations = meta["obligations"]
+        self.assertEqual(len(obligations), 2)
+        roles = {o["role"] for o in obligations}
+        self.assertIn("underlying_delivery", roles)
+        self.assertIn("payment", roles)
+
+    def test_forward_obligation_has_due_at(self):
+        from toto.instruments.lapis_contracts import build_obligation_memory_for_instrument
+        obligations = build_obligation_memory_for_instrument(self.instrument)
+        for o in obligations:
+            self.assertIn("due_at", o)
+
+    def test_forward_metadata_instrument_reference(self):
+        from toto.instruments.lapis_contracts import build_contract_metadata_for_instrument
+        meta = build_contract_metadata_for_instrument(self.instrument)
+        self.assertEqual(meta["instrument_reference"], "FWD-LC-001")
+        self.assertEqual(meta["instrument_type"], "forward")
+        self.assertEqual(meta["generated_by"], "instruments.lapis_contracts")
+
+
+class LeaseContractGenerationTests(TestCase):
+    def setUp(self):
+        self.reserve = _make_ledger_account("ls-reserve")
+        self.lessor = _make_ledger_account("ls-lessor")
+        self.lessee = _make_ledger_account("ls-lessee")
+        self.revenue_acc = _make_ledger_account("ls-revenue")
+        self.leased_asset = _make_asset("LSA", self.reserve)
+        self.payment_asset = _make_asset("LSP", self.reserve)
+
+        from toto.instruments.models import FinancialInstrument, LeaseContract
+        self.instrument = FinancialInstrument.objects.create(
+            reference="LSE-LC-001", instrument_type="lease",
+        )
+        self.lease = LeaseContract.objects.create(
+            instrument=self.instrument,
+            lessor_account=self.lessor,
+            lessee_account=self.lessee,
+            leased_asset=self.leased_asset,
+            payment_asset=self.payment_asset,
+            revenue_account=self.revenue_acc,
+            fixed_fee_base_units=200,
+            billing_period="monthly",
+            starts_at=timezone.now(),
+        )
+
+    def test_lease_generates_contract(self):
+        from toto.instruments.lapis_contracts import sync_contract_for_instrument
+        contract = sync_contract_for_instrument(self.instrument)
+        self.assertIsNotNone(contract.pk)
+
+    def test_lease_lapis_validates(self):
+        from toto.instruments.lapis_contracts import render_lapis_for_instrument
+        from toto.assets.lapis.loader import loads_contract
+        from toto.assets.lapis.compiler import LapisCompiler
+        code = render_lapis_for_instrument(self.instrument)
+        LapisCompiler().validate_contract(loads_contract(code, fmt="yaml"))
+
+    def test_lease_metadata_has_obligation(self):
+        from toto.instruments.lapis_contracts import build_contract_metadata_for_instrument
+        meta = build_contract_metadata_for_instrument(self.instrument)
+        self.assertEqual(len(meta["obligations"]), 1)
+        self.assertEqual(meta["obligations"][0]["role"], "recurring_payment")
+
+
+class InstrumentWithoutSubtypeTests(TestCase):
+    def test_render_raises_for_missing_subtype(self):
+        from toto.instruments.models import FinancialInstrument
+        from toto.instruments.lapis_contracts import render_lapis_for_instrument
+        instrument = FinancialInstrument.objects.create(
+            reference="NOSUB-001", instrument_type="subscription",
+        )
+        with self.assertRaises(ValueError):
+            render_lapis_for_instrument(instrument)
+
     def test_amortization_pause_requires_login(self):
         response = self.client.post("/instruments/amortizations/1/pause/")
         self.assertEqual(response.status_code, 302)
