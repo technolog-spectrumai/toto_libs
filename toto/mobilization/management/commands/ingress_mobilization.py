@@ -577,7 +577,6 @@ class Command(IngressCommand):
                     "objective": dep_data.get("objective", ""),
                     "is_hybrid": dep_data.get("is_hybrid", False),
                     "hybrid_time_percent": dep_data.get("hybrid_time_percent"),
-                    "per_diem_amount": random.choice([None, None, "50.00", "75.00", "100.00"]),
                 },
             )
 

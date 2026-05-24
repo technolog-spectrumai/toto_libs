@@ -549,7 +549,7 @@ def agreement_create(request):
 @login_required
 def agreement_dry_run(request, pk):
     import json as _json
-    from .models import Agreement, Asset, LedgerAccount as _LedgerAccount
+    from .models import Agreement
     from .lapis.loader import loads_contract
     from .lapis.compiler import LapisCompiler
     from .lapis.executor import LapisContext, LapisExecutor
@@ -574,63 +574,14 @@ def agreement_dry_run(request, pk):
     if not action:
         return JsonResponse({"ok": False, "error": "action is required."}, status=400)
 
-    raw_accounts = body.get("accounts", {})
-    raw_assets = body.get("assets", {})
-    metadata = body.get("metadata", {})
-    state = dict(body.get("state", {}))
-    params = body.get("params", {})
-
-    try:
-        accounts_resolved = {
-            ref: get_object_or_404(_LedgerAccount, code=code)
-            for ref, code in raw_accounts.items()
-        }
-        assets_resolved = {
-            ref: get_object_or_404(Asset, unit_name=unit)
-            for ref, unit in raw_assets.items()
-        }
-    except Exception as exc:
-        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
-
-    effects = {"transfers": [], "obligations": [], "records": []}
-
-    def _transfer(**kw):
-        effects["transfers"].append({
-            "source_account": kw["source_account"].code,
-            "target_account": kw["target_account"].code,
-            "asset": kw["asset"].unit_name,
-            "amount_base_units": kw["amount_base_units"],
-        })
-        return kw
-
-    def _oblig(**kw):
-        effects["obligations"].append({
-            "debtor_account": kw["debtor_account"].code,
-            "creditor_account": kw["creditor_account"].code,
-            "asset": kw["asset"].unit_name,
-            "amount_base_units": kw["amount_base_units"],
-        })
-        return kw
-
-    def _record(**kw):
-        effects["records"].append({"kind": kw["kind"], "data": kw.get("data", {})})
-        return kw
-
-    from .queries import get_asset_balance as _bal
-    def _balance(account, asset):
-        return _bal(asset, account)
-
     ctx = LapisContext(
-        agreement=agreement,
-        params=params,
-        state=state,
-        accounts=accounts_resolved,
-        assets=assets_resolved,
-        metadata=metadata,
-        transfer=_transfer,
-        create_obligation=_oblig,
-        record=_record,
-        balance=_balance,
+        global_state=dict(body.get("global_state", {})),
+        local_state=dict(body.get("local_state", {})),
+        boxes=dict(body.get("boxes", {})),
+        transaction=dict(body.get("transaction", {})),
+        group_transactions=list(body.get("group_transactions", [])),
+        global_fields=dict(body.get("global_fields", {})),
+        app_args=list(body.get("app_args", [])),
     )
 
     try:
@@ -642,7 +593,19 @@ def agreement_dry_run(request, pk):
     except Exception as exc:
         return JsonResponse({"ok": False, "error": f"Execution error: {exc}"}, status=500)
 
-    return JsonResponse({"ok": True, "effects": effects, "state": ctx.state})
+    return JsonResponse({
+        "ok": True,
+        "result": ctx.result,
+        "effects": {
+            "inner_transactions": ctx.inner_transactions,
+            "logs": ctx.logs,
+        },
+        "state": {
+            "global": ctx.global_state,
+            "local": ctx.local_state,
+            "boxes": ctx.boxes,
+        },
+    })
 
 
 @login_required

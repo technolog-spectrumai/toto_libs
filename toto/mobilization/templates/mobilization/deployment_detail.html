@@ -32,11 +32,6 @@
             </span>
           {% endif %}
         </div>
-        {% if deployment.per_diem_amount %}
-          <div class="text-xs opacity-60">
-            <i class="fa-solid fa-coins mr-1"></i>Per diem: {{ deployment.per_diem_amount }}{% if deployment.per_diem_asset %} {{ deployment.per_diem_asset }}{% endif %}
-          </div>
-        {% endif %}
       </div>
       <div class="flex flex-wrap gap-2">
         <a href="{% url 'mobilization:intervention_create' deployment.pk %}"
@@ -456,9 +451,6 @@
         {% if deployment.coordinator %}<div><i class="fa-solid fa-user-tie mr-1"></i>{% trans "Coordinator" %}: {{ deployment.coordinator }}</div>{% endif %}
         <div>{% trans "Created" %} {{ deployment.created_at|date:"M d, Y H:i" }}</div>
         <div>{% trans "Updated" %} {{ deployment.updated_at|date:"M d, Y H:i" }}</div>
-        {% if deployment.per_diem_amount %}
-          <div><i class="fa-solid fa-coins mr-1"></i>Per diem: {{ deployment.per_diem_amount }}{% if deployment.per_diem_asset %} {{ deployment.per_diem_asset }}{% endif %}</div>
-        {% endif %}
         {% if deployment.notes %}
           <p class="border-t border-current/10 pt-2 mt-2">{{ deployment.notes }}</p>
         {% endif %}

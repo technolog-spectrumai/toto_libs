@@ -444,16 +444,6 @@ class Deployment(models.Model):
     objective = models.TextField(blank=True)
     notes = models.TextField(blank=True)
 
-    # Per diem allowance for assigned responders
-    per_diem_amount = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
-    per_diem_asset = models.ForeignKey(
-        "assets.Asset",
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="deployment_per_diems",
-    )
-
     # Hybrid/partial deployment
     is_hybrid = models.BooleanField(
         default=False,

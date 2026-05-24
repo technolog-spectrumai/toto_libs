@@ -379,57 +379,70 @@ class Command(IngressCommand):
             code=(
                 "language: lapis\n"
                 "version: 1\n"
+                "target: teal\n"
+                "contract_type: application\n"
                 "name: Noop\n"
                 "actions:\n"
                 "  execute:\n"
-                "    type: seq\n"
-                "    steps: []\n"
+                "    body:\n"
+                "      type: seq\n"
+                "      steps:\n"
+                "        - type: approve\n"
             ),
             metadata={"description": "Does nothing — useful for testing wiring."},
         ),
         dict(
-            name="Record Event",
+            name="Log Event",
             code=(
                 "language: lapis\n"
                 "version: 1\n"
-                "name: RecordEvent\n"
+                "target: teal\n"
+                "contract_type: application\n"
+                "name: LogEvent\n"
                 "actions:\n"
                 "  execute:\n"
-                "    type: record\n"
-                "    kind: agreement_executed\n"
-                "    data: {}\n"
+                "    body:\n"
+                "      type: seq\n"
+                "      steps:\n"
+                "        - type: log\n"
+                "          value:\n"
+                "            type: bytes\n"
+                "            value: agreement_executed\n"
+                "        - type: approve\n"
             ),
-            metadata={"description": "Records an agreement_executed event on every execution."},
+            metadata={"description": "Logs an agreement_executed message on every execution."},
         ),
         dict(
-            name="Assert Balance",
+            name="Assert State",
             code=(
                 "language: lapis\n"
                 "version: 1\n"
-                "name: AssertBalance\n"
+                "target: teal\n"
+                "contract_type: application\n"
+                "name: AssertState\n"
                 "actions:\n"
                 "  execute:\n"
-                "    type: seq\n"
-                "    steps:\n"
-                "      - type: assert\n"
-                "        condition:\n"
-                "          type: gte\n"
-                "          left:\n"
-                "            type: balance\n"
-                "            account:\n"
-                "              type: account\n"
-                "              ref: source\n"
-                "            asset:\n"
-                "              type: asset\n"
-                "              ref: asset\n"
-                "          right:\n"
-                "            type: int\n"
-                "            value: 0\n"
-                "      - type: record\n"
-                "        kind: balance_checked\n"
-                "        data: {}\n"
+                "    body:\n"
+                "      type: seq\n"
+                "      steps:\n"
+                "        - type: assert\n"
+                "          condition:\n"
+                "            type: eq\n"
+                "            left:\n"
+                "              type: app_global_get\n"
+                "              key:\n"
+                "                type: bytes\n"
+                "                value: status\n"
+                "            right:\n"
+                "              type: bytes\n"
+                "              value: active\n"
+                "        - type: log\n"
+                "          value:\n"
+                "            type: bytes\n"
+                "            value: state_checked\n"
+                "        - type: approve\n"
             ),
-            metadata={"description": "Asserts the source account has a non-negative balance, then records the check."},
+            metadata={"description": "Asserts global state 'status' equals 'active', then logs and approves."},
         ),
     ]
 
@@ -450,7 +463,7 @@ class Command(IngressCommand):
 
     def _seed_sample_agreements(self, accounts: dict, contracts: dict):
         noop = contracts.get("Noop")
-        record = contracts.get("Record Event")
+        record = contracts.get("Log Event")
 
         specs = []
         if noop and "alice" in accounts and "bob" in accounts:

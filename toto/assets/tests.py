@@ -559,7 +559,10 @@ class LapisLoaderTests(TestCase):
 
 class LapisCompilerTests(TestCase):
     def _valid_tree(self):
-        return {"language": "lapis", "version": 1, "name": "T", "actions": {"noop": {"type": "seq", "steps": []}}}
+        return {
+            "language": "lapis", "version": 1, "target": "teal", "name": "T",
+            "actions": {"noop": {"body": {"type": "seq", "steps": []}}},
+        }
 
     def test_valid_contract_passes(self):
         from .lapis.compiler import LapisCompiler
@@ -580,6 +583,28 @@ class LapisCompilerTests(TestCase):
         with self.assertRaises(LapisValidationError):
             LapisCompiler().validate_contract(tree)
 
+    def test_missing_target_raises(self):
+        from .lapis.compiler import LapisCompiler
+        from .lapis.exceptions import LapisValidationError
+        tree = self._valid_tree()
+        del tree["target"]
+        with self.assertRaises(LapisValidationError):
+            LapisCompiler().validate_contract(tree)
+
+    def test_wrong_target_raises(self):
+        from .lapis.compiler import LapisCompiler
+        from .lapis.exceptions import LapisValidationError
+        tree = {**self._valid_tree(), "target": "evm"}
+        with self.assertRaises(LapisValidationError):
+            LapisCompiler().validate_contract(tree)
+
+    def test_action_missing_body_raises(self):
+        from .lapis.compiler import LapisCompiler
+        from .lapis.exceptions import LapisValidationError
+        tree = {**self._valid_tree(), "actions": {"a": {"type": "seq", "steps": []}}}
+        with self.assertRaises(LapisValidationError):
+            LapisCompiler().validate_contract(tree)
+
     def test_empty_actions_raises(self):
         from .lapis.compiler import LapisCompiler
         from .lapis.exceptions import LapisValidationError
@@ -590,11 +615,46 @@ class LapisCompilerTests(TestCase):
     def test_unknown_node_type_raises(self):
         from .lapis.compiler import LapisCompiler
         from .lapis.exceptions import LapisValidationError
-        tree = {**self._valid_tree(), "actions": {"a": {"type": "BOGUS"}}}
+        tree = {**self._valid_tree(), "actions": {"a": {"body": {"type": "BOGUS"}}}}
         with self.assertRaises(LapisValidationError):
             LapisCompiler().validate_contract(tree)
 
-    def test_compile_action_extracts_node(self):
+    def test_removed_transfer_node_raises(self):
+        from .lapis.compiler import LapisCompiler
+        from .lapis.exceptions import LapisValidationError
+        tree = {**self._valid_tree(), "actions": {"a": {"body": {"type": "transfer"}}}}
+        with self.assertRaises(LapisValidationError):
+            LapisCompiler().validate_contract(tree)
+
+    def test_removed_record_node_raises(self):
+        from .lapis.compiler import LapisCompiler
+        from .lapis.exceptions import LapisValidationError
+        tree = {**self._valid_tree(), "actions": {"a": {"body": {"type": "record", "kind": "x"}}}}
+        with self.assertRaises(LapisValidationError):
+            LapisCompiler().validate_contract(tree)
+
+    def test_removed_decimal_node_raises(self):
+        from .lapis.compiler import LapisCompiler
+        from .lapis.exceptions import LapisValidationError
+        tree = {**self._valid_tree(), "actions": {"a": {"body": {"type": "decimal", "value": "1.5"}}}}
+        with self.assertRaises(LapisValidationError):
+            LapisCompiler().validate_contract(tree)
+
+    def test_removed_get_state_node_raises(self):
+        from .lapis.compiler import LapisCompiler
+        from .lapis.exceptions import LapisValidationError
+        tree = {**self._valid_tree(), "actions": {"a": {"body": {"type": "get_state", "key": "x"}}}}
+        with self.assertRaises(LapisValidationError):
+            LapisCompiler().validate_contract(tree)
+
+    def test_removed_int_node_raises(self):
+        from .lapis.compiler import LapisCompiler
+        from .lapis.exceptions import LapisValidationError
+        tree = {**self._valid_tree(), "actions": {"a": {"body": {"type": "int", "value": 1}}}}
+        with self.assertRaises(LapisValidationError):
+            LapisCompiler().validate_contract(tree)
+
+    def test_compile_action_returns_body(self):
         from .lapis.compiler import LapisCompiler
         tree = self._valid_tree()
         node = LapisCompiler().compile_action(tree, "noop")
@@ -606,68 +666,91 @@ class LapisCompilerTests(TestCase):
         with self.assertRaises(LapisValidationError):
             LapisCompiler().compile_action(self._valid_tree(), "nonexistent")
 
+    def test_app_global_get_validates(self):
+        from .lapis.compiler import LapisCompiler
+        node = {"type": "app_global_get", "key": {"type": "bytes", "value": "k"}}
+        LapisCompiler().validate_node(node)
+
+    def test_app_global_put_validates(self):
+        from .lapis.compiler import LapisCompiler
+        node = {
+            "type": "app_global_put",
+            "key": {"type": "bytes", "value": "k"},
+            "value": {"type": "uint64", "value": 1},
+        }
+        LapisCompiler().validate_node(node)
+
+    def test_inner_transaction_sequence_validates(self):
+        from .lapis.compiler import LapisCompiler
+        seq = {
+            "type": "seq",
+            "steps": [
+                {"type": "inner_transaction_begin"},
+                {"type": "inner_transaction_set", "field": "TypeEnum",
+                 "value": {"type": "uint64", "value": 1}},
+                {"type": "inner_transaction_submit"},
+            ],
+        }
+        LapisCompiler().validate_node(seq)
+
 
 class LapisExecutorTests(TestCase):
-    def _ctx(self, events=None):
+    def _ctx(self, global_state=None):
         from .lapis.executor import LapisContext
-        if events is None:
-            events = []
         return LapisContext(
-            agreement=object(),
-            params={},
-            state={},
-            accounts={},
-            assets={},
-            metadata={},
-            transfer=lambda **kw: kw,
-            create_obligation=lambda **kw: kw,
-            record=lambda **kw: events.append(kw) or kw,
-            balance=lambda **kw: 0,
+            global_state=global_state or {},
+            local_state={},
+            boxes={},
+            transaction={},
+            group_transactions=[],
+            global_fields={},
+            app_args=[],
         )
-
-    def test_execute_record_node(self):
-        from .lapis.compiler import LapisCompiler
-        from .lapis.executor import LapisExecutor
-        tree = {
-            "language": "lapis",
-            "version": 1,
-            "name": "RecordOnly",
-            "actions": {"run": {"type": "record", "kind": "hello", "data": {"x": {"type": "int", "value": 1}}}},
-        }
-        plan = LapisCompiler().compile_action(tree, "run")
-        events = []
-        LapisExecutor().execute(plan, self._ctx(events))
-        self.assertEqual(events[0]["kind"], "hello")
-        self.assertEqual(events[0]["data"]["x"], 1)
 
     def test_execute_seq_noop(self):
         from .lapis.compiler import LapisCompiler
         from .lapis.executor import LapisExecutor
-        tree = {"language": "lapis", "version": 1, "name": "T", "actions": {"noop": {"type": "seq", "steps": []}}}
+        tree = {
+            "language": "lapis", "version": 1, "target": "teal", "name": "T",
+            "actions": {"noop": {"body": {"type": "seq", "steps": []}}},
+        }
         plan = LapisCompiler().compile_action(tree, "noop")
         LapisExecutor().execute(plan, self._ctx())
 
-    def test_int_literal_eval(self):
+    def test_uint64_literal_eval(self):
         from .lapis.executor import LapisExecutor
-        node = {"type": "int", "value": 42}
-        result = LapisExecutor().eval_node(node, self._ctx())
-        self.assertEqual(result, 42)
+        node = {"type": "uint64", "value": 42}
+        self.assertEqual(LapisExecutor().eval_node(node, self._ctx()), 42)
+
+    def test_bytes_literal_eval(self):
+        from .lapis.executor import LapisExecutor
+        node = {"type": "bytes", "value": "hello"}
+        self.assertEqual(LapisExecutor().eval_node(node, self._ctx()), "hello")
 
     def test_add_node(self):
         from .lapis.executor import LapisExecutor
         node = {
             "type": "add",
-            "left": {"type": "int", "value": 3},
-            "right": {"type": "int", "value": 7},
+            "left": {"type": "uint64", "value": 3},
+            "right": {"type": "uint64", "value": 7},
         }
         self.assertEqual(LapisExecutor().eval_node(node, self._ctx()), 10)
+
+    def test_mod_node(self):
+        from .lapis.executor import LapisExecutor
+        node = {
+            "type": "mod",
+            "left": {"type": "uint64", "value": 10},
+            "right": {"type": "uint64", "value": 3},
+        }
+        self.assertEqual(LapisExecutor().eval_node(node, self._ctx()), 1)
 
     def test_eq_node_true(self):
         from .lapis.executor import LapisExecutor
         node = {
             "type": "eq",
-            "left": {"type": "int", "value": 5},
-            "right": {"type": "int", "value": 5},
+            "left": {"type": "uint64", "value": 5},
+            "right": {"type": "uint64", "value": 5},
         }
         self.assertTrue(LapisExecutor().eval_node(node, self._ctx()))
 
@@ -675,76 +758,163 @@ class LapisExecutorTests(TestCase):
         from .lapis.executor import LapisExecutor
         node = {
             "type": "eq",
-            "left": {"type": "int", "value": 5},
-            "right": {"type": "int", "value": 6},
+            "left": {"type": "uint64", "value": 5},
+            "right": {"type": "uint64", "value": 6},
         }
         self.assertFalse(LapisExecutor().eval_node(node, self._ctx()))
+
+    def test_app_global_put_and_get(self):
+        from .lapis.executor import LapisExecutor
+        ctx = self._ctx()
+        put = {"type": "app_global_put", "key": {"type": "bytes", "value": "x"}, "value": {"type": "uint64", "value": 99}}
+        LapisExecutor().eval_node(put, ctx)
+        self.assertEqual(ctx.global_state["x"], 99)
+        get = {"type": "app_global_get", "key": {"type": "bytes", "value": "x"}}
+        self.assertEqual(LapisExecutor().eval_node(get, ctx), 99)
+
+    def test_log_appends_to_logs(self):
+        from .lapis.executor import LapisExecutor
+        ctx = self._ctx()
+        node = {"type": "log", "value": {"type": "bytes", "value": "hello"}}
+        LapisExecutor().eval_node(node, ctx)
+        self.assertEqual(ctx.logs, ["hello"])
+
+    def test_approve_sets_result(self):
+        from .lapis.executor import LapisExecutor
+        ctx = self._ctx()
+        LapisExecutor().eval_node({"type": "approve"}, ctx)
+        self.assertEqual(ctx.result, "approve")
+
+    def test_reject_sets_result(self):
+        from .lapis.executor import LapisExecutor
+        ctx = self._ctx()
+        LapisExecutor().eval_node({"type": "reject"}, ctx)
+        self.assertEqual(ctx.result, "reject")
+
+    def test_inner_transaction_sequence(self):
+        from .lapis.executor import LapisExecutor
+        ctx = self._ctx()
+        seq = {
+            "type": "seq",
+            "steps": [
+                {"type": "inner_transaction_begin"},
+                {"type": "inner_transaction_set", "field": "TypeEnum", "value": {"type": "uint64", "value": 1}},
+                {"type": "inner_transaction_set", "field": "Amount", "value": {"type": "uint64", "value": 500}},
+                {"type": "inner_transaction_submit"},
+            ],
+        }
+        LapisExecutor().eval_node(seq, ctx)
+        self.assertEqual(len(ctx.inner_transactions), 1)
+        self.assertEqual(ctx.inner_transactions[0]["TypeEnum"], 1)
+        self.assertEqual(ctx.inner_transactions[0]["Amount"], 500)
+
+    def test_sha256_node(self):
+        import hashlib
+        from .lapis.executor import LapisExecutor
+        ctx = self._ctx()
+        node = {"type": "sha256", "value": {"type": "bytes", "value": "abc"}}
+        result = LapisExecutor().eval_node(node, ctx)
+        self.assertEqual(result, hashlib.sha256(b"abc").hexdigest())
+
+    def test_concat_node(self):
+        from .lapis.executor import LapisExecutor
+        ctx = self._ctx()
+        node = {
+            "type": "concat",
+            "left": {"type": "bytes", "value": "foo"},
+            "right": {"type": "bytes", "value": "bar"},
+        }
+        self.assertEqual(LapisExecutor().eval_node(node, ctx), "foobar")
 
 
 # ---------------------------------------------------------------------------
 # Shared Lapis fixtures
 # ---------------------------------------------------------------------------
 
-_SIMPLE_LAPIS_YAML = (
-    "language: lapis\nversion: 1\nname: T\n"
-    "actions:\n  noop:\n    type: seq\n    steps: []\n"
-)
+_SIMPLE_LAPIS_YAML = """\
+language: lapis
+version: 1
+target: teal
+contract_type: application
+name: T
+actions:
+  noop:
+    body:
+      type: seq
+      steps: []
+"""
 
 _SUBSCRIPTION_LAPIS_YAML = """\
 language: lapis
 version: 1
+target: teal
+contract_type: application
 name: Subscription
 actions:
   activate:
-    type: seq
-    steps:
-      - type: set_state
-        key: status
-        value:
-          type: bytes
-          value: "active"
-      - type: record
-        kind: subscription_activated
-        data: {}
-  bill_period:
-    type: seq
-    steps:
-      - type: assert
-        condition:
-          type: eq
-          left:
-            type: get_state
-            key: status
-          right:
+    body:
+      type: seq
+      steps:
+        - type: app_global_put
+          key:
+            type: bytes
+            value: "status"
+          value:
             type: bytes
             value: "active"
-      - type: transfer
-        asset:
-          type: asset
-          ref: payment
-        from:
-          type: account
-          ref: source
-        to:
-          type: account
-          ref: target
-        amount:
-          type: amount
-          ref: subscription.amount
-      - type: record
-        kind: period_billed
-        data: {}
+        - type: log
+          value:
+            type: bytes
+            value: "subscription_activated"
+        - type: approve
+  bill_period:
+    body:
+      type: seq
+      steps:
+        - type: assert
+          condition:
+            type: eq
+            left:
+              type: app_global_get
+              key:
+                type: bytes
+                value: "status"
+            right:
+              type: bytes
+              value: "active"
+        - type: inner_transaction_begin
+        - type: inner_transaction_set
+          field: "TypeEnum"
+          value:
+            type: uint64
+            value: 1
+        - type: inner_transaction_set
+          field: "Amount"
+          value:
+            type: uint64
+            value: 1000
+        - type: inner_transaction_submit
+        - type: log
+          value:
+            type: bytes
+            value: "period_billed"
+        - type: approve
   cancel:
-    type: seq
-    steps:
-      - type: set_state
-        key: status
-        value:
-          type: bytes
-          value: "cancelled"
-      - type: record
-        kind: subscription_cancelled
-        data: {}
+    body:
+      type: seq
+      steps:
+        - type: app_global_put
+          key:
+            type: bytes
+            value: "status"
+          value:
+            type: bytes
+            value: "cancelled"
+        - type: log
+          value:
+            type: bytes
+            value: "subscription_cancelled"
+        - type: approve
 """
 
 
@@ -782,9 +952,39 @@ class ContractTests(TestCase):
     def test_unsupported_node_type_fails(self):
         from django.core.exceptions import ValidationError
         from .models import Contract
-        code = "language: lapis\nversion: 1\nname: X\nactions:\n  a:\n    type: BOGUS\n"
+        code = (
+            "language: lapis\nversion: 1\ntarget: teal\nname: X\n"
+            "actions:\n  a:\n    body:\n      type: BOGUS\n"
+        )
         with self.assertRaises(ValidationError):
             Contract(name="BadNode", code=code).full_clean()
+
+    def test_old_transfer_node_rejected(self):
+        from django.core.exceptions import ValidationError
+        from .models import Contract
+        code = (
+            "language: lapis\nversion: 1\ntarget: teal\nname: X\n"
+            "actions:\n  a:\n    body:\n      type: transfer\n"
+        )
+        with self.assertRaises(ValidationError):
+            Contract(name="OldTransfer", code=code).full_clean()
+
+    def test_old_record_node_rejected(self):
+        from django.core.exceptions import ValidationError
+        from .models import Contract
+        code = (
+            "language: lapis\nversion: 1\ntarget: teal\nname: X\n"
+            "actions:\n  a:\n    body:\n      type: record\n      kind: x\n"
+        )
+        with self.assertRaises(ValidationError):
+            Contract(name="OldRecord", code=code).full_clean()
+
+    def test_missing_target_fails(self):
+        from django.core.exceptions import ValidationError
+        from .models import Contract
+        code = "language: lapis\nversion: 1\nname: X\nactions:\n  a:\n    body:\n      type: seq\n      steps: []\n"
+        with self.assertRaises(ValidationError):
+            Contract(name="NoTarget", code=code).full_clean()
 
     def test_action_names_extractable(self):
         from .lapis.loader import loads_contract
@@ -850,7 +1050,11 @@ class AgreementFormTests(TestCase):
         self.assertIn("code", form.errors)
 
     def test_invalid_lapis_rejected(self):
-        form = self._post({"code": "language: lapis\nversion: 1\nname: X\nactions:\n  a:\n    type: BOGUS\n"})
+        bad_code = (
+            "language: lapis\nversion: 1\ntarget: teal\nname: X\n"
+            "actions:\n  a:\n    body:\n      type: BOGUS\n"
+        )
+        form = self._post({"code": bad_code})
         self.assertFalse(form.is_valid())
         self.assertIn("code", form.errors)
 
@@ -968,16 +1172,18 @@ class AgreementDryRunTests(TestCase):
     def _login(self):
         self.client.force_login(self.user)
 
-    def _dry_run(self, action, state=None, metadata=None):
+    def _dry_run(self, action, global_state=None, app_args=None):
         import json
         from django.urls import reverse
         payload = {
             "action": action,
-            "state": state or {},
-            "params": {},
-            "accounts": {"source": self.source.code, "target": self.target.code},
-            "assets": {"payment": self.asset.unit_name},
-            "metadata": metadata or {},
+            "global_state": global_state or {},
+            "local_state": {},
+            "boxes": {},
+            "transaction": {},
+            "group_transactions": [],
+            "global_fields": {},
+            "app_args": app_args or [],
         }
         return self.client.post(
             reverse("assets:agreement_dry_run", args=[self.agreement.pk]),
@@ -990,13 +1196,20 @@ class AgreementDryRunTests(TestCase):
         resp = self.client.post(reverse("assets:agreement_dry_run", args=[self.agreement.pk]))
         self.assertNotEqual(resp.status_code, 200)
 
-    def test_dry_run_activate_returns_record(self):
+    def test_dry_run_activate_puts_global_status(self):
         self._login()
-        resp = self._dry_run("activate", state={})
+        resp = self._dry_run("activate")
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertTrue(data["ok"])
-        self.assertEqual(data["effects"]["records"][0]["kind"], "subscription_activated")
+        self.assertEqual(data["state"]["global"]["status"], "active")
+        self.assertEqual(data["result"], "approve")
+
+    def test_dry_run_activate_emits_log(self):
+        self._login()
+        resp = self._dry_run("activate")
+        data = resp.json()
+        self.assertIn("subscription_activated", data["effects"]["logs"])
 
     def test_dry_run_does_not_create_ledger_transaction(self):
         self._login()
@@ -1010,13 +1223,6 @@ class AgreementDryRunTests(TestCase):
         self._dry_run("activate")
         self.assertEqual(LedgerEntry.objects.count(), before)
 
-    def test_dry_run_does_not_mutate_asset_holding(self):
-        self._login()
-        from .queries import get_asset_balance
-        before = get_asset_balance(self.asset, self.source)
-        self._dry_run("bill_period", state={"status": "active"}, metadata={"subscription.amount": 10})
-        self.assertEqual(get_asset_balance(self.asset, self.source), before)
-
     def test_dry_run_does_not_create_obligation(self):
         from .models import Obligation
         self._login()
@@ -1024,22 +1230,16 @@ class AgreementDryRunTests(TestCase):
         self._dry_run("activate")
         self.assertEqual(Obligation.objects.count(), before)
 
-    def test_dry_run_bill_period_returns_intended_transfer(self):
+    def test_dry_run_bill_period_returns_inner_transaction(self):
         self._login()
-        resp = self._dry_run(
-            "bill_period",
-            state={"status": "active"},
-            metadata={"subscription.amount": 1000},
-        )
+        resp = self._dry_run("bill_period", global_state={"status": "active"})
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertTrue(data["ok"])
-        transfers = data["effects"]["transfers"]
-        self.assertEqual(len(transfers), 1)
-        self.assertEqual(transfers[0]["source_account"], self.source.code)
-        self.assertEqual(transfers[0]["target_account"], self.target.code)
-        self.assertEqual(transfers[0]["asset"], self.asset.unit_name)
-        self.assertEqual(transfers[0]["amount_base_units"], 1000)
+        inner_txns = data["effects"]["inner_transactions"]
+        self.assertEqual(len(inner_txns), 1)
+        self.assertEqual(inner_txns[0]["TypeEnum"], 1)
+        self.assertEqual(inner_txns[0]["Amount"], 1000)
 
     def test_dry_run_invalid_action_returns_error(self):
         self._login()
@@ -1049,6 +1249,14 @@ class AgreementDryRunTests(TestCase):
 
     def test_dry_run_assert_fails_when_state_wrong(self):
         self._login()
-        resp = self._dry_run("bill_period", state={"status": "cancelled"}, metadata={"subscription.amount": 100})
+        resp = self._dry_run("bill_period", global_state={"status": "cancelled"})
         self.assertEqual(resp.status_code, 400)
         self.assertFalse(resp.json()["ok"])
+
+    def test_dry_run_cancel_sets_cancelled_status(self):
+        self._login()
+        resp = self._dry_run("cancel")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["state"]["global"]["status"], "cancelled")
