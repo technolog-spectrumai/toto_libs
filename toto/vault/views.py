@@ -1,7 +1,11 @@
 import mimetypes
+from datetime import date, timedelta
 
+from django.db.models import Count, Q
+from django.db.models.functions import TruncDate
 from django.http import FileResponse, JsonResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from django.views import View
 from django.views.generic import TemplateView, DetailView
 from django.urls import reverse
@@ -280,3 +284,87 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
                 "size": f"{uploaded_file.size / (1024*1024):.2f} MB",
             }
         })
+
+
+# ============================================================
+# Metrics / Statistics
+# ============================================================
+
+class VaultMetricsView(LoginRequiredMixin, TemplateView):
+    """
+    Aggregate statistics and charts for the vault: file counts by type,
+    bucket breakdowns, upload activity over the last 30 days.
+    """
+    template_name = "vault/metrics.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+
+        # ── Top-level counters ──────────────────────────────
+        total_buckets = Bucket.objects.count()
+        total_dirs = VaultDirectory.objects.count()
+        total_files = VaultFile.objects.count()
+        public_files = VaultFile.objects.filter(is_public=True).count()
+        encrypted_files = VaultFile.objects.filter(is_encrypted=True).count()
+        week_ago = timezone.now() - timedelta(days=7)
+        recent_count = VaultFile.objects.filter(uploaded_at__gte=week_ago).count()
+
+        context.update({
+            "total_buckets": total_buckets,
+            "total_dirs": total_dirs,
+            "total_files": total_files,
+            "public_files": public_files,
+            "encrypted_files": encrypted_files,
+            "recent_count": recent_count,
+        })
+
+        # ── Chart data ──────────────────────────────────────
+        context["files_by_type"] = list(
+            VaultFile.objects.values("file_type")
+            .annotate(count=Count("id"))
+            .order_by("-count")
+        )
+
+        context["files_by_bucket"] = list(
+            VaultFile.objects.filter(bucket__isnull=False)
+            .values("bucket__name")
+            .annotate(count=Count("id"))
+            .order_by("-count")[:12]
+        )
+
+        thirty_days_ago = timezone.now() - timedelta(days=29)
+        daily_qs = {
+            entry["day"]: entry["count"]
+            for entry in VaultFile.objects.filter(uploaded_at__gte=thirty_days_ago)
+            .annotate(day=TruncDate("uploaded_at"))
+            .values("day")
+            .annotate(count=Count("id"))
+        }
+        today = date.today()
+        context["daily_series"] = [
+            {
+                "date": (today - timedelta(days=29 - i)).strftime("%m-%d"),
+                "count": daily_qs.get(today - timedelta(days=29 - i), 0),
+            }
+            for i in range(30)
+        ]
+
+        # ── Per-bucket breakdown ────────────────────────────
+        context["bucket_stats"] = list(
+            Bucket.objects.annotate(
+                file_count=Count("files", distinct=True),
+                dir_count=Count("directories", distinct=True),
+                public_count=Count("files", filter=Q(files__is_public=True), distinct=True),
+                encrypted_count=Count("files", filter=Q(files__is_encrypted=True), distinct=True),
+            ).select_related("owner").order_by("name")
+        )
+        context["gateway_bucket_pks"] = set(
+            FileGateway.objects.values_list("bucket_id", flat=True)
+        )
+
+        # ── Recent files ────────────────────────────────────
+        context["recent_files"] = VaultFile.objects.select_related(
+            "owner", "bucket", "directory"
+        ).order_by("-uploaded_at")[:8]
+
+        return PageProcessor().decorate(context, self.request)
