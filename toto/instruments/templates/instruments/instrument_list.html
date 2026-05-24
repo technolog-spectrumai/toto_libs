@@ -142,6 +142,21 @@
              :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
             {% trans "New Subscription" %}
           </a>
+          <a href="{% url 'instruments:lease_create' %}"
+             class="rounded-lg border px-4 py-2 text-sm font-semibold"
+             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+            {% trans "New Lease" %}
+          </a>
+          <a href="{% url 'instruments:revenue_share_create' %}"
+             class="rounded-lg border px-4 py-2 text-sm font-semibold"
+             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+            {% trans "New Revenue Share" %}
+          </a>
+          <a href="{% url 'instruments:amortization_create' %}"
+             class="rounded-lg border px-4 py-2 text-sm font-semibold"
+             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+            {% trans "New Amortization" %}
+          </a>
         </div>
       </div>
     {% endfor %}
@@ -190,6 +205,24 @@
        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
       <i class="fa-solid fa-arrows-rotate text-lg" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
       <span>{% trans "New Subscription" %}</span>
+    </a>
+    <a href="{% url 'instruments:lease_create' %}"
+       class="flex items-center gap-3 rounded-xl border p-4 text-sm font-semibold shadow-sm transition hover:opacity-80"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <i class="fa-solid fa-file-contract text-lg text-teal-500"></i>
+      <span>{% trans "New Lease" %}</span>
+    </a>
+    <a href="{% url 'instruments:revenue_share_create' %}"
+       class="flex items-center gap-3 rounded-xl border p-4 text-sm font-semibold shadow-sm transition hover:opacity-80"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <i class="fa-solid fa-chart-pie text-lg text-pink-500"></i>
+      <span>{% trans "New Revenue Share" %}</span>
+    </a>
+    <a href="{% url 'instruments:amortization_create' %}"
+       class="flex items-center gap-3 rounded-xl border p-4 text-sm font-semibold shadow-sm transition hover:opacity-80"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <i class="fa-solid fa-battery-half text-lg text-amber-500"></i>
+      <span>{% trans "New Amortization" %}</span>
     </a>
   </section>
 

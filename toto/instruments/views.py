@@ -11,15 +11,14 @@ except Exception:  # pragma: no cover
     PageProcessor = None
 
 from .forms import (
+    AmortizationContractForm,
+    AmortizationEntryForm,
     EscrowContractForm,
     FinancialInstrumentForm,
     ForwardContractForm,
     FutureContractForm,
     FutureMarketForm,
-    LeaseChargeForm,
     LeaseContractForm,
-    LeaseMetricForm,
-    LeaseTariffForm,
     OptionContractForm,
     RevenueShareContractForm,
     StakingPositionForm,
@@ -27,21 +26,20 @@ from .forms import (
     VestingContractForm,
 )
 from .models import (
+    AmortizationContract,
     EscrowContract,
     FinancialInstrument,
     ForwardContract,
     FutureMarket,
     InstrumentStatus,
     InstrumentType,
-    LeaseCharge,
     LeaseContract,
-    LeaseMetric,
     OptionContract,
     StakingPosition,
     SubscriptionContract,
 )
-from .queries import dashboard_counts, list_instruments, list_lease_charges, list_lease_tariffs
-from .services import EscrowService, ForwardService, LeaseService, OptionService, StakingService, SubscriptionService
+from .queries import dashboard_counts, list_instruments
+from .services import AmortizationService, EscrowService, ForwardService, LeaseService, OptionService, StakingService, SubscriptionService
 
 
 def instruments_render(request, template_name, context):
@@ -458,13 +456,9 @@ def lease_detail(request, pk):
         ),
         pk=pk,
     )
-    tariffs = list_lease_tariffs(lease)
-    charges = list_lease_charges(lease)
     executions = lease.instrument.executions.all()
     return instruments_render(request, "instruments/lease_detail.html", {
         "lease": lease,
-        "tariffs": tariffs,
-        "charges": charges,
         "executions": executions,
     })
 
@@ -480,69 +474,6 @@ def lease_create(request):
     else:
         form = LeaseContractForm()
     return instruments_render(request, "instruments/lease_form.html", {"form": form})
-
-
-@login_required
-def lease_metric_create(request):
-    if request.method == "POST":
-        form = LeaseMetricForm(request.POST)
-        if form.is_valid():
-            form.save()
-            messages.success(request, "Lease metric created.")
-            return redirect("instruments:lease_list")
-    else:
-        form = LeaseMetricForm()
-    return instruments_render(request, "instruments/lease_metric_form.html", {"form": form})
-
-
-@login_required
-def lease_tariff_create(request, lease_pk):
-    lease = get_object_or_404(LeaseContract, pk=lease_pk)
-    if request.method == "POST":
-        form = LeaseTariffForm(request.POST)
-        if form.is_valid():
-            tariff = form.save(commit=False)
-            tariff.lease = lease
-            try:
-                tariff.full_clean()
-                tariff.save()
-                messages.success(request, "Tariff added.")
-                return redirect("instruments:lease_detail", pk=lease.pk)
-            except Exception as exc:
-                messages.error(request, str(exc))
-    else:
-        form = LeaseTariffForm()
-    return instruments_render(request, "instruments/lease_tariff_form.html", {
-        "form": form, "lease": lease,
-    })
-
-
-@login_required
-def lease_charge_create(request, lease_pk):
-    lease = get_object_or_404(
-        LeaseContract.objects.select_related("instrument", "payment_asset"),
-        pk=lease_pk,
-    )
-    if request.method == "POST":
-        form = LeaseChargeForm(request.POST, lease=lease)
-        if form.is_valid():
-            try:
-                LeaseService.record_metered_charge(
-                    lease=lease,
-                    metric=form.cleaned_data["metric"],
-                    raw_quantity=form.cleaned_data["raw_quantity"],
-                    source_type=form.cleaned_data.get("source_type", ""),
-                    source_id=form.cleaned_data.get("source_id", ""),
-                )
-                messages.success(request, "Metered charge recorded.")
-                return redirect("instruments:lease_detail", pk=lease.pk)
-            except Exception as exc:
-                messages.error(request, str(exc))
-    else:
-        form = LeaseChargeForm(lease=lease)
-    return instruments_render(request, "instruments/lease_charge_form.html", {
-        "form": form, "lease": lease,
-    })
 
 
 @require_POST
@@ -592,35 +523,143 @@ def lease_charge_fixed(request, pk):
     return redirect("instruments:lease_detail", pk=lease.pk)
 
 
-@require_POST
+# ── Amortization ──────────────────────────────────────────────────────────────
+
 @login_required
-def lease_charge_collect(request, charge_pk):
-    charge = get_object_or_404(
-        LeaseCharge.objects.select_related(
-            "lease__instrument", "lease__payment_asset",
-            "lease__lessee_account", "lease__revenue_account",
-            "metric",
+def amortization_list(request):
+    from .models import AmortizationStatus
+    status = request.GET.get("status") or None
+    qs = AmortizationContract.objects.select_related(
+        "instrument", "source_account", "destination_account", "asset"
+    ).order_by("-created_at")
+    if status:
+        qs = qs.filter(status=status)
+    return instruments_render(request, "instruments/amortization_list.html", {
+        "contracts": qs[:100],
+        "status": status,
+        "status_choices": AmortizationStatus.choices,
+        "total": AmortizationContract.objects.count(),
+        "active_count": AmortizationContract.objects.filter(status="active").count(),
+        "draft_count": AmortizationContract.objects.filter(status="draft").count(),
+    })
+
+
+@login_required
+def amortization_detail(request, pk):
+    contract = get_object_or_404(
+        AmortizationContract.objects.select_related(
+            "instrument", "source_account", "destination_account", "asset"
         ),
-        pk=charge_pk,
+        pk=pk,
     )
-    try:
-        LeaseService.charge_pending_charge(charge)
-        messages.success(request, "Charge collected.")
-    except Exception as exc:
-        messages.error(request, str(exc))
-    return redirect("instruments:lease_detail", pk=charge.lease.pk)
+    entries = contract.entries.select_related("transaction").order_by("-created_at")
+    executions = contract.instrument.executions.all()
+    return instruments_render(request, "instruments/amortization_detail.html", {
+        "contract": contract,
+        "entries": entries,
+        "executions": executions,
+    })
+
+
+@login_required
+def amortization_create(request):
+    if request.method == "POST":
+        form = AmortizationContractForm(request.POST)
+        if form.is_valid():
+            instrument = _create_instrument_and_contract(form, InstrumentType.AMORTIZATION, request.user)
+            messages.success(request, "Amortization contract created.")
+            return redirect("instruments:amortization_detail", pk=instrument.amortization_contract.pk)
+    else:
+        form = AmortizationContractForm()
+    return instruments_render(request, "instruments/amortization_form.html", {"form": form})
 
 
 @require_POST
 @login_required
-def lease_charge_waive(request, charge_pk):
-    charge = get_object_or_404(
-        LeaseCharge.objects.select_related("lease__instrument"),
-        pk=charge_pk,
+def amortization_activate(request, pk):
+    contract = get_object_or_404(
+        AmortizationContract.objects.select_related("instrument"),
+        pk=pk,
     )
     try:
-        LeaseService.waive_charge(charge)
-        messages.success(request, "Charge waived.")
+        AmortizationService.activate(contract)
+        messages.success(request, "Contract activated.")
     except Exception as exc:
         messages.error(request, str(exc))
-    return redirect("instruments:lease_detail", pk=charge.lease.pk)
+    return redirect("instruments:amortization_detail", pk=pk)
+
+
+@require_POST
+@login_required
+def amortization_pause(request, pk):
+    contract = get_object_or_404(
+        AmortizationContract.objects.select_related("instrument"),
+        pk=pk,
+    )
+    try:
+        AmortizationService.pause(contract)
+        messages.success(request, "Contract paused.")
+    except Exception as exc:
+        messages.error(request, str(exc))
+    return redirect("instruments:amortization_detail", pk=pk)
+
+
+@require_POST
+@login_required
+def amortization_resume(request, pk):
+    contract = get_object_or_404(
+        AmortizationContract.objects.select_related("instrument"),
+        pk=pk,
+    )
+    try:
+        AmortizationService.resume(contract)
+        messages.success(request, "Contract resumed.")
+    except Exception as exc:
+        messages.error(request, str(exc))
+    return redirect("instruments:amortization_detail", pk=pk)
+
+
+@require_POST
+@login_required
+def amortization_cancel(request, pk):
+    contract = get_object_or_404(
+        AmortizationContract.objects.select_related("instrument"),
+        pk=pk,
+    )
+    try:
+        AmortizationService.cancel(contract)
+        messages.success(request, "Contract cancelled.")
+    except Exception as exc:
+        messages.error(request, str(exc))
+    return redirect("instruments:amortization_detail", pk=pk)
+
+
+@login_required
+def amortization_amortize(request, pk):
+    contract = get_object_or_404(
+        AmortizationContract.objects.select_related(
+            "instrument", "asset", "source_account", "destination_account"
+        ),
+        pk=pk,
+    )
+    if request.method == "POST":
+        form = AmortizationEntryForm(request.POST)
+        if form.is_valid():
+            try:
+                with transaction.atomic():
+                    AmortizationService.amortize(
+                        contract=contract,
+                        amount_base_units=form.cleaned_data["amount_base_units"],
+                        source_type=form.cleaned_data.get("source_type", ""),
+                        source_id=form.cleaned_data.get("source_id", ""),
+                    )
+                messages.success(request, "Amortization entry recorded.")
+                return redirect("instruments:amortization_detail", pk=pk)
+            except Exception as exc:
+                messages.error(request, str(exc))
+    else:
+        form = AmortizationEntryForm()
+    return instruments_render(request, "instruments/amortization_entry_form.html", {
+        "form": form,
+        "contract": contract,
+    })

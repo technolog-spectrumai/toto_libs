@@ -1,0 +1,145 @@
+{% extends "instruments/base.html" %}
+{% load i18n %}
+
+{% block instruments_title %}{% trans "New Amortization" %}{% endblock %}
+
+{% block instruments_content %}
+<div class="space-y-6 max-w-5xl">
+
+  <div>
+    <a href="{% url 'instruments:amortization_list' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+      <i class="fa-solid fa-arrow-left"></i> {% trans "All amortizations" %}
+    </a>
+  </div>
+
+  <div class="flex items-center gap-3">
+    <div class="flex h-10 w-10 items-center justify-center rounded-xl"
+         :class="darkMode ? 'bg-accent-dark/10' : 'bg-accent-light/10'">
+      <i class="fa-solid fa-chart-pie" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+    </div>
+    <div>
+      <h2 class="text-2xl font-bold">{% trans "New Amortization Contract" %}</h2>
+      <p class="text-sm opacity-60">{% trans "Create a prepaid drawdown or deferred value consumption contract." %}</p>
+    </div>
+  </div>
+
+  <form method="post" class="space-y-5">
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+    <div class="rounded-lg border px-4 py-3 text-sm font-semibold"
+         :class="darkMode ? 'border-warn-dark/40 bg-warn-dark/10 text-warn-dark' : 'border-warn-light/40 bg-warn-light/10 text-warn-light'">
+      {{ form.non_field_errors }}
+    </div>
+    {% endif %}
+
+    <!-- Name -->
+    <fieldset class="rounded-xl border p-5 space-y-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Name" %}</legend>
+      <div class="space-y-2">
+        <label for="{{ form.name.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+          {{ form.name.label }} <span class="text-red-400">*</span>
+        </label>
+        {{ form.name }}
+        <p class="text-xs opacity-50">{{ form.name.help_text }}</p>
+        {% for e in form.name.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
+      </div>
+    </fieldset>
+
+    <!-- Accounts -->
+    <fieldset class="rounded-xl border p-5 space-y-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Accounts" %}</legend>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label for="{{ form.source_account.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
+            <i class="fa-solid fa-arrow-right-from-bracket mr-1"></i>{{ form.source_account.label }} <span class="text-red-400">*</span>
+          </label>
+          {{ form.source_account }}
+          <p class="mt-1 text-xs opacity-50">{% trans "Account holding the prepaid balance." %}</p>
+          {% for e in form.source_account.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
+        </div>
+        <div>
+          <label for="{{ form.destination_account.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
+            <i class="fa-solid fa-arrow-right-to-bracket mr-1"></i>{{ form.destination_account.label }} <span class="text-red-400">*</span>
+          </label>
+          {{ form.destination_account }}
+          <p class="mt-1 text-xs opacity-50">{% trans "Account receiving the consumed value." %}</p>
+          {% for e in form.destination_account.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
+        </div>
+      </div>
+    </fieldset>
+
+    <!-- Asset & Amount -->
+    <fieldset class="rounded-xl border p-5 space-y-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Asset & Balance" %}</legend>
+      <div class="grid gap-4 sm:grid-cols-3">
+        <div>
+          <label for="{{ form.asset.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {{ form.asset.label }} <span class="text-red-400">*</span>
+          </label>
+          {{ form.asset }}
+          {% for e in form.asset.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
+        </div>
+        <div>
+          <label for="{{ form.original_amount_base_units.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {{ form.original_amount_base_units.label }} <span class="text-red-400">*</span>
+          </label>
+          {{ form.original_amount_base_units }}
+          <p class="mt-1 text-xs opacity-50">{% trans "Total prepaid balance in base units." %}</p>
+          {% for e in form.original_amount_base_units.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
+        </div>
+        <div>
+          <label for="{{ form.basis.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {{ form.basis.label }} <span class="text-red-400">*</span>
+          </label>
+          {{ form.basis }}
+          <p class="mt-1 text-xs opacity-50">{% trans "How amortization is triggered." %}</p>
+          {% for e in form.basis.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
+        </div>
+      </div>
+    </fieldset>
+
+    <!-- Dates -->
+    <fieldset class="rounded-xl border p-5 space-y-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Dates" %}</legend>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label for="{{ form.starts_at.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {{ form.starts_at.label }}
+          </label>
+          {{ form.starts_at }}
+          {% for e in form.starts_at.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
+        </div>
+        <div>
+          <label for="{{ form.ends_at.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {{ form.ends_at.label }}
+          </label>
+          {{ form.ends_at }}
+          <p class="mt-1 text-xs opacity-50">{% trans "Leave blank for open-ended." %}</p>
+          {% for e in form.ends_at.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
+        </div>
+      </div>
+    </fieldset>
+
+    <!-- Metadata -->
+    <fieldset class="rounded-xl border p-5 space-y-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Metadata" %}</legend>
+      <div>
+        <label for="{{ form.metadata.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.metadata.label }}</label>
+        {{ form.metadata }}
+        {% for e in form.metadata.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
+      </div>
+    </fieldset>
+
+    <div class="flex flex-wrap items-center gap-3">
+      <button type="submit" class="rounded-lg px-5 py-2.5 text-sm font-bold shadow-sm transition hover:opacity-90"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'">
+        <i class="fa-solid fa-chart-pie mr-1"></i> {% trans "Create contract" %}
+      </button>
+      <a href="{% url 'instruments:amortization_list' %}" class="rounded-lg border px-5 py-2.5 text-sm font-semibold transition hover:opacity-80"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+        {% trans "Cancel" %}
+      </a>
+    </div>
+  </form>
+</div>
+{% endblock %}

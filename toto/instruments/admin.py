@@ -1,6 +1,8 @@
 from django.contrib import admin
 
 from .models import (
+    AmortizationContract,
+    AmortizationEntry,
     EscrowContract,
     FinancialInstrument,
     ForwardContract,
@@ -9,10 +11,7 @@ from .models import (
     FutureMarket,
     InstrumentExecution,
     InstrumentObligation,
-    LeaseCharge,
     LeaseContract,
-    LeaseMetric,
-    LeaseTariff,
     OptionContract,
     RevenueShareContract,
     RevenueShareRecipient,
@@ -100,48 +99,44 @@ admin.site.register(InstrumentExecution)
 # Lease admin
 # ---------------------------------------------------------------------------
 
-class LeaseTariffInline(admin.TabularInline):
-    model = LeaseTariff
-    extra = 0
-    readonly_fields = ["created_at", "updated_at"]
-
-
-class LeaseChargeInline(admin.TabularInline):
-    model = LeaseCharge
-    extra = 0
-    readonly_fields = ["created_at", "charged_at"]
-    show_change_link = True
-
-
 @admin.register(LeaseContract)
 class LeaseContractAdmin(admin.ModelAdmin):
     list_display = [
-        "instrument", "billing_mode", "status", "lessee_account",
-        "lessor_account", "next_billing_at", "created_at",
+        "instrument", "status", "lessee_account",
+        "lessor_account", "billing_period", "next_billing_at", "created_at",
     ]
-    list_filter = ["status", "billing_mode", "billing_period"]
+    list_filter = ["status", "billing_period"]
     search_fields = ["instrument__reference"]
     readonly_fields = ["created_at", "updated_at", "activated_at", "cancelled_at"]
-    inlines = [LeaseTariffInline, LeaseChargeInline]
 
 
-@admin.register(LeaseMetric)
-class LeaseMetricAdmin(admin.ModelAdmin):
-    list_display = ["code", "name", "kind", "unit", "step", "active"]
-    list_filter = ["kind", "active"]
-    search_fields = ["code", "name"]
+# ---------------------------------------------------------------------------
+# Amortization admin
+# ---------------------------------------------------------------------------
+
+class AmortizationEntryInline(admin.TabularInline):
+    model = AmortizationEntry
+    extra = 0
+    readonly_fields = ["created_at"]
+    show_change_link = True
 
 
-@admin.register(LeaseTariff)
-class LeaseTariffAdmin(admin.ModelAdmin):
-    list_display = ["lease", "metric", "price_per_step_base_units", "rounding_mode", "active"]
-    list_filter = ["rounding_mode", "active"]
+@admin.register(AmortizationContract)
+class AmortizationContractAdmin(admin.ModelAdmin):
+    list_display = [
+        "instrument", "status", "asset",
+        "original_amount_base_units", "amortized_amount_base_units",
+        "basis", "source_account", "destination_account", "created_at",
+    ]
+    list_filter = ["status", "asset"]
+    search_fields = ["instrument__reference", "source_account__code", "destination_account__code"]
     readonly_fields = ["created_at", "updated_at"]
+    inlines = [AmortizationEntryInline]
 
 
-@admin.register(LeaseCharge)
-class LeaseChargeAdmin(admin.ModelAdmin):
-    list_display = ["lease", "metric", "raw_quantity", "amount_base_units", "status", "charged_at"]
-    list_filter = ["status"]
-    search_fields = ["lease__instrument__reference"]
-    readonly_fields = ["created_at", "charged_at"]
+@admin.register(AmortizationEntry)
+class AmortizationEntryAdmin(admin.ModelAdmin):
+    list_display = ["contract", "amount_base_units", "source_type", "source_id", "transaction", "created_at"]
+    list_filter = ["source_type", "created_at"]
+    search_fields = ["contract__instrument__reference", "source_id"]
+    readonly_fields = ["created_at"]

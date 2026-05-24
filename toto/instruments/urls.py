@@ -50,13 +50,18 @@ urlpatterns = [
     # Lease
     path("leases/", views.lease_list, name="lease_list"),
     path("leases/create/", views.lease_create, name="lease_create"),
-    path("leases/metrics/create/", views.lease_metric_create, name="lease_metric_create"),
-    path("leases/charges/<int:charge_pk>/collect/", views.lease_charge_collect, name="lease_charge_collect"),
-    path("leases/charges/<int:charge_pk>/waive/", views.lease_charge_waive, name="lease_charge_waive"),
     path("leases/<int:pk>/", views.lease_detail, name="lease_detail"),
     path("leases/<int:pk>/activate/", views.lease_activate, name="lease_activate"),
     path("leases/<int:pk>/cancel/", views.lease_cancel, name="lease_cancel"),
     path("leases/<int:pk>/charge-fixed/", views.lease_charge_fixed, name="lease_charge_fixed"),
-    path("leases/<int:pk>/tariff/create/", views.lease_tariff_create, name="lease_tariff_create"),
-    path("leases/<int:pk>/charge/create/", views.lease_charge_create, name="lease_charge_create"),
+
+    # Amortization
+    path("amortizations/", views.amortization_list, name="amortization_list"),
+    path("amortizations/create/", views.amortization_create, name="amortization_create"),
+    path("amortizations/<int:pk>/", views.amortization_detail, name="amortization_detail"),
+    path("amortizations/<int:pk>/activate/", views.amortization_activate, name="amortization_activate"),
+    path("amortizations/<int:pk>/pause/", views.amortization_pause, name="amortization_pause"),
+    path("amortizations/<int:pk>/resume/", views.amortization_resume, name="amortization_resume"),
+    path("amortizations/<int:pk>/cancel/", views.amortization_cancel, name="amortization_cancel"),
+    path("amortizations/<int:pk>/amortize/", views.amortization_amortize, name="amortization_amortize"),
 ]

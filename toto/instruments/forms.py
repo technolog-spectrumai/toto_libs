@@ -1,15 +1,13 @@
 from django import forms
 
 from .models import (
+    AmortizationContract,
     EscrowContract,
     FinancialInstrument,
     ForwardContract,
     FutureContract,
     FutureMarket,
-    LeaseCharge,
     LeaseContract,
-    LeaseMetric,
-    LeaseTariff,
     OptionContract,
     RevenueShareContract,
     RevenueShareRecipient,
@@ -256,7 +254,7 @@ class LeaseContractForm(forms.ModelForm):
         fields = [
             "lessor_account", "lessee_account", "revenue_account",
             "leased_asset", "payment_asset",
-            "billing_mode", "billing_period", "fixed_fee_base_units",
+            "billing_period", "fixed_fee_base_units",
             "starts_at", "ends_at", "metadata",
         ]
         widgets = {
@@ -267,67 +265,6 @@ class LeaseContractForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        _apply_bento_style(self)
-
-
-class LeaseMetricForm(forms.ModelForm):
-    class Meta:
-        model = LeaseMetric
-        fields = ["code", "name", "kind", "unit", "step", "allow_fractional_quantity", "active", "metadata"]
-        widgets = {"metadata": forms.Textarea(attrs={"rows": 3})}
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        _apply_bento_style(self)
-
-
-class LeaseTariffForm(forms.ModelForm):
-    class Meta:
-        model = LeaseTariff
-        fields = ["metric", "price_per_step_base_units", "minimum_charge_base_units", "rounding_mode", "active", "metadata"]
-        widgets = {"metadata": forms.Textarea(attrs={"rows": 3})}
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        _apply_bento_style(self)
-
-
-class LeaseChargeForm(forms.Form):
-    """Form for recording a metered usage event against a lease."""
-    metric = forms.ModelChoiceField(
-        queryset=LeaseMetric.objects.none(),
-        label="Metric",
-        help_text="Select the metric to charge against.",
-    )
-    raw_quantity = forms.DecimalField(
-        max_digits=18,
-        decimal_places=6,
-        label="Raw quantity",
-        help_text="The raw amount of usage to record.",
-        min_value=0,
-    )
-    source_type = forms.CharField(
-        max_length=100,
-        required=False,
-        label="Source type",
-        help_text="Optional type of the source object (e.g. 'order').",
-    )
-    source_id = forms.CharField(
-        max_length=255,
-        required=False,
-        label="Source ID",
-        help_text="Optional ID of the source object.",
-    )
-
-    def __init__(self, *args, lease=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        if lease is not None:
-            metric_ids = LeaseTariff.objects.filter(
-                lease=lease, active=True
-            ).values_list("metric_id", flat=True)
-            self.fields["metric"].queryset = LeaseMetric.objects.filter(
-                id__in=metric_ids, active=True
-            )
         _apply_bento_style(self)
 
 
@@ -363,6 +300,60 @@ class SubscriptionContractForm(forms.ModelForm):
             "current_period_start", "metadata",
         ]
         widgets = {"metadata": forms.Textarea(attrs={"rows": 3})}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        _apply_bento_style(self)
+
+
+# ---------------------------------------------------------------------------
+# Amortization forms
+# ---------------------------------------------------------------------------
+
+class AmortizationContractForm(forms.ModelForm):
+    name = forms.CharField(
+        max_length=255,
+        label="Name",
+        help_text="A unique reference for this amortization contract.",
+    )
+
+    class Meta:
+        model = AmortizationContract
+        fields = [
+            "source_account", "destination_account", "asset",
+            "original_amount_base_units", "basis",
+            "starts_at", "ends_at", "metadata",
+        ]
+        widgets = {
+            "starts_at": forms.DateTimeInput(attrs={"type": "datetime-local"}),
+            "ends_at": forms.DateTimeInput(attrs={"type": "datetime-local"}),
+            "metadata": forms.Textarea(attrs={"rows": 3}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        _apply_bento_style(self)
+
+
+class AmortizationEntryForm(forms.Form):
+    """Form for recording a single amortization drawdown."""
+    amount_base_units = forms.IntegerField(
+        min_value=1,
+        label="Amount (base units)",
+        help_text="Amount to amortize in this step.",
+    )
+    source_type = forms.CharField(
+        max_length=100,
+        required=False,
+        label="Source type",
+        help_text="Optional type of the source object (e.g. 'invoice').",
+    )
+    source_id = forms.CharField(
+        max_length=255,
+        required=False,
+        label="Source ID",
+        help_text="Optional ID of the source object.",
+    )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from datetime import timedelta
 from decimal import Decimal
-from math import ceil
 
 from dateutil.relativedelta import relativedelta
 from django.core.exceptions import ValidationError
@@ -13,9 +12,10 @@ from toto.assets.backend import get_backend
 from toto.assets.models import Obligation, ObligationStatus, from_base_units, to_base_units
 
 from .models import (
+    AmortizationContract,
+    AmortizationEntry,
+    AmortizationStatus,
     BillingCycle,
-    BillingMode,
-    ChargeStatus,
     EscrowContract,
     EscrowStatus,
     FinancialInstrument,
@@ -26,12 +26,9 @@ from .models import (
     InstrumentObligationRole,
     InstrumentStatus,
     InstrumentType,
-    LeaseCharge,
     LeaseContract,
     LeaseStatus,
-    LeaseTariff,
     OptionContract,
-    RoundingMode,
     SubscriptionContract,
     SubscriptionPayment,
     SubscriptionPaymentStatus,
@@ -560,8 +557,6 @@ class LeaseService:
     def charge_fixed_fee(lease: LeaseContract):
         if lease.status != LeaseStatus.ACTIVE:
             raise ValidationError("Lease must be active to charge fixed fee.")
-        if lease.billing_mode == BillingMode.METERED:
-            raise ValidationError("Metered leases do not have a fixed fee.")
         if lease.fixed_fee_base_units <= 0:
             raise ValidationError("Fixed fee must be positive.")
         amount = from_base_units(lease.fixed_fee_base_units, lease.payment_asset.decimals)
@@ -587,104 +582,152 @@ class LeaseService:
         )
         return tx
 
+
+
+class AmortizationService:
     @staticmethod
-    def calculate_metered_charge(
-        tariff: LeaseTariff, raw_quantity: Decimal
-    ) -> tuple[Decimal, Decimal, int]:
-        """Returns (billed_quantity, billed_steps, amount_base_units)."""
-        step = tariff.metric.step
-        if tariff.rounding_mode == RoundingMode.ROUND_UP_STEP:
-            billed_steps = ceil(raw_quantity / step)
-        elif tariff.rounding_mode == RoundingMode.ROUND_DOWN_STEP:
-            billed_steps = int(raw_quantity / step)
-        else:  # exact
-            billed_steps = raw_quantity / step
-        billed_quantity = Decimal(str(billed_steps)) * step
-        amount_base_units = int(billed_steps) * tariff.price_per_step_base_units
-        amount_base_units = max(amount_base_units, tariff.minimum_charge_base_units)
-        return billed_quantity, Decimal(str(billed_steps)), amount_base_units
+    @transaction.atomic
+    def activate(contract: AmortizationContract):
+        if contract.status != AmortizationStatus.DRAFT:
+            raise ValidationError("Only draft contracts can be activated.")
+        contract.status = AmortizationStatus.ACTIVE
+        contract.instrument.status = InstrumentStatus.ACTIVE
+        contract.save(update_fields=["status", "updated_at"])
+        contract.instrument.save(update_fields=["status", "updated_at"])
+        record_execution(
+            instrument=contract.instrument,
+            action="amortization_activate",
+            status=InstrumentExecutionStatus.SUCCESS,
+            result_data={"status": contract.status},
+        )
 
     @staticmethod
     @transaction.atomic
-    def record_metered_charge(
-        lease: LeaseContract,
-        metric,
-        raw_quantity: Decimal,
+    def resume(contract: AmortizationContract):
+        if contract.status != AmortizationStatus.PAUSED:
+            raise ValidationError("Only paused contracts can be resumed.")
+        contract.status = AmortizationStatus.ACTIVE
+        contract.instrument.status = InstrumentStatus.ACTIVE
+        contract.save(update_fields=["status", "updated_at"])
+        contract.instrument.save(update_fields=["status", "updated_at"])
+        record_execution(
+            instrument=contract.instrument,
+            action="amortization_resume",
+            status=InstrumentExecutionStatus.SUCCESS,
+        )
+
+    @staticmethod
+    @transaction.atomic
+    def pause(contract: AmortizationContract):
+        if contract.status != AmortizationStatus.ACTIVE:
+            raise ValidationError("Only active contracts can be paused.")
+        contract.status = AmortizationStatus.PAUSED
+        contract.instrument.status = InstrumentStatus.PAUSED
+        contract.save(update_fields=["status", "updated_at"])
+        contract.instrument.save(update_fields=["status", "updated_at"])
+        record_execution(
+            instrument=contract.instrument,
+            action="amortization_pause",
+            status=InstrumentExecutionStatus.SUCCESS,
+        )
+
+    @staticmethod
+    @transaction.atomic
+    def cancel(contract: AmortizationContract):
+        if contract.status in (AmortizationStatus.EXHAUSTED, AmortizationStatus.CANCELLED):
+            raise ValidationError("Contract is already exhausted or cancelled.")
+        contract.status = AmortizationStatus.CANCELLED
+        contract.instrument.status = InstrumentStatus.CANCELLED
+        contract.save(update_fields=["status", "updated_at"])
+        contract.instrument.save(update_fields=["status", "updated_at"])
+        record_execution(
+            instrument=contract.instrument,
+            action="amortization_cancel",
+            status=InstrumentExecutionStatus.SUCCESS,
+        )
+
+    @staticmethod
+    def can_amortize(contract: AmortizationContract, amount_base_units: int) -> bool:
+        return (
+            contract.status == AmortizationStatus.ACTIVE
+            and amount_base_units > 0
+            and amount_base_units <= contract.remaining_amount_base_units
+        )
+
+    @staticmethod
+    @transaction.atomic
+    def mark_exhausted(contract: AmortizationContract):
+        contract.status = AmortizationStatus.EXHAUSTED
+        contract.instrument.status = InstrumentStatus.SETTLED
+        contract.save(update_fields=["status", "updated_at"])
+        contract.instrument.save(update_fields=["status", "updated_at"])
+        record_execution(
+            instrument=contract.instrument,
+            action="amortization_exhausted",
+            status=InstrumentExecutionStatus.SUCCESS,
+        )
+
+    @staticmethod
+    @transaction.atomic
+    def amortize(
+        contract: AmortizationContract,
+        amount_base_units: int,
         source_type: str = "",
         source_id: str = "",
-        metadata=None,
-    ) -> LeaseCharge:
-        if lease.status != LeaseStatus.ACTIVE:
-            raise ValidationError("Lease must be active to record a charge.")
-        tariff = LeaseTariff.objects.get(lease=lease, metric=metric, active=True)
-        billed_qty, billed_steps, amount = LeaseService.calculate_metered_charge(
-            tariff, raw_quantity
-        )
-        charge = LeaseCharge.objects.create(
-            lease=lease,
-            tariff=tariff,
-            metric=metric,
-            raw_quantity=raw_quantity,
-            billed_quantity=billed_qty,
-            billed_steps=billed_steps,
-            amount_base_units=amount,
-            status=ChargeStatus.PENDING,
-            source_type=source_type,
-            source_id=source_id,
-            metadata=metadata or {},
-        )
-        record_execution(
-            instrument=lease.instrument,
-            action="lease_record_charge",
-            status=InstrumentExecutionStatus.SUCCESS,
-            result_data={"charge_id": charge.pk, "amount_base_units": amount},
-        )
-        return charge
+        metadata: dict | None = None,
+    ) -> AmortizationEntry:
+        if contract.status != AmortizationStatus.ACTIVE:
+            raise ValidationError("Contract must be active to amortize.")
+        if amount_base_units <= 0:
+            raise ValidationError("Amount must be positive.")
+        if amount_base_units > contract.remaining_amount_base_units:
+            raise ValidationError(
+                f"Amount ({amount_base_units}) exceeds remaining balance "
+                f"({contract.remaining_amount_base_units})."
+            )
 
-    @staticmethod
-    @transaction.atomic
-    def charge_pending_charge(charge: LeaseCharge):
-        if charge.status != ChargeStatus.PENDING:
-            raise ValidationError("Only pending charges can be collected.")
-        amount = from_base_units(
-            charge.amount_base_units, charge.lease.payment_asset.decimals
-        )
-        ref = f"{charge.lease.instrument.reference}-METERED-{charge.pk}"
+        amount = from_base_units(amount_base_units, contract.asset.decimals)
+        ref = f"{contract.instrument.reference}-AMORT-{contract.amortized_amount_base_units + amount_base_units}"
         tx = get_backend().transfer_asset(
-            asset=charge.lease.payment_asset,
-            sender_account=charge.lease.lessee_account,
-            receiver_account=charge.lease.revenue_account,
+            asset=contract.asset,
+            sender_account=contract.source_account,
+            receiver_account=contract.destination_account,
             amount=amount,
             reference=ref,
-            description=f"Metered charge #{charge.pk} for {charge.metric.code}",
+            description=f"Amortize {contract.instrument.reference}",
             metadata={
-                "instrument": charge.lease.instrument.reference,
-                "charge_id": charge.pk,
+                "instrument": contract.instrument.reference,
+                "action": "amortize",
+                "source_type": source_type,
+                "source_id": source_id,
             },
         )
-        charge.status = ChargeStatus.CHARGED
-        charge.transaction = tx
-        charge.charged_at = timezone.now()
-        charge.save(update_fields=["status", "transaction", "charged_at"])
+
+        entry = AmortizationEntry.objects.create(
+            contract=contract,
+            amount_base_units=amount_base_units,
+            source_type=source_type,
+            source_id=source_id,
+            transaction=tx,
+            metadata=metadata or {},
+        )
+
+        contract.amortized_amount_base_units += amount_base_units
+        contract.save(update_fields=["amortized_amount_base_units", "updated_at"])
+
         record_execution(
-            instrument=charge.lease.instrument,
-            action="lease_collect_charge",
+            instrument=contract.instrument,
+            action="amortize",
             status=InstrumentExecutionStatus.SUCCESS,
             transaction_obj=tx,
-            result_data={"charge_id": charge.pk},
+            result_data={
+                "entry_id": entry.pk,
+                "amount_base_units": amount_base_units,
+                "remaining": contract.remaining_amount_base_units,
+            },
         )
-        return tx
 
-    @staticmethod
-    @transaction.atomic
-    def waive_charge(charge: LeaseCharge):
-        if charge.status != ChargeStatus.PENDING:
-            raise ValidationError("Only pending charges can be waived.")
-        charge.status = ChargeStatus.WAIVED
-        charge.save(update_fields=["status"])
-        record_execution(
-            instrument=charge.lease.instrument,
-            action="lease_waive_charge",
-            status=InstrumentExecutionStatus.SUCCESS,
-            result_data={"charge_id": charge.pk},
-        )
+        if contract.is_exhausted:
+            AmortizationService.mark_exhausted(contract)
+
+        return entry

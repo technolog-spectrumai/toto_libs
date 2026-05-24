@@ -1,0 +1,194 @@
+{% extends "instruments/base.html" %}
+{% load i18n %}
+
+{% block instruments_title %}{{ contract.instrument.reference }}{% endblock %}
+
+{% block instruments_content %}
+<div class="space-y-6 max-w-5xl">
+
+  <a href="{% url 'instruments:amortization_list' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+    <i class="fa-solid fa-arrow-left"></i> {% trans "All amortizations" %}
+  </a>
+
+  <!-- Header card -->
+  <article class="rounded-xl border p-6 shadow-sm" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+    <div class="flex flex-wrap items-start justify-between gap-4">
+      <div class="flex-1 min-w-0">
+        <div class="flex flex-wrap items-center gap-2 mb-2">
+          <h1 class="text-3xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+            {{ contract.instrument.reference }}
+          </h1>
+          <span class="rounded-lg border border-current/20 px-2.5 py-1 text-sm font-semibold opacity-60">{% trans "Amortization" %}</span>
+          <span class="rounded-lg px-2.5 py-1 text-sm font-semibold"
+            {% if contract.status == 'active' %}:class="darkMode ? 'bg-success-dark/15 text-success-dark' : 'bg-success-light/15 text-success-light'"
+            {% elif contract.status == 'exhausted' %}:class="darkMode ? 'bg-caution-dark/15 text-caution-dark' : 'bg-caution-light/15 text-caution-light'"
+            {% elif contract.status == 'cancelled' %}:class="darkMode ? 'bg-warn-dark/15 text-warn-dark' : 'bg-warn-light/15 text-warn-light'"
+            {% elif contract.status == 'paused' %}:class="darkMode ? 'bg-caution-dark/15 text-caution-dark' : 'bg-caution-light/15 text-caution-light'"
+            {% else %}:class="darkMode ? 'bg-primary-bg-dark/50 text-text-main-dark/60' : 'bg-gray-100 text-gray-500'"
+            {% endif %}>
+            {{ contract.get_status_display }}
+          </span>
+          {% if contract.basis %}<span class="rounded border border-current/20 px-2.5 py-1 text-sm opacity-60">{{ contract.basis }}</span>{% endif %}
+        </div>
+
+        <!-- Progress bar -->
+        <div class="mt-3 mb-4">
+          <div class="flex justify-between text-xs opacity-60 mb-1">
+            <span>{% trans "Amortized" %}: {{ contract.amortized_amount_base_units }}</span>
+            <span>{% trans "Remaining" %}: {{ contract.remaining_amount_base_units }}</span>
+            <span>{% trans "Original" %}: {{ contract.original_amount_base_units }}</span>
+          </div>
+          <div class="h-2 rounded-full overflow-hidden" :class="darkMode ? 'bg-primary-bg-dark' : 'bg-gray-200'">
+            <div class="h-full rounded-full transition-all"
+                 :class="contract.status == 'exhausted' ? (darkMode ? 'bg-caution-dark' : 'bg-caution-light') : (darkMode ? 'bg-accent-dark' : 'bg-accent-light')"
+                 style="width: {% widthratio contract.amortized_amount_base_units contract.original_amount_base_units 100 %}%"></div>
+          </div>
+        </div>
+
+        <div class="grid gap-4 sm:grid-cols-3 text-sm mt-2">
+          <div>
+            <div class="text-xs uppercase tracking-wide opacity-50 mb-0.5">{% trans "Asset" %}</div>
+            <div class="font-semibold">{{ contract.asset.unit_name }}</div>
+          </div>
+          <div>
+            <div class="text-xs uppercase tracking-wide opacity-50 mb-0.5">{% trans "Source account" %}</div>
+            <div class="font-semibold">{{ contract.source_account.code }}</div>
+          </div>
+          <div>
+            <div class="text-xs uppercase tracking-wide opacity-50 mb-0.5">{% trans "Destination account" %}</div>
+            <div class="font-semibold">{{ contract.destination_account.code }}</div>
+          </div>
+          {% if contract.starts_at %}
+          <div>
+            <div class="text-xs uppercase tracking-wide opacity-50 mb-0.5">{% trans "Starts" %}</div>
+            <div class="font-semibold">{{ contract.starts_at|date:"M d, Y H:i" }}</div>
+          </div>
+          {% endif %}
+          {% if contract.ends_at %}
+          <div>
+            <div class="text-xs uppercase tracking-wide opacity-50 mb-0.5">{% trans "Ends" %}</div>
+            <div class="font-semibold">{{ contract.ends_at|date:"M d, Y H:i" }}</div>
+          </div>
+          {% endif %}
+          <div>
+            <div class="text-xs uppercase tracking-wide opacity-50 mb-0.5">{% trans "Created" %}</div>
+            <div class="font-semibold">{{ contract.created_at|date:"M d, Y H:i" }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Action buttons -->
+    <div class="flex flex-wrap gap-2 mt-5">
+      {% if contract.status == 'draft' %}
+      <form method="post" action="{% url 'instruments:amortization_activate' contract.pk %}">{% csrf_token %}
+        <button class="rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90"
+                :class="darkMode ? 'bg-success-dark text-primary-bg-dark' : 'bg-success-light text-white'">
+          <i class="fa-solid fa-play"></i> {% trans "Activate" %}
+        </button>
+      </form>
+      {% endif %}
+      {% if contract.status == 'active' %}
+      <a href="{% url 'instruments:amortization_amortize' contract.pk %}"
+         class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90"
+         :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'">
+        <i class="fa-solid fa-minus-circle"></i> {% trans "Record amortization" %}
+      </a>
+      <form method="post" action="{% url 'instruments:amortization_pause' contract.pk %}">{% csrf_token %}
+        <button class="rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80"
+                :class="darkMode ? 'border-caution-dark text-caution-dark' : 'border-caution-light text-caution-light'">
+          <i class="fa-solid fa-pause"></i> {% trans "Pause" %}
+        </button>
+      </form>
+      {% endif %}
+      {% if contract.status == 'paused' %}
+      <form method="post" action="{% url 'instruments:amortization_resume' contract.pk %}">{% csrf_token %}
+        <button class="rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90"
+                :class="darkMode ? 'bg-success-dark text-primary-bg-dark' : 'bg-success-light text-white'">
+          <i class="fa-solid fa-play"></i> {% trans "Resume" %}
+        </button>
+      </form>
+      {% endif %}
+      {% if contract.status in 'draft,active,paused' %}
+      <form method="post" action="{% url 'instruments:amortization_cancel' contract.pk %}">{% csrf_token %}
+        <button class="rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-90"
+                :class="darkMode ? 'border-warn-dark text-warn-dark' : 'border-warn-light text-warn-light'">
+          <i class="fa-solid fa-ban"></i> {% trans "Cancel" %}
+        </button>
+      </form>
+      {% endif %}
+    </div>
+  </article>
+
+  <!-- Entries -->
+  <section class="rounded-xl border p-5 shadow-sm space-y-3" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+    <h2 class="flex items-center gap-2 text-xl font-bold">
+      <i class="fa-solid fa-list-check opacity-60"></i> {% trans "Entries" %}
+    </h2>
+    {% if entries %}
+    <div class="space-y-2">
+      {% for entry in entries %}
+      <div class="rounded-lg px-4 py-3 text-sm" :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <span class="font-semibold">-{{ entry.amount_base_units }} {% trans "base units" %}</span>
+            {% if entry.source_type or entry.source_id %}
+            <span class="ml-2 text-xs opacity-60">
+              {{ entry.source_type }}{% if entry.source_id %}#{{ entry.source_id }}{% endif %}
+            </span>
+            {% endif %}
+          </div>
+          <span class="text-xs opacity-50">{{ entry.created_at|date:"M d, Y H:i" }}</span>
+        </div>
+        {% if entry.transaction %}
+        <div class="mt-1 text-xs opacity-50">
+          <a href="{% url 'assets:transaction_detail' entry.transaction.pk %}" class="underline hover:opacity-80">
+            {{ entry.transaction.reference }}
+          </a>
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-sm opacity-50">{% trans "No entries recorded yet." %}</p>
+    {% endif %}
+  </section>
+
+  <!-- Executions -->
+  <section class="rounded-xl border p-5 shadow-sm space-y-3" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+    <h2 class="flex items-center gap-2 text-xl font-bold">
+      <i class="fa-solid fa-terminal opacity-60"></i> {% trans "Executions" %}
+    </h2>
+    <div class="space-y-2">
+      {% for execution in executions %}
+      <div class="rounded-lg px-4 py-3 text-sm" :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <span class="font-semibold">{{ execution.action }}</span>
+          <div class="flex items-center gap-2 text-xs opacity-60">
+            <span class="rounded px-1.5 py-0.5
+              {% if execution.status == 'success' %}bg-green-500/15 text-green-600{% else %}bg-red-500/15 text-red-600{% endif %}">
+              {{ execution.get_status_display }}
+            </span>
+            {{ execution.created_at|date:"M d, Y H:i" }}
+          </div>
+        </div>
+        {% if execution.error_message %}
+        <p class="mt-1 text-xs text-red-500">{{ execution.error_message }}</p>
+        {% endif %}
+        {% if execution.transaction %}
+        <p class="mt-1 text-xs opacity-50">
+          <a href="{% url 'assets:transaction_detail' execution.transaction.pk %}" class="underline hover:opacity-80">
+            {{ execution.transaction.reference }}
+          </a>
+        </p>
+        {% endif %}
+      </div>
+      {% empty %}
+      <p class="text-sm opacity-50">{% trans "No executions yet." %}</p>
+      {% endfor %}
+    </div>
+  </section>
+
+</div>
+{% endblock %}

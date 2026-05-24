@@ -4,9 +4,7 @@ from .models import (
     FinancialInstrument,
     InstrumentStatus,
     InstrumentType,
-    LeaseCharge,
     LeaseContract,
-    LeaseTariff,
 )
 
 
@@ -52,17 +50,3 @@ def list_account_leases(account):
     ).select_related("instrument")
 
 
-def list_lease_charges(lease):
-    return LeaseCharge.objects.filter(lease=lease).select_related(
-        "tariff", "metric", "transaction"
-    )
-
-
-def list_pending_lease_charges():
-    return LeaseCharge.objects.filter(status="pending").select_related(
-        "lease__instrument", "lease__payment_asset", "metric"
-    )
-
-
-def list_lease_tariffs(lease):
-    return LeaseTariff.objects.filter(lease=lease).select_related("metric")
