@@ -34,8 +34,6 @@ class LapisCompiler:
             raise LapisValidationError("Lapis tree must include language: lapis")
         if tree.get("version") != 1:
             raise LapisValidationError("Unsupported Lapis version; expected 1.")
-        if tree.get("target") != "teal":
-            raise LapisValidationError("Lapis contract must specify target: teal")
         actions = tree.get("actions")
         if not isinstance(actions, dict) or not actions:
             raise LapisValidationError("Lapis contract requires non-empty actions.")

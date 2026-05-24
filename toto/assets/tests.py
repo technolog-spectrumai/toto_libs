@@ -560,7 +560,7 @@ class LapisLoaderTests(TestCase):
 class LapisCompilerTests(TestCase):
     def _valid_tree(self):
         return {
-            "language": "lapis", "version": 1, "target": "teal", "name": "T",
+            "language": "lapis", "version": 1, "name": "T",
             "actions": {"noop": {"body": {"type": "seq", "steps": []}}},
         }
 
@@ -580,21 +580,6 @@ class LapisCompilerTests(TestCase):
         from .lapis.compiler import LapisCompiler
         from .lapis.exceptions import LapisValidationError
         tree = {**self._valid_tree(), "version": 99}
-        with self.assertRaises(LapisValidationError):
-            LapisCompiler().validate_contract(tree)
-
-    def test_missing_target_raises(self):
-        from .lapis.compiler import LapisCompiler
-        from .lapis.exceptions import LapisValidationError
-        tree = self._valid_tree()
-        del tree["target"]
-        with self.assertRaises(LapisValidationError):
-            LapisCompiler().validate_contract(tree)
-
-    def test_wrong_target_raises(self):
-        from .lapis.compiler import LapisCompiler
-        from .lapis.exceptions import LapisValidationError
-        tree = {**self._valid_tree(), "target": "evm"}
         with self.assertRaises(LapisValidationError):
             LapisCompiler().validate_contract(tree)
 
@@ -711,7 +696,7 @@ class LapisExecutorTests(TestCase):
         from .lapis.compiler import LapisCompiler
         from .lapis.executor import LapisExecutor
         tree = {
-            "language": "lapis", "version": 1, "target": "teal", "name": "T",
+            "language": "lapis", "version": 1, "name": "T",
             "actions": {"noop": {"body": {"type": "seq", "steps": []}}},
         }
         plan = LapisCompiler().compile_action(tree, "noop")
@@ -834,8 +819,6 @@ class LapisExecutorTests(TestCase):
 _SIMPLE_LAPIS_YAML = """\
 language: lapis
 version: 1
-target: teal
-contract_type: application
 name: T
 actions:
   noop:
@@ -847,8 +830,6 @@ actions:
 _SUBSCRIPTION_LAPIS_YAML = """\
 language: lapis
 version: 1
-target: teal
-contract_type: application
 name: Subscription
 actions:
   activate:
@@ -978,13 +959,6 @@ class ContractTests(TestCase):
         )
         with self.assertRaises(ValidationError):
             Contract(name="OldRecord", code=code).full_clean()
-
-    def test_missing_target_fails(self):
-        from django.core.exceptions import ValidationError
-        from .models import Contract
-        code = "language: lapis\nversion: 1\nname: X\nactions:\n  a:\n    body:\n      type: seq\n      steps: []\n"
-        with self.assertRaises(ValidationError):
-            Contract(name="NoTarget", code=code).full_clean()
 
     def test_action_names_extractable(self):
         from .lapis.loader import loads_contract

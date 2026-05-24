@@ -379,8 +379,6 @@ class Command(IngressCommand):
             code=(
                 "language: lapis\n"
                 "version: 1\n"
-                "target: teal\n"
-                "contract_type: application\n"
                 "name: Noop\n"
                 "actions:\n"
                 "  execute:\n"
@@ -396,8 +394,6 @@ class Command(IngressCommand):
             code=(
                 "language: lapis\n"
                 "version: 1\n"
-                "target: teal\n"
-                "contract_type: application\n"
                 "name: LogEvent\n"
                 "actions:\n"
                 "  execute:\n"
@@ -417,8 +413,6 @@ class Command(IngressCommand):
             code=(
                 "language: lapis\n"
                 "version: 1\n"
-                "target: teal\n"
-                "contract_type: application\n"
                 "name: AssertState\n"
                 "actions:\n"
                 "  execute:\n"
