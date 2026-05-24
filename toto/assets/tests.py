@@ -1,7 +1,9 @@
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
-from django.test import TestCase
+from django.test import TestCase, override_settings
+
+_SIMPLE_STATIC = "django.contrib.staticfiles.storage.StaticFilesStorage"
 
 from .hashing import attach_hash, calculate_transaction_hash, verify_hash_chain
 from .models import (
@@ -515,3 +517,538 @@ class SupplyTests(TestCase):
     def test_get_transaction_by_reference(self):
         tx = get_transaction_by_reference("create-sup")
         self.assertEqual(tx.reference, "create-sup")
+
+
+# ---------------------------------------------------------------------------
+# Lapis loader / compiler / executor
+# ---------------------------------------------------------------------------
+
+class LapisLoaderTests(TestCase):
+    def test_json_roundtrip(self):
+        from .lapis.loader import loads_contract, dumps_contract
+        tree = {"language": "lapis", "version": 1, "name": "T", "actions": {"noop": {"type": "seq", "steps": []}}}
+        text = dumps_contract(tree, fmt="json")
+        self.assertEqual(loads_contract(text, fmt="json")["language"], "lapis")
+
+    def test_yaml_roundtrip(self):
+        from .lapis.loader import loads_contract, dumps_contract
+        tree = {"language": "lapis", "version": 1, "name": "T", "actions": {"noop": {"type": "seq", "steps": []}}}
+        text = dumps_contract(tree, fmt="yaml")
+        self.assertEqual(loads_contract(text, fmt="yaml")["language"], "lapis")
+
+    def test_detect_json_from_brace(self):
+        from .lapis.loader import detect_format
+        self.assertEqual(detect_format('{"key": 1}'), "json")
+
+    def test_detect_yaml_from_dashes(self):
+        from .lapis.loader import detect_format
+        self.assertEqual(detect_format("---\nkey: val"), "yaml")
+
+    def test_invalid_json_raises(self):
+        from .lapis.loader import loads_contract
+        from .lapis.exceptions import LapisValidationError
+        with self.assertRaises(LapisValidationError):
+            loads_contract("{bad json}", fmt="json")
+
+    def test_non_dict_raises(self):
+        from .lapis.loader import loads_contract
+        from .lapis.exceptions import LapisValidationError
+        with self.assertRaises(LapisValidationError):
+            loads_contract("[1, 2, 3]", fmt="json")
+
+
+class LapisCompilerTests(TestCase):
+    def _valid_tree(self):
+        return {"language": "lapis", "version": 1, "name": "T", "actions": {"noop": {"type": "seq", "steps": []}}}
+
+    def test_valid_contract_passes(self):
+        from .lapis.compiler import LapisCompiler
+        LapisCompiler().validate_contract(self._valid_tree())
+
+    def test_missing_language_raises(self):
+        from .lapis.compiler import LapisCompiler
+        from .lapis.exceptions import LapisValidationError
+        tree = self._valid_tree()
+        del tree["language"]
+        with self.assertRaises(LapisValidationError):
+            LapisCompiler().validate_contract(tree)
+
+    def test_wrong_version_raises(self):
+        from .lapis.compiler import LapisCompiler
+        from .lapis.exceptions import LapisValidationError
+        tree = {**self._valid_tree(), "version": 99}
+        with self.assertRaises(LapisValidationError):
+            LapisCompiler().validate_contract(tree)
+
+    def test_empty_actions_raises(self):
+        from .lapis.compiler import LapisCompiler
+        from .lapis.exceptions import LapisValidationError
+        tree = {**self._valid_tree(), "actions": {}}
+        with self.assertRaises(LapisValidationError):
+            LapisCompiler().validate_contract(tree)
+
+    def test_unknown_node_type_raises(self):
+        from .lapis.compiler import LapisCompiler
+        from .lapis.exceptions import LapisValidationError
+        tree = {**self._valid_tree(), "actions": {"a": {"type": "BOGUS"}}}
+        with self.assertRaises(LapisValidationError):
+            LapisCompiler().validate_contract(tree)
+
+    def test_compile_action_extracts_node(self):
+        from .lapis.compiler import LapisCompiler
+        tree = self._valid_tree()
+        node = LapisCompiler().compile_action(tree, "noop")
+        self.assertEqual(node["type"], "seq")
+
+    def test_compile_unknown_action_raises(self):
+        from .lapis.compiler import LapisCompiler
+        from .lapis.exceptions import LapisValidationError
+        with self.assertRaises(LapisValidationError):
+            LapisCompiler().compile_action(self._valid_tree(), "nonexistent")
+
+
+class LapisExecutorTests(TestCase):
+    def _ctx(self, events=None):
+        from .lapis.executor import LapisContext
+        if events is None:
+            events = []
+        return LapisContext(
+            agreement=object(),
+            params={},
+            state={},
+            accounts={},
+            assets={},
+            metadata={},
+            transfer=lambda **kw: kw,
+            create_obligation=lambda **kw: kw,
+            record=lambda **kw: events.append(kw) or kw,
+            balance=lambda **kw: 0,
+        )
+
+    def test_execute_record_node(self):
+        from .lapis.compiler import LapisCompiler
+        from .lapis.executor import LapisExecutor
+        tree = {
+            "language": "lapis",
+            "version": 1,
+            "name": "RecordOnly",
+            "actions": {"run": {"type": "record", "kind": "hello", "data": {"x": {"type": "int", "value": 1}}}},
+        }
+        plan = LapisCompiler().compile_action(tree, "run")
+        events = []
+        LapisExecutor().execute(plan, self._ctx(events))
+        self.assertEqual(events[0]["kind"], "hello")
+        self.assertEqual(events[0]["data"]["x"], 1)
+
+    def test_execute_seq_noop(self):
+        from .lapis.compiler import LapisCompiler
+        from .lapis.executor import LapisExecutor
+        tree = {"language": "lapis", "version": 1, "name": "T", "actions": {"noop": {"type": "seq", "steps": []}}}
+        plan = LapisCompiler().compile_action(tree, "noop")
+        LapisExecutor().execute(plan, self._ctx())
+
+    def test_int_literal_eval(self):
+        from .lapis.executor import LapisExecutor
+        node = {"type": "int", "value": 42}
+        result = LapisExecutor().eval_node(node, self._ctx())
+        self.assertEqual(result, 42)
+
+    def test_add_node(self):
+        from .lapis.executor import LapisExecutor
+        node = {
+            "type": "add",
+            "left": {"type": "int", "value": 3},
+            "right": {"type": "int", "value": 7},
+        }
+        self.assertEqual(LapisExecutor().eval_node(node, self._ctx()), 10)
+
+    def test_eq_node_true(self):
+        from .lapis.executor import LapisExecutor
+        node = {
+            "type": "eq",
+            "left": {"type": "int", "value": 5},
+            "right": {"type": "int", "value": 5},
+        }
+        self.assertTrue(LapisExecutor().eval_node(node, self._ctx()))
+
+    def test_eq_node_false(self):
+        from .lapis.executor import LapisExecutor
+        node = {
+            "type": "eq",
+            "left": {"type": "int", "value": 5},
+            "right": {"type": "int", "value": 6},
+        }
+        self.assertFalse(LapisExecutor().eval_node(node, self._ctx()))
+
+
+# ---------------------------------------------------------------------------
+# Shared Lapis fixtures
+# ---------------------------------------------------------------------------
+
+_SIMPLE_LAPIS_YAML = (
+    "language: lapis\nversion: 1\nname: T\n"
+    "actions:\n  noop:\n    type: seq\n    steps: []\n"
+)
+
+_SUBSCRIPTION_LAPIS_YAML = """\
+language: lapis
+version: 1
+name: Subscription
+actions:
+  activate:
+    type: seq
+    steps:
+      - type: set_state
+        key: status
+        value:
+          type: bytes
+          value: "active"
+      - type: record
+        kind: subscription_activated
+        data: {}
+  bill_period:
+    type: seq
+    steps:
+      - type: assert
+        condition:
+          type: eq
+          left:
+            type: get_state
+            key: status
+          right:
+            type: bytes
+            value: "active"
+      - type: transfer
+        asset:
+          type: asset
+          ref: payment
+        from:
+          type: account
+          ref: source
+        to:
+          type: account
+          ref: target
+        amount:
+          type: amount
+          ref: subscription.amount
+      - type: record
+        kind: period_billed
+        data: {}
+  cancel:
+    type: seq
+    steps:
+      - type: set_state
+        key: status
+        value:
+          type: bytes
+          value: "cancelled"
+      - type: record
+        kind: subscription_cancelled
+        data: {}
+"""
+
+
+# ---------------------------------------------------------------------------
+# Contract model
+# ---------------------------------------------------------------------------
+
+class ContractTests(TestCase):
+    def test_uuid_generated_on_agreement(self):
+        from .models import Agreement
+        src = make_account("ct-src", "user")
+        tgt = make_account("ct-tgt", "user")
+        agr = Agreement.objects.create(source_account=src, target_account=tgt)
+        self.assertIsNotNone(agr.uuid)
+
+    def test_create_contract(self):
+        from .models import Contract
+        c = Contract.objects.create(name="Basic", code=_SIMPLE_LAPIS_YAML)
+        self.assertIsNotNone(c.pk)
+
+    def test_blank_code_is_valid(self):
+        from .models import Contract
+        Contract(name="Empty").full_clean()
+
+    def test_valid_lapis_passes(self):
+        from .models import Contract
+        Contract(name="Valid", code=_SIMPLE_LAPIS_YAML).full_clean()
+
+    def test_malformed_yaml_fails(self):
+        from django.core.exceptions import ValidationError
+        from .models import Contract
+        with self.assertRaises(ValidationError):
+            Contract(name="Bad", code=": {{{{").full_clean()
+
+    def test_unsupported_node_type_fails(self):
+        from django.core.exceptions import ValidationError
+        from .models import Contract
+        code = "language: lapis\nversion: 1\nname: X\nactions:\n  a:\n    type: BOGUS\n"
+        with self.assertRaises(ValidationError):
+            Contract(name="BadNode", code=code).full_clean()
+
+    def test_action_names_extractable(self):
+        from .lapis.loader import loads_contract
+        from .lapis.compiler import LapisCompiler
+        tree = loads_contract(_SUBSCRIPTION_LAPIS_YAML, fmt="yaml")
+        LapisCompiler().validate_contract(tree)
+        actions = list(tree["actions"].keys())
+        self.assertEqual(actions, ["activate", "bill_period", "cancel"])
+
+    def test_source_target_must_differ(self):
+        from django.core.exceptions import ValidationError
+        from .models import Agreement
+        acc = make_account("same-acc", "user")
+        with self.assertRaises(ValidationError):
+            Agreement(source_account=acc, target_account=acc).full_clean()
+
+    def test_str_is_name(self):
+        from .models import Contract
+        self.assertEqual(str(Contract(name="MyContract")), "MyContract")
+
+
+# ---------------------------------------------------------------------------
+# Agreement form tests
+# ---------------------------------------------------------------------------
+
+class AgreementFormTests(TestCase):
+    def setUp(self):
+        self.source = make_account("form-src", "user")
+        self.target = make_account("form-tgt", "user")
+
+    def _post(self, extra=None):
+        from .forms import AgreementForm
+        data = {
+            "source_account": self.source.pk,
+            "target_account": self.target.pk,
+            "metadata": "{}",
+        }
+        if extra:
+            data.update(extra)
+        return AgreementForm(data)
+
+    def test_valid_form_no_code(self):
+        form = self._post()
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_valid_form_with_code(self):
+        form = self._post({"code": _SUBSCRIPTION_LAPIS_YAML})
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_same_source_target_rejected(self):
+        from .forms import AgreementForm
+        form = AgreementForm({
+            "source_account": self.source.pk,
+            "target_account": self.source.pk,
+            "metadata": "{}",
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn("__all__", form.errors)
+
+    def test_malformed_yaml_rejected(self):
+        form = self._post({"code": ": {{{{ bad"})
+        self.assertFalse(form.is_valid())
+        self.assertIn("code", form.errors)
+
+    def test_invalid_lapis_rejected(self):
+        form = self._post({"code": "language: lapis\nversion: 1\nname: X\nactions:\n  a:\n    type: BOGUS\n"})
+        self.assertFalse(form.is_valid())
+        self.assertIn("code", form.errors)
+
+
+# ---------------------------------------------------------------------------
+# Agreement view tests
+# ---------------------------------------------------------------------------
+
+def _make_platform():
+    from toto.core.models import Platform
+    Platform.objects.get_or_create(
+        site_name="Test",
+        defaults={"author": "test", "publication_year": 2024, "active": True},
+    )
+
+
+@override_settings(STATICFILES_STORAGE=_SIMPLE_STATIC)
+class AgreementViewTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        _make_platform()
+        User = get_user_model()
+        self.user = User.objects.create_user(username="testuser", password="testpass")
+        self.source = make_account("view-src", "user")
+        self.target = make_account("view-tgt", "user")
+
+    def _login(self):
+        self.client.force_login(self.user)
+
+    def test_list_requires_login(self):
+        from django.urls import reverse
+        resp = self.client.get(reverse("assets:agreement_list"))
+        self.assertNotEqual(resp.status_code, 200)
+
+    def test_create_requires_login(self):
+        from django.urls import reverse
+        resp = self.client.get(reverse("assets:agreement_create"))
+        self.assertNotEqual(resp.status_code, 200)
+
+    def test_authenticated_user_can_create_with_valid_yaml(self):
+        from django.urls import reverse
+        from .models import Agreement, Contract
+        self._login()
+        resp = self.client.post(reverse("assets:agreement_create"), {
+            "source_account": self.source.pk,
+            "target_account": self.target.pk,
+            "code": _SUBSCRIPTION_LAPIS_YAML,
+            "metadata": "{}",
+        }, follow=True)
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(Agreement.objects.filter(source_account=self.source, target_account=self.target).exists())
+        self.assertTrue(Contract.objects.filter(name__contains="view-src").exists())
+
+    def test_detail_shows_uuid_accounts_contract_actions(self):
+        from django.urls import reverse
+        from .models import Agreement, Contract
+        self._login()
+        contract = Contract.objects.create(name="SubContract", code=_SUBSCRIPTION_LAPIS_YAML)
+        agr = Agreement.objects.create(
+            source_account=self.source,
+            target_account=self.target,
+            contract=contract,
+        )
+        resp = self.client.get(reverse("assets:agreement_detail", args=[agr.pk]))
+        self.assertEqual(resp.status_code, 200)
+        content = resp.content.decode()
+        self.assertIn(str(agr.uuid), content)
+        self.assertIn("view-src", content)
+        self.assertIn("view-tgt", content)
+        self.assertIn("SubContract", content)
+        self.assertIn("bill_period", content)
+
+    def test_create_post_invalid_yaml_shows_error(self):
+        from django.urls import reverse
+        self._login()
+        resp = self.client.post(reverse("assets:agreement_create"), {
+            "source_account": self.source.pk,
+            "target_account": self.target.pk,
+            "code": ": bad yaml {{{{",
+            "metadata": "{}",
+        })
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"code", resp.content.lower())
+
+
+# ---------------------------------------------------------------------------
+# Agreement dry-run view tests
+# ---------------------------------------------------------------------------
+
+@override_settings(STATICFILES_STORAGE=_SIMPLE_STATIC)
+class AgreementDryRunTests(TestCase):
+    def setUp(self):
+        from decimal import Decimal
+        from django.contrib.auth import get_user_model
+        _make_platform()
+        User = get_user_model()
+        self.user = User.objects.create_user(username="druser", password="drpass")
+        self.source = make_account("dr-source", "user")
+        self.target = make_account("dr-target", "user")
+        self.asset = create_asset(
+            name="DryRun Token", unit_name="DRT",
+            total_supply=Decimal("1000"), decimals=0,
+            reserve_account=self.source, reference="create-drt",
+        )
+        from .models import Contract, Agreement
+        self.contract = Contract.objects.create(
+            name="SubscriptionDR", code=_SUBSCRIPTION_LAPIS_YAML
+        )
+        self.agreement = Agreement.objects.create(
+            source_account=self.source,
+            target_account=self.target,
+            contract=self.contract,
+        )
+
+    def _login(self):
+        self.client.force_login(self.user)
+
+    def _dry_run(self, action, state=None, metadata=None):
+        import json
+        from django.urls import reverse
+        payload = {
+            "action": action,
+            "state": state or {},
+            "params": {},
+            "accounts": {"source": self.source.code, "target": self.target.code},
+            "assets": {"payment": self.asset.unit_name},
+            "metadata": metadata or {},
+        }
+        return self.client.post(
+            reverse("assets:agreement_dry_run", args=[self.agreement.pk]),
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+    def test_dry_run_requires_login(self):
+        from django.urls import reverse
+        resp = self.client.post(reverse("assets:agreement_dry_run", args=[self.agreement.pk]))
+        self.assertNotEqual(resp.status_code, 200)
+
+    def test_dry_run_activate_returns_record(self):
+        self._login()
+        resp = self._dry_run("activate", state={})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["effects"]["records"][0]["kind"], "subscription_activated")
+
+    def test_dry_run_does_not_create_ledger_transaction(self):
+        self._login()
+        before = LedgerTransaction.objects.count()
+        self._dry_run("activate")
+        self.assertEqual(LedgerTransaction.objects.count(), before)
+
+    def test_dry_run_does_not_create_ledger_entry(self):
+        self._login()
+        before = LedgerEntry.objects.count()
+        self._dry_run("activate")
+        self.assertEqual(LedgerEntry.objects.count(), before)
+
+    def test_dry_run_does_not_mutate_asset_holding(self):
+        self._login()
+        from .queries import get_asset_balance
+        before = get_asset_balance(self.asset, self.source)
+        self._dry_run("bill_period", state={"status": "active"}, metadata={"subscription.amount": 10})
+        self.assertEqual(get_asset_balance(self.asset, self.source), before)
+
+    def test_dry_run_does_not_create_obligation(self):
+        from .models import Obligation
+        self._login()
+        before = Obligation.objects.count()
+        self._dry_run("activate")
+        self.assertEqual(Obligation.objects.count(), before)
+
+    def test_dry_run_bill_period_returns_intended_transfer(self):
+        self._login()
+        resp = self._dry_run(
+            "bill_period",
+            state={"status": "active"},
+            metadata={"subscription.amount": 1000},
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data["ok"])
+        transfers = data["effects"]["transfers"]
+        self.assertEqual(len(transfers), 1)
+        self.assertEqual(transfers[0]["source_account"], self.source.code)
+        self.assertEqual(transfers[0]["target_account"], self.target.code)
+        self.assertEqual(transfers[0]["asset"], self.asset.unit_name)
+        self.assertEqual(transfers[0]["amount_base_units"], 1000)
+
+    def test_dry_run_invalid_action_returns_error(self):
+        self._login()
+        resp = self._dry_run("nonexistent_action")
+        self.assertEqual(resp.status_code, 400)
+        self.assertFalse(resp.json()["ok"])
+
+    def test_dry_run_assert_fails_when_state_wrong(self):
+        self._login()
+        resp = self._dry_run("bill_period", state={"status": "cancelled"}, metadata={"subscription.amount": 100})
+        self.assertEqual(resp.status_code, 400)
+        self.assertFalse(resp.json()["ok"])

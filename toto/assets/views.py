@@ -10,7 +10,7 @@ from django.utils.translation import gettext_lazy as _
 from django.views.decorators.http import require_POST
 from toto.ui import PageProcessor
 
-from .forms import TokenizationCreateForm, TokenizationDefaultForm
+from .forms import AgreementForm, TokenizationCreateForm, TokenizationDefaultForm
 from .hashing import verify_hash_chain
 from .models import (
     Asset,
@@ -482,6 +482,167 @@ def wallet_pin_set(request):
             except Exception:
                 messages.error(request, 'Could not save PIN. Please try again.')
     return assets_render(request, 'assets/wallet_pin_set.html', {'has_pin': has_pin})
+
+
+@login_required
+def agreement_list(request):
+    from .models import Agreement
+    agreements = Agreement.objects.select_related("source_account", "target_account", "contract").order_by("-created_at")
+    return assets_render(request, "assets/agreement_list.html", {"agreements": agreements})
+
+
+@login_required
+def agreement_detail(request, pk):
+    from .models import Agreement
+    from .lapis.loader import loads_contract
+    from .lapis.compiler import LapisCompiler
+    agreement = get_object_or_404(
+        Agreement.objects.select_related("source_account", "target_account", "contract"),
+        pk=pk,
+    )
+    action_names = []
+    if agreement.contract and agreement.contract.code:
+        try:
+            tree = loads_contract(agreement.contract.code, fmt="yaml")
+            action_names = list(tree.get("actions", {}).keys())
+        except Exception:
+            pass
+    return assets_render(request, "assets/agreement_detail.html", {
+        "agreement": agreement,
+        "action_names": action_names,
+    })
+
+
+@login_required
+def agreement_create(request):
+    import json as _json
+    from .models import Contract
+    if request.method == "POST":
+        form = AgreementForm(request.POST)
+        if form.is_valid():
+            try:
+                with transaction.atomic():
+                    code = form.cleaned_data.get("code", "").strip()
+                    contract = form.cleaned_data.get("contract")
+                    if code and not contract:
+                        name = f"Inline contract for {form.cleaned_data['source_account'].code}→{form.cleaned_data['target_account'].code}"
+                        contract = Contract.objects.create(name=name, code=code)
+                    agreement = form.save(commit=False)
+                    agreement.contract = contract
+                    agreement.save()
+                messages.success(request, f"Agreement {agreement.uuid} created.")
+                return redirect("assets:agreement_detail", pk=agreement.pk)
+            except ValidationError as exc:
+                messages.error(request, "; ".join(exc.messages))
+    else:
+        form = AgreementForm()
+    contracts_data = {
+        str(c.pk): {"name": c.name, "code": c.code}
+        for c in Contract.objects.all()
+    }
+    return assets_render(request, "assets/agreement_form.html", {
+        "form": form,
+        "contract_codes_json": _json.dumps(contracts_data),
+    })
+
+
+@login_required
+def agreement_dry_run(request, pk):
+    import json as _json
+    from .models import Agreement, Asset, LedgerAccount as _LedgerAccount
+    from .lapis.loader import loads_contract
+    from .lapis.compiler import LapisCompiler
+    from .lapis.executor import LapisContext, LapisExecutor
+    from .lapis.exceptions import LapisValidationError, LapisExecutionError
+
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "POST required."}, status=405)
+
+    agreement = get_object_or_404(
+        Agreement.objects.select_related("contract", "source_account", "target_account"),
+        pk=pk,
+    )
+    if not agreement.contract or not agreement.contract.code:
+        return JsonResponse({"ok": False, "error": "Agreement has no contract code."}, status=400)
+
+    try:
+        body = _json.loads(request.body)
+    except Exception:
+        return JsonResponse({"ok": False, "error": "Invalid JSON body."}, status=400)
+
+    action = body.get("action")
+    if not action:
+        return JsonResponse({"ok": False, "error": "action is required."}, status=400)
+
+    raw_accounts = body.get("accounts", {})
+    raw_assets = body.get("assets", {})
+    metadata = body.get("metadata", {})
+    state = dict(body.get("state", {}))
+    params = body.get("params", {})
+
+    try:
+        accounts_resolved = {
+            ref: get_object_or_404(_LedgerAccount, code=code)
+            for ref, code in raw_accounts.items()
+        }
+        assets_resolved = {
+            ref: get_object_or_404(Asset, unit_name=unit)
+            for ref, unit in raw_assets.items()
+        }
+    except Exception as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+
+    effects = {"transfers": [], "obligations": [], "records": []}
+
+    def _transfer(**kw):
+        effects["transfers"].append({
+            "source_account": kw["source_account"].code,
+            "target_account": kw["target_account"].code,
+            "asset": kw["asset"].unit_name,
+            "amount_base_units": kw["amount_base_units"],
+        })
+        return kw
+
+    def _oblig(**kw):
+        effects["obligations"].append({
+            "debtor_account": kw["debtor_account"].code,
+            "creditor_account": kw["creditor_account"].code,
+            "asset": kw["asset"].unit_name,
+            "amount_base_units": kw["amount_base_units"],
+        })
+        return kw
+
+    def _record(**kw):
+        effects["records"].append({"kind": kw["kind"], "data": kw.get("data", {})})
+        return kw
+
+    from .queries import get_asset_balance as _bal
+    def _balance(account, asset):
+        return _bal(asset, account)
+
+    ctx = LapisContext(
+        agreement=agreement,
+        params=params,
+        state=state,
+        accounts=accounts_resolved,
+        assets=assets_resolved,
+        metadata=metadata,
+        transfer=_transfer,
+        create_obligation=_oblig,
+        record=_record,
+        balance=_balance,
+    )
+
+    try:
+        tree = loads_contract(agreement.contract.code, fmt="yaml")
+        plan = LapisCompiler().compile_action(tree, action)
+        LapisExecutor().execute(plan, ctx)
+    except (LapisValidationError, LapisExecutionError) as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+    except Exception as exc:
+        return JsonResponse({"ok": False, "error": f"Execution error: {exc}"}, status=500)
+
+    return JsonResponse({"ok": True, "effects": effects, "state": ctx.state})
 
 
 @login_required

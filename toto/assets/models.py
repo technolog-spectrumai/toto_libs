@@ -1,3 +1,4 @@
+import uuid as _uuid
 from decimal import Decimal, ROUND_DOWN
 
 from django.conf import settings
@@ -399,3 +400,70 @@ class Obligation(models.Model):
     def is_overdue(self) -> bool:
         from django.utils import timezone
         return self.status == ObligationStatus.PENDING and timezone.now() > self.due_at
+
+
+# ---------------------------------------------------------------------------
+# ContractTemplate
+# ---------------------------------------------------------------------------
+
+class Contract(models.Model):
+    name = models.CharField(max_length=255, unique=True)
+    code = models.TextField(blank=True, help_text="Lapis smart-contract YAML.")
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+    def clean(self):
+        if self.code:
+            from .lapis.loader import loads_contract
+            from .lapis.compiler import LapisCompiler
+            from .lapis.exceptions import LapisValidationError
+            try:
+                tree = loads_contract(self.code, fmt="yaml")
+                LapisCompiler().validate_contract(tree)
+            except LapisValidationError as exc:
+                raise ValidationError({"code": str(exc)}) from exc
+
+
+# ---------------------------------------------------------------------------
+# Agreement
+# ---------------------------------------------------------------------------
+
+class Agreement(models.Model):
+    uuid = models.UUIDField(default=_uuid.uuid4, unique=True, editable=False, db_index=True)
+    source_account = models.ForeignKey(
+        LedgerAccount,
+        on_delete=models.PROTECT,
+        related_name="agreements_as_source",
+    )
+    target_account = models.ForeignKey(
+        LedgerAccount,
+        on_delete=models.PROTECT,
+        related_name="agreements_as_target",
+    )
+    contract = models.ForeignKey(
+        Contract,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="agreements",
+        help_text="Lapis contract governing this agreement.",
+    )
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Agreement {self.uuid} ({self.source_account} → {self.target_account})"
+
+    def clean(self):
+        if self.source_account_id and self.target_account_id:
+            if self.source_account_id == self.target_account_id:
+                raise ValidationError("Source and target accounts must differ.")

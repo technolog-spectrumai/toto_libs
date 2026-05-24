@@ -4,7 +4,7 @@ from decimal import Decimal
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
-from toto.assets.models import LedgerAccount, LedgerTransaction
+from toto.assets.models import Agreement, Contract, LedgerAccount, LedgerTransaction
 from toto.assets.services.assets import create_asset, create_obligation, reverse_transaction, transfer_asset
 from toto.ingress import IngressCommand
 
@@ -18,10 +18,12 @@ class Command(IngressCommand):
         accounts = self._seed_accounts()
         assets = self._seed_assets(accounts)
         currencies = self._seed_currencies(accounts, assets)
+        contracts = self._seed_contracts()
 
         if self.full:
             self._seed_transfers(assets, accounts)
             self._seed_user_wallets(accounts, assets)
+            self._seed_sample_agreements(accounts, contracts)
 
         self._seed_founder_obligations(accounts, assets)
         self.stdout.write(self.style.SUCCESS("✅  Asset ledger ingress complete."))
@@ -366,6 +368,117 @@ class Command(IngressCommand):
                 self.stdout.write(f"  + distribution {ref}")
             except Exception as exc:
                 self.stdout.write(self.style.ERROR(f"  ✗ {ref}: {exc}"))
+
+    # ------------------------------------------------------------------ #
+    # Contracts                                                            #
+    # ------------------------------------------------------------------ #
+
+    _CONTRACT_SPECS = [
+        dict(
+            name="Noop",
+            code=(
+                "language: lapis\n"
+                "version: 1\n"
+                "name: Noop\n"
+                "actions:\n"
+                "  execute:\n"
+                "    type: seq\n"
+                "    steps: []\n"
+            ),
+            metadata={"description": "Does nothing — useful for testing wiring."},
+        ),
+        dict(
+            name="Record Event",
+            code=(
+                "language: lapis\n"
+                "version: 1\n"
+                "name: RecordEvent\n"
+                "actions:\n"
+                "  execute:\n"
+                "    type: record\n"
+                "    kind: agreement_executed\n"
+                "    data: {}\n"
+            ),
+            metadata={"description": "Records an agreement_executed event on every execution."},
+        ),
+        dict(
+            name="Assert Balance",
+            code=(
+                "language: lapis\n"
+                "version: 1\n"
+                "name: AssertBalance\n"
+                "actions:\n"
+                "  execute:\n"
+                "    type: seq\n"
+                "    steps:\n"
+                "      - type: assert\n"
+                "        condition:\n"
+                "          type: gte\n"
+                "          left:\n"
+                "            type: balance\n"
+                "            account:\n"
+                "              type: account\n"
+                "              ref: source\n"
+                "            asset:\n"
+                "              type: asset\n"
+                "              ref: asset\n"
+                "          right:\n"
+                "            type: int\n"
+                "            value: 0\n"
+                "      - type: record\n"
+                "        kind: balance_checked\n"
+                "        data: {}\n"
+            ),
+            metadata={"description": "Asserts the source account has a non-negative balance, then records the check."},
+        ),
+    ]
+
+    def _seed_contracts(self) -> dict:
+        contracts = {}
+        for spec in self._CONTRACT_SPECS:
+            name = spec["name"]
+            contract, created = Contract.objects.get_or_create(
+                name=name,
+                defaults={"code": spec["code"], "metadata": spec.get("metadata", {})},
+            )
+            contracts[name] = contract
+            if created:
+                self.stdout.write(f"  + contract '{name}'")
+            else:
+                self.stdout.write(self.style.WARNING(f"  ⚠ skipped existing contract '{name}'"))
+        return contracts
+
+    def _seed_sample_agreements(self, accounts: dict, contracts: dict):
+        noop = contracts.get("Noop")
+        record = contracts.get("Record Event")
+
+        specs = []
+        if noop and "alice" in accounts and "bob" in accounts:
+            specs.append(dict(
+                source_account=accounts["alice"],
+                target_account=accounts["bob"],
+                contract=noop,
+                metadata={"note": "Demo noop agreement between Alice and Bob."},
+            ))
+        if record and "bob" in accounts and "carol" in accounts:
+            specs.append(dict(
+                source_account=accounts["bob"],
+                target_account=accounts["carol"],
+                contract=record,
+                metadata={"note": "Demo record-event agreement between Bob and Carol."},
+            ))
+
+        for spec in specs:
+            src = spec["source_account"].code
+            tgt = spec["target_account"].code
+            if Agreement.objects.filter(source_account=spec["source_account"], target_account=spec["target_account"]).exists():
+                self.stdout.write(self.style.WARNING(f"  ⚠ skipped existing agreement {src}→{tgt}"))
+                continue
+            try:
+                Agreement.objects.create(**spec)
+                self.stdout.write(f"  + agreement {src}→{tgt}")
+            except Exception as exc:
+                self.stdout.write(self.style.ERROR(f"  ✗ agreement {src}→{tgt}: {exc}"))
 
     # ------------------------------------------------------------------ #
     # Founder obligations (always — for testing obligation UI)            #

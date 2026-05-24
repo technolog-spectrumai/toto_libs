@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from django import forms
 
-from toto.assets.models import Asset, LedgerAccount, Tokenization, TokenizationDefaultReason
+from toto.assets.models import Agreement, Asset, Contract, LedgerAccount, Tokenization, TokenizationDefaultReason
 
 
 class TokenizationCreateForm(forms.Form):
@@ -50,6 +50,59 @@ class TokenizationCreateForm(forms.Form):
         cleaned = super().clean()
         if self.real_world_object and Tokenization.objects.filter(real_world_object=self.real_world_object).exists():
             raise forms.ValidationError("This object is already tokenized and cannot be tokenized again.")
+        return cleaned
+
+
+_FIELD_CSS = (
+    "w-full rounded-lg border px-3 py-2 text-sm outline-none transition "
+    "focus:ring-2 focus:ring-current/20 border-accent-2 bg-primary-bg-light text-text-main-light"
+)
+
+
+class AgreementForm(forms.ModelForm):
+    code = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={"rows": 20, "id": "id_lapis_code"}),
+        help_text="Lapis smart-contract YAML. Leave blank to link an existing contract via the dropdown.",
+    )
+
+    class Meta:
+        model = Agreement
+        fields = ["source_account", "target_account", "contract", "metadata"]
+        widgets = {
+            "metadata": forms.Textarea(attrs={"rows": 4}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        active_accounts = LedgerAccount.objects.filter(active=True).order_by("code")
+        self.fields["source_account"].queryset = active_accounts
+        self.fields["target_account"].queryset = active_accounts
+        self.fields["contract"].queryset = Contract.objects.all()
+        self.fields["contract"].required = False
+        for field in self.fields.values():
+            existing = field.widget.attrs.get("class", "")
+            field.widget.attrs["class"] = f"{existing} {_FIELD_CSS}".strip()
+
+    def clean_code(self):
+        code = self.cleaned_data.get("code", "").strip()
+        if code:
+            from .lapis.loader import loads_contract
+            from .lapis.compiler import LapisCompiler
+            from .lapis.exceptions import LapisValidationError
+            try:
+                tree = loads_contract(code, fmt="yaml")
+                LapisCompiler().validate_contract(tree)
+            except LapisValidationError as exc:
+                raise forms.ValidationError(str(exc))
+        return code
+
+    def clean(self):
+        cleaned = super().clean()
+        source = cleaned.get("source_account")
+        target = cleaned.get("target_account")
+        if source and target and source == target:
+            raise forms.ValidationError("Source and target accounts must differ.")
         return cleaned
 
 
