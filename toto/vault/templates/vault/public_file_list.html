@@ -121,12 +121,21 @@
         {% endif %}
 
         <!-- Metrics link -->
-        <a href="{% url 'vault:metrics' %}"
-           :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
-           class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-80">
-          <i class="fa-solid fa-chart-column"></i>
-          {% trans "Metrics" %}
-        </a>
+        {% if selected_bucket %}
+          <a href="{% url 'vault:bucket_metrics' selected_bucket %}"
+             :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+             class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-80">
+            <i class="fa-solid fa-chart-column"></i>
+            {% trans "Metrics" %}
+          </a>
+        {% else %}
+          <a href="{% url 'vault:metrics' %}"
+             :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+             class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-80">
+            <i class="fa-solid fa-chart-column"></i>
+            {% trans "Metrics" %}
+          </a>
+        {% endif %}
 
         <!-- Gateway upload buttons -->
         {% for gw in gateways %}

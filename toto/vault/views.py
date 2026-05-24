@@ -368,3 +368,120 @@ class VaultMetricsView(LoginRequiredMixin, TemplateView):
         ).order_by("-uploaded_at")[:8]
 
         return PageProcessor().decorate(context, self.request)
+
+
+class BucketMetricsView(LoginRequiredMixin, TemplateView):
+    """
+    Per-bucket statistics: file type breakdown, directory breakdown,
+    upload activity, and recent files.
+    """
+    template_name = "vault/bucket_metrics.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        bucket = get_object_or_404(Bucket, slug=self.kwargs["bucket_slug"])
+
+        # ── Top-level counters ──────────────────────────────
+        total_files = VaultFile.objects.filter(bucket=bucket).count()
+        total_dirs = VaultDirectory.objects.filter(bucket=bucket).count()
+        public_files = VaultFile.objects.filter(bucket=bucket, is_public=True).count()
+        encrypted_files = VaultFile.objects.filter(bucket=bucket, is_encrypted=True).count()
+        root_files = VaultFile.objects.filter(bucket=bucket, directory__isnull=True).count()
+        week_ago = timezone.now() - timedelta(days=7)
+        recent_count = VaultFile.objects.filter(bucket=bucket, uploaded_at__gte=week_ago).count()
+
+        try:
+            gateway = bucket.gateway
+        except FileGateway.DoesNotExist:
+            gateway = None
+
+        context.update({
+            "bucket": bucket,
+            "gateway": gateway,
+            "total_files": total_files,
+            "total_dirs": total_dirs,
+            "public_files": public_files,
+            "encrypted_files": encrypted_files,
+            "root_files": root_files,
+            "recent_count": recent_count,
+        })
+
+        # ── Chart data ──────────────────────────────────────
+        context["files_by_type"] = list(
+            VaultFile.objects.filter(bucket=bucket)
+            .values("file_type")
+            .annotate(count=Count("id"))
+            .order_by("-count")
+        )
+
+        raw_by_dir = list(
+            VaultFile.objects.filter(bucket=bucket)
+            .values("directory__name")
+            .annotate(count=Count("id"))
+            .order_by("-count")[:12]
+        )
+        context["files_by_dir"] = [
+            {"name": (d["directory__name"] or "Root"), "count": d["count"]}
+            for d in raw_by_dir
+        ]
+
+        thirty_days_ago = timezone.now() - timedelta(days=29)
+        daily_qs = {
+            entry["day"]: entry["count"]
+            for entry in VaultFile.objects.filter(
+                bucket=bucket, uploaded_at__gte=thirty_days_ago
+            )
+            .annotate(day=TruncDate("uploaded_at"))
+            .values("day")
+            .annotate(count=Count("id"))
+        }
+        today = date.today()
+        context["daily_series"] = [
+            {
+                "date": (today - timedelta(days=29 - i)).strftime("%m-%d"),
+                "count": daily_qs.get(today - timedelta(days=29 - i), 0),
+            }
+            for i in range(30)
+        ]
+
+        # ── Directory breakdown ─────────────────────────────
+        all_bucket_dirs = list(
+            VaultDirectory.objects.filter(bucket=bucket)
+            .prefetch_related("allowed_users")
+            .annotate(
+                file_count=Count("files", distinct=True),
+                public_count=Count("files", filter=Q(files__is_public=True), distinct=True),
+                encrypted_count=Count("files", filter=Q(files__is_encrypted=True), distinct=True),
+            )
+        )
+        dirs_by_pk = {d.pk: d for d in all_bucket_dirs}
+
+        def get_full_path(d):
+            parts = []
+            node = d
+            while node is not None:
+                parts.append(node.name)
+                node = dirs_by_pk.get(node.parent_id) if node.parent_id else None
+            return "/".join(reversed(parts))
+
+        context["dir_stats"] = sorted(
+            [
+                {
+                    "pk": d.pk,
+                    "full_path": get_full_path(d),
+                    "file_count": d.file_count,
+                    "public_count": d.public_count,
+                    "encrypted_count": d.encrypted_count,
+                    "locked": d.allowed_users.exists(),
+                }
+                for d in all_bucket_dirs
+            ],
+            key=lambda x: x["full_path"],
+        )
+
+        # ── Recent files ────────────────────────────────────
+        context["recent_files"] = VaultFile.objects.filter(bucket=bucket).select_related(
+            "owner", "directory"
+        ).order_by("-uploaded_at")[:8]
+
+        return PageProcessor().decorate(context, self.request)
