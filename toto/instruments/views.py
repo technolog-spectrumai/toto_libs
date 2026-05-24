@@ -21,6 +21,7 @@ from .forms import (
     LeaseContractForm,
     OptionContractForm,
     RevenueShareContractForm,
+    RevenueShareRecipientInlineForm,
     StakingPositionForm,
     SubscriptionContractForm,
     VestingContractForm,
@@ -35,6 +36,7 @@ from .models import (
     InstrumentType,
     LeaseContract,
     OptionContract,
+    RevenueShareRecipient,
     StakingPosition,
     SubscriptionContract,
 )
@@ -82,7 +84,10 @@ def instrument_detail(request, pk):
         FinancialInstrument.objects.select_related("issuer", "contract_account"),
         pk=pk,
     )
-    return instruments_render(request, "instruments/instrument_detail.html", {"instrument": instrument})
+    ctx = {"instrument": instrument}
+    if hasattr(instrument, "revenue_share_contract"):
+        ctx["recipient_form"] = RevenueShareRecipientInlineForm()
+    return instruments_render(request, "instruments/instrument_detail.html", ctx)
 
 
 @login_required
@@ -278,6 +283,44 @@ def revenue_share_create(request):
     else:
         form = RevenueShareContractForm()
     return instruments_render(request, "instruments/revenue_share_form.html", {"form": form})
+
+
+@require_POST
+@login_required
+def recipient_add(request, pk):
+    instrument = get_object_or_404(FinancialInstrument, pk=pk)
+    rev = getattr(instrument, "revenue_share_contract", None)
+    if rev is None:
+        messages.error(request, "This instrument has no revenue share contract.")
+        return redirect("instruments:instrument_detail", pk=pk)
+    form = RevenueShareRecipientInlineForm(request.POST)
+    if form.is_valid():
+        total_allocated = sum(r.share_bps for r in rev.recipients.all())
+        new_bps = form.get_share_bps()
+        if total_allocated + new_bps > 10000:
+            messages.error(request, f"Total share would exceed 100% ({(total_allocated + new_bps) / 100:.2f}%). Remove or reduce another recipient first.")
+        else:
+            RevenueShareRecipient.objects.create(
+                contract=rev,
+                account=form.cleaned_data["account"],
+                share_bps=new_bps,
+            )
+            messages.success(request, f"Recipient added ({form.cleaned_data['share_percent']}%).")
+    else:
+        messages.error(request, "Invalid recipient data: " + "; ".join(
+            f"{f}: {', '.join(e)}" for f, e in form.errors.items()
+        ))
+    return redirect("instruments:instrument_detail", pk=pk)
+
+
+@require_POST
+@login_required
+def recipient_remove(request, pk, recipient_pk):
+    instrument = get_object_or_404(FinancialInstrument, pk=pk)
+    recipient = get_object_or_404(RevenueShareRecipient, pk=recipient_pk, contract__instrument=instrument)
+    recipient.delete()
+    messages.success(request, "Recipient removed.")
+    return redirect("instruments:instrument_detail", pk=pk)
 
 
 # ── Staking ───────────────────────────────────────────────────────────────────

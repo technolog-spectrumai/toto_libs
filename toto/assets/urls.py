@@ -24,4 +24,11 @@ urlpatterns = [
     path("agreements/create/", views.agreement_create, name="agreement_create"),
     path("agreements/<int:pk>/", views.agreement_detail, name="agreement_detail"),
     path("agreements/<int:pk>/dry-run/", views.agreement_dry_run, name="agreement_dry_run"),
+    path("contracts/", views.contract_list, name="contract_list"),
+    path("contracts/new/", views.contract_create, name="contract_create"),
+    path("contracts/<uuid:uuid>/", views.contract_detail, name="contract_detail"),
+    path("contracts/<uuid:uuid>/edit/", views.contract_update, name="contract_update"),
+    path("contracts/<uuid:uuid>/validate/", views.contract_validate, name="contract_validate"),
+    path("contracts/<uuid:uuid>/dry-run/", views.contract_dry_run, name="contract_dry_run"),
+    path("contracts/<uuid:uuid>/cytoscape.json", views.contract_cytoscape_json, name="contract_cytoscape_json"),
 ]

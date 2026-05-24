@@ -407,6 +407,7 @@ class Obligation(models.Model):
 # ---------------------------------------------------------------------------
 
 class Contract(models.Model):
+    uuid = models.UUIDField(default=_uuid.uuid4, editable=False, unique=True, db_index=True)
     name = models.CharField(max_length=255, unique=True)
     code = models.TextField(blank=True, help_text="Lapis smart-contract YAML.")
     metadata = models.JSONField(default=dict, blank=True)

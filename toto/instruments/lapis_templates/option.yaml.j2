@@ -1,0 +1,69 @@
+language: lapis
+version: 1
+name: "Option:{{ reference }}"
+actions:
+  activate:
+    body:
+      type: seq
+      steps:
+        - type: assert
+          condition:
+            type: eq
+            left: {type: app_global_get, key: {type: bytes, value: status}}
+            right: {type: bytes, value: draft}
+        - type: app_global_put
+          key: {type: bytes, value: status}
+          value: {type: bytes, value: active}
+        - type: log
+          value: {type: bytes, value: option_activated}
+        - type: approve
+
+  exercise:
+    body:
+      type: seq
+      steps:
+        - type: assert
+          condition:
+            type: eq
+            left: {type: app_global_get, key: {type: bytes, value: status}}
+            right: {type: bytes, value: active}
+        - type: inner_transaction_begin
+        - type: inner_transaction_set
+          field: TypeEnum
+          value: {type: uint64, value: 1}
+        - type: inner_transaction_set
+          field: Amount
+          value: {type: uint64, value: {{ strike_price_base_units }}}
+        - type: inner_transaction_submit
+        {% if premium_base_units %}
+        - type: inner_transaction_begin
+        - type: inner_transaction_set
+          field: TypeEnum
+          value: {type: uint64, value: 1}
+        - type: inner_transaction_set
+          field: Amount
+          value: {type: uint64, value: {{ premium_base_units }}}
+        - type: inner_transaction_submit
+        {% endif %}
+        - type: app_global_put
+          key: {type: bytes, value: status}
+          value: {type: bytes, value: exercised}
+        - type: log
+          value: {type: bytes, value: option_exercised}
+        - type: approve
+
+  expire:
+    body:
+      type: seq
+      steps:
+        - type: assert
+          condition:
+            type: eq
+            left: {type: app_global_get, key: {type: bytes, value: status}}
+            right: {type: bytes, value: active}
+        - type: app_global_put
+          key: {type: bytes, value: status}
+          value: {type: bytes, value: expired}
+        - type: log
+          value: {type: bytes, value: option_expired}
+        - type: approve

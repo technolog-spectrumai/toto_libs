@@ -12,11 +12,6 @@
       <p class="text-sm opacity-60">{% trans "Manage lease contracts, tariffs and metered charges." %}</p>
     </div>
     <div class="flex flex-wrap gap-2">
-      <a href="{% url 'instruments:lease_metric_create' %}"
-         class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80"
-         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
-        <i class="fa-solid fa-ruler"></i> {% trans "New metric" %}
-      </a>
       <a href="{% url 'instruments:lease_create' %}"
          class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold shadow-sm transition hover:opacity-90"
          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'">

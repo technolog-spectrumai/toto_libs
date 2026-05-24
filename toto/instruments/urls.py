@@ -34,6 +34,8 @@ urlpatterns = [
 
     # Revenue share
     path("revenue-share/create/", views.revenue_share_create, name="revenue_share_create"),
+    path("<int:pk>/recipient/add/", views.recipient_add, name="recipient_add"),
+    path("<int:pk>/recipient/<int:recipient_pk>/remove/", views.recipient_remove, name="recipient_remove"),
 
     # Staking
     path("staking/create/", views.staking_create, name="staking_create"),

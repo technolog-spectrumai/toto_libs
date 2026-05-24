@@ -1,0 +1,62 @@
+language: lapis
+version: 1
+name: "Lease:{{ reference }}"
+actions:
+  activate:
+    body:
+      type: seq
+      steps:
+        - type: assert
+          condition:
+            type: eq
+            left: {type: app_global_get, key: {type: bytes, value: status}}
+            right: {type: bytes, value: draft}
+        - type: app_global_put
+          key: {type: bytes, value: status}
+          value: {type: bytes, value: active}
+        - type: log
+          value: {type: bytes, value: lease_activated}
+        - type: approve
+
+  charge:
+    body:
+      type: seq
+      steps:
+        - type: assert
+          condition:
+            type: eq
+            left: {type: app_global_get, key: {type: bytes, value: status}}
+            right: {type: bytes, value: active}
+        - type: inner_transaction_begin
+        - type: inner_transaction_set
+          field: TypeEnum
+          value: {type: uint64, value: 1}
+        - type: inner_transaction_set
+          field: Amount
+          value: {type: uint64, value: {{ fixed_fee_base_units }}}
+        - type: inner_transaction_submit
+        - type: log
+          value: {type: bytes, value: lease_charged}
+        - type: approve
+
+  cancel:
+    body:
+      type: seq
+      steps:
+        - type: app_global_put
+          key: {type: bytes, value: status}
+          value: {type: bytes, value: cancelled}
+        - type: log
+          value: {type: bytes, value: lease_cancelled}
+        - type: approve
+
+  expire:
+    body:
+      type: seq
+      steps:
+        - type: app_global_put
+          key: {type: bytes, value: status}
+          value: {type: bytes, value: expired}
+        - type: log
+          value: {type: bytes, value: lease_expired}
+        - type: approve

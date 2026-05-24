@@ -1,0 +1,59 @@
+language: lapis
+version: 1
+name: "Forward:{{ reference }}"
+actions:
+  activate:
+    body:
+      type: seq
+      steps:
+        - type: assert
+          condition:
+            type: eq
+            left: {type: app_global_get, key: {type: bytes, value: status}}
+            right: {type: bytes, value: draft}
+        - type: app_global_put
+          key: {type: bytes, value: status}
+          value: {type: bytes, value: active}
+        - type: log
+          value: {type: bytes, value: forward_activated}
+        - type: approve
+
+  settle:
+    body:
+      type: seq
+      steps:
+        - type: assert
+          condition:
+            type: eq
+            left: {type: app_global_get, key: {type: bytes, value: status}}
+            right: {type: bytes, value: active}
+        - type: inner_transaction_begin
+        - type: inner_transaction_set
+          field: TypeEnum
+          value: {type: uint64, value: 1}
+        - type: inner_transaction_set
+          field: Amount
+          value: {type: uint64, value: {{ payment_amount_base_units }}}
+        - type: inner_transaction_submit
+        - type: app_global_put
+          key: {type: bytes, value: status}
+          value: {type: bytes, value: settled}
+        - type: log
+          value: {type: bytes, value: forward_settled}
+        - type: approve
+
+  cancel:
+    body:
+      type: seq
+      steps:
+        - type: assert
+          condition:
+            type: eq
+            left: {type: app_global_get, key: {type: bytes, value: status}}
+            right: {type: bytes, value: active}
+        - type: app_global_put
+          key: {type: bytes, value: status}
+          value: {type: bytes, value: cancelled}
+        - type: log
+          value: {type: bytes, value: forward_cancelled}
+        - type: approve

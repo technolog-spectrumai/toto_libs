@@ -1,0 +1,83 @@
+language: lapis
+version: 1
+name: "Amortization:{{ reference }}"
+actions:
+  activate:
+    body:
+      type: seq
+      steps:
+        - type: assert
+          condition:
+            type: eq
+            left: {type: app_global_get, key: {type: bytes, value: status}}
+            right: {type: bytes, value: draft}
+        - type: app_global_put
+          key: {type: bytes, value: status}
+          value: {type: bytes, value: active}
+        - type: log
+          value: {type: bytes, value: amortization_activated}
+        - type: approve
+
+  amortize:
+    body:
+      type: seq
+      steps:
+        - type: assert
+          condition:
+            type: eq
+            left: {type: app_global_get, key: {type: bytes, value: status}}
+            right: {type: bytes, value: active}
+        - type: inner_transaction_begin
+        - type: inner_transaction_set
+          field: TypeEnum
+          value: {type: uint64, value: 1}
+        - type: inner_transaction_set
+          field: Amount
+          value: {type: uint64, value: {{ original_amount_base_units }}}
+        - type: inner_transaction_submit
+        - type: log
+          value: {type: bytes, value: amortization_entry}
+        - type: approve
+
+  pause:
+    body:
+      type: seq
+      steps:
+        - type: assert
+          condition:
+            type: eq
+            left: {type: app_global_get, key: {type: bytes, value: status}}
+            right: {type: bytes, value: active}
+        - type: app_global_put
+          key: {type: bytes, value: status}
+          value: {type: bytes, value: paused}
+        - type: log
+          value: {type: bytes, value: amortization_paused}
+        - type: approve
+
+  resume:
+    body:
+      type: seq
+      steps:
+        - type: assert
+          condition:
+            type: eq
+            left: {type: app_global_get, key: {type: bytes, value: status}}
+            right: {type: bytes, value: paused}
+        - type: app_global_put
+          key: {type: bytes, value: status}
+          value: {type: bytes, value: active}
+        - type: log
+          value: {type: bytes, value: amortization_resumed}
+        - type: approve
+
+  cancel:
+    body:
+      type: seq
+      steps:
+        - type: app_global_put
+          key: {type: bytes, value: status}
+          value: {type: bytes, value: cancelled}
+        - type: log
+          value: {type: bytes, value: amortization_cancelled}
+        - type: approve

@@ -17,12 +17,10 @@
         <div class="flex flex-wrap items-center gap-2 mb-2">
           <h1 class="text-3xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">{{ instrument.reference }}</h1>
           <span class="rounded-lg border border-current/20 px-2.5 py-1 text-sm font-semibold">{{ instrument.get_instrument_type_display }}</span>
-          <span class="rounded-lg px-2.5 py-1 text-sm font-semibold
-            {% if instrument.status == 'active' %}bg-green-500/15 text-green-600
-            {% elif instrument.status == 'draft' %}bg-gray-500/15 text-gray-500
-            {% elif instrument.status == 'settled' %}bg-blue-500/15 text-blue-600
-            {% elif instrument.status == 'defaulted' or instrument.status == 'cancelled' %}bg-red-500/15 text-red-600
-            {% else %}bg-yellow-500/15 text-yellow-600{% endif %}">
+          <span class="rounded-lg px-2.5 py-1 text-sm font-semibold"
+            :class="darkMode
+              ? '{% if instrument.status == 'active' %}bg-success-dark/15 text-success-dark{% elif instrument.status == 'draft' %}opacity-50{% elif instrument.status == 'settled' %}bg-accent-dark/15 text-accent-dark{% elif instrument.status == 'defaulted' or instrument.status == 'cancelled' %}bg-caution-dark/15 text-caution-dark{% else %}bg-warn-dark/15 text-warn-dark{% endif %}'
+              : '{% if instrument.status == 'active' %}bg-success-light/15 text-success-light{% elif instrument.status == 'draft' %}opacity-50{% elif instrument.status == 'settled' %}bg-accent-light/15 text-accent-light{% elif instrument.status == 'defaulted' or instrument.status == 'cancelled' %}bg-caution-light/15 text-caution-light{% else %}bg-warn-light/15 text-warn-light{% endif %}'">
             {{ instrument.get_status_display }}
           </span>
         </div>
@@ -282,27 +280,95 @@
   <!-- ── Revenue Share ──────────────────────────────────── -->
   {% if instrument.revenue_share_contract %}
   {% with rev=instrument.revenue_share_contract %}
-  <section class="rounded-xl border p-5 shadow-sm space-y-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+  <section class="rounded-xl border p-5 shadow-sm space-y-5" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
     <h2 class="flex items-center gap-2 text-xl font-bold">
       <i class="fa-solid fa-percent opacity-60"></i> {% trans "Revenue Share" %}
     </h2>
-    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 text-sm">
-      <div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Revenue account" %}</div><div class="font-semibold">{{ rev.revenue_account.code }}</div></div>
-      <div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Asset" %}</div><div class="font-semibold">{{ rev.revenue_asset.unit_name }}</div></div>
-      <div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Active from" %}</div><div class="font-semibold">{{ rev.active_from|date:"M d, Y" }}</div></div>
-      {% if rev.active_until %}<div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Active until" %}</div><div class="font-semibold">{{ rev.active_until|date:"M d, Y" }}</div></div>{% endif %}
+
+    <!-- Source info -->
+    <div class="rounded-lg border p-4 space-y-1 text-sm" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'">
+      <div class="text-xs uppercase opacity-50 mb-2 font-semibold">{% trans "Revenue account being partitioned" %}</div>
+      <div class="flex items-center gap-2 font-bold text-base">
+        <i class="fa-solid fa-building" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+        {{ rev.revenue_account.code }}
+        <span class="text-xs font-normal opacity-60">— {{ rev.revenue_asset.unit_name }}</span>
+      </div>
+      <div class="text-xs opacity-50 mt-1">
+        {% trans "Active" %}: {{ rev.active_from|date:"M d, Y" }}{% if rev.active_until %} – {{ rev.active_until|date:"M d, Y" }}{% else %} ({% trans "open-ended" %}){% endif %}
+      </div>
     </div>
-    {% if rev.recipients.exists %}
+
+    <!-- Recipients table -->
     <div>
-      <div class="text-xs uppercase opacity-50 mb-2">{% trans "Recipients" %}</div>
+      <div class="flex items-center justify-between mb-2">
+        <div class="text-xs uppercase opacity-50 font-semibold">{% trans "Recipients" %}</div>
+        {% with total=rev.recipients.all|length %}
+        {% if rev.recipients.exists %}
+        <div class="text-xs opacity-60">
+          {% with allocated=0 %}
+          {# Show total allocated bps via inline calc #}
+          {% for r in rev.recipients.all %}{% endfor %}
+          {% endwith %}
+        </div>
+        {% endif %}
+        {% endwith %}
+      </div>
+
+      {% if rev.recipients.exists %}
       <div class="space-y-1">
         {% for recipient in rev.recipients.all %}
         <div class="flex items-center justify-between rounded-lg px-3 py-2 text-sm" :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
-          <span class="font-semibold">{{ recipient.account.code }}</span>
-          <span class="opacity-60">{{ recipient.share_bps }} bps ({% widthratio recipient.share_bps 100 1 %}%)</span>
+          <div class="flex items-center gap-2">
+            <i class="fa-solid fa-user opacity-40"></i>
+            <span class="font-semibold">{{ recipient.account.code }}</span>
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+              {% widthratio recipient.share_bps 100 1 %}%
+            </span>
+            <span class="opacity-40 text-xs">{{ recipient.share_bps }} bps</span>
+            <form method="post" action="{% url 'instruments:recipient_remove' instrument.pk recipient.pk %}" class="inline">
+              {% csrf_token %}
+              <button type="submit" class="text-xs opacity-40 hover:opacity-80 transition" title="{% trans 'Remove' %}"
+                      onclick="return confirm('{% trans "Remove this recipient?" %}')">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+            </form>
+          </div>
         </div>
         {% endfor %}
       </div>
+      {% else %}
+      <div class="rounded-lg px-3 py-4 text-sm opacity-50 text-center" :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
+        {% trans "No recipients yet. Add the first one below." %}
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Add recipient form -->
+    {% if recipient_form %}
+    <div class="border-t pt-4" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+      <div class="text-xs uppercase opacity-50 font-semibold mb-3">{% trans "Add recipient" %}</div>
+      <form method="post" action="{% url 'instruments:recipient_add' instrument.pk %}" class="space-y-3">
+        {% csrf_token %}
+        <div class="grid gap-3 sm:grid-cols-[1fr_160px_auto]">
+          <div>
+            <label class="block text-xs opacity-60 mb-1">{{ recipient_form.account.label }}</label>
+            {{ recipient_form.account }}
+          </div>
+          <div>
+            <label class="block text-xs opacity-60 mb-1">{{ recipient_form.share_percent.label }}</label>
+            {{ recipient_form.share_percent }}
+          </div>
+          <div class="flex items-end">
+            <button type="submit" class="rounded-lg px-4 py-2 text-sm font-bold shadow-sm transition hover:opacity-90 whitespace-nowrap"
+                    :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'">
+              <i class="fa-solid fa-plus mr-1"></i>{% trans "Add" %}
+            </button>
+          </div>
+        </div>
+        <p class="text-xs opacity-50">{{ recipient_form.share_percent.help_text }}</p>
+      </form>
     </div>
     {% endif %}
   </section>
@@ -321,17 +387,17 @@
       <div>
         <div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Status" %}</div>
         <div class="font-semibold">
-          <span class="rounded px-2 py-0.5 text-xs font-semibold
-            {% if sub.status == 'trialing' %}bg-cyan-500/15 text-cyan-600
-            {% elif sub.status == 'past_due' %}bg-orange-500/15 text-orange-600
-            {% elif sub.status == 'paused' %}bg-yellow-500/15 text-yellow-600
-            {% elif sub.status == 'cancelled' %}bg-red-500/15 text-red-600
-            {% elif sub.status != 'active' %}bg-gray-500/15 text-gray-500{% endif %}"
-            {% if sub.status == 'active' %}:class="darkMode ? 'bg-success-dark/15 text-success-dark' : 'bg-success-light/15 text-success-light'"{% endif %}>
+          <span class="rounded px-2 py-0.5 text-xs font-semibold"
+            :class="
+              {% if sub.status == 'active' %}darkMode ? 'bg-success-dark/15 text-success-dark' : 'bg-success-light/15 text-success-light'
+              {% elif sub.status == 'trialing' %}darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'
+              {% elif sub.status == 'paused' %}darkMode ? 'bg-caution-dark/15 text-caution-dark' : 'bg-caution-light/15 text-caution-light'
+              {% elif sub.status == 'past_due' or sub.status == 'cancelled' %}darkMode ? 'bg-warn-dark/15 text-warn-dark' : 'bg-warn-light/15 text-warn-light'
+              {% else %}'opacity-50'{% endif %}">
             {{ sub.get_status_display }}
           </span>
           {% if sub.cancel_at_period_end and sub.status != 'cancelled' %}
-          <span class="ml-1 text-xs text-orange-500 font-normal">({% trans "cancels at period end" %})</span>
+          <span class="ml-1 text-xs font-normal" :class="darkMode ? 'text-caution-dark' : 'text-caution-light'">({% trans "cancels at period end" %})</span>
           {% endif %}
         </div>
       </div>
@@ -351,14 +417,14 @@
       {% if sub.trial_ends_at %}
       <div>
         <div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Trial ends" %}</div>
-        <div class="font-semibold {% if sub.is_in_trial %}text-cyan-500{% endif %}">
+        <div class="font-semibold" {% if sub.is_in_trial %}:class="darkMode ? 'text-accent-dark' : 'text-accent-light'"{% endif %}>
           {{ sub.trial_ends_at|date:"M d, Y H:i" }}
           {% if sub.is_in_trial %}<span class="text-xs ml-1">({% trans "active" %})</span>{% endif %}
         </div>
       </div>
       {% endif %}
       {% if sub.cancelled_at %}
-      <div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Cancelled at" %}</div><div class="font-semibold text-red-500">{{ sub.cancelled_at|date:"M d, Y H:i" }}</div></div>
+      <div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Cancelled at" %}</div><div class="font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ sub.cancelled_at|date:"M d, Y H:i" }}</div></div>
       {% endif %}
     </div>
 
@@ -391,13 +457,15 @@
       {% if sub.status != 'cancelled' %}
       <form method="post" action="{% url 'instruments:subscription_cancel' instrument.pk %}">{% csrf_token %}
         <input type="hidden" name="at_period_end" value="1">
-        <button class="rounded-lg border px-4 py-2 text-sm font-semibold text-orange-500 border-orange-400 transition hover:opacity-90">
+        <button class="rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-90"
+                :class="darkMode ? 'border-caution-dark text-caution-dark' : 'border-caution-light text-caution-light'">
           <i class="fa-solid fa-clock"></i> {% trans "Cancel at period end" %}
         </button>
       </form>
       <form method="post" action="{% url 'instruments:subscription_cancel' instrument.pk %}">{% csrf_token %}
         <input type="hidden" name="at_period_end" value="0">
-        <button class="rounded-lg border px-4 py-2 text-sm font-semibold text-red-500 border-red-400 transition hover:opacity-90">
+        <button class="rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-90"
+                :class="darkMode ? 'border-warn-dark text-warn-dark' : 'border-warn-light text-warn-light'">
           <i class="fa-solid fa-ban"></i> {% trans "Cancel immediately" %}
         </button>
       </form>
@@ -418,10 +486,10 @@
               <div class="font-semibold">{{ payment.amount_display }} {{ sub.asset.unit_name }}</div>
             </div>
             <div class="flex items-center gap-2 text-xs">
-              <span class="rounded px-2 py-0.5 font-semibold
-                {% if payment.status == 'failed' %}bg-red-500/15 text-red-600
-                {% elif payment.status != 'paid' %}bg-yellow-500/15 text-yellow-600{% endif %}"
-                {% if payment.status == 'paid' %}:class="darkMode ? 'bg-success-dark/15 text-success-dark' : 'bg-success-light/15 text-success-light'"{% endif %}>
+              <span class="rounded px-2 py-0.5 font-semibold"
+                :class="{% if payment.status == 'paid' %}darkMode ? 'bg-success-dark/15 text-success-dark' : 'bg-success-light/15 text-success-light'
+                {% elif payment.status == 'failed' %}darkMode ? 'bg-warn-dark/15 text-warn-dark' : 'bg-warn-light/15 text-warn-light'
+                {% else %}darkMode ? 'bg-caution-dark/15 text-caution-dark' : 'bg-caution-light/15 text-caution-light'{% endif %}">
                 {{ payment.get_status_display }}
               </span>
               {% if payment.paid_at %}<span class="opacity-50">{{ payment.paid_at|date:"M d, Y H:i" }}</span>{% endif %}

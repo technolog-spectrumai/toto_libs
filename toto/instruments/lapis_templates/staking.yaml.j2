@@ -1,0 +1,64 @@
+language: lapis
+version: 1
+name: "Staking:{{ reference }}"
+actions:
+  stake:
+    body:
+      type: seq
+      steps:
+        - type: assert
+          condition:
+            type: eq
+            left: {type: app_global_get, key: {type: bytes, value: status}}
+            right: {type: bytes, value: draft}
+        - type: inner_transaction_begin
+        - type: inner_transaction_set
+          field: TypeEnum
+          value: {type: uint64, value: 1}
+        - type: inner_transaction_set
+          field: Amount
+          value: {type: uint64, value: {{ staked_amount_base_units }}}
+        - type: inner_transaction_submit
+        - type: app_global_put
+          key: {type: bytes, value: status}
+          value: {type: bytes, value: staked}
+        - type: log
+          value: {type: bytes, value: staking_staked}
+        - type: approve
+
+  claim_reward:
+    body:
+      type: seq
+      steps:
+        - type: assert
+          condition:
+            type: eq
+            left: {type: app_global_get, key: {type: bytes, value: status}}
+            right: {type: bytes, value: staked}
+        - type: log
+          value: {type: bytes, value: reward_claimed}
+        - type: approve
+
+  unstake:
+    body:
+      type: seq
+      steps:
+        - type: assert
+          condition:
+            type: eq
+            left: {type: app_global_get, key: {type: bytes, value: status}}
+            right: {type: bytes, value: staked}
+        - type: inner_transaction_begin
+        - type: inner_transaction_set
+          field: TypeEnum
+          value: {type: uint64, value: 1}
+        - type: inner_transaction_set
+          field: Amount
+          value: {type: uint64, value: {{ staked_amount_base_units }}}
+        - type: inner_transaction_submit
+        - type: app_global_put
+          key: {type: bytes, value: status}
+          value: {type: bytes, value: unstaked}
+        - type: log
+          value: {type: bytes, value: staking_unstaked}
+        - type: approve

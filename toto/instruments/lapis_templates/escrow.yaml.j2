@@ -1,0 +1,91 @@
+language: lapis
+version: 1
+name: "Escrow:{{ reference }}"
+actions:
+  fund:
+    body:
+      type: seq
+      steps:
+        - type: assert
+          condition:
+            type: eq
+            left: {type: app_global_get, key: {type: bytes, value: status}}
+            right: {type: bytes, value: draft}
+        - type: inner_transaction_begin
+        - type: inner_transaction_set
+          field: TypeEnum
+          value: {type: uint64, value: 1}
+        - type: inner_transaction_set
+          field: Amount
+          value: {type: uint64, value: {{ amount_base_units }}}
+        - type: inner_transaction_submit
+        - type: app_global_put
+          key: {type: bytes, value: status}
+          value: {type: bytes, value: funded}
+        - type: log
+          value: {type: bytes, value: escrow_funded}
+        - type: approve
+
+  release:
+    body:
+      type: seq
+      steps:
+        - type: assert
+          condition:
+            type: eq
+            left: {type: app_global_get, key: {type: bytes, value: status}}
+            right: {type: bytes, value: funded}
+        - type: inner_transaction_begin
+        - type: inner_transaction_set
+          field: TypeEnum
+          value: {type: uint64, value: 1}
+        - type: inner_transaction_set
+          field: Amount
+          value: {type: uint64, value: {{ amount_base_units }}}
+        - type: inner_transaction_submit
+        - type: app_global_put
+          key: {type: bytes, value: status}
+          value: {type: bytes, value: released}
+        - type: log
+          value: {type: bytes, value: escrow_released}
+        - type: approve
+
+  refund:
+    body:
+      type: seq
+      steps:
+        - type: assert
+          condition:
+            type: eq
+            left: {type: app_global_get, key: {type: bytes, value: status}}
+            right: {type: bytes, value: funded}
+        - type: inner_transaction_begin
+        - type: inner_transaction_set
+          field: TypeEnum
+          value: {type: uint64, value: 1}
+        - type: inner_transaction_set
+          field: Amount
+          value: {type: uint64, value: {{ amount_base_units }}}
+        - type: inner_transaction_submit
+        - type: app_global_put
+          key: {type: bytes, value: status}
+          value: {type: bytes, value: refunded}
+        - type: log
+          value: {type: bytes, value: escrow_refunded}
+        - type: approve
+
+  dispute:
+    body:
+      type: seq
+      steps:
+        - type: assert
+          condition:
+            type: eq
+            left: {type: app_global_get, key: {type: bytes, value: status}}
+            right: {type: bytes, value: funded}
+        - type: app_global_put
+          key: {type: bytes, value: status}
+          value: {type: bytes, value: disputed}
+        - type: log
+          value: {type: bytes, value: escrow_disputed}
+        - type: approve

@@ -26,6 +26,39 @@ FIELD_THEME = (
     ": 'border-accent-2 bg-primary-bg-light text-text-main-light placeholder:text-text-main-light/45'"
 )
 
+_SPLIT_DT_WIDGET = lambda required=True: forms.SplitDateTimeWidget(  # noqa: E731
+    date_attrs={"type": "date"},
+    time_attrs={"type": "time"},
+)
+
+
+def _split_dt(required=True, label="", help_text=""):
+    return forms.SplitDateTimeField(
+        required=required,
+        widget=forms.SplitDateTimeWidget(
+            date_attrs={"type": "date"},
+            time_attrs={"type": "time"},
+        ),
+        label=label,
+        help_text=help_text,
+    )
+
+
+class _InstrumentNameMixin:
+    """Validates that `name` is unique across FinancialInstrument.reference."""
+
+    def clean_name(self):
+        name = self.cleaned_data.get("name", "").strip()
+        if not name:
+            raise forms.ValidationError("Name is required.")
+        from .models import FinancialInstrument
+        qs = FinancialInstrument.objects.filter(reference=name)
+        if self.instance and self.instance.pk:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise forms.ValidationError(f"An instrument with reference \"{name}\" already exists.")
+        return name
+
 
 def _apply_bento_style(form):
     for field in form.fields.values():
@@ -40,12 +73,13 @@ def _apply_bento_style(form):
 
 
 class FinancialInstrumentForm(forms.ModelForm):
+    starts_at = _split_dt(required=False, label="Starts at")
+    ends_at = _split_dt(required=False, label="Ends at")
+
     class Meta:
         model = FinancialInstrument
         fields = ["reference", "instrument_type", "issuer", "status", "contract_account", "starts_at", "ends_at", "terms", "metadata"]
         widgets = {
-            "starts_at": forms.DateTimeInput(attrs={"type": "datetime-local"}),
-            "ends_at": forms.DateTimeInput(attrs={"type": "datetime-local"}),
             "terms": forms.Textarea(attrs={"rows": 4}),
             "metadata": forms.Textarea(attrs={"rows": 4}),
         }
@@ -55,7 +89,7 @@ class FinancialInstrumentForm(forms.ModelForm):
         _apply_bento_style(self)
 
 
-class EscrowContractForm(forms.ModelForm):
+class EscrowContractForm(_InstrumentNameMixin, forms.ModelForm):
     name = forms.CharField(
         max_length=255,
         label="Name",
@@ -78,12 +112,13 @@ class EscrowContractForm(forms.ModelForm):
         _apply_bento_style(self)
 
 
-class ForwardContractForm(forms.ModelForm):
+class ForwardContractForm(_InstrumentNameMixin, forms.ModelForm):
     name = forms.CharField(
         max_length=255,
         label="Name",
         help_text="A unique name for this forward contract.",
     )
+    settlement_at = _split_dt(required=False, label="Settlement at")
 
     class Meta:
         model = ForwardContract
@@ -91,7 +126,6 @@ class ForwardContractForm(forms.ModelForm):
             "buyer_account", "seller_account", "underlying_asset", "quantity_base_units",
             "payment_asset", "payment_amount_base_units", "settlement_type", "settlement_at",
         ]
-        widgets = {"settlement_at": forms.DateTimeInput(attrs={"type": "datetime-local"})}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -108,12 +142,15 @@ class FutureMarketForm(forms.ModelForm):
         _apply_bento_style(self)
 
 
-class FutureContractForm(forms.ModelForm):
+class FutureContractForm(_InstrumentNameMixin, forms.ModelForm):
     name = forms.CharField(
         max_length=255,
         label="Name",
         help_text="A unique name for this futures contract.",
     )
+    settlement_at = _split_dt(required=False, label="Settlement at")
+    opened_at = _split_dt(required=False, label="Opened at")
+    settled_at = _split_dt(required=False, label="Settled at")
 
     class Meta:
         model = FutureContract
@@ -122,30 +159,25 @@ class FutureContractForm(forms.ModelForm):
             "entry_price_base_units", "settlement_price_base_units",
             "settlement_at", "opened_at", "settled_at",
         ]
-        widgets = {
-            "settlement_at": forms.DateTimeInput(attrs={"type": "datetime-local"}),
-            "opened_at": forms.DateTimeInput(attrs={"type": "datetime-local"}),
-            "settled_at": forms.DateTimeInput(attrs={"type": "datetime-local"}),
-        }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         _apply_bento_style(self)
 
 
-class RevenueShareContractForm(forms.ModelForm):
+class RevenueShareContractForm(_InstrumentNameMixin, forms.ModelForm):
     name = forms.CharField(
         max_length=255,
         label="Name",
         help_text="A unique name for this revenue share contract.",
     )
+    active_from = _split_dt(required=False, label="Active from")
+    active_until = _split_dt(required=False, label="Active until")
 
     class Meta:
         model = RevenueShareContract
         fields = ["revenue_account", "revenue_asset", "active_from", "active_until", "metadata"]
         widgets = {
-            "active_from": forms.DateTimeInput(attrs={"type": "datetime-local"}),
-            "active_until": forms.DateTimeInput(attrs={"type": "datetime-local"}),
             "metadata": forms.Textarea(attrs={"rows": 3}),
         }
 
@@ -164,12 +196,14 @@ class RevenueShareRecipientForm(forms.ModelForm):
         _apply_bento_style(self)
 
 
-class OptionContractForm(forms.ModelForm):
+class OptionContractForm(_InstrumentNameMixin, forms.ModelForm):
     name = forms.CharField(
         max_length=255,
         label="Name",
         help_text="A unique name for this option contract.",
     )
+    expiry_at = _split_dt(required=False, label="Expiry at")
+    exercised_at = _split_dt(required=False, label="Exercised at")
 
     class Meta:
         model = OptionContract
@@ -180,8 +214,6 @@ class OptionContractForm(forms.ModelForm):
             "expiry_at", "exercised_at", "metadata",
         ]
         widgets = {
-            "expiry_at": forms.DateTimeInput(attrs={"type": "datetime-local"}),
-            "exercised_at": forms.DateTimeInput(attrs={"type": "datetime-local"}),
             "metadata": forms.Textarea(attrs={"rows": 3}),
         }
 
@@ -190,12 +222,15 @@ class OptionContractForm(forms.ModelForm):
         _apply_bento_style(self)
 
 
-class VestingContractForm(forms.ModelForm):
+class VestingContractForm(_InstrumentNameMixin, forms.ModelForm):
     name = forms.CharField(
         max_length=255,
         label="Name",
         help_text="A unique name for this vesting contract.",
     )
+    start_at = _split_dt(required=False, label="Start at")
+    cliff_at = _split_dt(required=False, label="Cliff at")
+    end_at = _split_dt(required=False, label="End at")
 
     class Meta:
         model = VestingContract
@@ -203,23 +238,20 @@ class VestingContractForm(forms.ModelForm):
             "grantor_account", "beneficiary_account", "asset", "total_amount_base_units",
             "released_amount_base_units", "start_at", "cliff_at", "end_at", "release_frequency",
         ]
-        widgets = {
-            "start_at": forms.DateTimeInput(attrs={"type": "datetime-local"}),
-            "cliff_at": forms.DateTimeInput(attrs={"type": "datetime-local"}),
-            "end_at": forms.DateTimeInput(attrs={"type": "datetime-local"}),
-        }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         _apply_bento_style(self)
 
 
-class StakingPositionForm(forms.ModelForm):
+class StakingPositionForm(_InstrumentNameMixin, forms.ModelForm):
     name = forms.CharField(
         max_length=255,
         label="Name",
         help_text="A unique name for this staking position.",
     )
+    locked_until = _split_dt(required=False, label="Locked until")
+    unstaked_at = _split_dt(required=False, label="Unstaked at")
 
     class Meta:
         model = StakingPosition
@@ -228,8 +260,6 @@ class StakingPositionForm(forms.ModelForm):
             "reward_asset", "reward_rate_bps", "locked_until", "unstaked_at", "metadata",
         ]
         widgets = {
-            "locked_until": forms.DateTimeInput(attrs={"type": "datetime-local"}),
-            "unstaked_at": forms.DateTimeInput(attrs={"type": "datetime-local"}),
             "metadata": forms.Textarea(attrs={"rows": 3}),
         }
 
@@ -242,12 +272,14 @@ class StakingPositionForm(forms.ModelForm):
 # Lease forms
 # ---------------------------------------------------------------------------
 
-class LeaseContractForm(forms.ModelForm):
+class LeaseContractForm(_InstrumentNameMixin, forms.ModelForm):
     name = forms.CharField(
         max_length=255,
         label="Name",
         help_text="A unique name or reference for this lease (e.g. 'lease-office-2026').",
     )
+    starts_at = _split_dt(required=False, label="Starts at")
+    ends_at = _split_dt(required=False, label="Ends at")
 
     class Meta:
         model = LeaseContract
@@ -258,8 +290,6 @@ class LeaseContractForm(forms.ModelForm):
             "starts_at", "ends_at", "metadata",
         ]
         widgets = {
-            "starts_at": forms.DateTimeInput(attrs={"type": "datetime-local"}),
-            "ends_at": forms.DateTimeInput(attrs={"type": "datetime-local"}),
             "metadata": forms.Textarea(attrs={"rows": 3}),
         }
 
@@ -268,29 +298,14 @@ class LeaseContractForm(forms.ModelForm):
         _apply_bento_style(self)
 
 
-class SubscriptionContractForm(forms.ModelForm):
+class SubscriptionContractForm(_InstrumentNameMixin, forms.ModelForm):
     name = forms.CharField(
         max_length=255,
         label="Name",
         help_text="A unique name for this subscription (e.g. 'sub-acme-monthly').",
     )
-    current_period_start = forms.SplitDateTimeField(
-        widget=forms.SplitDateTimeWidget(
-            date_attrs={"type": "date"},
-            time_attrs={"type": "time"},
-        ),
-        label="Period start",
-        help_text="When the first billing period begins (usually today).",
-    )
-    trial_ends_at = forms.SplitDateTimeField(
-        required=False,
-        widget=forms.SplitDateTimeWidget(
-            date_attrs={"type": "date"},
-            time_attrs={"type": "time"},
-        ),
-        label="Trial ends",
-        help_text="Leave blank for no trial. First charge is deferred until this time.",
-    )
+    current_period_start = _split_dt(label="Period start", help_text="When the first billing period begins (usually today).")
+    trial_ends_at = _split_dt(required=False, label="Trial ends", help_text="Leave blank for no trial. First charge is deferred until this time.")
 
     class Meta:
         model = SubscriptionContract
@@ -305,17 +320,31 @@ class SubscriptionContractForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         _apply_bento_style(self)
 
+    def save(self, commit=True):
+        from .services import SubscriptionService
+        instance = super().save(commit=False)
+        start = instance.current_period_start
+        cycle = instance.billing_cycle
+        period_end = SubscriptionService._next_period_end(start, cycle)
+        instance.current_period_end = period_end
+        instance.next_billing_at = instance.trial_ends_at if instance.trial_ends_at else period_end
+        if commit:
+            instance.save()
+        return instance
+
 
 # ---------------------------------------------------------------------------
 # Amortization forms
 # ---------------------------------------------------------------------------
 
-class AmortizationContractForm(forms.ModelForm):
+class AmortizationContractForm(_InstrumentNameMixin, forms.ModelForm):
     name = forms.CharField(
         max_length=255,
         label="Name",
         help_text="A unique reference for this amortization contract.",
     )
+    starts_at = _split_dt(required=False, label="Starts at")
+    ends_at = _split_dt(required=False, label="Ends at")
 
     class Meta:
         model = AmortizationContract
@@ -325,14 +354,37 @@ class AmortizationContractForm(forms.ModelForm):
             "starts_at", "ends_at", "metadata",
         ]
         widgets = {
-            "starts_at": forms.DateTimeInput(attrs={"type": "datetime-local"}),
-            "ends_at": forms.DateTimeInput(attrs={"type": "datetime-local"}),
             "metadata": forms.Textarea(attrs={"rows": 3}),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         _apply_bento_style(self)
+
+
+class RevenueShareRecipientInlineForm(forms.Form):
+    """Add a single recipient to an existing RevenueShareContract."""
+    account = forms.ModelChoiceField(
+        queryset=None,
+        label="Recipient account",
+        help_text="Account that will receive a share of the revenue.",
+    )
+    share_percent = forms.DecimalField(
+        min_value="0.01",
+        max_value="100",
+        decimal_places=2,
+        label="Share (%)",
+        help_text="Percentage of revenue (e.g. 25.00 for 25%).",
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from toto.assets.models import LedgerAccount
+        self.fields["account"].queryset = LedgerAccount.objects.all()
+        _apply_bento_style(self)
+
+    def get_share_bps(self):
+        return int(self.cleaned_data["share_percent"] * 100)
 
 
 class AmortizationEntryForm(forms.Form):

@@ -1,0 +1,52 @@
+language: lapis
+version: 1
+name: "RevenueShare:{{ reference }}"
+actions:
+  activate:
+    body:
+      type: seq
+      steps:
+        - type: assert
+          condition:
+            type: eq
+            left: {type: app_global_get, key: {type: bytes, value: status}}
+            right: {type: bytes, value: draft}
+        - type: app_global_put
+          key: {type: bytes, value: status}
+          value: {type: bytes, value: active}
+        - type: log
+          value: {type: bytes, value: revenue_share_activated}
+        - type: approve
+
+  distribute:
+    body:
+      type: seq
+      steps:
+        - type: assert
+          condition:
+            type: eq
+            left: {type: app_global_get, key: {type: bytes, value: status}}
+            right: {type: bytes, value: active}
+        {% for recipient in recipients %}
+        - type: log
+          value: {type: bytes, value: "distribute_to_{{ recipient.account_code }}_{{ recipient.share_bps }}bps"}
+        {% endfor %}
+        - type: log
+          value: {type: bytes, value: revenue_share_distributed}
+        - type: approve
+
+  deactivate:
+    body:
+      type: seq
+      steps:
+        - type: assert
+          condition:
+            type: eq
+            left: {type: app_global_get, key: {type: bytes, value: status}}
+            right: {type: bytes, value: active}
+        - type: app_global_put
+          key: {type: bytes, value: status}
+          value: {type: bytes, value: inactive}
+        - type: log
+          value: {type: bytes, value: revenue_share_deactivated}
+        - type: approve

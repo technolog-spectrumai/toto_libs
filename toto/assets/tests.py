@@ -1234,3 +1234,205 @@ class AgreementDryRunTests(TestCase):
         data = resp.json()
         self.assertTrue(data["ok"])
         self.assertEqual(data["state"]["global"]["status"], "cancelled")
+
+
+# ---------------------------------------------------------------------------
+# Contract view tests
+# ---------------------------------------------------------------------------
+
+@override_settings(STATICFILES_STORAGE=_SIMPLE_STATIC)
+class ContractViewTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        _make_platform()
+        User = get_user_model()
+        self.user = User.objects.create_user(username="cvu", password="cvpass")
+        from .models import Contract
+        self.contract = Contract.objects.create(name="TestContract", code=_SUBSCRIPTION_LAPIS_YAML)
+
+    def _login(self):
+        self.client.force_login(self.user)
+
+    def _url(self, name, *args):
+        from django.urls import reverse
+        return reverse(f"assets:{name}", args=args)
+
+    def test_list_requires_login(self):
+        resp = self.client.get(self._url("contract_list"))
+        self.assertNotEqual(resp.status_code, 200)
+
+    def test_create_requires_login(self):
+        resp = self.client.get(self._url("contract_create"))
+        self.assertNotEqual(resp.status_code, 200)
+
+    def test_detail_requires_login(self):
+        resp = self.client.get(self._url("contract_detail", self.contract.uuid))
+        self.assertNotEqual(resp.status_code, 200)
+
+    def test_list_shows_contracts(self):
+        self._login()
+        resp = self.client.get(self._url("contract_list"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"TestContract", resp.content)
+
+    def test_detail_shows_name_and_actions(self):
+        self._login()
+        resp = self.client.get(self._url("contract_detail", self.contract.uuid))
+        self.assertEqual(resp.status_code, 200)
+        content = resp.content.decode()
+        self.assertIn("TestContract", content)
+        self.assertIn("activate", content)
+        self.assertIn("bill_period", content)
+        self.assertIn(str(self.contract.uuid), content)
+
+    def test_create_get(self):
+        self._login()
+        resp = self.client.get(self._url("contract_create"))
+        self.assertEqual(resp.status_code, 200)
+
+    def test_create_post_valid_yaml(self):
+        from .models import Contract
+        self._login()
+        resp = self.client.post(self._url("contract_create"), {
+            "name": "Created via view",
+            "code": _SIMPLE_LAPIS_YAML,
+            "metadata": "{}",
+        }, follow=True)
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(Contract.objects.filter(name="Created via view").exists())
+
+    def test_create_post_invalid_yaml_shows_error(self):
+        self._login()
+        resp = self.client.post(self._url("contract_create"), {
+            "name": "Bad contract",
+            "code": ": bad yaml {{{{",
+            "metadata": "{}",
+        })
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"code", resp.content.lower())
+
+    def test_update_get(self):
+        self._login()
+        resp = self.client.get(self._url("contract_update", self.contract.uuid))
+        self.assertEqual(resp.status_code, 200)
+
+    def test_update_post_saves(self):
+        from .models import Contract
+        self._login()
+        resp = self.client.post(self._url("contract_update", self.contract.uuid), {
+            "name": "Updated name",
+            "code": _SIMPLE_LAPIS_YAML,
+            "metadata": "{}",
+        }, follow=True)
+        self.assertEqual(resp.status_code, 200)
+        self.contract.refresh_from_db()
+        self.assertEqual(self.contract.name, "Updated name")
+
+    def test_validate_returns_ok(self):
+        self._login()
+        resp = self.client.post(self._url("contract_validate", self.contract.uuid),
+                                content_type="application/json")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data["ok"])
+        self.assertIn("activate", data["actions"])
+
+    def test_validate_no_code_returns_error(self):
+        from .models import Contract
+        c = Contract.objects.create(name="EmptyCode")
+        self._login()
+        resp = self.client.post(self._url("contract_validate", c.uuid),
+                                content_type="application/json")
+        self.assertEqual(resp.status_code, 400)
+        self.assertFalse(resp.json()["ok"])
+
+    def test_cytoscape_json_returns_nodes_edges(self):
+        self._login()
+        resp = self.client.get(self._url("contract_cytoscape_json", self.contract.uuid))
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertIn("nodes", data)
+        self.assertIn("edges", data)
+        self.assertGreater(len(data["nodes"]), 0)
+
+    def test_cytoscape_empty_contract_returns_empty(self):
+        from .models import Contract
+        c = Contract.objects.create(name="Empty")
+        self._login()
+        resp = self.client.get(self._url("contract_cytoscape_json", c.uuid))
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["nodes"], [])
+
+    def test_dry_run_sets_global_state(self):
+        import json
+        self._login()
+        payload = {"action": "activate", "global_state": {}, "app_args": []}
+        resp = self.client.post(
+            self._url("contract_dry_run", self.contract.uuid),
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["state"]["global"].get("status"), "active")
+
+    def test_dry_run_does_not_create_ledger_transaction(self):
+        import json
+        before = LedgerTransaction.objects.count()
+        self._login()
+        payload = {"action": "activate"}
+        self.client.post(
+            self._url("contract_dry_run", self.contract.uuid),
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+        self.assertEqual(LedgerTransaction.objects.count(), before)
+
+    def test_dry_run_does_not_create_ledger_entry(self):
+        import json
+        before = LedgerEntry.objects.count()
+        self._login()
+        payload = {"action": "activate"}
+        self.client.post(
+            self._url("contract_dry_run", self.contract.uuid),
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+        self.assertEqual(LedgerEntry.objects.count(), before)
+
+    def test_dry_run_invalid_action_returns_error(self):
+        import json
+        self._login()
+        payload = {"action": "nonexistent_action"}
+        resp = self.client.post(
+            self._url("contract_dry_run", self.contract.uuid),
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertFalse(resp.json()["ok"])
+
+    def test_ingress_contracts_appear_in_list(self):
+        from io import StringIO
+        from django.core.management import call_command
+        from .models import Contract
+        call_command("ingress_instruments", "--deploy-contracts", stdout=StringIO())
+        self._login()
+        resp = self.client.get(self._url("contract_list"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"Subscription:demo-subscription-001", resp.content)
+
+    def test_linked_instrument_appears_in_detail(self):
+        from io import StringIO
+        from django.core.management import call_command
+        from .models import Contract
+        from toto.instruments.models import FinancialInstrument
+        call_command("ingress_instruments", "--deploy-contracts", stdout=StringIO())
+        instr = FinancialInstrument.objects.get(reference="demo-subscription-001")
+        contract = instr.contract
+        self._login()
+        resp = self.client.get(self._url("contract_detail", contract.uuid))
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"demo-subscription-001", resp.content)

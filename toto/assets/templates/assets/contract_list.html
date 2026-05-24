@@ -1,0 +1,52 @@
+{% extends "assets/base.html" %}
+{% load i18n %}
+
+{% block assets_title %}{% trans "Contracts" %}{% endblock %}
+
+{% block assets_content %}
+<div class="space-y-6">
+  <div class="flex items-center justify-between">
+    <h2 class="text-xl font-bold">{% trans "Contracts" %}</h2>
+    <a href="{% url 'assets:contract_create' %}"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+       class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold shadow-sm transition hover:opacity-90">
+      <i class="fa-solid fa-plus"></i>
+      {% trans "New contract" %}
+    </a>
+  </div>
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border shadow-sm overflow-hidden">
+    {% if contracts %}
+    <table class="w-full text-sm">
+      <thead>
+        <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-b text-xs uppercase tracking-wide opacity-60">
+          <th class="px-4 py-3 text-left">{% trans "Name" %}</th>
+          <th class="px-4 py-3 text-left">{% trans "UUID" %}</th>
+          <th class="px-4 py-3 text-left">{% trans "Instrument" %}</th>
+          <th class="px-4 py-3 text-left">{% trans "Created" %}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for contract in contracts %}
+        <tr :class="darkMode ? 'border-accent-1 hover:bg-black/10' : 'border-accent-2 hover:bg-black/5'"
+            class="border-b transition cursor-pointer"
+            onclick="window.location='{% url 'assets:contract_detail' contract.uuid %}'">
+          <td class="px-4 py-3 font-semibold">{{ contract.name }}</td>
+          <td class="px-4 py-3 font-mono text-xs opacity-70">{{ contract.uuid }}</td>
+          <td class="px-4 py-3 opacity-70">
+            {% if contract.financial_instrument %}
+              {{ contract.financial_instrument.reference }}
+            {% else %}—{% endif %}
+          </td>
+          <td class="px-4 py-3 opacity-60">{{ contract.created_at|date:"Y-m-d H:i" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="px-4 py-8 text-center text-sm opacity-50">{% trans "No contracts yet." %}</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
