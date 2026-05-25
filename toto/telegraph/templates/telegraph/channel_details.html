@@ -192,6 +192,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       img.alt = "image";
       img.className = "mt-1 max-h-64 max-w-full rounded object-contain";
       body.appendChild(img);
+    } else if (data.type === "voice_message" && data.audio_data) {
+      body = document.createElement("audio");
+      body.controls = true;
+      body.src = data.audio_data;
+      body.className = "mt-1 max-w-xs";
     } else {
       body = document.createElement("p");
       body.className = `mt-1 whitespace-pre-wrap break-words text-sm opacity-90 [overflow-wrap:anywhere] ${isSelf ? "text-right" : ""}`;
@@ -292,6 +297,109 @@ document.addEventListener("DOMContentLoaded", async () => {
     };
 
     reader.readAsDataURL(file);
+  }
+
+  // ── Voice recording ────────────────────────────────────────────────────────
+
+  let mediaRecorder   = null;
+  let recordingChunks = [];
+  let recordingTimer  = null;
+  let recordingSeconds = 0;
+
+  const voiceButton         = document.querySelector("#voice-record-button");
+  const recordingStatusWrap = document.querySelector("#recording-status-wrap");
+  const recordingTimerEl    = document.querySelector("#recording-timer");
+  const recordingCancelBtn  = document.querySelector("#recording-cancel-button");
+
+  function formatRecordingTime(s) {
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  }
+
+  function stopRecordingCleanup() {
+    clearInterval(recordingTimer);
+    recordingTimer   = null;
+    recordingSeconds = 0;
+    if (mediaRecorder && mediaRecorder.stream) {
+      mediaRecorder.stream.getTracks().forEach((t) => t.stop());
+    }
+    mediaRecorder = null;
+    recordingChunks = [];
+    if (recordingStatusWrap) recordingStatusWrap.classList.add("hidden");
+    if (voiceButton) {
+      voiceButton.classList.remove("text-red-500", "border-red-500");
+      voiceButton.querySelector("i").className = "fa-solid fa-microphone text-sm";
+    }
+  }
+
+  async function startRecording() {
+    if (!canSend) return;
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      appendSystemMessage("Not connected — cannot send voice message.");
+      return;
+    }
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err) {
+      appendSystemMessage("Microphone access denied.");
+      return;
+    }
+
+    recordingChunks  = [];
+    recordingSeconds = 0;
+    mediaRecorder    = new MediaRecorder(stream);
+
+    mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordingChunks.push(e.data); };
+
+    mediaRecorder.onstop = () => {
+      const blob   = new Blob(recordingChunks, { type: mediaRecorder.mimeType || "audio/webm" });
+      const reader = new FileReader();
+      reader.onload = () => {
+        sendSocketPayload({ type: "voice_message", audio_data: reader.result });
+        stopRecordingCleanup();
+      };
+      reader.readAsDataURL(blob);
+    };
+
+    mediaRecorder.start();
+
+    if (recordingStatusWrap) recordingStatusWrap.classList.remove("hidden");
+    if (recordingTimerEl)    recordingTimerEl.textContent = "0:00";
+    if (voiceButton) {
+      voiceButton.classList.add("text-red-500", "border-red-500");
+      voiceButton.querySelector("i").className = "fa-solid fa-stop text-sm";
+    }
+
+    recordingTimer = setInterval(() => {
+      recordingSeconds++;
+      if (recordingTimerEl) recordingTimerEl.textContent = formatRecordingTime(recordingSeconds);
+      if (recordingSeconds >= 300) stopRecording(); // 5-minute max
+    }, 1000);
+  }
+
+  function stopRecording() {
+    if (!mediaRecorder || mediaRecorder.state === "inactive") return;
+    mediaRecorder.stop();
+  }
+
+  if (voiceButton) {
+    voiceButton.addEventListener("click", () => {
+      if (mediaRecorder && mediaRecorder.state === "recording") {
+        stopRecording();
+      } else {
+        startRecording();
+      }
+    });
+  }
+
+  if (recordingCancelBtn) {
+    recordingCancelBtn.addEventListener("click", () => {
+      if (mediaRecorder && mediaRecorder.state === "recording") {
+        mediaRecorder.ondataavailable = null;
+        mediaRecorder.onstop = () => stopRecordingCleanup();
+        mediaRecorder.stop();
+      }
+    });
   }
 
   // ── MLS lifecycle ──────────────────────────────────────────────────────────
@@ -401,6 +509,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       } else if (data.type === "mls_app") {
         appendSharedMessage({ id: data.id, user: data.user, avatar_url: data.avatar_url || "", message: data.ciphertext || "" });
       } else if (data.type === "image_message" && (data.image_data || data.image_url)) {
+        appendMessage(data);
+      } else if (data.type === "voice_message" && data.audio_data) {
         appendMessage(data);
       } else if (data.message) {
         appendSharedMessage(data);
@@ -712,6 +822,18 @@ document.addEventListener("DOMContentLoaded", async () => {
           {% endif %}
         </div>
 
+        <div id="recording-status-wrap" class="hidden px-1 pb-1">
+          <div class="flex items-center gap-2 text-xs">
+            <span class="inline-block h-2 w-2 animate-pulse rounded-full bg-red-500"></span>
+            <span class="opacity-70">Recording</span>
+            <span id="recording-timer" class="font-mono">0:00</span>
+            <button type="button" id="recording-cancel-button"
+              class="ml-auto opacity-50 hover:opacity-90 transition">
+              <i class="fa-solid fa-xmark"></i> Cancel
+            </button>
+          </div>
+        </div>
+
         <div id="upload-progress-wrap" class="hidden px-1 pb-1">
           <div class="flex items-center gap-2 text-xs opacity-60">
             <span>Uploading…</span>
@@ -738,6 +860,16 @@ document.addEventListener("DOMContentLoaded", async () => {
             {% if not can_send_messages %}disabled{% endif %}
             aria-label="Send image">
             <i class="fa-solid fa-image text-sm"></i>
+          </button>
+
+          <button
+            type="button"
+            id="voice-record-button"
+            :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2 text-text-main-light'"
+            class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
+            {% if not can_send_messages %}disabled{% endif %}
+            aria-label="Record voice message">
+            <i class="fa-solid fa-microphone text-sm"></i>
           </button>
 
           <textarea

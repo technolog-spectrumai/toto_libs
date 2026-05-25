@@ -77,6 +77,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.handle_image_message(user, data)
             return
 
+        if data_type == "voice_message" and data.get("audio_data"):
+            await self.handle_voice_message(user, data)
+            return
+
         await self.send_error(
             "Only chat messages, image messages, Yjs messages, and MLS-encrypted messages are accepted."
         )
@@ -157,6 +161,34 @@ class ChatConsumer(AsyncWebsocketConsumer):
         payload = {
             "type": "image_message",
             "image_data": image_data,
+            "user": member.display_name,
+            "avatar_url": self.absolute_url(member.avatar_url),
+            "sender_channel": self.channel_name,
+            "target_channel": None,
+        }
+
+        await self.broadcast(
+            payload=payload,
+            sender_channel=self.channel_name,
+            target_channel=None,
+        )
+
+    async def handle_voice_message(self, user, data):
+        audio_data = data.get("audio_data", "")
+
+        if not isinstance(audio_data, str) or not audio_data.startswith("data:audio/"):
+            await self.send_error("Invalid audio data.")
+            return
+
+        if len(audio_data) > 14 * 1024 * 1024:
+            await self.send_error("Voice message too large (max ~10 MB).")
+            return
+
+        member = await self.get_channel_member(user)
+
+        payload = {
+            "type": "voice_message",
+            "audio_data": audio_data,
             "user": member.display_name,
             "avatar_url": self.absolute_url(member.avatar_url),
             "sender_channel": self.channel_name,
