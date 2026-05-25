@@ -1,0 +1,25 @@
+from django.urls import path
+from .views import ChannelDetailView, ChannelJoinView, ChannelLeaveView, ChannelListView, ChannelInviteAgentView
+from .api_views import HealthApiView, LoginApiView, LogoutApiView, MeApiView, ChannelListApiView, ChannelDetailApiView, ChannelJoinApiView, ChannelLeaveApiView, ChannelLeaveAllApiView
+
+app_name = "telegraph"
+
+urlpatterns = [
+    # Template views
+    path("", ChannelListView.as_view(), name="channel_list"),
+    path("<slug:slug>/join/", ChannelJoinView.as_view(), name="channel_join"),
+    path("<slug:slug>/leave/", ChannelLeaveView.as_view(), name="channel_leave"),
+    path("<slug:slug>/", ChannelDetailView.as_view(), name="channel_detail"),
+    path("<slug:slug>/invite-agent/", ChannelInviteAgentView.as_view(), name="channel_invite_agent"),
+
+    # JSON API
+    path("api/health/", HealthApiView.as_view(), name="api_health"),
+    path("api/login/", LoginApiView.as_view(), name="api_login"),
+    path("api/logout/", LogoutApiView.as_view(), name="api_logout"),
+    path("api/me/", MeApiView.as_view(), name="api_me"),
+    path("api/channels/", ChannelListApiView.as_view(), name="api_channel_list"),
+    path("api/channels/leave-all/", ChannelLeaveAllApiView.as_view(), name="api_channel_leave_all"),
+    path("api/channels/<slug:slug>/", ChannelDetailApiView.as_view(), name="api_channel_detail"),
+    path("api/channels/<slug:slug>/join/", ChannelJoinApiView.as_view(), name="api_channel_join"),
+    path("api/channels/<slug:slug>/leave/", ChannelLeaveApiView.as_view(), name="api_channel_leave"),
+]

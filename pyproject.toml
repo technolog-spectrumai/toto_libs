@@ -84,6 +84,12 @@ packages = [
     "toto.logistics.management",
     "toto.logistics.management.commands",
     # --- formerly studio apps ---
+    "toto.telegraph",
+    "toto.telegraph.agent",
+    "toto.telegraph.management",
+    "toto.telegraph.management.commands",
+    "toto.telegraph.migrations",
+    "toto.telegraph.tests",
     "toto.enigma",
     "toto.enigma.agent",
     "toto.enigma.management",

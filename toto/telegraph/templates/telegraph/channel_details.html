@@ -1,0 +1,743 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}{{ channel.name }} · Telegraph{% endblock %}
+
+{% block start_script %}
+<script type="module">
+import * as Y from "https://esm.run/yjs";
+import initEnigmaWasm, { WasmEnigmaSession } from "{% static 'js/enigma_wasm/enigma_wasm.js' %}";
+
+document.addEventListener("DOMContentLoaded", async () => {
+  const channelSlug  = "{{ channel.slug }}";
+  const userName     = "{{ current_chat_user|escapejs }}";
+  const userAvatarUrl = "{{ current_chat_avatar_url|escapejs }}";
+  const canSend      = {{ can_send_messages|yesno:"true,false" }};
+
+  let socket         = null;
+  let mlsSession     = null;
+  let mlsReady       = false;
+  let encryptionEnabled = canSend;
+
+  const mlsInvitedUsers  = new Set();
+  const ydoc             = new Y.Doc();
+  const yMessages        = ydoc.getArray("messages");
+  const renderedIds      = new Set();
+
+  const form             = document.querySelector("#message-form");
+  const input            = document.querySelector("#message-input");
+  const sendButton       = document.querySelector("#message-send-button");
+  const container        = document.querySelector("#messages");
+  const appRoot          = document.querySelector("[data-telegraph-channel]");
+  const connectionChips  = document.querySelectorAll(".connection-status-chip");
+  const connectionTexts  = document.querySelectorAll(".connection-status-text");
+  const encryptionToggles = document.querySelectorAll(".encryption-toggle");
+  const encryptionTexts  = document.querySelectorAll(".encryption-status-text");
+  const encryptionIcons  = document.querySelectorAll(".encryption-status-icon");
+
+  if (!form || !input || !sendButton || !container) return;
+
+  // ── Device / session identity ──────────────────────────────────────────────
+
+  const browserDeviceKey = `telegraph:device:${channelSlug}:${userName}`;
+
+  function getOrCreateBrowserDeviceId() {
+    let value = localStorage.getItem(browserDeviceKey);
+    if (!value) {
+      value = crypto.randomUUID();
+      localStorage.setItem(browserDeviceKey, value);
+    }
+    return value;
+  }
+
+  const browserDeviceId = getOrCreateBrowserDeviceId();
+
+  const mlsSessionIdKey = `telegraph:mls-session-id:${channelSlug}:${userName}:${browserDeviceId}`;
+  let browserMlsSessionId = localStorage.getItem(mlsSessionIdKey);
+
+  function rotateBrowserMlsSessionId() {
+    browserMlsSessionId = crypto.randomUUID();
+    localStorage.setItem(mlsSessionIdKey, browserMlsSessionId);
+    return browserMlsSessionId;
+  }
+
+  if (!browserMlsSessionId) rotateBrowserMlsSessionId();
+
+  const mlsStateKey = `telegraph:mls:${channelSlug}:${userName}:${browserDeviceId}:${browserMlsSessionId}`;
+
+  // ── Utilities ──────────────────────────────────────────────────────────────
+
+  function first16Hex(bytes) {
+    return Array.from(bytes.slice(0, 16))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join(" ");
+  }
+
+  function bytesToBase64(bytes) {
+    let binary = "";
+    new Uint8Array(bytes).forEach((b) => { binary += String.fromCharCode(b); });
+    return window.btoa(binary);
+  }
+
+  function base64ToBytes(value) {
+    const binary = window.atob(value);
+    const bytes  = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  }
+
+  function callSession(snake, camel, ...args) {
+    const fn = mlsSession?.[snake] || mlsSession?.[camel];
+    if (!fn) throw new Error(`WASM MLS session is missing method ${snake}/${camel}`);
+    return fn.apply(mlsSession, args);
+  }
+
+  // ── MLS state persistence ──────────────────────────────────────────────────
+
+  function saveMlsState() {
+    if (!mlsSession) return;
+    localStorage.setItem(mlsStateKey, bytesToBase64(callSession("export_state", "exportState")));
+  }
+
+  function loadMlsState() {
+    const encoded = localStorage.getItem(mlsStateKey);
+    return encoded ? base64ToBytes(encoded) : null;
+  }
+
+  function clearMlsState() {
+    localStorage.removeItem(mlsStateKey);
+    rotateBrowserMlsSessionId();
+    mlsSession = null;
+    mlsReady   = false;
+  }
+
+  // ── UI status helpers ──────────────────────────────────────────────────────
+
+  function setConnectionStatus(status) {
+    const labels = { observer: "Observer", connecting: "Connecting", connected: "Connected", disconnected: "Disconnected" };
+    if (window.Alpine && appRoot) window.Alpine.$data(appRoot).connectionStatus = status;
+    connectionTexts.forEach((el) => { el.textContent = labels[status] || "Disconnected"; });
+    connectionChips.forEach((el) => {
+      el.dataset.connected = status === "connected" ? "true" : "false";
+      el.dataset.pending   = status === "connecting" ? "true" : "false";
+    });
+  }
+
+  function setEncryptionStatus(enabled) {
+    encryptionEnabled = enabled && canSend;
+    if (window.Alpine && appRoot) window.Alpine.$data(appRoot).encryptionEnabled = encryptionEnabled;
+    encryptionTexts.forEach((el) => { el.textContent = encryptionEnabled ? "Encrypted" : "Unencrypted"; });
+    encryptionIcons.forEach((el) => {
+      el.classList.toggle("fa-lock",      encryptionEnabled);
+      el.classList.toggle("fa-lock-open", !encryptionEnabled);
+    });
+    encryptionToggles.forEach((el) => {
+      el.setAttribute("aria-pressed", encryptionEnabled ? "true" : "false");
+      el.title = encryptionEnabled ? "Encryption on" : "Unencrypted channel";
+    });
+  }
+
+  // ── Message rendering ──────────────────────────────────────────────────────
+
+  function appendMessage(data) {
+    const id = data.id || data.message_id;
+    if (id && renderedIds.has(id)) return;
+    if (id) renderedIds.add(id);
+
+    container.querySelectorAll("[data-empty-messages]").forEach((el) => el.remove());
+
+    const author   = data.user || "Guest";
+    const isSelf   = author === userName;
+    const avatarUrl = data.avatar_url || (isSelf ? userAvatarUrl : "");
+
+    const row = document.createElement("div");
+    row.className = `flex min-w-0 gap-3 ${isSelf ? "justify-end" : "justify-start"}`;
+
+    let avatar;
+    if (avatarUrl) {
+      avatar = document.createElement("img");
+      avatar.src = avatarUrl;
+      avatar.alt = author;
+      avatar.className = "h-9 w-9 shrink-0 rounded-lg border border-current/15 object-cover self-end";
+    } else {
+      avatar = document.createElement("div");
+      avatar.textContent = (author.trim().charAt(0) || "?").toUpperCase();
+      avatar.className = "flex h-9 w-9 shrink-0 items-center justify-center self-end rounded-lg border border-current/15 text-xs font-bold";
+    }
+
+    const bubble = document.createElement("div");
+    bubble.className = "min-w-0 max-w-[calc(100%-3.25rem)] overflow-hidden rounded-2xl border p-3 shadow-sm transition-colors duration-300 sm:max-w-[78%] xl:max-w-[42rem]";
+    bubble.setAttribute(":class", "darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'");
+
+    const meta = document.createElement("p");
+    meta.className = `text-xs font-semibold opacity-60 ${isSelf ? "text-right" : ""}`;
+    meta.textContent = author;
+
+    const body = document.createElement("p");
+    body.className = `mt-1 whitespace-pre-wrap break-words text-sm opacity-90 [overflow-wrap:anywhere] ${isSelf ? "text-right" : ""}`;
+    body.textContent = data.message || "";
+
+    bubble.appendChild(meta);
+    bubble.appendChild(body);
+
+    if (isSelf) { row.appendChild(bubble); row.appendChild(avatar); }
+    else        { row.appendChild(avatar);  row.appendChild(bubble); }
+
+    container.appendChild(row);
+    if (window.Alpine) window.Alpine.initTree(row);
+    container.scrollTop = container.scrollHeight;
+  }
+
+  function appendSystemMessage(message) {
+    appendMessage({ id: crypto.randomUUID(), user: "System", message });
+  }
+
+  function appendSharedMessage(data) {
+    yMessages.push([{
+      id:        data.id || crypto.randomUUID(),
+      user:      data.user || "Guest",
+      avatar_url: data.avatar_url || "",
+      message:   data.message || "",
+      createdAt: data.createdAt || new Date().toISOString(),
+    }]);
+  }
+
+  function renderSharedMessages() {
+    yMessages.toArray().forEach((msg) => appendMessage(msg));
+  }
+
+  yMessages.observe(renderSharedMessages);
+
+  ydoc.on("update", (update, origin) => {
+    if (origin === "remote" || origin === "initial-load") return;
+    sendSocketPayload({ type: "yjs_update", update: Array.from(update) });
+  });
+
+  // ── Socket ─────────────────────────────────────────────────────────────────
+
+  function sendSocketPayload(payload) {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return false;
+    socket.send(JSON.stringify(payload));
+    return true;
+  }
+
+  // ── MLS lifecycle ──────────────────────────────────────────────────────────
+
+  async function initializeMls() {
+    await initEnigmaWasm();
+    const storedState = loadMlsState();
+    if (storedState) {
+      try {
+        const importFn = WasmEnigmaSession.import_state || WasmEnigmaSession.importState;
+        if (!importFn) throw new Error("WASM MLS class is missing import_state/importState");
+        mlsSession = importFn.call(WasmEnigmaSession, storedState);
+      } catch (err) {
+        console.warn("Stored MLS state invalid; creating fresh group.", err);
+        clearMlsState();
+      }
+    }
+    if (!mlsSession) {
+      mlsSession = new WasmEnigmaSession(channelSlug, userName);
+      callSession("create_group", "createGroup");
+      saveMlsState();
+    }
+    mlsReady = true;
+  }
+
+  function sendKeyPackage(targetUser = "") {
+    if (!mlsReady || !mlsSession) return;
+    const keyPackage = callSession("key_package", "keyPackage");
+    saveMlsState();
+    console.log("mls_key_package first16", first16Hex(keyPackage));
+    sendSocketPayload({
+      type: "mls_key_package", id: crypto.randomUUID(),
+      user: userName, avatar_url: userAvatarUrl, target: targetUser,
+      package: bytesToBase64(keyPackage),
+      device_id: browserDeviceId, device_kind: "browser",
+      mls_session_id: browserMlsSessionId,
+    });
+  }
+
+  async function addMlsMember(data) {
+    if (!mlsReady || !mlsSession || !data.package) return;
+    if (data.user === userName) return;
+    if (data.target && data.target !== userName) return;
+    if (data.participant_type !== "ai_agent") return;
+
+    const inviteKey = `${data.user}:${data.device_kind || ""}:${data.device_id || ""}`;
+    if (mlsInvitedUsers.has(inviteKey)) return;
+    mlsInvitedUsers.add(inviteKey);
+
+    const keyPackage = base64ToBytes(data.package);
+    console.log("received mls_key_package first16", first16Hex(keyPackage));
+
+    const result  = callSession("add_member", "addMember", keyPackage);
+    const welcome = new Uint8Array(result[0]);
+    const commit  = new Uint8Array(result[1]);
+    saveMlsState();
+
+    sendSocketPayload({
+      type: "mls_welcome", id: crypto.randomUUID(),
+      user: userName, avatar_url: userAvatarUrl,
+      device_id: browserDeviceId, device_kind: "browser",
+      mls_session_id: browserMlsSessionId,
+      target: data.user,
+      target_device_id:   data.device_id   || "",
+      target_device_kind: data.device_kind || "",
+      welcome: bytesToBase64(welcome),
+      commit:  bytesToBase64(commit),
+    });
+  }
+
+  async function joinMlsGroup(data) {
+    if (!data.welcome || data.target !== userName || data.user === userName) return;
+    if (!mlsSession) mlsSession = new WasmEnigmaSession(channelSlug, userName);
+    const welcome = base64ToBytes(data.welcome);
+    callSession("join_from_welcome", "joinFromWelcome", welcome);
+    saveMlsState();
+    mlsReady = true;
+    setEncryptionStatus(true);
+    appendSystemMessage("Joined encrypted channel.");
+  }
+
+  async function processMlsApplicationMessage(data) {
+    if (!mlsReady || !mlsSession || !data.ciphertext || data.user === userName) return;
+    const ciphertext = base64ToBytes(data.ciphertext);
+    const plaintext = callSession("process_message", "processMessage", ciphertext);
+    saveMlsState();
+    if (!plaintext) return;
+    appendSharedMessage({ id: data.id, user: data.user, avatar_url: data.avatar_url || "", message: new TextDecoder().decode(plaintext) });
+  }
+
+  async function handleSocketMessage(data) {
+    if (data.type === "system_error" || data.type === "system_info") {
+      appendSystemMessage(data.message || "System event.");
+      return;
+    }
+    try {
+      if (data.type === "yjs_update" || data.type === "yjs_sync_response") {
+        Y.applyUpdate(ydoc, new Uint8Array(data.update), "remote");
+      } else if (data.type === "yjs_sync_request") {
+        sendSocketPayload({ type: "yjs_sync_response", target_channel: data.sender_channel, update: Array.from(Y.encodeStateAsUpdate(ydoc)) });
+      } else if (data.type === "mls_key_package") {
+        await addMlsMember(data);
+      } else if (data.type === "mls_welcome") {
+        await joinMlsGroup(data);
+      } else if (data.type === "mls_app" && encryptionEnabled && mlsReady) {
+        await processMlsApplicationMessage(data);
+      } else if (data.type === "mls_app") {
+        appendSharedMessage({ id: data.id, user: data.user, avatar_url: data.avatar_url || "", message: data.ciphertext || "" });
+      } else if (data.message) {
+        appendSharedMessage(data);
+      }
+    } catch (err) {
+      console.error("MLS message handling failed", data, err);
+      appendSystemMessage(`MLS failed on ${data.type || "unknown"}: ${err?.message || String(err)}`);
+    }
+  }
+
+  // ── Send ───────────────────────────────────────────────────────────────────
+
+  async function sendCurrentMessage() {
+    const message = input.value.trim();
+    if (!message || !canSend || !socket || socket.readyState !== WebSocket.OPEN) return;
+
+    if (!encryptionEnabled) {
+      sendSocketPayload({ type: "chat_message", id: crypto.randomUUID(), user: userName, avatar_url: userAvatarUrl, message, device_id: browserDeviceId, device_kind: "browser" });
+      input.value = "";
+      return;
+    }
+
+    if (!mlsReady || !mlsSession) {
+      appendSystemMessage("Encryption is not ready. Disable encryption to send an unencrypted message.");
+      return;
+    }
+
+    try {
+      const messageId  = crypto.randomUUID();
+      const ciphertext = callSession("encrypt_app", "encryptApp", new TextEncoder().encode(message));
+      saveMlsState();
+      sendSocketPayload({ type: "mls_app", id: messageId, user: userName, avatar_url: userAvatarUrl, ciphertext: bytesToBase64(ciphertext), device_id: browserDeviceId, device_kind: "browser", mls_session_id: browserMlsSessionId });
+      appendSharedMessage({ id: messageId, user: userName, avatar_url: userAvatarUrl, message });
+      input.value = "";
+    } catch (err) {
+      console.error("MLS encryption failed", err);
+      appendSystemMessage(`Could not encrypt: ${err?.message || err}`);
+    }
+  }
+
+  sendButton.addEventListener("click", (e) => { e.preventDefault(); sendCurrentMessage(); });
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" || e.shiftKey) return;
+    e.preventDefault();
+    sendCurrentMessage();
+  });
+
+  // ── Connect ────────────────────────────────────────────────────────────────
+
+  if (canSend) {
+    setConnectionStatus("connecting");
+    try {
+      await initializeMls();
+      setEncryptionStatus(true);
+    } catch (err) {
+      console.error("MLS initialization failed", err);
+      setEncryptionStatus(false);
+      appendSystemMessage(`MLS encryption could not start: ${err?.message || err}`);
+    }
+
+    socket = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/ws/telegraph/${channelSlug}/`);
+
+    socket.onopen = () => {
+      setConnectionStatus("connected");
+      sendSocketPayload({ type: "yjs_sync_request" });
+      sendSocketPayload({ type: "yjs_update", update: Array.from(Y.encodeStateAsUpdate(ydoc)) });
+      if (encryptionEnabled && mlsReady) sendKeyPackage();
+    };
+    socket.onclose = () => setConnectionStatus("disconnected");
+    socket.onerror = () => setConnectionStatus("disconnected");
+    socket.onmessage = (e) => handleSocketMessage(JSON.parse(e.data));
+  } else {
+    setConnectionStatus("observer");
+    setEncryptionStatus(false);
+  }
+});
+</script>
+{% endblock %}
+
+{% block content %}
+<main
+  x-data="{ sidebarOpen: false, connectionStatus: 'observer', encryptionEnabled: {{ can_send_messages|yesno:'true,false' }} }"
+  data-telegraph-channel
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-6 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto grid h-[calc(100vh-3rem)] max-w-7xl grid-cols-1 gap-4 overflow-hidden lg:grid-cols-[15rem_minmax(0,1fr)_15rem] xl:grid-cols-[17rem_minmax(0,1fr)_17rem]">
+
+    {# ── Left sidebar: channel list ───────────────────────────────────────── #}
+    <aside
+      :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+      class="hidden min-h-0 min-w-0 overflow-hidden rounded-lg border p-4 shadow-md lg:flex lg:flex-col">
+
+      <div class="flex items-center justify-between border-b border-current/10 pb-3">
+        <a href="{% url 'telegraph:channel_list' %}" class="text-sm font-semibold underline hover:opacity-80">Channels</a>
+        <span class="text-xs opacity-50">{{ all_channels|length }}</span>
+      </div>
+
+      <nav class="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
+        {% for c in all_channels %}
+          <a
+            href="{% url 'telegraph:channel_detail' c.slug %}"
+            :class="darkMode
+              ? '{% if c.slug == channel.slug %}bg-primary-bg-dark border-accent-dark{% else %}border-transparent hover:border-accent-1 hover:bg-primary-bg-dark/50{% endif %}'
+              : '{% if c.slug == channel.slug %}bg-primary-bg-light border-accent-light{% else %}border-transparent hover:border-accent-2 hover:bg-primary-bg-light/50{% endif %}'"
+            class="block rounded-lg border px-3 py-2.5 transition">
+            <span class="block truncate text-sm font-semibold">{{ c.name }}</span>
+            <span class="mt-0.5 block text-xs opacity-50">{{ c.member_count }} member{{ c.member_count|pluralize }}</span>
+          </a>
+        {% endfor %}
+      </nav>
+    </aside>
+
+    {# ── Centre: chat ─────────────────────────────────────────────────────── #}
+    <section
+      :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+      class="grid min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border shadow-md">
+
+      {# Header #}
+      <header class="flex min-w-0 flex-wrap items-center gap-2 border-b border-current/10 px-4 py-3">
+        <button
+          type="button"
+          @click="sidebarOpen = true"
+          :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+          class="inline-flex h-9 w-9 items-center justify-center rounded border lg:hidden"
+          aria-label="Open channels">
+          <i class="fa-solid fa-bars text-sm"></i>
+        </button>
+
+        <div class="min-w-0 flex-1">
+          <h1 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="truncate text-xl font-bold">
+            {{ channel.name }}
+          </h1>
+          <div class="mt-0.5 flex flex-wrap gap-2 text-xs opacity-60">
+            <span>{{ participants|length }} member{{ participants|length|pluralize }}</span>
+            <span>·</span>
+            <span>{{ human_count }} human · {{ ai_count }} AI</span>
+          </div>
+        </div>
+
+        <a href="{% url 'telegraph:channel_list' %}" class="hidden shrink-0 text-xs underline opacity-60 hover:opacity-90 sm:inline">
+          All channels
+        </a>
+
+        {# Encryption chip #}
+        <div
+          class="encryption-toggle hidden shrink-0 items-center gap-1.5 rounded border px-2.5 py-1.5 text-xs font-semibold sm:flex"
+          :class="encryptionEnabled
+            ? (darkMode ? 'bg-success-dark text-primary-bg-dark border-success-dark' : 'bg-success-light text-primary-bg-light border-success-light')
+            : (darkMode ? 'bg-warn-dark text-primary-bg-dark border-warn-dark'       : 'bg-warn-light text-primary-bg-light border-warn-light')">
+          <i class="encryption-status-icon fa-solid {% if can_send_messages %}fa-lock{% else %}fa-lock-open{% endif %}"></i>
+          <span class="encryption-status-text">{% if can_send_messages %}Encrypted{% else %}Unencrypted{% endif %}</span>
+        </div>
+
+        {# Connection chip #}
+        <div
+          class="connection-status-chip hidden shrink-0 items-center rounded border px-2.5 py-1.5 text-xs font-semibold sm:flex"
+          :class="connectionStatus === 'connected'
+            ? (darkMode ? 'bg-success-dark text-primary-bg-dark border-success-dark' : 'bg-success-light text-primary-bg-light border-success-light')
+            : connectionStatus === 'connecting'
+              ? 'animate-pulse ' + (darkMode ? 'border-accent-1' : 'border-accent-2')
+              : (darkMode ? 'border-accent-1' : 'border-accent-2')">
+          <span class="connection-status-text">{% if can_send_messages %}Connecting{% else %}Observer{% endif %}</span>
+        </div>
+
+        {# Join / Leave #}
+        {% if can_join %}
+          <form method="post" action="{% url 'telegraph:channel_join' channel.slug %}" class="hidden shrink-0 sm:block">
+            {% csrf_token %}
+            <button type="submit"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-bold transition hover:opacity-90">
+              <i class="fa-solid fa-right-to-bracket"></i> Join
+            </button>
+          </form>
+        {% elif can_leave %}
+          <form method="post" action="{% url 'telegraph:channel_leave' channel.slug %}" class="hidden shrink-0 sm:block">
+            {% csrf_token %}
+            <button type="submit"
+              :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2 text-text-main-light'"
+              class="inline-flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80">
+              <i class="fa-solid fa-right-from-bracket"></i> Leave
+            </button>
+          </form>
+        {% endif %}
+      </header>
+
+      {# Observer / sign-in banner #}
+      {% if not can_send_messages %}
+        <div
+          :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
+          class="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-2.5">
+          <p class="text-sm opacity-70">{{ observer_reason }}</p>
+          {% if not request.user.is_authenticated %}
+            <a href="{% url 'sso:login' %}?next={{ request.path }}"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-bold transition hover:opacity-90">
+              <i class="fa-solid fa-right-to-bracket"></i> Sign in
+            </a>
+          {% elif can_join %}
+            <form method="post" action="{% url 'telegraph:channel_join' channel.slug %}">
+              {% csrf_token %}
+              <button type="submit"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-bold transition hover:opacity-90">
+                <i class="fa-solid fa-right-to-bracket"></i> Join Channel
+              </button>
+            </form>
+          {% endif %}
+        </div>
+      {% endif %}
+
+      {# Messages #}
+      <div id="messages" class="min-h-0 min-w-0 space-y-3 overflow-y-auto overflow-x-hidden p-4">
+        {% for msg in messages %}
+          <article class="flex min-w-0 gap-3 {% if msg.user == current_chat_user %}justify-end{% else %}justify-start{% endif %}">
+            {% if msg.user != current_chat_user %}
+              {% if msg.avatar %}
+                <img src="{{ msg.avatar }}" alt="{{ msg.user }}"
+                  class="h-9 w-9 shrink-0 self-end rounded-lg border border-current/15 object-cover">
+              {% else %}
+                <div class="flex h-9 w-9 shrink-0 items-center justify-center self-end rounded-lg border border-current/15 text-xs font-bold">
+                  {{ msg.user|first|upper }}
+                </div>
+              {% endif %}
+            {% endif %}
+            <div
+              :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
+              class="min-w-0 max-w-[calc(100%-3.25rem)] overflow-hidden rounded-2xl border p-3 shadow-sm transition-colors duration-300 sm:max-w-[78%] xl:max-w-[42rem]">
+              <p class="text-xs font-semibold opacity-60 {% if msg.user == current_chat_user %}text-right{% endif %}">
+                {{ msg.user }}
+                <span class="ml-1.5 font-normal opacity-70">{{ msg.created }}</span>
+              </p>
+              <p class="mt-1 whitespace-pre-wrap break-words text-sm opacity-90 [overflow-wrap:anywhere] {% if msg.user == current_chat_user %}text-right{% endif %}">
+                {{ msg.content }}
+              </p>
+            </div>
+            {% if msg.user == current_chat_user %}
+              {% if msg.avatar %}
+                <img src="{{ msg.avatar }}" alt="{{ msg.user }}"
+                  class="h-9 w-9 shrink-0 self-end rounded-lg border border-current/15 object-cover">
+              {% else %}
+                <div class="flex h-9 w-9 shrink-0 items-center justify-center self-end rounded-lg border border-current/15 text-xs font-bold">
+                  {{ msg.user|first|upper }}
+                </div>
+              {% endif %}
+            {% endif %}
+          </article>
+        {% empty %}
+          <div data-empty-messages class="flex h-full items-center justify-center py-12 text-sm opacity-50">
+            No messages yet. Be the first to say something.
+          </div>
+        {% endfor %}
+      </div>
+
+      {# Input #}
+      <div id="message-form" class="border-t border-current/10 p-3">
+        {# Mobile chips row #}
+        <div class="mb-2 flex flex-wrap gap-2 sm:hidden">
+          <div
+            class="connection-status-chip inline-flex items-center rounded border px-2.5 py-1 text-xs font-semibold"
+            :class="connectionStatus === 'connected'
+              ? (darkMode ? 'bg-success-dark text-primary-bg-dark border-success-dark' : 'bg-success-light text-primary-bg-light border-success-light')
+              : (darkMode ? 'border-accent-1' : 'border-accent-2')">
+            <span class="connection-status-text">{% if can_send_messages %}Connecting{% else %}Observer{% endif %}</span>
+          </div>
+          <div
+            class="encryption-toggle inline-flex items-center gap-1.5 rounded border px-2.5 py-1 text-xs font-semibold"
+            :class="encryptionEnabled
+              ? (darkMode ? 'bg-success-dark text-primary-bg-dark border-success-dark' : 'bg-success-light text-primary-bg-light border-success-light')
+              : (darkMode ? 'bg-warn-dark text-primary-bg-dark border-warn-dark'       : 'bg-warn-light text-primary-bg-light border-warn-light')">
+            <i class="encryption-status-icon fa-solid {% if can_send_messages %}fa-lock{% else %}fa-lock-open{% endif %}"></i>
+            <span class="encryption-status-text">{% if can_send_messages %}Encrypted{% else %}Unencrypted{% endif %}</span>
+          </div>
+          {% if can_join %}
+            <form method="post" action="{% url 'telegraph:channel_join' channel.slug %}">
+              {% csrf_token %}
+              <button type="submit"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-bold transition hover:opacity-90">
+                <i class="fa-solid fa-right-to-bracket"></i> Join
+              </button>
+            </form>
+          {% elif can_leave %}
+            <form method="post" action="{% url 'telegraph:channel_leave' channel.slug %}">
+              {% csrf_token %}
+              <button type="submit"
+                :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2 text-text-main-light'"
+                class="inline-flex items-center gap-1.5 rounded border px-2.5 py-1 text-xs font-semibold transition hover:opacity-80">
+                <i class="fa-solid fa-right-from-bracket"></i> Leave
+              </button>
+            </form>
+          {% endif %}
+        </div>
+
+        <div class="flex gap-2">
+          <textarea
+            id="message-input"
+            name="content"
+            rows="1"
+            placeholder="{% if can_send_messages %}Message {{ channel.name }}…{% else %}Join this channel to send messages{% endif %}"
+            :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+            class="min-h-[2.75rem] flex-1 resize-none rounded-xl border px-3 py-2.5 text-sm outline-none transition focus:ring-2 focus:ring-current/20"
+            {% if not can_send_messages %}disabled{% endif %}></textarea>
+
+          <button
+            type="button"
+            id="message-send-button"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl font-semibold transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+            {% if not can_send_messages %}disabled{% endif %}
+            aria-label="Send">
+            <i class="fa-solid fa-paper-plane text-sm"></i>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    {# ── Right sidebar: members ───────────────────────────────────────────── #}
+    <aside
+      :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+      class="hidden min-h-0 min-w-0 overflow-hidden rounded-lg border p-4 shadow-md lg:flex lg:flex-col">
+
+      <div class="flex items-center justify-between border-b border-current/10 pb-3">
+        <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-sm font-bold">
+          Members
+        </h2>
+        <span class="text-xs opacity-50">{{ participants|length }}</span>
+      </div>
+
+      <div class="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+        {% for user in participants %}
+          <div class="flex items-center gap-3">
+            {% if user.avatar_url %}
+              <img src="{{ user.avatar_url }}" alt="{{ user.username }}"
+                class="h-9 w-9 shrink-0 rounded-lg border border-current/15 object-cover">
+            {% else %}
+              <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-current/15 text-xs font-bold">
+                {{ user.username|first|upper }}
+              </div>
+            {% endif %}
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-sm font-semibold">{{ user.username }}</p>
+              <p class="text-xs opacity-50">{% if user.type == "ai_agent" %}AI agent{% else %}Human{% endif %}</p>
+            </div>
+            {% if user.type == "ai_agent" %}
+              <span class="rounded border border-current/15 px-1.5 py-0.5 text-xs opacity-60">AI</span>
+            {% endif %}
+          </div>
+        {% empty %}
+          <p class="py-4 text-center text-sm opacity-50">No members yet.</p>
+        {% endfor %}
+      </div>
+    </aside>
+  </div>
+
+  {# ── Mobile sidebar overlay ────────────────────────────────────────────── #}
+  <div x-show="sidebarOpen" x-cloak class="fixed inset-0 z-40 bg-black/40 lg:hidden" @click="sidebarOpen = false"></div>
+
+  <aside
+    x-show="sidebarOpen"
+    x-cloak
+    @click.away="sidebarOpen = false"
+    :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+    class="fixed inset-y-0 left-0 z-50 w-72 border-r p-4 shadow-xl lg:hidden">
+
+    <div class="flex items-center justify-between border-b border-current/10 pb-3">
+      <span class="text-sm font-semibold">Channels</span>
+      <button type="button" @click="sidebarOpen = false"
+        :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+        class="inline-flex h-8 w-8 items-center justify-center rounded border">
+        <i class="fa-solid fa-xmark text-sm"></i>
+      </button>
+    </div>
+
+    <nav class="mt-3 space-y-1">
+      {% for c in all_channels %}
+        <a href="{% url 'telegraph:channel_detail' c.slug %}"
+          :class="darkMode ? 'border-accent-1 hover:bg-primary-bg-dark' : 'border-accent-2 hover:bg-primary-bg-light'"
+          class="block rounded border px-3 py-2.5 text-sm font-semibold transition">
+          {{ c.name }}
+        </a>
+      {% endfor %}
+    </nav>
+
+    <div class="mt-5 border-t border-current/10 pt-4">
+      <div class="flex items-center justify-between">
+        <span class="text-sm font-semibold">Members</span>
+        <span class="text-xs opacity-50">{{ participants|length }}</span>
+      </div>
+      <div class="mt-3 space-y-2">
+        {% for user in participants %}
+          <div class="flex items-center gap-3">
+            {% if user.avatar_url %}
+              <img src="{{ user.avatar_url }}" alt="{{ user.username }}"
+                class="h-9 w-9 shrink-0 rounded-lg border border-current/15 object-cover">
+            {% else %}
+              <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-current/15 text-xs font-bold">
+                {{ user.username|first|upper }}
+              </div>
+            {% endif %}
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-sm font-semibold">{{ user.username }}</p>
+              <p class="text-xs opacity-50">{% if user.type == "ai_agent" %}AI agent{% else %}Human{% endif %}</p>
+            </div>
+          </div>
+        {% empty %}
+          <p class="text-sm opacity-50">No members yet.</p>
+        {% endfor %}
+      </div>
+    </div>
+  </aside>
+</main>
+{% endblock %}
