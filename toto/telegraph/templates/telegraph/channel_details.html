@@ -247,6 +247,35 @@ document.addEventListener("DOMContentLoaded", async () => {
     return true;
   }
 
+  // ── Encrypted media helper ─────────────────────────────────────────────────
+
+  function sendMediaPayload(innerPayload) {
+    // Always show locally for the sender immediately.
+    appendMessage({ ...innerPayload, user: userName, avatar_url: userAvatarUrl });
+
+    if (encryptionEnabled && mlsReady && mlsSession) {
+      try {
+        const bytes = new TextEncoder().encode(JSON.stringify(innerPayload));
+        const ciphertext = callSession("encrypt_app", "encryptApp", bytes);
+        saveMlsState();
+        sendSocketPayload({
+          type: "mls_app",
+          id: crypto.randomUUID(),
+          user: userName,
+          avatar_url: userAvatarUrl,
+          ciphertext: bytesToBase64(ciphertext),
+          device_id: browserDeviceId,
+          device_kind: "browser",
+          mls_session_id: browserMlsSessionId,
+        });
+      } catch (err) {
+        appendSystemMessage(`Could not encrypt media: ${err?.message || err}`);
+      }
+    } else {
+      sendSocketPayload(innerPayload);
+    }
+  }
+
   // ── Image send ─────────────────────────────────────────────────────────────
 
   function uploadAndSendImage(file) {
@@ -287,7 +316,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     reader.onload = () => {
       if (progressBar)  progressBar.style.width = "100%";
       if (progressText) progressText.textContent = "100%";
-      sendSocketPayload({ type: "image_message", image_data: reader.result });
+      sendMediaPayload({ type: "image_message", image_data: reader.result });
       if (progressWrap) progressWrap.classList.add("hidden");
     };
 
@@ -451,7 +480,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const blob   = new Blob(recordingChunks, { type: mediaRecorder.mimeType || "audio/webm" });
       const reader = new FileReader();
       reader.onload = () => {
-        sendSocketPayload({ type: "voice_message", audio_data: reader.result });
+        sendMediaPayload({ type: "voice_message", audio_data: reader.result });
         stopRecordingCleanup();
       };
       reader.readAsDataURL(blob);
@@ -502,22 +531,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   async function initializeMls() {
     await initRotorWasm();
-    const storedState = loadMlsState();
-    if (storedState) {
-      try {
-        const importFn = WasmRotorSession.import_state || WasmRotorSession.importState;
-        if (!importFn) throw new Error("WASM MLS class is missing import_state/importState");
-        mlsSession = importFn.call(WasmRotorSession, storedState);
-      } catch (err) {
-        console.warn("Stored MLS state invalid; creating fresh group.", err);
-        clearMlsState();
-      }
-    }
-    if (!mlsSession) {
-      mlsSession = new WasmRotorSession(channelSlug, userName);
-      callSession("create_group", "createGroup");
-      saveMlsState();
-    }
+    // Always start fresh — loading stale group state causes "duplicate signature key"
+    // errors when a user reconnects while the other side still has them as a member.
+    clearMlsState();
+    mlsSession = new WasmRotorSession(channelSlug, userName);
+    callSession("create_group", "createGroup");
+    saveMlsState();
     mlsReady = true;
   }
 
@@ -539,7 +558,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!mlsReady || !mlsSession || !data.package) return;
     if (data.user === userName) return;
     if (data.target && data.target !== userName) return;
-    if (data.participant_type !== "ai_agent") return;
+
+    // Alphabetical tiebreaker: the lexicographically-lower user name is the group admin.
+    // Higher-name users defer by re-sending their key package to the lower-name peer.
+    const theyComeBefore = data.user < userName ||
+      (data.user === userName && (data.device_id || "") < browserDeviceId);
+    if (theyComeBefore) {
+      sendKeyPackage(data.user);
+      return;
+    }
 
     const inviteKey = `${data.user}:${data.device_kind || ""}:${data.device_id || ""}`;
     if (mlsInvitedUsers.has(inviteKey)) return;
@@ -552,7 +579,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     const welcome = new Uint8Array(result[0]);
     const commit  = new Uint8Array(result[1]);
     saveMlsState();
-
     sendSocketPayload({
       type: "mls_welcome", id: crypto.randomUUID(),
       user: userName, avatar_url: userAvatarUrl,
@@ -580,10 +606,29 @@ document.addEventListener("DOMContentLoaded", async () => {
   async function processMlsApplicationMessage(data) {
     if (!mlsReady || !mlsSession || !data.ciphertext || data.user === userName) return;
     const ciphertext = base64ToBytes(data.ciphertext);
-    const plaintext = callSession("process_message", "processMessage", ciphertext);
+    let plaintext;
+    try {
+      plaintext = callSession("process_message", "processMessage", ciphertext);
+    } catch (err) {
+      // Silently discard messages from a different group during handshake
+      if (String(err).toLowerCase().includes("group")) return;
+      throw err;
+    }
     saveMlsState();
     if (!plaintext) return;
-    appendSharedMessage({ id: data.id, user: data.user, avatar_url: data.avatar_url || "", message: new TextDecoder().decode(plaintext) });
+    const text = new TextDecoder().decode(plaintext);
+    try {
+      const inner = JSON.parse(text);
+      if (inner.type === "image_message" && inner.image_data) {
+        appendMessage({ ...inner, user: data.user, avatar_url: data.avatar_url || "" });
+        return;
+      }
+      if (inner.type === "voice_message" && inner.audio_data) {
+        appendMessage({ ...inner, user: data.user, avatar_url: data.avatar_url || "" });
+        return;
+      }
+    } catch (_) {}
+    appendSharedMessage({ id: data.id, user: data.user, avatar_url: data.avatar_url || "", message: text });
   }
 
   async function handleSocketMessage(data) {

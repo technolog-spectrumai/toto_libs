@@ -109,9 +109,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
         }
 
         for field in (
+            "id",                # message dedup key used by the browser's renderedIds set
             "message_id",
             "device_id",
             "key_package",
+            "package",           # browser sends key-package bytes under this name
             "welcome",
             "commit",
             "ciphertext",
@@ -119,6 +121,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
             "group_id",
             "sender_name",
             "sender_avatar_url",
+            # handshake routing — needed for key_package/welcome exchange
+            "user",
+            "target",
+            "device_kind",
+            "mls_session_id",
+            "target_device_id",
+            "target_device_kind",
         ):
             if field in data:
                 payload[field] = data[field]
