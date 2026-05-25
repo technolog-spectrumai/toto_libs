@@ -322,9 +322,6 @@
                class="rounded-lg border px-3 py-2 text-sm">
         <div class="flex flex-wrap gap-3 items-center text-sm">
           <label class="flex items-center gap-1.5">
-            <input type="checkbox" name="allows_asset_requisition" value="1" checked class="rounded"> Assets
-          </label>
-          <label class="flex items-center gap-1.5">
             <input type="checkbox" name="allows_inventory_access" value="1" checked class="rounded"> Inventory
           </label>
           <label class="flex items-center gap-1.5">
@@ -395,7 +392,6 @@
               <div class="flex flex-wrap gap-3 text-xs opacity-60">
                 <span>{% trans "Declared" %} {{ es.declared_at|date:"M d, H:i" }}</span>
                 {% if es.declared_by %}<span>{% trans "by" %} {{ es.declared_by }}</span>{% endif %}
-                {% if es.emergency_tax_rate %}<span><i class="fa-solid fa-percent mr-1"></i>{{ es.emergency_tax_rate|floatformat:2 }}% tax</span>{% endif %}
                 {% if es.source_proposal %}
                   <span :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
                     <i class="fa-solid fa-vote-yea mr-0.5"></i>{% trans "Assembly approved" %}
@@ -403,7 +399,6 @@
                 {% endif %}
               </div>
               <div class="flex flex-wrap gap-2 text-xs opacity-70 mt-1">
-                {% if es.allows_asset_requisition %}<span class="rounded border border-current/15 px-1.5 py-0.5"><i class="fa-solid fa-coins mr-1"></i>Assets</span>{% endif %}
                 {% if es.allows_inventory_access %}<span class="rounded border border-current/15 px-1.5 py-0.5"><i class="fa-solid fa-boxes-stacked mr-1"></i>Inventory</span>{% endif %}
                 {% if es.allows_route_commandeering %}<span class="rounded border border-current/15 px-1.5 py-0.5"><i class="fa-solid fa-route mr-1"></i>Routes</span>{% endif %}
               </div>

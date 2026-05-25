@@ -373,7 +373,7 @@ class MobilizationEvent(models.Model):
 class EmergencyStatus(models.Model):
     """
     Declared state of emergency for a community and/or zone, linked to a mobilization event.
-    When active, grants special privileges: assets and inventory items belonging to the
+    When active, grants special privileges: inventory items belonging to the
     community/zone can be marked as hybrid equipment and allocated to deployments.
     """
 
@@ -423,10 +423,6 @@ class EmergencyStatus(models.Model):
     expires_at = models.DateTimeField(null=True, blank=True)
     notes = models.TextField(blank=True)
 
-    allows_asset_requisition = models.BooleanField(
-        default=True,
-        help_text="Community/zone assets can be requisitioned for deployment use",
-    )
     allows_inventory_access = models.BooleanField(
         default=True,
         help_text="Inventory items at community/zone sites become available as hybrid equipment",
@@ -443,30 +439,6 @@ class EmergencyStatus(models.Model):
         on_delete=models.SET_NULL,
         related_name="emergency_declarations",
         help_text="Assembly proposal that voted to authorize this emergency status",
-    )
-
-    emergency_tax_rate = models.DecimalField(
-        max_digits=5,
-        decimal_places=4,
-        null=True,
-        blank=True,
-        help_text="Tax rate applied during emergency (e.g. 0.0250 = 2.5%)",
-    )
-    emergency_tax_asset = models.ForeignKey(
-        "assets.Asset",
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="emergency_tax_statuses",
-        help_text="Asset/currency in which the emergency tax is denominated",
-    )
-    emergency_tax_account = models.ForeignKey(
-        "assets.LedgerAccount",
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="emergency_tax_statuses",
-        help_text="Ledger account where emergency tax revenue is collected",
     )
 
     created_at = models.DateTimeField(auto_now_add=True)

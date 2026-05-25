@@ -34,11 +34,6 @@
         </div>
       </div>
       <div class="flex flex-wrap gap-2">
-        <a href="{% url 'response:deployment_routes' deployment.pk %}"
-           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-           class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold hover:opacity-80">
-          <i class="fa-solid fa-route"></i> {% trans "Routes" %}
-        </a>
         <a href="{% url 'response:deployment_metrics' deployment.pk %}"
            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
            class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold hover:opacity-80">
@@ -190,9 +185,6 @@
                 {% endif %}
                 {% if iv.assigned_to %}<span><i class="fa-solid fa-user-shield mr-1"></i>{{ iv.assigned_to.person }}</span>{% endif %}
                 {% if iv.kanban_task %}<span><i class="fa-solid fa-link mr-1"></i>{{ iv.kanban_task.title }}</span>{% endif %}
-                {% if iv.estimated_cost %}<span><i class="fa-solid fa-receipt mr-1"></i>Est. {{ iv.estimated_cost }}{% if iv.cost_asset %} {{ iv.cost_asset }}{% endif %}</span>{% endif %}
-                {% if iv.actual_cost %}<span><i class="fa-solid fa-coins mr-1"></i>Actual {{ iv.actual_cost }}</span>{% endif %}
-                {% if iv.cost_center %}<span><i class="fa-solid fa-building mr-1"></i>{{ iv.cost_center }}</span>{% endif %}
               </div>
               {% if iv.effect_description %}
                 <p class="mt-1.5 text-xs opacity-70"><i class="fa-solid fa-bolt mr-1"></i>{{ iv.effect_description }}</p>
@@ -206,7 +198,6 @@
                      :class="darkMode ? 'text-success-dark' : 'text-success-light'">
                   <i class="fa-solid fa-star"></i>
                   Reviewed by {{ iv.reviewer }}
-                  {% if iv.reward_amount %} · Reward: {{ iv.reward_amount }}{% if iv.reward_asset %} {{ iv.reward_asset }}{% endif %}{% endif %}
                 </div>
               {% endif %}
               {# Inline review form #}
@@ -217,9 +208,6 @@
                             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
                             class="w-full rounded-lg border px-3 py-2 text-xs"></textarea>
                   <div class="flex gap-2">
-                    <input type="number" name="reward_amount" placeholder="{% trans "Reward amount" %}" step="0.01"
-                           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-                           class="w-36 rounded-lg border px-3 py-1.5 text-xs">
                     <button type="submit"
                             :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
                             class="rounded-lg px-3 py-1.5 text-xs font-semibold">

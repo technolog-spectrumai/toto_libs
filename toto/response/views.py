@@ -2,7 +2,7 @@ from django.shortcuts import get_object_or_404, redirect
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
-from django.db.models import Count, Sum
+from django.db.models import Count
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.utils import timezone
@@ -370,26 +370,11 @@ def intervention_review(request, pk):
     intervention = get_object_or_404(Intervention, pk=pk)
     person = _person(request)
     effect_description = request.POST.get("effect_description", "")
-    reward_amount = request.POST.get("reward_amount") or None
-    reward_asset_id = request.POST.get("reward_asset") or None
-
-    if reward_amount:
-        try:
-            reward_amount = float(reward_amount)
-        except ValueError:
-            reward_amount = None
-
-    from toto.assets.models import Asset
-    reward_asset = Asset.objects.filter(pk=reward_asset_id).first() if reward_asset_id else None
 
     intervention.reviewer = person
     intervention.reviewed_at = timezone.now()
     if effect_description:
         intervention.effect_description = effect_description
-    if reward_amount is not None:
-        intervention.reward_amount = reward_amount
-    if reward_asset:
-        intervention.reward_asset = reward_asset
     intervention.save()
     messages.success(request, "Intervention reviewed.")
     return redirect("response:deployment_detail", pk=intervention.deployment_id)
@@ -482,12 +467,6 @@ def deployment_metrics(request, pk):
     done_iv = intervention_by_status.get("done", 0)
     completion_rate = round(done_iv / total_iv * 100) if total_iv else 0
 
-    cost_agg = interventions.aggregate(
-        estimated=Sum("estimated_cost"),
-        actual=Sum("actual_cost"),
-        reward=Sum("reward_amount"),
-    )
-
     equipment_count = deployment.equipment.count()
     route_count = deployment.routes.count()
 
@@ -501,7 +480,6 @@ def deployment_metrics(request, pk):
         "total_iv": total_iv,
         "done_iv": done_iv,
         "completion_rate": completion_rate,
-        "cost_agg": cost_agg,
         "equipment_count": equipment_count,
         "route_count": route_count,
     })

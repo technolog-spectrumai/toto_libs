@@ -113,7 +113,7 @@ class EmergencyEquipmentAccessInline(admin.TabularInline):
 @admin.register(EmergencyStatus)
 class EmergencyStatusAdmin(admin.ModelAdmin):
     list_display = ("event", "community", "zone", "level", "status", "declared_at", "lifted_at", "is_active")
-    list_filter = ("level", "status", "allows_asset_requisition", "allows_inventory_access")
+    list_filter = ("level", "status", "allows_inventory_access")
     search_fields = ("event__title", "community__name")
     readonly_fields = ("created_at", "updated_at")
     inlines = [EmergencyEquipmentAccessInline]

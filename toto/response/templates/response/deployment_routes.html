@@ -74,11 +74,11 @@
       </div>
     </div>
 
-    <div id="routes-map" class="h-[480px] w-full"></div>
+    <div id="routes-map" class="h-[72vh] w-full"></div>
   </div>
 
-  {# — Tables — #}
-  <div class="grid gap-5 lg:grid-cols-2">
+  {# — Route lists — #}
+  <div class="space-y-5">
 
     {# Deployment routes #}
     <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
@@ -90,16 +90,12 @@
       {% if dep_routes %}
         <div class="divide-y divide-current/10">
           {% for dr in dep_routes %}
-            <div class="py-2.5">
-              <div class="flex items-center justify-between gap-2">
-                <span class="font-semibold text-sm">{{ dr.route.name }}</span>
-                <span class="rounded border border-current/20 px-2 py-0.5 text-xs capitalize">
-                  {{ dr.get_route_type_display }}
-                </span>
+            <div class="py-2.5 flex items-center justify-between gap-4 flex-wrap">
+              <span class="font-semibold text-sm">{{ dr.route.name }}</span>
+              <div class="flex items-center gap-2 shrink-0">
+                <span class="rounded border border-current/20 px-2 py-0.5 text-xs capitalize">{{ dr.get_route_type_display }}</span>
+                {% if dr.notes %}<span class="text-xs opacity-60">{{ dr.notes }}</span>{% endif %}
               </div>
-              {% if dr.notes %}
-                <p class="mt-0.5 text-xs opacity-60">{{ dr.notes }}</p>
-              {% endif %}
             </div>
           {% endfor %}
         </div>
@@ -118,26 +114,17 @@
       {% if evac_routes %}
         <div class="divide-y divide-current/10">
           {% for er in evac_routes %}
-            <div class="py-2.5">
-              <div class="flex items-center justify-between gap-2 flex-wrap">
-                <span class="font-semibold text-sm">{{ er.name }}</span>
-                <div class="flex items-center gap-2">
-                  <span class="rounded border border-current/20 px-2 py-0.5 text-xs capitalize">
-                    {{ er.get_route_type_display }}
-                  </span>
-                  <span class="rounded border border-current/20 px-2 py-0.5 text-xs capitalize
-                    {% if er.status == 'active' %}
-                      border-success-light text-success-light
-                    {% elif er.status == 'blocked' %}
-                      border-warn-light text-warn-light
-                    {% endif %}">
-                    {{ er.status }}
-                  </span>
-                </div>
+            <div class="py-2.5 flex items-center justify-between gap-4 flex-wrap">
+              <span class="font-semibold text-sm">{{ er.name }}</span>
+              <div class="flex items-center gap-2 shrink-0">
+                <span class="rounded border border-current/20 px-2 py-0.5 text-xs capitalize">{{ er.get_route_type_display }}</span>
+                <span class="rounded border border-current/20 px-2 py-0.5 text-xs capitalize
+                  {% if er.status == 'active' %}border-success-light text-success-light
+                  {% elif er.status == 'blocked' %}border-warn-light text-warn-light{% endif %}">
+                  {{ er.status }}
+                </span>
+                {% if er.notes %}<span class="text-xs opacity-60">{{ er.notes }}</span>{% endif %}
               </div>
-              {% if er.notes %}
-                <p class="mt-0.5 text-xs opacity-60">{{ er.notes }}</p>
-              {% endif %}
             </div>
           {% endfor %}
         </div>

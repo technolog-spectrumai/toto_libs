@@ -165,29 +165,6 @@
 
   </div>
 
-  {# — Cost summary — #}
-  {% if cost_agg.estimated or cost_agg.actual or cost_agg.reward %}
-    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-         class="rounded-lg border p-5 shadow-sm">
-      <h3 class="mb-4 font-bold flex items-center gap-2">
-        <i class="fa-solid fa-coins"></i> {% trans "Cost & Reward Summary" %}
-      </h3>
-      <div class="grid gap-4 sm:grid-cols-3">
-        <div>
-          <p class="text-xs opacity-60 uppercase tracking-wide">{% trans "Estimated Cost" %}</p>
-          <p class="mt-1 text-2xl font-bold">{{ cost_agg.estimated|default:"—" }}</p>
-        </div>
-        <div>
-          <p class="text-xs opacity-60 uppercase tracking-wide">{% trans "Actual Cost" %}</p>
-          <p class="mt-1 text-2xl font-bold">{{ cost_agg.actual|default:"—" }}</p>
-        </div>
-        <div>
-          <p class="text-xs opacity-60 uppercase tracking-wide">{% trans "Total Rewards" %}</p>
-          <p class="mt-1 text-2xl font-bold">{{ cost_agg.reward|default:"—" }}</p>
-        </div>
-      </div>
-    </div>
-  {% endif %}
 
 </div>
 {% endblock %}
