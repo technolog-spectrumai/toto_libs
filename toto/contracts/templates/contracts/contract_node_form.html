@@ -1,0 +1,45 @@
+{% extends "contracts/base.html" %}
+{% load i18n %}
+
+{% block contracts_title %}{% if is_create %}{% trans "Add Node" %}{% else %}{% trans "Edit Node" %}{% endif %}{% endblock %}
+
+{% block contracts_content %}
+<div class="space-y-6">
+  <a href="{% url 'contracts:contract_detail' contract.uuid %}"
+     class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+    <i class="fa-solid fa-arrow-left"></i>
+    {% trans "Back to contract" %}
+  </a>
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5 shadow-sm">
+    <h2 class="text-lg font-bold mb-4">
+      {% if is_create %}{% trans "Add Node" %}{% else %}{% trans "Edit Node" %}{% endif %}
+      <span class="text-sm font-normal opacity-60 ml-2">{{ contract.name }}</span>
+    </h2>
+    <form method="post" class="space-y-4">
+      {% csrf_token %}
+      {% for field in form %}
+      <div>
+        <label for="{{ field.id_for_label }}" class="block text-sm font-semibold mb-1 opacity-70">
+          {{ field.label }}{% if field.field.required %} <span class="text-red-400">*</span>{% endif %}
+        </label>
+        {{ field }}
+        {% if field.errors %}
+        <ul class="mt-1 text-xs text-red-500">{% for e in field.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+        {% endif %}
+      </div>
+      {% endfor %}
+      <div class="flex gap-3 pt-2">
+        <button type="submit"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="rounded-lg px-5 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          {% if is_create %}{% trans "Add" %}{% else %}{% trans "Save" %}{% endif %}
+        </button>
+        <a href="{% url 'contracts:contract_detail' contract.uuid %}"
+           class="text-sm opacity-60 hover:opacity-100 underline">{% trans "Cancel" %}</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

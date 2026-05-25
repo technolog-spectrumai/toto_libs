@@ -1,0 +1,54 @@
+{% load i18n %}
+{# Context: nodes, contract #}
+<div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     class="rounded-lg border shadow-sm overflow-hidden">
+  <div class="flex items-center justify-between px-4 py-3 border-b"
+       :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+    <h3 class="font-semibold text-sm uppercase tracking-wide opacity-60">{% trans "Nodes" %}</h3>
+    <a href="{% url 'contracts:contract_node_create' contract.uuid %}"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded border px-3 py-1 text-xs font-semibold transition hover:opacity-80">
+      <i class="fa-solid fa-plus"></i> {% trans "Add" %}
+    </a>
+  </div>
+  {% if nodes %}
+  <table class="w-full text-sm">
+    <thead>
+      <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+          class="border-b text-xs uppercase tracking-wide opacity-60">
+        <th class="px-4 py-2 text-left">{% trans "Key" %}</th>
+        <th class="px-4 py-2 text-left">{% trans "Type" %}</th>
+        <th class="px-4 py-2 text-left">{% trans "Title" %}</th>
+        <th class="px-4 py-2 text-left">{% trans "Manual" %}</th>
+        <th class="px-4 py-2 text-left">{% trans "Backed Object" %}</th>
+        <th class="px-4 py-2"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for node in nodes %}
+      <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-b">
+        <td class="px-4 py-2 font-mono text-xs">{{ node.key }}</td>
+        <td class="px-4 py-2">
+          <span class="inline-block rounded px-2 py-0.5 text-xs font-semibold bg-gray-100 text-gray-700">
+            {{ node.node_type }}
+          </span>
+        </td>
+        <td class="px-4 py-2 font-semibold">{{ node.title }}</td>
+        <td class="px-4 py-2 text-xs opacity-60">
+          {% if node.is_manual %}<i class="fa-solid fa-pen text-caution-light"></i>{% endif %}
+        </td>
+        <td class="px-4 py-2 text-xs font-mono opacity-60">
+          {% if node.is_backed %}{{ node.object_app }}.{{ node.object_model }}#{{ node.object_id }}{% else %}—{% endif %}
+        </td>
+        <td class="px-4 py-2 text-right">
+          <a href="{% url 'contracts:contract_node_update' contract.uuid node.pk %}"
+             class="text-xs underline hover:opacity-70">{% trans "Edit" %}</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="px-4 py-6 text-sm opacity-50 text-center">{% trans "No nodes yet." %}</div>
+  {% endif %}
+</div>

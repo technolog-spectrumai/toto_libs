@@ -1,0 +1,9 @@
+{% load i18n %}
+{# Context: metadata_dict (a dict or JSONField value) #}
+{% if metadata_dict %}
+<div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     class="rounded-lg border shadow-sm p-4">
+  <h3 class="font-semibold text-sm uppercase tracking-wide opacity-60 mb-2">{% trans "Metadata" %}</h3>
+  <pre class="font-mono text-xs overflow-x-auto">{{ metadata_dict }}</pre>
+</div>
+{% endif %}

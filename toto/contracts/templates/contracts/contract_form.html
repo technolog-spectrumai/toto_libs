@@ -1,0 +1,66 @@
+{% extends "contracts/base.html" %}
+{% load i18n %}
+
+{% block contracts_title %}{% if is_create %}{% trans "New Contract" %}{% else %}{% trans "Edit" %} {{ contract.name }}{% endif %}{% endblock %}
+
+{% block contracts_content %}
+<div class="space-y-6">
+  <a href="{% if contract %}{% url 'contracts:contract_detail' contract.uuid %}{% else %}{% url 'contracts:contract_list' %}{% endif %}"
+     class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+    <i class="fa-solid fa-arrow-left"></i>
+    {% if is_create %}{% trans "Back to contracts" %}{% else %}{% trans "Back to contract" %}{% endif %}
+  </a>
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5 shadow-sm">
+    <h2 class="text-lg font-bold mb-4">
+      <i class="fa-solid fa-scroll mr-2" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+      {% if is_create %}{% trans "New Contract" %}{% else %}{% trans "Edit Contract" %}{% endif %}
+    </h2>
+
+    <form method="post" class="space-y-5">
+      {% csrf_token %}
+      {% for field in form %}
+      <div>
+        <label for="{{ field.id_for_label }}"
+          class="block text-sm font-semibold mb-1 opacity-70">
+          {{ field.label }}{% if field.field.required %} <span class="text-red-400">*</span>{% endif %}
+        </label>
+        <div :class="darkMode ? 'text-text-main-dark' : 'text-text-main-light'">
+          {{ field }}
+        </div>
+        {% if field.name == 'code' %}
+        <p class="mt-1 text-xs opacity-50">
+          {% trans "YAML is an import/export snapshot of the contract graph. Platform services enforce real behavior." %}
+        </p>
+        {% endif %}
+        {% if field.errors %}
+        <ul class="mt-1 text-xs text-red-500 space-y-0.5">
+          {% for err in field.errors %}<li>{{ err }}</li>{% endfor %}
+        </ul>
+        {% endif %}
+        {% if field.help_text and field.name != 'code' %}
+        <p class="mt-1 text-xs opacity-50">{{ field.help_text }}</p>
+        {% endif %}
+      </div>
+      {% endfor %}
+
+      {% if form.non_field_errors %}
+      <div class="rounded bg-red-50 p-3 text-sm text-red-700">
+        {% for err in form.non_field_errors %}{{ err }}{% endfor %}
+      </div>
+      {% endif %}
+
+      <div class="flex items-center gap-3 pt-2">
+        <button type="submit"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="rounded-lg px-5 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          {% if is_create %}{% trans "Create" %}{% else %}{% trans "Save" %}{% endif %}
+        </button>
+        <a href="{% if contract %}{% url 'contracts:contract_detail' contract.uuid %}{% else %}{% url 'contracts:contract_list' %}{% endif %}"
+           class="text-sm opacity-60 hover:opacity-100 underline">{% trans "Cancel" %}</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

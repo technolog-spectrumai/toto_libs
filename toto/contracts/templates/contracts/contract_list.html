@@ -1,0 +1,76 @@
+{% extends "contracts/base.html" %}
+{% load i18n %}
+
+{% block contracts_title %}{% trans "Contracts" %}{% endblock %}
+
+{% block contracts_content %}
+<div class="space-y-6">
+
+  <form method="get" class="flex flex-wrap gap-2">
+    <input type="text" name="q" value="{{ q }}"
+      :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+      class="rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-1"
+      placeholder="{% trans 'Search contracts…' %}">
+    <button type="submit"
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+      {% trans "Search" %}
+    </button>
+    {% if q %}
+    <a href="?" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+      {% trans "Clear" %}
+    </a>
+    {% endif %}
+  </form>
+
+  {% if contracts_data %}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border shadow-sm overflow-hidden">
+    <table class="w-full text-sm">
+      <thead>
+        <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+            class="border-b text-xs uppercase tracking-wide opacity-60">
+          <th class="px-4 py-3 text-left">{% trans "Name" %}</th>
+          <th class="px-4 py-3 text-left">{% trans "Description" %}</th>
+          <th class="px-4 py-3 text-right">{% trans "Nodes" %}</th>
+          <th class="px-4 py-3 text-right">{% trans "Edges" %}</th>
+          <th class="px-4 py-3 text-right">{% trans "Manual" %}</th>
+          <th class="px-4 py-3 text-left">{% trans "Created" %}</th>
+          <th class="px-4 py-3"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in contracts_data %}
+        <tr :class="darkMode ? 'border-accent-1 hover:bg-black/10' : 'border-accent-2 hover:bg-black/5'"
+            class="border-b transition cursor-pointer"
+            onclick="window.location='{% url 'contracts:contract_detail' item.contract.uuid %}'">
+          <td class="px-4 py-3 font-semibold">{{ item.contract.name }}</td>
+          <td class="px-4 py-3 opacity-70 max-w-xs truncate">
+            {{ item.contract.description|truncatechars:80 }}
+          </td>
+          <td class="px-4 py-3 text-right font-mono">{{ item.node_count }}</td>
+          <td class="px-4 py-3 text-right font-mono">{{ item.edge_count }}</td>
+          <td class="px-4 py-3 text-right font-mono opacity-60">{{ item.manual_count }}</td>
+          <td class="px-4 py-3 opacity-60 text-xs">{{ item.contract.created_at|date:"Y-m-d" }}</td>
+          <td class="px-4 py-3 text-right">
+            <a href="{% url 'contracts:contract_update' item.contract.uuid %}"
+               class="text-xs underline hover:opacity-70" onclick="event.stopPropagation()">
+              {% trans "Edit" %}
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-8 text-center opacity-60">
+    {% trans "No contracts found." %}
+    <a href="{% url 'contracts:contract_create' %}" class="ml-2 underline hover:opacity-80">{% trans "Create one." %}</a>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}
