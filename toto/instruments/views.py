@@ -5,6 +5,9 @@ from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
+from toto.assets.lapis.exceptions import LapisExecutionError
+from . import lapis_runner
+
 try:
     from toto.ui import PageProcessor
 except Exception:  # pragma: no cover
@@ -51,7 +54,9 @@ def instruments_render(request, template_name, context):
 
 
 def _create_instrument_and_contract(form, instrument_type, user):
-    """Auto-create a FinancialInstrument then attach and save the contract form."""
+    """Create a FinancialInstrument, its typed contract, and its Lapis contract."""
+    from toto.instruments.lapis_contracts import sync_contract_for_instrument
+
     with transaction.atomic():
         instrument = FinancialInstrument.objects.create(
             reference=form.cleaned_data["name"],
@@ -59,9 +64,13 @@ def _create_instrument_and_contract(form, instrument_type, user):
             status=InstrumentStatus.DRAFT,
             issuer=user if user.is_authenticated else None,
         )
-        contract = form.save(commit=False)
-        contract.instrument = instrument
-        contract.save()
+        typed = form.save(commit=False)
+        typed.instrument = instrument
+        typed.save()
+
+        lapis_contract = sync_contract_for_instrument(instrument)
+        lapis_runner.init_global_state(lapis_contract)
+
     return instrument
 
 
@@ -121,10 +130,14 @@ def escrow_create(request):
 @require_POST
 @login_required
 def escrow_fund(request, pk):
-    escrow = get_object_or_404(EscrowContract.objects.select_related("instrument", "asset"), pk=pk)
+    escrow = get_object_or_404(EscrowContract.objects.select_related("instrument__contract", "asset"), pk=pk)
     try:
-        EscrowService.fund(escrow)
+        with transaction.atomic():
+            lapis_runner.gate(escrow.instrument, "fund")
+            EscrowService.fund(escrow)
         messages.success(request, "Escrow funded.")
+    except (LapisExecutionError, ValueError) as exc:
+        messages.error(request, f"Contract check failed: {exc}")
     except ValidationError as exc:
         messages.error(request, "; ".join(exc.messages))
     return redirect("instruments:instrument_detail", pk=escrow.instrument_id)
@@ -133,10 +146,14 @@ def escrow_fund(request, pk):
 @require_POST
 @login_required
 def escrow_release(request, pk):
-    escrow = get_object_or_404(EscrowContract.objects.select_related("instrument", "asset"), pk=pk)
+    escrow = get_object_or_404(EscrowContract.objects.select_related("instrument__contract", "asset"), pk=pk)
     try:
-        EscrowService.release(escrow)
+        with transaction.atomic():
+            lapis_runner.gate(escrow.instrument, "release")
+            EscrowService.release(escrow)
         messages.success(request, "Escrow released.")
+    except (LapisExecutionError, ValueError) as exc:
+        messages.error(request, f"Contract check failed: {exc}")
     except ValidationError as exc:
         messages.error(request, "; ".join(exc.messages))
     return redirect("instruments:instrument_detail", pk=escrow.instrument_id)
@@ -145,10 +162,14 @@ def escrow_release(request, pk):
 @require_POST
 @login_required
 def escrow_refund(request, pk):
-    escrow = get_object_or_404(EscrowContract.objects.select_related("instrument", "asset"), pk=pk)
+    escrow = get_object_or_404(EscrowContract.objects.select_related("instrument__contract", "asset"), pk=pk)
     try:
-        EscrowService.refund(escrow)
+        with transaction.atomic():
+            lapis_runner.gate(escrow.instrument, "refund")
+            EscrowService.refund(escrow)
         messages.success(request, "Escrow refunded.")
+    except (LapisExecutionError, ValueError) as exc:
+        messages.error(request, f"Contract check failed: {exc}")
     except ValidationError as exc:
         messages.error(request, "; ".join(exc.messages))
     return redirect("instruments:instrument_detail", pk=escrow.instrument_id)
@@ -181,8 +202,12 @@ def forward_activate(request, pk):
         messages.error(request, "No forward contract attached to this instrument.")
         return redirect("instruments:instrument_detail", pk=pk)
     try:
-        ForwardService.activate(fwd)
+        with transaction.atomic():
+            lapis_runner.gate(instrument, "activate")
+            ForwardService.activate(fwd)
         messages.success(request, "Forward contract activated.")
+    except (LapisExecutionError, ValueError) as exc:
+        messages.error(request, f"Contract check failed: {exc}")
     except ValidationError as exc:
         messages.error(request, "; ".join(exc.messages))
     return redirect("instruments:instrument_detail", pk=pk)
@@ -248,8 +273,12 @@ def option_exercise(request, pk):
         messages.error(request, "No option contract attached.")
         return redirect("instruments:instrument_detail", pk=pk)
     try:
-        OptionService.exercise(opt)
+        with transaction.atomic():
+            lapis_runner.gate(instrument, "exercise")
+            OptionService.exercise(opt)
         messages.success(request, "Option exercised.")
+    except (LapisExecutionError, ValueError) as exc:
+        messages.error(request, f"Contract check failed: {exc}")
     except ValidationError as exc:
         messages.error(request, "; ".join(exc.messages))
     return redirect("instruments:instrument_detail", pk=pk)
@@ -350,8 +379,12 @@ def staking_stake(request, pk):
         messages.error(request, "No staking position attached.")
         return redirect("instruments:instrument_detail", pk=pk)
     try:
-        StakingService.stake(stk)
+        with transaction.atomic():
+            lapis_runner.gate(instrument, "stake")
+            StakingService.stake(stk)
         messages.success(request, "Assets staked.")
+    except (LapisExecutionError, ValueError) as exc:
+        messages.error(request, f"Contract check failed: {exc}")
     except ValidationError as exc:
         messages.error(request, "; ".join(exc.messages))
     return redirect("instruments:instrument_detail", pk=pk)
@@ -361,7 +394,7 @@ def staking_stake(request, pk):
 @login_required
 def staking_unstake(request, pk):
     instrument = get_object_or_404(
-        FinancialInstrument.objects.select_related("staking_position__staked_asset"),
+        FinancialInstrument.objects.select_related("staking_position__staked_asset", "contract"),
         pk=pk,
     )
     stk = getattr(instrument, "staking_position", None)
@@ -369,8 +402,12 @@ def staking_unstake(request, pk):
         messages.error(request, "No staking position attached.")
         return redirect("instruments:instrument_detail", pk=pk)
     try:
-        StakingService.unstake(stk)
+        with transaction.atomic():
+            lapis_runner.gate(instrument, "unstake")
+            StakingService.unstake(stk)
         messages.success(request, "Assets unstaked.")
+    except (LapisExecutionError, ValueError) as exc:
+        messages.error(request, f"Contract check failed: {exc}")
     except ValidationError as exc:
         messages.error(request, "; ".join(exc.messages))
     return redirect("instruments:instrument_detail", pk=pk)
@@ -395,7 +432,7 @@ def subscription_create(request):
 @login_required
 def subscription_activate(request, pk):
     instrument = get_object_or_404(
-        FinancialInstrument.objects.select_related("subscription_contract__asset"),
+        FinancialInstrument.objects.select_related("subscription_contract__asset", "contract"),
         pk=pk,
     )
     sub = getattr(instrument, "subscription_contract", None)
@@ -403,8 +440,12 @@ def subscription_activate(request, pk):
         messages.error(request, "No subscription contract attached.")
         return redirect("instruments:instrument_detail", pk=pk)
     try:
-        SubscriptionService.activate(sub)
+        with transaction.atomic():
+            lapis_runner.gate(instrument, "activate")
+            SubscriptionService.activate(sub)
         messages.success(request, "Subscription activated.")
+    except (LapisExecutionError, ValueError) as exc:
+        messages.error(request, f"Contract check failed: {exc}")
     except ValidationError as exc:
         messages.error(request, "; ".join(exc.messages))
     return redirect("instruments:instrument_detail", pk=pk)
@@ -414,7 +455,7 @@ def subscription_activate(request, pk):
 @login_required
 def subscription_cancel(request, pk):
     instrument = get_object_or_404(
-        FinancialInstrument.objects.select_related("subscription_contract"),
+        FinancialInstrument.objects.select_related("subscription_contract", "contract"),
         pk=pk,
     )
     sub = getattr(instrument, "subscription_contract", None)
@@ -423,9 +464,13 @@ def subscription_cancel(request, pk):
         return redirect("instruments:instrument_detail", pk=pk)
     at_period_end = request.POST.get("at_period_end", "1") != "0"
     try:
-        SubscriptionService.cancel(sub, at_period_end=at_period_end)
+        with transaction.atomic():
+            lapis_runner.gate(instrument, "cancel")
+            SubscriptionService.cancel(sub, at_period_end=at_period_end)
         msg = "Subscription will cancel at period end." if at_period_end else "Subscription cancelled immediately."
         messages.success(request, msg)
+    except (LapisExecutionError, ValueError) as exc:
+        messages.error(request, f"Contract check failed: {exc}")
     except ValidationError as exc:
         messages.error(request, "; ".join(exc.messages))
     return redirect("instruments:instrument_detail", pk=pk)
@@ -435,7 +480,7 @@ def subscription_cancel(request, pk):
 @login_required
 def subscription_pause(request, pk):
     instrument = get_object_or_404(
-        FinancialInstrument.objects.select_related("subscription_contract"),
+        FinancialInstrument.objects.select_related("subscription_contract", "contract"),
         pk=pk,
     )
     sub = getattr(instrument, "subscription_contract", None)
@@ -443,8 +488,12 @@ def subscription_pause(request, pk):
         messages.error(request, "No subscription contract attached.")
         return redirect("instruments:instrument_detail", pk=pk)
     try:
-        SubscriptionService.pause(sub)
+        with transaction.atomic():
+            lapis_runner.gate(instrument, "pause")
+            SubscriptionService.pause(sub)
         messages.success(request, "Subscription paused.")
+    except (LapisExecutionError, ValueError) as exc:
+        messages.error(request, f"Contract check failed: {exc}")
     except ValidationError as exc:
         messages.error(request, "; ".join(exc.messages))
     return redirect("instruments:instrument_detail", pk=pk)
@@ -454,7 +503,7 @@ def subscription_pause(request, pk):
 @login_required
 def subscription_resume(request, pk):
     instrument = get_object_or_404(
-        FinancialInstrument.objects.select_related("subscription_contract"),
+        FinancialInstrument.objects.select_related("subscription_contract", "contract"),
         pk=pk,
     )
     sub = getattr(instrument, "subscription_contract", None)
@@ -462,8 +511,12 @@ def subscription_resume(request, pk):
         messages.error(request, "No subscription contract attached.")
         return redirect("instruments:instrument_detail", pk=pk)
     try:
-        SubscriptionService.resume(sub)
+        with transaction.atomic():
+            lapis_runner.gate(instrument, "resume")
+            SubscriptionService.resume(sub)
         messages.success(request, "Subscription resumed.")
+    except (LapisExecutionError, ValueError) as exc:
+        messages.error(request, f"Contract check failed: {exc}")
     except ValidationError as exc:
         messages.error(request, "; ".join(exc.messages))
     return redirect("instruments:instrument_detail", pk=pk)
@@ -523,12 +576,16 @@ def lease_create(request):
 @login_required
 def lease_activate(request, pk):
     lease = get_object_or_404(
-        LeaseContract.objects.select_related("instrument"),
+        LeaseContract.objects.select_related("instrument__contract"),
         pk=pk,
     )
     try:
-        LeaseService.activate(lease)
+        with transaction.atomic():
+            lapis_runner.gate(lease.instrument, "activate")
+            LeaseService.activate(lease)
         messages.success(request, "Lease activated.")
+    except (LapisExecutionError, ValueError) as exc:
+        messages.error(request, f"Contract check failed: {exc}")
     except Exception as exc:
         messages.error(request, str(exc))
     return redirect("instruments:lease_detail", pk=lease.pk)
@@ -538,12 +595,16 @@ def lease_activate(request, pk):
 @login_required
 def lease_cancel(request, pk):
     lease = get_object_or_404(
-        LeaseContract.objects.select_related("instrument"),
+        LeaseContract.objects.select_related("instrument__contract"),
         pk=pk,
     )
     try:
-        LeaseService.cancel(lease)
+        with transaction.atomic():
+            lapis_runner.gate(lease.instrument, "cancel")
+            LeaseService.cancel(lease)
         messages.success(request, "Lease cancelled.")
+    except (LapisExecutionError, ValueError) as exc:
+        messages.error(request, f"Contract check failed: {exc}")
     except Exception as exc:
         messages.error(request, str(exc))
     return redirect("instruments:lease_detail", pk=lease.pk)
@@ -554,13 +615,17 @@ def lease_cancel(request, pk):
 def lease_charge_fixed(request, pk):
     lease = get_object_or_404(
         LeaseContract.objects.select_related(
-            "instrument", "payment_asset", "lessee_account", "revenue_account"
+            "instrument__contract", "payment_asset", "lessee_account", "revenue_account"
         ),
         pk=pk,
     )
     try:
-        LeaseService.charge_fixed_fee(lease)
+        with transaction.atomic():
+            lapis_runner.gate(lease.instrument, "charge")
+            LeaseService.charge_fixed_fee(lease)
         messages.success(request, "Fixed fee charged.")
+    except (LapisExecutionError, ValueError) as exc:
+        messages.error(request, f"Contract check failed: {exc}")
     except Exception as exc:
         messages.error(request, str(exc))
     return redirect("instruments:lease_detail", pk=lease.pk)
@@ -621,12 +686,16 @@ def amortization_create(request):
 @login_required
 def amortization_activate(request, pk):
     contract = get_object_or_404(
-        AmortizationContract.objects.select_related("instrument"),
+        AmortizationContract.objects.select_related("instrument__contract"),
         pk=pk,
     )
     try:
-        AmortizationService.activate(contract)
+        with transaction.atomic():
+            lapis_runner.gate(contract.instrument, "activate")
+            AmortizationService.activate(contract)
         messages.success(request, "Contract activated.")
+    except (LapisExecutionError, ValueError) as exc:
+        messages.error(request, f"Contract check failed: {exc}")
     except Exception as exc:
         messages.error(request, str(exc))
     return redirect("instruments:amortization_detail", pk=pk)
@@ -636,12 +705,16 @@ def amortization_activate(request, pk):
 @login_required
 def amortization_pause(request, pk):
     contract = get_object_or_404(
-        AmortizationContract.objects.select_related("instrument"),
+        AmortizationContract.objects.select_related("instrument__contract"),
         pk=pk,
     )
     try:
-        AmortizationService.pause(contract)
+        with transaction.atomic():
+            lapis_runner.gate(contract.instrument, "pause")
+            AmortizationService.pause(contract)
         messages.success(request, "Contract paused.")
+    except (LapisExecutionError, ValueError) as exc:
+        messages.error(request, f"Contract check failed: {exc}")
     except Exception as exc:
         messages.error(request, str(exc))
     return redirect("instruments:amortization_detail", pk=pk)
@@ -651,12 +724,16 @@ def amortization_pause(request, pk):
 @login_required
 def amortization_resume(request, pk):
     contract = get_object_or_404(
-        AmortizationContract.objects.select_related("instrument"),
+        AmortizationContract.objects.select_related("instrument__contract"),
         pk=pk,
     )
     try:
-        AmortizationService.resume(contract)
+        with transaction.atomic():
+            lapis_runner.gate(contract.instrument, "resume")
+            AmortizationService.resume(contract)
         messages.success(request, "Contract resumed.")
+    except (LapisExecutionError, ValueError) as exc:
+        messages.error(request, f"Contract check failed: {exc}")
     except Exception as exc:
         messages.error(request, str(exc))
     return redirect("instruments:amortization_detail", pk=pk)
@@ -666,12 +743,16 @@ def amortization_resume(request, pk):
 @login_required
 def amortization_cancel(request, pk):
     contract = get_object_or_404(
-        AmortizationContract.objects.select_related("instrument"),
+        AmortizationContract.objects.select_related("instrument__contract"),
         pk=pk,
     )
     try:
-        AmortizationService.cancel(contract)
+        with transaction.atomic():
+            lapis_runner.gate(contract.instrument, "cancel")
+            AmortizationService.cancel(contract)
         messages.success(request, "Contract cancelled.")
+    except (LapisExecutionError, ValueError) as exc:
+        messages.error(request, f"Contract check failed: {exc}")
     except Exception as exc:
         messages.error(request, str(exc))
     return redirect("instruments:amortization_detail", pk=pk)
@@ -681,7 +762,7 @@ def amortization_cancel(request, pk):
 def amortization_amortize(request, pk):
     contract = get_object_or_404(
         AmortizationContract.objects.select_related(
-            "instrument", "asset", "source_account", "destination_account"
+            "instrument__contract", "asset", "source_account", "destination_account"
         ),
         pk=pk,
     )
@@ -690,6 +771,7 @@ def amortization_amortize(request, pk):
         if form.is_valid():
             try:
                 with transaction.atomic():
+                    lapis_runner.gate(contract.instrument, "amortize")
                     AmortizationService.amortize(
                         contract=contract,
                         amount_base_units=form.cleaned_data["amount_base_units"],
@@ -698,6 +780,8 @@ def amortization_amortize(request, pk):
                     )
                 messages.success(request, "Amortization entry recorded.")
                 return redirect("instruments:amortization_detail", pk=pk)
+            except (LapisExecutionError, ValueError) as exc:
+                messages.error(request, f"Contract check failed: {exc}")
             except Exception as exc:
                 messages.error(request, str(exc))
     else:

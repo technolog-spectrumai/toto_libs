@@ -632,10 +632,16 @@ def contract_detail(request, uuid):
         instrument = contract.financial_instrument
     except Exception:
         instrument = None
+    import json as _json
+    global_state = contract.global_state or {}
+    initial_ctx = _json.dumps({"global_state": global_state}, indent=2)
+    global_state_json = _json.dumps(global_state)
     return assets_render(request, "assets/contract_detail.html", {
         "contract": contract,
         "action_names": action_names,
         "instrument": instrument,
+        "dry_run_initial_ctx": initial_ctx,
+        "global_state_json": global_state_json,
     })
 
 

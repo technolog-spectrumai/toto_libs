@@ -115,11 +115,13 @@
             </select>
           </div>
           <div>
-            <label class="mb-1 block text-xs font-semibold opacity-70">{% trans "Context JSON" %}</label>
+            <label class="mb-1 block text-xs font-semibold opacity-70">
+              {% trans "Context JSON" %}
+              <span class="font-normal opacity-60 ml-1">— global_state pre-loaded from live contract</span>
+            </label>
             <textarea id="dry-ctx" rows="8"
                       class="w-full rounded-lg border px-3 py-2 text-sm font-mono outline-none transition focus:ring-2 focus:ring-current/20"
-                      :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
-                      placeholder='{"global_state": {}, "app_args": []}'></textarea>
+                      :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'">{{ dry_run_initial_ctx }}</textarea>
           </div>
           <button id="btn-dry-run"
                   :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
@@ -228,6 +230,9 @@
     });
   }
 
+  // Live global_state from the contract (seeded server-side, proper JSON)
+  var liveGlobalState = {{ global_state_json|safe }};
+
   // Dry run
   var btnDry = document.getElementById("btn-dry-run");
   var dryResult = document.getElementById("dry-result");
@@ -241,6 +246,8 @@
         dryResult.style.display = "";
         return;
       }
+      // Merge: live global_state as baseline, user overrides on top
+      ctx.global_state = Object.assign({}, liveGlobalState, ctx.global_state || {});
       ctx.action = action;
       fetch("{% url 'assets:contract_dry_run' contract.uuid %}", {
         method: "POST",
@@ -249,6 +256,14 @@
       })
       .then(function(r) { return r.json(); })
       .then(function(d) {
+        if (d.ok) {
+          // Highlight state changes
+          var before = ctx.global_state;
+          var after = (d.state || {}).global || {};
+          var changed = {};
+          Object.keys(after).forEach(function(k) { if (after[k] !== before[k]) changed[k] = {from: before[k], to: after[k]}; });
+          d._state_changes = changed;
+        }
         dryResult.textContent = JSON.stringify(d, null, 2);
         dryResult.style.display = "";
       });

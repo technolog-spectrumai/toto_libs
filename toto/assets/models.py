@@ -410,6 +410,7 @@ class Contract(models.Model):
     uuid = models.UUIDField(default=_uuid.uuid4, editable=False, unique=True, db_index=True)
     name = models.CharField(max_length=255, unique=True)
     code = models.TextField(blank=True, help_text="Lapis smart-contract YAML.")
+    global_state = models.JSONField(default=dict, blank=True, help_text="Runtime Lapis VM state (status, counters, etc.).")
     metadata = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
