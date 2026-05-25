@@ -107,7 +107,7 @@ def _collect_role_stats(mag):
 
     if role.overseeing_mobilization:
         try:
-            from toto.mobilization.models import Deployment
+            from toto.response.models import Deployment
             stats["active_deployments"] = Deployment.objects.filter(status="active").count()
         except Exception:
             pass

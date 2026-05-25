@@ -11,9 +11,11 @@ from .models import (
     MobilizationReport,
     MobilizationReportEvidence,
     MobilizationEvent,
+    EmergencyStatus,
+)
+from toto.response.models import (
     Deployment,
     DeploymentAssignment,
-    EmergencyStatus,
     Intervention,
 )
 from . import services
@@ -214,7 +216,7 @@ class DeploymentTest(TestCase):
         event, community = self._event_and_community()
         mission = MagicMock()
         mission.pk = 5
-        with patch("toto.mobilization.services.Deployment.objects.create") as mock_create:
+        with patch("toto.response.models.Deployment.objects.create") as mock_create:
             mock_create.return_value = MagicMock()
             services.create_deployment(event, community, kanban_mission=mission, title="D1", deployment_type="flood_response")
         kwargs = mock_create.call_args[1]
@@ -291,7 +293,7 @@ class InterventionTest(TestCase):
         deployment = MagicMock(spec=Deployment)
         kanban_task = MagicMock()
         kanban_task.pk = 7
-        with patch("toto.mobilization.services.Intervention.objects.create") as mock_create:
+        with patch("toto.response.models.Intervention.objects.create") as mock_create:
             mock_create.return_value = MagicMock()
             services.create_intervention(
                 deployment,

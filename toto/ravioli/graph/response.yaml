@@ -1,0 +1,140 @@
+app: response
+
+nodes:
+  - label: InterventionType
+    model: toto.response.models.InterventionType
+    uuid_field: slug
+    fields:
+      name: name
+      slug: slug
+      description: description
+
+  - label: Deployment
+    model: toto.response.models.Deployment
+    uuid_field: id
+    fields:
+      title: title
+      deployment_type: deployment_type
+      priority: priority
+      status: status
+      objective: objective
+      is_hybrid: is_hybrid
+
+  - label: DeploymentAssignment
+    model: toto.response.models.DeploymentAssignment
+    uuid_field: id
+    fields:
+      role: role
+      status: status
+
+  - label: EvacuationRoute
+    model: toto.response.models.EvacuationRoute
+    uuid_field: id
+    fields:
+      name: name
+      route_type: route_type
+      status: status
+      notes: notes
+
+  - label: Intervention
+    model: toto.response.models.Intervention
+    uuid_field: id
+    fields:
+      title: title
+      priority: priority
+      status: status
+      description: description
+      is_required: is_required
+      effect_description: effect_description
+
+links:
+  - from_label: Deployment
+    to_label: MobilizationEvent
+    relation: PART_OF_EVENT
+    source: event
+    cardinality: one
+    nullable: false
+
+  - from_label: Deployment
+    to_label: Community
+    relation: DEPLOYED_BY
+    source: community
+    cardinality: one
+    nullable: false
+
+  - from_label: Deployment
+    to_label: Person
+    relation: COORDINATED_BY
+    source: coordinator
+    cardinality: one
+    nullable: true
+
+  - from_label: Deployment
+    to_label: KanbanMission
+    relation: LINKED_MISSION
+    source: kanban_mission
+    cardinality: one
+    nullable: true
+
+  - from_label: DeploymentAssignment
+    to_label: Deployment
+    relation: ASSIGNED_TO
+    source: deployment
+    cardinality: one
+    nullable: false
+
+  - from_label: DeploymentAssignment
+    to_label: Responder
+    relation: ASSIGNS_RESPONDER
+    source: responder
+    cardinality: one
+    nullable: false
+
+  - from_label: DeploymentAssignment
+    to_label: Person
+    relation: ASSIGNED_BY
+    source: assigned_by
+    cardinality: one
+    nullable: true
+
+  - from_label: EvacuationRoute
+    to_label: MobilizationEvent
+    relation: USED_IN_EVENT
+    source: event
+    cardinality: one
+    nullable: false
+
+  - from_label: EvacuationRoute
+    to_label: Route
+    relation: USES_ROUTE
+    source: route
+    cardinality: one
+    nullable: false
+
+  - from_label: Intervention
+    to_label: Deployment
+    relation: PART_OF_DEPLOYMENT
+    source: deployment
+    cardinality: one
+    nullable: false
+
+  - from_label: Intervention
+    to_label: InterventionType
+    relation: OF_TYPE
+    source: intervention_type
+    cardinality: one
+    nullable: true
+
+  - from_label: Intervention
+    to_label: Responder
+    relation: ASSIGNED_TO
+    source: assigned_to
+    cardinality: one
+    nullable: true
+
+  - from_label: Intervention
+    to_label: Person
+    relation: REPORTED_BY
+    source: reported_by
+    cardinality: one
+    nullable: true

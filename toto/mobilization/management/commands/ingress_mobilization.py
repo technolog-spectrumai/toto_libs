@@ -10,20 +10,22 @@ from toto.mobilization.models import (
     AchievementBadge,
     PersonAchievement,
     IncidentType,
-    InterventionType,
     Responder,
     ResponderSkill,
     MobilizationReport,
     MobilizationReportEvidence,
     MobilizationEvent,
+    EmergencyStatus,
+    EmergencyEquipmentAccess,
+)
+from toto.response.models import (
+    InterventionType,
     Deployment,
     DeploymentAssignment,
     DeploymentEquipment,
     DeploymentRoute,
     EvacuationRoute,
     Intervention,
-    EmergencyStatus,
-    EmergencyEquipmentAccess,
 )
 
 
