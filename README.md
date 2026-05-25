@@ -181,7 +181,9 @@ Nearly every other app links to `Person` rather than `User` directly. The FK fro
 - `TribunalCase` — a complaint or dispute with a title, reason, description, case number, opener, assignee (judge/mediator), and optional links to a `RealWorldObject` or a `bazaar.Order`.
 - Case status moves through configurable stages. Evidence, rulings, and case notes are stored as sub-records. Tribunal links to inventory and bazaar to support custody and commercial disputes.
 
-**`toto.mobilization`** — Civic readiness. Records mobilization reports, responders, deployment events, and interventions. Used for tracking community response to emergencies declared via the assembly.
+**`toto.mobilization`** — Civic readiness and upstream emergency command. Manages the pipeline from detection to enacted event: `MobilizationReport` (draft → enacted) → `MobilizationEvent` → `EmergencyStatus`. Maintains the `Responder` registry and `AchievementBadge` awards. Emergency declarations require an `assembly.AssemblyProposal` vote before activation.
+
+**`toto.response`** — Field operations layer. Everything that happens after a `MobilizationEvent` is created: `Deployment` (planned → active → completed), `DeploymentAssignment` (per-responder role and status), `Intervention` (discrete field tasks that can mitigate a `detections.Detection`), `EvacuationRoute`, `DeploymentRoute`, `DeploymentEquipment`. Business logic is orchestrated from `mobilization.services`; `response` owns the field-side data.
 
 ---
 
@@ -305,7 +307,9 @@ Nearly every other app links to `Person` rather than `User` directly. The FK fro
 - `DocumentationPage` / `DocumentationSection` — rich documentation attached to a mission. Can be flagged as a how-to manual.
 - `ProjectTokenization` — links a `Project` to an `Asset` one-to-one. Permanent and immutable (delete is blocked). Acts as project shares on the ledger.
 
-**`toto.mobilization`** — Civic readiness and emergency response tracking. `MobilizationReport` → `Responder` / `DeploymentEvent` / `Intervention`. Linked to locations for geographic context and to assembly emergency declarations.
+**`toto.mobilization`** — Upstream emergency command layer. `MobilizationReport` → `MobilizationEvent` → `EmergencyStatus`. Owns the `Responder` registry and `AchievementBadge` awards. Interfaces downward into `response` for field operations.
+
+**`toto.response`** — Field operations. `Deployment` → `DeploymentAssignment` / `Intervention` / `DeploymentRoute` / `DeploymentEquipment`. Each deployment belongs to a `MobilizationEvent` and optionally links to a `kanban.Mission`.
 
 ---
 

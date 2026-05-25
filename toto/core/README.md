@@ -1,0 +1,19 @@
+# toto.core
+
+Platform configuration and tenant identity. Defines the top-level `Platform` singleton, the `Federation` it belongs to, and the visual/branding system (`Theme`, `ColorMix`, `Font`).
+
+## Models
+
+- `Font` — a named typeface reference (family name + CSS import URL). Used by `Theme`.
+- `ColorMix` — a named palette record (primary, secondary, accent, background, surface, text, border hex values). Used by `Theme`.
+- `Theme` — visual identity for a platform or community. Links a `ColorMix` and two `Font` objects (body/heading). Has a `dark_mode` flag and a `custom_css` override field.
+- `Federation` — a named grouping of platforms. Extends `DomainEntity` (slug, description, logo, metadata). One-to-one with a `Theme`.
+- `Platform` — the singleton record representing this deployment. Fields: `name`, `slug`, `federation` (FK to `Federation`), `domain`, `contact_email`, `theme` (FK to `Theme`), `is_active`. One-to-one back-ref from `backup.BackupProfile`.
+
+`DomainEntity` is the abstract base used by almost every domain model in the system. It provides: `uuid` (auto), `slug` (auto from name), `name`, `description`, `logo`, `metadata` (JSON), `created_at`, `updated_at`.
+
+## Key coupling
+
+- `core.Platform` is read at boot time by `sso_master.services.get_active_platform()` to resolve the OIDC issuer URL.
+- `backup.BackupProfile` has a one-to-one with `Platform`.
+- `Theme` is read by every template that renders the platform's branding.
