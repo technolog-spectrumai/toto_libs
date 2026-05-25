@@ -1,0 +1,246 @@
+{% extends "tariffs/base.html" %}
+{% load i18n %}
+
+{% block tariffs_title %}{{ tariff.name }}{% endblock %}
+
+{% block tariffs_content %}
+<div class="space-y-6">
+
+  <!-- Header card -->
+  <div
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="rounded-lg border p-6 shadow-sm">
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div class="space-y-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <h2 class="text-2xl font-bold">{{ tariff.name }}</h2>
+          <span class="rounded border border-current/20 px-2 py-0.5 text-sm font-semibold">{{ tariff.code }}</span>
+          <span class="rounded px-2 py-0.5 text-xs font-semibold
+            {% if tariff.status == 'active' %}
+              :class="darkMode ? 'bg-green-900/20 text-green-300' : 'bg-green-100 text-green-700'"
+            {% elif tariff.status == 'draft' %}
+              :class="darkMode ? 'bg-yellow-900/20 text-yellow-300' : 'bg-yellow-100 text-yellow-700'"
+            {% elif tariff.status == 'paused' %}
+              :class="darkMode ? 'bg-orange-900/20 text-orange-300' : 'bg-orange-100 text-orange-700'"
+            {% else %}
+              :class="darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'"
+            {% endif %}">
+            {{ tariff.get_status_display }}
+          </span>
+        </div>
+        {% if tariff.description %}
+          <p class="text-sm opacity-70">{{ tariff.description }}</p>
+        {% endif %}
+        <div class="flex flex-wrap gap-4 text-xs opacity-60">
+          {% if tariff.source_type %}
+            <span><i class="fa-solid fa-link mr-1"></i>{{ tariff.source_type }}:{{ tariff.source_id }}</span>
+          {% endif %}
+          <span><i class="fa-regular fa-clock mr-1"></i>{% trans "Created" %} {{ tariff.created_at|date:"M d, Y H:i" }}</span>
+          <span><i class="fa-regular fa-clock mr-1"></i>{% trans "Updated" %} {{ tariff.updated_at|date:"M d, Y H:i" }}</span>
+        </div>
+      </div>
+      <div class="flex shrink-0 flex-wrap gap-2">
+        <a
+          href="{% url 'tariffs:tariff_edit' tariff.uuid %}"
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
+          <i class="fa-solid fa-pen"></i>
+          {% trans "Edit" %}
+        </a>
+        <a
+          href="{% url 'tariffs:tariff_item_create' tariff.uuid %}"
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
+          <i class="fa-solid fa-plus"></i>
+          {% trans "Add Item" %}
+        </a>
+        <a
+          href="{% url 'tariffs:tariff_simulate' tariff.uuid %}"
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
+          <i class="fa-solid fa-flask"></i>
+          {% trans "Simulate Usage" %}
+        </a>
+        <a
+          href="{% url 'tariffs:usage_create' %}"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition hover:opacity-90">
+          <i class="fa-solid fa-bolt"></i>
+          {% trans "Record Usage" %}
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+    {% for label, value in usage_stats.items %}
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-lg border p-4 shadow-sm text-center">
+        <div class="text-2xl font-bold">{{ value }}</div>
+        <div class="mt-1 text-xs opacity-60 capitalize">{{ label }}</div>
+      </div>
+    {% endfor %}
+  </div>
+
+  <!-- Tariff items table -->
+  <div
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="rounded-lg border shadow-sm">
+    <div class="flex items-center justify-between border-b px-5 py-4"
+         :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+      <h3 class="font-semibold">
+        <i class="fa-solid fa-table-list mr-2 opacity-60"></i>
+        {% trans "Tariff Items" %}
+      </h3>
+      <a
+        href="{% url 'tariffs:tariff_item_create' tariff.uuid %}"
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80">
+        <i class="fa-solid fa-plus"></i>
+        {% trans "Add Item" %}
+      </a>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b text-xs font-semibold uppercase opacity-60"
+              :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+            <th class="px-5 py-3 text-left">{% trans "Metric" %}</th>
+            <th class="px-5 py-3 text-left">{% trans "Name" %}</th>
+            <th class="px-5 py-3 text-left">{% trans "Asset" %}</th>
+            <th class="px-5 py-3 text-right">{% trans "Price" %}</th>
+            <th class="px-5 py-3 text-left">{% trans "Unit / Qty" %}</th>
+            <th class="px-5 py-3 text-left">{% trans "Receiving Account" %}</th>
+            <th class="px-5 py-3 text-left">{% trans "Active" %}</th>
+            <th class="px-5 py-3"></th>
+          </tr>
+        </thead>
+        <tbody class="divide-y" :class="darkMode ? 'divide-accent-1' : 'divide-accent-2'">
+          {% for item in items %}
+            <tr class="transition hover:opacity-80">
+              <td class="px-5 py-3">
+                <code class="rounded px-1.5 py-0.5 text-xs"
+                      :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
+                  {{ item.code }}
+                </code>
+              </td>
+              <td class="px-5 py-3">{{ item.name }}</td>
+              <td class="px-5 py-3">
+                <span class="rounded border border-current/20 px-2 py-0.5 text-xs font-semibold">
+                  {{ item.charged_asset.unit_name }}
+                </span>
+              </td>
+              <td class="px-5 py-3 text-right font-mono text-xs">
+                {{ item.price_per_unit_display }} {{ item.charged_asset.unit_name }}
+              </td>
+              <td class="px-5 py-3 text-xs opacity-70">
+                {{ item.get_unit_display }}{% if item.unit_quantity != 1 %} / {{ item.unit_quantity }}{% endif %}
+                <span class="ml-1 opacity-50">({{ item.get_rounding_mode_display }})</span>
+              </td>
+              <td class="px-5 py-3 text-xs opacity-70">{{ item.receiving_account.code }}</td>
+              <td class="px-5 py-3">
+                {% if item.active %}
+                  <span :class="darkMode ? 'text-green-400' : 'text-green-600'">
+                    <i class="fa-solid fa-circle-check"></i>
+                  </span>
+                {% else %}
+                  <span class="opacity-30"><i class="fa-solid fa-circle-xmark"></i></span>
+                {% endif %}
+              </td>
+              <td class="px-5 py-3">
+                <a href="{% url 'tariffs:tariff_item_edit' item.pk %}"
+                   :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                   class="inline-flex items-center gap-1 rounded border px-2 py-1 text-xs font-semibold transition hover:opacity-80">
+                  <i class="fa-solid fa-pen"></i>
+                </a>
+              </td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="8" class="px-5 py-8 text-center text-sm opacity-60">
+                {% trans "No items. Add a tariff item to start billing." %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Recent usage -->
+  <div
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="rounded-lg border shadow-sm">
+    <div class="flex items-center justify-between border-b px-5 py-4"
+         :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+      <h3 class="font-semibold">
+        <i class="fa-solid fa-bolt mr-2 opacity-60"></i>
+        {% trans "Recent Usage" %}
+      </h3>
+      <a
+        href="{% url 'tariffs:usage_list' %}?tariff={{ tariff.code }}"
+        :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+        class="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80">
+        {% trans "All Usage" %}
+      </a>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b text-xs font-semibold uppercase opacity-60"
+              :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+            <th class="px-5 py-3 text-left">{% trans "UUID" %}</th>
+            <th class="px-5 py-3 text-left">{% trans "Metric" %}</th>
+            <th class="px-5 py-3 text-right">{% trans "Quantity" %}</th>
+            <th class="px-5 py-3 text-left">{% trans "Payer" %}</th>
+            <th class="px-5 py-3 text-left">{% trans "Status" %}</th>
+            <th class="px-5 py-3 text-left">{% trans "Occurred" %}</th>
+            <th class="px-5 py-3"></th>
+          </tr>
+        </thead>
+        <tbody class="divide-y" :class="darkMode ? 'divide-accent-1' : 'divide-accent-2'">
+          {% for rec in recent_usage %}
+            <tr class="transition hover:opacity-80">
+              <td class="px-5 py-3 font-mono text-xs opacity-70">{{ rec.uuid|stringformat:"s"|slice:":8" }}…</td>
+              <td class="px-5 py-3">
+                <code class="rounded px-1.5 py-0.5 text-xs"
+                      :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
+                  {{ rec.metric_code }}
+                </code>
+              </td>
+              <td class="px-5 py-3 text-right font-mono text-xs">{{ rec.quantity }} {{ rec.get_unit_display }}</td>
+              <td class="px-5 py-3 text-xs opacity-70">{{ rec.payer_account.code }}</td>
+              <td class="px-5 py-3">
+                <span class="rounded px-2 py-0.5 text-xs font-semibold
+                  {% if rec.status == 'posted' %}:class="darkMode ? 'bg-green-900/20 text-green-300' : 'bg-green-100 text-green-700'"
+                  {% elif rec.status == 'failed' %}:class="darkMode ? 'bg-red-900/20 text-red-300' : 'bg-red-100 text-red-700'"
+                  {% elif rec.status == 'pending' %}:class="darkMode ? 'bg-yellow-900/20 text-yellow-300' : 'bg-yellow-100 text-yellow-700'"
+                  {% else %}:class="darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'"{% endif %}">
+                  {{ rec.get_status_display }}
+                </span>
+              </td>
+              <td class="px-5 py-3 text-xs opacity-70">{{ rec.occurred_at|date:"M d, H:i"|default:"—" }}</td>
+              <td class="px-5 py-3">
+                <a href="{% url 'tariffs:usage_detail' rec.uuid %}"
+                   :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                   class="inline-flex items-center gap-1 rounded border px-2 py-1 text-xs font-semibold transition hover:opacity-80">
+                  <i class="fa-solid fa-arrow-right"></i>
+                </a>
+              </td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="7" class="px-5 py-8 text-center text-sm opacity-60">
+                {% trans "No usage recorded yet." %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

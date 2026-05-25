@@ -1,0 +1,190 @@
+{% extends "tariffs/base.html" %}
+{% load i18n %}
+
+{% block tariffs_title %}{% trans "Tariff Metrics" %}{% endblock %}
+
+{% block tariffs_content %}
+<div class="grid gap-5 lg:grid-cols-[260px_minmax(0,1fr)]">
+
+  <aside
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="space-y-4 rounded-lg border p-5 shadow-sm">
+    <form method="get" class="space-y-3">
+      <div>
+        <label class="mb-1 block text-sm font-semibold">{% trans "Tariff" %}</label>
+        <select
+          name="tariff"
+          :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+          class="w-full rounded-lg border px-3 py-2 text-sm outline-none">
+          <option value="">{% trans "All" %}</option>
+          {% for t in tariffs %}
+            <option value="{{ t.code }}" {% if tariff_filter == t.code %}selected{% endif %}>{{ t.code }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="mb-1 block text-sm font-semibold">{% trans "Status" %}</label>
+        <select
+          name="status"
+          :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+          class="w-full rounded-lg border px-3 py-2 text-sm outline-none">
+          <option value="">{% trans "All" %}</option>
+          {% for val, label in status_choices %}
+            <option value="{{ val }}" {% if status_filter == val %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="mb-1 block text-xs font-semibold">{% trans "From" %}</label>
+          <input type="date" name="date_from" value="{{ date_from }}"
+            :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+            class="w-full rounded-lg border px-2 py-2 text-xs outline-none">
+        </div>
+        <div>
+          <label class="mb-1 block text-xs font-semibold">{% trans "To" %}</label>
+          <input type="date" name="date_to" value="{{ date_to }}"
+            :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+            class="w-full rounded-lg border px-2 py-2 text-xs outline-none">
+        </div>
+      </div>
+      <button
+        type="submit"
+        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+        class="inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+        <i class="fa-solid fa-filter"></i>
+        {% trans "Apply" %}
+      </button>
+    </form>
+  </aside>
+
+  <div class="space-y-6">
+
+    <!-- Status counts -->
+    <div class="grid grid-cols-2 gap-3 sm:grid-cols-5">
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-4 shadow-sm text-center">
+        <div class="text-2xl font-bold">{{ total_records }}</div>
+        <div class="mt-1 text-xs opacity-60">{% trans "Total" %}</div>
+      </div>
+      {% for status_key, count in status_counts.items %}
+        <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border p-4 shadow-sm text-center">
+          <div class="text-2xl font-bold
+            {% if status_key == 'posted' %}:class="darkMode ? 'text-green-400' : 'text-green-600'"
+            {% elif status_key == 'failed' %}:class="darkMode ? 'text-red-400' : 'text-red-600'"
+            {% elif status_key == 'pending' %}:class="darkMode ? 'text-yellow-400' : 'text-yellow-600'"
+            {% endif %}">{{ count }}</div>
+          <div class="mt-1 text-xs opacity-60 capitalize">{{ status_key }}</div>
+        </div>
+      {% endfor %}
+    </div>
+
+    <div class="grid gap-5 md:grid-cols-2">
+
+      <!-- By metric -->
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-lg border shadow-sm">
+        <div class="border-b px-5 py-4" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+          <h3 class="font-semibold"><i class="fa-solid fa-gauge mr-2 opacity-60"></i>{% trans "Usage by Metric" %}</h3>
+        </div>
+        <div class="p-4 space-y-2">
+          {% for row in by_metric %}
+            <div class="flex items-center justify-between text-sm">
+              <code class="rounded px-1.5 py-0.5 text-xs"
+                    :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
+                {{ row.metric_code }}
+              </code>
+              <span class="font-bold">{{ row.count }}</span>
+            </div>
+          {% empty %}
+            <p class="text-sm opacity-60">{% trans "No data." %}</p>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- By asset -->
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-lg border shadow-sm">
+        <div class="border-b px-5 py-4" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+          <h3 class="font-semibold"><i class="fa-solid fa-coins mr-2 opacity-60"></i>{% trans "Drained by Token" %}</h3>
+        </div>
+        <div class="p-4 space-y-2">
+          {% for row in by_asset %}
+            <div class="flex items-center justify-between text-sm">
+              <span class="rounded border border-current/20 px-2 py-0.5 text-xs font-semibold">
+                {{ row.charged_asset__unit_name }}
+              </span>
+              <span class="font-mono font-bold">{{ row.total }}</span>
+            </div>
+          {% empty %}
+            <p class="text-sm opacity-60">{% trans "No charges posted." %}</p>
+          {% endfor %}
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Revenue by receiving account -->
+    <div
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-lg border shadow-sm">
+      <div class="border-b px-5 py-4" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <h3 class="font-semibold"><i class="fa-solid fa-arrow-trend-up mr-2 opacity-60"></i>{% trans "Revenue by Receiving Account" %}</h3>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b text-xs font-semibold uppercase opacity-60"
+                :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+              <th class="px-5 py-3 text-left">{% trans "Account" %}</th>
+              <th class="px-5 py-3 text-left">{% trans "Asset" %}</th>
+              <th class="px-5 py-3 text-right">{% trans "Total (base units)" %}</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y" :class="darkMode ? 'divide-accent-1' : 'divide-accent-2'">
+            {% for row in by_account %}
+              <tr>
+                <td class="px-5 py-3 text-xs">{{ row.receiving_account__code }} — {{ row.receiving_account__name }}</td>
+                <td class="px-5 py-3 text-xs">{{ row.charged_asset__unit_name }}</td>
+                <td class="px-5 py-3 text-right font-mono font-bold">{{ row.total }}</td>
+              </tr>
+            {% empty %}
+              <tr>
+                <td colspan="3" class="px-5 py-6 text-center text-sm opacity-60">{% trans "No revenue yet." %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Low balances -->
+    {% if low_balance_accounts %}
+      <div
+        :class="darkMode ? 'border-red-500/30 bg-red-900/10' : 'border-red-300 bg-red-50'"
+        class="rounded-lg border p-5 shadow-sm">
+        <h3 class="mb-3 font-semibold"
+            :class="darkMode ? 'text-red-300' : 'text-red-700'">
+          <i class="fa-solid fa-triangle-exclamation mr-2"></i>
+          {% trans "Low Prepaid Balances" %}
+        </h3>
+        <div class="space-y-2">
+          {% for holding in low_balance_accounts %}
+            <div class="flex items-center justify-between text-sm">
+              <span>{{ holding.account.code }} / {{ holding.asset.unit_name }}</span>
+              <span class="font-mono font-bold"
+                    :class="darkMode ? 'text-red-300' : 'text-red-700'">
+                {{ holding.balance_display }} {{ holding.asset.unit_name }}
+              </span>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}
