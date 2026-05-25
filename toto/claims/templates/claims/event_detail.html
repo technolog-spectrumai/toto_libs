@@ -85,5 +85,9 @@
       </div>
     </dl>
   </div>
+
+  {% with graph_model="event" graph_id=event.uuid %}
+  {% include "claims/_lifecycle_graph.html" %}
+  {% endwith %}
 </div>
 {% endblock %}

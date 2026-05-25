@@ -69,6 +69,10 @@
     </dl>
   </div>
 
+  {% with graph_model="condition" graph_id=condition.uuid %}
+  {% include "claims/_lifecycle_graph.html" %}
+  {% endwith %}
+
   {% if related_events %}
   <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
        class="rounded-lg border shadow-sm overflow-hidden">
