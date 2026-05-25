@@ -2,6 +2,10 @@
 
 Community marketplace. Handles shops, product catalogs, cart → order → payment flows, inventory, shipping, and coupons. Payments are settled through the `assets` ledger.
 
+## Purpose
+
+A community opens a `Shop`, vendors list `Product` records, and buyers browse → add to cart → checkout. Payment settles as a ledger transfer or creates an `Obligation` for credit terms. `MarketCustodian` records let a regulated body approve products before they go live and review service deliveries before payment is released. Community transaction fees (set by assembly vote) are applied automatically at checkout. Disputes over orders feed into the `tribunal`.
+
 ## Models
 
 - `Shop` — a community storefront. FK to `socialhub.Community`. Has `is_active`, `slug`, M2M to `Person` (managers).

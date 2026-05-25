@@ -96,11 +96,15 @@ Apps are listed in the order they appear in `INSTALLED_APPS`. Third-party librar
 - `batch.py` — bulk-write helpers used during ingress and migrations.
 - `connectors.py` / `domain.py` — base connector patterns for inter-app service calls.
 
-**`toto.api`** — External service connector registry.
-- `ApiConnector` — stores a base URL and sanitized JSON credentials for an external HTTP service. The `_reject_secret_like_json` validator blocks storing raw secrets in the credential blob.
-- `EmailService` — SMTP configuration (host, port, TLS, username, hashed password) for outbound email. Communities point to an EmailService for member notifications.
+**`toto.api`** — External service connector registry and email delivery.
+- `ApiConnector` — stores a base URL, auth type (`none` / `api_key_header` / `bearer_token` / `query_param`), schema-validated `auth_config` JSON, `api_secret` FK to `gervazy.EncryptedSecret`, and `signing_key` FK to `gervazy.EncryptedPrivateKey`. The `_reject_secret_like_json` validator rejects any config key that looks like a secret (`api_key`, `token`, `password`, `client_secret`, etc.) — credentials must go to gervazy, never into the config blob.
+- `Connector` — concrete subclass of `ApiConnector`. Adds `description` and `tags`.
+- `EmailService` — SMTP configuration (host, port, TLS, username, `smtp_secret` FK to `gervazy.EncryptedSecret`). Communities and system services send email through a named `EmailService` record.
+- `steven.AgentConnector` subclasses `ApiConnector` to add LLM-specific fields (model, system prompt, temperature, provider).
 
-**`toto.backup`** — Backup management. Records backup job runs, stores metadata about backup archives, and exposes admin views for triggering and monitoring backups.
+**`toto.backup`** — Platform backup signing and storage.
+- `BackupProfile` — per-platform signing configuration. Fields: `platform` (OneToOne FK to `core.Platform`), `signing_key` (FK to `gervazy.EncryptedPrivateKey` — used to sign outbound backup packages), `verify_key` (public key PEM for verifying incoming backups).
+- `StoredBackup` — an archived backup file. Fields: `uid` (UUID), `platform`, `file` (Django `FileField` at `stored-backups/{uid}/`), `file_size`, `checksum`, `is_verified` (bool — signature check passed), `notes`.
 
 ---
 
@@ -121,7 +125,11 @@ Apps are listed in the order they appear in `INSTALLED_APPS`. Third-party librar
 
 `crypto.py` holds the pure-function encryption primitives (derive key, encrypt, decrypt, self-signed cert generation) that operate on raw bytes.
 
-**`toto.vault`** — Media file registry. `VaultFile` tracks uploaded files (images, SVGs, PDFs) with type metadata and public URL resolution. Used by `memo` (SVG diagrams), `library` (document attachments), and anywhere else the system needs managed file references beyond Django's raw `FileField`.
+**`toto.vault`** — User file storage with bucket organization and gateway-controlled sharing.
+- `Bucket` — a named container owned by a `User`. Has `is_public` flag.
+- `VaultFile` — a file stored in a bucket. Tracks `original_filename`, `content_type`, `size`, `checksum`, `uploaded_at`. Soft-delete only (`is_deleted` flag; actual file is not removed). Owner and optional bucket FK.
+- `FileGateway` — a sharing gate on a bucket: `token` (UUID slug for URL access), `allowed_users` (M2M), `is_public`, `expires_at`. OneToOne with `Bucket`.
+- Used by: `library` (book/article PDFs), `memo` (SVG diagrams), `texlab` (LaTeX source files and output PDFs), `ocr` (source images), `academy` (certificates), `tribunal` (documentary evidence).
 
 ---
 
@@ -159,9 +167,14 @@ Nearly every other app links to `Person` rather than `User` directly. The FK fro
 - `EmailService` re-exported here for backward compatibility.
 - **Administrata** — a Cytoscape-based community chain view (`/socialhub/communities/<slug>/administrata/`), visible only to `Person.is_federal_agent` users. Shows the full hierarchy of all communities as rounded-rectangle nodes with parent→child arrows, and each community's head person as a circle node. Backed by a JSON endpoint at `.../administrata/graph.json`.
 
-**`toto.events`** — Scheduled event calendar. `ScheduledEvent` records a named event with start/end time and optional location. Linkable to bazaar products (booking/ticket). `sync_adapters.py` emits graph change events for the ravioli Neo4j layer.
+**`toto.events`** — Scheduled event calendar and personal availability.
+- `EventCategory` — hierarchical (self-referential parent FK).
+- `EventBase` — abstract base (extends `DomainEntity`). Provides `title`, `description`, `starts_at`, `ends_at`, `is_public`, `is_cancelled`. Inherited by both `ScheduledEvent` and `detections.Detection` — detections are time-anchored events.
+- `ScheduledEvent` — a concrete event. Fields: `owner` / `organizers` (M2M to `Person`), `address`, `community`, `max_participants`, `registration_open`.
+- `EventInvite` — an invitation sent to a `Person`. Status: `pending / accepted / declined`.
+- `Availability` — a person's time block. `is_available=False` means blocking (busy). Supports `recurrence` JSON for repeating slots.
 
-**`toto.polls`** — Informal polling. `Poll` with multiple `PollOption` records; members cast `PollVote`. Separate from `assembly` voting — polls are lightweight and carry no governance effect.
+**`toto.polls`** — Informal polling. `Poll` (community-scoped, `is_multiple_choice` flag, `closes_at`) → `Option` (ordered choices) → `Vote` (one per person, unique on `(poll, voter)` for single-choice or `(poll, voter, option)` for multiple-choice). Separate from `assembly` voting — polls carry no governance effect and create no `AssemblyDecision`.
 
 **`toto.assembly`** — Democratic governance engine (the parliament).
 - `CommunityAssemblyConfig` — per-community quorum fraction (e.g. 0.51 = simple majority of yes/(yes+no)).
@@ -175,11 +188,22 @@ Nearly every other app links to `Person` rather than `User` directly. The FK fro
 - `CommunitySenate` — optional upper chamber. Senators are an explicit M2M (not the same as `senior_members`). The senate has a configurable `veto_window_days` to block a passed proposal. One veto is sufficient.
 - `SenateVeto` — a senator's veto record. `OneToOneField` on the proposal ensures only one veto can block it.
 
-**`toto.magistrate`** — Elected governance officials. Tracks magistrate appointments, oversight domains, and links back to the assembly decisions that created the seat. Exposes a public overview page of current holders.
+**`toto.magistrate`** — Elected local governance officials.
+- `MagistrateRole` — named role type with `authority_level`, `can_issue_fines`, `can_issue_decisions` flags.
+- `Magistrate` — a `Person` appointed to a role in a community. Fields: `source_proposal` (FK to `assembly.AssemblyProposal` that authorized appointment), `term_ends_at`, `status` (`active / suspended / retired`).
+- `MagistrateDecision` — a formal decision (`advisory / directive / injunction / ruling`). Has a `related_case` FK to `tribunal.TribunalCase`.
+- `MagistrateReport` — misconduct or review report filed against a magistrate. Status: `pending / reviewed / dismissed / escalated`.
+- `CommunityMagistrateSettings` — per-community config (OneToOne with `Community`). Defines `fine_collection_account` FK to `assets.LedgerAccount`, `max_magistrates`, `term_length_months`.
+- `MagistrateFine` — monetary fine issued under a decision. Creates an `assets.Obligation` against the target's ledger account on issuance. Status: `issued / paid / overturned / written_off`.
 
-**`toto.tribunal`** — Dispute resolution and case tracking.
-- `TribunalCase` — a complaint or dispute with a title, reason, description, case number, opener, assignee (judge/mediator), and optional links to a `RealWorldObject` or a `bazaar.Order`.
-- Case status moves through configurable stages. Evidence, rulings, and case notes are stored as sub-records. Tribunal links to inventory and bazaar to support custody and commercial disputes.
+**`toto.tribunal`** — Dispute resolution from filing through jury verdict to ruling.
+- `TribunalCase` — the root record. Fields: `case_number` (auto), `opener` / `assignee` (FKs to `Person`), `reason` (`breach_of_contract / fraud / damage / harassment / other`), `status` (`open → in_review → in_jury → ruled → closed / dismissed`), optional `linked_object` (FK to `inventory.RealWorldObject`) and `linked_order` (FK to `bazaar.Order`).
+- `TribunalParty` — a person's role in the case (`complainant / respondent / witness / representative`).
+- `TribunalClaim` — a specific assertion (`monetary / specific_performance / declaratory / injunctive`). Monetary claims carry `amount_base_units` + `asset`.
+- `TribunalEvidence` — documentary or testimonial evidence. `vault_file` FK for document uploads.
+- `JurySession` — the voting phase (OneToOne with case). `jurors` M2M to `Person`, configurable `quorum`, `verdict` (`guilty / not_guilty / hung`).
+- `JuryVote` — one juror's vote. Unique on `(session, juror)`.
+- `TribunalRuling` — final ruling (OneToOne with case). `ruling_type` (`monetary_award / specific_performance / dismissal / settlement`). Monetary awards can trigger `assets.Obligation` creation for enforcement.
 
 **`toto.mobilization`** — Civic readiness and upstream emergency command. Manages the pipeline from detection to enacted event: `MobilizationReport` (draft → enacted) → `MobilizationEvent` → `EmergencyStatus`. Maintains the `Responder` registry and `AchievementBadge` awards. Emergency declarations require an `assembly.AssemblyProposal` vote before activation.
 
@@ -245,13 +269,24 @@ Nearly every other app links to `Person` rather than `User` directly. The FK fro
 - `Wishlist` / `WishlistItem` — per-user, per-shop saved products.
 - `ShipmentLocation` — reusable delivery addresses for quick checkout.
 
-**`toto.detections`** — Detection events and alert management. `Detection` records a named anomaly or security event with severity, source, and description. Linked to kanban tasks for mitigation tracking and to locations for geo-tagged incidents.
+**`toto.detections`** — Incident and threat detection registry.
+- `DetectionCategory` — hierarchical tree (self-referential parent FK). Examples: `Natural Disaster > Flood`, `Security > Intrusion`.
+- `Detection` — extends `EventBase`. Core record. Fields: `category`, `address` / `zone` / `route` (geographic anchors), `reported_by` / `involved_persons` (M2M to `Person`), `severity` (`low / medium / high / critical`), `detection_type` (`incident / hazard / threat / observation`), `status` (`new / acknowledged / in_progress / mitigated / closed / false_positive`), `severity_score` (float — drives `MobilizationReport` severity recalculation), `mitigation_task` FK to `kanban.Task`.
+- `DetectionHandle` — assigns a person to actively work a detection. Status: `open / in_progress / resolved / transferred`.
+- Services: `ensure_detection_mitigation_task(detection)` — idempotent task creation; `detection_map_feature(detection)` — GeoJSON for map rendering.
 
-**`toto.logistics`** — Physical package and shipment tracking independent of the bazaar. `Package` → `Shipment` → `Transport` across `Route` segments. Complements bazaar fulfillment for logistics-heavy communities.
+**`toto.logistics`** — Physical package and transport tracking.
+- `Transport` — a carrier (vehicle, vessel, courier). Fields: `mode` (`road / rail / water / air / foot / mixed`), `community`, `capacity`, `operator` (FK to `Person`), `current_location` / `origin` / `destination` (FKs to `locations.Address`).
+- `Package` — a shipment. Fields: `reference` (unique), `transport` FK, `shipment` (OneToOne FK to `bazaar.Shipment`, optional), `origin` / `destination` addresses, `weight_kg`, `status` (`pending / picked_up / in_transit / out_for_delivery / delivered / failed / returned`), `expected_at`, `delivered_at`.
+- `PackageEvent` — append-only status/location update. Each event records `event_type`, `location`, and `occurred_at`.
+- Complements bazaar fulfillment: a `bazaar.Shipment` can be tracked as a `Package` via the OneToOne FK.
 
 **`toto.inventory`** — Real-world object registry and tokenization anchor.
-- `ObjectType` — a named category of physical objects (e.g. "Artwork", "Vehicle", "Real Estate").
-- `RealWorldObject` — a specific named physical object with owner, description, location, and object type. The anchor for `assets.Tokenization`: once tokenized, the object's `Asset` represents it on the ledger. Also linkable to `TribunalCase` (disputes over custody or valuation).
+- `ObjectType` — extends `DomainEntity`. Category of physical objects (`category` slug, `unit_of_measure`).
+- `RealWorldObject` — extends `DomainEntity`. Key fields: `object_type`, `owner` (community FK), `custodian` (person FK), `serial_number`, `model_name`, `manufacturer`, `acquisition_date`, `acquisition_cost_base_units`, `condition` (`new / good / fair / poor / damaged / decommissioned`), `status` (`in_service / in_storage / in_transit / maintenance / decommissioned`), `storage_location` FK.
+- `InventorySite` — a physical facility (warehouse, depot, field station, vehicle). FK to `community` and `locations.Address`.
+- `StorageLocation` — a named position within a site (shelf, bay, room). FK to `InventorySite`.
+- Tokenization anchor: `assets.Tokenization` links a `RealWorldObject` one-to-one to an `Asset` — once created, immutable. Also linked by `response.DeploymentEquipment` (field allocation) and `mobilization.EmergencyEquipmentAccess` (emergency hybrid access).
 
 ---
 
@@ -272,9 +307,20 @@ Nearly every other app links to `Person` rather than `User` directly. The FK fro
 - `MemoCard` — ordered content card with a Trix body, optional image, and optional `MemoDiagram`.
 - `MemoDiagram` — an SVG file referenced from the vault (`VaultFile` with `file_type="svg"`), embeddable in cards.
 
-**`toto.quizzes`** — Quiz and exam engine. `Quiz` → `Question` → `Answer`. Official quizzes (`is_official=True`) are assigned as module exams in `academy.CourseModule`. Quiz attempts are tracked per student; results determine badge awards in the academy.
+**`toto.quizzes`** — Personality and assessment quiz engine. Produces trait scores rather than right/wrong grades.
+- `Quiz` → `QuizQuestion` → `QuizAnswer` — three-level content hierarchy.
+- `QuizTrait` — a named dimension being measured (e.g. `leadership`, `empathy`). Per-quiz.
+- `QuizAnswerTrait` — links an answer to a trait with a float `weight`. Multiple traits can be affected by a single answer.
+- `QuizAttempt` — one person's completed attempt. `result_metadata` JSON stores computed trait scores.
+- `QuizAttemptAnswer` — the answer selected for each question in an attempt.
+- Used by `academy` for module exams; results can gate `SkillBadge` award and `LearningPath` progression.
 
-**`toto.competence`** — Skill badge registry. `SkillBadge` is a named, typed credential awarded when a student completes an academy module exam. Badges aggregate into `LearningPath` progressions in the academy.
+**`toto.competence`** — Skills registry.
+- `Experience` — a named experience/qualification type. Reference data.
+- `SkillGroup` — a category of skills (e.g. `mobilization`, `technical`, `leadership`). Has `name`, `slug`, `icon`.
+- `SkillBadge` — a single named skill within a group. Fields: `level` (`basic / intermediate / advanced / expert`), `is_active`.
+- `SkillBadgePrerequisite` — directed prerequisite link between two badges. `clean()` prevents self-referential prerequisites.
+- Used by: `mobilization.ResponderSkill` (responder proficiency tracking), `academy` (skill unlocked on module completion), `detections.services.skill_metadata()` (skill requirements on mitigation tasks).
 
 **`toto.academy`** — Learning management system.
 - `Teacher` — wraps a `Person` with a title and bio.
@@ -286,9 +332,18 @@ Nearly every other app links to `Person` rather than `User` directly. The FK fro
 - `Cohort` — a scheduled group run of a course with a teacher, capacity, and start/end times.
 - `LearningPath` — an ordered sequence of `SkillBadge` milestones. Students progress through the path as they earn badges.
 
-**`toto.library`** — Bibliographic reference management. `Book` / `Article` records with BibTeX import/export. Optional vault file attachments for PDFs or scanned documents. Used by researchers and academy content authors.
+**`toto.library`** — Media and reference library.
+- `LibraryItem` — abstract base (extends `DomainEntity`). Common fields: `title`, `tags` (M2M to `memo.Tag`), `vault_file` FK, `community`, `is_public`, `author_name`, `published_at`.
+- `Book` — adds `isbn`, `publisher`, `edition`, `page_count`, `language`.
+- `Article` — adds `journal`, `doi`, `url`, `abstract`.
+- `AudioReference` — adds `duration_seconds`, `format` (`mp3 / wav / ogg / flac`), `url`.
+- `VideoReference` — adds `duration_seconds`, `platform` (`youtube / vimeo / internal / other`), `url`, `embed_code`.
+- `LibraryCollection` — a named grouping. M2M to each item type. FK to `curator` (`Person`), `is_public`.
 
-**`toto.bento`** — Structured note and idea container. `Box` → `BentoItem` (a typed block: text, link, image, quote, reference). A flexible catch-all for collecting ideas, concepts, sources, and relationships that don't fit the stricter content models of palimpsest or memo.
+**`toto.bento`** — Idea management and concept mapping.
+- `Category` — extends `DomainEntity`. Classification for idea boxes (`color`, `icon`, community-scoped).
+- `IdeaBox` — extends `DomainEntity`. A named idea or concept. Fields: `category`, `community`, `author`, `status` (`idea / exploring / validated / implementing / archived`), `is_public`, `tags` (M2M).
+- `IdeaLink` — a directed relationship between two idea boxes. Fields: `from_box`, `to_box`, `link_type` (`builds_on / contradicts / related / leads_to`). Unique on `(from_box, to_box, link_type)`. Supports concept mapping and innovation pipeline graphs.
 
 ---
 
@@ -327,7 +382,7 @@ Nearly every other app links to `Person` rather than `User` directly. The FK fro
 
 ### SSO (base)
 
-**`toto.sso_core`** — Shared OIDC manifest: scope definitions, claim mappings, and the `SSOManifest` structure used by both the provider and any client.
+**`toto.sso_core`** — Shared SSO manifest schemas. No models — pure Python dataclasses (`ManifestBundle`, `ConnectionBundle`, `OIDCClientSpec`) serializable to/from JSON with no Django dependency. Used by both `sso_master` (issues bundles) and `sso_client` (consumes bundles) to provision OIDC relying parties across deployments.
 
 **`toto.sso_master`** — Full OIDC 1.0 provider (described in detail in Identity section above).
 
@@ -361,19 +416,20 @@ The following apps are only installed and routed when `BUILD_STUDIO=1`. They all
 - `loader.py` — reads the YAML graph schema to know which models map to which node labels and which FK fields map to which relationship types.
 - `scaffold.py` / `sync.py` — apply the graph shape (upsert nodes and relationships) to Neo4j.
 
-**`toto.texlab`** — Asynchronous LaTeX compilation with live streaming.
-- `TexWorkspace` / `TexFile` — a workspace is a named collection of `.tex` / `.bib` / asset files. The main file is compiled.
-- `TexBuildJob` — a compilation run. Triggered via the UI, queued to Celery, compiled with `pdflatex`/`latexmk`, and output streamed back via WebSocket.
-- `consumers.py` — a Channels consumer subscribed to a build job's group; pushes log lines and final status to the browser in real time.
-- `compile.py` — the actual compilation subprocess logic.
-- `predefined_tasks.py` — Celery task definitions for asynchronous compilation runs.
+**`toto.texlab`** — Asynchronous LaTeX compilation with live log streaming.
+- `LatexWorkspace` — a named project container. FK to `vault.Bucket` (file storage), `owner` Person.
+- `LatexFile` — a file within the workspace. FK to `vault.VaultFile`, `is_main` flag marks the entrypoint `.tex` file.
+- `CompileRun` — a compilation attempt. Fields: `workspace`, `latex_file`, `status` (`queued / running / success / failed`), `compiler` (`pdflatex / xelatex / lualatex`), `output_pdf` (FK to `vault.VaultFile`), `log_output`, `duration_ms`, `workflow_run` FK (for workflow-triggered compiles).
+- Channels consumer streams log lines to the browser in real time and stores the output PDF in vault on success.
 
 **`toto.mandragora`** — Jupyter-style interactive compute engine.
-- `ComputeKernel` — a named Python kernel with environment variables, timeout, and `auto_close` flag. Backed by a subprocess.
-- `KernelDependency` — a pip package required by a kernel. Status: `pending → installing → installed / failed`. Installation is async.
-- `Notebook` → `Cell` — a notebook is an ordered collection of code (Python) or markdown cells. Each cell has `stdout`, `stderr`, `execution_count`, and `rich_output` (for plots, DataFrames, HTML).
-- `kernel_server.py` — a standalone ZMQ server (bound at `tcp://*:5555`) that the Django web process talks to over `KERNEL_SERVER_ADDR`. The kernel server manages Python subprocesses and forwards execution requests/responses. It runs as a separate Docker service (`kernel_server`).
-- `consumers.py` — Channels consumer that proxies cell execution to the kernel server over ZMQ and pushes output back to the browser cell-by-cell in real time.
+- `ExecutableUnit` — abstract base: `source` (code), `status` (`idle / queued / running / done / error`), `execution_count`, `output` (JSON, Jupyter msg spec).
+- `ComputeKernel` — a named kernel session. Fields: `kernel_id` (UUID process ID), `language` (`python / r / julia`), `status` (`starting / idle / busy / dead`), `owner`, `last_activity_at`.
+- `KernelDependency` — a pip package required by a kernel. `install_status`: `pending / installed / failed`.
+- `Notebook` — a named collection of cells. FK to `ComputeKernel`, optional community scope.
+- `Cell` — extends `ExecutableUnit`. Fields: `notebook`, `cell_type` (`code / markdown / raw`), `order`.
+- `kernel_server.py` — standalone ZMQ server at `tcp://*:5555` managed as a separate Docker service. The Django process talks to it over `KERNEL_SERVER_ADDR`.
+- Channels consumer proxies execution requests over ZMQ and pushes outputs back to the browser cell-by-cell.
 
 **`toto.workflows`** — Visual DAG automation engine.
 - `Workflow` → `WorkflowNode` → `WorkflowEdge` — a directed acyclic graph. Node types: `lambda` (runs Python code in mandragora), `split` (fan-out), `join` (fan-in), `report` (renders output), `predefined_task` (calls a registered Celery task by name).
@@ -382,10 +438,12 @@ The following apps are only installed and routed when `BUILD_STUDIO=1`. They all
 - `WorkflowRun` → `WorkflowNodeRun` → `WorkflowEdgeRun` — full execution trace. Each node run carries input/output data, status, error, and Celery task ID.
 - `Report` / `ReportPage` — the output artifact. A report is a rendered snapshot of a report template filled with data from a workflow run.
 
-**`toto.weather`** — Weather data ingestion and display.
-- Ingests current conditions and multi-day forecasts for tracked locations (linked to `locations.Address`).
-- `WeatherObservation` records temperature, humidity, wind speed, pressure, and condition code. Observations are fetched on a schedule.
-- `workflows.py` — integrates with the workflow engine to trigger forecast jobs and push results to reports.
+**`toto.weather`** — Weather data ingestion and forecasting.
+- `WeatherSettings` — platform-wide config: `provider`, `api_endpoint`, `units`, `update_interval_minutes`.
+- `WeatherObservation` — a point-in-time reading at a `locations.Address`. Fields: `temperature_c`, `humidity_pct`, `wind_speed_kmh`, `precipitation_mm`, `condition` slug, `raw_data` JSON, `workflow_run` FK.
+- `ForecastSession` — a batch of forecast points from one API call. FK to `address` and `workflow_run`.
+- `ForecastPoint` — one time-step in a forecast. Fields: `forecast_at`, `address`, temperature, humidity, wind, precipitation, condition.
+- Weather fetches are triggered as `weather_fetch` nodes in the workflow engine.
 
 **`toto.sketch`** — Collaborative real-time whiteboard.
 - `Board` — a named canvas with metadata.
@@ -393,21 +451,26 @@ The following apps are only installed and routed when `BUILD_STUDIO=1`. They all
 - `routing.py` — WebSocket URL routing for board connections.
 
 **`toto.ocr`** — Document OCR processing pipeline.
-- `OCRProject` / `OCRDocument` / `OCRPage` — a project groups documents; each document is split into pages for processing.
-- `ocr.py` — submits page images to the OCR backend (Tesseract or a cloud API).
-- `transform.py` — post-processing: layout analysis, column detection, table extraction, markdown conversion.
-- Results are stored per page and can be exported or fed into further processing (memos, palimpsest pages).
+- `OcrProject` — a named OCR workspace. FK to `vault.Bucket`, `owner` User, `allowed_users` M2M, `language`, `is_active`.
+- `OcrImage` — one image queued for processing. FK to `vault.VaultFile`, `status` (`pending / processing / done / failed`), `page_number`.
+- `OcrLine` — a text line extracted from an image. Fields: `line_number`, `text`, `confidence` (float 0–1), `bounding_box` (JSON `{x, y, w, h}` as image fractions).
+- `ImageTransform` — a pre-processing step (resize, grayscale, threshold, denoise, deskew, crop). Can delegate to a `workflows.LambdaFunction` for custom transforms.
+- `ImageTransformParam` — named parameters for a transform.
+- Results feed into `palimpsest.Page` / `memo.MemoDeck` creation downstream.
 
 **`toto.steven`** — AI agent management.
-- `Agent` — a named autonomous agent with a system prompt, model selection, tool configuration, and run history.
-- `AgentRun` — one invocation of an agent. Tracks input, output, status, token usage, and error.
-- Agents can be triggered manually from the dashboard or scheduled via the workflow engine.
+- `AgentConnector` — extends `api.ApiConnector`. LLM-specific connector. Adds: `model_name` (e.g. `claude-sonnet-4-6`), `system_prompt`, `temperature`, `max_tokens`, `provider` (`anthropic / openai / mistral / custom`).
+- `AgentProfile` — a named agent. Fields: `user` (OneToOne to `auth.User` — the agent's identity), `connector` FK, `is_active`, optional `community` scope.
+- `AgentTool` — a tool available to an agent. `tool_type`: `web_search / code_exec / file_read / api_call / workflow_trigger`.
+- `Conversation` — a thread of messages between a user and an agent.
+- `ChatMessage` — one message. Fields: `role` (`user / assistant / system / tool`), `content`, `tool_calls` / `tool_results` (JSON), `tokens_used`.
+- `AgentRun` — a programmatic invocation (outside a conversation). Tracks `input_data`, `output_data`, `tokens_input` / `tokens_output`, `workflow_run` FK.
+- Agents are triggered manually or as `agent_call` nodes in the workflow engine.
 
-**`toto.travels`** — Route journeys and travel history.
-- `Trip` — a named journey linked to a `Person`. Has start/end dates and a sequence of visited `locations.Address` stops.
-- `TripSegment` — one leg of a trip, optionally linked to a `Route`.
-- `VisitReview` — a person's review and rating of a visited address or place.
-- Integrated with the locations map for visual route display.
+**`toto.travels`** — Route journeys and visit history.
+- `Travel` — extends `DomainEntity`. A named journey. Fields: `participants` (M2M to `Person`), `route` FK to `locations.Route`, optional `community`, `starts_at` / `ends_at`, `status` (`planned / ongoing / completed / cancelled`).
+- `Visit` — extends `DomainEntity`. One person's visit to a location. Fields: `participant` (FK to `Person`), `location` (FK to `locations.Address`), `travel` FK (optional), `visited_at`, `duration_minutes`, `rating` (1–5), `is_public`.
+- Integrated with the locations map for visual route and visit display.
 
 ---
 
