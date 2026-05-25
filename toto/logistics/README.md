@@ -2,6 +2,10 @@
 
 Transport and package tracking. Models a fleet of vehicles/carriers, packages in transit, and timestamped package events. Extends `DomainEntity`.
 
+## Purpose
+
+A logistics coordinator registers a `Transport` (vehicle or courier), then creates `Package` records for shipments in transit. As the package moves, `PackageEvent` records are appended — each event stamps a location and timestamp. A bazaar `Shipment` can be linked one-to-one to a `Package` for end-to-end order tracking. This app is independent of bazaar — communities can track non-commercial logistics (supply drops, equipment transfers) without a shop context.
+
 ## Models
 
 - `TransportMode` — text choices: `road / rail / water / air / foot / mixed`.

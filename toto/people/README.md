@@ -2,6 +2,10 @@
 
 Person profiles. The `Person` model is the shared identity anchor across every domain app. Every user who appears in a community, on a project, in the ledger, or in an emergency response first exists as a `Person`.
 
+## Purpose
+
+When a user registers or is imported, a `Person` record is created and linked one-to-one with their `auth.User`. After that, every domain action — joining a community, taking on a task, receiving a salary, casting an assembly vote, getting deployed as a responder — uses the `Person` FK, never the raw `User`. This decouples platform identity from Django's auth layer and lets the system represent people who have no login account (referenced contacts, external parties).
+
 ## Models
 
 - `Person` — extends `DomainEntity`. Key fields:

@@ -2,6 +2,10 @@
 
 Contract lifecycle primitives. The four models here are the runtime objects that Lapis smart contracts and financial instruments create and track. They attach to an `assets.Agreement` or `assets.Contract` and are the primary source of `ContractEvent` records.
 
+## Purpose
+
+When a financial instrument or Lapis contract executes, it doesn't just post ledger entries — it creates structured state: an `Entitlement` grants a right, a `Schedule` schedules future billings, a `Condition` gates an effect, an `Allocation` ring-fences funds. Every significant state change appends a `ContractEvent` to the audit log. This gives contracts a queryable lifecycle history — you can always answer "what happened under this agreement, and when."
+
 ## Models
 
 - `Entitlement` — a right held by a `LedgerAccount`. Kinds: `service_access`, `lease_right`, `exercise_right`, `reward_eligibility`, `claim_right`, `usage_right`. Fields: `agreement` / `contract` FK, `holder_account`, `kind`, `status` (`active / suspended / expired / revoked`), `starts_at`, `ends_at`, `metadata`.

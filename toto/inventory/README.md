@@ -2,6 +2,10 @@
 
 Physical asset registry. Tracks real-world objects from acquisition through lifecycle events. Objects can be tokenized on the ledger via `assets.Tokenization`.
 
+## Purpose
+
+A community catalogs its physical property — vehicles, tools, equipment, real estate — as `RealWorldObject` records. Items move through condition and status stages over time. Tokenizing an object issues an on-ledger `Asset` that represents it, enabling ownership transfer and collateralization through the financial system. During emergencies, inventory items can be requisitioned for deployment use via `EmergencyEquipmentAccess`; during normal operations they are allocated to specific deployments via `DeploymentEquipment`.
+
 ## Models
 
 - `ObjectType` — extends `DomainEntity`. Classification for real-world objects (e.g. "Vehicle", "Medical Equipment", "Tool"). Has `category` slug and `unit_of_measure`.

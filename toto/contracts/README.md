@@ -2,6 +2,10 @@
 
 Contract graph editor. Provides a human-authored, visual layer on top of `assets.Contract` and `claims` primitives. Contracts are represented as labeled directed graphs (nodes + edges) rendered with Cytoscape.js.
 
+## Purpose
+
+A lawyer or contract author creates a `Contract` document and builds a graph of nodes (obligations, entitlements, accounts, events) connected by typed edges (grants, creates_duty, triggers, settles…). Nodes can be manually authored prose or backed by real Django model instances via a generic FK. The graph is serialized to Cytoscape.js format for interactive visual editing in the browser. This layer is the human-readable face of what `assets.Contract` executes.
+
 ## Models
 
 - `Contract` — a named contract document. Fields: `uuid`, `name` (unique), `description`, `code` (optional YAML snapshot — validated as `language: lapis`, `kind: claims_mesh`), `metadata`. The `contracts.Contract` is the visual/document layer; `assets.Contract` is the executable VM layer.

@@ -2,6 +2,10 @@
 
 Flashcard and diagram system. Supports spaced-repetition deck creation and inline diagram (Mermaid/Graphviz) storage. Decks are embedded in `academy` lessons.
 
+## Purpose
+
+Teachers build `MemoDeck` collections of `MemoCard` flashcards — each card has a front (prompt) and back (answer) plus optional difficulty rating and embedded diagram. Diagrams are stored as `MemoDiagram` records with raw source (Mermaid or Graphviz syntax) and cached SVG output. A `Lesson` in the academy is backed by a `MemoDeck` as its lecture content. Members can also create decks independently for personal study.
+
 ## Models
 
 - `Tag` — simple tag model for memo decks. Fields: `name`, `slug`.

@@ -2,6 +2,10 @@
 
 Encryption-at-rest vault. Implements a three-tier AES-256-GCM key hierarchy: password → Argon2id KDF → UKEK → wrapped VMK → wrapped DEK → encrypted objects. Nothing sensitive is stored in plaintext.
 
+## Purpose
+
+When a user sets their vault password, Argon2id derives a UKEK from it (never stored). The UKEK encrypts a `VaultMasterKey` blob. The VMK in turn wraps `WrappedDataKey` records (one per namespace). Data keys encrypt the actual secrets, files, and private keys. Decryption requires the user's password at runtime — the system cannot read stored secrets without it. The `CryptoAuditLog` records every operation for compliance. The OIDC signing key (`sso_master`) and all outbound API credentials (`api`) live in gervazy.
+
 ## Key hierarchy
 
 ```

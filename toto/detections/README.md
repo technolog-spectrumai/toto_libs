@@ -2,6 +2,10 @@
 
 Incident and threat detection registry. Records detected events — hazards, incidents, threats — with geographic location, severity, and status. Feeds the mobilization pipeline and the kanban task system.
 
+## Purpose
+
+A community member (or an automated sensor feed) files a `Detection`. The detection is geo-tagged, categorized, and rated for severity. A `DetectionHandle` assigns a responder to work it. If the detection is serious enough, it is linked as evidence to a `MobilizationReport`, whose severity is recalculated from the weighted scores of all attached detections. Once a mobilization event is activated, field `Intervention` records link back to the detection they are mitigating — creating a full chain: detection → report → event → deployment → intervention.
+
 ## Models
 
 - `DetectionCategory` — extends `DomainEntity`. Hierarchical category tree (self-referential `parent` FK). Examples: Natural Disaster > Flood, Security > Intrusion.

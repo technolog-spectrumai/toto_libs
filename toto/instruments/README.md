@@ -1,5 +1,9 @@
 # toto.instruments
 
+## Purpose
+
+Financial instruments wrap the `assets` ledger primitives into higher-level financial contracts. Each instrument type creates the appropriate `claims.Entitlement`, `Schedule`, `Condition`, `Allocation`, and `ContractEvent` records as it progresses through its lifecycle. Service classes (one per type) encapsulate all state transitions — views never touch model fields directly. Instruments are how communities structure real economic relationships: a vendor gets paid through escrow, a contributor vests equity, a subscriber is billed monthly, a borrower amortizes a loan.
+
 Django app for deterministic financial instruments:
 
 - Escrow

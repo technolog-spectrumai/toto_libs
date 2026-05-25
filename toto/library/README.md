@@ -2,6 +2,10 @@
 
 Media and reference library. Stores books, articles, audio references, and video references. Items can be organized into collections and attached to vault files.
 
+## Purpose
+
+Academy content authors and researchers catalog reference material — textbooks, papers, recordings, lectures — as typed `LibraryItem` subclass records. Items carry vault file attachments (PDFs, audio files) and can be tagged with `memo.Tag`. `LibraryCollection` lets a curator bundle items into a named reading/viewing list for a course or community.
+
 ## Models
 
 - `LibraryItem` — abstract base (extends `DomainEntity`). Common fields: `title`, `description`, `tags` (M2M to `memo.Tag`), `vault_file` (FK to `vault.VaultFile`, nullable), `community` (FK), `is_public`, `author_name`, `published_at`.

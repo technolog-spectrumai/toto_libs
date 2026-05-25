@@ -2,6 +2,10 @@
 
 GIS-backed geographic model layer. All spatial data uses PostGIS SRID 4326 (WGS84). Models extend `DomainEntity`.
 
+## Purpose
+
+`locations` is the geographic substrate for the rest of the system. Addresses pin people, communities, shops, and events to points on the map. Zones scope delivery areas, emergency declarations, and kanban campaigns. Routes define logistic and evacuation paths. Map layers add thematic overlays (heat maps, polygon annotations) to the community map dashboard. PostGIS enables spatial queries — "all detections within this zone", "nearest inventory site to this address".
+
 ## Models
 
 - `Address` — a postal + geographic point. Fields: `street`, `city`, `postal_code`, `country`, `point` (PostGIS `PointField`, nullable), `community` (FK to `socialhub.Community`).

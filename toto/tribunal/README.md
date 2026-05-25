@@ -2,6 +2,10 @@
 
 Dispute resolution and case management. Members open cases against each other or against commercial transactions. Cases proceed through a jury session to a binding ruling.
 
+## Purpose
+
+A member files a `TribunalCase` against another member, a vendor, or a disputed order. Parties are registered, claims are specified (monetary or performance), and evidence is uploaded. The case moves to a `JurySession` where selected community members vote. A `TribunalRuling` closes the case — monetary awards create `assets.Obligation` records against the losing party's ledger account, making enforcement traceable.
+
 ## Models
 
 - `TribunalCase` — extends `DomainEntity`. The root record. Fields: `community` (FK), `case_number` (auto-generated unique), `opener` (FK to `people.Person`), `assignee` (FK to `people.Person` — judge or mediator), `reason` (`breach_of_contract / fraud / damage / harassment / other`), `status` (`open / in_review / in_jury / ruled / closed / dismissed`), `linked_object` (FK to `inventory.RealWorldObject`, nullable), `linked_order` (FK to `bazaar.Order`, nullable).

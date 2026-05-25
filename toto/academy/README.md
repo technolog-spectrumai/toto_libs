@@ -2,6 +2,10 @@
 
 Learning management system (LMS). Courses, modules, lessons, student enrollment, certificates, cohorts, and learning paths.
 
+## Purpose
+
+A `Teacher` creates a `Course` structured into `CourseModule` → `Lesson` chains. Each lesson is backed by a `MemoDeck` of flashcards. A module can have an exam `Quiz`; passing unlocks a `SkillBadge`. Students enroll, work through lessons, take quizzes, and earn certificates. `Cohort` records let a teacher run a group through a course on a shared schedule. `LearningPath` sequences badges into progressions for structured skill development.
+
 ## Models
 
 - `Teacher` — a `Person` authorized to create courses. Fields: `person` (FK), `community` (FK), `is_active`, `bio`.

@@ -4,6 +4,10 @@
 
 Document OCR pipeline. Images uploaded to a vault bucket are processed through a configurable transform chain to extract text line by line.
 
+## Purpose
+
+An operator creates an `OcrProject` backed by a vault `Bucket`, then uploads document images. Each `OcrImage` is queued for processing through an ordered chain of `ImageTransform` steps (resize, grayscale, threshold…) before the OCR engine extracts `OcrLine` records with bounding boxes and confidence scores. Custom transforms delegate to `workflows.LambdaFunction`. Extracted text feeds downstream into palimpsest pages or memo decks.
+
 ## Models
 
 - `OcrProject` — a named OCR workspace. Fields: `name`, `slug`, `bucket` (FK to `vault.Bucket`), `owner` (FK to `auth.User`), `allowed_users` (M2M to `auth.User`), `language`, `is_active`, `created_at`.

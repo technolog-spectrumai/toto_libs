@@ -2,6 +2,10 @@
 
 Scheduled events and personal availability calendar. Provides the event infrastructure used by mobilization for civilian emergency events.
 
+## Purpose
+
+Community organizers create `ScheduledEvent` records with a venue address, start/end time, and capacity. Members receive `EventInvite` records and RSVP. Personal `Availability` windows let members signal when they are free or busy for scheduling coordination. `EventBase` is also the abstract parent of `detections.Detection` — detections are time-anchored events with the same core fields.
+
 ## Models
 
 - `EventCategory` — extends `DomainEntity`. Hierarchical category (self-referential parent).

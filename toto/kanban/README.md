@@ -2,6 +2,10 @@
 
 Project management with ledger-backed compensation. Projects contain missions → sprints → tasks, with practitioner roles and allowance-based income tied to `assets.LedgerAccount`.
 
+## Purpose
+
+A community creates a `Project`, adds `Practitioner` members with roles, and breaks work into `Campaign` → `Mission` → `Task` chains across `Sprint` iterations. Practitioners earn compensation through `PractitionerAllowance` records — daily, hourly, or fixed amounts paid from a ledger account — automatically posted by Celery beat at 17:00 on weekdays. Projects can be tokenized on the ledger as shares. Emergency response operations overlay kanban campaigns and missions for field command structure.
+
 ## Models
 
 - `Project` — extends `DomainEntity`. Top-level container. FK to `socialhub.Community`. Has `is_public`, `is_archived`.

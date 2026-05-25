@@ -2,6 +2,10 @@
 
 Peer-to-peer asset exchange requests. Members offer to exchange a quantity of one asset for another at a specified rate. Matching and settlement go through the `assets` ledger.
 
+## Purpose
+
+A member posts an `AssetExchangeRequest` offering X units of asset A for Y units of asset B. Other members browse open requests and accept one. On acceptance, the service validates both parties have sufficient balances and posts the two-sided ledger swap atomically. This is the OTC (over-the-counter) desk — no order book, no price discovery, just bilateral offers.
+
 ## Models
 
 - `AssetExchangeRequest` — an offer to exchange assets. Fields:

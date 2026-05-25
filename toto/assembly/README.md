@@ -2,6 +2,10 @@
 
 Democratic governance engine. Communities legislate through proposals, votes, and enacted decisions. Passed decisions can create `CommunityRule`, `CommunityTransactionFee`, or `PollTax` records that other parts of the system read to enforce policy.
 
+## Purpose
+
+Any community member can submit a proposal. The community votes within a configurable window; if quorum and threshold are met, an `AssemblyDecision` is created and the relevant policy object is enacted. An optional `CommunitySenate` can veto a passed proposal within a deadline window. Every decision is hash-chained to the previous one — the governance history is tamper-evident. This is how the community sets its own rules, fees, and taxes without needing an administrator.
+
 ## Models
 
 - `CommunityAssemblyConfig` — per-community governance parameters. Fields: `community` (OneToOne), `quorum_percent`, `pass_threshold_percent`, `voting_period_days`, `senate_veto_window_hours`, `allow_external_proposals`.

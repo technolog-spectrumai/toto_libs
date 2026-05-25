@@ -2,6 +2,10 @@
 
 Full OpenID Connect (OIDC) provider. Issues ID tokens, access tokens, and JWKS. Signs tokens with RSA keys stored encrypted in `gervazy`.
 
+## Purpose
+
+toto acts as its own identity provider. External apps (e.g. `regis`) and internal services register as OIDC clients. When a user logs into a client app, they are redirected to toto's `/sso/authorize/` endpoint, authenticate, and receive a JWT ID token signed with the active `SSOSigningKey`. The private signing key never leaves gervazy — `services.get_signing_private_key_pem()` unlocks it at token-issue time using `SSO_VAULT_PASSWORD`. The JWKS endpoint (`/sso/jwks/`) lets relying parties verify token signatures.
+
 ## Models
 
 - `SSOClient` — a registered OIDC client application. Fields: `client_id` (unique), `client_secret` (hashed), `client_type` (`confidential / public`), `name`, `redirect_uris` (text, one per line), `scopes` (space-separated), `is_active`, `is_trusted` (trusted clients skip the consent screen), `metadata`.

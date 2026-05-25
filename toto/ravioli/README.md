@@ -4,6 +4,10 @@
 
 Sole boundary to Neo4j. All apps that need graph storage emit `GraphChangeEvent` records; a Celery worker drains them and applies upserts/deletes to Neo4j. Apps never call Neo4j directly.
 
+## Purpose
+
+The graph layer lets toto answer questions that relational queries can't handle efficiently: "find all communities connected within 3 hops", "shortest path between two members", "what instruments does this account participate in". Apps emit `GraphChangeEvent` records through Django signals — ravioli drains them in batches to Neo4j. Stored `CypherQuery` records let admins run graph queries from the dashboard. `GraphProjectionPlan` manages full-resync operations when the graph drifts from Postgres.
+
 ## Models
 
 - `CypherQuery` — a saved Cypher query. Fields: `name`, `slug`, `description`, `query` (Cypher text), `parameters_schema` (JSON schema for query params), `is_active`, `community` (FK, nullable — community-scoped queries).

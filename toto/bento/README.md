@@ -2,6 +2,10 @@
 
 Idea management and innovation pipeline. Organizes ideas into categorized boxes with directed links between them, supporting concept mapping and ideation workflows.
 
+## Purpose
+
+Community members capture ideas as `IdeaBox` records and draw directional relationships between them (`builds_on`, `contradicts`, `leads_to`). Ideas move through a status pipeline from raw idea → exploring → validated → implementing. The resulting graph of linked ideas forms a visual concept map that the community can use to prioritize and track innovation initiatives.
+
 ## Models
 
 - `Category` — extends `DomainEntity`. A classification for idea boxes. Fields: `name`, `slug`, `community` (FK), `color`, `icon`.

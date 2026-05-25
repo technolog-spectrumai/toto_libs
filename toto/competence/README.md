@@ -2,6 +2,10 @@
 
 Skills registry. Defines skill groups and named skill badges that practitioners and responders can earn. Supports skill prerequisites.
 
+## Purpose
+
+`SkillBadge` records are the credential unit of the platform. `academy` awards them when students pass module exams. `mobilization` links them to `ResponderSkill` records to track certified responder proficiencies. `kanban` tasks can declare required skills in metadata. `SkillBadgePrerequisite` enforces learning order — you can't earn "Advanced First Aid" without "Basic First Aid" first.
+
 ## Models
 
 - `Experience` — a named experience/qualification type. Fields: `name`, `slug`, `description`. Reference data.

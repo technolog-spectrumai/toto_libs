@@ -2,6 +2,10 @@
 
 Platform configuration and tenant identity. Defines the top-level `Platform` singleton, the `Federation` it belongs to, and the visual/branding system (`Theme`, `ColorMix`, `Font`).
 
+## Purpose
+
+`core` is the first app that boots. The `Platform` singleton defines this deployment's domain, name, and branding. It is injected into every request by `PlatformMiddleware` so templates render the correct theme without per-view DB queries. `Federation` groups communities into a named network. `DomainEntity` is the abstract base inherited by most domain models — it provides `uuid`, `slug`, `name`, `description`, `logo`, `metadata`, `created_at`, `updated_at` without additional tables.
+
 ## Models
 
 - `Font` — a named typeface reference (family name + CSS import URL). Used by `Theme`.

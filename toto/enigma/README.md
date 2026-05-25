@@ -4,6 +4,10 @@
 
 Real-time chat over WebSockets. Rooms hold participants; messages are delivered via Django Channels consumers backed by a Redis channel layer.
 
+## Purpose
+
+Community members connect to `ws://.../ws/enigma/{room_slug}/` and exchange messages in real time. Messages are ephemeral — they are relayed through the Redis channel layer but not persisted to the database. `Room` records define the chat spaces; `Participant` records gate who can access a room. Rooms can be community-scoped (for community channels) or platform-wide (for cross-community coordination).
+
 ## Models
 
 - `Room` — a chat space. Fields: `name`, `slug` (unique), `community` (FK to `socialhub.Community`, nullable — can be community-scoped or platform-wide), `is_private`, `created_by` (FK to `people.Person`), `created_at`.

@@ -3,6 +3,10 @@
 A native Django/PostgreSQL asset ledger inspired by Algorand Standard Assets (ASA).
 No blockchain libraries, no Algorand SDK, no smart contracts.
 
+## Purpose
+
+An admin mints an `Asset` (ticker, decimals, total supply). Users hold balances as `AssetHolding` records. Every transfer, mint, or burn posts an immutable `LedgerEntry` pair (debit + credit) under a `LedgerTransaction`. Once posted, the transaction is sealed; corrections go through an explicit reversal. A SHA-256 `LedgerHash` chain links every posted transaction — tampering with any entry breaks the chain and can be detected by `verify_hash_chain()`. `Obligation` records model debts that will be settled via future transactions. `Contract` / `Agreement` are the runtime layer for Lapis smart contracts executed by financial instruments.
+
 ## Concepts
 
 | ASA concept | This ledger |

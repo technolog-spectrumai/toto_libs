@@ -2,6 +2,10 @@
 
 Community magistracy — a local enforcement and advisory layer between the assembly and the tribunal. Magistrates are appointed via assembly proposals and can issue decisions and fines.
 
+## Purpose
+
+A community votes (via `assembly`) to appoint a `Magistrate` to a named role. The magistrate can then issue `MagistrateDecision` records (advisories, directives, injunctions) and levy `MagistrateFine` penalties that create `assets.Obligation` records against the target's ledger account. Misconduct can be reported via `MagistrateReport`. `CommunityMagistrateSettings` configures the fine collection account and term limits. Magistracy sits between the legislative assembly and the judicial tribunal — it handles routine enforcement without needing a full jury.
+
 ## Models
 
 - `MagistrateRole` — named role type (e.g. "Senior Magistrate", "Inspector"). Fields: `name`, `slug`, `authority_level` (int), `can_issue_fines` (bool), `can_issue_decisions` (bool).
