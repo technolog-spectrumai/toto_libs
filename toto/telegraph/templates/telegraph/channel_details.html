@@ -299,6 +299,102 @@ document.addEventListener("DOMContentLoaded", async () => {
     reader.readAsDataURL(file);
   }
 
+  // ── Emoji picker ───────────────────────────────────────────────────────────
+
+  const EMOJI_CATEGORIES = [
+    { label: "😀", title: "Smileys",
+      emojis: ["😀","😃","😄","😁","😅","😂","🤣","😊","😇","🙂","🙃","😉","😌","😍","🥰","😘","😋","😛","😝","😜","🤪","😎","🥳","😏","😒","😔","😢","😭","😤","😡","🤯","🥺","😳","🤗","🤭","🤫","🤔","😶","😐","😑","🙄","😬","😴","🤢","🤧","🥵","🥶","😷","🤕"] },
+    { label: "👋", title: "People",
+      emojis: ["👋","🤚","🖐","✋","🖖","🤙","💪","🦾","🙏","👏","🤝","👍","👎","👊","✊","🤛","🤜","👌","🤌","🤏","✌","🤞","🫶","🫂","💃","🕺","🧍","🧎","🏃","🚶","👶","👧","🧒","👦","👩","🧑","👨","👴","👵"] },
+    { label: "🐶", title: "Animals",
+      emojis: ["🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐨","🐯","🦁","🐮","🐷","🐸","🐵","🐔","🐧","🐦","🦆","🦅","🦉","🦋","🐛","🐝","🐞","🐠","🐙","🦈","🐬","🐳","🦭","🐊","🦒","🦓","🦏","🦛","🦧","🐘","🦩","🦚"] },
+    { label: "🍎", title: "Food",
+      emojis: ["🍎","🍊","🍋","🍇","🍓","🫐","🍒","🍑","🥭","🍍","🥥","🍕","🍔","🌮","🌯","🍜","🍣","🍱","🍛","🍲","🥗","🥘","🍿","🍩","🎂","🍰","🧁","🍫","🍬","🍭","☕","🧃","🥤","🧋","🍺","🥂","🍷","🥃","🧊"] },
+    { label: "✈️", title: "Travel",
+      emojis: ["✈️","🚀","🛸","🚂","🚗","🚕","🚙","🏎","🚌","🚁","⛵","🚢","🏠","🏰","🗼","⛺","🌍","🌏","🗺","🧳","🎡","🎢","🎠","🏖","🏕","🌋","🗻","🏔","🌅","🌇","🌉","🎆","🎇"] },
+    { label: "💡", title: "Objects",
+      emojis: ["💡","🔦","📱","💻","⌨","🖥","📷","📸","🎵","🎶","🎮","🕹","🎲","📚","📖","📝","✏","📌","📎","🔑","🔒","🔓","💰","💳","💎","🎁","🎀","🏆","🥇","🎖","🎗","🔭","🔬","🧪","🧲","🔧","🔨","⚙"] },
+    { label: "❤️", title: "Symbols",
+      emojis: ["❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔","❣","💕","💞","💓","💗","💖","💘","💝","✨","⭐","🌟","💫","🔥","💯","✅","❌","⚡","🌈","🎉","🎊","💢","💥","❓","❗","🔴","🟠","🟡","🟢","🔵","🟣"] },
+  ];
+
+  const emojiPanel      = document.querySelector("#emoji-panel");
+  const emojiTabs       = document.querySelector("#emoji-tabs");
+  const emojiGrid       = document.querySelector("#emoji-grid");
+  const emojiToggleBtn  = document.querySelector("#emoji-toggle-button");
+  let emojiOpen         = false;
+  let activeCatIndex    = 0;
+
+  function renderEmojiCategory(index) {
+    activeCatIndex = index;
+    const cat = EMOJI_CATEGORIES[index];
+    emojiGrid.innerHTML = "";
+    cat.emojis.forEach((em) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = em;
+      btn.title = em;
+      btn.className = "flex items-center justify-center w-8 h-8 rounded hover:bg-current/10 cursor-pointer transition leading-none";
+      btn.addEventListener("click", () => insertEmoji(em));
+      emojiGrid.appendChild(btn);
+    });
+    emojiTabs.querySelectorAll("button").forEach((b, i) => {
+      b.classList.toggle("opacity-100", i === index);
+      b.classList.toggle("opacity-40",  i !== index);
+      b.classList.toggle("border-b-2",  i === index);
+    });
+  }
+
+  function buildEmojiTabs() {
+    EMOJI_CATEGORIES.forEach((cat, i) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = cat.label;
+      btn.title = cat.title;
+      btn.className = "flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-t text-base border-b-2 border-transparent transition";
+      btn.classList.add(i === 0 ? "opacity-100" : "opacity-40");
+      if (i === 0) btn.classList.add("border-b-2");
+      btn.addEventListener("click", () => renderEmojiCategory(i));
+      emojiTabs.appendChild(btn);
+    });
+  }
+
+  function insertEmoji(em) {
+    if (!input) return;
+    const start = input.selectionStart ?? input.value.length;
+    const end   = input.selectionEnd   ?? input.value.length;
+    input.value = input.value.slice(0, start) + em + input.value.slice(end);
+    const cursor = start + em.length;
+    input.setSelectionRange(cursor, cursor);
+    input.focus();
+  }
+
+  function toggleEmojiPanel() {
+    emojiOpen = !emojiOpen;
+    emojiPanel.classList.toggle("hidden", !emojiOpen);
+  }
+
+  if (emojiPanel && emojiToggleBtn) {
+    buildEmojiTabs();
+    renderEmojiCategory(0);
+
+    emojiToggleBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleEmojiPanel(); });
+
+    document.addEventListener("click", (e) => {
+      if (emojiOpen && !emojiPanel.contains(e.target) && e.target !== emojiToggleBtn) {
+        emojiOpen = false;
+        emojiPanel.classList.add("hidden");
+      }
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && emojiOpen) {
+        emojiOpen = false;
+        emojiPanel.classList.add("hidden");
+      }
+    });
+  }
+
   // ── Voice recording ────────────────────────────────────────────────────────
 
   let mediaRecorder   = null;
@@ -844,7 +940,19 @@ document.addEventListener("DOMContentLoaded", async () => {
           </div>
         </div>
 
-        <div class="flex gap-2">
+        <div class="relative">
+
+          {# ── Emoji panel ──────────────────────────────────────────────────── #}
+          <div id="emoji-panel"
+            :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+            class="hidden absolute bottom-full left-0 mb-2 w-72 rounded-xl border shadow-xl z-50 overflow-hidden">
+            <div id="emoji-tabs" class="flex overflow-x-auto border-b border-current/10 px-1 pt-1 gap-0.5 text-base">
+            </div>
+            <div id="emoji-grid" class="grid grid-cols-8 gap-0.5 p-2 h-44 overflow-y-auto text-xl leading-none">
+            </div>
+          </div>
+
+          <div class="flex gap-2">
           <input
             id="image-file-input"
             type="file"
@@ -872,6 +980,16 @@ document.addEventListener("DOMContentLoaded", async () => {
             <i class="fa-solid fa-microphone text-sm"></i>
           </button>
 
+          <button
+            type="button"
+            id="emoji-toggle-button"
+            :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2 text-text-main-light'"
+            class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
+            {% if not can_send_messages %}disabled{% endif %}
+            aria-label="Insert emoji">
+            <i class="fa-regular fa-face-smile text-sm"></i>
+          </button>
+
           <textarea
             id="message-input"
             name="content"
@@ -890,7 +1008,8 @@ document.addEventListener("DOMContentLoaded", async () => {
             aria-label="Send">
             <i class="fa-solid fa-paper-plane text-sm"></i>
           </button>
-        </div>
+          </div>{# /flex gap-2 #}
+        </div>{# /relative #}
       </div>
     </section>
 
