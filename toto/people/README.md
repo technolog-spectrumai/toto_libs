@@ -28,3 +28,7 @@ Almost every model in the system FKs into `Person`:
 - `academy.Teacher`, `Student` — LMS roles
 
 `is_federal_agent` and community membership (via `communities` M2M) are read by `mobilization.Responder.clean()` to enforce eligibility.
+
+## Dependencies
+
+- `locations` — Person.address FK to locations.Address

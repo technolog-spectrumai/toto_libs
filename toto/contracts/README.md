@@ -25,3 +25,7 @@ A lawyer or contract author creates a `Contract` document and builds a graph of 
 
 - Nodes can back any domain object via the `(object_app, object_model, object_id)` generic FK — e.g. a node can represent a real `assets.Obligation` record.
 - `ravioli` — the graph YAML exported from a contract can be imported as a Neo4j subgraph via `toto/ravioli/graph/mobilization.yaml` / `response.yaml` style manifests.
+
+## Dependencies
+
+None — standalone app.

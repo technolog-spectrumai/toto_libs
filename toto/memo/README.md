@@ -20,3 +20,7 @@ Teachers build `MemoDeck` collections of `MemoCard` flashcards — each card has
 
 - `academy.Lesson.memo_deck` — lessons of type `deck` embed a `MemoDeck` directly in the course module.
 - `MemoDiagram` can be embedded in `MemoCard.diagram` to show visual content on the card back.
+
+## Dependencies
+
+- `vault` — MemoDiagram rendered SVG optionally stored as VaultFile

@@ -14,3 +14,8 @@ Route journeys and visit history. Records group trips with geographic waypoints 
 
 - `locations.Route` / `locations.Address` — geographic anchors for journeys and visits.
 - `people.Person` — participants and visitors.
+
+## Dependencies
+
+- `locations` — Travel waypoints and Visit.location are Address FKs
+- `people` — Travel participants and Visit.person FK

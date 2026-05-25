@@ -26,3 +26,10 @@ A community votes (via `assembly`) to appoint a `Magistrate` to a named role. Th
 - `assets.Obligation` — fines create obligations against the target account.
 - `assets.LedgerAccount` — fine collection account defined in settings.
 - `tribunal.TribunalCase` — decisions can reference tribunal cases.
+
+## Dependencies
+
+- `assembly` — MagistrateDecision can reference an AssemblyDecision
+- `assets` — MagistrateFine denominated in Asset
+- `people` — Magistrate and all parties are Person records
+- `socialhub` — CommunityMagistrateSettings is community-scoped

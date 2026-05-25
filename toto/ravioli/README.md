@@ -37,3 +37,7 @@ The graph layer lets toto answer questions that relational queries can't handle 
 
 - All apps with graph-visible models import from `ravioli.signals` or call `ravioli.events.emit_*` helpers.
 - `RAVIOLI_ENABLED` setting must be `True`; `NEO4J_URI` / `NEO4J_USER` / `NEO4J_PASSWORD` must be set.
+
+## Dependencies
+
+None — standalone app.

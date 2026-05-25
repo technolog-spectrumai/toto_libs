@@ -18,3 +18,7 @@ When toto needs to call an external service (webhook, LLM provider, SMTP relay),
 - `gervazy.EncryptedSecret` — `api_secret` and `smtp_secret` are encrypted references, never plaintext.
 - `steven.AgentConnector` subclasses `ApiConnector` to add LLM-specific fields (model, system prompt, temperature).
 - `workflows` can trigger email delivery via an `EmailService` connector.
+
+## Dependencies
+
+- `gervazy` — EncryptedSecret and EncryptedPrivateKey for api_secret / signing_key

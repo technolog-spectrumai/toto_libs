@@ -18,3 +18,8 @@ Weather data ingestion and forecasting. Stores observations and forecast session
 
 - `locations.Address` — observations and forecasts are anchored to addresses.
 - `workflows.WorkflowRun` — weather fetch is a workflow node type; each run links its observation/forecast to the triggering workflow run.
+
+## Dependencies
+
+- `locations` — WeatherObservation.location FK to Address
+- `workflows` — ForecastSession triggered by workflow node; WorkflowRun FK

@@ -21,3 +21,8 @@ LaTeX compilation service over WebSockets. Workspaces hold `.tex` and supporting
 
 - `vault.VaultFile` / `vault.Bucket` — all files stored via vault.
 - `workflows.WorkflowRun` — compile runs can be triggered by the workflow engine.
+
+## Dependencies
+
+- `vault` — LatexFile and CompileRun output stored as VaultFile
+- `workflows` — CompileRun can be triggered as a workflow node

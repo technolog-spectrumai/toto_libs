@@ -28,3 +28,10 @@ A member files a `TribunalCase` against another member, a vendor, or a disputed 
 - `inventory.RealWorldObject` — property disputes link to the item.
 - `assets.LedgerAccount` — monetary awards create `assets.Obligation` records for enforcement.
 - `vault.VaultFile` — documentary evidence is stored in vault.
+
+## Dependencies
+
+- `assets` — TribunalRuling compensation denominated in Asset
+- `bazaar` — TribunalCase can reference a disputed bazaar Order
+- `inventory` — TribunalClaim can reference a RealWorldObject
+- `people` — TribunalParty and JuryVote.juror are Person records

@@ -24,3 +24,8 @@ Academy content authors and researchers catalog reference material — textbooks
 
 - `vault.VaultFile` — library items can attach their source file for download.
 - `memo.Tag` — shared tagging system with the memo/flashcard app.
+
+## Dependencies
+
+- `palimpsest` — LibraryItem can link to a palimpsest Page
+- `vault` — Audio/video references stored as VaultFile

@@ -16,3 +16,8 @@ The platform operator sets up a `BackupProfile` with a gervazy `EncryptedPrivate
 
 - `core.Platform` — one backup profile per platform.
 - `gervazy.EncryptedPrivateKey` — signing key decrypted at export time.
+
+## Dependencies
+
+- `core` — BackupProfile is OneToOne with core.Platform
+- `gervazy` — EncryptedPrivateKey as archive signing key

@@ -32,3 +32,7 @@ DAG-based workflow orchestration engine. Workflows define directed graphs of nod
 - `weather.WeatherObservation.workflow_run` / `ForecastSession.workflow_run` — weather fetches are workflow nodes.
 - `mandragora.Cell` — kernel cell execution is a workflow node type.
 - `steven.AgentRun` — agent calls are a workflow node type.
+
+## Dependencies
+
+- `mandragora` — ComputeKernel FK — workflow nodes can execute in a mandragora kernel

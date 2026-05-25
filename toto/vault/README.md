@@ -14,3 +14,7 @@ User file storage. Organizes user-uploaded files into named buckets with optiona
 - `ocr.OcrImage.vault_file` — OCR images are vault files.
 - `texlab.LatexFile.vault_file` — LaTeX source files live in vault.
 - `gervazy.EncryptedFile` is a separate encrypted-at-rest store; `vault` is for unencrypted / user-accessible files.
+
+## Dependencies
+
+None — standalone app.

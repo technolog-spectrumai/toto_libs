@@ -17,3 +17,8 @@ Community members capture ideas as `IdeaBox` records and draw directional relati
 ## Key coupling
 
 - Community-scoped. Standalone from financial/governance systems.
+
+## Dependencies
+
+- `people` — IdeaBox.author and IdeaLink.author
+- `socialhub` — Community-scoped categories and idea boxes

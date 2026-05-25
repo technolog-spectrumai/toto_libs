@@ -9,3 +9,7 @@ Shared UI utilities and template helpers. No models, no URLs, no views — only 
 ## Usage
 
 Templates load shared context via `{% load ui_tags %}` or via the context processor configured in `TEMPLATES[0]['OPTIONS']['context_processors']`.
+
+## Dependencies
+
+None — standalone app.

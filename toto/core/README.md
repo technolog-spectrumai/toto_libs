@@ -21,3 +21,7 @@ Platform configuration and tenant identity. Defines the top-level `Platform` sin
 - `core.Platform` is read at boot time by `sso_master.services.get_active_platform()` to resolve the OIDC issuer URL.
 - `backup.BackupProfile` has a one-to-one with `Platform`.
 - `Theme` is read by every template that renders the platform's branding.
+
+## Dependencies
+
+None — standalone app.

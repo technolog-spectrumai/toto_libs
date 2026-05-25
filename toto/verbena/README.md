@@ -13,3 +13,7 @@ Abstract page/section/tag system. Provides three base models inherited by every 
 ## Key coupling
 
 Every content app inherits from these bases. Changes to verbena abstract fields propagate to all concrete subclasses via Django's multi-table inheritance.
+
+## Dependencies
+
+- `people` — AbstractSection.author FK to Person

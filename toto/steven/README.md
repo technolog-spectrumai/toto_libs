@@ -22,3 +22,7 @@ AI agent management. Defines named agent profiles with LLM configuration and too
 
 - `api.ApiConnector` — `AgentConnector` inherits all connector fields; secrets live in `gervazy`.
 - `workflows.WorkflowRun` — agents can be invoked as workflow nodes (`agent_call`).
+
+## Dependencies
+
+- `api` — AgentConnector subclasses ApiConnector for LLM provider config

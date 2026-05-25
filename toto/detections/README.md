@@ -38,3 +38,8 @@ A community member (or an automated sensor feed) files a `Detection`. The detect
 - `response.Intervention.detection` — an intervention tracks which detection it mitigates.
 - `kanban.Task` — `mitigation_task` FK creates a direct link between a detection and its project-management resolution.
 - `locations` — geographic anchors for map display.
+
+## Dependencies
+
+- `events` — Detection can link to a ScheduledEvent
+- `people` — Detection reporter and handler are Person records

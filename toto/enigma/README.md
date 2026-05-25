@@ -26,3 +26,8 @@ Messages are not persisted to the database — they are relayed ephemerally thro
 
 - `channels_redis.core.RedisChannelLayer` — required at runtime (studio mode only).
 - `socialhub.Community` — optional community scoping for rooms.
+
+## Dependencies
+
+- `people` — Participant.person FK
+- `socialhub` — Rooms are community-scoped

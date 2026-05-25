@@ -25,3 +25,7 @@ class Command(IngressCommand):
 ```
 
 Run with: `python manage.py ingress_<app_name> [--full]`
+
+## Dependencies
+
+None — standalone app.

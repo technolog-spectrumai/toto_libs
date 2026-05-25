@@ -18,3 +18,7 @@ OIDC consumer configuration. Stores the provider endpoint and client credentials
 
 - `sso_core.manifest.ConnectionBundle` — populated via admin import of a connection bundle JSON.
 - `sso_master.SSORelyingParty` — the provider-side counterpart record.
+
+## Dependencies
+
+- `sso_core` — OIDCProviderConfig stores a ConnectionBundle imported from sso_master via sso_core dataclasses

@@ -197,3 +197,15 @@ python manage.py ingress_mobilization
 ```
 
 Seeds: `IncidentType` (8), `AchievementBadge` (8), `SkillBadge` group `mobilization` (7), up to 10 `Responder` records, then 5 full scenarios with reports, events, emergency statuses, and all deployment/response data (via `response` models). If no eligible persons exist, up to 6 are marked `is_federal_agent=True`.
+
+## Dependencies
+
+- `assembly` — EmergencyStatus.source_proposal — declaration requires a passed AssemblyProposal
+- `assets` — Resource requests reference Asset
+- `competence` — Responder skill requirements checked against SkillBadge
+- `inventory` — Equipment requests linked to RealWorldObject
+- `kanban` — Emergency tasks created as Kanban Mission/Task
+- `locations` — Incident location is an Address FK
+- `people` — EmergencyContact and responder Person FKs
+- `response` — Deployment and DeploymentAssignment live in response app
+- `socialhub` — EmergencyStatus is community-scoped

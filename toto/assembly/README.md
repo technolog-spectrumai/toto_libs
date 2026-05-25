@@ -37,3 +37,9 @@ Every `AssemblyDecision` stores a SHA-256 hash of its content plus the `previous
 - `mobilization.EmergencyStatus.source_proposal` — an `AssemblyProposal` of type `emg_declare` must pass before an emergency can be activated.
 - `bazaar` reads `CommunityTransactionFee` records at checkout to compute fees.
 - `assembly` creates `CommunityRule` and `PollTax` records that the rest of the system enforces.
+
+## Dependencies
+
+- `assets` — CommunityTransactionFee references LedgerAccount; PollTax uses Asset
+- `people` — AssemblyProposal.proposer, AssemblyVote.voter, SenateVeto.vetoed_by
+- `socialhub` — Every proposal and config is community-scoped

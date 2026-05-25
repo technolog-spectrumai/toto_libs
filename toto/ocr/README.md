@@ -24,3 +24,8 @@ An operator creates an `OcrProject` backed by a vault `Bucket`, then uploads doc
 
 - `vault.VaultFile` / `vault.Bucket` — images are stored in vault.
 - `workflows.LambdaFunction` — custom transform steps delegate to workflow lambdas.
+
+## Dependencies
+
+- `vault` — OcrImage.vault_file FK to VaultFile; project backed by vault.Bucket
+- `workflows` — ImageTransform.lambda_function FK to workflows.LambdaFunction

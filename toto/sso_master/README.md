@@ -38,3 +38,8 @@ toto acts as its own identity provider. External apps (e.g. `regis`) and interna
 - `gervazy.EncryptedPrivateKey` — signing key decrypted at token-issue time using `SSO_VAULT_PASSWORD`.
 - `core.Platform` — issuer URL is derived from platform domain.
 - `sso_core.manifest.ConnectionBundle` — used to provision `SSORelyingParty` records for connected apps.
+
+## Dependencies
+
+- `gervazy` — SSOSigningKey wraps an EncryptedPrivateKey for token signing
+- `sso_core` — ConnectionBundle exported as sso_core dataclass for client import

@@ -22,3 +22,7 @@ Personality and assessment quiz engine. Quizzes produce trait scores rather than
 
 - Standalone; no hard FK dependencies on other domain apps.
 - Results (`result_metadata`) are stored as JSON on the attempt and can be read by `academy` enrollment flows or community onboarding.
+
+## Dependencies
+
+- `people` — QuizAttempt.participant FK to Person

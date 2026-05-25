@@ -31,3 +31,7 @@ GIS-backed geographic model layer. All spatial data uses PostGIS SRID 4326 (WGS8
 - `people.Person.address` — person home address
 - `events.ScheduledEvent.address` — event venue
 - `travels.Visit.location` — visit destinations
+
+## Dependencies
+
+- `people` — Territory and Zone can have a Person administrator

@@ -18,3 +18,7 @@ Enables the "import connection bundle" workflow: a consumer app exports a `Manif
 
 - `sso_master` — reads `ManifestBundle` to provision `SSORelyingParty`.
 - `sso_client.OIDCProviderConfig` — stores the imported `ConnectionBundle`.
+
+## Dependencies
+
+None — standalone app.

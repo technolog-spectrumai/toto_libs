@@ -32,3 +32,9 @@ A community catalogs its physical property — vehicles, tools, equipment, real 
 - `mobilization.EmergencyEquipmentAccess` — items can be granted hybrid access under emergencies.
 - `bazaar.Product` — physical products may reference an inventory item.
 - `tribunal.TribunalCase` — cases can concern a specific `RealWorldObject`.
+
+## Dependencies
+
+- `assets` — RealWorldObject can be tokenized as an Asset
+- `locations` — InventorySite address and StorageLocation
+- `people` — Object ownership and custodian Person FKs

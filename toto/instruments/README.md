@@ -78,3 +78,7 @@ The services in this app detect those optional `Obligation` fields and will stil
 `instruments` defines deterministic financial contracts and records their execution history.
 
 `risk` should hold loans, insurance, credit checks, underwriting decisions, and claims.
+
+## Dependencies
+
+- `assets` — Financial instruments operate on Asset and LedgerAccount

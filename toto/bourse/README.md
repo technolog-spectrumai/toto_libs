@@ -30,3 +30,8 @@ A member posts an `AssetExchangeRequest` offering X units of asset A for Y units
 
 - `assets.Asset`, `assets.LedgerAccount` — exchange uses ledger accounts for both sides of the trade.
 - `people.Person` — requester and counterparty.
+
+## Dependencies
+
+- `assets` — Asset and LedgerAccount for both sides of exchange
+- `people` — requester and counterparty Person FKs

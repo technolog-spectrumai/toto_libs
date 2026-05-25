@@ -18,3 +18,7 @@ A community member creates a `Poll` with a question and 2–N `Option` choices. 
 
 - Polls are community-scoped but otherwise standalone.
 - For binding governance votes, use `assembly.AssemblyProposal` / `AssemblyVote`.
+
+## Dependencies
+
+None — standalone app.

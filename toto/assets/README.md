@@ -104,3 +104,8 @@ backend.reverse_transaction(
     description="Mistaken transfer reversal",
 )
 ```
+
+## Dependencies
+
+- `inventory` — Physical asset types linked via Contract/Agreement runtime
+- `people` — Person as account holder identity

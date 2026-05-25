@@ -30,3 +30,10 @@ A community creates a `Project`, adds `Practitioner` members with roles, and bre
 - `mobilization.MobilizationEvent.kanban_campaign` — events overlay a campaign board.
 - `response.Deployment.kanban_mission` — deployments can be linked to a mission board.
 - `detections.Detection.mitigation_task` — a task can be the designated mitigation for a detection.
+
+## Dependencies
+
+- `assets` — ProjectTokenization links project to Asset; task rewards
+- `locations` — Project location / territory FK
+- `people` — Practitioner is a Person; task assignments
+- `verbena` — DocumentationPage extends AbstractPage

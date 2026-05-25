@@ -27,3 +27,7 @@ Jupyter-style compute kernels over WebSockets. Notebooks contain cells; executio
 
 - `KERNEL_SERVER_ADDR` — must point to the running ZMQ kernel server.
 - `workflows.WorkflowNode` — workflow nodes of type `kernel_cell` can execute a `Cell`.
+
+## Dependencies
+
+None — standalone app.

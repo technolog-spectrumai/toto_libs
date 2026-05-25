@@ -22,3 +22,8 @@ Any member can create a `Page` and add `Section` blocks authored by different pe
 
 - `verbena.AbstractPage` / `AbstractSection` — concrete implementations.
 - Authors are `people.Person` records; no community scoping (palimpsest pages are platform-wide by default).
+
+## Dependencies
+
+- `people` — Section.author FK to Person
+- `verbena` — Page extends AbstractPage; Section extends AbstractSection

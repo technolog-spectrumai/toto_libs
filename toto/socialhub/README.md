@@ -39,3 +39,9 @@ A `Community` is the container around which everything else organizes. People jo
 - `Community` is referenced by nearly every domain model (kanban projects, bazaar shops, assembly proposals, mobilization events, emergency statuses, deployments).
 - `Community.is_federal_tribe` gates `mobilization.Responder` eligibility.
 - `Community.ledger_account` is used as the default creditor for community fees and taxes.
+
+## Dependencies
+
+- `api` — EmailService FK for community notification emails
+- `locations` — Community headquarters Address FK
+- `people` — CommunityNewsPost author; MembershipApplication applicant

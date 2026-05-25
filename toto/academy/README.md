@@ -39,3 +39,12 @@ A `Teacher` creates a `Course` structured into `CourseModule` → `Lesson` chain
 - `memo.MemoDeck` — lessons of type `deck` embed a flashcard deck.
 - `vault.VaultFile` — certificates are stored as vault files.
 - `assets.LedgerAccount` — paid courses debit the buyer's account.
+
+## Dependencies
+
+- `competence` — SkillBadge unlocked on module completion
+- `memo` — MemoDeck embedded in deck-type lessons
+- `palimpsest` — Page attached as course notes/textbook
+- `quizzes` — Quiz attached to modules; Certificate links to quiz result
+- `vault` — Certificate PDFs stored as VaultFile
+- `verbena` — Script/ScriptSection extend AbstractPage/AbstractSection

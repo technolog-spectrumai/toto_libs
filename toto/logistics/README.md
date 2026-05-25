@@ -20,3 +20,8 @@ A logistics coordinator registers a `Transport` (vehicle or courier), then creat
 
 - `bazaar.Shipment` — each bazaar shipment can be tracked as a `Package` (OneToOne).
 - `locations.Address` — origin, destination, and current location anchors.
+
+## Dependencies
+
+- `bazaar` — Package.shipment is OneToOne with bazaar.Shipment
+- `locations` — origin, destination, and current_location are Address FKs

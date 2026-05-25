@@ -22,3 +22,8 @@ Community organizers create `ScheduledEvent` records with a venue address, start
 
 - `mobilization.MobilizationEvent.scheduled_event` — a mobilization event can be anchored to a calendar event.
 - `EventBase` is the abstract parent of `detections.Detection`, so detections carry the same temporal fields.
+
+## Dependencies
+
+- `locations` — Event venue is an Address FK
+- `people` — EventInvite invitee and Availability person

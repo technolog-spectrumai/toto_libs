@@ -47,3 +47,10 @@ A community opens a `Shop`, vendors list `Product` records, and buyers browse �
 - `assembly.CommunityTransactionFee` — bazaar reads community fee records and applies them at checkout.
 - `inventory.RealWorldObject` — physical products can link to inventory items.
 - `tribunal.TribunalCase` — cases can be linked to a disputed order.
+
+## Dependencies
+
+- `assets` — Payments post to LedgerAccount; fees reference LedgerAccount
+- `locations` — Shipping addresses; shop location
+- `people` — Vendor and buyer are Person records
+- `socialhub` — Every shop is community-scoped

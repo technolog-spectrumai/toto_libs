@@ -21,3 +21,7 @@ Skills registry. Defines skill groups and named skill badges that practitioners 
 - `mobilization.ResponderSkill` — each responder skill links to a `SkillBadge` with a verified proficiency level.
 - `kanban.Task` metadata — tasks can specify required skills (via `skill_metadata()` in `detections.services`).
 - Skills are seeded per-group by ingress commands (e.g. `ingress_mobilization` seeds 7 mobilization skills).
+
+## Dependencies
+
+- `people` — Experience and SkillBadge are awarded to Person records

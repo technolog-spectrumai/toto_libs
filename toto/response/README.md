@@ -168,3 +168,13 @@ Transitions happen automatically through service calls:
 ## Seeding
 
 Seeded by `python manage.py ingress_mobilization` alongside mobilization data. Requires inventory ingress to have run first for `DeploymentEquipment` and `EmergencyEquipmentAccess` records to be created.
+
+## Dependencies
+
+- `assets` — Intervention cost/reward denominated in Asset
+- `inventory` — DeploymentEquipment links to RealWorldObject
+- `kanban` — Deployment may link to Kanban Mission
+- `locations` — EvacuationRoute and DeploymentRoute reference Address
+- `mobilization` — Deployment FK to mobilization.EmergencyEvent
+- `people` — DeploymentAssignment assignee is a Person
+- `socialhub` — Deployment.community scoping

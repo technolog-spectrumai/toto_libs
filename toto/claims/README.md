@@ -23,3 +23,7 @@ When a financial instrument or Lapis contract executes, it doesn't just post led
 - `instruments` — all 10 instrument types create and update `Entitlement`, `Schedule`, `Condition`, `Allocation`, and `ContractEvent` records through their service classes.
 - `assets.Agreement` — the runtime instance of a contract; most claims objects FK here.
 - A Celery task polls `Schedule.next_run_at` hourly to process due schedules.
+
+## Dependencies
+
+- `assets` — Entitlement and Allocation reference Asset and LedgerAccount

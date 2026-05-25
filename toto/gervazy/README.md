@@ -41,3 +41,7 @@ EncryptedSecret / EncryptedFile / EncryptedPrivateKey (stored as encrypted blobs
 - `backup.BackupProfile.signing_key` → `gervazy.EncryptedPrivateKey` — backup signing key.
 - `api.ApiConnector.api_secret`, `api.EmailService.smtp_secret` → `gervazy.EncryptedSecret` — outbound API credentials.
 - The vault is unlocked per-request using `SSO_VAULT_PASSWORD` (sso_master) or interactive password input for user vaults.
+
+## Dependencies
+
+None — standalone app.

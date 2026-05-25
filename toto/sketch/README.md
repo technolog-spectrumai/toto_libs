@@ -19,3 +19,8 @@ Collaborative real-time whiteboard over WebSockets. Users draw on a shared canva
 ## Key coupling
 
 - Requires Django Channels + Redis channel layer (studio mode).
+
+## Dependencies
+
+- `people` — Board creator and participant Person FKs
+- `vault` — Board snapshots stored as VaultFile
