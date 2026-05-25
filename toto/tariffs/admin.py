@@ -1,7 +1,14 @@
 from django.contrib import admin
 from django.utils.translation import gettext_lazy as _
 
-from .models import Tariff, TariffItem, UsageCharge, UsageRecord
+from .models import BillingUnit, Tariff, TariffItem, UsageCharge, UsageRecord
+
+
+@admin.register(BillingUnit)
+class BillingUnitAdmin(admin.ModelAdmin):
+    list_display = ("slug", "name", "trait")
+    search_fields = ("slug", "name", "trait")
+    ordering = ("slug",)
 
 
 class TariffItemInline(admin.TabularInline):

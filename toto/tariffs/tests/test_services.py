@@ -58,6 +58,10 @@ def fund_account(account, asset, amount_display):
     return holding
 
 
+def bu(slug):
+    return BillingUnit.objects.get(slug=slug)
+
+
 def make_tariff(code="TEST", status=TariffStatus.ACTIVE):
     return Tariff.objects.create(name=code, code=code, status=status)
 
@@ -90,17 +94,17 @@ class TariffItemValidationTests(TestCase):
         asset = make_asset("TOK")
         recv = make_account("RECV")
         tariff = make_tariff("T1")
-        make_item(tariff, "metric.foo", asset, "0.001", BillingUnit.TOKEN, recv)
+        make_item(tariff, "metric.foo", asset, "0.001", bu("token"), recv)
         with self.assertRaises(IntegrityError):
-            make_item(tariff, "metric.foo", asset, "0.002", BillingUnit.TOKEN, recv)
+            make_item(tariff, "metric.foo", asset, "0.002", bu("token"), recv)
 
     def test_same_metric_code_different_tariff_is_ok(self):
         asset = make_asset("TOK2")
         recv = make_account("RECV2")
         t1 = make_tariff("T2")
         t2 = make_tariff("T3")
-        make_item(t1, "foo", asset, "0.001", BillingUnit.TOKEN, recv)
-        make_item(t2, "foo", asset, "0.001", BillingUnit.TOKEN, recv)
+        make_item(t1, "foo", asset, "0.001", bu("token"), recv)
+        make_item(t2, "foo", asset, "0.001", bu("token"), recv)
         self.assertEqual(TariffItem.objects.filter(code="foo").count(), 2)
 
 
@@ -116,46 +120,46 @@ class CalculationTests(TestCase):
         self.tariff = make_tariff("AI")
         self.item = make_item(
             self.tariff, "ai.input_tokens", self.asset,
-            "0.001", BillingUnit.INPUT_TOKEN, self.recv
+            "0.001", bu("input_token"), self.recv
         )
 
     def test_basic_calculation(self):
-        drafts = calculate_tariff_charge(self.tariff, "ai.input_tokens", Decimal("1000"), BillingUnit.INPUT_TOKEN)
+        drafts = calculate_tariff_charge(self.tariff, "ai.input_tokens", Decimal("1000"), bu("input_token"))
         self.assertEqual(len(drafts), 1)
         expected_base = to_base_units(Decimal("1000") * Decimal("0.001"), self.asset.decimals)
         self.assertEqual(drafts[0].amount_base_units, expected_base)
 
     def test_no_matching_item(self):
-        drafts = calculate_tariff_charge(self.tariff, "no.such.metric", Decimal("100"), BillingUnit.TOKEN)
+        drafts = calculate_tariff_charge(self.tariff, "no.such.metric", Decimal("100"), bu("token"))
         self.assertEqual(drafts, [])
 
     def test_inactive_item_excluded(self):
         self.item.active = False
         self.item.save()
-        drafts = calculate_tariff_charge(self.tariff, "ai.input_tokens", Decimal("1000"), BillingUnit.INPUT_TOKEN)
+        drafts = calculate_tariff_charge(self.tariff, "ai.input_tokens", Decimal("1000"), bu("input_token"))
         self.assertEqual(drafts, [])
 
     def test_rounding_up(self):
         item = make_item(
             self.tariff, "ai.rounding_up", self.asset,
-            "0.001", BillingUnit.TOKEN, self.recv,
+            "0.001", bu("token"), self.recv,
             rounding_mode=RoundingMode.UP,
         )
         # 1 token * 0.001 = 0.000001 display => base = 1 (already integer)
         # 3 tokens * 0.001 = 0.003 => 3000 base? let's use decimals=3 for clarity
         asset3 = make_asset("TOK3", decimals=3)
         recv3 = make_account("RECV3")
-        item3 = make_item(self.tariff, "round.test", asset3, "0.5", BillingUnit.TOKEN, recv3, rounding_mode=RoundingMode.UP)
+        item3 = make_item(self.tariff, "round.test", asset3, "0.5", bu("token"), recv3, rounding_mode=RoundingMode.UP)
         # 3 * 0.5 = 1.5 display => 1500 base (decimals=3, exact integer)
-        drafts = calculate_tariff_charge(self.tariff, "round.test", Decimal("3"), BillingUnit.TOKEN)
+        drafts = calculate_tariff_charge(self.tariff, "round.test", Decimal("3"), bu("token"))
         self.assertEqual(drafts[0].amount_base_units, 1500)
 
     def test_rounding_down(self):
         asset = make_asset("TOK4", decimals=3)
         recv = make_account("RECV4")
-        item = make_item(self.tariff, "round.down", asset, "0.333", BillingUnit.TOKEN, recv, rounding_mode=RoundingMode.DOWN)
+        item = make_item(self.tariff, "round.down", asset, "0.333", bu("token"), recv, rounding_mode=RoundingMode.DOWN)
         # 1 * 0.333 = 333 base (exact)
-        drafts = calculate_tariff_charge(self.tariff, "round.down", Decimal("1"), BillingUnit.TOKEN)
+        drafts = calculate_tariff_charge(self.tariff, "round.down", Decimal("1"), bu("token"))
         self.assertEqual(drafts[0].amount_base_units, 333)
 
     def test_minimum_charge(self):
@@ -168,33 +172,33 @@ class CalculationTests(TestCase):
             charged_asset=asset,
             price_per_unit_display=Decimal("0.000001"),
             price_per_unit_base_units=1,
-            unit=BillingUnit.REQUEST,
+            unit=bu("request"),
             unit_quantity=Decimal("1"),
             receiving_account=recv,
             minimum_charge_base_units=1000,
             active=True,
         )
         # 1 request * 1 base_unit = 1, but minimum is 1000
-        drafts = calculate_tariff_charge(self.tariff, "min.charge", Decimal("1"), BillingUnit.REQUEST)
+        drafts = calculate_tariff_charge(self.tariff, "min.charge", Decimal("1"), bu("request"))
         self.assertEqual(drafts[0].amount_base_units, 1000)
 
     def test_per_unit_quantity(self):
         asset = make_asset("TOK6", decimals=6)
         recv = make_account("RECV6")
         # Price 0.001 per 1000 tokens
-        item = make_item(self.tariff, "per.1000", asset, "0.001", BillingUnit.TOKEN, recv, unit_quantity=1000)
+        item = make_item(self.tariff, "per.1000", asset, "0.001", bu("token"), recv, unit_quantity=1000)
         # 1000 tokens => 0.001 display = 1000 base (decimals=6)
-        drafts = calculate_tariff_charge(self.tariff, "per.1000", Decimal("1000"), BillingUnit.TOKEN)
+        drafts = calculate_tariff_charge(self.tariff, "per.1000", Decimal("1000"), bu("token"))
         expected = to_base_units(Decimal("0.001"), asset.decimals)
         self.assertEqual(drafts[0].amount_base_units, expected)
 
     def test_multi_item_same_metric(self):
         asset2 = make_asset("TOK7", decimals=6)
         recv2 = make_account("RECV7")
-        item2 = make_item(self.tariff, "ai.input_tokens.2", asset2, "0.002", BillingUnit.INPUT_TOKEN, recv2)
+        item2 = make_item(self.tariff, "ai.input_tokens.2", asset2, "0.002", bu("input_token"), recv2)
         # Two separate tariff items should NOT both match the same code unless same code
         # (they have different codes so only 1 matches)
-        drafts = calculate_tariff_charge(self.tariff, "ai.input_tokens", Decimal("100"), BillingUnit.INPUT_TOKEN)
+        drafts = calculate_tariff_charge(self.tariff, "ai.input_tokens", Decimal("100"), bu("input_token"))
         self.assertEqual(len(drafts), 1)
 
 
@@ -208,7 +212,7 @@ class SimulateTests(TestCase):
         asset = make_asset("STOK", decimals=6)
         recv = make_account("RECV-SIM")
         tariff = make_tariff("SIM")
-        make_item(tariff, "sim.tokens", asset, "0.001", BillingUnit.TOKEN, recv)
+        make_item(tariff, "sim.tokens", asset, "0.001", bu("token"), recv)
         result = simulate_tariff(tariff, [{"metric_code": "sim.tokens", "quantity": "500", "unit": "token"}])
         self.assertEqual(len(result["lines"]), 1)
         self.assertIn("STOK", result["totals_by_asset"])
@@ -233,7 +237,7 @@ class PostingTests(TestCase):
         self.tariff = make_tariff("POST")
         self.item = make_item(
             self.tariff, "post.metric", self.asset,
-            "0.001", BillingUnit.TOKEN, self.recv
+            "0.001", bu("token"), self.recv
         )
         # Fund payer with 10.0 PTOK
         fund_account(self.payer, self.asset, "10.0")
@@ -244,7 +248,7 @@ class PostingTests(TestCase):
             payer_account=self.payer,
             metric_code=metric,
             quantity=Decimal(qty),
-            unit=BillingUnit.TOKEN,
+            unit=bu("token"),
         )
 
     def test_post_drains_payer_and_credits_receiver(self):
@@ -286,14 +290,14 @@ class PostingTests(TestCase):
         asset2 = make_asset("PTOK2", decimals=6)
         recv2 = make_account("RECV-P2", AccountType.SYSTEM)
         # Add second item that charges asset2
-        item2 = make_item(self.tariff, "post.metric2", asset2, "100.0", BillingUnit.TOKEN, recv2)
+        item2 = make_item(self.tariff, "post.metric2", asset2, "100.0", bu("token"), recv2)
         # payer has PTOK but not PTOK2
         record = UsageRecord.objects.create(
             tariff=self.tariff,
             payer_account=self.payer,
             metric_code="post.metric2",
             quantity=Decimal("1"),
-            unit=BillingUnit.TOKEN,
+            unit=bu("token"),
         )
         with self.assertRaises(ValueError):
             post_usage_record(record)
@@ -305,14 +309,14 @@ class PostingTests(TestCase):
         asset2 = make_asset("ATWO", decimals=6)
         recv2 = make_account("RECV-A2", AccountType.SYSTEM)
         fund_account(self.payer, asset2, "5.0")
-        item2 = make_item(self.tariff, "dual.metric.asset2", asset2, "0.001", BillingUnit.TOKEN, recv2)
+        item2 = make_item(self.tariff, "dual.metric.asset2", asset2, "0.001", bu("token"), recv2)
         # Create a record for asset2 item only
         record = UsageRecord.objects.create(
             tariff=self.tariff,
             payer_account=self.payer,
             metric_code="dual.metric.asset2",
             quantity=Decimal("100"),
-            unit=BillingUnit.TOKEN,
+            unit=bu("token"),
         )
         tx = post_usage_record(record)
         record.refresh_from_db()
@@ -342,7 +346,7 @@ class PostingTests(TestCase):
             payer_account=self.payer,
             metric_code="post.metric",
             quantity=Decimal("100"),
-            unit=BillingUnit.TOKEN,
+            unit=bu("token"),
         )
         self.assertEqual(record.status, UsageStatus.POSTED)
         self.assertTrue(tx.posted)
@@ -388,7 +392,7 @@ class TariffViewTests(TestCase):
         self.asset = make_asset("VTOK", decimals=6)
         self.recv = make_account("VRECV", AccountType.SYSTEM)
         self.tariff = make_tariff("VTEST")
-        make_item(self.tariff, "view.metric", self.asset, "0.001", BillingUnit.TOKEN, self.recv)
+        make_item(self.tariff, "view.metric", self.asset, "0.001", bu("token"), self.recv)
 
     def test_tariff_list_renders(self):
         self.client.login(username="admin", password="password")

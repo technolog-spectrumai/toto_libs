@@ -19,25 +19,18 @@ class TariffStatus(models.TextChoices):
     ARCHIVED = "archived", _("Archived")
 
 
-class BillingUnit(models.TextChoices):
-    REQUEST = "request", _("Request")
-    TOKEN = "token", _("Token")
-    INPUT_TOKEN = "input_token", _("Input Token")
-    OUTPUT_TOKEN = "output_token", _("Output Token")
-    BYTE = "byte", _("Byte")
-    KB = "kb", _("KB")
-    MB = "mb", _("MB")
-    GB = "gb", _("GB")
-    SECOND = "second", _("Second")
-    MINUTE = "minute", _("Minute")
-    HOUR = "hour", _("Hour")
-    MB_SECOND = "mb_second", _("MB·Second")
-    MB_MINUTE = "mb_minute", _("MB·Minute")
-    MB_HOUR = "mb_hour", _("MB·Hour")
-    GB_HOUR = "gb_hour", _("GB·Hour")
-    NODE = "node", _("Node")
-    RELATIONSHIP = "relationship", _("Relationship")
-    CUSTOM = "custom", _("Custom")
+class BillingUnit(models.Model):
+    slug = models.SlugField(max_length=50, unique=True)
+    name = models.CharField(max_length=100)
+    trait = models.CharField(max_length=100, blank=True)
+
+    class Meta:
+        ordering = ["slug"]
+        verbose_name = "billing unit"
+        verbose_name_plural = "billing units"
+
+    def __str__(self):
+        return self.name or self.slug
 
 
 class RoundingMode(models.TextChoices):
@@ -118,7 +111,11 @@ class TariffItem(models.Model):
     price_per_unit_base_units = models.BigIntegerField(
         help_text=_("Price in asset base units (integer)"),
     )
-    unit = models.CharField(max_length=20, choices=BillingUnit.choices)
+    unit = models.ForeignKey(
+        BillingUnit,
+        on_delete=models.PROTECT,
+        related_name="+",
+    )
     unit_quantity = models.DecimalField(
         max_digits=20,
         decimal_places=6,
@@ -184,7 +181,11 @@ class UsageRecord(models.Model):
     )
     metric_code = models.CharField(max_length=100)
     quantity = models.DecimalField(max_digits=30, decimal_places=10)
-    unit = models.CharField(max_length=20, choices=BillingUnit.choices)
+    unit = models.ForeignKey(
+        BillingUnit,
+        on_delete=models.PROTECT,
+        related_name="+",
+    )
     source_type = models.CharField(max_length=100, blank=True)
     source_id = models.CharField(max_length=255, blank=True)
     occurred_at = models.DateTimeField(null=True, blank=True)
@@ -254,7 +255,11 @@ class UsageCharge(models.Model):
         related_name="usage_charges",
     )
     quantity = models.DecimalField(max_digits=30, decimal_places=10)
-    unit = models.CharField(max_length=20, choices=BillingUnit.choices)
+    unit = models.ForeignKey(
+        BillingUnit,
+        on_delete=models.PROTECT,
+        related_name="+",
+    )
     price_per_unit_base_units = models.BigIntegerField()
     amount_base_units = models.BigIntegerField()
     payer_account = models.ForeignKey(

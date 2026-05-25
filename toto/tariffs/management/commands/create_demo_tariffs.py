@@ -90,9 +90,9 @@ class Command(BaseCommand):
             self.stdout.write(f"  Tariff already exists: {tariff1.code}")
 
         items_ai = [
-            ("ai.input_tokens",  ai_token, "0.001", BillingUnit.INPUT_TOKEN,  rev_ai,      1,    "AI input token billing"),
-            ("ai.output_tokens", ai_token, "0.003", BillingUnit.OUTPUT_TOKEN, rev_ai,      1,    "AI output token billing"),
-            ("storage.mb_hour",  storage_token, "0.00001", BillingUnit.MB_HOUR, rev_storage, 1,   "File storage per MB per hour"),
+            ("ai.input_tokens",  ai_token,      "0.001",   BillingUnit.objects.get(slug="input_token"),  rev_ai,      1, "AI input token billing"),
+            ("ai.output_tokens", ai_token,      "0.003",   BillingUnit.objects.get(slug="output_token"), rev_ai,      1, "AI output token billing"),
+            ("storage.mb_hour",  storage_token, "0.00001", BillingUnit.objects.get(slug="mb_hour"),      rev_storage, 1, "File storage per MB per hour"),
         ]
         for code, asset, price, unit, recv, uq, label in items_ai:
             price_base = to_base_units(Decimal(price), asset.decimals)
@@ -126,10 +126,10 @@ class Command(BaseCommand):
             self.stdout.write(f"  Created tariff: {tariff2.code}")
 
         items_graph = [
-            ("neo4j.node_second",         graph_token, "0.00002", BillingUnit.SECOND,       rev_graph, 1),
-            ("neo4j.relationship_second",  graph_token, "0.00001", BillingUnit.SECOND,       rev_graph, 1),
-            ("neo4j.node",                 graph_token, "0.0001",  BillingUnit.NODE,         rev_graph, 1),
-            ("neo4j.relationship",         graph_token, "0.00005", BillingUnit.RELATIONSHIP, rev_graph, 1),
+            ("neo4j.node_second",         graph_token, "0.00002", BillingUnit.objects.get(slug="second"),       rev_graph, 1),
+            ("neo4j.relationship_second",  graph_token, "0.00001", BillingUnit.objects.get(slug="second"),       rev_graph, 1),
+            ("neo4j.node",                 graph_token, "0.0001",  BillingUnit.objects.get(slug="node"),         rev_graph, 1),
+            ("neo4j.relationship",         graph_token, "0.00005", BillingUnit.objects.get(slug="relationship"), rev_graph, 1),
         ]
         for code, asset, price, unit, recv, uq in items_graph:
             price_base = to_base_units(Decimal(price), asset.decimals)
@@ -163,9 +163,9 @@ class Command(BaseCommand):
             self.stdout.write(f"  Created tariff: {tariff3.code}")
 
         items_compute = [
-            ("compute.second", compute_token, "0.0001",  BillingUnit.SECOND, rev_compute, 1),
-            ("compute.minute", compute_token, "0.006",   BillingUnit.MINUTE, rev_compute, 1),
-            ("compute.hour",   compute_token, "0.36",    BillingUnit.HOUR,   rev_compute, 1),
+            ("compute.second", compute_token, "0.0001", BillingUnit.objects.get(slug="second"), rev_compute, 1),
+            ("compute.minute", compute_token, "0.006",  BillingUnit.objects.get(slug="minute"), rev_compute, 1),
+            ("compute.hour",   compute_token, "0.36",   BillingUnit.objects.get(slug="hour"),   rev_compute, 1),
         ]
         for code, asset, price, unit, recv, uq in items_compute:
             price_base = to_base_units(Decimal(price), asset.decimals)

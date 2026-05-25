@@ -39,6 +39,11 @@ from .models import (
 )
 
 
+def _unit_slug(unit) -> str:
+    """Return the slug string for a BillingUnit instance or a plain string slug."""
+    return unit.slug if isinstance(unit, BillingUnit) else (unit or "")
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
@@ -47,7 +52,7 @@ from .models import (
 class ChargeDraft:
     tariff_item: TariffItem
     quantity: Decimal
-    unit: str
+    unit: object  # BillingUnit instance or slug string
     amount_base_units: int
     payer_account_id: int
     receiving_account_id: int
@@ -106,7 +111,7 @@ def calculate_tariff_charge(
                 "item_code": item.code,
                 "metric_code": metric_code,
                 "quantity": str(quantity),
-                "unit": unit,
+                "unit": _unit_slug(unit),
             },
         ))
     return drafts
@@ -254,7 +259,7 @@ def post_usage_record(
             "tariff_code": usage_record.tariff.code,
             "metric_code": usage_record.metric_code,
             "quantity": str(usage_record.quantity),
-            "unit": usage_record.unit,
+            "unit": usage_record.unit.slug,
             "charge_count": len(charges),
         }
 
@@ -377,7 +382,11 @@ def simulate_tariff(
     for entry in usage_payload:
         metric_code = entry["metric_code"]
         quantity = Decimal(str(entry["quantity"]))
-        unit = entry.get("unit", BillingUnit.CUSTOM)
+        unit_raw = entry.get("unit")
+        if isinstance(unit_raw, str):
+            unit = BillingUnit.objects.filter(slug=unit_raw).first()
+        else:
+            unit = unit_raw  # already a BillingUnit instance or None
 
         drafts = calculate_tariff_charge(tariff, metric_code, quantity, unit)
         for draft in drafts:

@@ -17,7 +17,7 @@ from toto.assets.models import Asset, AssetHolding, LedgerAccount
 from toto.ui import PageProcessor
 
 from .forms import TariffForm, TariffItemForm, UsageRecordForm, UsageSimulationForm
-from .models import Tariff, TariffItem, TariffStatus, UsageRecord, UsageStatus
+from .models import BillingUnit, Tariff, TariffItem, TariffStatus, UsageRecord, UsageStatus
 from .services import (
     calculate_tariff_charge,
     post_usage_record,
@@ -384,16 +384,17 @@ def api_rate(request):
         tariff = get_object_or_404(Tariff, code=body["tariff_code"])
         metric_code = body["metric_code"]
         quantity = Decimal(str(body["quantity"]))
-        unit = body.get("unit", "custom")
+        unit_slug = body.get("unit", "custom")
     except (KeyError, json.JSONDecodeError, InvalidOperation) as exc:
         return JsonResponse({"error": str(exc)}, status=400)
 
-    drafts = calculate_tariff_charge(tariff, metric_code, quantity, unit)
+    billing_unit = get_object_or_404(BillingUnit, slug=unit_slug)
+    drafts = calculate_tariff_charge(tariff, metric_code, quantity, billing_unit)
     return JsonResponse({
         "tariff_code": tariff.code,
         "metric_code": metric_code,
         "quantity": str(quantity),
-        "unit": unit,
+        "unit": billing_unit.slug,
         "charges": [
             {
                 "item_code": d.tariff_item.code,
@@ -418,20 +419,21 @@ def api_post(request):
         payer_account = get_object_or_404(LedgerAccount, code=body["payer_account_code"])
         metric_code = body["metric_code"]
         quantity = Decimal(str(body["quantity"]))
-        unit = body.get("unit", "custom")
+        unit_slug = body.get("unit", "custom")
         source_type = body.get("source_type", "")
         source_id = body.get("source_id", "")
         metadata = body.get("metadata", {})
     except (KeyError, json.JSONDecodeError, InvalidOperation) as exc:
         return JsonResponse({"error": str(exc)}, status=400)
 
+    billing_unit = get_object_or_404(BillingUnit, slug=unit_slug)
     try:
         record, tx = record_and_post_usage(
             tariff=tariff,
             payer_account=payer_account,
             metric_code=metric_code,
             quantity=quantity,
-            unit=unit,
+            unit=billing_unit,
             source_type=source_type,
             source_id=source_id,
             metadata=metadata,
