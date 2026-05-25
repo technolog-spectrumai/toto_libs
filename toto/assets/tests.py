@@ -1141,7 +1141,7 @@ class ObligationHelperTests(TestCase):
 
 class ScheduleModelTests(TestCase):
     def _make_schedule(self, **kwargs):
-        from .models import Schedule, ScheduleKind, ScheduleStatus
+        from toto.claims.models import Schedule, ScheduleKind, ScheduleStatus
         from django.utils import timezone
         defaults = dict(
             name="Test schedule",
@@ -1155,13 +1155,13 @@ class ScheduleModelTests(TestCase):
         return Schedule.objects.create(**defaults)
 
     def test_create_schedule(self):
-        from .models import Schedule
+        from toto.claims.models import Schedule
         s = self._make_schedule()
         self.assertIsNotNone(s.pk)
         self.assertEqual(s.name, "Test schedule")
 
     def test_ends_at_before_starts_at_fails_clean(self):
-        from .models import Schedule, ScheduleKind
+        from toto.claims.models import Schedule, ScheduleKind
         from django.core.exceptions import ValidationError
         from django.utils import timezone
         import datetime
@@ -1178,7 +1178,7 @@ class ScheduleModelTests(TestCase):
             s.clean()
 
     def test_no_reference_fails_clean(self):
-        from .models import Schedule, ScheduleKind
+        from toto.claims.models import Schedule, ScheduleKind
         from django.core.exceptions import ValidationError
         from django.utils import timezone
         s = Schedule(
@@ -1190,7 +1190,7 @@ class ScheduleModelTests(TestCase):
             s.clean()
 
     def test_manual_metadata_bypasses_ref_check(self):
-        from .models import Schedule, ScheduleKind
+        from toto.claims.models import Schedule, ScheduleKind
         from django.utils import timezone
         s = Schedule(
             name="manual",
@@ -1201,31 +1201,31 @@ class ScheduleModelTests(TestCase):
         s.clean()  # should not raise
 
     def test_active_queryset(self):
-        from .models import Schedule, ScheduleStatus
+        from toto.claims.models import Schedule, ScheduleStatus
         self._make_schedule(status=ScheduleStatus.ACTIVE)
         self._make_schedule(name="paused", status=ScheduleStatus.PAUSED)
-        from .models import Schedule
+        from toto.claims.models import Schedule
         self.assertEqual(Schedule.objects.active().count(), 1)
 
     def test_due_queryset(self):
-        from .models import Schedule, ScheduleStatus
+        from toto.claims.models import Schedule, ScheduleStatus
         from django.utils import timezone
         import datetime
         now = timezone.now()
         self._make_schedule(next_run_at=now - datetime.timedelta(hours=1))
         self._make_schedule(name="future", next_run_at=now + datetime.timedelta(days=1))
-        from .models import Schedule
+        from toto.claims.models import Schedule
         self.assertEqual(Schedule.objects.due(now=now).count(), 1)
 
     def test_by_kind_queryset(self):
-        from .models import Schedule, ScheduleKind
+        from toto.claims.models import Schedule, ScheduleKind
         self._make_schedule(kind=ScheduleKind.BILLING)
         self._make_schedule(name="other", kind=ScheduleKind.RENEWAL)
-        from .models import Schedule
+        from toto.claims.models import Schedule
         self.assertEqual(Schedule.objects.by_kind(ScheduleKind.BILLING).count(), 1)
 
     def test_for_source_queryset(self):
-        from .models import Schedule
+        from toto.claims.models import Schedule
         self._make_schedule(source_type="instruments.FI", source_id="42")
         self._make_schedule(name="other", source_type="instruments.FI", source_id="99")
         self.assertEqual(Schedule.objects.for_source("instruments.FI", "42").count(), 1)
@@ -1237,7 +1237,7 @@ class ScheduleModelTests(TestCase):
 
 class ConditionModelTests(TestCase):
     def _make_condition(self, **kwargs):
-        from .models import Condition, ConditionKind, ConditionStatus
+        from toto.claims.models import Condition, ConditionKind, ConditionStatus
         defaults = dict(
             name="Test condition",
             kind=ConditionKind.TIME,
@@ -1253,14 +1253,14 @@ class ConditionModelTests(TestCase):
         self.assertIsNotNone(c.pk)
 
     def test_no_reference_fails_clean(self):
-        from .models import Condition, ConditionKind
+        from toto.claims.models import Condition, ConditionKind
         from django.core.exceptions import ValidationError
         c = Condition(name="no-ref", kind=ConditionKind.TIME)
         with self.assertRaises(ValidationError):
             c.clean()
 
     def test_mark_satisfied(self):
-        from .models import ConditionStatus
+        from toto.claims.models import ConditionStatus
         from .services.lifecycle import mark_condition_satisfied
         c = self._make_condition()
         mark_condition_satisfied(c)
@@ -1269,7 +1269,7 @@ class ConditionModelTests(TestCase):
         self.assertIsNotNone(c.satisfied_at)
 
     def test_mark_failed(self):
-        from .models import ConditionStatus
+        from toto.claims.models import ConditionStatus
         from .services.lifecycle import mark_condition_failed
         c = self._make_condition()
         mark_condition_failed(c, reason="bad state")
@@ -1279,7 +1279,7 @@ class ConditionModelTests(TestCase):
         self.assertEqual(c.metadata.get("failure_reason"), "bad state")
 
     def test_waive_condition(self):
-        from .models import ConditionStatus
+        from toto.claims.models import ConditionStatus
         from .services.lifecycle import waive_condition
         c = self._make_condition()
         waive_condition(c, reason="approved manually")
@@ -1289,20 +1289,20 @@ class ConditionModelTests(TestCase):
 
     def test_evaluate_always_true(self):
         from .services.lifecycle import evaluate_condition
-        from .models import ConditionKind
+        from toto.claims.models import ConditionKind
         c = self._make_condition(kind=ConditionKind.MANUAL, expression={"type": "always_true"})
         self.assertTrue(evaluate_condition(c))
 
     def test_evaluate_status_equals(self):
         from .services.lifecycle import evaluate_condition
-        from .models import ConditionKind
+        from toto.claims.models import ConditionKind
         c = self._make_condition(kind=ConditionKind.STATUS, expression={"type": "status_equals", "value": "active"})
         self.assertTrue(evaluate_condition(c, context={"status": "active"}))
         self.assertFalse(evaluate_condition(c, context={"status": "draft"}))
 
     def test_evaluate_now_after_past(self):
         from .services.lifecycle import evaluate_condition
-        from .models import ConditionKind
+        from toto.claims.models import ConditionKind
         import datetime
         from django.utils import timezone
         past = (timezone.now() - datetime.timedelta(days=1)).isoformat()
@@ -1311,7 +1311,7 @@ class ConditionModelTests(TestCase):
 
     def test_evaluate_now_before_future(self):
         from .services.lifecycle import evaluate_condition
-        from .models import ConditionKind
+        from toto.claims.models import ConditionKind
         import datetime
         from django.utils import timezone
         future = (timezone.now() + datetime.timedelta(days=1)).isoformat()
@@ -1320,14 +1320,14 @@ class ConditionModelTests(TestCase):
 
     def test_evaluate_balance_at_least(self):
         from .services.lifecycle import evaluate_condition
-        from .models import ConditionKind
+        from toto.claims.models import ConditionKind
         c = self._make_condition(kind=ConditionKind.BALANCE, expression={"type": "balance_at_least", "amount": 100})
         self.assertTrue(evaluate_condition(c, context={"balance": 200}))
         self.assertFalse(evaluate_condition(c, context={"balance": 50}))
 
     def test_evaluate_unsupported_strict_raises(self):
         from .services.lifecycle import evaluate_condition
-        from .models import ConditionKind
+        from toto.claims.models import ConditionKind
         from django.core.exceptions import ValidationError
         c = self._make_condition(kind=ConditionKind.OTHER, expression={"type": "unknown_type"})
         with self.assertRaises(ValidationError):
@@ -1335,7 +1335,7 @@ class ConditionModelTests(TestCase):
 
     def test_evaluate_unsupported_returns_false(self):
         from .services.lifecycle import evaluate_condition
-        from .models import ConditionKind
+        from toto.claims.models import ConditionKind
         c = self._make_condition(kind=ConditionKind.OTHER, expression={"type": "unknown_type"})
         self.assertFalse(evaluate_condition(c))
 
@@ -1356,7 +1356,7 @@ class AllocationModelTests(TestCase):
         )
 
     def _make_allocation(self, **kwargs):
-        from .models import Allocation, AllocationKind, AllocationStatus
+        from toto.claims.models import Allocation, AllocationKind, AllocationStatus
         defaults = dict(
             kind=AllocationKind.RESERVE,
             status=AllocationStatus.ACTIVE,
@@ -1374,7 +1374,7 @@ class AllocationModelTests(TestCase):
         self.assertIsNotNone(a.pk)
 
     def test_negative_amount_fails_clean(self):
-        from .models import Allocation, AllocationKind
+        from toto.claims.models import Allocation, AllocationKind
         from django.core.exceptions import ValidationError
         a = Allocation(
             kind=AllocationKind.RESERVE,
@@ -1387,7 +1387,7 @@ class AllocationModelTests(TestCase):
             a.clean()
 
     def test_zero_amount_fails_clean(self):
-        from .models import Allocation, AllocationKind
+        from toto.claims.models import Allocation, AllocationKind
         from django.core.exceptions import ValidationError
         a = Allocation(
             kind=AllocationKind.RESERVE,
@@ -1400,7 +1400,7 @@ class AllocationModelTests(TestCase):
             a.clean()
 
     def test_released_plus_consumed_exceeds_amount_fails_clean(self):
-        from .models import Allocation, AllocationKind
+        from toto.claims.models import Allocation, AllocationKind
         from django.core.exceptions import ValidationError
         a = Allocation(
             kind=AllocationKind.RESERVE,
@@ -1423,7 +1423,7 @@ class AllocationModelTests(TestCase):
         self.assertTrue(a.is_active_now)
 
     def test_activate_allocation(self):
-        from .models import Allocation, AllocationKind, AllocationStatus
+        from toto.claims.models import Allocation, AllocationKind, AllocationStatus
         from .services.lifecycle import activate_allocation
         a = self._make_allocation(status=AllocationStatus.DRAFT, allocated_amount_base_units=0)
         activate_allocation(a)
@@ -1432,7 +1432,7 @@ class AllocationModelTests(TestCase):
         self.assertEqual(a.allocated_amount_base_units, 1000)
 
     def test_release_allocation(self):
-        from .models import AllocationStatus
+        from toto.claims.models import AllocationStatus
         from .services.lifecycle import release_allocation
         a = self._make_allocation(amount_base_units=100)
         release_allocation(a, 100)
@@ -1441,7 +1441,7 @@ class AllocationModelTests(TestCase):
         self.assertEqual(a.status, AllocationStatus.RELEASED)
 
     def test_consume_allocation(self):
-        from .models import AllocationStatus
+        from toto.claims.models import AllocationStatus
         from .services.lifecycle import consume_allocation
         a = self._make_allocation(amount_base_units=100)
         consume_allocation(a, 100)
@@ -1450,7 +1450,7 @@ class AllocationModelTests(TestCase):
         self.assertEqual(a.status, AllocationStatus.CONSUMED)
 
     def test_cancel_allocation(self):
-        from .models import AllocationStatus
+        from toto.claims.models import AllocationStatus
         from .services.lifecycle import cancel_allocation
         a = self._make_allocation()
         cancel_allocation(a)
@@ -1464,7 +1464,7 @@ class AllocationModelTests(TestCase):
 
 class ContractEventTests(TestCase):
     def test_create_event_with_source(self):
-        from .models import ContractEventKind
+        from toto.claims.models import ContractEventKind
         from .services.lifecycle import create_event
         ev = create_event(
             kind=ContractEventKind.CREATED,
@@ -1476,7 +1476,8 @@ class ContractEventTests(TestCase):
         self.assertEqual(ev.kind, ContractEventKind.CREATED)
 
     def test_create_obligation_event(self):
-        from .models import Obligation, ContractEventKind
+        from .models import Obligation
+        from toto.claims.models import ContractEventKind
         from .services.lifecycle import create_obligation_event
         from .services.assets import create_asset
         from django.utils import timezone
@@ -1496,7 +1497,7 @@ class ContractEventTests(TestCase):
         self.assertEqual(ev.obligation, ob)
 
     def test_create_checkpoint(self):
-        from .models import ContractEventKind
+        from toto.claims.models import ContractEventKind
         from .services.lifecycle import create_checkpoint
         ev = create_checkpoint("test.Model", 99, {"note": "hello"})
         self.assertEqual(ev.source_type, "test.Model")
@@ -1504,14 +1505,14 @@ class ContractEventTests(TestCase):
         self.assertTrue(ev.payload.get("checkpoint"))
 
     def test_event_clean_requires_reference(self):
-        from .models import ContractEvent, ContractEventKind
+        from toto.claims.models import ContractEvent, ContractEventKind
         from django.core.exceptions import ValidationError
         ev = ContractEvent(kind=ContractEventKind.CREATED, title="no-ref")
         with self.assertRaises(ValidationError):
             ev.clean()
 
     def test_event_clean_manual_payload_bypasses(self):
-        from .models import ContractEvent, ContractEventKind
+        from toto.claims.models import ContractEvent, ContractEventKind
         ev = ContractEvent(kind=ContractEventKind.CREATED, title="ok", payload={"manual": True})
         ev.clean()  # should not raise
 

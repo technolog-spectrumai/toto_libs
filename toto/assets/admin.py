@@ -5,29 +5,15 @@ from django.utils.safestring import mark_safe
 from .hashing import verify_hash_chain
 from .models import (
     Agreement,
-    Allocation,
-    AllocationKind,
-    AllocationStatus,
     Asset,
     AssetHolding,
-    Condition,
-    ConditionKind,
-    ConditionStatus,
     Contract,
-    ContractEvent,
-    ContractEventKind,
     Currency,
-    Entitlement,
-    EntitlementKind,
-    EntitlementStatus,
     LedgerAccount,
     LedgerEntry,
     LedgerHash,
     LedgerTransaction,
     Obligation,
-    Schedule,
-    ScheduleKind,
-    ScheduleStatus,
     Tokenization,
 )
 
@@ -307,66 +293,3 @@ class ObligationAdmin(admin.ModelAdmin):
     collateral_display.short_description = "Collateral"
 
 
-@admin.register(Entitlement)
-class EntitlementAdmin(admin.ModelAdmin):
-    list_display = ("resource_label", "kind", "status", "holder_account", "source_type", "source_id", "created_at")
-    list_filter = ("kind", "status")
-    search_fields = ("resource_label", "holder_account__code", "source_type", "source_id")
-    readonly_fields = ("uuid", "created_at", "updated_at")
-    raw_id_fields = ("agreement", "contract", "holder_account")
-
-
-@admin.register(Schedule)
-class ScheduleAdmin(admin.ModelAdmin):
-    list_display = ("name", "kind", "status", "frequency", "next_run_at", "source_type", "source_id", "created_at")
-    list_filter = ("kind", "status", "frequency")
-    search_fields = ("name", "source_type", "source_id")
-    readonly_fields = ("uuid", "created_at", "updated_at")
-    raw_id_fields = ("agreement", "contract")
-
-
-@admin.register(Condition)
-class ConditionAdmin(admin.ModelAdmin):
-    list_display = ("name", "kind", "status", "source_type", "source_id", "created_at")
-    list_filter = ("kind", "status")
-    search_fields = ("name", "description", "source_type", "source_id")
-    readonly_fields = ("uuid", "created_at", "updated_at", "satisfied_at", "failed_at")
-    raw_id_fields = ("agreement", "contract")
-
-
-@admin.register(Allocation)
-class AllocationAdmin(admin.ModelAdmin):
-    list_display = (
-        "kind", "status", "asset", "amount_base_units", "remaining_amount_base_units",
-        "source_type", "source_id", "created_at",
-    )
-    list_filter = ("kind", "status", "asset")
-    search_fields = ("source_type", "source_id")
-    readonly_fields = ("uuid", "created_at", "updated_at", "remaining_amount_base_units", "is_active_now")
-    raw_id_fields = ("agreement", "contract", "holder_account", "beneficiary_account", "asset")
-
-    @staticmethod
-    def remaining_amount_base_units(obj):
-        return obj.remaining_amount_base_units
-    remaining_amount_base_units.short_description = "Remaining"
-
-    @staticmethod
-    def is_active_now(obj):
-        return obj.is_active_now
-    is_active_now.boolean = True
-    is_active_now.short_description = "Active now"
-
-
-@admin.register(ContractEvent)
-class ContractEventAdmin(admin.ModelAdmin):
-    list_display = ("kind", "title", "agreement", "contract", "source_type", "source_id", "created_at")
-    list_filter = ("kind",)
-    search_fields = ("title", "description", "source_type", "source_id")
-    readonly_fields = ("uuid", "created_at")
-    raw_id_fields = (
-        "agreement", "contract", "actor", "transaction",
-        "obligation", "entitlement", "schedule", "condition", "allocation",
-    )
-
-    def has_change_permission(self, request, obj=None):
-        return False

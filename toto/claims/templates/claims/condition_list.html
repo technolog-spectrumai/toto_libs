@@ -1,0 +1,76 @@
+{% extends "claims/base.html" %}
+{% load i18n %}
+
+{% block claims_title %}{% trans "Conditions" %}{% endblock %}
+
+{% block claims_content %}
+<div class="space-y-6">
+  <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <h2 class="text-xl font-bold">{% trans "Conditions" %} <span class="text-sm font-normal opacity-50">({{ total }})</span></h2>
+    <form method="get" class="flex flex-wrap gap-2">
+      <input type="text" name="q" value="{{ q }}"
+        placeholder="{% trans 'Search…' %}"
+        :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+        class="rounded-lg border px-3 py-2 text-sm focus:outline-none w-44">
+      <select name="status"
+        :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+        class="rounded-lg border px-3 py-2 text-sm focus:outline-none">
+        <option value="">{% trans "All statuses" %}</option>
+        {% for val, label in status_choices %}<option value="{{ val }}" {% if status_filter == val %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+      <select name="kind"
+        :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+        class="rounded-lg border px-3 py-2 text-sm focus:outline-none">
+        <option value="">{% trans "All kinds" %}</option>
+        {% for val, label in kind_choices %}<option value="{{ val }}" {% if kind_filter == val %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+      <button type="submit"
+        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+        class="rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-85">
+        {% trans "Filter" %}
+      </button>
+      {% if q or status_filter or kind_filter %}
+      <a href="{% url 'claims:condition_list' %}" class="rounded-lg border px-4 py-2 text-sm opacity-60 hover:opacity-90 transition"
+        :class="darkMode ? 'border-accent-1' : 'border-accent-2'">{% trans "Clear" %}</a>
+      {% endif %}
+    </form>
+  </div>
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border shadow-sm overflow-hidden">
+    {% if conditions %}
+    <table class="w-full text-sm">
+      <thead>
+        <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-b text-xs uppercase tracking-wide opacity-60">
+          <th class="px-4 py-3 text-left">{% trans "Name" %}</th>
+          <th class="px-4 py-3 text-left">{% trans "Kind" %}</th>
+          <th class="px-4 py-3 text-left">{% trans "Status" %}</th>
+          <th class="px-4 py-3 text-left">{% trans "Source" %}</th>
+          <th class="px-4 py-3 text-left">{% trans "Created" %}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in conditions %}
+        <tr :class="darkMode ? 'border-accent-1 hover:bg-black/10' : 'border-accent-2 hover:bg-black/5'"
+            class="border-b transition cursor-pointer"
+            onclick="window.location='{% url 'claims:condition_detail' c.uuid %}'">
+          <td class="px-4 py-3 font-semibold">{{ c.name }}</td>
+          <td class="px-4 py-3 opacity-70">{{ c.get_kind_display }}</td>
+          <td class="px-4 py-3">
+            <span class="inline-block rounded px-2 py-0.5 text-xs font-semibold
+              {% if c.status == 'satisfied' %}bg-green-100 text-green-800{% elif c.status == 'failed' %}bg-red-100 text-red-800{% elif c.status == 'pending' %}bg-yellow-100 text-yellow-800{% else %}bg-gray-100 text-gray-700{% endif %}">
+              {{ c.get_status_display }}
+            </span>
+          </td>
+          <td class="px-4 py-3 text-xs opacity-60">{{ c.source_type }}/{{ c.source_id }}</td>
+          <td class="px-4 py-3 opacity-60">{{ c.created_at|date:"Y-m-d H:i" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="px-4 py-8 text-center text-sm opacity-50">{% trans "No conditions found." %}</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

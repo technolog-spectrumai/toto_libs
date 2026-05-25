@@ -8,7 +8,7 @@ No ledger balances are mutated here.
 """
 from __future__ import annotations
 
-from toto.assets.models import (
+from toto.claims.models import (
     Allocation,
     AllocationKind,
     AllocationStatus,
@@ -24,7 +24,7 @@ from toto.assets.models import (
     ScheduleStatus,
     ContractEvent,
 )
-from toto.assets.services.lifecycle import create_event
+from toto.claims.services.lifecycle import create_event
 
 _INSTR_SRC = "instruments.FinancialInstrument"
 

@@ -1,0 +1,80 @@
+{% extends "claims/base.html" %}
+{% load i18n %}
+
+{% block claims_title %}{% trans "Allocations" %}{% endblock %}
+
+{% block claims_content %}
+<div class="space-y-6">
+  <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <h2 class="text-xl font-bold">{% trans "Allocations" %} <span class="text-sm font-normal opacity-50">({{ total }})</span></h2>
+    <form method="get" class="flex flex-wrap gap-2">
+      <input type="text" name="q" value="{{ q }}"
+        placeholder="{% trans 'Search…' %}"
+        :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+        class="rounded-lg border px-3 py-2 text-sm focus:outline-none w-44">
+      <select name="status"
+        :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+        class="rounded-lg border px-3 py-2 text-sm focus:outline-none">
+        <option value="">{% trans "All statuses" %}</option>
+        {% for val, label in status_choices %}<option value="{{ val }}" {% if status_filter == val %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+      <select name="kind"
+        :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+        class="rounded-lg border px-3 py-2 text-sm focus:outline-none">
+        <option value="">{% trans "All kinds" %}</option>
+        {% for val, label in kind_choices %}<option value="{{ val }}" {% if kind_filter == val %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+      <button type="submit"
+        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+        class="rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-85">
+        {% trans "Filter" %}
+      </button>
+      {% if q or status_filter or kind_filter %}
+      <a href="{% url 'claims:allocation_list' %}" class="rounded-lg border px-4 py-2 text-sm opacity-60 hover:opacity-90 transition"
+        :class="darkMode ? 'border-accent-1' : 'border-accent-2'">{% trans "Clear" %}</a>
+      {% endif %}
+    </form>
+  </div>
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border shadow-sm overflow-hidden">
+    {% if allocations %}
+    <table class="w-full text-sm">
+      <thead>
+        <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-b text-xs uppercase tracking-wide opacity-60">
+          <th class="px-4 py-3 text-left">{% trans "Kind" %}</th>
+          <th class="px-4 py-3 text-left">{% trans "Status" %}</th>
+          <th class="px-4 py-3 text-left">{% trans "Asset" %}</th>
+          <th class="px-4 py-3 text-right">{% trans "Amount" %}</th>
+          <th class="px-4 py-3 text-right">{% trans "Remaining" %}</th>
+          <th class="px-4 py-3 text-left">{% trans "Holder" %}</th>
+          <th class="px-4 py-3 text-left">{% trans "Source" %}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in allocations %}
+        <tr :class="darkMode ? 'border-accent-1 hover:bg-black/10' : 'border-accent-2 hover:bg-black/5'"
+            class="border-b transition cursor-pointer"
+            onclick="window.location='{% url 'claims:allocation_detail' a.uuid %}'">
+          <td class="px-4 py-3 font-semibold">{{ a.get_kind_display }}</td>
+          <td class="px-4 py-3">
+            <span class="inline-block rounded px-2 py-0.5 text-xs font-semibold
+              {% if a.status == 'active' %}bg-green-100 text-green-800{% elif a.status == 'consumed' %}bg-blue-100 text-blue-800{% elif a.status == 'cancelled' %}bg-red-100 text-red-800{% else %}bg-gray-100 text-gray-700{% endif %}">
+              {{ a.get_status_display }}
+            </span>
+          </td>
+          <td class="px-4 py-3 font-mono text-xs">{{ a.asset.unit_name }}</td>
+          <td class="px-4 py-3 text-right font-mono text-xs">{{ a.amount_base_units }}</td>
+          <td class="px-4 py-3 text-right font-mono text-xs">{{ a.remaining_amount_base_units }}</td>
+          <td class="px-4 py-3 font-mono text-xs opacity-70">{{ a.holder_account.code|default:"—" }}</td>
+          <td class="px-4 py-3 text-xs opacity-60">{{ a.source_type }}/{{ a.source_id }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="px-4 py-8 text-center text-sm opacity-50">{% trans "No allocations found." %}</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

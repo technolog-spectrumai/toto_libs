@@ -1,0 +1,120 @@
+{% extends "claims/base.html" %}
+{% load i18n %}
+
+{% block claims_title %}{% trans "Claims Overview" %}{% endblock %}
+
+{% block claims_content %}
+<div class="space-y-8">
+
+  <p class="text-sm opacity-60">{% trans "Lifecycle primitives — entitlements, schedules, conditions, allocations, and events across all instruments and agreements." %}</p>
+
+  <!-- Stats grid -->
+  <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+
+    <a href="{% url 'claims:entitlement_list' %}"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-xl border p-4 shadow-sm hover:opacity-80 transition block">
+      <div class="text-2xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">{{ stats.entitlements_total }}</div>
+      <div class="mt-1 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Entitlements" %}</div>
+      <div class="mt-2 flex gap-2 text-xs">
+        <span class="text-green-500">{{ stats.entitlements_active }} {% trans "active" %}</span>
+        <span class="text-red-400">{{ stats.entitlements_revoked }} {% trans "revoked" %}</span>
+      </div>
+    </a>
+
+    <a href="{% url 'claims:obligation_list' %}"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-xl border p-4 shadow-sm hover:opacity-80 transition block">
+      <div class="text-2xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">{{ stats.obligations_total }}</div>
+      <div class="mt-1 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Obligations" %}</div>
+      <div class="mt-2 flex gap-2 text-xs">
+        <span class="text-yellow-400">{{ stats.obligations_pending }} {% trans "pending" %}</span>
+        <span class="text-red-400">{{ stats.obligations_overdue }} {% trans "overdue" %}</span>
+      </div>
+    </a>
+
+    <a href="{% url 'claims:schedule_list' %}"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-xl border p-4 shadow-sm hover:opacity-80 transition block">
+      <div class="text-2xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">{{ stats.schedules_total }}</div>
+      <div class="mt-1 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Schedules" %}</div>
+      <div class="mt-2 flex gap-2 text-xs">
+        <span class="text-green-500">{{ stats.schedules_active }} {% trans "active" %}</span>
+        <span class="opacity-50">{{ stats.schedules_draft }} {% trans "draft" %}</span>
+      </div>
+    </a>
+
+    <a href="{% url 'claims:condition_list' %}"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-xl border p-4 shadow-sm hover:opacity-80 transition block">
+      <div class="text-2xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">{{ stats.conditions_total }}</div>
+      <div class="mt-1 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Conditions" %}</div>
+      <div class="mt-2 flex gap-3 text-xs">
+        <span class="text-yellow-400">{{ stats.conditions_pending }} {% trans "pending" %}</span>
+        <span class="text-green-400">{{ stats.conditions_satisfied }} {% trans "ok" %}</span>
+        <span class="text-red-400">{{ stats.conditions_failed }} {% trans "failed" %}</span>
+      </div>
+    </a>
+
+    <a href="{% url 'claims:allocation_list' %}"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-xl border p-4 shadow-sm hover:opacity-80 transition block">
+      <div class="text-2xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">{{ stats.allocations_total }}</div>
+      <div class="mt-1 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Allocations" %}</div>
+      <div class="mt-2 flex gap-2 text-xs">
+        <span class="text-green-500">{{ stats.allocations_active }} {% trans "active" %}</span>
+        <span class="opacity-50">{{ stats.allocations_draft }} {% trans "draft" %}</span>
+      </div>
+    </a>
+
+    <a href="{% url 'claims:event_list' %}"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-xl border p-4 shadow-sm hover:opacity-80 transition block">
+      <div class="text-2xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">{{ stats.events_total }}</div>
+      <div class="mt-1 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Events" %}</div>
+      <div class="mt-2 text-xs opacity-50">{% trans "all time" %}</div>
+    </a>
+
+  </div>
+
+  <!-- Recent events -->
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border shadow-sm overflow-hidden">
+    <div class="px-4 py-3 border-b" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+      <h2 class="font-semibold text-sm uppercase tracking-wide opacity-60">{% trans "Recent Events" %}</h2>
+    </div>
+    {% if recent_events %}
+    <table class="w-full text-sm">
+      <thead>
+        <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-b text-xs uppercase tracking-wide opacity-60">
+          <th class="px-4 py-3 text-left">{% trans "Kind" %}</th>
+          <th class="px-4 py-3 text-left">{% trans "Title" %}</th>
+          <th class="px-4 py-3 text-left">{% trans "Source" %}</th>
+          <th class="px-4 py-3 text-left">{% trans "Created" %}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for ev in recent_events %}
+        <tr :class="darkMode ? 'border-accent-1 hover:bg-black/10' : 'border-accent-2 hover:bg-black/5'"
+            class="border-b transition cursor-pointer"
+            onclick="window.location='{% url 'claims:event_detail' ev.uuid %}'">
+          <td class="px-4 py-3">
+            <span class="inline-block rounded px-2 py-0.5 text-xs font-semibold
+              {% if ev.kind == 'created' %}bg-green-100 text-green-800{% elif ev.kind == 'cancelled' or ev.kind == 'default' %}bg-red-100 text-red-800{% elif ev.kind == 'activated' %}bg-blue-100 text-blue-800{% else %}bg-gray-100 text-gray-700{% endif %}">
+              {{ ev.get_kind_display }}
+            </span>
+          </td>
+          <td class="px-4 py-3 font-semibold">{{ ev.title }}</td>
+          <td class="px-4 py-3 text-xs opacity-60">{{ ev.source_type }}/{{ ev.source_id }}</td>
+          <td class="px-4 py-3 opacity-60">{{ ev.created_at|date:"Y-m-d H:i" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="px-4 py-8 text-center text-sm opacity-50">{% trans "No events yet." %}</p>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

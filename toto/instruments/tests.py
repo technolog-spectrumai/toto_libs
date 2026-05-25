@@ -849,7 +849,7 @@ class InstrumentLifecycleSyncTests(TestCase):
         return FinancialInstrument.objects.get(reference=ref)
 
     def test_subscription_creates_entitlement_and_schedule(self):
-        from toto.assets.models import Entitlement, Schedule
+        from toto.claims.models import Entitlement, Schedule
         instr = self._get_instr("demo-subscription-001")
         self.assertTrue(Entitlement.objects.for_source if hasattr(Entitlement.objects, 'for_source') else True)
         ents = Entitlement.objects.filter(source_type="instruments.FinancialInstrument", source_id=str(instr.pk))
@@ -858,7 +858,7 @@ class InstrumentLifecycleSyncTests(TestCase):
         self.assertGreaterEqual(scheds.count(), 1)
 
     def test_lease_creates_entitlement_schedule_condition(self):
-        from toto.assets.models import Entitlement, Schedule, Condition
+        from toto.claims.models import Entitlement, Schedule, Condition
         instr = self._get_instr("demo-lease-001")
         src = {"source_type": "instruments.FinancialInstrument", "source_id": str(instr.pk)}
         self.assertGreaterEqual(Entitlement.objects.filter(**src).count(), 1)
@@ -866,14 +866,14 @@ class InstrumentLifecycleSyncTests(TestCase):
         self.assertGreaterEqual(Condition.objects.filter(**src).count(), 1)
 
     def test_amortization_creates_entitlement_and_allocation(self):
-        from toto.assets.models import Entitlement, Allocation
+        from toto.claims.models import Entitlement, Allocation
         instr = self._get_instr("demo-amortization-001")
         src = {"source_type": "instruments.FinancialInstrument", "source_id": str(instr.pk)}
         self.assertGreaterEqual(Entitlement.objects.filter(**src).count(), 1)
         self.assertGreaterEqual(Allocation.objects.filter(**src).count(), 1)
 
     def test_vesting_creates_all_four_primitives(self):
-        from toto.assets.models import Entitlement, Allocation, Schedule, Condition
+        from toto.claims.models import Entitlement, Allocation, Schedule, Condition
         instr = self._get_instr("demo-vesting-001")
         src = {"source_type": "instruments.FinancialInstrument", "source_id": str(instr.pk)}
         self.assertGreaterEqual(Entitlement.objects.filter(**src).count(), 1)
@@ -882,21 +882,21 @@ class InstrumentLifecycleSyncTests(TestCase):
         self.assertGreaterEqual(Condition.objects.filter(**src).count(), 1)
 
     def test_escrow_creates_allocation_and_condition(self):
-        from toto.assets.models import Allocation, Condition
+        from toto.claims.models import Allocation, Condition
         instr = self._get_instr("demo-escrow-001")
         src = {"source_type": "instruments.FinancialInstrument", "source_id": str(instr.pk)}
         self.assertGreaterEqual(Allocation.objects.filter(**src).count(), 1)
         self.assertGreaterEqual(Condition.objects.filter(**src).count(), 1)
 
     def test_forward_creates_schedule_and_condition(self):
-        from toto.assets.models import Schedule, Condition
+        from toto.claims.models import Schedule, Condition
         instr = self._get_instr("demo-forward-001")
         src = {"source_type": "instruments.FinancialInstrument", "source_id": str(instr.pk)}
         self.assertGreaterEqual(Schedule.objects.filter(**src).count(), 1)
         self.assertGreaterEqual(Condition.objects.filter(**src).count(), 1)
 
     def test_option_creates_entitlement_schedule_condition(self):
-        from toto.assets.models import Entitlement, Schedule, Condition
+        from toto.claims.models import Entitlement, Schedule, Condition
         instr = self._get_instr("demo-option-001")
         src = {"source_type": "instruments.FinancialInstrument", "source_id": str(instr.pk)}
         self.assertGreaterEqual(Entitlement.objects.filter(**src).count(), 1)
@@ -904,7 +904,7 @@ class InstrumentLifecycleSyncTests(TestCase):
         self.assertGreaterEqual(Condition.objects.filter(**src).count(), 1)
 
     def test_staking_creates_entitlement_allocation_schedule(self):
-        from toto.assets.models import Entitlement, Allocation, Schedule
+        from toto.claims.models import Entitlement, Allocation, Schedule
         instr = self._get_instr("demo-staking-001")
         src = {"source_type": "instruments.FinancialInstrument", "source_id": str(instr.pk)}
         self.assertGreaterEqual(Entitlement.objects.filter(**src).count(), 1)
@@ -912,7 +912,7 @@ class InstrumentLifecycleSyncTests(TestCase):
         self.assertGreaterEqual(Schedule.objects.filter(**src).count(), 1)
 
     def test_revenue_share_creates_entitlements_per_recipient(self):
-        from toto.assets.models import Entitlement
+        from toto.claims.models import Entitlement
         instr = self._get_instr("demo-revenue-share-001")
         # Revenue share creates one entitlement per recipient with compound source_id
         ents = Entitlement.objects.filter(
@@ -922,7 +922,7 @@ class InstrumentLifecycleSyncTests(TestCase):
         self.assertGreaterEqual(ents.count(), 2)
 
     def test_idempotency_subscription(self):
-        from toto.assets.models import Entitlement, Schedule, ContractEvent
+        from toto.claims.models import Entitlement, Schedule, ContractEvent
         instr = self._get_instr("demo-subscription-001")
         src = {"source_type": "instruments.FinancialInstrument", "source_id": str(instr.pk)}
         before_ents = Entitlement.objects.filter(**src).count()
@@ -937,7 +937,7 @@ class InstrumentLifecycleSyncTests(TestCase):
 
     def test_idempotency_all_instruments(self):
         """Running sync twice creates no duplicate records."""
-        from toto.assets.models import Entitlement, Schedule, Condition, Allocation, ContractEvent
+        from toto.claims.models import Entitlement, Schedule, Condition, Allocation, ContractEvent
         before = {
             "ents": Entitlement.objects.count(),
             "scheds": Schedule.objects.count(),
@@ -959,7 +959,7 @@ class InstrumentLifecycleSyncTests(TestCase):
         self.assertEqual(LedgerTransaction.objects.count(), before)
 
     def test_created_events_exist_for_each_instrument(self):
-        from toto.assets.models import ContractEvent, ContractEventKind
+        from toto.claims.models import ContractEvent, ContractEventKind
         refs = [
             "demo-subscription-001", "demo-lease-001", "demo-amortization-001",
             "demo-vesting-001", "demo-escrow-001", "demo-forward-001",
@@ -977,7 +977,7 @@ class InstrumentLifecycleSyncTests(TestCase):
     def test_ingress_sync_lifecycle_flag(self):
         from io import StringIO
         from django.core.management import call_command
-        from toto.assets.models import Schedule
+        from toto.claims.models import Schedule
         before = Schedule.objects.count()
         call_command("ingress_instruments", "--sync-lifecycle", stdout=StringIO())
         # Second run is idempotent — count should not increase

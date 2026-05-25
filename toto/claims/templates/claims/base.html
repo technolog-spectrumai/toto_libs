@@ -1,7 +1,7 @@
 {% extends "oya/base.html" %}
 {% load i18n %}
 
-{% block title %}{% block assets_title %}Assets{% endblock %} | {{ platform.site_name }}{% endblock %}
+{% block title %}{% block claims_title %}Claims{% endblock %} | {{ platform.site_name }}{% endblock %}
 
 {% block start_script %}
 <style>
@@ -30,80 +30,66 @@
             {% trans "Toto Studio" %}
           </p>
           <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
-            <i class="fa-solid fa-coins"></i>
-            {% trans "Assets" %}
+            <i class="fa-solid fa-file-contract"></i>
+            {% trans "Claims" %}
           </h1>
         </div>
       </div>
 
       <nav class="flex flex-wrap gap-2">
         <a
-          href="{% url 'assets:asset_list' %}"
-          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-          <i class="fa-solid fa-layer-group"></i>
-          {% trans "Assets" %}
-        </a>
-        <a
-          href="{% url 'assets:account_list' %}"
-          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-          <i class="fa-solid fa-users"></i>
-          {% trans "Accounts" %}
-        </a>
-        <a
-          href="{% url 'assets:transaction_list' %}"
-          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-          <i class="fa-solid fa-list"></i>
-          {% trans "Transactions" %}
-        </a>
-        <a
-          href="{% url 'assets:chain_verify' %}"
-          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-          <i class="fa-solid fa-link"></i>
-          {% trans "Chain" %}
-        </a>
-        <a
-          href="{% url 'bourse:exchange_center' %}"
-          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-          <i class="fa-solid fa-chart-line"></i>
-          {% trans "Bourse" %}
-        </a>
-        <a
-          href="{% url 'assets:wallet' %}"
-          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-          <i class="fa-solid fa-wallet"></i>
-          {% trans "Wallet" %}
-        </a>
-        <a
-          href="{% url 'assets:contract_list' %}"
-          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-          <i class="fa-solid fa-scroll"></i>
-          {% trans "Contracts" %}
-        </a>
-        <a
           href="{% url 'claims:overview' %}"
           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-          <i class="fa-solid fa-file-contract"></i>
-          {% trans "Claims" %}
+          <i class="fa-solid fa-chart-pie"></i>
+          {% trans "Overview" %}
         </a>
         <a
-          href="{% url 'assets:ledger_flow' %}"
+          href="{% url 'claims:entitlement_list' %}"
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-id-badge"></i>
+          {% trans "Entitlements" %}
+        </a>
+        <a
+          href="{% url 'claims:obligation_list' %}"
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-scale-balanced"></i>
+          {% trans "Obligations" %}
+        </a>
+        <a
+          href="{% url 'claims:schedule_list' %}"
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-calendar-check"></i>
+          {% trans "Schedules" %}
+        </a>
+        <a
+          href="{% url 'claims:condition_list' %}"
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-filter-circle-dollar"></i>
+          {% trans "Conditions" %}
+        </a>
+        <a
+          href="{% url 'claims:allocation_list' %}"
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-piggy-bank"></i>
+          {% trans "Allocations" %}
+        </a>
+        <a
+          href="{% url 'claims:event_list' %}"
           :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-          <i class="fa-solid fa-diagram-project"></i>
-          {% trans "Flow" %}
+          <i class="fa-solid fa-bell"></i>
+          {% trans "Events" %}
         </a>
       </nav>
     </header>
 
-    {% block assets_content %}{% endblock %}
+    {% block claims_content %}{% endblock %}
 
   </div>
 </section>

@@ -1,0 +1,117 @@
+{% extends "claims/base.html" %}
+{% load i18n %}
+
+{% block claims_title %}{% trans "Obligation" %} {{ obligation.reference|default:obligation.pk }}{% endblock %}
+
+{% block claims_content %}
+<div class="space-y-6">
+  <a href="{% url 'claims:obligation_list' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+    <i class="fa-solid fa-arrow-left"></i>
+    {% trans "Back to obligations" %}
+  </a>
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5 shadow-sm space-y-4">
+    <div class="flex items-start justify-between gap-4">
+      <h2 class="flex items-center gap-2 text-lg font-bold">
+        <i class="fa-solid fa-scale-balanced" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+        {{ obligation.reference|default:obligation.pk }}
+      </h2>
+      <div class="flex items-center gap-2 shrink-0">
+        {% if obligation.is_overdue %}
+        <span class="inline-block rounded px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-700">{% trans "Overdue" %}</span>
+        {% endif %}
+        <span class="inline-block rounded px-2 py-0.5 text-xs font-semibold
+          {% if obligation.status == 'fulfilled' %}bg-green-100 text-green-800{% elif obligation.status == 'defaulted' %}bg-red-100 text-red-800{% elif obligation.status == 'overdue' %}bg-orange-100 text-orange-800{% else %}bg-yellow-100 text-yellow-800{% endif %}">
+          {{ obligation.get_status_display }}
+        </span>
+      </div>
+    </div>
+
+    <dl class="space-y-2 text-sm">
+      <div class="grid grid-cols-[200px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Asset" %}</dt>
+        <dd class="font-mono text-xs">{{ obligation.asset.unit_name }}</dd>
+      </div>
+      <div class="grid grid-cols-[200px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Amount" %}</dt>
+        <dd class="font-mono font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">{{ obligation.amount_base_units }}</dd>
+      </div>
+      <div class="grid grid-cols-[200px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Debtor" %}</dt>
+        <dd class="font-mono text-xs">{{ obligation.debtor_account.code }}</dd>
+      </div>
+      <div class="grid grid-cols-[200px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Creditor" %}</dt>
+        <dd class="font-mono text-xs">{{ obligation.creditor_account.code }}</dd>
+      </div>
+      <div class="grid grid-cols-[200px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Due at" %}</dt>
+        <dd class="{% if obligation.is_overdue %}text-red-500 font-semibold{% endif %}">
+          {{ obligation.due_at|date:"Y-m-d H:i" }}
+        </dd>
+      </div>
+      <div class="grid grid-cols-[200px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Fulfilled at" %}</dt>
+        <dd>{{ obligation.fulfilled_at|date:"Y-m-d H:i"|default:"—" }}</dd>
+      </div>
+      {% if obligation.collateral_asset %}
+      <div class="grid grid-cols-[200px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Collateral asset" %}</dt>
+        <dd class="font-mono text-xs">{{ obligation.collateral_asset.unit_name }}</dd>
+      </div>
+      <div class="grid grid-cols-[200px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Collateral amount" %}</dt>
+        <dd class="font-mono text-xs">{{ obligation.collateral_amount_base_units }}</dd>
+      </div>
+      <div class="grid grid-cols-[200px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Collateral account" %}</dt>
+        <dd class="font-mono text-xs">{{ obligation.collateral_account.code|default:"—" }}</dd>
+      </div>
+      {% endif %}
+      <div class="grid grid-cols-[200px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Created" %}</dt>
+        <dd>{{ obligation.created_at|date:"Y-m-d H:i" }}</dd>
+      </div>
+      <div class="grid grid-cols-[200px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Updated" %}</dt>
+        <dd>{{ obligation.updated_at|date:"Y-m-d H:i" }}</dd>
+      </div>
+    </dl>
+  </div>
+
+  {% if related_events %}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border shadow-sm overflow-hidden">
+    <div class="px-4 py-3 border-b" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+      <h3 class="font-semibold text-sm uppercase tracking-wide opacity-60">{% trans "Related Events" %}</h3>
+    </div>
+    <table class="w-full text-sm">
+      <thead>
+        <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-b text-xs uppercase tracking-wide opacity-60">
+          <th class="px-4 py-3 text-left">{% trans "Kind" %}</th>
+          <th class="px-4 py-3 text-left">{% trans "Title" %}</th>
+          <th class="px-4 py-3 text-left">{% trans "Created" %}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for ev in related_events %}
+        <tr :class="darkMode ? 'border-accent-1 hover:bg-black/10' : 'border-accent-2 hover:bg-black/5'"
+            class="border-b transition cursor-pointer"
+            onclick="window.location='{% url 'claims:event_detail' ev.uuid %}'">
+          <td class="px-4 py-3">
+            <span class="inline-block rounded px-2 py-0.5 text-xs font-semibold
+              {% if ev.kind == 'created' %}bg-green-100 text-green-800{% elif ev.kind == 'cancelled' or ev.kind == 'default' %}bg-red-100 text-red-800{% elif ev.kind == 'activated' %}bg-blue-100 text-blue-800{% else %}bg-gray-100 text-gray-700{% endif %}">
+              {{ ev.get_kind_display }}
+            </span>
+          </td>
+          <td class="px-4 py-3 font-semibold">{{ ev.title }}</td>
+          <td class="px-4 py-3 opacity-60">{{ ev.created_at|date:"Y-m-d H:i" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
