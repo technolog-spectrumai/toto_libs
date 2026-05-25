@@ -66,6 +66,10 @@ class VaultFile(models.Model):
     is_encrypted = models.BooleanField(default=False)
     is_public = models.BooleanField(default=False, help_text="If true, file is visible to others")
     notes = models.TextField(blank=True, null=True)
+    file_size_bytes = models.PositiveBigIntegerField(
+        default=0,
+        help_text="File size in bytes, captured at upload time.",
+    )
     bucket = models.ForeignKey(Bucket, on_delete=models.SET_NULL, null=True, blank=True, related_name='files')
     directory = models.ForeignKey(
         'VaultDirectory', on_delete=models.SET_NULL,
@@ -88,6 +92,13 @@ class VaultFile(models.Model):
             if VaultFile.objects.filter(bucket=self.bucket, key=candidate_key).exists():
                 raise ValueError(f"A file with key '{candidate_key}' already exists in this bucket.")
             self.key = candidate_key
+
+        # Capture file size on first save (when file is being attached)
+        if self.file and not self.file_size_bytes:
+            try:
+                self.file_size_bytes = self.file.size
+            except Exception:
+                pass
 
         super().save(*args, **kwargs)
 

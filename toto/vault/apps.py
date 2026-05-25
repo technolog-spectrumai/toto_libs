@@ -7,4 +7,4 @@ class VaultConfig(AppConfig):
     name = 'toto.vault'
 
     def ready(self):
-        pass
+        import toto.vault.signals  # noqa: F401 — registers signal handlers
