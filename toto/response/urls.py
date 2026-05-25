@@ -18,8 +18,6 @@ urlpatterns = [
     path("deployments/<int:pk>/routes/add/", views.deployment_route_add, name="deployment_route_add"),
     path("deployments/<int:pk>/equipment/add/", views.deployment_equipment_add, name="deployment_equipment_add"),
     path("deployments/<int:pk>/metrics/", views.deployment_metrics, name="deployment_metrics"),
-    path("deployments/<int:pk>/routes/", views.deployment_routes, name="deployment_routes"),
-    path("deployments/<int:pk>/routes/map-data/", views.deployment_routes_map_data, name="deployment_routes_map_data"),
 
     # Interventions
     path("interventions/<int:pk>/done/", views.intervention_complete, name="intervention_complete"),
