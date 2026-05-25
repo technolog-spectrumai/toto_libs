@@ -63,8 +63,8 @@ class Command(BaseCommand):
         allowed_apps = getattr(settings, "INGRESS_ALLOWED_APPS", [])
         total = len(allowed_apps)
         success = 0
-        not_found = 0
-        failed = 0
+        not_found_list = []
+        failed_list = []
 
         for app_name in allowed_apps:
             try:
@@ -74,18 +74,28 @@ class Command(BaseCommand):
 
             except self.IngressCommandNotFound as nf:
                 self.stdout.write(self.style.WARNING(f"⚠️ Not Found: {nf}"))
-                not_found += 1
+                not_found_list.append(str(nf))
 
             except self.IngressCommandExecutionFailed as ef:
                 self.stdout.write(self.style.ERROR(f"💥 Failed: {ef}"))
-                failed += 1
+                failed_list.append(str(ef))
 
             except self.IngressCommandError as e:
                 self.stdout.write(self.style.NOTICE(f"❓ Unknown Error: {e}"))
-                failed += 1
+                failed_list.append(str(e))
 
-        self.stdout.write("Summary:")
+        self.stdout.write("\nSummary:")
         self.stdout.write(f"Total: {total}")
         self.stdout.write(self.style.SUCCESS(f"✅ Success: {success}"))
-        self.stdout.write(self.style.WARNING(f"⚠️ Not Found: {not_found}"))
-        self.stdout.write(self.style.ERROR(f"💥 Failed: {failed}"))
+        self.stdout.write(self.style.WARNING(f"⚠️ Not Found: {len(not_found_list)}"))
+        self.stdout.write(self.style.ERROR(f"💥 Failed: {len(failed_list)}"))
+
+        if not_found_list:
+            self.stdout.write(self.style.WARNING("\n--- Not Found ---"))
+            for msg in not_found_list:
+                self.stdout.write(self.style.WARNING(f"  ⚠️  {msg}"))
+
+        if failed_list:
+            self.stdout.write(self.style.ERROR("\n--- Errors ---"))
+            for msg in failed_list:
+                self.stdout.write(self.style.ERROR(f"  💥  {msg}"))
