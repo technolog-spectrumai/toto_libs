@@ -2,7 +2,7 @@ from django.shortcuts import get_object_or_404, redirect
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
-from django.db.models import Count
+from django.db.models import Count, Sum
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.utils import timezone
@@ -448,3 +448,130 @@ def deployment_equipment_add(request, pk):
         )
         messages.success(request, f"{item.name} added to deployment equipment.")
     return redirect("response:deployment_detail", pk=pk)
+
+
+# ---------------------------------------------------------------------------
+# Deployment metrics
+# ---------------------------------------------------------------------------
+
+@login_required
+def deployment_metrics(request, pk):
+    deployment = get_object_or_404(
+        Deployment.objects.select_related("event__community", "community", "coordinator"),
+        pk=pk,
+    )
+
+    assignments = deployment.assignments.select_related("responder__person")
+    interventions = deployment.interventions.all()
+
+    assignment_by_status = dict(
+        assignments.values_list("status").annotate(n=Count("pk")).order_by()
+    )
+    assignment_by_role = dict(
+        assignments.values_list("role").annotate(n=Count("pk")).order_by()
+    )
+
+    intervention_by_status = dict(
+        interventions.values_list("status").annotate(n=Count("pk")).order_by()
+    )
+    intervention_by_priority = dict(
+        interventions.values_list("priority").annotate(n=Count("pk")).order_by()
+    )
+
+    total_iv = interventions.count()
+    done_iv = intervention_by_status.get("done", 0)
+    completion_rate = round(done_iv / total_iv * 100) if total_iv else 0
+
+    cost_agg = interventions.aggregate(
+        estimated=Sum("estimated_cost"),
+        actual=Sum("actual_cost"),
+        reward=Sum("reward_amount"),
+    )
+
+    equipment_count = deployment.equipment.count()
+    route_count = deployment.routes.count()
+
+    return _render(request, "response/deployment_metrics.html", {
+        "deployment": deployment,
+        "assignments": assignments,
+        "assignment_by_status": assignment_by_status,
+        "assignment_by_role": assignment_by_role,
+        "intervention_by_status": intervention_by_status,
+        "intervention_by_priority": intervention_by_priority,
+        "total_iv": total_iv,
+        "done_iv": done_iv,
+        "completion_rate": completion_rate,
+        "cost_agg": cost_agg,
+        "equipment_count": equipment_count,
+        "route_count": route_count,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Deployment routes map
+# ---------------------------------------------------------------------------
+
+@login_required
+def deployment_routes(request, pk):
+    deployment = get_object_or_404(
+        Deployment.objects.select_related("event__community", "community"),
+        pk=pk,
+    )
+    dep_routes = deployment.routes.select_related("route").order_by("route_type")
+    evac_routes = EvacuationRoute.objects.filter(
+        event=deployment.event
+    ).select_related("route").order_by("route_type", "name")
+
+    from django.urls import reverse
+    map_data_url = reverse("response:deployment_routes_map_data", args=[pk])
+
+    return _render(request, "response/deployment_routes.html", {
+        "deployment": deployment,
+        "dep_routes": dep_routes,
+        "evac_routes": evac_routes,
+        "route_type_choices": DeploymentRoute.ROUTE_TYPE_CHOICES,
+        "map_data_url": map_data_url,
+    })
+
+
+@login_required
+def deployment_routes_map_data(request, pk):
+    deployment = get_object_or_404(Deployment, pk=pk)
+    features = []
+
+    for dr in deployment.routes.select_related("route"):
+        try:
+            geom = json.loads(dr.route.geometry.geojson) if dr.route.geometry else None
+        except Exception:
+            geom = None
+        if geom:
+            features.append({
+                "type": "Feature",
+                "properties": {
+                    "kind": "deployment",
+                    "label": dr.route.name,
+                    "route_type": dr.route_type,
+                    "route_type_display": dr.get_route_type_display(),
+                },
+                "geometry": geom,
+            })
+
+    for er in EvacuationRoute.objects.filter(event=deployment.event).select_related("route"):
+        try:
+            geom = json.loads(er.route.geometry.geojson) if er.route.geometry else None
+        except Exception:
+            geom = None
+        if geom:
+            features.append({
+                "type": "Feature",
+                "properties": {
+                    "kind": "evacuation",
+                    "label": er.name,
+                    "route_type": er.route_type,
+                    "route_type_display": er.get_route_type_display(),
+                    "status": er.status,
+                },
+                "geometry": geom,
+            })
+
+    return JsonResponse({"type": "FeatureCollection", "features": features})

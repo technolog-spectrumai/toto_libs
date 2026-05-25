@@ -1,0 +1,193 @@
+{% extends "response/base.html" %}
+{% load i18n %}
+
+{% block response_title %}{% trans "Metrics" %} — {{ deployment.title }}{% endblock %}
+
+{% block mob_content %}
+<div class="space-y-6">
+
+  {# — Breadcrumb — #}
+  <div class="flex items-center gap-3 flex-wrap">
+    <a href="{% url 'response:deployment_list' %}" class="text-sm underline hover:opacity-80">
+      <i class="fa-solid fa-arrow-left mr-1"></i>{% trans "Deployments" %}
+    </a>
+    <span class="opacity-40">/</span>
+    <a href="{% url 'response:deployment_detail' deployment.pk %}" class="text-sm underline hover:opacity-80">{{ deployment.title }}</a>
+    <span class="opacity-40">/</span>
+    <span class="text-sm font-semibold">{% trans "Metrics" %}</span>
+  </div>
+
+  {# — Sub-nav — #}
+  <div class="flex flex-wrap gap-2">
+    <a href="{% url 'response:deployment_detail' deployment.pk %}"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold hover:opacity-80">
+      <i class="fa-solid fa-circle-info"></i> {% trans "Detail" %}
+    </a>
+    <a href="{% url 'response:deployment_routes' deployment.pk %}"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold hover:opacity-80">
+      <i class="fa-solid fa-route"></i> {% trans "Routes" %}
+    </a>
+    <span :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold">
+      <i class="fa-solid fa-chart-bar"></i> {% trans "Metrics" %}
+    </span>
+  </div>
+
+  {# — Summary cards — #}
+  <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    {% with cards=deployment %}
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-5 shadow-sm text-center">
+        <p class="text-3xl font-bold">{{ assignments.count }}</p>
+        <p class="mt-1 text-sm opacity-60">{% trans "Responders" %}</p>
+      </div>
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-5 shadow-sm text-center">
+        <p class="text-3xl font-bold">{{ total_iv }}</p>
+        <p class="mt-1 text-sm opacity-60">{% trans "Interventions" %}</p>
+      </div>
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-5 shadow-sm text-center">
+        <p class="text-3xl font-bold">{{ completion_rate }}%</p>
+        <p class="mt-1 text-sm opacity-60">{% trans "Completion Rate" %}</p>
+      </div>
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-5 shadow-sm text-center">
+        <p class="text-3xl font-bold">{{ equipment_count }}</p>
+        <p class="mt-1 text-sm opacity-60">{% trans "Equipment Items" %}</p>
+      </div>
+    {% endwith %}
+  </div>
+
+  <div class="grid gap-5 lg:grid-cols-2">
+
+    {# — Assignments by status — #}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-5 shadow-sm">
+      <h3 class="mb-4 font-bold flex items-center gap-2">
+        <i class="fa-solid fa-users"></i> {% trans "Assignments by Status" %}
+      </h3>
+      {% if assignment_by_status %}
+        <div class="space-y-2">
+          {% for status, count in assignment_by_status.items %}
+            <div class="flex items-center gap-3">
+              <span class="w-28 shrink-0 text-sm capitalize">{{ status }}</span>
+              <div class="flex-1 rounded-full bg-current/10 h-3 overflow-hidden">
+                <div class="h-3 rounded-full"
+                     :class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'"
+                     style="width: {% widthratio count assignments.count 100 %}%"></div>
+              </div>
+              <span class="w-8 text-right text-sm font-bold">{{ count }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-sm opacity-60">{% trans "No assignments." %}</p>
+      {% endif %}
+    </div>
+
+    {# — Assignments by role — #}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-5 shadow-sm">
+      <h3 class="mb-4 font-bold flex items-center gap-2">
+        <i class="fa-solid fa-id-badge"></i> {% trans "Assignments by Role" %}
+      </h3>
+      {% if assignment_by_role %}
+        <div class="space-y-2">
+          {% for role, count in assignment_by_role.items %}
+            <div class="flex items-center gap-3">
+              <span class="w-28 shrink-0 text-sm capitalize">{{ role }}</span>
+              <div class="flex-1 rounded-full bg-current/10 h-3 overflow-hidden">
+                <div class="h-3 rounded-full"
+                     :class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'"
+                     style="width: {% widthratio count assignments.count 100 %}%"></div>
+              </div>
+              <span class="w-8 text-right text-sm font-bold">{{ count }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-sm opacity-60">{% trans "No assignments." %}</p>
+      {% endif %}
+    </div>
+
+    {# — Interventions by status — #}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-5 shadow-sm">
+      <h3 class="mb-4 font-bold flex items-center gap-2">
+        <i class="fa-solid fa-list-check"></i> {% trans "Interventions by Status" %}
+      </h3>
+      {% if intervention_by_status %}
+        <div class="space-y-2">
+          {% for status, count in intervention_by_status.items %}
+            <div class="flex items-center gap-3">
+              <span class="w-28 shrink-0 text-sm capitalize">{{ status }}</span>
+              <div class="flex-1 rounded-full bg-current/10 h-3 overflow-hidden">
+                <div class="h-3 rounded-full"
+                     :class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'"
+                     style="width: {% if total_iv %}{% widthratio count total_iv 100 %}{% else %}0{% endif %}%"></div>
+              </div>
+              <span class="w-8 text-right text-sm font-bold">{{ count }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-sm opacity-60">{% trans "No interventions." %}</p>
+      {% endif %}
+    </div>
+
+    {# — Interventions by priority — #}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-5 shadow-sm">
+      <h3 class="mb-4 font-bold flex items-center gap-2">
+        <i class="fa-solid fa-fire"></i> {% trans "Interventions by Priority" %}
+      </h3>
+      {% if intervention_by_priority %}
+        <div class="space-y-2">
+          {% for priority, count in intervention_by_priority.items %}
+            <div class="flex items-center gap-3">
+              <span class="w-28 shrink-0 text-sm capitalize">{{ priority }}</span>
+              <div class="flex-1 rounded-full bg-current/10 h-3 overflow-hidden">
+                <div class="h-3 rounded-full"
+                     :class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'"
+                     style="width: {% if total_iv %}{% widthratio count total_iv 100 %}{% else %}0{% endif %}%"></div>
+              </div>
+              <span class="w-8 text-right text-sm font-bold">{{ count }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-sm opacity-60">{% trans "No interventions." %}</p>
+      {% endif %}
+    </div>
+
+  </div>
+
+  {# — Cost summary — #}
+  {% if cost_agg.estimated or cost_agg.actual or cost_agg.reward %}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-5 shadow-sm">
+      <h3 class="mb-4 font-bold flex items-center gap-2">
+        <i class="fa-solid fa-coins"></i> {% trans "Cost & Reward Summary" %}
+      </h3>
+      <div class="grid gap-4 sm:grid-cols-3">
+        <div>
+          <p class="text-xs opacity-60 uppercase tracking-wide">{% trans "Estimated Cost" %}</p>
+          <p class="mt-1 text-2xl font-bold">{{ cost_agg.estimated|default:"—" }}</p>
+        </div>
+        <div>
+          <p class="text-xs opacity-60 uppercase tracking-wide">{% trans "Actual Cost" %}</p>
+          <p class="mt-1 text-2xl font-bold">{{ cost_agg.actual|default:"—" }}</p>
+        </div>
+        <div>
+          <p class="text-xs opacity-60 uppercase tracking-wide">{% trans "Total Rewards" %}</p>
+          <p class="mt-1 text-2xl font-bold">{{ cost_agg.reward|default:"—" }}</p>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}

@@ -34,6 +34,16 @@
         </div>
       </div>
       <div class="flex flex-wrap gap-2">
+        <a href="{% url 'response:deployment_routes' deployment.pk %}"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold hover:opacity-80">
+          <i class="fa-solid fa-route"></i> {% trans "Routes" %}
+        </a>
+        <a href="{% url 'response:deployment_metrics' deployment.pk %}"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold hover:opacity-80">
+          <i class="fa-solid fa-chart-bar"></i> {% trans "Metrics" %}
+        </a>
         <a href="{% url 'response:intervention_create' deployment.pk %}"
            :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
            class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold hover:opacity-80">
