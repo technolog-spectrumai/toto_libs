@@ -38,13 +38,13 @@
           <dd>{{ agreement.contract.name|default:"—" }}</dd>
         </div>
         <div class="grid grid-cols-[140px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
-          <dt class="font-semibold opacity-60">{% trans "Actions" %}</dt>
+          <dt class="font-semibold opacity-60">{% trans "Flow Steps" %}</dt>
           <dd>
-            {% if action_names %}
-              {% for name in action_names %}
+            {% if flow_steps %}
+              {% for step in flow_steps %}
               <span class="inline-block rounded px-2 py-0.5 text-xs font-mono font-semibold mr-1 mb-1"
                     :class="darkMode ? 'bg-accent-dark/20 text-accent-dark' : 'bg-accent-light/10 text-accent-light'">
-                {{ name }}
+                {{ step.id }}
               </span>
               {% endfor %}
             {% else %}—{% endif %}

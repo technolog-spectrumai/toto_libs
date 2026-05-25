@@ -495,21 +495,21 @@ def agreement_list(request):
 def agreement_detail(request, pk):
     from .models import Agreement
     from .lapis.loader import loads_contract
-    from .lapis.compiler import LapisCompiler
+    from .lapis.compiler import ContractFlowValidator
     agreement = get_object_or_404(
         Agreement.objects.select_related("source_account", "target_account", "contract"),
         pk=pk,
     )
-    action_names = []
+    flow_steps = []
     if agreement.contract and agreement.contract.code:
         try:
             tree = loads_contract(agreement.contract.code, fmt="yaml")
-            action_names = list(tree.get("actions", {}).keys())
+            flow_steps = ContractFlowValidator().get_steps(tree)
         except Exception:
             pass
     return assets_render(request, "assets/agreement_detail.html", {
         "agreement": agreement,
-        "action_names": action_names,
+        "flow_steps": flow_steps,
     })
 
 
@@ -546,66 +546,6 @@ def agreement_create(request):
     })
 
 
-@login_required
-def agreement_dry_run(request, pk):
-    import json as _json
-    from .models import Agreement
-    from .lapis.loader import loads_contract
-    from .lapis.compiler import LapisCompiler
-    from .lapis.executor import LapisContext, LapisExecutor
-    from .lapis.exceptions import LapisValidationError, LapisExecutionError
-
-    if request.method != "POST":
-        return JsonResponse({"ok": False, "error": "POST required."}, status=405)
-
-    agreement = get_object_or_404(
-        Agreement.objects.select_related("contract", "source_account", "target_account"),
-        pk=pk,
-    )
-    if not agreement.contract or not agreement.contract.code:
-        return JsonResponse({"ok": False, "error": "Agreement has no contract code."}, status=400)
-
-    try:
-        body = _json.loads(request.body)
-    except Exception:
-        return JsonResponse({"ok": False, "error": "Invalid JSON body."}, status=400)
-
-    action = body.get("action")
-    if not action:
-        return JsonResponse({"ok": False, "error": "action is required."}, status=400)
-
-    ctx = LapisContext(
-        global_state=dict(body.get("global_state", {})),
-        local_state=dict(body.get("local_state", {})),
-        boxes=dict(body.get("boxes", {})),
-        transaction=dict(body.get("transaction", {})),
-        group_transactions=list(body.get("group_transactions", [])),
-        global_fields=dict(body.get("global_fields", {})),
-        app_args=list(body.get("app_args", [])),
-    )
-
-    try:
-        tree = loads_contract(agreement.contract.code, fmt="yaml")
-        plan = LapisCompiler().compile_action(tree, action)
-        LapisExecutor().execute(plan, ctx)
-    except (LapisValidationError, LapisExecutionError) as exc:
-        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
-    except Exception as exc:
-        return JsonResponse({"ok": False, "error": f"Execution error: {exc}"}, status=500)
-
-    return JsonResponse({
-        "ok": True,
-        "result": ctx.result,
-        "effects": {
-            "inner_transactions": ctx.inner_transactions,
-            "logs": ctx.logs,
-        },
-        "state": {
-            "global": ctx.global_state,
-            "local": ctx.local_state,
-            "boxes": ctx.boxes,
-        },
-    })
 
 
 @login_required
@@ -619,29 +559,23 @@ def contract_list(request):
 def contract_detail(request, uuid):
     from .models import Contract
     from .lapis.loader import loads_contract
+    from .lapis.compiler import ContractFlowValidator
     contract = get_object_or_404(Contract, uuid=uuid)
-    action_names = []
-    tree = None
+    flow_steps = []
     if contract.code:
         try:
             tree = loads_contract(contract.code, fmt="yaml")
-            action_names = list(tree.get("actions", {}).keys())
+            flow_steps = ContractFlowValidator().get_steps(tree)
         except Exception:
             pass
     try:
         instrument = contract.financial_instrument
     except Exception:
         instrument = None
-    import json as _json
-    global_state = contract.global_state or {}
-    initial_ctx = _json.dumps({"global_state": global_state}, indent=2)
-    global_state_json = _json.dumps(global_state)
     return assets_render(request, "assets/contract_detail.html", {
         "contract": contract,
-        "action_names": action_names,
+        "flow_steps": flow_steps,
         "instrument": instrument,
-        "dry_run_initial_ctx": initial_ctx,
-        "global_state_json": global_state_json,
     })
 
 
@@ -673,93 +607,19 @@ def contract_update(request, uuid):
     return assets_render(request, "assets/contract_form.html", {"form": form, "contract": contract, "is_create": False})
 
 
-@login_required
-@require_POST
-def contract_validate(request, uuid):
-    from .models import Contract
-    from .lapis.loader import loads_contract
-    from .lapis.compiler import LapisCompiler
-    from .lapis.exceptions import LapisValidationError
-    contract = get_object_or_404(Contract, uuid=uuid)
-    if not contract.code:
-        return JsonResponse({"ok": False, "error": "Contract has no code."}, status=400)
-    try:
-        tree = loads_contract(contract.code, fmt="yaml")
-        LapisCompiler().validate_contract(tree)
-        action_names = list(tree.get("actions", {}).keys())
-    except LapisValidationError as exc:
-        return JsonResponse({"ok": False, "error": str(exc)})
-    return JsonResponse({"ok": True, "actions": action_names})
-
-
-@login_required
-@require_POST
-def contract_dry_run(request, uuid):
-    import json as _json
-    from .models import Contract
-    from .lapis.loader import loads_contract
-    from .lapis.compiler import LapisCompiler
-    from .lapis.executor import LapisContext, LapisExecutor
-    from .lapis.exceptions import LapisValidationError, LapisExecutionError
-
-    contract = get_object_or_404(Contract, uuid=uuid)
-    if not contract.code:
-        return JsonResponse({"ok": False, "error": "Contract has no code."}, status=400)
-
-    try:
-        body = _json.loads(request.body)
-    except Exception:
-        return JsonResponse({"ok": False, "error": "Invalid JSON body."}, status=400)
-
-    action = body.get("action")
-    if not action:
-        return JsonResponse({"ok": False, "error": "action is required."}, status=400)
-
-    ctx = LapisContext(
-        global_state=dict(body.get("global_state", {})),
-        local_state=dict(body.get("local_state", {})),
-        boxes=dict(body.get("boxes", {})),
-        transaction=dict(body.get("transaction", {})),
-        group_transactions=list(body.get("group_transactions", [])),
-        global_fields=dict(body.get("global_fields", {})),
-        app_args=list(body.get("app_args", [])),
-    )
-
-    try:
-        tree = loads_contract(contract.code, fmt="yaml")
-        plan = LapisCompiler().compile_action(tree, action)
-        LapisExecutor().execute(plan, ctx)
-    except (LapisValidationError, LapisExecutionError) as exc:
-        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
-    except Exception as exc:
-        return JsonResponse({"ok": False, "error": f"Execution error: {exc}"}, status=500)
-
-    return JsonResponse({
-        "ok": True,
-        "result": ctx.result,
-        "effects": {
-            "inner_transactions": ctx.inner_transactions,
-            "logs": ctx.logs,
-        },
-        "state": {
-            "global": ctx.global_state,
-            "local": ctx.local_state,
-            "boxes": ctx.boxes,
-        },
-    })
 
 
 @login_required
 def contract_cytoscape_json(request, uuid):
     from .models import Contract
     from .lapis.loader import loads_contract
-    from .lapis.cytoscape import lapis_to_cytoscape_tree
+    from .lapis.cytoscape import flow_to_cytoscape
     contract = get_object_or_404(Contract, uuid=uuid)
     if not contract.code:
         return JsonResponse({"nodes": [], "edges": []})
     try:
         tree = loads_contract(contract.code, fmt="yaml")
-        data = lapis_to_cytoscape_tree(tree)
+        data = flow_to_cytoscape(tree)
     except Exception as exc:
         return JsonResponse({"ok": False, "error": str(exc)}, status=400)
     return JsonResponse(data)

@@ -88,11 +88,11 @@ class AgreementForm(forms.ModelForm):
         code = self.cleaned_data.get("code", "").strip()
         if code:
             from .lapis.loader import loads_contract
-            from .lapis.compiler import LapisCompiler
+            from .lapis.compiler import ContractFlowValidator
             from .lapis.exceptions import LapisValidationError
             try:
                 tree = loads_contract(code, fmt="yaml")
-                LapisCompiler().validate_contract(tree)
+                ContractFlowValidator().validate(tree)
             except LapisValidationError as exc:
                 raise forms.ValidationError(str(exc))
         return code
@@ -110,7 +110,7 @@ class ContractForm(forms.ModelForm):
     code = forms.CharField(
         required=False,
         widget=forms.Textarea(attrs={"rows": 25, "id": "id_lapis_code"}),
-        help_text="Lapis smart-contract YAML.",
+        help_text="Contract Flow YAML (kind: contract_flow).",
     )
 
     class Meta:
@@ -130,11 +130,11 @@ class ContractForm(forms.ModelForm):
         code = self.cleaned_data.get("code", "").strip()
         if code:
             from .lapis.loader import loads_contract
-            from .lapis.compiler import LapisCompiler
+            from .lapis.compiler import ContractFlowValidator
             from .lapis.exceptions import LapisValidationError
             try:
                 tree = loads_contract(code, fmt="yaml")
-                LapisCompiler().validate_contract(tree)
+                ContractFlowValidator().validate(tree)
             except LapisValidationError as exc:
                 raise forms.ValidationError(str(exc))
         return code

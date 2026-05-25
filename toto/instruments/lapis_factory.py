@@ -19,7 +19,7 @@ def deploy_contract_for_instrument(instrument, *, force: bool = False):
     """
     from django.db import transaction as _tx
 
-    from toto.assets.lapis.compiler import LapisCompiler
+    from toto.assets.lapis.compiler import ContractFlowValidator
     from toto.assets.lapis.exceptions import LapisValidationError
     from toto.assets.lapis.loader import loads_contract
     from toto.assets.models import Contract
@@ -34,9 +34,9 @@ def deploy_contract_for_instrument(instrument, *, force: bool = False):
     code = render_lapis_for_instrument(instrument)
     tree = loads_contract(code, fmt="yaml")
     try:
-        LapisCompiler().validate_contract(tree)
+        ContractFlowValidator().validate(tree)
     except LapisValidationError as exc:
-        raise ValueError(f"Generated Lapis failed validation: {exc}") from exc
+        raise ValueError(f"Generated Contract Flow failed validation: {exc}") from exc
 
     metadata = build_contract_metadata_for_instrument(instrument)
     metadata["ingress_deployed_contract"] = True

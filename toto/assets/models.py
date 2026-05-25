@@ -423,11 +423,11 @@ class Contract(models.Model):
     def clean(self):
         if self.code:
             from .lapis.loader import loads_contract
-            from .lapis.compiler import LapisCompiler
+            from .lapis.compiler import ContractFlowValidator
             from .lapis.exceptions import LapisValidationError
             try:
                 tree = loads_contract(self.code, fmt="yaml")
-                LapisCompiler().validate_contract(tree)
+                ContractFlowValidator().validate(tree)
             except LapisValidationError as exc:
                 raise ValidationError({"code": str(exc)}) from exc
 

@@ -457,36 +457,32 @@ class SubscriptionContractGenerationTests(TestCase):
         self.assertIsNotNone(contract.pk)
         self.assertEqual(self.instrument.contract_id, contract.pk)
 
-    def test_generated_lapis_validates(self):
+    def test_generated_flow_validates(self):
         from toto.instruments.lapis_contracts import render_lapis_for_instrument
         from toto.assets.lapis.loader import loads_contract
-        from toto.assets.lapis.compiler import LapisCompiler
+        from toto.assets.lapis.compiler import ContractFlowValidator
         code = render_lapis_for_instrument(self.instrument)
         tree = loads_contract(code, fmt="yaml")
-        LapisCompiler().validate_contract(tree)
+        ContractFlowValidator().validate(tree)
 
-    def test_generated_lapis_has_body_key_on_all_actions(self):
-        from toto.instruments.lapis_contracts import render_lapis_for_instrument
-        from toto.assets.lapis.loader import loads_contract
-        code = render_lapis_for_instrument(self.instrument)
-        tree = loads_contract(code, fmt="yaml")
-        for name, action in tree["actions"].items():
-            self.assertIn("body", action, f"Action '{name}' missing body")
-
-    def test_generated_lapis_has_no_macro_nodes(self):
-        from toto.instruments.lapis_contracts import render_lapis_for_instrument
-        code = render_lapis_for_instrument(self.instrument)
-        for bad in ("type: oblig", "type: transfer", "type: record",
-                    "type: account", "type: asset", "type: amount", "type: balance",
-                    "type: get_state", "type: set_state", "type: decimal"):
-            self.assertNotIn(bad, code, f"Found forbidden node: {bad}")
-
-    def test_generated_lapis_has_bill_period_action(self):
+    def test_generated_flow_is_contract_flow_kind(self):
         from toto.instruments.lapis_contracts import render_lapis_for_instrument
         from toto.assets.lapis.loader import loads_contract
         code = render_lapis_for_instrument(self.instrument)
         tree = loads_contract(code, fmt="yaml")
-        self.assertIn("bill_period", tree["actions"])
+        self.assertEqual(tree.get("kind"), "contract_flow")
+
+    def test_generated_flow_has_steps(self):
+        from toto.instruments.lapis_contracts import render_lapis_for_instrument
+        from toto.assets.lapis.loader import loads_contract
+        code = render_lapis_for_instrument(self.instrument)
+        tree = loads_contract(code, fmt="yaml")
+        self.assertIn("steps", tree)
+        self.assertGreater(len(tree["steps"]), 0)
+        for step in tree["steps"]:
+            self.assertIn("id", step)
+            self.assertIn("type", step)
+            self.assertIn("title", step)
 
     def test_metadata_has_obligation_memory(self):
         from toto.instruments.lapis_contracts import build_contract_metadata_for_instrument
@@ -552,12 +548,12 @@ class ForwardContractGenerationTests(TestCase):
         contract = sync_contract_for_instrument(self.instrument)
         self.assertIsNotNone(contract.pk)
 
-    def test_forward_lapis_validates(self):
+    def test_forward_flow_validates(self):
         from toto.instruments.lapis_contracts import render_lapis_for_instrument
         from toto.assets.lapis.loader import loads_contract
-        from toto.assets.lapis.compiler import LapisCompiler
+        from toto.assets.lapis.compiler import ContractFlowValidator
         code = render_lapis_for_instrument(self.instrument)
-        LapisCompiler().validate_contract(loads_contract(code, fmt="yaml"))
+        ContractFlowValidator().validate(loads_contract(code, fmt="yaml"))
 
     def test_forward_lapis_has_no_oblig_node(self):
         from toto.instruments.lapis_contracts import render_lapis_for_instrument
@@ -617,12 +613,12 @@ class LeaseContractGenerationTests(TestCase):
         contract = sync_contract_for_instrument(self.instrument)
         self.assertIsNotNone(contract.pk)
 
-    def test_lease_lapis_validates(self):
+    def test_lease_flow_validates(self):
         from toto.instruments.lapis_contracts import render_lapis_for_instrument
         from toto.assets.lapis.loader import loads_contract
-        from toto.assets.lapis.compiler import LapisCompiler
+        from toto.assets.lapis.compiler import ContractFlowValidator
         code = render_lapis_for_instrument(self.instrument)
-        LapisCompiler().validate_contract(loads_contract(code, fmt="yaml"))
+        ContractFlowValidator().validate(loads_contract(code, fmt="yaml"))
 
     def test_lease_metadata_has_obligation(self):
         from toto.instruments.lapis_contracts import build_contract_metadata_for_instrument
@@ -674,22 +670,19 @@ _DEMO_TYPES = [
     "revenue_share",
 ]
 
-_FORBIDDEN_NODES = [
-    "type: transfer",
+_FORBIDDEN_STRINGS = [
     "type: oblig",
-    "type: record",
+    "type: transfer",
     "type: get_state",
     "type: set_state",
-    "type: account",
-    "type: asset",
-    "type: amount",
-    "type: balance",
     "type: decimal",
     "type: txn",
     "type: gtxn",
     "type: inner_begin",
     "type: inner_set",
     "type: inner_submit",
+    "actions:",
+    "body:",
 ]
 
 
@@ -754,11 +747,11 @@ class IngressInstrumentsTests(TestCase):
         self.assertTrue(instr.contract.metadata.get("ingress_deployed_contract"))
 
     def test_all_deployed_contracts_validate(self):
-        from toto.assets.lapis.compiler import LapisCompiler
+        from toto.assets.lapis.compiler import ContractFlowValidator
         from toto.assets.lapis.loader import loads_contract
 
         _run_ingress("--deploy-contracts")
-        compiler = LapisCompiler()
+        validator = ContractFlowValidator()
         for itype in _DEMO_TYPES:
             instr = FinancialInstrument.objects.select_related("contract").get(
                 reference=_ref(itype)
@@ -766,9 +759,9 @@ class IngressInstrumentsTests(TestCase):
             self.assertIsNotNone(instr.contract, f"{itype}: no contract")
             tree = loads_contract(instr.contract.code, fmt="yaml")
             try:
-                compiler.validate_contract(tree)
+                validator.validate(tree)
             except Exception as exc:
-                self.fail(f"{itype}: Lapis validation failed — {exc}")
+                self.fail(f"{itype}: Contract Flow validation failed — {exc}")
 
     def test_no_ledger_transaction_created_by_deploy(self):
         from toto.assets.models import LedgerTransaction
@@ -799,7 +792,7 @@ class IngressInstrumentsTests(TestCase):
         instr = FinancialInstrument.objects.get(reference=_ref("revenue_share"))
         self.assertIsNotNone(instr.contract_id)
 
-    def test_no_forbidden_macro_nodes(self):
+    def test_no_forbidden_strings_in_flow(self):
         _run_ingress("--deploy-contracts")
         for itype in _DEMO_TYPES:
             instr = FinancialInstrument.objects.select_related("contract").get(
@@ -808,8 +801,8 @@ class IngressInstrumentsTests(TestCase):
             if not instr.contract:
                 continue
             code = instr.contract.code
-            for bad in _FORBIDDEN_NODES:
-                self.assertNotIn(bad, code, f"{itype}: found forbidden node '{bad}'")
+            for bad in _FORBIDDEN_STRINGS:
+                self.assertNotIn(bad, code, f"{itype}: found forbidden string '{bad}'")
 
     def test_ingress_metadata_markers_set(self):
         _run_ingress("--deploy-contracts")
