@@ -33,8 +33,8 @@
           </label>
           <div
             :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
-            class="[&>input]:w-full [&>input]:rounded-lg [&>input]:border [&>input]:px-3 [&>input]:py-2 [&>input]:text-sm
-                   [&>select]:w-full [&>select]:rounded-lg [&>select]:border [&>select]:px-3 [&>select]:py-2 [&>select]:text-sm">
+            class="[&>input]:w-full [&>input]:rounded-lg [&>input]:border [&>input]:px-3 [&>input]:py-2 [&>input]:text-sm [&>input]:bg-inherit [&>input]:text-inherit [&>input]:border-inherit [&>input]:outline-none
+                   [&>select]:w-full [&>select]:rounded-lg [&>select]:border [&>select]:px-3 [&>select]:py-2 [&>select]:text-sm [&>select]:bg-inherit [&>select]:text-inherit [&>select]:border-inherit [&>select]:outline-none">
             {{ field }}
           </div>
           {% if field.help_text %}

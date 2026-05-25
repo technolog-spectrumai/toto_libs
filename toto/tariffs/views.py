@@ -348,10 +348,11 @@ def metrics(request):
         .order_by("-total")[:20]
     )
 
-    # Low balance accounts — payer accounts where any holding < threshold
+    # Low balance accounts — only accounts that appear as tariff payers
+    tariff_payer_ids = UsageRecord.objects.values_list("payer_account_id", flat=True).distinct()
     low_balance_accounts = (
         AssetHolding.objects.select_related("account", "asset")
-        .filter(balance_base_units__lt=1000)
+        .filter(balance_base_units__lt=1000, account_id__in=tariff_payer_ids)
         .order_by("balance_base_units")[:20]
     )
 
