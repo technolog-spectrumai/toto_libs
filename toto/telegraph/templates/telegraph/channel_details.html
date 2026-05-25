@@ -242,10 +242,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     return true;
   }
 
-  // ── Image upload ───────────────────────────────────────────────────────────
+  // ── Image send ─────────────────────────────────────────────────────────────
 
   function uploadAndSendImage(file) {
     if (!canSend) return;
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      appendSystemMessage("Not connected — cannot send image.");
+      return;
+    }
 
     const maxBytes = 10 * 1024 * 1024;
     const allowed = ["image/jpeg", "image/png", "image/gif", "image/webp"];
@@ -258,47 +262,36 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
 
-    const form = new FormData();
-    form.append("image", file);
-
     const progressWrap = document.querySelector("#upload-progress-wrap");
     const progressBar  = document.querySelector("#upload-progress-bar");
     const progressText = document.querySelector("#upload-progress-pct");
-    const csrfToken    = document.querySelector("[name=csrfmiddlewaretoken]")?.value ?? "";
 
-    const xhr = new XMLHttpRequest();
+    if (progressWrap) progressWrap.classList.remove("hidden");
+    if (progressBar)  progressBar.style.width = "0%";
+    if (progressText) progressText.textContent = "0%";
 
-    xhr.upload.addEventListener("progress", (e) => {
+    const reader = new FileReader();
+
+    reader.onprogress = (e) => {
       if (!e.lengthComputable) return;
       const pct = Math.round((e.loaded / e.total) * 100);
-      if (progressBar)  progressBar.style.width  = `${pct}%`;
+      if (progressBar)  progressBar.style.width = `${pct}%`;
       if (progressText) progressText.textContent = `${pct}%`;
-    });
+    };
 
-    xhr.addEventListener("loadstart", () => {
-      if (progressWrap) progressWrap.classList.remove("hidden");
-      if (progressBar)  progressBar.style.width  = "0%";
-      if (progressText) progressText.textContent = "0%";
-    });
-
-    xhr.addEventListener("loadend", () => {
+    reader.onload = () => {
+      if (progressBar)  progressBar.style.width = "100%";
+      if (progressText) progressText.textContent = "100%";
+      sendSocketPayload({ type: "image_message", image_data: reader.result });
       if (progressWrap) progressWrap.classList.add("hidden");
-    });
+    };
 
-    xhr.addEventListener("load", () => {
-      if (xhr.status < 200 || xhr.status >= 300) {
-        let err = {};
-        try { err = JSON.parse(xhr.responseText); } catch (_) {}
-        appendSystemMessage(`Upload failed: ${err.error ?? xhr.statusText}`);
-      }
-      // Server relays the image via WebSocket to all members — no WS send needed here
-    });
+    reader.onerror = () => {
+      appendSystemMessage("Failed to read image file.");
+      if (progressWrap) progressWrap.classList.add("hidden");
+    };
 
-    xhr.addEventListener("error", () => appendSystemMessage("Upload error: network failure."));
-
-    xhr.open("POST", `/telegraph/api/channels/${channelSlug}/upload/`);
-    if (csrfToken) xhr.setRequestHeader("X-CSRFToken", csrfToken);
-    xhr.send(form);
+    reader.readAsDataURL(file);
   }
 
   // ── MLS lifecycle ──────────────────────────────────────────────────────────

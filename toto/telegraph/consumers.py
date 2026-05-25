@@ -73,7 +73,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.handle_chat_message(user, data)
             return
 
-        if data_type == "image_message" and data.get("image_url"):
+        if data_type == "image_message" and data.get("image_data"):
             await self.handle_image_message(user, data)
             return
 
@@ -141,11 +141,22 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
 
     async def handle_image_message(self, user, data):
+        image_data = data.get("image_data", "")
+
+        if not isinstance(image_data, str) or not image_data.startswith("data:image/"):
+            await self.send_error("Invalid image data.")
+            return
+
+        # 10 MB raw ≈ 13.4 MB base64
+        if len(image_data) > 14 * 1024 * 1024:
+            await self.send_error("Image too large (max 10 MB).")
+            return
+
         member = await self.get_channel_member(user)
 
         payload = {
             "type": "image_message",
-            "image_url": data.get("image_url"),
+            "image_data": image_data,
             "user": member.display_name,
             "avatar_url": self.absolute_url(member.avatar_url),
             "sender_channel": self.channel_name,
