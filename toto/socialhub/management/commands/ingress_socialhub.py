@@ -71,6 +71,31 @@ class Command(IngressCommand):
         self.assign_senior_members(community, tester_person, members)
         self.create_community_news(community, tester_person)
 
+        self.stdout.write(self.style.NOTICE("🏘 Creating child communities..."))
+        child_a = self.create_community(
+            name="Our Thing North Chapter",
+            address=address,
+            established_year=2025,
+        )
+        child_a.parent = community
+        if len(members) > 1:
+            child_a.head = members[1]
+            members[1].communities.add(child_a)
+        child_a.save()
+        self.stdout.write(self.style.SUCCESS(f"✔ Created child community: {child_a.name}"))
+
+        child_b = self.create_community(
+            name="Our Thing South Chapter",
+            address=address,
+            established_year=2025,
+        )
+        child_b.parent = community
+        if len(members) > 2:
+            child_b.head = members[2]
+            members[2].communities.add(child_b)
+        child_b.save()
+        self.stdout.write(self.style.SUCCESS(f"✔ Created child community: {child_b.name}"))
+
         self.stdout.write(self.style.SUCCESS("✅ SocialHub ingress complete."))
 
     # ---------------------------------------------------------

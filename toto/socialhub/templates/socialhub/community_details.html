@@ -61,6 +61,18 @@
           Org Chart
         </button>
 
+        {% if viewer_is_federal_agent %}
+        <a
+          href="{% url 'socialhub:administrata' community.slug %}"
+          :class="darkMode
+            ? 'border-accent-1 bg-bubble-bg-dark'
+            : 'border-accent-2 bg-bubble-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-diagram-project"></i>
+          Administrata
+        </a>
+        {% endif %}
+
         <a
           href="{% url 'socialhub:profile_list' %}"
           :class="darkMode
@@ -224,6 +236,29 @@
                 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
                 class="underline-offset-4 transition hover:underline hover:opacity-80">
                 {{ community.head.display_name }}
+              </a>
+            {% else %}
+              —
+            {% endif %}
+          </p>
+        </article>
+
+        <article
+          :class="darkMode
+            ? 'border-accent-1 bg-sunken-dark'
+            : 'border-accent-2 bg-sunken-light'"
+          class="rounded-xl border p-4">
+          <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+            <i class="fa-solid fa-sitemap"></i>
+            Parent Community
+          </p>
+          <p class="mt-2 break-words text-sm font-semibold">
+            {% if community.parent %}
+              <a
+                href="{% url 'socialhub:community_detail' community.parent.slug %}"
+                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                class="underline-offset-4 transition hover:underline hover:opacity-80">
+                {{ community.parent.name }}
               </a>
             {% else %}
               —

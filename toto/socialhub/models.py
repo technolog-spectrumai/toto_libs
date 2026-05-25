@@ -102,6 +102,15 @@ class Community(DomainEntity):
             self.slug = slug
         super().save(*args, **kwargs)
 
+    parent = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="children",
+        help_text="Parent community in the hierarchy",
+    )
+
     federation = models.ForeignKey(
         Federation,
         null=True,

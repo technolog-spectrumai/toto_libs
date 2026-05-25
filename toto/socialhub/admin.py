@@ -20,6 +20,7 @@ class CommunityAdmin(TotoModelAdmin):
         'org_type',
         'established_year',
         'head_display',
+        'parent',
         'email',
         'is_autonomous',
         'is_foreign_display',
@@ -41,6 +42,7 @@ class CommunityAdmin(TotoModelAdmin):
     ordering = ('name',)
     prepopulated_fields = {'slug': ('name',)}
     filter_horizontal = ('senior_members',)
+    autocomplete_fields = ('parent',)
 
     def head_display(self, obj):
         return obj.head.display_name if obj.head else "-"

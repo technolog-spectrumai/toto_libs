@@ -152,11 +152,12 @@ Nearly every other app links to `Person` rather than `User` directly. The FK fro
 ### Community (base)
 
 **`toto.socialhub`** — Community model and social layer.
-- `Community` — a named organization (Guild, Company, Non-Profit, Family, Other). Has a head person, senior members (M2M), territory, address, federation, email service, `is_autonomous`, `is_foreign`, and `is_federal_tribe` flags.
+- `Community` — a named organization (Guild, Company, Non-Profit, Family, Other). Has a head person, senior members (M2M), territory, address, federation, email service, `is_autonomous`, `is_foreign`, and `is_federal_tribe` flags. A `parent` self-FK records the community hierarchy (parent → child chain). Only admin can set or change the parent.
 - `CommunityNewsPost` (extends `AbstractSection`) — rich Trix-body posts attached to a community, tagged with `CommunityNewsTopic` tags. Visibility is `public` or `community-only`.
 - `MembershipApplication` — email-verified join request to a community. Starts with a 6-digit code sent to the applicant's email; status moves through `pending → verified → endorsed → invited → rejected`.
 - `ReferenceRequest` — a member endorses an applicant. When a reference is accepted, the system activates the user account and adds the `Person` to the community in a single atomic save.
 - `EmailService` re-exported here for backward compatibility.
+- **Administrata** — a Cytoscape-based community chain view (`/socialhub/communities/<slug>/administrata/`), visible only to `Person.is_federal_agent` users. Shows the full hierarchy of all communities as rounded-rectangle nodes with parent→child arrows, and each community's head person as a circle node. Backed by a JSON endpoint at `.../administrata/graph.json`.
 
 **`toto.events`** — Scheduled event calendar. `ScheduledEvent` records a named event with start/end time and optional location. Linkable to bazaar products (booking/ticket). `sync_adapters.py` emits graph change events for the ravioli Neo4j layer.
 
@@ -423,6 +424,7 @@ The following apps are only installed and routed when `BUILD_STUDIO=1`. They all
 ```
 Federation
   └── many Community (socialhub)
+        ├── optional parent Community (self-FK, hierarchy)
         ├── one AssemblyConfig / Senate
         ├── many AssemblyProposal → AssemblyDecision (hash-chain)
         │     └── enacts CommunityRule / CommunityTransactionFee / PollTax
