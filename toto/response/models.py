@@ -232,6 +232,12 @@ class Intervention(models.Model):
     description = models.TextField(blank=True)
     outcome_notes = models.TextField(blank=True)
     effect_description = models.TextField(blank=True, help_text="Observed effects / impact of this intervention")
+    estimated_cost = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+    )
     is_required = models.BooleanField(default=True)
     started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)

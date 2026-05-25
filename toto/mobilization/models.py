@@ -431,6 +431,17 @@ class EmergencyStatus(models.Model):
         default=False,
         help_text="Emergency vehicles may commandeer routes within this zone",
     )
+    allows_asset_requisition = models.BooleanField(
+        default=False,
+        help_text="Community/zone assets may be requisitioned for deployment use",
+    )
+    emergency_tax_rate = models.DecimalField(
+        max_digits=6,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text="Levy applied to transactions during the emergency (e.g. 0.0250 = 2.5%)",
+    )
 
     source_proposal = models.ForeignKey(
         "assembly.AssemblyProposal",
