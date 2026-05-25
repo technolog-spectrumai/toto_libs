@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import uuid as _uuid
 
-import yaml
 from django.apps import apps
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -81,10 +80,6 @@ class Contract(models.Model):
         blank=True,
         help_text="Human-readable description of what this contract represents.",
     )
-    code = models.TextField(
-        blank=True,
-        help_text="Optional YAML snapshot/import-export of this contract graph.",
-    )
     metadata = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -95,21 +90,6 @@ class Contract(models.Model):
 
     def __str__(self):
         return self.name
-
-    def clean(self):
-        if self.code:
-            try:
-                doc = yaml.safe_load(self.code)
-            except yaml.YAMLError as exc:
-                raise ValidationError({"code": f"Invalid YAML: {exc}"}) from exc
-            if not isinstance(doc, dict):
-                raise ValidationError({"code": "YAML must be a mapping."})
-            lang = doc.get("language")
-            if lang and lang != "lapis":
-                raise ValidationError({"code": f"Unknown language: {lang!r}. Expected 'lapis'."})
-            kind = doc.get("kind")
-            if kind and kind != "claims_mesh":
-                raise ValidationError({"code": f"Unknown kind: {kind!r}. Expected 'claims_mesh'."})
 
 
 # ---------------------------------------------------------------------------

@@ -2,13 +2,12 @@ from __future__ import annotations
 
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.views.decorators.http import require_POST
 
 from toto.ui import PageProcessor
 
 from .forms import ContractForm, ContractNodeForm, ContractEdgeForm
 from .models import Contract, ContractNode, ContractEdge
-from .services import contract_to_cytoscape, sync_contract_code_snapshot
+from .services import contract_to_cytoscape
 
 
 def _render(request, template, context):
@@ -111,17 +110,6 @@ def contract_update(request, uuid):
 def contract_graph_json(request, uuid):
     contract = get_object_or_404(Contract, uuid=uuid)
     return JsonResponse(contract_to_cytoscape(contract))
-
-
-# ---------------------------------------------------------------------------
-# Snapshot sync
-# ---------------------------------------------------------------------------
-
-@require_POST
-def contract_sync_snapshot(request, uuid):
-    contract = get_object_or_404(Contract, uuid=uuid)
-    sync_contract_code_snapshot(contract)
-    return redirect("contracts:contract_detail", uuid=contract.uuid)
 
 
 # ---------------------------------------------------------------------------

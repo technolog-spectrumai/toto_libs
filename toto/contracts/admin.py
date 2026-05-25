@@ -1,16 +1,6 @@
 from django.contrib import admin
-from django import forms as django_forms
 
 from .models import Contract, ContractNode, ContractEdge
-from .widgets import AceYamlWidget
-from .services import sync_contract_code_snapshot
-
-
-class _ContractAdminForm(django_forms.ModelForm):
-    class Meta:
-        model = Contract
-        fields = "__all__"
-        widgets = {"code": AceYamlWidget(attrs={"rows": 30})}
 
 
 class ContractNodeInline(admin.TabularInline):
@@ -29,13 +19,11 @@ class ContractEdgeInline(admin.TabularInline):
 
 @admin.register(Contract)
 class ContractAdmin(admin.ModelAdmin):
-    form = _ContractAdminForm
     list_display = ("name", "uuid", "node_count", "edge_count", "created_at")
-    search_fields = ("name", "description", "uuid", "code")
+    search_fields = ("name", "description", "uuid")
     readonly_fields = ("uuid", "created_at", "updated_at")
-    fields = ("name", "description", "code", "metadata", "uuid", "created_at", "updated_at")
+    fields = ("name", "description", "metadata", "uuid", "created_at", "updated_at")
     inlines = [ContractNodeInline, ContractEdgeInline]
-    actions = ["action_sync_yaml_snapshot"]
 
     @admin.display(description="Nodes")
     def node_count(self, obj):
@@ -44,12 +32,6 @@ class ContractAdmin(admin.ModelAdmin):
     @admin.display(description="Edges")
     def edge_count(self, obj):
         return obj.edges.count()
-
-    @admin.action(description="Sync YAML snapshot from graph")
-    def action_sync_yaml_snapshot(self, request, queryset):
-        for contract in queryset:
-            sync_contract_code_snapshot(contract)
-        self.message_user(request, f"Synced YAML snapshot for {queryset.count()} contract(s).")
 
 
 @admin.register(ContractNode)

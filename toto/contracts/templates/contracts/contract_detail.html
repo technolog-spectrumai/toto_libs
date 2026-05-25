@@ -74,57 +74,6 @@
   <!-- Edges table -->
   {% include "contracts/_edge_table.html" %}
 
-  <!-- Contract YAML -->
-  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-       class="rounded-lg border shadow-sm overflow-hidden">
-    <div class="flex items-center justify-between px-4 py-3 border-b"
-         :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
-      <h3 class="font-semibold text-sm uppercase tracking-wide opacity-60">
-        <i class="fa-solid fa-file-code mr-1"></i>
-        {% trans "Contract YAML" %}
-      </h3>
-      <form method="post" action="{% url 'contracts:contract_sync_snapshot' contract.uuid %}">
-        {% csrf_token %}
-        <button type="submit"
-          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-          class="rounded border px-3 py-1 text-xs font-semibold transition hover:opacity-80">
-          <i class="fa-solid fa-arrows-rotate"></i> {% trans "Sync snapshot" %}
-        </button>
-      </form>
-    </div>
-    {% if contract.code %}
-    <div id="contract-yaml-viewer" style="height:380px;border:none"></div>
-    <script>
-    (function() {
-      var code = {{ contract.code|escapejs|json_script:"__yaml_code__" }};
-      var src = JSON.parse(document.getElementById("__yaml_code__").textContent);
-      function initAce() {
-        if (typeof ace === "undefined") { setTimeout(initAce, 50); return; }
-        var ed = ace.edit("contract-yaml-viewer");
-        ed.setTheme("ace/theme/monokai");
-        ed.session.setMode("ace/mode/yaml");
-        ed.setFontSize(12);
-        ed.setValue(src, -1);
-        ed.setReadOnly(true);
-        ed.setOptions({ showGutter: true, highlightActiveLine: false });
-      }
-      if (!window.ace) {
-        var s = document.createElement("script");
-        s.src = "https://cdnjs.cloudflare.com/ajax/libs/ace/1.36.4/ace.js";
-        s.onload = initAce;
-        document.head.appendChild(s);
-      } else {
-        initAce();
-      }
-    })();
-    </script>
-    {% else %}
-    <div class="px-4 py-6 text-sm opacity-50 text-center">
-      {% trans "No YAML snapshot. Use Sync snapshot to generate from graph." %}
-    </div>
-    {% endif %}
-  </div>
-
   <!-- Metadata -->
   {% with metadata_dict=contract.metadata %}
   {% include "contracts/_metadata_card.html" %}

@@ -23,9 +23,6 @@ from .services import (
     create_edge,
     create_manual_node,
     create_node,
-    export_contract_yaml,
-    import_contract_yaml,
-    sync_contract_code_snapshot,
 )
 
 User = get_user_model()
@@ -66,23 +63,6 @@ class ContractModelTests(TestCase):
         with self.assertRaises(Exception):
             _make_contract("Unique")
 
-    def test_clean_valid_yaml(self):
-        c = _make_contract("YAML Test")
-        c.code = "language: lapis\nversion: 1\nkind: claims_mesh\nnodes: []\nedges: []"
-        c.clean()  # should not raise
-
-    def test_clean_invalid_yaml_rejected(self):
-        c = _make_contract("Bad YAML")
-        c.code = "{"
-        with self.assertRaises(ValidationError):
-            c.clean()
-
-    def test_clean_wrong_language_rejected(self):
-        c = _make_contract("Wrong lang")
-        c.code = "language: not_lapis\nkind: claims_mesh\nnodes: []\nedges: []"
-        with self.assertRaises(ValidationError):
-            c.clean()
-
 
 class ContractNodeModelTests(TestCase):
     def setUp(self):
@@ -109,7 +89,6 @@ class ContractNodeModelTests(TestCase):
     def test_same_key_different_contracts(self):
         c2 = _make_contract("Contract B")
         ContractNode.objects.create(contract=self.contract, key="k1", node_type="event", title="E")
-        # Same key in different contract is fine
         n = ContractNode.objects.create(contract=c2, key="k1", node_type="event", title="E")
         self.assertEqual(n.contract, c2)
 
@@ -228,126 +207,9 @@ class ServiceTests(TestCase):
             for key in n["data"]:
                 self.assertNotIn("color", key.lower(), f"Unexpected color field: {key}")
 
-    def test_export_yaml_includes_description_and_manual_nodes(self):
-        self.contract.description = "My description"
-        self.contract.save()
-        create_manual_node(self.contract, "note1", "Explanatory Note", description="A manual note")
-        yml = export_contract_yaml(self.contract)
-        self.assertIn("My description", yml)
-        self.assertIn("note1", yml)
-        self.assertIn("manual: true", yml)
-
-    def test_import_yaml_creates_nodes_and_edges(self):
-        code = """
-language: lapis
-version: 1
-kind: claims_mesh
-name: Test
-description: desc
-nodes:
-  - id: ent
-    type: entitlement
-    title: Access
-  - id: obl
-    type: obligation
-    title: Fee
-  - id: note1
-    type: note
-    title: Human note
-    manual: true
-edges:
-  - from: ent
-    to: obl
-    type: grants
-    label: grants access
-"""
-        n_count, e_count = import_contract_yaml(self.contract, code)
-        self.assertEqual(n_count, 3)
-        self.assertEqual(e_count, 1)
-        note = ContractNode.objects.get(contract=self.contract, key="note1")
-        self.assertTrue(note.is_manual)
-
-    def test_import_rejects_duplicate_node_ids(self):
-        code = """
-language: lapis
-version: 1
-kind: claims_mesh
-nodes:
-  - id: ent
-    type: entitlement
-    title: A
-  - id: ent
-    type: obligation
-    title: B
-edges: []
-"""
-        with self.assertRaises(ValidationError):
-            import_contract_yaml(self.contract, code)
-
-    def test_import_rejects_missing_edge_target(self):
-        code = """
-language: lapis
-version: 1
-kind: claims_mesh
-nodes:
-  - id: ent
-    type: entitlement
-    title: A
-edges:
-  - from: ent
-    to: nonexistent
-    type: grants
-"""
-        with self.assertRaises(ValidationError):
-            import_contract_yaml(self.contract, code)
-
-    def test_import_rejects_unsupported_node_type(self):
-        code = """
-language: lapis
-version: 1
-kind: claims_mesh
-nodes:
-  - id: bad
-    type: escrow
-    title: Escrow
-edges: []
-"""
-        with self.assertRaises(ValidationError):
-            import_contract_yaml(self.contract, code)
-
-    def test_import_rejects_unsupported_edge_type(self):
-        code = """
-language: lapis
-version: 1
-kind: claims_mesh
-nodes:
-  - id: a
-    type: event
-    title: A
-  - id: b
-    type: allocation
-    title: B
-edges:
-  - from: a
-    to: b
-    type: pays
-"""
-        with self.assertRaises(ValidationError):
-            import_contract_yaml(self.contract, code)
-
-    def test_sync_snapshot_updates_code(self):
-        self.contract.code = ""
-        self.contract.save()
-        create_node(self.contract, "ent", "entitlement", "Access")
-        sync_contract_code_snapshot(self.contract)
-        self.contract.refresh_from_db()
-        self.assertIn("ent", self.contract.code)
-        self.assertIn("language: lapis", self.contract.code)
-
     def test_contract_node_references_another_contract(self):
         c2 = _make_contract("Referenced")
-        n = create_node(self.contract, "ref_c2", "contract", "Ref to C2",
-                        object=c2)
+        n = create_node(self.contract, "ref_c2", "contract", "Ref to C2", object=c2)
         self.assertTrue(n.is_backed)
         self.assertEqual(n.object_app, "contracts")
         self.assertEqual(n.object_model, "contract")
@@ -420,9 +282,9 @@ class ContractViewTests(TestCase):
         r = self.client.get(reverse("contracts:contract_detail", args=[self.contract.uuid]))
         self.assertContains(r, "creates_duty")
 
-    def test_contract_detail_contains_yaml_section(self):
+    def test_contract_detail_no_yaml_section(self):
         r = self.client.get(reverse("contracts:contract_detail", args=[self.contract.uuid]))
-        self.assertContains(r, "Contract YAML")
+        self.assertNotContains(r, "Contract YAML")
 
     def test_contract_create_get(self):
         r = self.client.get(reverse("contracts:contract_create"))
@@ -510,21 +372,3 @@ class ContractTemplateHygieneTests(TestCase):
         with open(graph_card) as f:
             content = f.read()
         self.assertIn("cy-mesh", content)
-
-
-# ---------------------------------------------------------------------------
-# Admin smoke tests
-# ---------------------------------------------------------------------------
-
-class ContractAdminTests(TestCase):
-    def test_admin_form_uses_ace_widget(self):
-        from .admin import _ContractAdminForm
-        from .widgets import AceYamlWidget
-        f = _ContractAdminForm()
-        self.assertIsInstance(f.fields["code"].widget, AceYamlWidget)
-
-    def test_ace_widget_media_includes_ace_js(self):
-        from .widgets import AceYamlWidget
-        w = AceYamlWidget()
-        media_js = list(w.media._js)
-        self.assertTrue(any("ace.js" in js for js in media_js))

@@ -5,7 +5,6 @@ from toto.contracts.services import (
     create_node,
     create_manual_node,
     create_edge,
-    sync_contract_code_snapshot,
 )
 
 
@@ -57,7 +56,6 @@ class Command(IngressCommand):
         create_edge(contract, "payment_event", "recurring_fee", "settles", label="settles")
         create_edge(contract, "business_note", "billing_cycle", "explains", label="explains")
 
-        sync_contract_code_snapshot(contract)
 
     # ------------------------------------------------------------------ #
     # Lease                                                                #
@@ -100,7 +98,6 @@ class Command(IngressCommand):
         create_edge(contract, "expired_event", "use_right", "records", label="records end")
         create_edge(contract, "deposit_note", "deposit_hold", "explains", label="explains")
 
-        sync_contract_code_snapshot(contract)
 
     # ------------------------------------------------------------------ #
     # Escrow (modelled with allocation + condition + obligation + event)   #
@@ -145,7 +142,6 @@ class Command(IngressCommand):
         create_edge(contract, "refunded_event", "refund_duty", "settles", label="settles")
         create_edge(contract, "escrow_note", "escrow_hold", "explains", label="explains")
 
-        sync_contract_code_snapshot(contract)
 
     # ------------------------------------------------------------------ #
     # Vesting (schedule + condition + allocation + entitlement + event)    #
@@ -190,7 +186,6 @@ class Command(IngressCommand):
         create_edge(contract, "cliff_event", "cliff_condition", "records", label="records")
         create_edge(contract, "vesting_note", "vesting_pool", "explains", label="explains")
 
-        sync_contract_code_snapshot(contract)
 
     # ------------------------------------------------------------------ #
     # Contract referencing another contract                                #
@@ -225,4 +220,3 @@ class Command(IngressCommand):
         create_edge(contract, "platform_note", "sub_contract", "explains", label="explains")
         create_edge(contract, "sub_contract", "platform_note", "annotates", label="annotated by")
 
-        sync_contract_code_snapshot(contract)
