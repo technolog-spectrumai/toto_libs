@@ -61,7 +61,18 @@ class Command(BaseCommand):
                 billed += 1
                 continue
 
-            record = charge_storage_snapshot(user)
+            from toto.vault.models import Bucket
+            from decimal import Decimal
+            quota_mb = (
+                Bucket.objects.filter(files__owner=user)
+                .exclude(storage_quota_mb__isnull=True)
+                .values_list("storage_quota_mb", flat=True)
+                .first()
+            )
+            record = charge_storage_snapshot(
+                user,
+                quota_mb=Decimal(str(quota_mb)) if quota_mb else None,
+            )
             if record:
                 self.stdout.write(f"  ✓ billed {label}")
                 billed += 1

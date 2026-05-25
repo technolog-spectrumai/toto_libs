@@ -192,6 +192,86 @@
     </section>
     {% endif %}
 
+    <!-- Storage billing per user -->
+    {% if user_quota_rows %}
+    <section>
+      <p class="mb-3 text-xs font-semibold uppercase tracking-wide opacity-55">
+        <i class="fa-solid fa-hard-drive mr-1"></i>{% trans "Storage per User" %}
+        {% if bucket_quota_mb %}
+          <span class="ml-2 font-mono normal-case opacity-70">{% trans "quota" %}: {{ bucket_quota_mb }} MB</span>
+        {% else %}
+          <span class="ml-2 normal-case opacity-40">{% trans "(no quota set)" %}</span>
+        {% endif %}
+      </p>
+      <div
+        :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+        class="overflow-hidden rounded-xl border shadow-sm">
+        <table class="min-w-full text-sm">
+          <thead>
+            <tr
+              :class="darkMode ? 'bg-bubble-bg-dark border-b border-accent-1' : 'bg-bubble-bg-light border-b border-accent-2'"
+              class="text-left text-xs font-semibold uppercase tracking-wide opacity-65">
+              <th class="px-4 py-3">{% trans "User" %}</th>
+              <th class="px-4 py-3 text-right">{% trans "Files" %}</th>
+              <th class="px-4 py-3 text-right">{% trans "Storage" %}</th>
+              {% if bucket_quota_mb %}<th class="px-4 py-3 min-w-[200px]">{% trans "Quota usage" %}</th>{% endif %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in user_quota_rows %}
+            <tr
+              :class="darkMode
+                ? 'border-b border-accent-1/40 hover:bg-bubble-bg-dark'
+                : 'border-b border-accent-2/40 hover:bg-bubble-bg-light'"
+              class="transition-colors duration-150">
+
+              <td class="px-4 py-3 font-semibold">
+                <i class="fa-solid fa-circle-user mr-1 opacity-40 text-xs"></i>
+                {{ row.username }}
+              </td>
+
+              <td class="px-4 py-3 text-right font-mono text-xs opacity-70">
+                {{ row.file_count }}
+              </td>
+
+              <td class="px-4 py-3 text-right font-mono font-semibold">
+                {% if row.over %}
+                  <span :class="darkMode ? 'text-error-dark' : 'text-red-500'">
+                    {{ row.used_mb }} MB
+                  </span>
+                {% else %}
+                  {{ row.used_mb }} MB
+                {% endif %}
+                {% if row.quota_mb %}
+                  <span class="opacity-40 font-normal text-xs"> / {{ row.quota_mb }} MB</span>
+                {% endif %}
+              </td>
+
+              {% if bucket_quota_mb %}
+              <td class="px-4 py-3">
+                <div class="flex items-center gap-2">
+                  <div class="relative flex-1 h-2.5 rounded-full overflow-hidden"
+                    :class="darkMode ? 'bg-white/10' : 'bg-black/10'">
+                    <div
+                      class="absolute inset-y-0 left-0 rounded-full transition-all duration-500"
+                      :class="{% if row.over %}'bg-red-500'{% else %}darkMode ? 'bg-accent-dark' : 'bg-accent-light'{% endif %}"
+                      style="width: {{ row.pct }}%">
+                    </div>
+                  </div>
+                  <span class="text-xs font-mono opacity-60 shrink-0 w-10 text-right">
+                    {% if row.over %}<span class="text-red-500">{{ row.pct }}%</span>{% else %}{{ row.pct }}%{% endif %}
+                  </span>
+                </div>
+              </td>
+              {% endif %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+    {% endif %}
+
     <!-- Recent files -->
     <section>
       <p class="mb-3 text-xs font-semibold uppercase tracking-wide opacity-55">

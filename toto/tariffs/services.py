@@ -29,7 +29,6 @@ from toto.assets.models import (
 )
 
 from .models import (
-    BillingUnit,
     RoundingMode,
     Tariff,
     TariffItem,
@@ -37,11 +36,6 @@ from .models import (
     UsageRecord,
     UsageStatus,
 )
-
-
-def _unit_slug(unit) -> str:
-    """Return the slug string for a BillingUnit instance or a plain string slug."""
-    return unit.slug if isinstance(unit, BillingUnit) else (unit or "")
 
 
 # ---------------------------------------------------------------------------
@@ -52,7 +46,7 @@ def _unit_slug(unit) -> str:
 class ChargeDraft:
     tariff_item: TariffItem
     quantity: Decimal
-    unit: object  # BillingUnit instance or slug string
+    unit: str
     amount_base_units: int
     payer_account_id: int
     receiving_account_id: int
@@ -90,9 +84,11 @@ def calculate_tariff_charge(
     Pure calculation — no DB writes.
     Returns one ChargeDraft per active TariffItem that matches metric_code.
     """
-    items = tariff.active_items.filter(code=metric_code).select_related(
-        "charged_asset", "receiving_account"
-    )
+    from django.db.models import Q as _Q
+    qs = tariff.active_items.filter(code=metric_code)
+    if unit:
+        qs = qs.filter(_Q(unit__isnull=True) | _Q(unit__code=unit))
+    items = qs.select_related("charged_asset", "receiving_account", "unit")
     drafts = []
     for item in items:
         amount = _calculate_charge(item, Decimal(str(quantity)))
@@ -111,7 +107,7 @@ def calculate_tariff_charge(
                 "item_code": item.code,
                 "metric_code": metric_code,
                 "quantity": str(quantity),
-                "unit": _unit_slug(unit),
+                "unit": unit or "",
             },
         ))
     return drafts
@@ -259,7 +255,7 @@ def post_usage_record(
             "tariff_code": usage_record.tariff.code,
             "metric_code": usage_record.metric_code,
             "quantity": str(usage_record.quantity),
-            "unit": usage_record.unit.slug,
+            "unit": usage_record.unit,
             "charge_count": len(charges),
         }
 
@@ -382,11 +378,7 @@ def simulate_tariff(
     for entry in usage_payload:
         metric_code = entry["metric_code"]
         quantity = Decimal(str(entry["quantity"]))
-        unit_raw = entry.get("unit")
-        if isinstance(unit_raw, str):
-            unit = BillingUnit.objects.filter(slug=unit_raw).first()
-        else:
-            unit = unit_raw  # already a BillingUnit instance or None
+        unit = entry.get("unit", "")
 
         drafts = calculate_tariff_charge(tariff, metric_code, quantity, unit)
         for draft in drafts:

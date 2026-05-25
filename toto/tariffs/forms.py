@@ -51,7 +51,7 @@ class TariffItemForm(forms.ModelForm):
         self.tariff = tariff
         self.fields["charged_asset"].queryset = Asset.objects.filter(active=True)
         self.fields["receiving_account"].queryset = LedgerAccount.objects.filter(active=True)
-        self.fields["unit"].queryset = BillingUnit.objects.all()
+        self.fields["unit"].queryset = BillingUnit.objects.filter(active=True)
 
     def clean(self):
         cleaned = super().clean()
@@ -104,7 +104,6 @@ class UsageRecordForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields["tariff"].queryset = Tariff.objects.filter(status=TariffStatus.ACTIVE)
         self.fields["payer_account"].queryset = LedgerAccount.objects.filter(active=True)
-        self.fields["unit"].queryset = BillingUnit.objects.all()
 
     def clean_quantity(self):
         qty = self.cleaned_data["quantity"]
@@ -125,8 +124,9 @@ class UsageSimulationForm(forms.Form):
         min_value=Decimal("0.0000000001"),
         label=_("Quantity"),
     )
-    unit = forms.ModelChoiceField(
-        queryset=BillingUnit.objects.all(),
-        label=_("Unit"),
+    unit = forms.CharField(
+        max_length=100,
         required=False,
+        label=_("Unit"),
+        help_text=_("e.g. request, token, mb_hour"),
     )

@@ -6,9 +6,10 @@ from .models import BillingUnit, Tariff, TariffItem, UsageCharge, UsageRecord
 
 @admin.register(BillingUnit)
 class BillingUnitAdmin(admin.ModelAdmin):
-    list_display = ("slug", "name", "trait")
-    search_fields = ("slug", "name", "trait")
-    ordering = ("slug",)
+    list_display = ("code", "label", "dimension", "app_label", "active")
+    list_filter = ("active", "dimension", "app_label")
+    search_fields = ("code", "label", "dimension", "app_label")
+    ordering = ("dimension", "code")
 
 
 class TariffItemInline(admin.TabularInline):
@@ -46,7 +47,7 @@ class TariffItemAdmin(admin.ModelAdmin):
     list_filter = ("active", "unit", "rounding_mode", "tariff")
     search_fields = ("code", "name", "tariff__code", "tariff__name")
     readonly_fields = ("price_per_unit_base_units", "created_at", "updated_at")
-    autocomplete_fields = ["tariff", "charged_asset", "receiving_account"]
+    autocomplete_fields = ["tariff", "charged_asset", "receiving_account", "unit"]
 
 
 class UsageChargeInline(admin.TabularInline):

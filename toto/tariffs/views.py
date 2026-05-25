@@ -17,7 +17,7 @@ from toto.assets.models import Asset, AssetHolding, LedgerAccount
 from toto.ui import PageProcessor
 
 from .forms import TariffForm, TariffItemForm, UsageRecordForm, UsageSimulationForm
-from .models import BillingUnit, Tariff, TariffItem, TariffStatus, UsageRecord, UsageStatus
+from .models import Tariff, TariffItem, TariffStatus, UsageRecord, UsageStatus
 from .services import (
     calculate_tariff_charge,
     post_usage_record,
@@ -388,13 +388,12 @@ def api_rate(request):
     except (KeyError, json.JSONDecodeError, InvalidOperation) as exc:
         return JsonResponse({"error": str(exc)}, status=400)
 
-    billing_unit = get_object_or_404(BillingUnit, slug=unit_slug)
-    drafts = calculate_tariff_charge(tariff, metric_code, quantity, billing_unit)
+    drafts = calculate_tariff_charge(tariff, metric_code, quantity, unit_slug)
     return JsonResponse({
         "tariff_code": tariff.code,
         "metric_code": metric_code,
         "quantity": str(quantity),
-        "unit": billing_unit.slug,
+        "unit": unit_slug,
         "charges": [
             {
                 "item_code": d.tariff_item.code,
@@ -426,14 +425,13 @@ def api_post(request):
     except (KeyError, json.JSONDecodeError, InvalidOperation) as exc:
         return JsonResponse({"error": str(exc)}, status=400)
 
-    billing_unit = get_object_or_404(BillingUnit, slug=unit_slug)
     try:
         record, tx = record_and_post_usage(
             tariff=tariff,
             payer_account=payer_account,
             metric_code=metric_code,
             quantity=quantity,
-            unit=billing_unit,
+            unit=unit_slug,
             source_type=source_type,
             source_id=source_id,
             metadata=metadata,

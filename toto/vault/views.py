@@ -1,7 +1,7 @@
 import mimetypes
 from datetime import date, timedelta
 
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Sum
 from django.db.models.functions import TruncDate
 from django.http import FileResponse, JsonResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404
@@ -469,6 +469,29 @@ class BucketMetricsView(LoginRequiredMixin, TemplateView):
             ],
             key=lambda x: x["full_path"],
         )
+
+        # ── Per-user storage quota ──────────────────────────
+        quota_mb = bucket.storage_quota_mb
+        raw_user_stats = list(
+            VaultFile.objects.filter(bucket=bucket)
+            .values("owner__id", "owner__username")
+            .annotate(file_count=Count("id"), total_bytes=Sum("file_size_bytes"))
+            .order_by("-total_bytes")
+        )
+        user_quota_rows = []
+        for row in raw_user_stats:
+            used_mb = round((row["total_bytes"] or 0) / 1_048_576, 2)
+            pct = min(round(used_mb / quota_mb * 100) if quota_mb else 0, 100)
+            user_quota_rows.append({
+                "username": row["owner__username"],
+                "file_count": row["file_count"],
+                "used_mb": used_mb,
+                "quota_mb": quota_mb,
+                "pct": pct,
+                "over": quota_mb is not None and used_mb > quota_mb,
+            })
+        context["user_quota_rows"] = user_quota_rows
+        context["bucket_quota_mb"] = quota_mb
 
         # ── Recent files ────────────────────────────────────
         context["recent_files"] = VaultFile.objects.filter(bucket=bucket).select_related(

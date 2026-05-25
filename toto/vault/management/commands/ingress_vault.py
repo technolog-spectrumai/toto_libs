@@ -10,6 +10,56 @@ class Command(IngressCommand):
     help = "Seed Vault demo data including buckets, directories, files, and upload gateways"
 
     def process(self):
+        from toto.tariffs.models import BillingUnit
+
+        storage_units = [
+            {"code": "storage.byte",    "label": "Storage byte",      "dimension": "storage"},
+            {"code": "storage.kb",      "label": "Storage kilobyte",  "dimension": "storage"},
+            {"code": "storage.mb",      "label": "Storage megabyte",  "dimension": "storage"},
+            {"code": "storage.gb",      "label": "Storage gigabyte",  "dimension": "storage"},
+            {"code": "storage.mb_hour", "label": "Megabyte hour",     "dimension": "storage_time"},
+            {"code": "storage.gb_hour", "label": "Gigabyte hour",     "dimension": "storage_time"},
+        ]
+
+        created = updated = unchanged = 0
+        for unit in storage_units:
+            obj, was_created = BillingUnit.objects.get_or_create(
+                code=unit["code"],
+                defaults={
+                    "label": unit["label"],
+                    "dimension": unit["dimension"],
+                    "app_label": "vault",
+                    "active": True,
+                    "metadata": {},
+                },
+            )
+            if was_created:
+                created += 1
+                continue
+
+            changed = False
+            for field in ("label", "dimension"):
+                if getattr(obj, field) != unit[field]:
+                    setattr(obj, field, unit[field])
+                    changed = True
+            if obj.app_label != "vault":
+                obj.app_label = "vault"
+                changed = True
+            if obj.active is not True:
+                obj.active = True
+                changed = True
+
+            if changed:
+                obj.save(update_fields=["label", "dimension", "app_label", "active"])
+                updated += 1
+            else:
+                unchanged += 1
+
+        self.stdout.write(self.style.SUCCESS(
+            f"Vault storage billing units ready: {created} created, "
+            f"{updated} updated, {unchanged} unchanged."
+        ))
+
         if not self.full:
             return
 

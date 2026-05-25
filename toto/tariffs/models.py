@@ -9,6 +9,25 @@ from django.utils.translation import gettext_lazy as _
 
 
 # ---------------------------------------------------------------------------
+# BillingUnit
+# ---------------------------------------------------------------------------
+
+class BillingUnit(models.Model):
+    code = models.CharField(max_length=100, unique=True)
+    label = models.CharField(max_length=255)
+    dimension = models.CharField(max_length=50, blank=True)
+    app_label = models.CharField(max_length=100, blank=True)
+    active = models.BooleanField(default=True)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["dimension", "code"]
+
+    def __str__(self):
+        return f"{self.code} — {self.label}"
+
+
+# ---------------------------------------------------------------------------
 # Choices
 # ---------------------------------------------------------------------------
 
@@ -18,19 +37,6 @@ class TariffStatus(models.TextChoices):
     PAUSED = "paused", _("Paused")
     ARCHIVED = "archived", _("Archived")
 
-
-class BillingUnit(models.Model):
-    slug = models.SlugField(max_length=50, unique=True)
-    name = models.CharField(max_length=100)
-    trait = models.CharField(max_length=100, blank=True)
-
-    class Meta:
-        ordering = ["slug"]
-        verbose_name = "billing unit"
-        verbose_name_plural = "billing units"
-
-    def __str__(self):
-        return self.name or self.slug
 
 
 class RoundingMode(models.TextChoices):
@@ -112,9 +118,11 @@ class TariffItem(models.Model):
         help_text=_("Price in asset base units (integer)"),
     )
     unit = models.ForeignKey(
-        BillingUnit,
+        "tariffs.BillingUnit",
         on_delete=models.PROTECT,
-        related_name="+",
+        related_name="tariff_items",
+        null=True,
+        blank=True,
     )
     unit_quantity = models.DecimalField(
         max_digits=20,
@@ -181,11 +189,7 @@ class UsageRecord(models.Model):
     )
     metric_code = models.CharField(max_length=100)
     quantity = models.DecimalField(max_digits=30, decimal_places=10)
-    unit = models.ForeignKey(
-        BillingUnit,
-        on_delete=models.PROTECT,
-        related_name="+",
-    )
+    unit = models.CharField(max_length=100, blank=True)
     source_type = models.CharField(max_length=100, blank=True)
     source_id = models.CharField(max_length=255, blank=True)
     occurred_at = models.DateTimeField(null=True, blank=True)
@@ -255,11 +259,7 @@ class UsageCharge(models.Model):
         related_name="usage_charges",
     )
     quantity = models.DecimalField(max_digits=30, decimal_places=10)
-    unit = models.ForeignKey(
-        BillingUnit,
-        on_delete=models.PROTECT,
-        related_name="+",
-    )
+    unit = models.CharField(max_length=100, blank=True)
     price_per_unit_base_units = models.BigIntegerField()
     amount_base_units = models.BigIntegerField()
     payer_account = models.ForeignKey(

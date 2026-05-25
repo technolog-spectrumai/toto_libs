@@ -15,6 +15,14 @@ from toto.assets.models import Asset, LedgerAccount, AccountType, to_base_units
 from toto.tariffs.models import BillingUnit, RoundingMode, Tariff, TariffItem, TariffStatus
 
 
+def _bu(code, label, dimension=""):
+    obj, _ = BillingUnit.objects.get_or_create(
+        code=code,
+        defaults={"label": label, "dimension": dimension, "app_label": "tariffs", "active": True},
+    )
+    return obj
+
+
 class Command(BaseCommand):
     help = "Create demo tariffs for AI, storage, graph, and compute tokens."
 
@@ -89,10 +97,19 @@ class Command(BaseCommand):
         else:
             self.stdout.write(f"  Tariff already exists: {tariff1.code}")
 
+        bu_input_token  = _bu("ai.input_token",  "AI input token",  "ai")
+        bu_output_token = _bu("ai.output_token", "AI output token", "ai")
+        bu_mb_hour      = _bu("storage.mb_hour", "Megabyte hour",   "storage_time")
+        bu_second       = _bu("time.second",     "Second",          "time")
+        bu_node         = _bu("graph.node",      "Graph node",      "graph")
+        bu_relationship = _bu("graph.relationship", "Graph relationship", "graph")
+        bu_minute       = _bu("time.minute",     "Minute",          "time")
+        bu_hour         = _bu("time.hour",       "Hour",            "time")
+
         items_ai = [
-            ("ai.input_tokens",  ai_token,      "0.001",   BillingUnit.objects.get(slug="input_token"),  rev_ai,      1, "AI input token billing"),
-            ("ai.output_tokens", ai_token,      "0.003",   BillingUnit.objects.get(slug="output_token"), rev_ai,      1, "AI output token billing"),
-            ("storage.mb_hour",  storage_token, "0.00001", BillingUnit.objects.get(slug="mb_hour"),      rev_storage, 1, "File storage per MB per hour"),
+            ("ai.input_tokens",  ai_token,      "0.001",   bu_input_token,  rev_ai,      1, "AI input token billing"),
+            ("ai.output_tokens", ai_token,      "0.003",   bu_output_token, rev_ai,      1, "AI output token billing"),
+            ("storage.mb_hour",  storage_token, "0.00001", bu_mb_hour,      rev_storage, 1, "File storage per MB per hour"),
         ]
         for code, asset, price, unit, recv, uq, label in items_ai:
             price_base = to_base_units(Decimal(price), asset.decimals)
@@ -126,10 +143,10 @@ class Command(BaseCommand):
             self.stdout.write(f"  Created tariff: {tariff2.code}")
 
         items_graph = [
-            ("neo4j.node_second",         graph_token, "0.00002", BillingUnit.objects.get(slug="second"),       rev_graph, 1),
-            ("neo4j.relationship_second",  graph_token, "0.00001", BillingUnit.objects.get(slug="second"),       rev_graph, 1),
-            ("neo4j.node",                 graph_token, "0.0001",  BillingUnit.objects.get(slug="node"),         rev_graph, 1),
-            ("neo4j.relationship",         graph_token, "0.00005", BillingUnit.objects.get(slug="relationship"), rev_graph, 1),
+            ("neo4j.node_second",         graph_token, "0.00002", bu_second,       rev_graph, 1),
+            ("neo4j.relationship_second",  graph_token, "0.00001", bu_second,       rev_graph, 1),
+            ("neo4j.node",                 graph_token, "0.0001",  bu_node,         rev_graph, 1),
+            ("neo4j.relationship",         graph_token, "0.00005", bu_relationship, rev_graph, 1),
         ]
         for code, asset, price, unit, recv, uq in items_graph:
             price_base = to_base_units(Decimal(price), asset.decimals)
@@ -163,9 +180,9 @@ class Command(BaseCommand):
             self.stdout.write(f"  Created tariff: {tariff3.code}")
 
         items_compute = [
-            ("compute.second", compute_token, "0.0001", BillingUnit.objects.get(slug="second"), rev_compute, 1),
-            ("compute.minute", compute_token, "0.006",  BillingUnit.objects.get(slug="minute"), rev_compute, 1),
-            ("compute.hour",   compute_token, "0.36",   BillingUnit.objects.get(slug="hour"),   rev_compute, 1),
+            ("compute.second", compute_token, "0.0001", bu_second, rev_compute, 1),
+            ("compute.minute", compute_token, "0.006",  bu_minute, rev_compute, 1),
+            ("compute.hour",   compute_token, "0.36",   bu_hour,   rev_compute, 1),
         ]
         for code, asset, price, unit, recv, uq in items_compute:
             price_base = to_base_units(Decimal(price), asset.decimals)

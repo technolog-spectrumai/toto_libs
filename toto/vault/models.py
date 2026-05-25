@@ -13,6 +13,10 @@ class Bucket(models.Model):
     name = models.CharField(max_length=100, unique=True)
     owner = models.ForeignKey(User, on_delete=models.CASCADE)
     slug = models.SlugField(max_length=120, unique=True)
+    storage_quota_mb = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Storage quota per user in MB. Leave blank for unlimited.",
+    )
 
     class Meta:
         verbose_name = "Bucket"
