@@ -85,3 +85,5 @@ class TelegraphMember(models.Model):
     @property
     def participant_type(self):
         return "human"
+
+

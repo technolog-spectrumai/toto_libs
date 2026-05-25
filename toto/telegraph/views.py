@@ -7,6 +7,7 @@ from toto.telegraph.models import TelegraphMember, TelegraphChannel
 from toto.people.models import Person
 
 
+
 class ChannelListView(ListView):
     model = TelegraphChannel
     template_name = "telegraph/channel_list.html"
@@ -62,9 +63,6 @@ class ChannelDetailView(DetailView):
             for m in members_qs
         ]
 
-        context["human_count"] = len(context["participants"])
-        context["ai_count"] = 0
-
         context["current_chat_user"] = (
             current_member.display_name
             if current_member
@@ -107,8 +105,6 @@ class ChannelDetailView(DetailView):
                 context["observer_reason"] = "You are observing this channel."
         else:
             context["observer_reason"] = ""
-
-        context["available_agents"] = []
 
         return PageProcessor().decorate(context, self.request)
 
@@ -154,12 +150,3 @@ class ChannelLeaveView(View):
         return redirect("telegraph:channel_detail", slug=channel.slug)
 
 
-class ChannelInviteAgentView(View):
-    """Stub — agent members have been removed. Redirects back to the channel."""
-
-    def get(self, request, slug):
-        return redirect("telegraph:channel_detail", slug=slug)
-
-    def post(self, request, slug):
-        messages.error(request, "Agent members are no longer supported.")
-        return redirect("telegraph:channel_detail", slug=slug)

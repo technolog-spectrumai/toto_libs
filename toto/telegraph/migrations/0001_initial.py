@@ -4,7 +4,7 @@ import django.db.models.deletion
 
 
 def _rename_enigma_tables(apps, schema_editor):
-    """Rename enigma tables to telegraph tables when upgrading from toto.enigma."""
+    """Rename enigma tables to telegraph on upgrade; create them fresh on new install."""
     from django.db import connection
     existing = set(connection.introspection.table_names())
     renames = [
@@ -16,6 +16,15 @@ def _rename_enigma_tables(apps, schema_editor):
         for old, new in renames:
             if old in existing and new not in existing:
                 cursor.execute(f"ALTER TABLE {old} RENAME TO {new}")
+
+    existing = set(connection.introspection.table_names())
+
+    if "telegraph_telegraphchannel" not in existing:
+        from toto.telegraph.models import TelegraphChannel
+        schema_editor.create_model(TelegraphChannel)
+    if "telegraph_telegraphmember" not in existing:
+        from toto.telegraph.models import TelegraphMember
+        schema_editor.create_model(TelegraphMember)
 
 
 class Migration(migrations.Migration):

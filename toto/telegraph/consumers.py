@@ -73,8 +73,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.handle_chat_message(user, data)
             return
 
+        if data_type == "image_message" and data.get("image_url"):
+            await self.handle_image_message(user, data)
+            return
+
         await self.send_error(
-            "Only chat messages, Yjs messages, and MLS-encrypted messages are accepted."
+            "Only chat messages, image messages, Yjs messages, and MLS-encrypted messages are accepted."
         )
 
     async def handle_yjs_message(self, data):
@@ -132,6 +136,24 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         await self.broadcast(
             payload=data,
+            sender_channel=self.channel_name,
+            target_channel=None,
+        )
+
+    async def handle_image_message(self, user, data):
+        member = await self.get_channel_member(user)
+
+        payload = {
+            "type": "image_message",
+            "image_url": data.get("image_url"),
+            "user": member.display_name,
+            "avatar_url": self.absolute_url(member.avatar_url),
+            "sender_channel": self.channel_name,
+            "target_channel": None,
+        }
+
+        await self.broadcast(
+            payload=payload,
             sender_channel=self.channel_name,
             target_channel=None,
         )

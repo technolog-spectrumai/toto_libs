@@ -1,6 +1,9 @@
+import base64
 import json
 from urllib.parse import urlparse
 
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 from django.contrib.auth import authenticate, login, logout, get_user_model
 from django.contrib.sessions.backends.db import SessionStore
 from django.http import HttpResponse, JsonResponse
@@ -271,3 +274,72 @@ class ChannelLeaveAllApiView(CorsApiView):
         TelegraphMember.objects.filter(person=person, is_active=True).update(is_active=False)
 
         return JsonResponse({"ok": True, "left": left})
+
+
+_ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+_MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class ImageUploadApiView(CorsApiView):
+    def post(self, request, slug):
+        if not request.user or not request.user.is_authenticated:
+            return JsonResponse({"error": "Not authenticated."}, status=401)
+
+        try:
+            channel = TelegraphChannel.objects.get(slug=slug)
+        except TelegraphChannel.DoesNotExist:
+            return JsonResponse({"error": "Channel not found."}, status=404)
+
+        file = request.FILES.get("image")
+        if not file:
+            return JsonResponse({"error": "No image file provided."}, status=400)
+
+        content_type = file.content_type or ""
+        if content_type not in _ALLOWED_IMAGE_TYPES:
+            return JsonResponse({"error": "Unsupported file type. Send a JPEG, PNG, GIF, or WebP."}, status=415)
+
+        if file.size > _MAX_IMAGE_BYTES:
+            return JsonResponse({"error": "Image too large. Maximum size is 10 MB."}, status=413)
+
+        from toto.people.models import Person
+        from toto.telegraph.models import TelegraphMember
+
+        person = Person.objects.filter(user=request.user).first()
+        member = TelegraphMember.objects.filter(
+            channel=channel, person=person, is_active=True
+        ).select_related("person").first() if person else None
+
+        image_bytes = file.read()
+        image_data = f"data:{content_type};base64,{base64.b64encode(image_bytes).decode()}"
+
+        display_name = (
+            member.display_name if member
+            else person.full_name if person
+            else request.user.username
+        )
+        avatar_url = (
+            _absolute_url(request, member.avatar_url) if member
+            else None
+        )
+
+        payload = {
+            "type": "image_message",
+            "image_data": image_data,
+            "user": display_name,
+            "avatar_url": avatar_url,
+        }
+
+        channel_layer = get_channel_layer()
+        if channel_layer:
+            async_to_sync(channel_layer.group_send)(
+                f"telegraph_{channel.slug}",
+                {
+                    "type": "chat_message",
+                    "payload": payload,
+                    "sender_channel": None,
+                    "target_channel": None,
+                },
+            )
+
+        return JsonResponse({"ok": True})

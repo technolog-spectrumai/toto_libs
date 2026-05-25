@@ -6,9 +6,16 @@
 {% block start_script %}
 <script type="module">
 import * as Y from "https://esm.run/yjs";
-import initEnigmaWasm, { WasmEnigmaSession } from "{% static 'js/enigma_wasm/enigma_wasm.js' %}";
 
 document.addEventListener("DOMContentLoaded", async () => {
+  // Load MLS WASM lazily — if unavailable encryption is silently disabled
+  let initEnigmaWasm = null;
+  let WasmEnigmaSession = null;
+  try {
+    const wasm = await import("{% static 'js/enigma_wasm/enigma_wasm.js' %}");
+    initEnigmaWasm = wasm.default;
+    WasmEnigmaSession = wasm.WasmEnigmaSession;
+  } catch (_) { /* no WASM — MLS disabled */ }
   const channelSlug  = "{{ channel.slug }}";
   const userName     = "{{ current_chat_user|escapejs }}";
   const userAvatarUrl = "{{ current_chat_avatar_url|escapejs }}";
@@ -173,9 +180,23 @@ document.addEventListener("DOMContentLoaded", async () => {
     meta.className = `text-xs font-semibold opacity-60 ${isSelf ? "text-right" : ""}`;
     meta.textContent = author;
 
-    const body = document.createElement("p");
-    body.className = `mt-1 whitespace-pre-wrap break-words text-sm opacity-90 [overflow-wrap:anywhere] ${isSelf ? "text-right" : ""}`;
-    body.textContent = data.message || "";
+    let body;
+    if (data.type === "image_message" && (data.image_data || data.image_url)) {
+      const src = data.image_data || data.image_url;
+      body = document.createElement("a");
+      body.href = src;
+      body.target = "_blank";
+      body.rel = "noopener noreferrer";
+      const img = document.createElement("img");
+      img.src = src;
+      img.alt = "image";
+      img.className = "mt-1 max-h-64 max-w-full rounded object-contain";
+      body.appendChild(img);
+    } else {
+      body = document.createElement("p");
+      body.className = `mt-1 whitespace-pre-wrap break-words text-sm opacity-90 [overflow-wrap:anywhere] ${isSelf ? "text-right" : ""}`;
+      body.textContent = data.message || "";
+    }
 
     bubble.appendChild(meta);
     bubble.appendChild(body);
@@ -219,6 +240,65 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!socket || socket.readyState !== WebSocket.OPEN) return false;
     socket.send(JSON.stringify(payload));
     return true;
+  }
+
+  // ── Image upload ───────────────────────────────────────────────────────────
+
+  function uploadAndSendImage(file) {
+    if (!canSend) return;
+
+    const maxBytes = 10 * 1024 * 1024;
+    const allowed = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+    if (!allowed.includes(file.type)) {
+      appendSystemMessage("Unsupported image type. Use JPEG, PNG, GIF or WebP.");
+      return;
+    }
+    if (file.size > maxBytes) {
+      appendSystemMessage("Image is too large (max 10 MB).");
+      return;
+    }
+
+    const form = new FormData();
+    form.append("image", file);
+
+    const progressWrap = document.querySelector("#upload-progress-wrap");
+    const progressBar  = document.querySelector("#upload-progress-bar");
+    const progressText = document.querySelector("#upload-progress-pct");
+    const csrfToken    = document.querySelector("[name=csrfmiddlewaretoken]")?.value ?? "";
+
+    const xhr = new XMLHttpRequest();
+
+    xhr.upload.addEventListener("progress", (e) => {
+      if (!e.lengthComputable) return;
+      const pct = Math.round((e.loaded / e.total) * 100);
+      if (progressBar)  progressBar.style.width  = `${pct}%`;
+      if (progressText) progressText.textContent = `${pct}%`;
+    });
+
+    xhr.addEventListener("loadstart", () => {
+      if (progressWrap) progressWrap.classList.remove("hidden");
+      if (progressBar)  progressBar.style.width  = "0%";
+      if (progressText) progressText.textContent = "0%";
+    });
+
+    xhr.addEventListener("loadend", () => {
+      if (progressWrap) progressWrap.classList.add("hidden");
+    });
+
+    xhr.addEventListener("load", () => {
+      if (xhr.status < 200 || xhr.status >= 300) {
+        let err = {};
+        try { err = JSON.parse(xhr.responseText); } catch (_) {}
+        appendSystemMessage(`Upload failed: ${err.error ?? xhr.statusText}`);
+      }
+      // Server relays the image via WebSocket to all members — no WS send needed here
+    });
+
+    xhr.addEventListener("error", () => appendSystemMessage("Upload error: network failure."));
+
+    xhr.open("POST", `/telegraph/api/channels/${channelSlug}/upload/`);
+    if (csrfToken) xhr.setRequestHeader("X-CSRFToken", csrfToken);
+    xhr.send(form);
   }
 
   // ── MLS lifecycle ──────────────────────────────────────────────────────────
@@ -327,6 +407,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         await processMlsApplicationMessage(data);
       } else if (data.type === "mls_app") {
         appendSharedMessage({ id: data.id, user: data.user, avatar_url: data.avatar_url || "", message: data.ciphertext || "" });
+      } else if (data.type === "image_message" && (data.image_data || data.image_url)) {
+        appendSharedMessage(data);
       } else if (data.message) {
         appendSharedMessage(data);
       }
@@ -373,6 +455,20 @@ document.addEventListener("DOMContentLoaded", async () => {
     e.preventDefault();
     sendCurrentMessage();
   });
+
+  const imageFileInput = document.querySelector("#image-file-input");
+  const imageUploadButton = document.querySelector("#image-upload-button");
+
+  if (imageUploadButton && imageFileInput) {
+    imageUploadButton.addEventListener("click", () => imageFileInput.click());
+    imageFileInput.addEventListener("change", async () => {
+      const file = imageFileInput.files?.[0];
+      if (file) {
+        await uploadAndSendImage(file);
+        imageFileInput.value = "";
+      }
+    });
+  }
 
   // ── Connect ────────────────────────────────────────────────────────────────
 
@@ -462,8 +558,6 @@ document.addEventListener("DOMContentLoaded", async () => {
           </h1>
           <div class="mt-0.5 flex flex-wrap gap-2 text-xs opacity-60">
             <span>{{ participants|length }} member{{ participants|length|pluralize }}</span>
-            <span>·</span>
-            <span>{{ human_count }} human · {{ ai_count }} AI</span>
           </div>
         </div>
 
@@ -622,7 +716,34 @@ document.addEventListener("DOMContentLoaded", async () => {
           {% endif %}
         </div>
 
+        <div id="upload-progress-wrap" class="hidden px-1 pb-1">
+          <div class="flex items-center gap-2 text-xs opacity-60">
+            <span>Uploading…</span>
+            <div class="relative h-1.5 flex-1 overflow-hidden rounded-full bg-current/20">
+              <div id="upload-progress-bar" class="absolute left-0 top-0 h-full rounded-full bg-current transition-all duration-100" style="width: 0%"></div>
+            </div>
+            <span id="upload-progress-pct">0%</span>
+          </div>
+        </div>
+
         <div class="flex gap-2">
+          <input
+            id="image-file-input"
+            type="file"
+            accept="image/jpeg,image/png,image/gif,image/webp"
+            class="hidden"
+            {% if not can_send_messages %}disabled{% endif %}>
+
+          <button
+            type="button"
+            id="image-upload-button"
+            :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2 text-text-main-light'"
+            class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
+            {% if not can_send_messages %}disabled{% endif %}
+            aria-label="Send image">
+            <i class="fa-solid fa-image text-sm"></i>
+          </button>
+
           <textarea
             id="message-input"
             name="content"

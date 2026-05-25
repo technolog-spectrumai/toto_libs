@@ -1,6 +1,6 @@
 from django.urls import path
-from .views import ChannelDetailView, ChannelJoinView, ChannelLeaveView, ChannelListView, ChannelInviteAgentView
-from .api_views import HealthApiView, LoginApiView, LogoutApiView, MeApiView, ChannelListApiView, ChannelDetailApiView, ChannelJoinApiView, ChannelLeaveApiView, ChannelLeaveAllApiView
+from .views import ChannelDetailView, ChannelJoinView, ChannelLeaveView, ChannelListView
+from .api_views import HealthApiView, LoginApiView, LogoutApiView, MeApiView, ChannelListApiView, ChannelDetailApiView, ChannelJoinApiView, ChannelLeaveApiView, ChannelLeaveAllApiView, ImageUploadApiView
 
 app_name = "telegraph"
 
@@ -10,7 +10,6 @@ urlpatterns = [
     path("<slug:slug>/join/", ChannelJoinView.as_view(), name="channel_join"),
     path("<slug:slug>/leave/", ChannelLeaveView.as_view(), name="channel_leave"),
     path("<slug:slug>/", ChannelDetailView.as_view(), name="channel_detail"),
-    path("<slug:slug>/invite-agent/", ChannelInviteAgentView.as_view(), name="channel_invite_agent"),
 
     # JSON API
     path("api/health/", HealthApiView.as_view(), name="api_health"),
@@ -22,4 +21,5 @@ urlpatterns = [
     path("api/channels/<slug:slug>/", ChannelDetailApiView.as_view(), name="api_channel_detail"),
     path("api/channels/<slug:slug>/join/", ChannelJoinApiView.as_view(), name="api_channel_join"),
     path("api/channels/<slug:slug>/leave/", ChannelLeaveApiView.as_view(), name="api_channel_leave"),
+    path("api/channels/<slug:slug>/upload/", ImageUploadApiView.as_view(), name="api_image_upload"),
 ]
