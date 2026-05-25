@@ -408,7 +408,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       } else if (data.type === "mls_app") {
         appendSharedMessage({ id: data.id, user: data.user, avatar_url: data.avatar_url || "", message: data.ciphertext || "" });
       } else if (data.type === "image_message" && (data.image_data || data.image_url)) {
-        appendSharedMessage(data);
+        appendMessage(data);
       } else if (data.message) {
         appendSharedMessage(data);
       }
