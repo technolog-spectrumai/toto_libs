@@ -232,6 +232,14 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
                 "error": f"File too large ({uploaded_file.size / (1024*1024):.1f} MB). Max is {gateway.max_file_size / 1024:.1f} MB."
             }, status=400)
 
+        # Reject before any disk/DB write if the user can't cover the charge.
+        from toto.vault.billing import preflight_upload_check
+        can_pay, pay_error = preflight_upload_check(
+            request.user, gateway.bucket, uploaded_file.size
+        )
+        if not can_pay:
+            return JsonResponse({"error": f"Payment required: {pay_error}"}, status=402)
+
         directory = gateway.directory  # set at model level by admin
 
         mime, _ = mimetypes.guess_type(uploaded_file.name)
@@ -470,7 +478,7 @@ class BucketMetricsView(LoginRequiredMixin, TemplateView):
             key=lambda x: x["full_path"],
         )
 
-        # ── Per-user storage quota ──────────────────────────
+        # ── Storage totals & per-user quota ────────────────
         quota_mb = bucket.storage_quota_mb
         raw_user_stats = list(
             VaultFile.objects.filter(bucket=bucket)
@@ -478,6 +486,9 @@ class BucketMetricsView(LoginRequiredMixin, TemplateView):
             .annotate(file_count=Count("id"), total_bytes=Sum("file_size_bytes"))
             .order_by("-total_bytes")
         )
+        bucket_total_bytes = sum((row["total_bytes"] or 0) for row in raw_user_stats)
+        bucket_total_mb = round(bucket_total_bytes / 1_048_576, 2)
+
         user_quota_rows = []
         for row in raw_user_stats:
             used_mb = round((row["total_bytes"] or 0) / 1_048_576, 2)
@@ -492,10 +503,24 @@ class BucketMetricsView(LoginRequiredMixin, TemplateView):
             })
         context["user_quota_rows"] = user_quota_rows
         context["bucket_quota_mb"] = quota_mb
+        context["bucket_total_mb"] = bucket_total_mb
 
         # ── Recent files ────────────────────────────────────
         context["recent_files"] = VaultFile.objects.filter(bucket=bucket).select_related(
             "owner", "directory"
         ).order_by("-uploaded_at")[:8]
+
+        # ── Billing history ─────────────────────────────────
+        context["bucket_tariff"] = bucket.tariff
+        try:
+            from toto.tariffs.models import UsageRecord
+            context["billing_records"] = list(
+                UsageRecord.objects
+                .filter(metadata__bucket_id=bucket.pk)
+                .select_related("payer_account", "tariff")
+                .order_by("-created_at")[:15]
+            )
+        except Exception:
+            context["billing_records"] = []
 
         return PageProcessor().decorate(context, self.request)

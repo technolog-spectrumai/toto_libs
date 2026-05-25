@@ -9,10 +9,11 @@ from django.utils.html import format_html
 
 @admin.register(Bucket)
 class BucketAdmin(admin.ModelAdmin):
-    list_display = ('name', 'slug', 'owner')
+    list_display = ('name', 'slug', 'owner', 'tariff', 'storage_quota_mb')
     search_fields = ('name', 'owner__username')
     list_filter = ('owner',)
     ordering = ('owner', 'name')
+    autocomplete_fields = ('tariff',)
 
 
 @admin.register(VaultFile)

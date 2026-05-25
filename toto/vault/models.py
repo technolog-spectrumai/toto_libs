@@ -17,6 +17,14 @@ class Bucket(models.Model):
         null=True, blank=True,
         help_text="Storage quota per user in MB. Leave blank for unlimited.",
     )
+    tariff = models.ForeignKey(
+        "tariffs.Tariff",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="buckets",
+        help_text="Billing tariff for this bucket. Defaults to FILE-STORAGE when blank.",
+    )
 
     class Meta:
         verbose_name = "Bucket"

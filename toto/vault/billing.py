@@ -26,8 +26,12 @@ UNIT_MB = "storage.mb"
 UNIT_MB_HOUR = "storage.mb_hour"
 
 
-def _get_tariff():
+def _get_tariff(bucket=None):
     from toto.tariffs.models import Tariff, TariffStatus
+    if bucket is not None and bucket.tariff_id:
+        t = bucket.tariff
+        if t.status == TariffStatus.ACTIVE:
+            return t
     return Tariff.objects.filter(code=STORAGE_TARIFF_CODE, status=TariffStatus.ACTIVE).first()
 
 
@@ -45,13 +49,37 @@ def get_or_create_payer_account(user):
     return account
 
 
+def preflight_upload_check(user, bucket, size_bytes: int) -> tuple[bool, str]:
+    """
+    Read-only check: can this user afford the upload charges for a file of
+    the given size?  Call this BEFORE saving the VaultFile.
+
+    Returns (True, "") if affordable or if no tariff/items are configured.
+    Returns (False, message) if the user lacks sufficient balance.
+    """
+    tariff = _get_tariff(bucket=bucket)
+    if not tariff:
+        return True, ""
+
+    from toto.tariffs.services import check_can_afford
+
+    payer = get_or_create_payer_account(user)
+    size_mb = Decimal(str(size_bytes)) / Decimal("1048576")
+
+    charges = [(UPLOAD_REQUEST_METRIC, Decimal("1"), UNIT_REQUEST)]
+    if size_mb > 0:
+        charges.append((UPLOAD_TRANSFER_METRIC, size_mb, UNIT_MB))
+
+    return check_can_afford(tariff, payer, charges)
+
+
 def charge_upload(vault_file) -> list:
     """
     Post upload charges for a newly created VaultFile.
     Called from the post_save signal (created=True).
     Returns list of posted UsageRecords; empty list on any failure.
     """
-    tariff = _get_tariff()
+    tariff = _get_tariff(bucket=vault_file.bucket)
     if not tariff:
         return []
 
@@ -75,7 +103,8 @@ def charge_upload(vault_file) -> list:
             metadata={
                 "vault_file_id": vault_file.pk,
                 "title": vault_file.title,
-                "bucket": vault_file.bucket.slug if vault_file.bucket else None,
+                "bucket_slug": vault_file.bucket.slug if vault_file.bucket else None,
+                "bucket_id": vault_file.bucket.pk if vault_file.bucket else None,
             },
         )
         results.append(record)
@@ -105,27 +134,35 @@ def charge_upload(vault_file) -> list:
     return results
 
 
-def charge_storage_snapshot(user, quota_mb: Decimal | None = None) -> object | None:
+def charge_storage_snapshot(
+    user,
+    quota_mb: Decimal | None = None,
+    bucket=None,
+    bucketless_only: bool = False,
+) -> object | None:
     """
     Post one mb_hour usage record for the user's current total vault storage.
     Intended to be called once per billing tick (hourly / daily / etc.).
 
-    quota_mb — optional cap: if the user's storage exceeds this, bill only up to
-               the cap so they are never charged more than the configured limit.
+    quota_mb        — optional cap: bill at most this many MB so users don't overpay.
+    bucket          — if given, bills only files in this bucket using its tariff.
+    bucketless_only — if True, bills only files with no bucket (bucket IS NULL).
 
     Returns the UsageRecord if posted, None if skipped.
     """
     from django.db.models import Sum
     from toto.vault.models import VaultFile
 
-    tariff = _get_tariff()
+    tariff = _get_tariff(bucket=bucket)
     if not tariff:
         return None
 
-    total_bytes = (
-        VaultFile.objects.filter(owner=user)
-        .aggregate(total=Sum("file_size_bytes"))["total"] or 0
-    )
+    qs = VaultFile.objects.filter(owner=user)
+    if bucket is not None:
+        qs = qs.filter(bucket=bucket)
+    elif bucketless_only:
+        qs = qs.filter(bucket__isnull=True)
+    total_bytes = qs.aggregate(total=Sum("file_size_bytes"))["total"] or 0
     if total_bytes <= 0:
         return None
 
@@ -145,13 +182,14 @@ def charge_storage_snapshot(user, quota_mb: Decimal | None = None) -> object | N
             quantity=total_mb,
             unit=UNIT_MB_HOUR,
             source_type="vault_storage_snapshot",
-            source_id=f"user-{user.pk}",
+            source_id=f"user-{user.pk}" if bucket is None else f"user-{user.pk}-bucket-{bucket.pk}",
             metadata={
                 "user_id": user.pk,
                 "username": user.username,
                 "total_bytes": total_bytes,
                 "total_mb": str(total_mb),
                 **({"quota_mb": str(quota_mb)} if quota_mb is not None else {}),
+                **({"bucket_id": bucket.pk, "bucket_slug": bucket.slug} if bucket is not None else {}),
             },
         )
         return record

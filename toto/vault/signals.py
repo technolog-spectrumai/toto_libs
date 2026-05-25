@@ -20,8 +20,18 @@ def charge_upload_on_create(sender, instance, created, **kwargs):
     """Post storage.request + storage.transfer_mb charges when a new file is saved."""
     if not created:
         return
+    from toto.vault.billing import charge_upload
+    # ValueError = insufficient funds (should have been caught by preflight_upload_check
+    # in the view; reaching here means a race condition — let it propagate so the
+    # caller knows the file was saved but not billed).
+    # Other unexpected errors are logged but not re-raised to avoid orphaned files.
     try:
-        from toto.vault.billing import charge_upload
         charge_upload(instance)
-    except Exception:
-        pass  # billing must never block file creation
+    except ValueError:
+        raise
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).error(
+            "vault billing: unexpected error charging upload for file %s: %s",
+            instance.pk, exc,
+        )

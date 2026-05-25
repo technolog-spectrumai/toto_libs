@@ -61,19 +61,29 @@ class Command(BaseCommand):
                 billed += 1
                 continue
 
-            from toto.vault.models import Bucket
+            from django.db.models import Sum as _Sum
+            from toto.vault.models import Bucket, VaultFile
             from decimal import Decimal
-            quota_mb = (
-                Bucket.objects.filter(files__owner=user)
-                .exclude(storage_quota_mb__isnull=True)
-                .values_list("storage_quota_mb", flat=True)
-                .first()
+            # Bill per bucket so each bucket's own tariff and quota apply.
+            user_buckets = list(
+                Bucket.objects.filter(files__owner=user).distinct().select_related("tariff")
             )
-            record = charge_storage_snapshot(
-                user,
-                quota_mb=Decimal(str(quota_mb)) if quota_mb else None,
+            user_posted = False
+            for bucket in user_buckets:
+                quota_mb = Decimal(str(bucket.storage_quota_mb)) if bucket.storage_quota_mb else None
+                record = charge_storage_snapshot(user, quota_mb=quota_mb, bucket=bucket)
+                if record:
+                    user_posted = True
+            # Also bill files not in any bucket using the default FILE-STORAGE tariff
+            bucketless_bytes = (
+                VaultFile.objects.filter(owner=user, bucket__isnull=True)
+                .aggregate(total=_Sum("file_size_bytes"))["total"] or 0
             )
-            if record:
+            if bucketless_bytes > 0:
+                record = charge_storage_snapshot(user, quota_mb=None, bucketless_only=True)
+                if record:
+                    user_posted = True
+            if user_posted:
                 self.stdout.write(f"  ✓ billed {label}")
                 billed += 1
             else:

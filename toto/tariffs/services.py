@@ -3,10 +3,11 @@ Tariff billing services.
 
 Flow:
   1. calculate_tariff_charge — pure math, no DB writes
-  2. rate_usage_record       — creates UsageCharge rows, marks record as RATED
-  3. post_usage_record       — drains prepaid holdings, writes ledger, marks POSTED
-  4. record_and_post_usage   — convenience wrapper: create record then post
-  5. simulate_tariff         — like rate but returns dict, no DB writes
+  2. check_can_afford        — read-only balance check for a batch of charges
+  3. rate_usage_record       — creates UsageCharge rows, marks record as RATED
+  4. post_usage_record       — drains prepaid holdings, writes ledger, marks POSTED
+  5. record_and_post_usage   — convenience wrapper: create record then post
+  6. simulate_tariff         — like rate but returns dict, no DB writes
 """
 from __future__ import annotations
 
@@ -114,7 +115,57 @@ def calculate_tariff_charge(
 
 
 # ---------------------------------------------------------------------------
-# 2. rate_usage_record
+# 2. check_can_afford
+# ---------------------------------------------------------------------------
+
+def check_can_afford(
+    tariff: Tariff,
+    payer_account,
+    charges: list[tuple[str, Decimal, str]],
+) -> tuple[bool, str]:
+    """
+    Read-only balance check for a batch of charges.
+
+    charges: list of (metric_code, quantity, unit) — all are evaluated together
+             so shared-asset totals are combined before comparing to the balance.
+
+    Returns (True, "") if the payer can cover all charges.
+    Returns (False, human_readable_error) if any asset balance is short.
+    No DB writes — safe to call before saving any resource.
+    """
+    debit_totals: dict[tuple[int, int], int] = {}  # (account_pk, asset_pk) -> base_units
+
+    for metric_code, quantity, unit in charges:
+        drafts = calculate_tariff_charge(
+            tariff, metric_code, Decimal(str(quantity)), unit,
+            payer_account_id=payer_account.pk,
+        )
+        for draft in drafts:
+            key = (payer_account.pk, draft.asset_id)
+            debit_totals[key] = debit_totals.get(key, 0) + draft.amount_base_units
+
+    if not debit_totals:
+        return True, ""  # no matching tariff items → no charge → allow
+
+    from toto.assets.models import Asset
+    for (account_id, asset_id), needed in debit_totals.items():
+        holding = AssetHolding.objects.filter(
+            account_id=account_id, asset_id=asset_id
+        ).first()
+        balance = holding.balance_base_units if holding else 0
+        if balance < needed:
+            asset = Asset.objects.get(pk=asset_id)
+            return False, (
+                f"Insufficient {asset.unit_name}: "
+                f"need {from_base_units(needed, asset.decimals)}, "
+                f"have {from_base_units(balance, asset.decimals)}."
+            )
+
+    return True, ""
+
+
+# ---------------------------------------------------------------------------
+# 3. rate_usage_record
 # ---------------------------------------------------------------------------
 
 def rate_usage_record(usage_record: UsageRecord) -> list[UsageCharge]:
