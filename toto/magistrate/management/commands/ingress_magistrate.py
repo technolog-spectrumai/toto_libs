@@ -14,126 +14,81 @@ ROLES = [
     {
         "name": "Prefect",
         "slug": "prefect",
-        "icon": "fa-solid fa-star",
-        "description": (
-            "Chief executive magistrate. Oversees mobilization, public order, and legislation. "
-            "May act on emergency declarations without a full assembly vote. "
-            "May levy infraction fines as the senior executive authority."
-        ),
+        "description": "Head magistrate of a sub-community or chapter, responsible for local coordination, chapter governance, and urgent local directives.",
+        "icon": "fa-solid fa-landmark-dome",
         "overseeing_mobilization": True,
-        "overseeing_public_order": True,
         "overseeing_legislation": True,
-        "can_set_fines": True,
-        "order": 1,
+        "overseeing_logistics": True,
+        "overseeing_interior": True,
+        "order": 10,
     },
     {
         "name": "Tribune",
         "slug": "tribune",
+        "description": "Protector of assembly procedure and civic rights; oversees tribunal access and legislative safeguards.",
         "icon": "fa-solid fa-scale-balanced",
-        "description": (
-            "Protector of community rights. Oversees the tribunal and may veto "
-            "decisions that violate community rules."
-        ),
         "overseeing_tribunal": True,
         "overseeing_legislation": True,
-        "order": 2,
-    },
-    {
-        "name": "Legate",
-        "slug": "legate",
-        "icon": "fa-solid fa-shield-halved",
-        "description": (
-            "Field commander and liaison. Oversees mobilization operations and "
-            "coordinates inter-community response."
-        ),
-        "overseeing_mobilization": True,
-        "overseeing_public_order": True,
-        "order": 3,
-    },
-    {
-        "name": "Quaestor",
-        "slug": "quaestor",
-        "icon": "fa-solid fa-coins",
-        "description": (
-            "Financial officer. Oversees community finances, taxation, and trade. "
-            "May order trade reversals (with mandatory fine) and reports treasury status to the assembly each quarter."
-        ),
-        "overseeing_finance": True,
-        "overseeing_trade": True,
-        "can_set_fines": True,
-        "order": 4,
-    },
-    {
-        "name": "Aedile",
-        "slug": "aedile",
-        "icon": "fa-solid fa-building-columns",
-        "description": (
-            "Public works and market magistrate. Oversees infrastructure, public spaces, "
-            "and local commerce. May inspect merchandise quality and impose fines contestable before the tribunal."
-        ),
-        "overseeing_trade": True,
-        "overseeing_public_order": True,
-        "overseeing_merchandise": True,
-        "can_set_fines": True,
-        "order": 5,
+        "order": 20,
     },
     {
         "name": "Censor",
         "slug": "censor",
-        "icon": "fa-solid fa-graduation-cap",
-        "description": (
-            "Overseer of education and civic standards. Maintains the quality of community academies, "
-            "knowledge programmes, and may fast-track educational legislation."
-        ),
+        "description": "Keeper of civic standards, education, eligibility records, and merchandise quality discipline.",
+        "icon": "fa-solid fa-scroll",
+        "overseeing_merchandise": True,
         "overseeing_education": True,
-        "overseeing_legislation": True,
-        "order": 6,
+        "can_set_fines": True,
+        "order": 30,
     },
     {
-        "name": "Propraetor",
-        "slug": "propraetor",
+        "name": "Legate",
+        "slug": "legate",
+        "description": "Envoy-magistrate for inter-community relations, treaties, external missions, and chapter coordination.",
         "icon": "fa-solid fa-handshake",
-        "description": (
-            "Diplomatic magistrate. Oversees inter-community relations, external treaties, "
-            "and liaison with other communities on behalf of the assembly."
-        ),
         "overseeing_relations": True,
-        "order": 7,
-    },
-    {
-        "name": "Curator",
-        "slug": "curator",
-        "icon": "fa-solid fa-truck-fast",
-        "description": (
-            "Supply and logistics magistrate. Oversees transport operations, supply chains, "
-            "and the flow of goods across community routes."
-        ),
         "overseeing_logistics": True,
-        "overseeing_public_order": True,
-        "order": 8,
+        "order": 40,
     },
     {
-        "name": "Praetor",
-        "slug": "praetor",
-        "icon": "fa-solid fa-compass",
-        "description": (
-            "Interior magistrate. Oversees internal travel, location access, and the "
-            "movement of persons within community territory. May restrict or permit transit through controlled zones."
-        ),
+        "name": "Constable",
+        "slug": "constable",
+        "description": "Public order magistrate responsible for safety, internal movement, access control, and local enforcement.",
+        "icon": "fa-solid fa-shield-halved",
+        "overseeing_public_order": True,
         "overseeing_interior": True,
-        "overseeing_public_order": True,
-        "order": 9,
+        "can_set_fines": True,
+        "order": 50,
     },
     {
-        "name": "Procurator",
-        "slug": "procurator",
-        "icon": "fa-solid fa-briefcase",
-        "description": (
-            "Productivity magistrate. Oversees community work assignments, labour standards, "
-            "and output compliance. May set mandatory productivity targets and review work records."
-        ),
+        "name": "Dux",
+        "slug": "dux",
+        "description": "Field commander for mobilization, regional security, logistics, and emergency deployment.",
+        "icon": "fa-solid fa-helmet-safety",
+        "overseeing_mobilization": True,
+        "overseeing_public_order": True,
+        "overseeing_logistics": True,
+        "order": 60,
+    },
+    {
+        "name": "Sacellarius",
+        "slug": "sacellarius",
+        "description": "Treasury auditor and comptroller overseeing accounts, productivity, fiscal discipline, and public funds.",
+        "icon": "fa-solid fa-vault",
+        "overseeing_finance": True,
         "overseeing_productivity": True,
-        "order": 10,
+        "can_set_fines": True,
+        "order": 70,
+    },
+    {
+        "name": "Questor",
+        "slug": "questor",
+        "description": "Tax and revenue magistrate responsible for dues, collections, trade levies, and fiscal obligations.",
+        "icon": "fa-solid fa-coins",
+        "overseeing_trade": True,
+        "overseeing_finance": True,
+        "can_set_fines": True,
+        "order": 80,
     },
 ]
 
