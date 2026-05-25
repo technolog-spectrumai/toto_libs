@@ -102,14 +102,7 @@
     <!-- Billing -->
     <fieldset class="rounded-xl border p-5 space-y-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
       <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Billing" %}</legend>
-      <div class="grid gap-4 sm:grid-cols-3">
-        <div>
-          <label for="{{ form.billing_mode.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
-            {{ form.billing_mode.label }} <span class="text-red-400">*</span>
-          </label>
-          {{ form.billing_mode }}
-          {% for e in form.billing_mode.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
-        </div>
+      <div class="grid gap-4 sm:grid-cols-2">
         <div>
           <label for="{{ form.billing_period.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
             {{ form.billing_period.label }} <span class="text-red-400">*</span>
@@ -119,10 +112,10 @@
         </div>
         <div>
           <label for="{{ form.fixed_fee_base_units.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
-            {{ form.fixed_fee_base_units.label }}
+            {{ form.fixed_fee_base_units.label }} <span class="text-red-400">*</span>
           </label>
           {{ form.fixed_fee_base_units }}
-          <p class="mt-1 text-xs opacity-50">{% trans "Required for fixed/mixed billing modes." %}</p>
+          <p class="mt-1 text-xs opacity-50">{% trans "Periodic fee per billing period, in base units." %}</p>
           {% for e in form.fixed_fee_base_units.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
         </div>
       </div>

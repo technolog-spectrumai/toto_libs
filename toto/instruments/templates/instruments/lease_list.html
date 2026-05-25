@@ -9,7 +9,7 @@
   <div class="flex flex-wrap items-center justify-between gap-3">
     <div>
       <h2 class="text-2xl font-bold">{% trans "Leases" %}</h2>
-      <p class="text-sm opacity-60">{% trans "Manage lease contracts, tariffs and metered charges." %}</p>
+      <p class="text-sm opacity-60">{% trans "Manage time-based lease contracts." %}</p>
     </div>
     <div class="flex flex-wrap gap-2">
       <a href="{% url 'instruments:lease_create' %}"
@@ -76,9 +76,6 @@
               {% else %}:class="darkMode ? 'bg-primary-bg-dark text-text-main-dark/60' : 'bg-primary-bg-light text-text-main-light/60'"
               {% endif %}>
               {{ lease.get_status_display }}
-            </span>
-            <span class="rounded border border-current/20 px-2 py-0.5 text-xs opacity-60">
-              {{ lease.get_billing_mode_display }}
             </span>
           </div>
           <div class="text-xs opacity-50 space-x-3">
