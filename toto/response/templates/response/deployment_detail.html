@@ -1,0 +1,586 @@
+{% extends "response/base.html" %}
+{% load i18n %}
+
+{% block response_title %}{{ deployment.title }}{% endblock %}
+
+{% block start_script %}
+{{ block.super }}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+{% endblock %}
+
+{% block mob_content %}
+<div x-data="{ completeOpen: false, forceComplete: false }" class="space-y-6">
+
+  {# — Header — #}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-6 shadow-sm">
+    <a href="{% url 'mobilization:event_detail' deployment.event.pk %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+      <i class="fa-solid fa-arrow-left"></i> {{ deployment.event.title }}
+    </a>
+    <div class="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div class="space-y-2">
+        <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-3xl font-bold">{{ deployment.title }}</h2>
+        <div class="flex flex-wrap items-center gap-2">
+          {% include "mobilization/partials/status_badge.html" with status=deployment.status %}
+          {% include "mobilization/partials/priority_badge.html" with priority=deployment.priority %}
+          <span class="rounded border border-current/20 px-2 py-0.5 text-xs capitalize">{{ deployment.get_deployment_type_display }}</span>
+          <span class="text-xs opacity-60"><i class="fa-solid fa-people-roof mr-1"></i>{{ deployment.community }}</span>
+          {% if deployment.is_hybrid %}
+            <span class="rounded border border-current/20 px-2 py-0.5 text-xs">
+              <i class="fa-solid fa-code-branch mr-1"></i>Hybrid{% if deployment.hybrid_time_percent %} — {{ deployment.hybrid_time_percent }}% time{% endif %}
+            </span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <a href="{% url 'response:intervention_create' deployment.pk %}"
+           :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+           class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold hover:opacity-80">
+          <i class="fa-solid fa-plus"></i> {% trans "Add Intervention" %}
+        </a>
+        {% if deployment.status != "completed" %}
+          <button type="button" @click="completeOpen = true"
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                  class="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold hover:opacity-90">
+            <i class="fa-solid fa-flag-checkered"></i> {% trans "Complete" %}
+          </button>
+        {% endif %}
+      </div>
+    </div>
+    {% if deployment.objective %}
+      <p class="mt-4 border-t border-current/10 pt-4 text-sm opacity-80">{{ deployment.objective }}</p>
+    {% endif %}
+  </div>
+
+  {# — Operational map — #}
+  <div x-data="{
+         layers: { mission: true, dep_routes: true, equipment: true, detections: true },
+         toggle(key) { this.layers[key] = !this.layers[key]; window.depMapToggle && window.depMapToggle(key, this.layers[key]); }
+       }"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="overflow-hidden rounded-lg border shadow-sm">
+
+    <div class="border-b border-current/10 px-4 py-3 space-y-2">
+      <div class="flex items-center justify-between">
+        <h3 class="font-bold flex items-center gap-2">
+          <i class="fa-solid fa-map-location-dot"></i> {% trans "Operational Map" %}
+        </h3>
+        <span class="text-xs opacity-50">{% trans "Toggle layers" %}</span>
+      </div>
+      <div class="flex flex-wrap gap-x-4 gap-y-1.5">
+        {% for key, label, icon, color_class in dep_layer_toggles %}
+          <label class="flex cursor-pointer select-none items-center gap-1.5"
+                 @click.prevent="toggle('{{ key }}')">
+            <span class="relative flex h-4 w-4 shrink-0 items-center justify-center rounded border transition"
+                  :class="layers['{{ key }}']
+                    ? (darkMode ? 'bg-{{ color_class }}-dark border-{{ color_class }}-dark' : 'bg-{{ color_class }}-light border-{{ color_class }}-light')
+                    : 'border-current/30'">
+              <i x-show="layers['{{ key }}']" class="fa-solid fa-check text-[9px] text-white leading-none"></i>
+            </span>
+            <span class="text-xs"><i class="{{ icon }} mr-0.5 opacity-70"></i>{{ label }}</span>
+          </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div id="dep-map" class="h-[380px] w-full"></div>
+  </div>
+
+  <div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+
+    <section class="space-y-5">
+
+      {# — Kanban Mission data — #}
+      {% if mission %}
+        <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border p-5 shadow-sm">
+          <h3 class="mb-4 flex items-center gap-2 font-bold"><i class="fa-solid fa-crosshairs"></i> {% trans "Linked Mission" %}: {{ mission }}</h3>
+          <div class="flex flex-wrap items-center gap-2 mb-3">
+            {% include "mobilization/partials/eisenhower_cell.html" with urgency=mission.urgency impact=mission.impact %}
+            <span class="text-xs opacity-60">Urgency: {{ mission.urgency_label }}</span>
+            <span class="text-xs opacity-60">Impact: {{ mission.impact_label }}</span>
+            {% if mission.campaign %}
+              <span class="text-xs opacity-60"><i class="fa-solid fa-flag mr-1"></i>{{ mission.campaign }}</span>
+            {% endif %}
+          </div>
+
+          {% if mission_tasks %}
+            <h4 class="mt-4 mb-2 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Tasks" %}</h4>
+            <div class="space-y-2">
+              {% for task in mission_tasks %}
+                <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="font-semibold text-sm">{{ task.title }}</span>
+                    <div class="flex shrink-0 items-center gap-1.5">
+                      <span class="rounded border border-current/20 px-2 py-0.5 text-xs font-mono">{{ task.weight_label }}</span>
+                      {% if task.completed_at %}
+                        <span :class="darkMode ? 'text-success-dark' : 'text-success-light'" class="text-xs"><i class="fa-solid fa-check-circle"></i></span>
+                      {% else %}
+                        <span class="rounded border border-current/15 px-1.5 py-0.5 text-xs">{{ task.column }}</span>
+                      {% endif %}
+                    </div>
+                  </div>
+                  {% if task.assignee %}
+                    <div class="mt-1 text-xs opacity-60"><i class="fa-solid fa-user mr-1"></i>{{ task.assignee }}</div>
+                  {% endif %}
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </div>
+      {% endif %}
+
+      {# — Interventions — #}
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-5 shadow-sm">
+        <div class="mb-4 flex items-center justify-between">
+          <h3 class="flex items-center gap-2 font-bold"><i class="fa-solid fa-list-check"></i> {% trans "Interventions" %} ({{ interventions|length }})</h3>
+        </div>
+
+        <div class="space-y-3">
+          {% for iv in interventions %}
+            <div x-data="{ reviewOpen: false }"
+                 :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="flex flex-wrap items-center gap-2">
+                  {% if iv.is_required %}
+                    <i class="fa-solid fa-asterisk text-xs opacity-60" title="Required"></i>
+                  {% endif %}
+                  <span class="font-semibold text-sm">{{ iv.title }}</span>
+                  {% include "mobilization/partials/status_badge.html" with status=iv.status %}
+                  {% include "mobilization/partials/priority_badge.html" with priority=iv.priority %}
+                </div>
+                <div class="flex items-center gap-2">
+                  {% if iv.status != "done" and iv.status != "cancelled" %}
+                    <form method="post" action="{% url 'response:intervention_complete' iv.pk %}">
+                      {% csrf_token %}
+                      <button type="submit"
+                              :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                              class="rounded-lg border px-2 py-1 text-xs font-semibold hover:opacity-80">
+                        <i class="fa-solid fa-check mr-1"></i>Done
+                      </button>
+                    </form>
+                  {% endif %}
+                  {% if iv.status == "done" and not iv.reviewer %}
+                    <button type="button" @click="reviewOpen = !reviewOpen"
+                            :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                            class="rounded-lg border px-2 py-1 text-xs font-semibold hover:opacity-80">
+                      <i class="fa-solid fa-star mr-1"></i>Review
+                    </button>
+                  {% endif %}
+                </div>
+              </div>
+              <div class="mt-1.5 flex flex-wrap gap-2 text-xs opacity-60">
+                {% if iv.intervention_type %}<span class="capitalize">{{ iv.intervention_type.name }}</span>{% endif %}
+                {% if iv.detection %}
+                  <span :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">
+                    <i class="fa-solid fa-triangle-exclamation mr-0.5"></i>{{ iv.detection.title }}
+                  </span>
+                {% endif %}
+                {% if iv.assigned_to %}<span><i class="fa-solid fa-user-shield mr-1"></i>{{ iv.assigned_to.person }}</span>{% endif %}
+                {% if iv.kanban_task %}<span><i class="fa-solid fa-link mr-1"></i>{{ iv.kanban_task.title }}</span>{% endif %}
+                {% if iv.estimated_cost %}<span><i class="fa-solid fa-receipt mr-1"></i>Est. {{ iv.estimated_cost }}{% if iv.cost_asset %} {{ iv.cost_asset }}{% endif %}</span>{% endif %}
+                {% if iv.actual_cost %}<span><i class="fa-solid fa-coins mr-1"></i>Actual {{ iv.actual_cost }}</span>{% endif %}
+                {% if iv.cost_center %}<span><i class="fa-solid fa-building mr-1"></i>{{ iv.cost_center }}</span>{% endif %}
+              </div>
+              {% if iv.effect_description %}
+                <p class="mt-1.5 text-xs opacity-70"><i class="fa-solid fa-bolt mr-1"></i>{{ iv.effect_description }}</p>
+              {% endif %}
+              {% if iv.outcome_notes %}
+                <p class="mt-1 text-xs opacity-70">{{ iv.outcome_notes }}</p>
+              {% endif %}
+              {# Reviewer info #}
+              {% if iv.reviewer %}
+                <div class="mt-2 flex items-center gap-1.5 text-xs"
+                     :class="darkMode ? 'text-success-dark' : 'text-success-light'">
+                  <i class="fa-solid fa-star"></i>
+                  Reviewed by {{ iv.reviewer }}
+                  {% if iv.reward_amount %} · Reward: {{ iv.reward_amount }}{% if iv.reward_asset %} {{ iv.reward_asset }}{% endif %}{% endif %}
+                </div>
+              {% endif %}
+              {# Inline review form #}
+              <div x-show="reviewOpen" x-cloak class="mt-3 border-t border-current/10 pt-3">
+                <form method="post" action="{% url 'response:intervention_review' iv.pk %}" class="space-y-2">
+                  {% csrf_token %}
+                  <textarea name="effect_description" placeholder="{% trans "Effect / impact description..." %}" rows="2"
+                            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                            class="w-full rounded-lg border px-3 py-2 text-xs"></textarea>
+                  <div class="flex gap-2">
+                    <input type="number" name="reward_amount" placeholder="{% trans "Reward amount" %}" step="0.01"
+                           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                           class="w-36 rounded-lg border px-3 py-1.5 text-xs">
+                    <button type="submit"
+                            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                            class="rounded-lg px-3 py-1.5 text-xs font-semibold">
+                      {% trans "Save Review" %}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          {% empty %}
+            <p class="text-sm opacity-60">{% trans "No interventions yet." %}</p>
+          {% endfor %}
+        </div>
+      </div>
+
+      {# — Detections to mitigate — #}
+      {% if report_detections %}
+        <div :class="darkMode ? 'border-warn-dark/40 bg-bubble-bg-dark' : 'border-warn-light/40 bg-bubble-bg-light'"
+             class="rounded-lg border p-5 shadow-sm">
+          <h3 class="mb-3 flex items-center gap-2 font-bold"
+              :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            {% trans "Detections to Mitigate" %} ({{ report_detections|length }})
+          </h3>
+          <div class="space-y-2">
+            {% for det in report_detections %}
+              <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+                   class="rounded-lg p-3 flex items-start justify-between gap-3">
+                <div class="min-w-0 space-y-0.5">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="font-semibold text-sm">{{ det.title }}</span>
+                    {% include "mobilization/partials/severity_badge.html" with severity=det.severity %}
+                    {% include "mobilization/partials/status_badge.html" with status=det.status %}
+                    {% if det.pk in linked_detection_ids %}
+                      <span :class="darkMode ? 'text-success-dark' : 'text-success-light'" class="text-xs">
+                        <i class="fa-solid fa-check-circle mr-0.5"></i>{% trans "Linked to intervention" %}
+                      </span>
+                    {% endif %}
+                  </div>
+                  <div class="flex flex-wrap gap-2 text-xs opacity-60">
+                    <span class="capitalize">{{ det.get_detection_type_display }}</span>
+                    {% if det.location_label %}<span><i class="fa-solid fa-location-dot mr-0.5"></i>{{ det.location_label }}</span>{% endif %}
+                    <span>{{ det.start_time|date:"M d, Y H:i" }}</span>
+                  </div>
+                </div>
+                {% if det.pk not in linked_detection_ids %}
+                  <a href="{% url 'response:intervention_create' deployment.pk %}?detection={{ det.pk }}"
+                     :class="darkMode ? 'border-accent-1 hover:bg-primary-bg-dark' : 'border-accent-2 hover:bg-primary-bg-light'"
+                     class="shrink-0 rounded-lg border px-3 py-1.5 text-xs font-semibold transition whitespace-nowrap">
+                    <i class="fa-solid fa-plus mr-1"></i>{% trans "Add Intervention" %}
+                  </a>
+                {% endif %}
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+
+      {# — Deployment routes — #}
+      <div x-data="{ addRouteOpen: false }"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-5 shadow-sm">
+        <div class="mb-3 flex items-center justify-between">
+          <h3 class="flex items-center gap-2 font-bold"><i class="fa-solid fa-route"></i> {% trans "Routes" %} ({{ dep_routes|length }})</h3>
+          {% if deployment.status != "completed" and deployment.status != "cancelled" %}
+            <button type="button" @click="addRouteOpen = !addRouteOpen"
+                    :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                    class="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-semibold hover:opacity-80">
+              <i class="fa-solid fa-plus"></i> {% trans "Add" %}
+            </button>
+          {% endif %}
+        </div>
+        <div x-show="addRouteOpen" x-cloak class="mb-3 grid gap-2 sm:grid-cols-3">
+          <form method="post" action="{% url 'response:deployment_route_add' deployment.pk %}" class="contents">
+            {% csrf_token %}
+            <select name="route"
+                    :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                    class="rounded-lg border px-3 py-2 text-xs">
+              <option value="">{% trans "Select route..." %}</option>
+              {% for r in available_routes %}
+                <option value="{{ r.pk }}">{{ r.name }}</option>
+              {% endfor %}
+            </select>
+            <select name="route_type"
+                    :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                    class="rounded-lg border px-3 py-2 text-xs">
+              {% for val, label in route_type_choices %}
+                <option value="{{ val }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+            <button type="submit"
+                    :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                    class="rounded-lg px-4 py-2 text-xs font-semibold">{% trans "Add" %}</button>
+          </form>
+        </div>
+        <div class="space-y-2">
+          {% for dr in dep_routes %}
+            <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="flex items-center gap-3 rounded-lg p-2.5">
+              <i class="fa-solid fa-route text-xs opacity-50 shrink-0"></i>
+              <div>
+                <span class="font-semibold text-sm">{{ dr.route.name }}</span>
+                <span class="ml-2 text-xs opacity-60">{{ dr.get_route_type_display }}</span>
+              </div>
+            </div>
+          {% empty %}
+            <p class="text-sm opacity-60">{% trans "No routes assigned." %}</p>
+          {% endfor %}
+        </div>
+      </div>
+
+      {# — Equipment — #}
+      <div x-data="{ addEquipOpen: false }"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-5 shadow-sm">
+        <div class="mb-3 flex items-center justify-between">
+          <h3 class="flex items-center gap-2 font-bold"><i class="fa-solid fa-toolbox"></i> {% trans "Equipment" %} ({{ equipment|length }})</h3>
+          {% if deployment.status != "completed" and deployment.status != "cancelled" %}
+            <button type="button" @click="addEquipOpen = !addEquipOpen"
+                    :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                    class="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-semibold hover:opacity-80">
+              <i class="fa-solid fa-plus"></i> {% trans "Add" %}
+            </button>
+          {% endif %}
+        </div>
+        <div x-show="addEquipOpen" x-cloak class="mb-3 grid gap-2 sm:grid-cols-3">
+          <form method="post" action="{% url 'response:deployment_equipment_add' deployment.pk %}" class="contents">
+            {% csrf_token %}
+            <select name="item"
+                    :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                    class="rounded-lg border px-3 py-2 text-xs">
+              <option value="">{% trans "Select item..." %}</option>
+              {% for obj in available_items %}
+                <option value="{{ obj.pk }}">{{ obj.name }}</option>
+              {% endfor %}
+            </select>
+            <input type="number" name="quantity" value="1" min="0.01" step="0.01"
+                   :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                   class="rounded-lg border px-3 py-2 text-xs">
+            <button type="submit"
+                    :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                    class="rounded-lg px-4 py-2 text-xs font-semibold">{% trans "Allocate" %}</button>
+          </form>
+        </div>
+        <div class="space-y-2">
+          {% for eq in equipment %}
+            <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
+              <div class="flex items-center justify-between gap-2">
+                <div>
+                  <span class="font-semibold text-sm">{{ eq.item.name }}</span>
+                  <span class="ml-2 text-xs opacity-60">× {{ eq.quantity }}</span>
+                  {% if eq.item.object_type %}<span class="ml-1 text-xs opacity-50">· {{ eq.item.object_type }}</span>{% endif %}
+                </div>
+                {% if eq.item.location %}
+                  <span class="text-xs opacity-60 shrink-0"><i class="fa-solid fa-warehouse mr-1"></i>{{ eq.item.location }}</span>
+                {% endif %}
+              </div>
+              {% if eq.notes %}<p class="mt-1 text-xs opacity-60">{{ eq.notes }}</p>{% endif %}
+            </div>
+          {% empty %}
+            <p class="text-sm opacity-60">{% trans "No equipment allocated." %}</p>
+          {% endfor %}
+        </div>
+      </div>
+
+    </section>
+
+    <aside class="space-y-5">
+
+      {# — Assign responder — #}
+      {% if deployment.status != "completed" and deployment.status != "cancelled" %}
+        <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border p-5 shadow-sm">
+          <h3 class="mb-3 font-bold flex items-center gap-2"><i class="fa-solid fa-user-plus"></i> {% trans "Assign Responder" %}</h3>
+          <form method="post" action="{% url 'response:assignment_create' deployment.pk %}" class="space-y-3">
+            {% csrf_token %}
+            <select name="responder"
+                    :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                    class="w-full rounded-lg border px-3 py-2 text-sm">
+              <option value="">{% trans "Select responder..." %}</option>
+              {% for r in available_responders %}
+                <option value="{{ r.pk }}">{{ r.person }} ({{ r.get_current_status_display }})</option>
+              {% endfor %}
+            </select>
+            <select name="role"
+                    :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                    class="w-full rounded-lg border px-3 py-2 text-sm">
+              {% for val, label in deployment.assignments.model.ROLE_CHOICES %}
+                <option value="{{ val }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+            <button type="submit"
+                    :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                    class="w-full rounded-lg px-4 py-2 text-sm font-semibold hover:opacity-90">
+              {% trans "Assign" %}
+            </button>
+          </form>
+        </div>
+      {% endif %}
+
+      {# — Assignments — #}
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-5 shadow-sm">
+        <h3 class="mb-3 font-bold flex items-center gap-2"><i class="fa-solid fa-users"></i> {% trans "Assignments" %} ({{ assignments|length }})</h3>
+        <div class="space-y-2">
+          {% for a in assignments %}
+            <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
+              <div class="flex items-center justify-between gap-2">
+                <div>
+                  <div class="font-semibold text-sm">{{ a.responder.person }}</div>
+                  <div class="text-xs opacity-60">{{ a.get_role_display }}</div>
+                </div>
+                {% include "mobilization/partials/status_badge.html" with status=a.status %}
+              </div>
+              {% if a.status == "assigned" or a.status == "confirmed" %}
+                <form method="post" action="{% url 'response:assignment_activate' deployment.pk a.pk %}" class="mt-2">
+                  {% csrf_token %}
+                  <button type="submit" class="text-xs underline hover:opacity-80">
+                    <i class="fa-solid fa-play mr-1"></i>{% trans "Activate" %}
+                  </button>
+                </form>
+              {% elif a.status == "active" %}
+                <form method="post" action="{% url 'response:assignment_release' deployment.pk a.pk %}" class="mt-2">
+                  {% csrf_token %}
+                  <button type="submit" class="text-xs underline hover:opacity-80">
+                    <i class="fa-solid fa-right-from-bracket mr-1"></i>{% trans "Release" %}
+                  </button>
+                </form>
+              {% endif %}
+            </div>
+          {% empty %}
+            <p class="text-sm opacity-60">{% trans "No responders assigned." %}</p>
+          {% endfor %}
+        </div>
+      </div>
+
+      {# — Notes / meta — #}
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-5 shadow-sm text-xs space-y-1.5 opacity-70">
+        {% if deployment.coordinator %}<div><i class="fa-solid fa-user-tie mr-1"></i>{% trans "Coordinator" %}: {{ deployment.coordinator }}</div>{% endif %}
+        <div>{% trans "Created" %} {{ deployment.created_at|date:"M d, Y H:i" }}</div>
+        <div>{% trans "Updated" %} {{ deployment.updated_at|date:"M d, Y H:i" }}</div>
+        {% if deployment.notes %}
+          <p class="border-t border-current/10 pt-2 mt-2">{{ deployment.notes }}</p>
+        {% endif %}
+      </div>
+
+    </aside>
+  </div>
+
+  {# — Complete modal — #}
+  <div x-show="completeOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4">
+    <div @click.outside="completeOpen = false"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="w-full max-w-md rounded-lg border p-5 shadow-2xl">
+      <h3 class="text-xl font-bold flex items-center gap-2"><i class="fa-solid fa-flag-checkered"></i> {% trans "Complete Deployment?" %}</h3>
+      <p class="mt-3 text-sm opacity-75">{% trans "Remaining required interventions must be done/cancelled, unless you force-complete." %}</p>
+      <form method="post" action="{% url 'response:deployment_complete' deployment.pk %}" class="mt-5 space-y-3">
+        {% csrf_token %}
+        <label class="flex items-center gap-2 text-sm">
+          <input type="checkbox" name="force" value="1" x-model="forceComplete" class="rounded">
+          {% trans "Force complete (ignore pending required interventions)" %}
+        </label>
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" @click="completeOpen = false" class="rounded-lg border border-current/20 px-4 py-2 text-sm font-semibold">{% trans "Cancel" %}</button>
+          <button type="submit"
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                  class="rounded-lg px-4 py-2 text-sm font-semibold">{% trans "Complete" %}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const isDark = localStorage.getItem("darkMode") === "true";
+
+  const map = L.map("dep-map", { zoomControl: false }).setView([20.0, 0.0], 2);
+  L.control.zoom({ position: "bottomright" }).addTo(map);
+  L.tileLayer(
+    isDark ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+           : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    { maxZoom: 19, attribution: "&copy; OpenStreetMap contributors" + (isDark ? " &copy; CARTO" : "") }
+  ).addTo(map);
+
+  const SEV_COLORS   = { low:"#94a3b8", medium:"#f59e0b", high:"#f97316", critical:"#ef4444" };
+  const ROUTE_COLORS = { primary:"#3b82f6", alternate:"#94a3b8", supply:"#f59e0b", retreat:"#ef4444", other:"#6366f1" };
+
+  function makeIcon(bg, size, shape, label) {
+    const s = size || 14;
+    const inner = shape === "diamond"
+      ? `<div style="background:${bg};width:${s}px;height:${s}px;transform:rotate(45deg);border:2px solid rgba(255,255,255,.85);box-shadow:0 1px 4px rgba(0,0,0,.5)"></div>`
+      : `<div style="background:${bg};width:${s}px;height:${s}px;border-radius:${shape==='square'?'3px':'50%'};border:2px solid rgba(255,255,255,.85);box-shadow:0 1px 4px rgba(0,0,0,.5)"></div>`;
+    const wrapper = label
+      ? `<div style="display:flex;flex-direction:column;align-items:center;gap:2px">${inner}<span style="background:${bg};color:#fff;font-size:9px;padding:1px 4px;border-radius:3px;white-space:nowrap;max-width:80px;overflow:hidden;text-overflow:ellipsis;box-shadow:0 1px 3px rgba(0,0,0,.4)">${label}</span></div>`
+      : inner;
+    const anchor = label ? [s/2, s] : [s/2, s/2];
+    return L.divIcon({ html: wrapper, className: "", iconSize: [s, s], iconAnchor: anchor });
+  }
+
+  const mapGroups = {
+    mission:    L.layerGroup(),
+    dep_routes: L.layerGroup(),
+    equipment:  L.layerGroup(),
+    detections: L.layerGroup(),
+  };
+  Object.values(mapGroups).forEach(g => g.addTo(map));
+
+  window.depMapToggle = (key, visible) => {
+    const g = mapGroups[key];
+    if (!g) return;
+    visible ? g.addTo(map) : map.removeLayer(g);
+  };
+
+  const boundsAccum = L.latLngBounds([]);
+
+  function pushCoords(coords) {
+    if (!Array.isArray(coords) || !coords.length) return;
+    if (Array.isArray(coords[0])) {
+      coords.forEach(pushCoords);
+    } else {
+      boundsAccum.extend([coords[1], coords[0]]);
+    }
+  }
+
+  fetch("{{ map_data_url }}")
+    .then(r => r.json())
+    .then(data => {
+      if (!data.features || !data.features.length) return;
+      data.features.forEach(f => {
+        const p = f.properties;
+        const g = f.geometry;
+        if (!g) return;
+
+        if (p.kind === "mission") {
+          const latlng = [g.coordinates[1], g.coordinates[0]];
+          L.marker(latlng, { icon: makeIcon("#6366f1", 16, "square", p.label) })
+            .bindPopup(`<strong>${p.label}</strong><br><em>Mission location</em>`)
+            .addTo(mapGroups.mission);
+          boundsAccum.extend(latlng);
+
+        } else if (p.kind === "dep_route") {
+          const color = ROUTE_COLORS[p.route_type] || "#94a3b8";
+          L.geoJSON(f, {
+            style: { color, weight: 3, opacity: 0.85, dashArray: p.route_type === "alternate" ? "8 4" : null }
+          }).bindPopup(`<strong>${p.label}</strong><br>Type: ${p.route_type}`)
+            .addTo(mapGroups.dep_routes);
+          pushCoords(g.coordinates);
+
+        } else if (p.kind === "equipment") {
+          const latlng = [g.coordinates[1], g.coordinates[0]];
+          L.marker(latlng, { icon: makeIcon("#f59e0b", 14, "square", p.label) })
+            .bindPopup(`<strong>${p.label}</strong><br>Qty: ${p.quantity}`)
+            .addTo(mapGroups.equipment);
+          boundsAccum.extend(latlng);
+
+        } else if (p.kind === "detection") {
+          const bg = SEV_COLORS[p.severity] || "#94a3b8";
+          const latlng = [g.coordinates[1], g.coordinates[0]];
+          L.marker(latlng, { icon: makeIcon(bg, 12, "diamond") })
+            .bindPopup(`<strong>${p.label}</strong><br>Severity: ${p.severity}<br>Intervention: ${p.intervention || "—"}`)
+            .addTo(mapGroups.detections);
+          boundsAccum.extend(latlng);
+        }
+      });
+
+      if (boundsAccum.isValid()) {
+        map.fitBounds(boundsAccum, { padding: [48, 48], maxZoom: 14 });
+      }
+    }).catch(() => {});
+});
+</script>
+{% endblock %}

@@ -1,9 +1,11 @@
 from django.urls import path
+from django.views.generic import RedirectView
 from . import views
 
 app_name = "response"
 
 urlpatterns = [
+    path("", RedirectView.as_view(pattern_name="response:deployment_list", permanent=False)),
     # Deployments
     path("deployments/", views.deployment_list, name="deployment_list"),
     path("deployments/<int:pk>/", views.deployment_detail, name="deployment_detail"),
