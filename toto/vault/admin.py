@@ -2,7 +2,7 @@ from django.contrib import admin, messages
 from django.urls import path, reverse
 from django.shortcuts import render, redirect
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
-from .models import VaultFile, Bucket, FileGateway
+from .models import VaultFile, Bucket, FileGateway, VaultDirectory
 from toto.core.batch import BatchAction
 from django.utils.html import format_html
 
@@ -18,8 +18,8 @@ class BucketAdmin(admin.ModelAdmin):
 @admin.register(VaultFile)
 class VaultFileAdmin(admin.ModelAdmin):
     list_display = ('title', 'owner', 'file_type', 'is_encrypted', 'is_public',
-                    'uploaded_at', 'bucket', 'key', 'public_url_display')
-    list_filter = ('file_type', 'is_encrypted', 'is_public', 'uploaded_at')
+                    'uploaded_at', 'bucket', 'directory', 'key', 'public_url_display')
+    list_filter = ('file_type', 'is_encrypted', 'is_public', 'uploaded_at', 'bucket', 'directory')
     search_fields = ('title', 'owner__username')
     readonly_fields = ('uploaded_at', 'content_hash')
     actions = ['encrypt_selected_files', 'decrypt_selected_files', 'generate_content_hashes']
@@ -131,24 +131,56 @@ class VaultFileAdmin(admin.ModelAdmin):
 
 @admin.register(FileGateway)
 class FileGatewayAdmin(admin.ModelAdmin):
-    list_display = ("name", "bucket", "make_public", "max_file_size")
-    list_filter = ("bucket", "allowed_users", "make_public")
-    search_fields = ("name", "description")
-    ordering = ("bucket",)
+    list_display = ("name", "directory_path", "bucket", "make_public", "max_file_size")
+    list_filter = ("bucket", "make_public")
+    search_fields = ("name", "description", "directory__name")
+    ordering = ("bucket", "directory__name")
 
     filter_horizontal = ("allowed_users",)
 
     fieldsets = (
         ("Gateway Info", {
-            "fields": ("name", "bucket", "description"),
-            "description": "Each bucket may have only one gateway."
+            "fields": ("name", "directory", "description"),
+            "description": "One gateway per directory. Bucket is auto-set from the directory.",
         }),
         ("Access Control", {
             "fields": ("allowed_users", "make_public"),
-            "description": "If enabled, all uploaded files become public automatically."
+            "description": "If enabled, all uploaded files become public automatically.",
         }),
         ("Upload Limits", {
             "fields": ("max_file_size",),
-            "description": "Maximum allowed file size in KB."
+            "description": "Maximum allowed file size in KB.",
         }),
     )
+
+    def directory_path(self, obj):
+        return obj.directory.full_path() if obj.directory_id else "—"
+    directory_path.short_description = "Directory"
+
+
+@admin.register(VaultDirectory)
+class VaultDirectoryAdmin(admin.ModelAdmin):
+    list_display = ("full_path_display", "bucket", "parent", "owner", "file_count", "created_at")
+    list_filter = ("bucket", "owner")
+    search_fields = ("name", "bucket__name", "owner__username")
+    ordering = ("bucket", "parent__name", "name")
+    filter_horizontal = ("allowed_users",)
+
+    fieldsets = (
+        ("Directory", {
+            "fields": ("name", "bucket", "parent", "owner"),
+        }),
+        ("Access Control", {
+            "fields": ("allowed_users",),
+            "description": "Leave empty to allow all authenticated users."
+        }),
+    )
+
+    def full_path_display(self, obj):
+        return obj.full_path()
+    full_path_display.short_description = "Path"
+    full_path_display.admin_order_field = "name"
+
+    def file_count(self, obj):
+        return obj.files.count()
+    file_count.short_description = "Files"

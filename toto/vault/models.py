@@ -35,23 +35,25 @@ class VaultFile(models.Model):
         ('video', 'Video'),
     ]
 
-    MIME_MAP = {
-        "pdf": "pdf",
-        "image": "image",
-        "html": "html",
-        "json": "json",
-        "svg": "svg",
-    }
-
     @classmethod
     def detect_type(cls, mime: str) -> str:
         if not mime:
             return "text"
-
-        for key, value in cls.MIME_MAP.items():
-            if key in mime:
-                return value
-
+        mime = mime.lower()
+        if "pdf" in mime:
+            return "pdf"
+        if mime == "image/svg+xml":
+            return "svg"
+        if mime.startswith("image/"):
+            return "image"
+        if "html" in mime:
+            return "html"
+        if "json" in mime:
+            return "json"
+        if mime.startswith("audio/"):
+            return "audio"
+        if mime.startswith("video/"):
+            return "video"
         return "text"
 
     owner = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -65,6 +67,10 @@ class VaultFile(models.Model):
     is_public = models.BooleanField(default=False, help_text="If true, file is visible to others")
     notes = models.TextField(blank=True, null=True)
     bucket = models.ForeignKey(Bucket, on_delete=models.SET_NULL, null=True, blank=True, related_name='files')
+    directory = models.ForeignKey(
+        'VaultDirectory', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='files'
+    )
 
     class Meta:
         verbose_name = "Vault File"
@@ -110,10 +116,9 @@ class VaultFile(models.Model):
     def get_strategy(self):
         if self.file_type == 'pdf':
             return PdfStrategy()
-        elif self.file_type == 'image':
+        if self.file_type == 'image':
             return ImageStrategy()
-        else:
-            return TextStrategy()
+        return TextStrategy()
 
     def encrypt(self, password: str, owner_password=None):
         if self.is_encrypted:
@@ -146,17 +151,24 @@ class VaultFile(models.Model):
 
 class FileGateway(models.Model):
     """
-    A user-facing upload gateway that routes uploaded files into a specific bucket.
-    Each bucket may have only one gateway.
+    A user-facing upload gateway tied to exactly one directory.
+    One gateway per directory; root-level uploads are not allowed via gateway.
     """
 
     name = models.CharField(max_length=200)
 
-    # 1-to-1 relationship with Bucket
-    bucket = models.OneToOneField(
+    # Each directory may have at most one gateway.
+    directory = models.OneToOneField(
+        'VaultDirectory',
+        on_delete=models.CASCADE,
+        related_name='gateway',
+    )
+
+    # Denormalised for easy filtering — must always equal directory.bucket.
+    bucket = models.ForeignKey(
         Bucket,
         on_delete=models.CASCADE,
-        related_name="gateway"
+        related_name='gateways',
     )
 
     # Who can use this gateway
@@ -167,12 +179,12 @@ class FileGateway(models.Model):
 
     make_public = models.BooleanField(
         default=False,
-        help_text="If enabled, all files uploaded through this gateway become public."
+        help_text="If enabled, all files uploaded through this gateway become public.",
     )
 
     max_file_size = models.PositiveIntegerField(
         default=10 * 1024,
-        help_text="Maximum allowed file size in KB"
+        help_text="Maximum allowed file size in KB.",
     )
 
     class Meta:
@@ -180,4 +192,69 @@ class FileGateway(models.Model):
         verbose_name_plural = "File Gateways"
 
     def __str__(self):
-        return f"Gateway for bucket: {self.bucket.name}"
+        return f"Gateway → {self.directory}"
+
+    def save(self, *args, **kwargs):
+        # Keep bucket in sync with directory so queries on bucket stay valid.
+        if self.directory_id:
+            self.bucket_id = (
+                VaultDirectory.objects
+                .filter(pk=self.directory_id)
+                .values_list('bucket_id', flat=True)
+                .first()
+            )
+        super().save(*args, **kwargs)
+
+
+class VaultDirectory(models.Model):
+    """
+    A named folder inside a Bucket. May be nested (parent → subdirectories).
+    Access is restricted to allowed_users when the whitelist is non-empty.
+    """
+
+    name = models.CharField(max_length=200)
+    bucket = models.ForeignKey(Bucket, on_delete=models.CASCADE, related_name='directories')
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='owned_directories')
+    parent = models.ForeignKey(
+        'self', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='subdirectories'
+    )
+    allowed_users = models.ManyToManyField(
+        User, blank=True, related_name='accessible_directories',
+        help_text="Leave empty to allow all authenticated users."
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Vault Directory"
+        verbose_name_plural = "Vault Directories"
+        unique_together = ('bucket', 'parent', 'name')
+
+    def __str__(self):
+        return self.full_path()
+
+    def full_path(self):
+        parts = []
+        node = self
+        while node is not None:
+            parts.append(node.name)
+            node = node.parent
+        return "/".join(reversed(parts))
+
+    def breadcrumb(self):
+        """Return list of VaultDirectory from root down to self."""
+        crumbs = []
+        node = self
+        while node is not None:
+            crumbs.append(node)
+            node = node.parent
+        return list(reversed(crumbs))
+
+    def user_can_access(self, user):
+        if not user or not user.is_authenticated:
+            return not self.allowed_users.exists()
+        if user.is_superuser:
+            return True
+        if not self.allowed_users.exists():
+            return True
+        return self.allowed_users.filter(pk=user.pk).exists()

@@ -1,5 +1,6 @@
 # file_strategies/image_strategy.py
 import os
+import tempfile
 from cryptography.fernet import Fernet
 from .base import FileStrategy
 from .forms import EncryptFileForm, DecryptFileForm
@@ -9,8 +10,7 @@ class ImageStrategy(FileStrategy):
 
     def encrypt(self, file_instance, password: str, owner_password: str = None):
         input_path = file_instance.file.path
-        base, ext = os.path.splitext(input_path)
-        output_path = f"{base}_enc{ext}"
+        _, ext = os.path.splitext(input_path)
 
         keyring = file_instance.owner.uservaults.first()
         if not keyring:
@@ -24,18 +24,23 @@ class ImageStrategy(FileStrategy):
 
         encrypted_data = fernet.encrypt(data)
 
-        with open(output_path, 'wb') as f:
-            f.write(encrypted_data)
+        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+            tmp.write(encrypted_data)
+            tmp_path = tmp.name
 
-        file_instance.file.save(os.path.basename(output_path), open(output_path, 'rb'))
-        os.remove(input_path)
-        file_instance.is_encrypted = True
-        file_instance.save()
+        try:
+            with open(tmp_path, 'rb') as f:
+                file_instance.file.save(os.path.basename(input_path), f, save=False)
+            os.remove(input_path)
+            file_instance.is_encrypted = True
+            file_instance.save()
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
 
     def decrypt(self, file_instance, password: str):
         input_path = file_instance.file.path
-        base, ext = os.path.splitext(input_path)
-        output_path = f"{base}_dec{ext}"
+        _, ext = os.path.splitext(input_path)
 
         keyring = file_instance.owner.uservaults.first()
         if not keyring:
@@ -44,21 +49,27 @@ class ImageStrategy(FileStrategy):
         key = keyring.derive_key(password)
         fernet = Fernet(key)
 
+        with open(input_path, 'rb') as f:
+            encrypted_data = f.read()
+
         try:
-            with open(input_path, 'rb') as f:
-                encrypted_data = f.read()
-
             decrypted_data = fernet.decrypt(encrypted_data)
+        except Exception as e:
+            raise ValueError(f"Decryption failed: {str(e)}")
 
-            with open(output_path, 'wb') as f:
-                f.write(decrypted_data)
+        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+            tmp.write(decrypted_data)
+            tmp_path = tmp.name
 
-            file_instance.file.save(os.path.basename(output_path), open(output_path, 'rb'))
+        try:
+            with open(tmp_path, 'rb') as f:
+                file_instance.file.save(os.path.basename(input_path), f, save=False)
             os.remove(input_path)
             file_instance.is_encrypted = False
             file_instance.save()
-        except Exception as e:
-            raise ValueError(f"Decryption failed: {str(e)}")
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
 
     def parse_encrypt_form(self, form):
         password = form.cleaned_data['password']

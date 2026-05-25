@@ -1,0 +1,335 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{{ bucket.name }} {% trans "Metrics" %} | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+<style>[x-cloak] { display: none !important; }</style>
+{% endblock %}
+
+{% block content %}
+{{ files_by_type|json_script:"files-by-type" }}
+{{ files_by_dir|json_script:"files-by-dir" }}
+{{ daily_series|json_script:"daily-series" }}
+
+<div
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-6xl space-y-8">
+
+    <!-- Header -->
+    <header class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div class="space-y-1">
+        <a href="{% url 'vault:metrics' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+          <i class="fa-solid fa-arrow-left"></i>
+          {% trans "All Buckets" %}
+        </a>
+        <div>
+          <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+             class="text-xs font-semibold uppercase tracking-wide">
+            {% trans "Bucket Metrics" %}
+          </p>
+          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+            <i class="fa-solid fa-layer-group"></i>
+            {{ bucket.name }}
+          </h1>
+          <p class="mt-1 text-sm opacity-55">
+            {% trans "Owner" %}: {{ bucket.owner.username }}
+            {% for gw in gateways %}
+              &middot; <i class="fa-solid fa-upload text-xs"></i>
+              <a href="{% url 'vault:gateway_page' gw.directory_id %}"
+                 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                 class="hover:underline">{{ gw.name }}</a>
+            {% endfor %}
+          </p>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2">
+        <a href="{% url 'vault:public_list' %}?bucket={{ bucket.slug }}"
+           :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+           class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+          <i class="fa-solid fa-folder-open"></i>
+          {% trans "Browse" %}
+        </a>
+        {% for gw in gateways %}
+          <a href="{% url 'vault:gateway_page' gw.directory_id %}"
+             :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+             class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-90">
+            <i class="fa-solid fa-upload"></i>
+            {{ gw.directory.name }}
+          </a>
+        {% endfor %}
+      </div>
+    </header>
+
+    <!-- Stat cards -->
+    <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+      {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-file" label="Total Files" value=total_files color="accent" %}
+      {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-folder-tree" label="Directories" value=total_dirs color="neutral" %}
+      {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-globe" label="Public" value=public_files color="success" %}
+      {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-lock" label="Encrypted" value=encrypted_files color="warn" %}
+      {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-house" label="Root Files" value=root_files color="neutral" %}
+      {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-clock-rotate-left" label="Last 7 Days" value=recent_count color="accent" %}
+    </div>
+
+    <!-- Charts row -->
+    <div class="grid gap-5 lg:grid-cols-3">
+
+      <!-- File types donut -->
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-xl border p-5 shadow-sm">
+        <h2 class="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide opacity-60">
+          <i class="fa-solid fa-shapes"></i> {% trans "Files by Type" %}
+        </h2>
+        <canvas id="typeChart" height="200"></canvas>
+      </div>
+
+      <!-- Files by directory bar -->
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-xl border p-5 shadow-sm">
+        <h2 class="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide opacity-60">
+          <i class="fa-solid fa-folder-tree"></i> {% trans "Files by Directory" %}
+        </h2>
+        <canvas id="dirChart" height="200"></canvas>
+      </div>
+
+      <!-- Upload activity line -->
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-xl border p-5 shadow-sm">
+        <h2 class="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide opacity-60">
+          <i class="fa-solid fa-arrow-trend-up"></i> {% trans "Uploads (30 days)" %}
+        </h2>
+        <canvas id="activityChart" height="200"></canvas>
+      </div>
+
+    </div>
+
+    <!-- Directory breakdown -->
+    {% if dir_stats %}
+    <section>
+      <p class="mb-3 text-xs font-semibold uppercase tracking-wide opacity-55">
+        <i class="fa-solid fa-folder-tree mr-1"></i>{% trans "Directory Breakdown" %}
+      </p>
+      <div
+        :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+        class="overflow-hidden rounded-xl border shadow-sm">
+        <table class="min-w-full text-sm">
+          <thead>
+            <tr
+              :class="darkMode ? 'bg-bubble-bg-dark border-b border-accent-1' : 'bg-bubble-bg-light border-b border-accent-2'"
+              class="text-left text-xs font-semibold uppercase tracking-wide opacity-65">
+              <th class="px-4 py-3">{% trans "Path" %}</th>
+              <th class="px-4 py-3 text-right">{% trans "Files" %}</th>
+              <th class="px-4 py-3 text-right">{% trans "Public" %}</th>
+              <th class="px-4 py-3 text-right">{% trans "Encrypted" %}</th>
+              <th class="px-4 py-3 text-center">{% trans "Access" %}</th>
+              <th class="px-4 py-3"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for d in dir_stats %}
+            <tr
+              :class="darkMode
+                ? 'border-b border-accent-1/40 hover:bg-bubble-bg-dark'
+                : 'border-b border-accent-2/40 hover:bg-bubble-bg-light'"
+              class="transition-colors duration-150">
+
+              <td class="px-4 py-3 font-mono text-sm font-semibold">
+                <span :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="mr-1">
+                  <i class="fa-solid fa-folder text-xs"></i>
+                </span>
+                {{ d.full_path }}
+              </td>
+
+              <td class="px-4 py-3 text-right font-mono text-sm">{{ d.file_count }}</td>
+
+              <td class="px-4 py-3 text-right font-mono text-sm">
+                <span :class="darkMode ? 'text-success-dark' : 'text-success-light'">
+                  {{ d.public_count }}
+                </span>
+              </td>
+
+              <td class="px-4 py-3 text-right font-mono text-sm">
+                {% if d.encrypted_count %}
+                  <span :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">
+                    {{ d.encrypted_count }}
+                  </span>
+                {% else %}
+                  <span class="opacity-30">—</span>
+                {% endif %}
+              </td>
+
+              <td class="px-4 py-3 text-center text-xs">
+                {% if d.locked %}
+                  <span :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">
+                    <i class="fa-solid fa-lock"></i> {% trans "Restricted" %}
+                  </span>
+                {% else %}
+                  <span class="opacity-40">
+                    <i class="fa-solid fa-lock-open"></i> {% trans "Open" %}
+                  </span>
+                {% endif %}
+              </td>
+
+              <td class="px-4 py-3 text-right">
+                <a href="{% url 'vault:public_list' %}?bucket={{ bucket.slug }}&dir={{ d.pk }}"
+                   :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                   class="text-xs hover:underline underline-offset-2 font-semibold">
+                  {% trans "Browse" %} <i class="fa-solid fa-arrow-right text-xs"></i>
+                </a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+    {% endif %}
+
+    <!-- Recent files -->
+    <section>
+      <p class="mb-3 text-xs font-semibold uppercase tracking-wide opacity-55">
+        <i class="fa-solid fa-clock mr-1"></i>{% trans "Recent Uploads" %}
+      </p>
+      <div
+        :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+        class="overflow-hidden rounded-xl border shadow-sm">
+        {% for file in recent_files %}
+        <div
+          :class="darkMode
+            ? 'border-b border-accent-1/30 hover:bg-bubble-bg-dark'
+            : 'border-b border-accent-2/30 hover:bg-bubble-bg-light'"
+          class="flex items-center gap-3 px-4 py-3 text-sm transition-colors last:border-b-0">
+
+          <span
+            :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
+            class="shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold uppercase">
+            {{ file.file_type }}
+          </span>
+
+          <span class="font-medium truncate flex-1 min-w-0">{{ file.title }}</span>
+
+          {% if file.directory %}
+            <span class="hidden sm:flex items-center gap-1 text-xs opacity-50 shrink-0">
+              <i class="fa-solid fa-folder text-xs"></i>{{ file.directory.name }}
+            </span>
+          {% else %}
+            <span class="hidden sm:block text-xs opacity-30 shrink-0">Root</span>
+          {% endif %}
+
+          <span class="text-xs opacity-50 shrink-0">{{ file.uploaded_at|date:"Y-m-d" }}</span>
+          <span class="text-xs opacity-50 shrink-0">{{ file.owner.username }}</span>
+
+          {% if file.is_encrypted %}
+            <span class="text-green-500 text-xs shrink-0"><i class="fa-solid fa-lock"></i></span>
+          {% endif %}
+          {% if file.is_public %}
+            <span :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                  class="text-xs shrink-0"><i class="fa-solid fa-globe"></i></span>
+          {% endif %}
+        </div>
+        {% empty %}
+        <div class="px-4 py-8 text-center text-sm opacity-50">{% trans "No files yet." %}</div>
+        {% endfor %}
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+  const isDark = localStorage.getItem('darkMode') === 'true';
+  const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+  const textColor = isDark ? '#e2e8f0' : '#374151';
+
+  Chart.defaults.color = textColor;
+  Chart.defaults.borderColor = gridColor;
+
+  const byType   = JSON.parse(document.getElementById('files-by-type').textContent);
+  const byDir    = JSON.parse(document.getElementById('files-by-dir').textContent);
+  const daily    = JSON.parse(document.getElementById('daily-series').textContent);
+
+  const TYPE_COLORS = {
+    pdf:   '#ef4444',
+    image: '#3b82f6',
+    svg:   '#8b5cf6',
+    text:  '#6b7280',
+    json:  '#f59e0b',
+    html:  '#10b981',
+    audio: '#ec4899',
+    video: '#0ea5e9',
+  };
+
+  // Donut — file types
+  new Chart(document.getElementById('typeChart'), {
+    type: 'doughnut',
+    data: {
+      labels: byType.map(d => d.file_type.toUpperCase()),
+      datasets: [{
+        data: byType.map(d => d.count),
+        backgroundColor: byType.map(d => TYPE_COLORS[d.file_type] || '#94a3b8'),
+        borderWidth: 0,
+      }]
+    },
+    options: {
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 12 } } },
+      cutout: '60%',
+    }
+  });
+
+  // Horizontal bar — files by directory
+  new Chart(document.getElementById('dirChart'), {
+    type: 'bar',
+    data: {
+      labels: byDir.map(d => d.name),
+      datasets: [{
+        data: byDir.map(d => d.count),
+        backgroundColor: isDark ? 'rgba(99,102,241,0.7)' : 'rgba(79,70,229,0.7)',
+        borderRadius: 5,
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: gridColor }, ticks: { precision: 0 } },
+        y: { grid: { display: false } },
+      }
+    }
+  });
+
+  // Line — upload activity
+  new Chart(document.getElementById('activityChart'), {
+    type: 'line',
+    data: {
+      labels: daily.map(d => d.date),
+      datasets: [{
+        data: daily.map(d => d.count),
+        borderColor: isDark ? '#818cf8' : '#4f46e5',
+        backgroundColor: isDark ? 'rgba(99,102,241,0.15)' : 'rgba(79,70,229,0.10)',
+        borderWidth: 2,
+        pointRadius: 2,
+        pointHoverRadius: 4,
+        fill: true,
+        tension: 0.35,
+      }]
+    },
+    options: {
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false }, ticks: { maxTicksLimit: 6, maxRotation: 0 } },
+        y: { grid: { color: gridColor }, ticks: { precision: 0 }, beginAtZero: true },
+      }
+    }
+  });
+})();
+</script>
+{% endblock %}
