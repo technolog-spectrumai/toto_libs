@@ -283,7 +283,7 @@
           {% endif %}
         </div>
         <div x-show="addRouteOpen" x-cloak class="mb-3 grid gap-2 sm:grid-cols-3">
-          <form method="post" action="{% url 'mobilization:deployment_route_add' deployment.pk %}" class="contents">
+          <form method="post" action="{% url 'response:deployment_route_add' deployment.pk %}" class="contents">
             {% csrf_token %}
             <select name="route"
                     :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
@@ -335,7 +335,7 @@
           {% endif %}
         </div>
         <div x-show="addEquipOpen" x-cloak class="mb-3 grid gap-2 sm:grid-cols-3">
-          <form method="post" action="{% url 'mobilization:deployment_equipment_add' deployment.pk %}" class="contents">
+          <form method="post" action="{% url 'response:deployment_equipment_add' deployment.pk %}" class="contents">
             {% csrf_token %}
             <select name="item"
                     :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
@@ -466,7 +466,7 @@
          class="w-full max-w-md rounded-lg border p-5 shadow-2xl">
       <h3 class="text-xl font-bold flex items-center gap-2"><i class="fa-solid fa-flag-checkered"></i> {% trans "Complete Deployment?" %}</h3>
       <p class="mt-3 text-sm opacity-75">{% trans "Remaining required interventions must be done/cancelled, unless you force-complete." %}</p>
-      <form method="post" action="{% url 'mobilization:deployment_complete' deployment.pk %}" class="mt-5 space-y-3">
+      <form method="post" action="{% url 'response:deployment_complete' deployment.pk %}" class="mt-5 space-y-3">
         {% csrf_token %}
         <label class="flex items-center gap-2 text-sm">
           <input type="checkbox" name="force" value="1" x-model="forceComplete" class="rounded">

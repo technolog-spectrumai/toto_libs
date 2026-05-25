@@ -50,7 +50,7 @@
            class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
           <i class="fa-solid fa-bolt"></i> {% trans "Events" %}
         </a>
-        <a href="{% url 'mobilization:deployment_list' %}"
+        <a href="{% url 'response:deployment_list' %}"
            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
            class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
           <i class="fa-solid fa-people-group"></i> {% trans "Deployments" %}

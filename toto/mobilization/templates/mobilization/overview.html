@@ -131,13 +131,13 @@
         <h2 class="flex items-center gap-2 font-bold">
           <i class="fa-solid fa-people-group"></i> {% trans "Active Deployments" %}
         </h2>
-        <a href="{% url 'mobilization:deployment_list' %}?status=active"
+        <a href="{% url 'response:deployment_list' %}?status=active"
            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
            class="text-xs underline">{% trans "All" %}</a>
       </div>
       <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {% for dep in active_deployments %}
-          <a href="{% url 'mobilization:deployment_detail' dep.pk %}"
+          <a href="{% url 'response:deployment_detail' dep.pk %}"
              :class="darkMode ? 'bg-primary-bg-dark hover:opacity-80' : 'bg-primary-bg-light hover:opacity-80'"
              class="block rounded-lg p-3 transition">
             <div class="font-semibold text-sm truncate">{{ dep.title }}</div>

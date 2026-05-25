@@ -67,7 +67,7 @@
         {% for a in all_assignments %}
           <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
             <div class="flex flex-wrap items-center justify-between gap-2">
-              <a href="{% url 'mobilization:deployment_detail' a.deployment.pk %}"
+              <a href="{% url 'response:deployment_detail' a.deployment.pk %}"
                  :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
                  class="font-semibold text-sm underline hover:opacity-80">{{ a.deployment.title }}</a>
               {% include "mobilization/partials/status_badge.html" with status=a.status %}
@@ -131,7 +131,7 @@
       {% if active_assignments %}
         {% for a in active_assignments %}
           <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="mt-2 rounded-lg p-3 text-sm">
-            <a href="{% url 'mobilization:deployment_detail' a.deployment.pk %}"
+            <a href="{% url 'response:deployment_detail' a.deployment.pk %}"
                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
                class="font-semibold underline">{{ a.deployment.title }}</a>
             <div class="text-xs opacity-60 mt-1">{{ a.deployment.event.community }}</div>
