@@ -9,12 +9,12 @@ import * as Y from "https://esm.run/yjs";
 
 document.addEventListener("DOMContentLoaded", async () => {
   // Load MLS WASM lazily — if unavailable encryption is silently disabled
-  let initEnigmaWasm = null;
-  let WasmEnigmaSession = null;
+  let initRotorWasm = null;
+  let WasmRotorSession = null;
   try {
-    const wasm = await import("{% static 'js/enigma_wasm/enigma_wasm.js' %}");
-    initEnigmaWasm = wasm.default;
-    WasmEnigmaSession = wasm.WasmEnigmaSession;
+    const wasm = await import("{% static 'js/rotor_wasm/rotor_wasm.js' %}");
+    initRotorWasm = wasm.default;
+    WasmRotorSession = wasm.WasmRotorSession;
   } catch (_) { /* no WASM — MLS disabled */ }
   const channelSlug  = "{{ channel.slug }}";
   const userName     = "{{ current_chat_user|escapejs }}";
@@ -304,20 +304,20 @@ document.addEventListener("DOMContentLoaded", async () => {
   // ── MLS lifecycle ──────────────────────────────────────────────────────────
 
   async function initializeMls() {
-    await initEnigmaWasm();
+    await initRotorWasm();
     const storedState = loadMlsState();
     if (storedState) {
       try {
-        const importFn = WasmEnigmaSession.import_state || WasmEnigmaSession.importState;
+        const importFn = WasmRotorSession.import_state || WasmRotorSession.importState;
         if (!importFn) throw new Error("WASM MLS class is missing import_state/importState");
-        mlsSession = importFn.call(WasmEnigmaSession, storedState);
+        mlsSession = importFn.call(WasmRotorSession, storedState);
       } catch (err) {
         console.warn("Stored MLS state invalid; creating fresh group.", err);
         clearMlsState();
       }
     }
     if (!mlsSession) {
-      mlsSession = new WasmEnigmaSession(channelSlug, userName);
+      mlsSession = new WasmRotorSession(channelSlug, userName);
       callSession("create_group", "createGroup");
       saveMlsState();
     }
@@ -371,7 +371,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   async function joinMlsGroup(data) {
     if (!data.welcome || data.target !== userName || data.user === userName) return;
-    if (!mlsSession) mlsSession = new WasmEnigmaSession(channelSlug, userName);
+    if (!mlsSession) mlsSession = new WasmRotorSession(channelSlug, userName);
     const welcome = base64ToBytes(data.welcome);
     callSession("join_from_welcome", "joinFromWelcome", welcome);
     saveMlsState();
@@ -577,12 +577,15 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         {# Connection chip #}
         <div
-          class="connection-status-chip hidden shrink-0 items-center rounded border px-2.5 py-1.5 text-xs font-semibold sm:flex"
+          class="connection-status-chip hidden shrink-0 items-center gap-1.5 rounded border px-2.5 py-1.5 text-xs font-semibold sm:flex"
           :class="connectionStatus === 'connected'
             ? (darkMode ? 'bg-success-dark text-primary-bg-dark border-success-dark' : 'bg-success-light text-primary-bg-light border-success-light')
             : connectionStatus === 'connecting'
               ? 'animate-pulse ' + (darkMode ? 'border-accent-1' : 'border-accent-2')
               : (darkMode ? 'border-accent-1' : 'border-accent-2')">
+          <i class="fa-solid fa-gear"
+             :class="[connectionStatus === 'connecting' ? 'fa-spin' : '', darkMode ? 'text-accent-dark' : 'text-accent-light']"
+             style="animation-duration: 2s"></i>
           <span class="connection-status-text">{% if can_send_messages %}Connecting{% else %}Observer{% endif %}</span>
         </div>
 

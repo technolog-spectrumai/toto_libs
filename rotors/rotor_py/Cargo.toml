@@ -1,12 +1,12 @@
 [package]
-name = "enigma-py"
+name = "rotor-py"
 version = "0.1.0"
 edition = "2021"
 
 [lib]
-name = "enigma_py"
+name = "rotor_py"
 crate-type = ["cdylib"]
 
 [dependencies]
-enigma-core = { path = "../enigma_core" }
+rotor-core = { path = "../rotor_core" }
 pyo3 = { version = "0.28.3", features = ["extension-module"] }

@@ -1,5 +1,5 @@
 [package]
-name = "enigma-wasm"
+name = "rotor-wasm"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,7 +7,7 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-enigma-core = { path = "../enigma_core" }
+rotor-core = { path = "../rotor_core" }
 wasm-bindgen = "=0.2.100"
 js-sys = "=0.3.77"
 getrandom = { version = "0.2", features = ["js"] }

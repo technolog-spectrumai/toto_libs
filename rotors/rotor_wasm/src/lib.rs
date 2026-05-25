@@ -1,4 +1,4 @@
-use enigma_core::EnigmaSession;
+use rotor_core::RotorSession;
 use wasm_bindgen::prelude::*;
 
 fn js_err<E: std::fmt::Display>(err: E) -> JsValue {
@@ -6,16 +6,16 @@ fn js_err<E: std::fmt::Display>(err: E) -> JsValue {
 }
 
 #[wasm_bindgen]
-pub struct WasmEnigmaSession {
-    inner: EnigmaSession,
+pub struct WasmRotorSession {
+    inner: RotorSession,
 }
 
 #[wasm_bindgen]
-impl WasmEnigmaSession {
+impl WasmRotorSession {
     #[wasm_bindgen(constructor)]
-    pub fn new(room_slug: String, identity: String) -> Result<WasmEnigmaSession, JsValue> {
+    pub fn new(room_slug: String, identity: String) -> Result<WasmRotorSession, JsValue> {
         Ok(Self {
-            inner: EnigmaSession::new(room_slug, identity).map_err(js_err)?,
+            inner: RotorSession::new(room_slug, identity).map_err(js_err)?,
         })
     }
 
@@ -56,9 +56,9 @@ impl WasmEnigmaSession {
         self.inner.export_state().map_err(js_err)
     }
 
-    pub fn import_state(state_bytes: &[u8]) -> Result<WasmEnigmaSession, JsValue> {
+    pub fn import_state(state_bytes: &[u8]) -> Result<WasmRotorSession, JsValue> {
         Ok(Self {
-            inner: EnigmaSession::import_state(state_bytes).map_err(js_err)?,
+            inner: RotorSession::import_state(state_bytes).map_err(js_err)?,
         })
     }
 }

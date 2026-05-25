@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-    "enigma_core",
-    "enigma_py",
-    "enigma_wasm",
+    "rotor_core",
+    "rotor_py",
+    "rotor_wasm",
 ]
