@@ -28,4 +28,12 @@ urlpatterns = [
     path("contracts/<uuid:uuid>/", views.contract_detail, name="contract_detail"),
     path("contracts/<uuid:uuid>/edit/", views.contract_update, name="contract_update"),
     path("contracts/<uuid:uuid>/cytoscape.json", views.contract_cytoscape_json, name="contract_cytoscape_json"),
+    path("schedules/", views.schedule_list, name="schedule_list"),
+    path("schedules/<int:pk>/", views.schedule_detail, name="schedule_detail"),
+    path("conditions/", views.condition_list, name="condition_list"),
+    path("conditions/<int:pk>/", views.condition_detail, name="condition_detail"),
+    path("allocations/", views.allocation_list, name="allocation_list"),
+    path("allocations/<int:pk>/", views.allocation_detail, name="allocation_detail"),
+    path("events/", views.contract_event_list, name="contract_event_list"),
+    path("events/<int:pk>/", views.contract_event_detail, name="contract_event_detail"),
 ]

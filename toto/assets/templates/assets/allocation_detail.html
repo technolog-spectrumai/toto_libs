@@ -1,0 +1,72 @@
+{% extends "assets/base.html" %}
+{% load i18n %}
+
+{% block assets_title %}{% trans "Allocation" %} {{ allocation.get_kind_display }}{% endblock %}
+
+{% block assets_content %}
+<div class="space-y-6">
+  <a href="{% url 'assets:allocation_list' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+    <i class="fa-solid fa-arrow-left"></i>
+    {% trans "Back to allocations" %}
+  </a>
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5 shadow-sm space-y-4">
+    <h2 class="flex items-center gap-2 text-lg font-bold">
+      <i class="fa-solid fa-piggy-bank" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+      {{ allocation.get_kind_display }}
+    </h2>
+
+    <dl class="space-y-2 text-sm">
+      <div class="grid grid-cols-[180px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "UUID" %}</dt>
+        <dd class="font-mono break-all text-xs">{{ allocation.uuid }}</dd>
+      </div>
+      <div class="grid grid-cols-[180px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Status" %}</dt>
+        <dd>{{ allocation.get_status_display }}</dd>
+      </div>
+      <div class="grid grid-cols-[180px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Asset" %}</dt>
+        <dd>{{ allocation.asset.unit_name }} — {{ allocation.asset.name }}</dd>
+      </div>
+      <div class="grid grid-cols-[180px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Total amount" %}</dt>
+        <dd class="font-mono">{{ allocation.amount_base_units }}</dd>
+      </div>
+      <div class="grid grid-cols-[180px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Allocated" %}</dt>
+        <dd class="font-mono">{{ allocation.allocated_amount_base_units }}</dd>
+      </div>
+      <div class="grid grid-cols-[180px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Released" %}</dt>
+        <dd class="font-mono">{{ allocation.released_amount_base_units }}</dd>
+      </div>
+      <div class="grid grid-cols-[180px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Consumed" %}</dt>
+        <dd class="font-mono">{{ allocation.consumed_amount_base_units }}</dd>
+      </div>
+      <div class="grid grid-cols-[180px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Remaining" %}</dt>
+        <dd class="font-mono font-bold">{{ allocation.remaining_amount_base_units }}</dd>
+      </div>
+      <div class="grid grid-cols-[180px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Holder account" %}</dt>
+        <dd>{% if allocation.holder_account %}<a href="{% url 'assets:account_detail' allocation.holder_account.pk %}" class="underline hover:opacity-80">{{ allocation.holder_account.code }}</a>{% else %}—{% endif %}</dd>
+      </div>
+      <div class="grid grid-cols-[180px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Beneficiary account" %}</dt>
+        <dd>{% if allocation.beneficiary_account %}<a href="{% url 'assets:account_detail' allocation.beneficiary_account.pk %}" class="underline hover:opacity-80">{{ allocation.beneficiary_account.code }}</a>{% else %}—{% endif %}</dd>
+      </div>
+      <div class="grid grid-cols-[180px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Source" %}</dt>
+        <dd class="font-mono text-xs">{{ allocation.source_type }}/{{ allocation.source_id }}</dd>
+      </div>
+      <div class="grid grid-cols-[180px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Created" %}</dt>
+        <dd>{{ allocation.created_at|date:"Y-m-d H:i" }}</dd>
+      </div>
+    </dl>
+  </div>
+</div>
+{% endblock %}

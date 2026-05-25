@@ -642,3 +642,89 @@ def wallet_pin_verify(request):
         mark_session_verified(request.session)
         return JsonResponse({'ok': True})
     return JsonResponse({'ok': False, 'error': 'Incorrect PIN.'})
+
+
+# ---------------------------------------------------------------------------
+# Schedule
+# ---------------------------------------------------------------------------
+
+def schedule_list(request):
+    from .models import Schedule
+    schedules = Schedule.objects.select_related("agreement", "contract").order_by("next_run_at", "starts_at")
+    return assets_render(request, "assets/schedule_list.html", {"schedules": schedules})
+
+
+def schedule_detail(request, pk):
+    from .models import Schedule
+    schedule = get_object_or_404(
+        Schedule.objects.select_related("agreement", "contract"),
+        pk=pk,
+    )
+    return assets_render(request, "assets/schedule_detail.html", {"schedule": schedule})
+
+
+# ---------------------------------------------------------------------------
+# Condition
+# ---------------------------------------------------------------------------
+
+def condition_list(request):
+    from .models import Condition
+    conditions = Condition.objects.select_related("agreement", "contract").order_by("-created_at")
+    return assets_render(request, "assets/condition_list.html", {"conditions": conditions})
+
+
+def condition_detail(request, pk):
+    from .models import Condition
+    condition = get_object_or_404(
+        Condition.objects.select_related("agreement", "contract"),
+        pk=pk,
+    )
+    return assets_render(request, "assets/condition_detail.html", {"condition": condition})
+
+
+# ---------------------------------------------------------------------------
+# Allocation
+# ---------------------------------------------------------------------------
+
+def allocation_list(request):
+    from .models import Allocation
+    allocations = Allocation.objects.select_related(
+        "asset", "holder_account", "beneficiary_account", "agreement", "contract"
+    ).order_by("-created_at")
+    return assets_render(request, "assets/allocation_list.html", {"allocations": allocations})
+
+
+def allocation_detail(request, pk):
+    from .models import Allocation
+    allocation = get_object_or_404(
+        Allocation.objects.select_related(
+            "asset", "holder_account", "beneficiary_account", "agreement", "contract"
+        ),
+        pk=pk,
+    )
+    return assets_render(request, "assets/allocation_detail.html", {"allocation": allocation})
+
+
+# ---------------------------------------------------------------------------
+# ContractEvent
+# ---------------------------------------------------------------------------
+
+def contract_event_list(request):
+    from .models import ContractEvent
+    events = ContractEvent.objects.select_related(
+        "agreement", "contract", "obligation", "entitlement",
+        "schedule", "condition", "allocation",
+    ).order_by("-created_at")
+    return assets_render(request, "assets/contract_event_list.html", {"events": events})
+
+
+def contract_event_detail(request, pk):
+    from .models import ContractEvent
+    event = get_object_or_404(
+        ContractEvent.objects.select_related(
+            "agreement", "contract", "actor", "transaction",
+            "obligation", "entitlement", "schedule", "condition", "allocation",
+        ),
+        pk=pk,
+    )
+    return assets_render(request, "assets/contract_event_detail.html", {"event": event})

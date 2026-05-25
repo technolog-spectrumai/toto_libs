@@ -1,0 +1,64 @@
+{% extends "assets/base.html" %}
+{% load i18n %}
+
+{% block assets_title %}{% trans "Condition" %} {{ condition.name }}{% endblock %}
+
+{% block assets_content %}
+<div class="space-y-6">
+  <a href="{% url 'assets:condition_list' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+    <i class="fa-solid fa-arrow-left"></i>
+    {% trans "Back to conditions" %}
+  </a>
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5 shadow-sm space-y-4">
+    <h2 class="flex items-center gap-2 text-lg font-bold">
+      <i class="fa-solid fa-filter-circle-dollar" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+      {{ condition.name }}
+    </h2>
+
+    <dl class="space-y-2 text-sm">
+      <div class="grid grid-cols-[160px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "UUID" %}</dt>
+        <dd class="font-mono break-all text-xs">{{ condition.uuid }}</dd>
+      </div>
+      <div class="grid grid-cols-[160px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Kind" %}</dt>
+        <dd>{{ condition.get_kind_display }}</dd>
+      </div>
+      <div class="grid grid-cols-[160px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Status" %}</dt>
+        <dd>{{ condition.get_status_display }}</dd>
+      </div>
+      <div class="grid grid-cols-[160px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Description" %}</dt>
+        <dd>{{ condition.description|default:"—" }}</dd>
+      </div>
+      <div class="grid grid-cols-[160px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Expression" %}</dt>
+        <dd class="font-mono text-xs">{{ condition.expression }}</dd>
+      </div>
+      <div class="grid grid-cols-[160px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Satisfied at" %}</dt>
+        <dd>{{ condition.satisfied_at|date:"Y-m-d H:i"|default:"—" }}</dd>
+      </div>
+      <div class="grid grid-cols-[160px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Failed at" %}</dt>
+        <dd>{{ condition.failed_at|date:"Y-m-d H:i"|default:"—" }}</dd>
+      </div>
+      <div class="grid grid-cols-[160px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Source" %}</dt>
+        <dd class="font-mono text-xs">{{ condition.source_type }}/{{ condition.source_id }}</dd>
+      </div>
+      <div class="grid grid-cols-[160px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Agreement" %}</dt>
+        <dd>{% if condition.agreement %}<a href="{% url 'assets:agreement_detail' condition.agreement.pk %}" class="underline hover:opacity-80">{{ condition.agreement.uuid }}</a>{% else %}—{% endif %}</dd>
+      </div>
+      <div class="grid grid-cols-[160px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Created" %}</dt>
+        <dd>{{ condition.created_at|date:"Y-m-d H:i" }}</dd>
+      </div>
+    </dl>
+  </div>
+</div>
+{% endblock %}

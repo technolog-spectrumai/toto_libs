@@ -46,12 +46,18 @@ class Command(IngressCommand):
             action="store_true",
             help="Implies --deploy-contracts; overwrites existing Contract code and metadata.",
         )
+        parser.add_argument(
+            "--sync-lifecycle",
+            action="store_true",
+            help="Create/sync lifecycle primitives (Schedule, Condition, Allocation, Entitlement, ContractEvent) for each demo instrument.",
+        )
 
     def handle(self, *args, **options):
         self.force_contracts = options.get("force_contracts", False)
         self.deploy_contracts = (
             options.get("deploy_contracts", False) or self.force_contracts
         )
+        self.sync_lifecycle = options.get("sync_lifecycle", False)
         super().handle(*args, **options)
 
     def process(self):
@@ -62,6 +68,9 @@ class Command(IngressCommand):
 
         if self.deploy_contracts:
             self._deploy_contracts(instruments)
+
+        if self.sync_lifecycle:
+            self._sync_lifecycles(instruments)
 
         self.stdout.write(self.style.SUCCESS("✅  Instruments ingress complete."))
 
@@ -352,3 +361,42 @@ class Command(IngressCommand):
 
         suffix = " --force" if force else ""
         self.stdout.write(f"\nContracts{suffix}: {ok} deployed, {failed} failed.")
+
+    # ------------------------------------------------------------------ #
+    # Lifecycle sync                                                        #
+    # ------------------------------------------------------------------ #
+
+    def _sync_lifecycles(self, instruments: dict):
+        from toto.instruments.lifecycle import sync_lifecycle_for_instrument
+
+        self.stdout.write("\n🔄  Syncing lifecycle primitives…")
+        totals = {"entitlements": 0, "schedules": 0, "conditions": 0, "allocations": 0, "events": 0}
+        ok = failed = 0
+
+        for itype, instrument in instruments.items():
+            try:
+                instrument.refresh_from_db()
+                summary = sync_lifecycle_for_instrument(instrument)
+                for key in totals:
+                    totals[key] += summary.get(key, 0)
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        f"  ✓ {instrument.reference} [{itype}] → {summary}"
+                    )
+                )
+                ok += 1
+            except Exception as exc:
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"  ⚠ {itype} ({instrument.reference}): lifecycle sync failed — {exc}"
+                    )
+                )
+                failed += 1
+
+        self.stdout.write(
+            f"\nLifecycle: {ok} synced, {failed} failed. "
+            f"Primitives — entitlements: {totals['entitlements']}, "
+            f"schedules: {totals['schedules']}, "
+            f"conditions: {totals['conditions']}, "
+            f"allocations: {totals['allocations']}."
+        )

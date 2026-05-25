@@ -1,0 +1,74 @@
+{% extends "assets/base.html" %}
+{% load i18n %}
+
+{% block assets_title %}{% trans "Schedule" %} {{ schedule.name }}{% endblock %}
+
+{% block assets_content %}
+<div class="space-y-6">
+  <a href="{% url 'assets:schedule_list' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+    <i class="fa-solid fa-arrow-left"></i>
+    {% trans "Back to schedules" %}
+  </a>
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5 shadow-sm space-y-4">
+    <h2 class="flex items-center gap-2 text-lg font-bold">
+      <i class="fa-solid fa-calendar-check" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+      {{ schedule.name }}
+    </h2>
+
+    <dl class="space-y-2 text-sm">
+      {% with rows=schedule %}
+      <div class="grid grid-cols-[160px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "UUID" %}</dt>
+        <dd class="font-mono break-all text-xs">{{ schedule.uuid }}</dd>
+      </div>
+      <div class="grid grid-cols-[160px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Kind" %}</dt>
+        <dd>{{ schedule.get_kind_display }}</dd>
+      </div>
+      <div class="grid grid-cols-[160px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Status" %}</dt>
+        <dd>{{ schedule.get_status_display }}</dd>
+      </div>
+      <div class="grid grid-cols-[160px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Frequency" %}</dt>
+        <dd>{{ schedule.frequency|default:"—" }}</dd>
+      </div>
+      <div class="grid grid-cols-[160px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Starts at" %}</dt>
+        <dd>{{ schedule.starts_at|date:"Y-m-d H:i" }}</dd>
+      </div>
+      <div class="grid grid-cols-[160px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Ends at" %}</dt>
+        <dd>{{ schedule.ends_at|date:"Y-m-d H:i"|default:"—" }}</dd>
+      </div>
+      <div class="grid grid-cols-[160px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Next run" %}</dt>
+        <dd>{{ schedule.next_run_at|date:"Y-m-d H:i"|default:"—" }}</dd>
+      </div>
+      <div class="grid grid-cols-[160px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Last run" %}</dt>
+        <dd>{{ schedule.last_run_at|date:"Y-m-d H:i"|default:"—" }}</dd>
+      </div>
+      <div class="grid grid-cols-[160px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Source" %}</dt>
+        <dd class="font-mono text-xs">{{ schedule.source_type }}/{{ schedule.source_id }}</dd>
+      </div>
+      <div class="grid grid-cols-[160px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Agreement" %}</dt>
+        <dd>{% if schedule.agreement %}<a href="{% url 'assets:agreement_detail' schedule.agreement.pk %}" class="underline hover:opacity-80">{{ schedule.agreement.uuid }}</a>{% else %}—{% endif %}</dd>
+      </div>
+      <div class="grid grid-cols-[160px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Contract" %}</dt>
+        <dd>{% if schedule.contract %}<a href="{% url 'assets:contract_detail' schedule.contract.uuid %}" class="underline hover:opacity-80">{{ schedule.contract.name }}</a>{% else %}—{% endif %}</dd>
+      </div>
+      <div class="grid grid-cols-[160px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Created" %}</dt>
+        <dd>{{ schedule.created_at|date:"Y-m-d H:i" }}</dd>
+      </div>
+      {% endwith %}
+    </dl>
+  </div>
+</div>
+{% endblock %}

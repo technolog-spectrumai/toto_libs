@@ -1064,3 +1064,456 @@ class ContractViewTests(TestCase):
         resp = self.client.get(self._url("contract_detail", contract.uuid))
         self.assertEqual(resp.status_code, 200)
         self.assertIn(b"demo-subscription-001", resp.content)
+
+
+# ---------------------------------------------------------------------------
+# Obligation helpers
+# ---------------------------------------------------------------------------
+
+class ObligationHelperTests(TestCase):
+    def setUp(self):
+        from .services.assets import create_asset
+        self.reserve = make_account("reserve-obh", "reserve")
+        self.alice = make_account("alice-obh")
+        self.bob = make_account("bob-obh")
+        self.asset = create_asset(
+            name="ObHAsset", unit_name="OBH", total_supply=Decimal("1000"),
+            decimals=2, reserve_account=self.reserve, reference="create-obh",
+        )
+
+    def _make_obligation(self, debtor, creditor, amount=100):
+        from django.utils import timezone
+        from .models import Obligation
+        return Obligation.objects.create(
+            reference=f"obh-{debtor.code}-{creditor.code}",
+            debtor_account=debtor,
+            creditor_account=creditor,
+            asset=self.asset,
+            amount_base_units=amount,
+            due_at=timezone.now(),
+        )
+
+    def test_is_payable_for(self):
+        ob = self._make_obligation(self.alice, self.bob)
+        self.assertTrue(ob.is_payable_for(self.alice))
+        self.assertFalse(ob.is_payable_for(self.bob))
+
+    def test_is_receivable_for(self):
+        ob = self._make_obligation(self.alice, self.bob)
+        self.assertTrue(ob.is_receivable_for(self.bob))
+        self.assertFalse(ob.is_receivable_for(self.alice))
+
+    def test_payables_for_queryset(self):
+        from .models import Obligation
+        self._make_obligation(self.alice, self.bob)
+        self._make_obligation(self.bob, self.alice, amount=200)
+        self.assertEqual(Obligation.objects.payables_for(self.alice).count(), 1)
+
+    def test_receivables_for_queryset(self):
+        from .models import Obligation
+        self._make_obligation(self.alice, self.bob)
+        self.assertEqual(Obligation.objects.receivables_for(self.bob).count(), 1)
+        self.assertEqual(Obligation.objects.receivables_for(self.alice).count(), 0)
+
+    def test_pending_queryset(self):
+        from .models import Obligation, ObligationStatus
+        from django.utils import timezone
+        ob = self._make_obligation(self.alice, self.bob)
+        self.assertEqual(Obligation.objects.pending().count(), 1)
+        ob.status = ObligationStatus.FULFILLED
+        ob.fulfilled_at = timezone.now()
+        ob.save()
+        self.assertEqual(Obligation.objects.pending().count(), 0)
+
+    def test_overdue_queryset(self):
+        from .models import Obligation
+        from django.utils import timezone
+        import datetime
+        ob = self._make_obligation(self.alice, self.bob)
+        ob.due_at = timezone.now() - datetime.timedelta(days=1)
+        ob.save()
+        self.assertEqual(Obligation.objects.overdue().count(), 1)
+
+
+# ---------------------------------------------------------------------------
+# Schedule model
+# ---------------------------------------------------------------------------
+
+class ScheduleModelTests(TestCase):
+    def _make_schedule(self, **kwargs):
+        from .models import Schedule, ScheduleKind, ScheduleStatus
+        from django.utils import timezone
+        defaults = dict(
+            name="Test schedule",
+            kind=ScheduleKind.BILLING,
+            status=ScheduleStatus.ACTIVE,
+            starts_at=timezone.now(),
+            source_type="test",
+            source_id="1",
+        )
+        defaults.update(kwargs)
+        return Schedule.objects.create(**defaults)
+
+    def test_create_schedule(self):
+        from .models import Schedule
+        s = self._make_schedule()
+        self.assertIsNotNone(s.pk)
+        self.assertEqual(s.name, "Test schedule")
+
+    def test_ends_at_before_starts_at_fails_clean(self):
+        from .models import Schedule, ScheduleKind
+        from django.core.exceptions import ValidationError
+        from django.utils import timezone
+        import datetime
+        now = timezone.now()
+        s = Schedule(
+            name="bad",
+            kind=ScheduleKind.BILLING,
+            starts_at=now,
+            ends_at=now - datetime.timedelta(days=1),
+            source_type="test",
+            source_id="1",
+        )
+        with self.assertRaises(ValidationError):
+            s.clean()
+
+    def test_no_reference_fails_clean(self):
+        from .models import Schedule, ScheduleKind
+        from django.core.exceptions import ValidationError
+        from django.utils import timezone
+        s = Schedule(
+            name="no-ref",
+            kind=ScheduleKind.BILLING,
+            starts_at=timezone.now(),
+        )
+        with self.assertRaises(ValidationError):
+            s.clean()
+
+    def test_manual_metadata_bypasses_ref_check(self):
+        from .models import Schedule, ScheduleKind
+        from django.utils import timezone
+        s = Schedule(
+            name="manual",
+            kind=ScheduleKind.BILLING,
+            starts_at=timezone.now(),
+            metadata={"manual": True},
+        )
+        s.clean()  # should not raise
+
+    def test_active_queryset(self):
+        from .models import Schedule, ScheduleStatus
+        self._make_schedule(status=ScheduleStatus.ACTIVE)
+        self._make_schedule(name="paused", status=ScheduleStatus.PAUSED)
+        from .models import Schedule
+        self.assertEqual(Schedule.objects.active().count(), 1)
+
+    def test_due_queryset(self):
+        from .models import Schedule, ScheduleStatus
+        from django.utils import timezone
+        import datetime
+        now = timezone.now()
+        self._make_schedule(next_run_at=now - datetime.timedelta(hours=1))
+        self._make_schedule(name="future", next_run_at=now + datetime.timedelta(days=1))
+        from .models import Schedule
+        self.assertEqual(Schedule.objects.due(now=now).count(), 1)
+
+    def test_by_kind_queryset(self):
+        from .models import Schedule, ScheduleKind
+        self._make_schedule(kind=ScheduleKind.BILLING)
+        self._make_schedule(name="other", kind=ScheduleKind.RENEWAL)
+        from .models import Schedule
+        self.assertEqual(Schedule.objects.by_kind(ScheduleKind.BILLING).count(), 1)
+
+    def test_for_source_queryset(self):
+        from .models import Schedule
+        self._make_schedule(source_type="instruments.FI", source_id="42")
+        self._make_schedule(name="other", source_type="instruments.FI", source_id="99")
+        self.assertEqual(Schedule.objects.for_source("instruments.FI", "42").count(), 1)
+
+
+# ---------------------------------------------------------------------------
+# Condition model and service helpers
+# ---------------------------------------------------------------------------
+
+class ConditionModelTests(TestCase):
+    def _make_condition(self, **kwargs):
+        from .models import Condition, ConditionKind, ConditionStatus
+        defaults = dict(
+            name="Test condition",
+            kind=ConditionKind.TIME,
+            status=ConditionStatus.PENDING,
+            source_type="test",
+            source_id="1",
+        )
+        defaults.update(kwargs)
+        return Condition.objects.create(**defaults)
+
+    def test_create_condition(self):
+        c = self._make_condition()
+        self.assertIsNotNone(c.pk)
+
+    def test_no_reference_fails_clean(self):
+        from .models import Condition, ConditionKind
+        from django.core.exceptions import ValidationError
+        c = Condition(name="no-ref", kind=ConditionKind.TIME)
+        with self.assertRaises(ValidationError):
+            c.clean()
+
+    def test_mark_satisfied(self):
+        from .models import ConditionStatus
+        from .services.lifecycle import mark_condition_satisfied
+        c = self._make_condition()
+        mark_condition_satisfied(c)
+        c.refresh_from_db()
+        self.assertEqual(c.status, ConditionStatus.SATISFIED)
+        self.assertIsNotNone(c.satisfied_at)
+
+    def test_mark_failed(self):
+        from .models import ConditionStatus
+        from .services.lifecycle import mark_condition_failed
+        c = self._make_condition()
+        mark_condition_failed(c, reason="bad state")
+        c.refresh_from_db()
+        self.assertEqual(c.status, ConditionStatus.FAILED)
+        self.assertIsNotNone(c.failed_at)
+        self.assertEqual(c.metadata.get("failure_reason"), "bad state")
+
+    def test_waive_condition(self):
+        from .models import ConditionStatus
+        from .services.lifecycle import waive_condition
+        c = self._make_condition()
+        waive_condition(c, reason="approved manually")
+        c.refresh_from_db()
+        self.assertEqual(c.status, ConditionStatus.WAIVED)
+        self.assertEqual(c.metadata.get("waive_reason"), "approved manually")
+
+    def test_evaluate_always_true(self):
+        from .services.lifecycle import evaluate_condition
+        from .models import ConditionKind
+        c = self._make_condition(kind=ConditionKind.MANUAL, expression={"type": "always_true"})
+        self.assertTrue(evaluate_condition(c))
+
+    def test_evaluate_status_equals(self):
+        from .services.lifecycle import evaluate_condition
+        from .models import ConditionKind
+        c = self._make_condition(kind=ConditionKind.STATUS, expression={"type": "status_equals", "value": "active"})
+        self.assertTrue(evaluate_condition(c, context={"status": "active"}))
+        self.assertFalse(evaluate_condition(c, context={"status": "draft"}))
+
+    def test_evaluate_now_after_past(self):
+        from .services.lifecycle import evaluate_condition
+        from .models import ConditionKind
+        import datetime
+        from django.utils import timezone
+        past = (timezone.now() - datetime.timedelta(days=1)).isoformat()
+        c = self._make_condition(kind=ConditionKind.TIME, expression={"type": "now_after", "datetime": past})
+        self.assertTrue(evaluate_condition(c))
+
+    def test_evaluate_now_before_future(self):
+        from .services.lifecycle import evaluate_condition
+        from .models import ConditionKind
+        import datetime
+        from django.utils import timezone
+        future = (timezone.now() + datetime.timedelta(days=1)).isoformat()
+        c = self._make_condition(kind=ConditionKind.TIME, expression={"type": "now_before", "datetime": future})
+        self.assertTrue(evaluate_condition(c))
+
+    def test_evaluate_balance_at_least(self):
+        from .services.lifecycle import evaluate_condition
+        from .models import ConditionKind
+        c = self._make_condition(kind=ConditionKind.BALANCE, expression={"type": "balance_at_least", "amount": 100})
+        self.assertTrue(evaluate_condition(c, context={"balance": 200}))
+        self.assertFalse(evaluate_condition(c, context={"balance": 50}))
+
+    def test_evaluate_unsupported_strict_raises(self):
+        from .services.lifecycle import evaluate_condition
+        from .models import ConditionKind
+        from django.core.exceptions import ValidationError
+        c = self._make_condition(kind=ConditionKind.OTHER, expression={"type": "unknown_type"})
+        with self.assertRaises(ValidationError):
+            evaluate_condition(c, strict=True)
+
+    def test_evaluate_unsupported_returns_false(self):
+        from .services.lifecycle import evaluate_condition
+        from .models import ConditionKind
+        c = self._make_condition(kind=ConditionKind.OTHER, expression={"type": "unknown_type"})
+        self.assertFalse(evaluate_condition(c))
+
+
+# ---------------------------------------------------------------------------
+# Allocation model and service helpers
+# ---------------------------------------------------------------------------
+
+class AllocationModelTests(TestCase):
+    def setUp(self):
+        from .services.assets import create_asset
+        self.reserve = make_account("reserve-alloc", "reserve")
+        self.alice = make_account("alice-alloc")
+        self.bob = make_account("bob-alloc")
+        self.asset = create_asset(
+            name="AllocAsset", unit_name="ALC", total_supply=Decimal("1000"),
+            decimals=2, reserve_account=self.reserve, reference="create-alc",
+        )
+
+    def _make_allocation(self, **kwargs):
+        from .models import Allocation, AllocationKind, AllocationStatus
+        defaults = dict(
+            kind=AllocationKind.RESERVE,
+            status=AllocationStatus.ACTIVE,
+            asset=self.asset,
+            amount_base_units=1000,
+            allocated_amount_base_units=1000,
+            source_type="test",
+            source_id="1",
+        )
+        defaults.update(kwargs)
+        return Allocation.objects.create(**defaults)
+
+    def test_create_allocation(self):
+        a = self._make_allocation()
+        self.assertIsNotNone(a.pk)
+
+    def test_negative_amount_fails_clean(self):
+        from .models import Allocation, AllocationKind
+        from django.core.exceptions import ValidationError
+        a = Allocation(
+            kind=AllocationKind.RESERVE,
+            asset=self.asset,
+            amount_base_units=-1,
+            source_type="test",
+            source_id="1",
+        )
+        with self.assertRaises(ValidationError):
+            a.clean()
+
+    def test_zero_amount_fails_clean(self):
+        from .models import Allocation, AllocationKind
+        from django.core.exceptions import ValidationError
+        a = Allocation(
+            kind=AllocationKind.RESERVE,
+            asset=self.asset,
+            amount_base_units=0,
+            source_type="test",
+            source_id="1",
+        )
+        with self.assertRaises(ValidationError):
+            a.clean()
+
+    def test_released_plus_consumed_exceeds_amount_fails_clean(self):
+        from .models import Allocation, AllocationKind
+        from django.core.exceptions import ValidationError
+        a = Allocation(
+            kind=AllocationKind.RESERVE,
+            asset=self.asset,
+            amount_base_units=100,
+            released_amount_base_units=60,
+            consumed_amount_base_units=60,
+            source_type="test",
+            source_id="1",
+        )
+        with self.assertRaises(ValidationError):
+            a.clean()
+
+    def test_remaining_amount(self):
+        a = self._make_allocation(amount_base_units=1000, released_amount_base_units=200, consumed_amount_base_units=100)
+        self.assertEqual(a.remaining_amount_base_units, 700)
+
+    def test_is_active_now(self):
+        a = self._make_allocation()
+        self.assertTrue(a.is_active_now)
+
+    def test_activate_allocation(self):
+        from .models import Allocation, AllocationKind, AllocationStatus
+        from .services.lifecycle import activate_allocation
+        a = self._make_allocation(status=AllocationStatus.DRAFT, allocated_amount_base_units=0)
+        activate_allocation(a)
+        a.refresh_from_db()
+        self.assertEqual(a.status, AllocationStatus.ACTIVE)
+        self.assertEqual(a.allocated_amount_base_units, 1000)
+
+    def test_release_allocation(self):
+        from .models import AllocationStatus
+        from .services.lifecycle import release_allocation
+        a = self._make_allocation(amount_base_units=100)
+        release_allocation(a, 100)
+        a.refresh_from_db()
+        self.assertEqual(a.released_amount_base_units, 100)
+        self.assertEqual(a.status, AllocationStatus.RELEASED)
+
+    def test_consume_allocation(self):
+        from .models import AllocationStatus
+        from .services.lifecycle import consume_allocation
+        a = self._make_allocation(amount_base_units=100)
+        consume_allocation(a, 100)
+        a.refresh_from_db()
+        self.assertEqual(a.consumed_amount_base_units, 100)
+        self.assertEqual(a.status, AllocationStatus.CONSUMED)
+
+    def test_cancel_allocation(self):
+        from .models import AllocationStatus
+        from .services.lifecycle import cancel_allocation
+        a = self._make_allocation()
+        cancel_allocation(a)
+        a.refresh_from_db()
+        self.assertEqual(a.status, AllocationStatus.CANCELLED)
+
+
+# ---------------------------------------------------------------------------
+# ContractEvent creation
+# ---------------------------------------------------------------------------
+
+class ContractEventTests(TestCase):
+    def test_create_event_with_source(self):
+        from .models import ContractEventKind
+        from .services.lifecycle import create_event
+        ev = create_event(
+            kind=ContractEventKind.CREATED,
+            title="Test event",
+            source_type="test",
+            source_id="42",
+        )
+        self.assertIsNotNone(ev.pk)
+        self.assertEqual(ev.kind, ContractEventKind.CREATED)
+
+    def test_create_obligation_event(self):
+        from .models import Obligation, ContractEventKind
+        from .services.lifecycle import create_obligation_event
+        from .services.assets import create_asset
+        from django.utils import timezone
+        reserve = make_account("reserve-cev", "reserve")
+        alice = make_account("alice-cev")
+        bob = make_account("bob-cev")
+        asset = create_asset(
+            name="CevAsset", unit_name="CEV", total_supply=Decimal("100"),
+            decimals=0, reserve_account=reserve, reference="create-cev",
+        )
+        ob = Obligation.objects.create(
+            reference="cev-ob-1", debtor_account=alice, creditor_account=bob,
+            asset=asset, amount_base_units=10, due_at=timezone.now(),
+        )
+        ev = create_obligation_event(ob)
+        self.assertEqual(ev.kind, ContractEventKind.OBLIGATION_CREATED)
+        self.assertEqual(ev.obligation, ob)
+
+    def test_create_checkpoint(self):
+        from .models import ContractEventKind
+        from .services.lifecycle import create_checkpoint
+        ev = create_checkpoint("test.Model", 99, {"note": "hello"})
+        self.assertEqual(ev.source_type, "test.Model")
+        self.assertEqual(ev.source_id, "99")
+        self.assertTrue(ev.payload.get("checkpoint"))
+
+    def test_event_clean_requires_reference(self):
+        from .models import ContractEvent, ContractEventKind
+        from django.core.exceptions import ValidationError
+        ev = ContractEvent(kind=ContractEventKind.CREATED, title="no-ref")
+        with self.assertRaises(ValidationError):
+            ev.clean()
+
+    def test_event_clean_manual_payload_bypasses(self):
+        from .models import ContractEvent, ContractEventKind
+        ev = ContractEvent(kind=ContractEventKind.CREATED, title="ok", payload={"manual": True})
+        ev.clean()  # should not raise
+
+
+# View tests for lifecycle primitives will live in the dedicated claims app.

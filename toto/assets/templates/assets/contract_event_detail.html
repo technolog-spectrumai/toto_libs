@@ -1,0 +1,68 @@
+{% extends "assets/base.html" %}
+{% load i18n %}
+
+{% block assets_title %}{% trans "Event" %} {{ event.get_kind_display }}{% endblock %}
+
+{% block assets_content %}
+<div class="space-y-6">
+  <a href="{% url 'assets:contract_event_list' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+    <i class="fa-solid fa-arrow-left"></i>
+    {% trans "Back to events" %}
+  </a>
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5 shadow-sm space-y-4">
+    <h2 class="flex items-center gap-2 text-lg font-bold">
+      <i class="fa-solid fa-bell" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+      {{ event.title }}
+    </h2>
+
+    <dl class="space-y-2 text-sm">
+      <div class="grid grid-cols-[180px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "UUID" %}</dt>
+        <dd class="font-mono break-all text-xs">{{ event.uuid }}</dd>
+      </div>
+      <div class="grid grid-cols-[180px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Kind" %}</dt>
+        <dd>{{ event.get_kind_display }}</dd>
+      </div>
+      <div class="grid grid-cols-[180px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Description" %}</dt>
+        <dd>{{ event.description|default:"—" }}</dd>
+      </div>
+      <div class="grid grid-cols-[180px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Agreement" %}</dt>
+        <dd>{% if event.agreement %}<a href="{% url 'assets:agreement_detail' event.agreement.pk %}" class="underline hover:opacity-80">{{ event.agreement.uuid }}</a>{% else %}—{% endif %}</dd>
+      </div>
+      <div class="grid grid-cols-[180px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Contract" %}</dt>
+        <dd>{% if event.contract %}<a href="{% url 'assets:contract_detail' event.contract.uuid %}" class="underline hover:opacity-80">{{ event.contract.name }}</a>{% else %}—{% endif %}</dd>
+      </div>
+      <div class="grid grid-cols-[180px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Schedule" %}</dt>
+        <dd>{% if event.schedule %}<a href="{% url 'assets:schedule_detail' event.schedule.pk %}" class="underline hover:opacity-80">{{ event.schedule.name }}</a>{% else %}—{% endif %}</dd>
+      </div>
+      <div class="grid grid-cols-[180px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Condition" %}</dt>
+        <dd>{% if event.condition %}<a href="{% url 'assets:condition_detail' event.condition.pk %}" class="underline hover:opacity-80">{{ event.condition.name }}</a>{% else %}—{% endif %}</dd>
+      </div>
+      <div class="grid grid-cols-[180px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Allocation" %}</dt>
+        <dd>{% if event.allocation %}<a href="{% url 'assets:allocation_detail' event.allocation.pk %}" class="underline hover:opacity-80">{{ event.allocation.get_kind_display }}</a>{% else %}—{% endif %}</dd>
+      </div>
+      <div class="grid grid-cols-[180px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Source" %}</dt>
+        <dd class="font-mono text-xs">{{ event.source_type }}/{{ event.source_id }}</dd>
+      </div>
+      <div class="grid grid-cols-[180px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Payload" %}</dt>
+        <dd class="font-mono text-xs">{{ event.payload }}</dd>
+      </div>
+      <div class="grid grid-cols-[180px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <dt class="font-semibold opacity-60">{% trans "Created" %}</dt>
+        <dd>{{ event.created_at|date:"Y-m-d H:i" }}</dd>
+      </div>
+    </dl>
+  </div>
+</div>
+{% endblock %}
