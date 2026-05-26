@@ -2,7 +2,7 @@ from django.contrib import admin, messages
 from django.urls import path, reverse
 from django.shortcuts import render, redirect
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
-from .models import StorageAccount, VaultFile, Bucket, FileGateway, VaultDirectory
+from .models import StorageAccount, VaultFile, Bucket, BucketBilling, StorageTokenPrice, FileGateway, VaultDirectory
 from toto.core.batch import BatchAction
 from django.utils.html import format_html
 
@@ -23,6 +23,25 @@ class BucketAdmin(admin.ModelAdmin):
     list_filter = ('owner',)
     ordering = ('owner', 'name')
     autocomplete_fields = ('tariff',)
+
+
+class StorageTokenPriceInline(admin.TabularInline):
+    model = StorageTokenPrice
+    extra = 1
+    autocomplete_fields = ("currency", "revenue_account")
+    fields = ("currency", "price_per_token", "revenue_account")
+
+
+@admin.register(BucketBilling)
+class BucketBillingAdmin(admin.ModelAdmin):
+    list_display = ("bucket", "storage_quota_mb", "tariff", "currency_count", "created_at")
+    autocomplete_fields = ("bucket", "tariff")
+    readonly_fields = ("created_at", "updated_at")
+    inlines = [StorageTokenPriceInline]
+
+    def currency_count(self, obj):
+        return obj.token_prices.count()
+    currency_count.short_description = "Currencies"
 
 
 @admin.register(VaultFile)

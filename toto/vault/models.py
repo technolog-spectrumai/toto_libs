@@ -77,6 +77,88 @@ class Bucket(models.Model):
         return f"Bucket {self.name}"
 
 
+class BucketBilling(models.Model):
+    """
+    Billing profile for a Bucket. One per bucket; created by admins.
+    Defines allowed payment currencies and their exchange rates for
+    purchasing storage tokens, plus optional quota / tariff overrides.
+    """
+    bucket = models.OneToOneField(
+        Bucket,
+        on_delete=models.CASCADE,
+        related_name="billing",
+    )
+    storage_quota_mb = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Per-user storage quota in MB. Overrides the bucket default when set.",
+    )
+    tariff = models.ForeignKey(
+        "tariffs.Tariff",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="bucket_billings",
+        help_text="Billing tariff override. Falls back to bucket tariff when blank.",
+    )
+    allowed_currencies = models.ManyToManyField(
+        "assets.Asset",
+        through="StorageTokenPrice",
+        blank=True,
+        related_name="bucket_billings",
+        help_text="Assets accepted as payment for storage tokens.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Bucket Billing"
+        verbose_name_plural = "Bucket Billings"
+
+    def __str__(self):
+        return f"Billing for {self.bucket.name}"
+
+    def get_effective_quota(self):
+        return self.storage_quota_mb if self.storage_quota_mb is not None else self.bucket.storage_quota_mb
+
+    def get_effective_tariff(self):
+        return self.tariff or self.bucket.tariff
+
+
+class StorageTokenPrice(models.Model):
+    """
+    Exchange rate: how much `currency` asset the user pays per 1 STORAGE_TOKEN.
+    Also specifies which ledger account receives the payment.
+    """
+    bucket_billing = models.ForeignKey(
+        BucketBilling,
+        on_delete=models.CASCADE,
+        related_name="token_prices",
+    )
+    currency = models.ForeignKey(
+        "assets.Asset",
+        on_delete=models.CASCADE,
+        related_name="storage_token_prices",
+        help_text="Asset used to pay for storage tokens.",
+    )
+    price_per_token = models.DecimalField(
+        max_digits=30, decimal_places=10,
+        help_text="Cost of 1 STORAGE_TOKEN in this currency (e.g. 0.01 TUSD per token).",
+    )
+    revenue_account = models.ForeignKey(
+        "assets.LedgerAccount",
+        on_delete=models.PROTECT,
+        related_name="storage_token_revenues",
+        help_text="Ledger account that receives payments in this currency.",
+    )
+
+    class Meta:
+        verbose_name = "Storage Token Price"
+        verbose_name_plural = "Storage Token Prices"
+        unique_together = ("bucket_billing", "currency")
+
+    def __str__(self):
+        return f"1 STORAGE_TOKEN = {self.price_per_token} {self.currency.unit_name}"
+
+
 class VaultFile(models.Model):
     FILE_TYPES = [
         ('pdf', 'PDF'),

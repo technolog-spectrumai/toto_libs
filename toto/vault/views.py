@@ -4,7 +4,7 @@ from datetime import date, timedelta
 from django.db.models import Count, Q, Sum
 from django.db.models.functions import TruncDate
 from django.http import FileResponse, JsonResponse, HttpResponseForbidden
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views import View
 from django.views.generic import TemplateView, DetailView
@@ -721,25 +721,59 @@ class BuyStorageTokensView(LoginRequiredMixin, View):
             return item.charged_asset
         return None
 
+    def _get_bucket_billing(self):
+        from toto.vault.models import BucketBilling
+        return (
+            BucketBilling.objects
+            .prefetch_related("token_prices__currency", "token_prices__revenue_account")
+            .filter(token_prices__isnull=False)
+            .first()
+        )
+
     def get(self, request):
+        import json
         from toto.vault.billing import get_payer_account
         from toto.assets.queries import get_asset_balance_display
+        from toto.ui import PageProcessor
+
         asset = self._get_storage_asset()
         payer = get_payer_account(request.user)
-        balance = None
+        bucket_billing = self._get_bucket_billing()
+
+        token_balance = None
         if asset and payer:
-            balance = get_asset_balance_display(asset, payer)
+            token_balance = get_asset_balance_display(asset, payer)
+
+        prices = []
+        if bucket_billing and payer:
+            for tp in bucket_billing.token_prices.select_related("currency"):
+                payer_balance = get_asset_balance_display(tp.currency, payer)
+                prices.append({
+                    "pk": tp.pk,
+                    "currency_pk": tp.currency.pk,
+                    "unit_name": tp.currency.unit_name,
+                    "currency_name": tp.currency.name,
+                    "price_per_token": str(tp.price_per_token),
+                    "payer_balance": str(payer_balance),
+                    "decimals": tp.currency.decimals,
+                })
+
         context = {
             "asset": asset,
             "payer_account": payer,
-            "current_balance": balance,
+            "token_balance": token_balance,
+            "bucket_billing": bucket_billing,
+            "prices": prices,
+            "prices_json": json.dumps(prices),
         }
-        from toto.ui import PageProcessor
         return render(request, "vault/buy_tokens.html", PageProcessor().decorate(context, request))
 
     def post(self, request):
-        from decimal import Decimal
+        import uuid as _uuid
+        from decimal import Decimal, InvalidOperation
         from toto.vault.billing import get_payer_account
+        from toto.vault.purchase import purchase_storage_tokens
+        from toto.vault.models import StorageTokenPrice
         from toto.assets.services.assets import distribute_asset
         from django.core.exceptions import ValidationError
 
@@ -754,19 +788,40 @@ class BuyStorageTokensView(LoginRequiredMixin, View):
             return redirect("vault:storage_account")
 
         try:
-            amount = Decimal(request.POST.get("amount", "0"))
-            if amount <= 0:
-                raise ValueError("Amount must be positive.")
-            import uuid as _uuid
-            ref = f"buy-tokens-{request.user.pk}-{_uuid.uuid4().hex[:8]}"
-            distribute_asset(
-                asset=asset,
-                recipient_account=payer,
-                amount=amount,
-                reference=ref,
-                description=f"Purchase by {request.user.username}",
-            )
-            messages.success(request, f"You received {amount} {asset.unit_name}.")
-        except (ValidationError, ValueError, Exception) as exc:
+            token_amount = Decimal(request.POST.get("token_amount", "0"))
+            price_pk = request.POST.get("price_pk")
+
+            if price_pk:
+                tp = StorageTokenPrice.objects.select_related(
+                    "currency", "revenue_account"
+                ).get(pk=price_pk)
+                ref = f"buy-tokens-{request.user.pk}-{_uuid.uuid4().hex[:8]}"
+                result = purchase_storage_tokens(
+                    payer_account=payer,
+                    storage_asset=asset,
+                    payment_asset=tp.currency,
+                    token_amount=token_amount,
+                    price_per_token=tp.price_per_token,
+                    revenue_account=tp.revenue_account,
+                    reference=ref,
+                    username=request.user.username,
+                )
+                messages.success(
+                    request,
+                    f"Purchased {result['token_amount']} {asset.unit_name} "
+                    f"for {result['payment_amount']} {tp.currency.unit_name}."
+                )
+            else:
+                # No pricing configured — free distribution
+                ref = f"buy-tokens-{request.user.pk}-{_uuid.uuid4().hex[:8]}"
+                distribute_asset(
+                    asset=asset,
+                    recipient_account=payer,
+                    amount=token_amount,
+                    reference=ref,
+                    description=f"Storage token credit for {request.user.username}",
+                )
+                messages.success(request, f"You received {token_amount} {asset.unit_name}.")
+        except (ValidationError, InvalidOperation, Exception) as exc:
             messages.error(request, str(exc))
         return redirect("vault:buy_tokens")
