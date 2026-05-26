@@ -25,6 +25,14 @@
           {% if obligation.status == 'fulfilled' %}bg-green-100 text-green-800{% elif obligation.status == 'defaulted' %}bg-red-100 text-red-800{% elif obligation.status == 'overdue' %}bg-orange-100 text-orange-800{% else %}bg-yellow-100 text-yellow-800{% endif %}">
           {{ obligation.get_status_display }}
         </span>
+        {% if is_my_obligation and obligation.status == 'pending' %}
+        <a href="{% url 'assets:wallet' %}#obligations"
+           :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+           class="inline-flex items-center gap-1.5 rounded px-4 py-1.5 text-sm font-bold transition hover:opacity-80">
+          <i class="fa-solid fa-wallet"></i>
+          {% trans "Settle" %}
+        </a>
+        {% endif %}
       </div>
     </div>
 

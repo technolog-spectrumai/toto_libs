@@ -5,6 +5,7 @@
 
 {% block claims_content %}
 <div class="space-y-6">
+
   <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
     <h2 class="text-xl font-bold">{% trans "Obligations" %} <span class="text-sm font-normal opacity-50">({{ total }})</span></h2>
     <form method="get" class="flex flex-wrap gap-2">
@@ -43,27 +44,41 @@
           <th class="px-4 py-3 text-left">{% trans "Debtor" %}</th>
           <th class="px-4 py-3 text-left">{% trans "Creditor" %}</th>
           <th class="px-4 py-3 text-left">{% trans "Due" %}</th>
+          <th class="px-4 py-3"></th>
         </tr>
       </thead>
       <tbody>
         {% for ob in obligations %}
         <tr :class="darkMode ? 'border-accent-1 hover:bg-black/10' : 'border-accent-2 hover:bg-black/5'"
-            class="border-b transition cursor-pointer"
-            onclick="window.location='{% url 'claims:obligation_detail' ob.pk %}'">
-          <td class="px-4 py-3 font-mono text-xs font-semibold">{{ ob.reference|default:"—" }}</td>
-          <td class="px-4 py-3">
+            class="border-b transition">
+          <td class="px-4 py-3 font-mono text-xs font-semibold cursor-pointer"
+              onclick="window.location='{% url 'claims:obligation_detail' ob.pk %}'">{{ ob.reference|default:"—" }}</td>
+          <td class="px-4 py-3 cursor-pointer"
+              onclick="window.location='{% url 'claims:obligation_detail' ob.pk %}'">
             <span class="inline-block rounded px-2 py-0.5 text-xs font-semibold
               {% if ob.status == 'fulfilled' %}bg-green-100 text-green-800{% elif ob.status == 'defaulted' %}bg-red-100 text-red-800{% elif ob.status == 'overdue' %}bg-orange-100 text-orange-800{% else %}bg-yellow-100 text-yellow-800{% endif %}">
               {{ ob.get_status_display }}
             </span>
           </td>
-          <td class="px-4 py-3 font-mono text-xs">{{ ob.asset.unit_name }}</td>
-          <td class="px-4 py-3 text-right font-mono text-xs">{{ ob.amount_base_units }}</td>
-          <td class="px-4 py-3 font-mono text-xs opacity-70">{{ ob.debtor_account.code }}</td>
-          <td class="px-4 py-3 font-mono text-xs opacity-70">{{ ob.creditor_account.code }}</td>
-          <td class="px-4 py-3 text-xs
-            {% if ob.is_overdue %} text-red-500 font-semibold{% else %} opacity-60{% endif %}">
-            {{ ob.due_at|date:"Y-m-d H:i" }}
+          <td class="px-4 py-3 font-mono text-xs cursor-pointer"
+              onclick="window.location='{% url 'claims:obligation_detail' ob.pk %}'">{{ ob.asset.unit_name }}</td>
+          <td class="px-4 py-3 text-right font-mono text-xs cursor-pointer"
+              onclick="window.location='{% url 'claims:obligation_detail' ob.pk %}'">{{ ob.amount_display }}</td>
+          <td class="px-4 py-3 font-mono text-xs opacity-70 cursor-pointer"
+              onclick="window.location='{% url 'claims:obligation_detail' ob.pk %}'">{{ ob.debtor_account.code }}</td>
+          <td class="px-4 py-3 font-mono text-xs opacity-70 cursor-pointer"
+              onclick="window.location='{% url 'claims:obligation_detail' ob.pk %}'">{{ ob.creditor_account.code }}</td>
+          <td class="px-4 py-3 text-xs cursor-pointer {% if ob.is_overdue %}text-red-500 font-semibold{% else %}opacity-60{% endif %}"
+              onclick="window.location='{% url 'claims:obligation_detail' ob.pk %}'">{{ ob.due_at|date:"Y-m-d H:i" }}</td>
+          <td class="px-4 py-3 text-right">
+            {% if ob.debtor_account_id in my_account_pks and ob.status == 'pending' %}
+            <a href="{% url 'assets:wallet' %}#obligations"
+               :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+               class="inline-flex items-center gap-1.5 rounded px-3 py-1 text-xs font-bold transition hover:opacity-80 whitespace-nowrap">
+              <i class="fa-solid fa-wallet text-xs"></i>
+              {% trans "Settle" %}
+            </a>
+            {% endif %}
           </td>
         </tr>
         {% endfor %}

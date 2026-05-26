@@ -129,6 +129,14 @@ def obligation_list(request):
     if status:
         qs = qs.filter(status=status)
     now = timezone.now()
+
+    my_account_pks = set()
+    if request.user.is_authenticated:
+        from toto.assets.models import LedgerAccount
+        my_account_pks = set(
+            LedgerAccount.objects.filter(user=request.user, active=True).values_list("pk", flat=True)
+        )
+
     return _render(request, "claims/obligation_list.html", {
         "obligations": qs.order_by("due_at"),
         "q": q,
@@ -136,6 +144,7 @@ def obligation_list(request):
         "status_choices": ObligationStatus.choices,
         "total": qs.count(),
         "now": now,
+        "my_account_pks": my_account_pks,
     })
 
 
@@ -148,10 +157,17 @@ def obligation_detail(request, pk):
         pk=pk,
     )
     related_events = ContractEvent.objects.filter(obligation=obligation).order_by("-created_at")[:10]
+
+    is_my_obligation = (
+        request.user.is_authenticated
+        and obligation.debtor_account.user_id == request.user.id
+    )
+
     return _render(request, "claims/obligation_detail.html", {
         "obligation": obligation,
         "related_events": related_events,
         "now": timezone.now(),
+        "is_my_obligation": is_my_obligation,
     })
 
 
