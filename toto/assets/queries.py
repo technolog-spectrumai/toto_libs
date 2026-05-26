@@ -58,9 +58,14 @@ def verify_asset_ledger(asset: Asset) -> dict:
         LedgerEntry.objects.filter(asset=asset).aggregate(total=Sum("amount_base_units"))["total"]
         or 0
     )
+    diff = holdings_sum - asset.total_supply_base_units
     return {
         "total_supply_matches": holdings_sum == asset.total_supply_base_units,
         "entries_balanced": entries_sum == 0,
         "holdings_sum": holdings_sum,
+        "holdings_sum_display": from_base_units(holdings_sum, asset.decimals),
         "entries_sum": entries_sum,
+        "supply_diff": diff,
+        "supply_diff_display": from_base_units(abs(diff), asset.decimals),
+        "supply_diff_sign": "+" if diff > 0 else ("-" if diff < 0 else ""),
     }

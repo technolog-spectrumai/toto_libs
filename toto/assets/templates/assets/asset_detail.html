@@ -47,28 +47,87 @@
         {% endif %}
       </div>
       <div class="flex flex-col gap-2 text-sm">
-        <div
-          :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
-          class="rounded-lg px-4 py-3 text-center">
-          {% if ledger_status.total_supply_matches %}
-            <i class="fa-solid fa-circle-check" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
-            <span class="ml-1 font-semibold" :class="darkMode ? 'text-success-dark' : 'text-success-light'">{% trans "Supply verified" %}</span>
-          {% else %}
-            <i class="fa-solid fa-circle-exclamation" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
-            <span class="ml-1 font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{% trans "Supply mismatch" %}</span>
-          {% endif %}
+
+        <!-- Supply check badge with tooltip -->
+        <div x-data="{ open: false }" class="relative">
+          <button @mouseenter="open=true" @mouseleave="open=false" @focus="open=true" @blur="open=false"
+                  :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+                  class="w-full rounded-lg px-4 py-3 text-center cursor-default">
+            {% if ledger_status.total_supply_matches %}
+              <i class="fa-solid fa-circle-check" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+              <span class="ml-1 font-semibold" :class="darkMode ? 'text-success-dark' : 'text-success-light'">{% trans "Supply verified" %}</span>
+            {% else %}
+              <i class="fa-solid fa-circle-exclamation" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
+              <span class="ml-1 font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{% trans "Supply mismatch" %}</span>
+            {% endif %}
+          </button>
+          <div x-show="open" x-transition
+               :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+               class="absolute right-0 top-full z-20 mt-1 w-72 rounded-xl border p-4 shadow-xl text-xs space-y-2">
+            <p class="font-semibold opacity-80 uppercase tracking-wide mb-1">{% trans "Supply check" %}</p>
+            <div class="space-y-1">
+              <div class="flex justify-between gap-2">
+                <span class="opacity-60">{% trans "Declared total supply" %}</span>
+                <span class="font-mono font-semibold">{{ asset.total_supply_display }} {{ asset.unit_name }}</span>
+              </div>
+              <div class="flex justify-between gap-2">
+                <span class="opacity-60">{% trans "Sum of all holdings" %}</span>
+                <span class="font-mono font-semibold">{{ ledger_status.holdings_sum_display }} {{ asset.unit_name }}</span>
+              </div>
+            </div>
+            {% if not ledger_status.total_supply_matches %}
+            <div class="border-t pt-2" :class="darkMode ? 'border-accent-1/40' : 'border-accent-2/40'">
+              <div class="flex justify-between gap-2" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">
+                <span class="font-semibold">{% trans "Discrepancy" %}</span>
+                <span class="font-mono font-bold">{{ ledger_status.supply_diff_sign }}{{ ledger_status.supply_diff_display }} {{ asset.unit_name }}</span>
+              </div>
+              <p class="mt-2 opacity-70 leading-relaxed">
+                {% if ledger_status.supply_diff < 0 %}
+                  {% trans "Holdings are less than declared supply. The reserve account may be missing or its AssetHolding was never created. Use the Minting tab to create/credit a reserve." %}
+                {% else %}
+                  {% trans "Holdings exceed declared supply. This can happen if tokens were issued without updating total_supply_base_units." %}
+                {% endif %}
+              </p>
+            </div>
+            {% else %}
+            <p class="opacity-60">{% trans "All tokens are accounted for." %}</p>
+            {% endif %}
+          </div>
         </div>
-        <div
-          :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
-          class="rounded-lg px-4 py-3 text-center">
-          {% if ledger_status.entries_balanced %}
-            <i class="fa-solid fa-circle-check" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
-            <span class="ml-1 font-semibold" :class="darkMode ? 'text-success-dark' : 'text-success-light'">{% trans "Entries balanced" %}</span>
-          {% else %}
-            <i class="fa-solid fa-circle-exclamation" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
-            <span class="ml-1 font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{% trans "Entries unbalanced" %}</span>
-          {% endif %}
+
+        <!-- Entries balance badge with tooltip -->
+        <div x-data="{ open: false }" class="relative">
+          <button @mouseenter="open=true" @mouseleave="open=false" @focus="open=true" @blur="open=false"
+                  :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+                  class="w-full rounded-lg px-4 py-3 text-center cursor-default">
+            {% if ledger_status.entries_balanced %}
+              <i class="fa-solid fa-circle-check" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+              <span class="ml-1 font-semibold" :class="darkMode ? 'text-success-dark' : 'text-success-light'">{% trans "Entries balanced" %}</span>
+            {% else %}
+              <i class="fa-solid fa-circle-exclamation" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
+              <span class="ml-1 font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{% trans "Entries unbalanced" %}</span>
+            {% endif %}
+          </button>
+          <div x-show="open" x-transition
+               :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+               class="absolute right-0 top-full z-20 mt-1 w-72 rounded-xl border p-4 shadow-xl text-xs space-y-2">
+            <p class="font-semibold opacity-80 uppercase tracking-wide mb-1">{% trans "Entries check" %}</p>
+            <div class="flex justify-between gap-2">
+              <span class="opacity-60">{% trans "Sum of all ledger entries" %}</span>
+              <span class="font-mono font-semibold">{{ ledger_status.entries_sum }}</span>
+            </div>
+            {% if ledger_status.entries_balanced %}
+            <p class="opacity-60">{% trans "Double-entry bookkeeping is intact — every debit has a matching credit." %}</p>
+            {% else %}
+            <div class="border-t pt-2" :class="darkMode ? 'border-accent-1/40' : 'border-accent-2/40'">
+              <p class="leading-relaxed" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">
+                {% trans "Entries do not sum to zero. This indicates a data integrity problem — a transaction may have been recorded without its counterpart." %}
+              </p>
+            </div>
+            {% endif %}
+          </div>
         </div>
+
       </div>
     </div>
   </article>
