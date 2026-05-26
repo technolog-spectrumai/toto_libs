@@ -65,6 +65,61 @@ def _render(request, template: str, context: dict):
     return render(request, template, PageProcessor().decorate(context, request))
 
 
+def _robot_track_json(robot) -> dict:
+    qs = (
+        robot.telemetry
+        .filter(latitude__isnull=False, longitude__isnull=False)
+        .order_by("recorded_at")
+        .values("recorded_at", "latitude", "longitude", "battery_percent", "speed_mps")[:200]
+    )
+    return {
+        "track": [
+            {
+                "lat": float(t["latitude"]),
+                "lng": float(t["longitude"]),
+                "ts": t["recorded_at"].strftime("%Y-%m-%d %H:%M"),
+                "battery": t["battery_percent"],
+            }
+            for t in qs
+        ]
+    }
+
+
+def _mission_map_json(mission, assignments, waypoints) -> dict:
+    robots_data = []
+    for assignment in assignments:
+        robot = assignment.robot
+        tel = (
+            robot.telemetry
+            .filter(latitude__isnull=False, longitude__isnull=False)
+            .order_by("-recorded_at")
+            .first()
+        )
+        if tel:
+            robots_data.append({
+                "callsign": robot.callsign,
+                "name": robot.name,
+                "status": robot.status,
+                "battery": robot.battery_percent,
+                "lat": float(tel.latitude),
+                "lng": float(tel.longitude),
+                "url": reverse("robots:robot_detail", args=[robot.pk]),
+            })
+
+    waypoints_data = []
+    for wp in waypoints:
+        if wp.latitude and wp.longitude:
+            waypoints_data.append({
+                "order": wp.order,
+                "label": wp.label or f"Waypoint {wp.order}",
+                "instruction": wp.instruction,
+                "lat": float(wp.latitude),
+                "lng": float(wp.longitude),
+            })
+
+    return {"waypoints": waypoints_data, "robots": robots_data, "status": mission.status}
+
+
 def _person(request):
     if not request.user.is_authenticated:
         return None
@@ -145,10 +200,12 @@ def robot_detail(request, pk):
         Robot.objects.select_related("community", "model", "operator", "home_base", "current_location"),
         pk=pk,
     )
+    telemetry_qs = robot.telemetry.select_related("mission").order_by("-recorded_at")[:20]
     return _render(request, "robots/robot_detail.html", {
         "robot": robot,
         "assignments": robot.assignments.select_related("mission").order_by("-mission__created_at")[:20],
-        "telemetry": robot.telemetry.select_related("mission").order_by("-recorded_at")[:20],
+        "telemetry": telemetry_qs,
+        "track_data": _robot_track_json(robot),
         "events": robot.events.select_related("mission", "acknowledged_by").order_by("-occurred_at")[:30],
         "tickets": robot.maintenance_tickets.select_related("component", "assigned_to").order_by("-opened_at")[:20],
         "commands": robot.commands.select_related("mission", "issued_by").order_by("-issued_at")[:20],
@@ -325,10 +382,13 @@ def mission_detail(request, pk):
         ),
         pk=pk,
     )
+    assignments_qs = list(mission.assignments.select_related("robot", "robot__model").order_by("robot__callsign"))
+    waypoints_qs = list(mission.waypoints.select_related("address").order_by("order"))
     return _render(request, "robots/mission_detail.html", {
         "mission": mission,
-        "assignments": mission.assignments.select_related("robot", "robot__model").order_by("robot__callsign"),
-        "waypoints": mission.waypoints.select_related("address").order_by("order"),
+        "assignments": assignments_qs,
+        "waypoints": waypoints_qs,
+        "mission_map_data": _mission_map_json(mission, assignments_qs, waypoints_qs),
         "events": mission.events.select_related("robot").order_by("-occurred_at")[:30],
         "commands": mission.commands.select_related("robot", "issued_by").order_by("-issued_at")[:30],
         "waypoint_form": MissionWaypointForm(initial={"mission": mission}),

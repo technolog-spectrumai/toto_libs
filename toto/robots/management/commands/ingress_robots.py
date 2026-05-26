@@ -950,6 +950,23 @@ class Command(IngressCommand):
             ),
         ]
 
+        # Spread missions across the last 30 days for the "missions over time" chart
+        mission_age_days = {
+            "warehouse-inventory-q1":    28,
+            "coastal-sensor-sweep-w7":   24,
+            "trail-mapping-lake":        20,
+            "security-patrol-12":        16,
+            "titan-h1-fault-recovery":   12,
+            "infra-antenna-check":        9,
+            "north-border-recon-4":       7,
+            "pipeline-survey-s3":         5,
+            "perimeter-survey-alpha-7":   3,
+            "package-delivery-b7":        2,
+            "dock-inspection-plan":       1,
+            "emergency-flood-sensor":     0,
+            "south-vision-patrol":        0,
+        }
+
         missions = {}
         for spec in mission_specs:
             key = spec.pop("key")
@@ -961,6 +978,11 @@ class Command(IngressCommand):
                 self._ok(f"mission '{mission.title}'", False)
             else:
                 mission = RobotMission.objects.create(**spec)
+                days_ago = mission_age_days.get(key, 0)
+                if days_ago:
+                    RobotMission.objects.filter(pk=mission.pk).update(
+                        created_at=now - timedelta(days=days_ago)
+                    )
                 self._ok(f"mission '{mission.title}'", True)
 
                 for a_callsign, role, status in assignments_data:

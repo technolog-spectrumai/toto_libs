@@ -4,12 +4,111 @@
 {% block robots_title %}{{ robot.callsign }}{% endblock %}
 {% block robots_header %}{{ robot.callsign }} · {{ robot.name }}{% endblock %}
 
+{% block robots_head %}
+{{ track_data|json_script:"robot-track-data" }}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  .robot-track-popup h4 { margin: 0 0 .3rem; font-weight: 700; }
+  .robot-track-popup p  { margin: .12rem 0; font-size: .85em; }
+  /* shared light-mode defaults */
+  .leaflet-popup-content-wrapper { border-radius: 10px; }
+  /* dark-mode overrides — applied when map.getContainer() gets .dark-map */
+  .dark-map .leaflet-popup-content-wrapper {
+    background: #1e2030; color: #cdd6f4;
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.55);
+  }
+  .dark-map .leaflet-popup-tip { background: #1e2030; }
+  .dark-map .leaflet-popup-content a { color: #89b4fa; }
+  .dark-map .leaflet-control-zoom a,
+  .dark-map .leaflet-bar a {
+    background: #1e2030; color: #cdd6f4;
+    border-color: rgba(255,255,255,0.12);
+  }
+  .dark-map .leaflet-control-zoom a:hover,
+  .dark-map .leaflet-bar a:hover { background: #313244; }
+  .dark-map .leaflet-control-attribution {
+    background: rgba(30,32,48,0.85); color: rgba(205,214,244,0.6);
+  }
+  .dark-map .leaflet-control-attribution a { color: rgba(205,214,244,0.8); }
+</style>
+<script>
+  document.addEventListener('alpine:init', () => {
+    Alpine.data('robotHistoryMap', () => ({
+      trackData: JSON.parse(document.getElementById('robot-track-data').textContent),
+      map: null,
+      hasTrack: false,
+      expanded: true,
+
+      toggleSize() {
+        this.expanded = !this.expanded;
+        this.$nextTick(() => this.map && this.map.invalidateSize());
+      },
+
+      isDark() {
+        const stored = localStorage.getItem('darkMode');
+        if (stored !== null) return stored === 'true';
+        return window.matchMedia('(prefers-color-scheme: dark)').matches;
+      },
+
+      init() {
+        this.hasTrack = this.trackData.track && this.trackData.track.length > 0;
+        if (!this.hasTrack) return;
+        this.$nextTick(() => this.initMap());
+      },
+
+      initMap() {
+        const track = this.trackData.track;
+        const dark = this.isDark();
+        const tileUrl = dark
+          ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+          : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+
+        this.map = L.map('robot-history-map', { scrollWheelZoom: false }).setView([52.0, 19.5], 6);
+        if (dark) this.map.getContainer().classList.add('dark-map');
+        L.tileLayer(tileUrl, {
+          maxZoom: 19,
+          attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; OpenStreetMap contributors',
+        }).addTo(this.map);
+
+        const latLngs = track.map(p => [p.lat, p.lng]);
+
+        // Track line — faded for older points
+        L.polyline(latLngs, { color: '#6366f1', weight: 2, opacity: 0.55 }).addTo(this.map);
+
+        // Start marker
+        const start = latLngs[0];
+        L.circleMarker(start, {
+          radius: 6, color: '#10b981', fillColor: '#10b981', fillOpacity: 1, weight: 2,
+        }).bindTooltip('Start').addTo(this.map);
+
+        // Most recent position
+        const last = track[track.length - 1];
+        const lastLatLng = [last.lat, last.lng];
+        const latestMarker = L.circleMarker(lastLatLng, {
+          radius: 9, color: '#6366f1', fillColor: '#6366f1', fillOpacity: 0.85, weight: 2,
+        });
+        latestMarker.bindPopup(`<div class="robot-track-popup">
+          <h4>Latest position</h4>
+          <p><strong>Time:</strong> ${last.ts}</p>
+          ${last.battery != null ? `<p><strong>Battery:</strong> ${last.battery}%</p>` : ''}
+          <p style="opacity:.55">${last.lat.toFixed(5)}, ${last.lng.toFixed(5)}</p>
+        </div>`);
+        latestMarker.addTo(this.map);
+
+        this.map.fitBounds(latLngs, { padding: [30, 30] });
+      },
+    }));
+  });
+</script>
+{% endblock %}
+
 {% block robots_content %}
-<div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
+<div class="space-y-5">
 
-  <section class="space-y-5">
-
-    <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border p-6 shadow-sm">
+{# ── 1. Header card ── #}
+<article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border p-6 shadow-sm">
       <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
           <a href="{% url 'robots:robot_list' %}" class="inline-flex items-center gap-2 text-sm underline-offset-4 hover:underline opacity-70">
@@ -82,6 +181,33 @@
         </div>
       {% endif %}
     </article>
+
+{# ── 2. Movement history map — full-width square ── #}
+<div x-data="robotHistoryMap()" x-init="init()"
+     :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     class="rounded-lg border shadow-sm overflow-hidden">
+  <div class="flex items-center justify-between gap-2 px-5 py-4">
+    <h3 class="flex items-center gap-2 text-lg font-bold">
+      <i class="fa-solid fa-route opacity-60"></i> {% trans "Movement history" %}
+    </h3>
+    <button x-show="hasTrack" @click="toggleSize()"
+            :class="darkMode ? 'border-accent-1 hover:bg-bubble-bg-dark' : 'border-accent-2 hover:bg-bubble-bg-light'"
+            class="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition">
+      <i :class="expanded ? 'fa-solid fa-compress' : 'fa-solid fa-expand'"></i>
+      <span x-text="expanded ? '{% trans "Shrink" %}' : '{% trans "Expand" %}'"></span>
+    </button>
+  </div>
+  <div x-show="!hasTrack" class="px-5 pb-8 text-center text-sm opacity-50">
+    {% trans "No telemetry track available." %}
+  </div>
+  <div x-show="hasTrack" :class="expanded ? 'aspect-square' : 'aspect-[2/1]'" class="w-full">
+    <div id="robot-history-map" style="width:100%;height:100%"></div>
+  </div>
+</div>
+
+{# ── 3. Rest of content in 2-col grid ── #}
+<div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
+  <section class="space-y-5">
 
     <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border p-5 shadow-sm">
       <h3 class="flex items-center gap-2 text-lg font-bold">
@@ -247,5 +373,7 @@
     </div>
 
   </aside>
+</div>
+
 </div>
 {% endblock %}

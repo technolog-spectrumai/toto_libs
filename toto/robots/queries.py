@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from collections import defaultdict
 
 from django.db.models import Avg, Count, Q
@@ -86,7 +85,7 @@ def overview_stats() -> dict:
     }
 
 
-def robot_status_chart_data() -> str:
+def robot_status_chart_data() -> dict:
     rows = (
         Robot.objects
         .values("status")
@@ -96,7 +95,7 @@ def robot_status_chart_data() -> str:
     labels = [r["status"] for r in rows]
     counts = [r["count"] for r in rows]
     colors = [STATUS_COLORS.get(s, PALETTE[i % len(PALETTE)]) for i, s in enumerate(labels)]
-    return json.dumps({
+    return {
         "labels": labels,
         "datasets": [{
             "data": counts,
@@ -104,10 +103,10 @@ def robot_status_chart_data() -> str:
             "borderColor": colors,
             "borderWidth": 1,
         }],
-    })
+    }
 
 
-def mission_status_chart_data() -> str:
+def mission_status_chart_data() -> dict:
     rows = (
         RobotMission.objects
         .values("status")
@@ -117,7 +116,7 @@ def mission_status_chart_data() -> str:
     labels = [r["status"] for r in rows]
     counts = [r["count"] for r in rows]
     colors = [MISSION_STATUS_COLORS.get(s, PALETTE[i % len(PALETTE)]) for i, s in enumerate(labels)]
-    return json.dumps({
+    return {
         "labels": labels,
         "datasets": [{
             "data": counts,
@@ -125,10 +124,10 @@ def mission_status_chart_data() -> str:
             "borderColor": colors,
             "borderWidth": 1,
         }],
-    })
+    }
 
 
-def missions_over_time_chart_data(days: int = 30) -> str:
+def missions_over_time_chart_data(days: int = 30) -> dict:
     since = timezone.now() - timedelta(days=days)
     rows = (
         RobotMission.objects
@@ -140,7 +139,7 @@ def missions_over_time_chart_data(days: int = 30) -> str:
     )
     labels = [str(r["day"]) for r in rows]
     counts = [r["count"] for r in rows]
-    return json.dumps({
+    return {
         "labels": labels,
         "datasets": [{
             "label": "Missions created",
@@ -151,10 +150,10 @@ def missions_over_time_chart_data(days: int = 30) -> str:
             "fill": True,
             "pointRadius": 4,
         }],
-    })
+    }
 
 
-def battery_distribution_chart_data() -> str:
+def battery_distribution_chart_data() -> dict:
     buckets = [
         ("0–20%", Q(battery_percent__lte=20)),
         ("21–40%", Q(battery_percent__gt=20, battery_percent__lte=40)),
@@ -165,7 +164,7 @@ def battery_distribution_chart_data() -> str:
     labels = [b[0] for b in buckets]
     counts = [Robot.objects.filter(is_active=True).filter(b[1]).count() for b in buckets]
     colors = ["#ef4444", "#f97316", "#f59e0b", "#3b82f6", "#10b981"]
-    return json.dumps({
+    return {
         "labels": labels,
         "datasets": [{
             "data": counts,
@@ -173,10 +172,10 @@ def battery_distribution_chart_data() -> str:
             "borderColor": colors,
             "borderWidth": 1,
         }],
-    })
+    }
 
 
-def events_by_severity_chart_data(days: int = 7) -> str:
+def events_by_severity_chart_data(days: int = 7) -> dict:
     since = timezone.now() - timedelta(days=days)
     rows = (
         RobotEvent.objects
@@ -209,4 +208,4 @@ def events_by_severity_chart_data(days: int = 7) -> str:
             "borderWidth": 1,
         })
 
-    return json.dumps({"labels": all_days, "datasets": datasets})
+    return {"labels": all_days, "datasets": datasets}

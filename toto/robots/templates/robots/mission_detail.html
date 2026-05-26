@@ -4,79 +4,236 @@
 {% block robots_title %}{{ mission.title }}{% endblock %}
 {% block robots_header %}{{ mission.title }}{% endblock %}
 
+{% block robots_head %}
+{{ mission_map_data|json_script:"mission-map-data" }}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  .mission-map-popup h4 { margin: 0 0 .3rem; font-weight: 700; }
+  .mission-map-popup p { margin: .15rem 0; font-size: .85em; }
+  .leaflet-popup-content-wrapper { border-radius: 10px; }
+  .dark-map .leaflet-popup-content-wrapper {
+    background: #1e2030; color: #cdd6f4;
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.55);
+  }
+  .dark-map .leaflet-popup-tip { background: #1e2030; }
+  .dark-map .leaflet-popup-content a { color: #89b4fa; }
+  .dark-map .leaflet-control-zoom a,
+  .dark-map .leaflet-bar a {
+    background: #1e2030; color: #cdd6f4;
+    border-color: rgba(255,255,255,0.12);
+  }
+  .dark-map .leaflet-control-zoom a:hover,
+  .dark-map .leaflet-bar a:hover { background: #313244; }
+  .dark-map .leaflet-control-attribution {
+    background: rgba(30,32,48,0.85); color: rgba(205,214,244,0.6);
+  }
+  .dark-map .leaflet-control-attribution a { color: rgba(205,214,244,0.8); }
+</style>
+<script>
+  document.addEventListener('alpine:init', () => {
+    Alpine.data('missionMap', () => ({
+      mapData: JSON.parse(document.getElementById('mission-map-data').textContent),
+      map: null,
+      hasPoints: false,
+      expanded: true,
+
+      toggleSize() {
+        this.expanded = !this.expanded;
+        this.$nextTick(() => this.map && this.map.invalidateSize());
+      },
+
+      isDark() {
+        const stored = localStorage.getItem('darkMode');
+        if (stored !== null) return stored === 'true';
+        return window.matchMedia('(prefers-color-scheme: dark)').matches;
+      },
+
+      init() {
+        const d = this.mapData;
+        this.hasPoints = (d.waypoints && d.waypoints.length > 0) || (d.robots && d.robots.length > 0);
+        if (!this.hasPoints) return;
+        this.$nextTick(() => this.initMap());
+      },
+
+      initMap() {
+        const d = this.mapData;
+        const dark = this.isDark();
+        const tileUrl = dark
+          ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+          : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+
+        this.map = L.map('mission-map', { scrollWheelZoom: false }).setView([52.0, 19.5], 6);
+        if (dark) this.map.getContainer().classList.add('dark-map');
+        L.tileLayer(tileUrl, {
+          maxZoom: 19,
+          attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; OpenStreetMap contributors',
+        }).addTo(this.map);
+
+        const bounds = [];
+        const statusColor = {
+          running: '#6366f1', active: '#6366f1', dispatched: '#8b5cf6',
+          completed: '#10b981', failed: '#ef4444', faulted: '#ef4444',
+          planned: '#3b82f6', draft: '#6b7280', cancelled: '#9ca3af',
+        };
+        const missionColor = statusColor[d.status] || '#6366f1';
+
+        // Draw waypoints + connecting line
+        const waypointLatLngs = d.waypoints.map(wp => [wp.lat, wp.lng]);
+        if (waypointLatLngs.length > 1) {
+          L.polyline(waypointLatLngs, {
+            color: missionColor, weight: 3, opacity: 0.75, dashArray: '10 6',
+          }).addTo(this.map);
+        }
+        d.waypoints.forEach(wp => {
+          const m = L.circleMarker([wp.lat, wp.lng], {
+            radius: 10, color: missionColor, fillColor: missionColor,
+            fillOpacity: 0.22, weight: 2,
+          });
+          m.bindPopup(`<div class="mission-map-popup">
+            <h4>#${wp.order} · ${wp.label}</h4>
+            ${wp.instruction ? `<p>${wp.instruction}</p>` : ''}
+            <p style="opacity:.55">${wp.lat.toFixed(5)}, ${wp.lng.toFixed(5)}</p>
+          </div>`);
+          m.addTo(this.map);
+          bounds.push([wp.lat, wp.lng]);
+
+          // Waypoint number label
+          L.marker([wp.lat, wp.lng], {
+            icon: L.divIcon({
+              html: `<div style="width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;color:${missionColor}">${wp.order}</div>`,
+              className: '',
+              iconSize: [20, 20],
+              iconAnchor: [10, 10],
+            }),
+            interactive: false,
+          }).addTo(this.map);
+        });
+
+        // Draw robot positions
+        const robotColors = { active: '#16a34a', returning: '#16a34a', faulted: '#dc2626', offline: '#6b7280', charging: '#d97706' };
+        d.robots.forEach(rb => {
+          const rc = robotColors[rb.status] || '#2563eb';
+          const m = L.circleMarker([rb.lat, rb.lng], {
+            radius: 8, color: rc, fillColor: rc, fillOpacity: 0.82, weight: 2,
+          });
+          m.bindPopup(`<div class="mission-map-popup">
+            <h4>${rb.callsign}</h4>
+            <p><strong>Status:</strong> ${rb.status}</p>
+            <p><strong>Battery:</strong> ${rb.battery}%</p>
+            <p><a href="${rb.url}">Open robot →</a></p>
+          </div>`);
+          m.addTo(this.map);
+          bounds.push([rb.lat, rb.lng]);
+        });
+
+        if (bounds.length) this.map.fitBounds(bounds, { padding: [40, 40] });
+      },
+    }));
+  });
+</script>
+{% endblock %}
+
 {% block robots_content %}
+<div class="space-y-5">
+
+{# ── 1. Header card ── #}
+<article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border p-6 shadow-sm">
+  <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+    <div>
+      <a href="{% url 'robots:mission_list' %}" class="inline-flex items-center gap-2 text-sm underline-offset-4 hover:underline opacity-70">
+        <i class="fa-solid fa-arrow-left"></i> {% trans "Missions" %}
+      </a>
+      <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="mt-3 text-3xl font-bold">{{ mission.title }}</h2>
+      <p class="mt-1 text-sm opacity-70">{{ mission.community }}{% if mission.fleet %} · {{ mission.fleet }}{% endif %}</p>
+    </div>
+    <div class="flex flex-wrap gap-2">
+      <a href="{% url 'robots:mission_update' mission.pk %}"
+         :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+         class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
+        <i class="fa-solid fa-pen"></i> {% trans "Edit" %}
+      </a>
+      <form method="post" action="{% url 'robots:mission_dispatch' mission.pk %}">
+        {% csrf_token %}
+        <button type="submit"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-rocket"></i> {% trans "Dispatch" %}
+        </button>
+      </form>
+      <form method="post" action="{% url 'robots:mission_cancel' mission.pk %}">
+        {% csrf_token %}
+        <button type="submit"
+                :class="darkMode ? 'border-warn-dark text-warn-dark' : 'border-warn-light text-warn-light'"
+                class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
+          <i class="fa-solid fa-ban"></i> {% trans "Cancel" %}
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div class="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <div class="rounded-lg border border-current/10 p-4">
+      <div class="text-xs opacity-60">{% trans "Status" %}</div>
+      <div class="mt-1 font-bold">{{ mission.get_status_display }}</div>
+    </div>
+    <div class="rounded-lg border border-current/10 p-4">
+      <div class="text-xs opacity-60">{% trans "Priority" %}</div>
+      <div class="mt-1 font-bold">{{ mission.priority }}</div>
+    </div>
+    <div class="rounded-lg border border-current/10 p-4">
+      <div class="text-xs opacity-60">{% trans "Origin" %}</div>
+      <div class="mt-1 font-bold truncate">{{ mission.origin|default:"—" }}</div>
+    </div>
+    <div class="rounded-lg border border-current/10 p-4">
+      <div class="text-xs opacity-60">{% trans "Destination" %}</div>
+      <div class="mt-1 font-bold truncate">{{ mission.destination|default:"—" }}</div>
+    </div>
+  </div>
+
+  {% if mission.scheduled_start_at or mission.scheduled_end_at %}
+    <div class="mt-4 flex flex-wrap gap-4 border-t border-current/10 pt-4 text-sm opacity-75">
+      {% if mission.scheduled_start_at %}
+        <span><i class="fa-regular fa-clock mr-1"></i>{% trans "Start:" %} {{ mission.scheduled_start_at|date:"M j, Y H:i" }}</span>
+      {% endif %}
+      {% if mission.scheduled_end_at %}
+        <span><i class="fa-regular fa-clock mr-1"></i>{% trans "End:" %} {{ mission.scheduled_end_at|date:"M j, Y H:i" }}</span>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  {% if mission.description %}
+    <p class="mt-4 border-t border-current/10 pt-4 text-sm leading-7 opacity-85">{{ mission.description }}</p>
+  {% endif %}
+</article>
+
+{# ── 2. Mission map — full-width square ── #}
+<div x-data="missionMap()" x-init="init()"
+     :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     class="rounded-lg border shadow-sm overflow-hidden">
+  <div class="flex items-center justify-between gap-2 px-5 py-4">
+    <h3 class="flex items-center gap-2 text-lg font-bold">
+      <i class="fa-solid fa-map-location-dot opacity-60"></i> {% trans "Mission map" %}
+    </h3>
+    <button x-show="hasPoints" @click="toggleSize()"
+            :class="darkMode ? 'border-accent-1 hover:bg-bubble-bg-dark' : 'border-accent-2 hover:bg-bubble-bg-light'"
+            class="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition">
+      <i :class="expanded ? 'fa-solid fa-compress' : 'fa-solid fa-expand'"></i>
+      <span x-text="expanded ? '{% trans "Shrink" %}' : '{% trans "Expand" %}'"></span>
+    </button>
+  </div>
+  <div x-show="!hasPoints" class="px-5 pb-8 text-center text-sm opacity-50">
+    {% trans "No waypoints or robot positions to display." %}
+  </div>
+  <div x-show="hasPoints" :class="expanded ? 'aspect-square' : 'aspect-[2/1]'" class="w-full">
+    <div id="mission-map" style="width:100%;height:100%"></div>
+  </div>
+</div>
+
+{# ── 3. Rest in 2-col grid ── #}
 <div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
-
   <section class="space-y-5">
-
-    <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border p-6 shadow-sm">
-      <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-        <div>
-          <a href="{% url 'robots:mission_list' %}" class="inline-flex items-center gap-2 text-sm underline-offset-4 hover:underline opacity-70">
-            <i class="fa-solid fa-arrow-left"></i> {% trans "Missions" %}
-          </a>
-          <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="mt-3 text-3xl font-bold">{{ mission.title }}</h2>
-          <p class="mt-1 text-sm opacity-70">{{ mission.community }}{% if mission.fleet %} · {{ mission.fleet }}{% endif %}</p>
-        </div>
-        <div class="flex flex-wrap gap-2">
-          <a href="{% url 'robots:mission_update' mission.pk %}"
-             :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
-             class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
-            <i class="fa-solid fa-pen"></i> {% trans "Edit" %}
-          </a>
-          <form method="post" action="{% url 'robots:mission_dispatch' mission.pk %}">
-            {% csrf_token %}
-            <button type="submit"
-                    :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-                    class="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-              <i class="fa-solid fa-rocket"></i> {% trans "Dispatch" %}
-            </button>
-          </form>
-          <form method="post" action="{% url 'robots:mission_cancel' mission.pk %}">
-            {% csrf_token %}
-            <button type="submit"
-                    :class="darkMode ? 'border-warn-dark text-warn-dark' : 'border-warn-light text-warn-light'"
-                    class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
-              <i class="fa-solid fa-ban"></i> {% trans "Cancel" %}
-            </button>
-          </form>
-        </div>
-      </div>
-
-      <div class="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div class="rounded-lg border border-current/10 p-4">
-          <div class="text-xs opacity-60">{% trans "Status" %}</div>
-          <div class="mt-1 font-bold">{{ mission.get_status_display }}</div>
-        </div>
-        <div class="rounded-lg border border-current/10 p-4">
-          <div class="text-xs opacity-60">{% trans "Priority" %}</div>
-          <div class="mt-1 font-bold">{{ mission.priority }}</div>
-        </div>
-        <div class="rounded-lg border border-current/10 p-4">
-          <div class="text-xs opacity-60">{% trans "Origin" %}</div>
-          <div class="mt-1 font-bold truncate">{{ mission.origin|default:"—" }}</div>
-        </div>
-        <div class="rounded-lg border border-current/10 p-4">
-          <div class="text-xs opacity-60">{% trans "Destination" %}</div>
-          <div class="mt-1 font-bold truncate">{{ mission.destination|default:"—" }}</div>
-        </div>
-      </div>
-
-      {% if mission.scheduled_start_at or mission.scheduled_end_at %}
-        <div class="mt-4 flex flex-wrap gap-4 border-t border-current/10 pt-4 text-sm opacity-75">
-          {% if mission.scheduled_start_at %}
-            <span><i class="fa-regular fa-clock mr-1"></i>{% trans "Start:" %} {{ mission.scheduled_start_at|date:"M j, Y H:i" }}</span>
-          {% endif %}
-          {% if mission.scheduled_end_at %}
-            <span><i class="fa-regular fa-clock mr-1"></i>{% trans "End:" %} {{ mission.scheduled_end_at|date:"M j, Y H:i" }}</span>
-          {% endif %}
-        </div>
-      {% endif %}
-
-      {% if mission.description %}
-        <p class="mt-4 border-t border-current/10 pt-4 text-sm leading-7 opacity-85">{{ mission.description }}</p>
-      {% endif %}
-    </article>
 
     <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border p-5 shadow-sm">
       <h3 class="flex items-center gap-2 text-lg font-bold">
@@ -218,5 +375,7 @@
     {% endif %}
 
   </aside>
+</div>
+
 </div>
 {% endblock %}
