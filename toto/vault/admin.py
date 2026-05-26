@@ -5,7 +5,7 @@ from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.utils import timezone
 from django.utils.html import format_html
 
-from .models import VaultFile, Bucket, FileGateway, VaultDirectory, VaultInvoice
+from .models import VaultFile, Bucket, FileGateway, VaultDirectory
 from toto.core.batch import BatchAction
 
 
@@ -188,46 +188,3 @@ class VaultDirectoryAdmin(admin.ModelAdmin):
         return obj.files.count()
     file_count.short_description = "Files"
 
-
-# ============================================================
-# Invoice admin
-# ============================================================
-
-@admin.register(VaultInvoice)
-class VaultInvoiceAdmin(admin.ModelAdmin):
-    list_display = (
-        "pk", "issued_to", "title", "amount", "currency_label",
-        "status", "due_date", "paid_at", "created_at",
-    )
-    list_filter = ("status", "currency_label")
-    search_fields = ("issued_to__username", "title", "description", "notes")
-    raw_id_fields = ("issued_to", "issued_by")
-    readonly_fields = ("created_at", "updated_at", "paid_at")
-    actions = ["mark_paid", "mark_cancelled"]
-
-    fieldsets = (
-        ("Invoice", {
-            "fields": ("issued_to", "issued_by", "title", "description"),
-        }),
-        ("Amount", {
-            "fields": ("amount", "currency_label"),
-        }),
-        ("Status", {
-            "fields": ("status", "due_date", "paid_at", "notes"),
-        }),
-        ("Timestamps", {
-            "fields": ("created_at", "updated_at"),
-            "classes": ("collapse",),
-        }),
-    )
-
-    @admin.action(description="Mark selected invoices as Paid")
-    def mark_paid(self, request, queryset):
-        now = timezone.now()
-        updated = queryset.exclude(status="paid").update(status="paid", paid_at=now)
-        self.message_user(request, f"{updated} invoice(s) marked as paid.")
-
-    @admin.action(description="Mark selected invoices as Cancelled")
-    def mark_cancelled(self, request, queryset):
-        updated = queryset.exclude(status="cancelled").update(status="cancelled")
-        self.message_user(request, f"{updated} invoice(s) cancelled.")

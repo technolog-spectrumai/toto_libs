@@ -4,7 +4,7 @@ from .views import (
     PublicFileListView, VaultFileDownloadView,
     FileGatewayPageView, FileGatewayUploadView,
     VaultMetricsView, BucketMetricsView,
-    VaultInvoiceListView,
+    GenerateInvoiceView,
 )
 
 app_name = "vault"
@@ -17,5 +17,6 @@ urlpatterns = [
     path("gateways/dir/<int:dir_pk>/upload/", FileGatewayUploadView.as_view(), name="gateway_upload"),
     path("metrics/", VaultMetricsView.as_view(), name="metrics"),
     path("metrics/<slug:bucket_slug>/", BucketMetricsView.as_view(), name="bucket_metrics"),
-    path("invoices/", VaultInvoiceListView.as_view(), name="invoice_list"),
+    path("invoices/", RedirectView.as_view(pattern_name="invoice:invoice_list", permanent=False), name="invoice_list"),
+    path("invoices/generate/<slug:bucket_slug>/", GenerateInvoiceView.as_view(), name="generate_invoice"),
 ]

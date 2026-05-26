@@ -1,5 +1,6 @@
 import mimetypes
 from datetime import date, timedelta
+from decimal import Decimal
 
 from django.db.models import Count, Q, Sum
 from django.db.models.functions import TruncDate
@@ -13,7 +14,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 
 from django.contrib import messages
 from toto.ui import PageProcessor
-from .models import VaultFile, Bucket, FileGateway, VaultDirectory, VaultInvoice
+from .models import VaultFile, Bucket, FileGateway, VaultDirectory
 
 
 # ============================================================
@@ -371,7 +372,7 @@ class VaultMetricsView(LoginRequiredMixin, TemplateView):
                 dir_count=Count("directories", distinct=True),
                 public_count=Count("files", filter=Q(files__is_public=True), distinct=True),
                 encrypted_count=Count("files", filter=Q(files__is_encrypted=True), distinct=True),
-            ).select_related("owner").order_by("name")
+            ).select_related("owner", "tariff").order_by("name")
         )
         context["gateway_bucket_pks"] = set(
             FileGateway.objects.values_list("bucket_id", flat=True)
@@ -519,6 +520,16 @@ class BucketMetricsView(LoginRequiredMixin, TemplateView):
 
         context["bucket_tariff"] = bucket.tariff
 
+        from toto.invoice.models import Invoice, InvoiceStatus
+        context["bucket_invoices"] = list(
+            Invoice.objects.filter(bucket=bucket)
+            .select_related("issued_to", "issued_by")
+            .order_by("-created_at")[:10]
+        )
+        context["bucket_pending_count"] = Invoice.objects.filter(
+            bucket=bucket, status=InvoiceStatus.PENDING
+        ).count()
+
         return PageProcessor().decorate(context, self.request)
 
 
@@ -526,18 +537,88 @@ class BucketMetricsView(LoginRequiredMixin, TemplateView):
 # Invoices
 # ============================================================
 
-class VaultInvoiceListView(LoginRequiredMixin, ListView):
-    """Shows the current user's vault invoices."""
-    template_name = "vault/invoice_list.html"
-    context_object_name = "invoices"
-    paginate_by = 20
+class GenerateInvoiceView(LoginRequiredMixin, View):
+    """
+    GET: shows a pre-filled invoice form based on the bucket's tariff + current storage.
+    POST: creates an invoice.Invoice and redirects to invoice list.
+    """
+    template_name = "vault/generate_invoice.html"
 
-    def get_queryset(self):
-        return VaultInvoice.objects.filter(issued_to=self.request.user).order_by("-created_at")
+    def _bucket(self, bucket_slug):
+        return get_object_or_404(
+            Bucket.objects.select_related("tariff", "owner"),
+            slug=bucket_slug,
+        )
 
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        qs = self.get_queryset()
-        context["pending_count"] = qs.filter(status="pending").count()
-        context["paid_count"] = qs.filter(status="paid").count()
-        return PageProcessor().decorate(context, self.request)
+    def _estimate(self, bucket):
+        """Return (amount, currency, usage_mb, item_or_None) from tariff + storage."""
+        tariff = bucket.tariff
+        if not tariff:
+            return Decimal("0.00"), "TOKEN", 0.0, None
+
+        usage_bytes = VaultFile.objects.filter(bucket=bucket).aggregate(
+            total=Sum("file_size_bytes")
+        )["total"] or 0
+        usage_mb = round(usage_bytes / 1_048_576, 4)
+
+        item = (
+            tariff.items.filter(active=True)
+            .select_related("metric", "charged_asset", "unit")
+            .filter(metric__code__icontains="mb")
+            .first()
+        ) or tariff.items.filter(active=True).select_related("metric", "charged_asset", "unit").first()
+
+        currency = item.charged_asset.unit_name if (item and item.charged_asset) else "TOKEN"
+        if item:
+            hours_per_month = Decimal("730")
+            amount = (Decimal(str(usage_mb)) * item.price_per_unit_display * hours_per_month).quantize(Decimal("0.01"))
+        else:
+            amount = Decimal("0.00")
+        return amount, currency, usage_mb, item
+
+    def get(self, request, bucket_slug):
+        bucket = self._bucket(bucket_slug)
+        tariff = bucket.tariff
+        if not tariff:
+            messages.warning(request, "This bucket has no tariff assigned.")
+            return redirect("vault:bucket_metrics", bucket_slug=bucket_slug)
+
+        amount, currency, usage_mb, item = self._estimate(bucket)
+        items = list(tariff.items.filter(active=True).select_related("metric", "charged_asset", "unit"))
+        month = date.today().strftime("%B %Y")
+
+        context = {
+            "bucket": bucket,
+            "tariff": tariff,
+            "tariff_items": items,
+            "usage_mb": usage_mb,
+            "suggested_title": f"Storage Invoice — {bucket.name} — {month}",
+            "suggested_amount": amount,
+            "suggested_currency": currency,
+        }
+        return render(request, self.template_name, PageProcessor().decorate(context, request))
+
+    def post(self, request, bucket_slug):
+        from toto.invoice.models import Invoice as InvoiceModel
+
+        bucket = self._bucket(bucket_slug)
+        if not bucket.tariff:
+            messages.error(request, "This bucket has no tariff assigned.")
+            return redirect("vault:bucket_metrics", bucket_slug=bucket_slug)
+
+        amount, currency, usage_mb, _ = self._estimate(bucket)
+        month = date.today().strftime("%B %Y")
+        title = f"Storage Invoice — {bucket.name} — {month}"
+        description = f"Storage billing for {bucket.name} ({bucket.tariff.code}). {usage_mb} MB used."
+
+        inv = InvoiceModel.objects.create(
+            issued_to=bucket.owner,
+            issued_by=request.user,
+            bucket=bucket,
+            title=title,
+            description=description,
+            amount=amount,
+            currency_label=currency,
+        )
+        messages.success(request, f"Invoice '{inv.title}' generated.")
+        return redirect("invoice:invoice_list")
