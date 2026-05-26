@@ -139,8 +139,8 @@
     {{ section.html }}
   {% endfor %}
 
-  {% if user.is_staff %}
-  <!-- Distribution (staff only) -->
+  {% if can_distribute %}
+  <!-- Distribution (staff or reserve account owner) -->
   <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
        class="rounded-xl border shadow-sm overflow-hidden">
     <div class="flex items-center justify-between border-b px-5 py-4"

@@ -15,6 +15,7 @@ from toto.ui import PageProcessor
 from .forms import AgreementForm, ContractForm, TokenizationCreateForm, TokenizationDefaultForm
 from .hashing import verify_hash_chain
 from .models import (
+    AccountType,
     Asset,
     AssetHolding,
     LedgerAccount,
@@ -35,6 +36,64 @@ def assets_render(request, template_name, context):
 # ---------------------------------------------------------------------------
 # Assets
 # ---------------------------------------------------------------------------
+
+@login_required
+def asset_create(request):
+    """Mint a new asset type with a fixed total supply. Staff only."""
+    if not request.user.is_staff:
+        from django.http import HttpResponseForbidden
+        return HttpResponseForbidden()
+
+    ledger_accounts = LedgerAccount.objects.filter(active=True).order_by("code")
+
+    if request.method == "POST":
+        import uuid as _uuid
+        from decimal import InvalidOperation
+        try:
+            name = request.POST.get("name", "").strip()
+            unit_name = request.POST.get("unit_name", "").strip().upper()
+            total_supply = Decimal(request.POST.get("total_supply", "0"))
+            decimals = int(request.POST.get("decimals", "6"))
+            description = request.POST.get("description", "").strip()
+
+            if not name or not unit_name:
+                raise ValidationError("Name and unit name are required.")
+
+            reserve_choice = request.POST.get("reserve_choice", "auto")
+            if reserve_choice == "existing":
+                reserve_pk = request.POST.get("reserve_account")
+                reserve = get_object_or_404(LedgerAccount, pk=reserve_pk)
+            else:
+                reserve, _ = LedgerAccount.objects.get_or_create(
+                    code=f"RES-{unit_name}",
+                    defaults={
+                        "name": f"{name} Reserve",
+                        "account_type": AccountType.RESERVE,
+                        "active": True,
+                    },
+                )
+
+            ref = f"mint-{unit_name.lower()}-{_uuid.uuid4().hex[:8]}"
+            asset = create_asset(
+                name=name,
+                unit_name=unit_name,
+                total_supply=total_supply,
+                decimals=decimals,
+                reserve_account=reserve,
+                reference=ref,
+                description=description,
+            )
+            asset.reserve_account = reserve
+            asset.save(update_fields=["reserve_account", "updated_at"])
+            messages.success(request, f"Asset {unit_name} minted with total supply of {total_supply}.")
+            return redirect("assets:asset_detail", pk=asset.pk)
+        except (ValidationError, InvalidOperation) as exc:
+            messages.error(request, str(exc))
+
+    return assets_render(request, "assets/asset_create.html", {
+        "ledger_accounts": ledger_accounts,
+    })
+
 
 def asset_list(request):
     assets = Asset.objects.all()
@@ -66,19 +125,28 @@ def asset_detail(request, pk):
         asset=asset,
         base_context=context,
     )
-    # Minting tab context (staff only)
-    if request.user.is_staff:
+    # Distribution panel: staff or owner of the reserve account
+    reserve = asset.reserve_account
+    is_reserve_owner = (
+        reserve and reserve.user_id and reserve.user_id == request.user.pk
+    ) if request.user.is_authenticated else False
+    can_distribute = request.user.is_staff or is_reserve_owner
+    if can_distribute:
+        context["can_distribute"] = True
         context["ledger_accounts"] = LedgerAccount.objects.filter(active=True).order_by("code")
     return assets_render(request, "assets/asset_detail.html", context)
 
 
 @login_required
 def asset_distribute(request, pk):
-    """Transfer tokens from reserve to a recipient account. Staff only."""
-    if not request.user.is_staff:
-        from django.http import HttpResponseForbidden
-        return HttpResponseForbidden()
+    """Transfer tokens from reserve to a recipient account.
+    Allowed only for staff or the owner of the asset's reserve account."""
+    from django.http import HttpResponseForbidden
     asset = get_object_or_404(Asset, pk=pk)
+    reserve = asset.reserve_account
+    is_reserve_owner = reserve and reserve.user_id and reserve.user_id == request.user.pk
+    if not request.user.is_staff and not is_reserve_owner:
+        return HttpResponseForbidden()
     if request.method == "POST":
         from decimal import InvalidOperation
         try:
