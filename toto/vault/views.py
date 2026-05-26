@@ -271,16 +271,17 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
             }, status=400)
 
         # Reject before any disk/DB write if the user can't cover the charge.
-        from toto.vault.billing import preflight_upload_check, _get_tariff
+        from toto.vault.billing import preflight_upload_check
         can_pay, pay_error = preflight_upload_check(
             request.user, gateway.bucket, uploaded_file.size
         )
         if not can_pay:
             return JsonResponse({"error": pay_error}, status=402)
 
-        # If billing is active and the user has no vault authorization,
-        # require PIN session verification so billing is not silent.
-        if _get_tariff(bucket=gateway.bucket):
+        # Any bucket with BucketBilling requires either vault authorization
+        # OR an active PIN session before uploading.
+        from toto.vault.models import BucketBilling
+        if BucketBilling.objects.filter(bucket=gateway.bucket).exists():
             has_auth = False
             try:
                 sa = StorageAccount.objects.select_related("authorization").get(
