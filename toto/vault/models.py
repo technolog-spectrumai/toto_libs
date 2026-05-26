@@ -44,6 +44,11 @@ class VaultFile(models.Model):
         ('html', 'HTML'),
         ('text', 'Text File'),
         ('json', 'JSON'),
+        ('yaml', 'YAML'),
+        ('xml', 'XML'),
+        ('latex', 'LaTeX'),
+        ('bib', 'Bibliography'),
+        ('csv', 'CSV'),
         ('svg', 'SVG File'),
         ('audio', 'Audio'),
         ('video', 'Video'),
@@ -64,6 +69,16 @@ class VaultFile(models.Model):
             return "html"
         if "json" in mime:
             return "json"
+        if "yaml" in mime:
+            return "yaml"
+        if "xml" in mime:
+            return "xml"
+        if "latex" in mime or mime in ("application/x-tex", "application/x-latex"):
+            return "latex"
+        if "bibtex" in mime:
+            return "bib"
+        if "csv" in mime:
+            return "csv"
         if mime.startswith("audio/"):
             return "audio"
         if mime.startswith("video/"):

@@ -14,6 +14,7 @@
       error: null,
       results: null,
       recentUploads: [],
+      manualFileType: '',
 
       init() {
         const el = document.getElementById('recent-uploads');
@@ -38,6 +39,7 @@
 
         const formData = new FormData();
         formData.append('file', file);
+        if (this.manualFileType) formData.append('file_type', this.manualFileType);
 
         try {
           const response = await fetch("{% url 'vault:gateway_upload' gateway.directory_id %}", {
@@ -120,6 +122,31 @@
         <span class="font-semibold font-mono">
           {% if target_dir_path %}{{ target_dir_path }}{% else %}{% trans "Root" %} ({{ gateway.bucket.name }}){% endif %}
         </span>
+      </div>
+
+      <!-- Optional file type override -->
+      <div class="flex items-center gap-3 text-sm">
+        <label class="text-xs font-semibold uppercase tracking-wide opacity-55 shrink-0">
+          {% trans "File type" %}
+        </label>
+        <select x-model="manualFileType"
+                :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+                class="rounded border px-2 py-1 text-xs">
+          <option value="">{% trans "Auto-detect" %}</option>
+          <option value="pdf">PDF</option>
+          <option value="image">Image</option>
+          <option value="html">HTML</option>
+          <option value="text">Text</option>
+          <option value="json">JSON</option>
+          <option value="yaml">YAML</option>
+          <option value="xml">XML</option>
+          <option value="latex">LaTeX (.tex)</option>
+          <option value="bib">Bibliography (.bib)</option>
+          <option value="csv">CSV</option>
+          <option value="svg">SVG</option>
+          <option value="audio">Audio</option>
+          <option value="video">Video</option>
+        </select>
       </div>
 
       <!-- Drop zone -->

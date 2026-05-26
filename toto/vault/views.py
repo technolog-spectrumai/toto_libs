@@ -260,7 +260,10 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
         directory = gateway.directory
 
         mime, _ = mimetypes.guess_type(uploaded_file.name)
-        file_type = VaultFile.detect_type(mime)
+        auto_file_type = VaultFile.detect_type(mime)
+        valid_types = {code for code, _ in VaultFile.FILE_TYPES}
+        manual_type = request.POST.get("file_type", "").strip()
+        file_type = manual_type if manual_type in valid_types else auto_file_type
 
         vault_file = VaultFile(
             owner=request.user,
