@@ -1,0 +1,65 @@
+{% load i18n %}
+<div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     class="rounded-xl border p-5 shadow-sm space-y-3">
+
+  <!-- Header -->
+  <div class="flex items-center justify-between">
+    <h3 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+        class="flex items-center gap-2 text-sm font-bold uppercase tracking-wide">
+      <i class="{{ profile_plugin_icon }}"></i>
+      {{ profile_plugin_title }}
+      {% if outstanding_obligation_count %}
+      <span :class="darkMode ? 'bg-warn-dark/20 text-warn-dark' : 'bg-warn-light/10 text-warn-light'"
+            class="rounded px-1.5 py-0.5 text-xs font-bold">{{ outstanding_obligation_count }}</span>
+      {% endif %}
+    </h3>
+    <a href="{% url 'claims:obligation_list' %}"
+       :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2 text-text-main-light'"
+       class="inline-flex items-center gap-1.5 rounded border px-3 py-1 text-xs font-semibold transition hover:opacity-75">
+      <i class="fa-solid fa-list"></i>
+      {% trans "All obligations" %}
+    </a>
+  </div>
+
+  {% if outstanding_obligations %}
+  <div :class="darkMode ? 'border-accent-1/30' : 'border-accent-2/30'"
+       class="rounded-lg border overflow-hidden">
+    {% for ob in outstanding_obligations %}
+    <a href="{% url 'claims:obligation_detail' ob.pk %}"
+       class="flex items-center gap-3 px-3 py-2.5 text-xs transition-colors
+              {% if not forloop.last %}border-b{% endif %}"
+       :class="darkMode
+         ? 'border-accent-1/20 hover:bg-primary-bg-dark'
+         : 'border-accent-2/20 hover:bg-primary-bg-light'">
+
+      <span class="font-mono opacity-50 shrink-0 truncate max-w-[100px]">{{ ob.reference }}</span>
+
+      <span class="flex-1 min-w-0"></span>
+
+      <span class="font-mono font-bold shrink-0">
+        {{ ob.amount_display }} {{ ob.asset.unit_name }}
+      </span>
+
+      <span class="opacity-50 shrink-0 flex items-center gap-1">
+        <i class="fa-solid fa-calendar-xmark text-xs"></i>
+        {{ ob.due_at|date:"Y-m-d" }}
+      </span>
+
+      {% if ob.is_overdue %}
+      <span class="rounded px-1.5 py-0.5 font-semibold bg-red-500/10 text-red-500 shrink-0">
+        {% trans "Overdue" %}
+      </span>
+      {% endif %}
+    </a>
+    {% endfor %}
+  </div>
+  {% if outstanding_obligation_count > 10 %}
+  <p class="text-xs opacity-45 text-center">
+    {% blocktrans with count=outstanding_obligation_count %}Showing 10 of {{ count }} pending obligations{% endblocktrans %}
+  </p>
+  {% endif %}
+  {% else %}
+  <p class="text-xs opacity-45">{% trans "No outstanding obligations." %}</p>
+  {% endif %}
+
+</div>
