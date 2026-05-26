@@ -127,6 +127,85 @@ class Invoice(models.Model):
         return bool(self.due_date and timezone.now().date() > self.due_date)
 
 
+class ReportFormat(models.TextChoices):
+    HTML = "html", "HTML"
+    XML = "xml", "XML"
+    YAML = "yaml", "YAML"
+
+
+class InvoiceReportTemplate(models.Model):
+    """
+    A Jinja2 template that can be rendered against invoice data to produce
+    a downloadable HTML / XML / YAML report file.
+    """
+    name = models.CharField(max_length=255)
+    code = models.SlugField(max_length=100, unique=True)
+    description = models.TextField(blank=True)
+    format = models.CharField(max_length=10, choices=ReportFormat.choices, default=ReportFormat.HTML)
+    template_source = models.TextField(
+        help_text="Jinja2 template. Available context: invoice, issued_to, issued_by, bucket, tariff, billing_cycle, settlements, now."
+    )
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="invoice_report_templates",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Invoice Report Template"
+        verbose_name_plural = "Invoice Report Templates"
+        ordering = ["name"]
+
+    def __str__(self):
+        return f"{self.name} [{self.format}]"
+
+
+class InvoiceReport(models.Model):
+    """
+    A rendered invoice report. Optionally stored as a VaultFile.
+    """
+    invoice = models.ForeignKey(
+        Invoice,
+        on_delete=models.CASCADE,
+        related_name="reports",
+    )
+    template = models.ForeignKey(
+        InvoiceReportTemplate,
+        on_delete=models.PROTECT,
+        related_name="reports",
+    )
+    generated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="generated_invoice_reports",
+    )
+    rendered_output = models.TextField()
+    vault_file = models.OneToOneField(
+        "vault.VaultFile",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="invoice_report",
+    )
+    generated_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Invoice Report"
+        verbose_name_plural = "Invoice Reports"
+        ordering = ["-generated_at"]
+
+    def __str__(self):
+        return f"Report #{self.pk} — Invoice #{self.invoice_id} [{self.template.format}]"
+
+    def filename(self) -> str:
+        ext = self.template.format
+        return f"invoice-{self.invoice_id}-report-{self.pk}.{ext}"
+
+
 class PaymentSettlement(models.Model):
     """Records an actual payment made against an invoice."""
     invoice = models.ForeignKey(

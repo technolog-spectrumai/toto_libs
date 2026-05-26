@@ -1,9 +1,11 @@
 import uuid as _uuid
 from datetime import timedelta
 
+import jinja2
 import yaml
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.core.files.base import ContentFile
 from django.db.models import Count, Q, Sum
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -13,7 +15,7 @@ from django.views.generic import ListView
 
 from toto.ui import PageProcessor
 
-from .models import Invoice, InvoiceStatus
+from .models import Invoice, InvoiceReport, InvoiceReportTemplate, InvoiceStatus
 
 
 def _invoice_yaml(invoice) -> str:
@@ -58,6 +60,19 @@ class InvoiceListView(LoginRequiredMixin, ListView):
             {"invoice": inv, "yaml": _invoice_yaml(inv)}
             for inv in context["invoices"]
         ]
+        context["report_templates"] = list(InvoiceReportTemplate.objects.filter(is_active=True).order_by("name"))
+
+        import json
+        from toto.vault.models import Bucket, VaultDirectory
+        user_buckets = list(Bucket.objects.filter(owner=self.request.user).order_by("name"))
+        context["user_buckets"] = user_buckets
+        context["bucket_directories_json"] = json.dumps({
+            str(b.pk): [
+                {"pk": d.pk, "name": d.full_path()}
+                for d in VaultDirectory.objects.filter(bucket=b).order_by("name")
+            ]
+            for b in user_buckets
+        })
         return PageProcessor().decorate(context, self.request)
 
 
@@ -125,6 +140,94 @@ class DownloadInvoiceYAMLView(LoginRequiredMixin, View):
         content = _invoice_yaml(invoice).encode()
         response = HttpResponse(content, content_type="application/x-yaml")
         response["Content-Disposition"] = f'attachment; filename="invoice-{invoice.pk}.yaml"'
+        return response
+
+
+def _report_context(invoice):
+    """Build the Jinja2 rendering context for an invoice."""
+    from django.utils import timezone as tz
+    return {
+        "invoice": invoice,
+        "issued_to": invoice.issued_to,
+        "issued_by": invoice.issued_by,
+        "bucket": invoice.bucket,
+        "tariff": invoice.bucket.tariff if invoice.bucket_id and invoice.bucket else None,
+        "billing_cycle": invoice.billing_cycle,
+        "settlements": list(invoice.settlements.all()),
+        "now": tz.now(),
+    }
+
+
+_MIME = {"html": "text/html", "xml": "application/xml", "yaml": "application/x-yaml"}
+
+
+class GenerateReportView(LoginRequiredMixin, View):
+    """POST: render template → save InvoiceReport to DB → stream file download in one step."""
+
+    def post(self, request, pk):
+        invoice = get_object_or_404(Invoice, pk=pk, issued_to=request.user)
+
+        template_id = request.POST.get("template_id")
+        bucket_id = request.POST.get("bucket_id") or None
+        directory_id = request.POST.get("directory_id") or None
+
+        template = get_object_or_404(InvoiceReportTemplate, pk=template_id, is_active=True)
+
+        try:
+            jenv = jinja2.Environment(autoescape=(template.format == "html"))
+            rendered = jenv.from_string(template.template_source).render(**_report_context(invoice))
+        except jinja2.TemplateError as exc:
+            messages.error(request, f"Template error: {exc}")
+            return redirect("invoice:invoice_list")
+
+        vault_file = None
+        if bucket_id:
+            from toto.vault.models import Bucket, VaultDirectory, VaultFile
+            try:
+                bucket = Bucket.objects.get(pk=bucket_id, owner=request.user)
+            except Bucket.DoesNotExist:
+                messages.error(request, "Bucket not found.")
+                return redirect("invoice:invoice_list")
+
+            directory = None
+            if directory_id:
+                directory = VaultDirectory.objects.filter(pk=directory_id, bucket=bucket).first()
+
+            filename = f"invoice-{invoice.pk}-report.{template.format}"
+            cf = ContentFile(rendered.encode(), name=filename)
+            vault_file = VaultFile(
+                owner=request.user,
+                title=f"Invoice #{invoice.pk} — {template.name}",
+                file_type=template.format,
+                bucket=bucket,
+                directory=directory,
+                is_public=False,
+            )
+            vault_file.file.save(filename, cf, save=False)
+            vault_file.save()
+
+        report = InvoiceReport.objects.create(
+            invoice=invoice,
+            template=template,
+            generated_by=request.user,
+            rendered_output=rendered,
+            vault_file=vault_file,
+        )
+
+        content_type = _MIME.get(template.format, "text/plain")
+        response = HttpResponse(rendered.encode(), content_type=content_type)
+        response["Content-Disposition"] = f'attachment; filename="{report.filename()}"'
+        return response
+
+
+class DownloadReportView(LoginRequiredMixin, View):
+    """GET: re-download a previously generated InvoiceReport."""
+
+    def get(self, request, pk):
+        report = get_object_or_404(InvoiceReport, pk=pk, invoice__issued_to=request.user)
+        content_type = _MIME.get(report.template.format, "text/plain")
+        response = HttpResponse(report.rendered_output.encode(), content_type=content_type)
+        response["Content-Disposition"] = f'attachment; filename="{report.filename()}"'
         return response
 
 

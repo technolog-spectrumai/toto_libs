@@ -1,0 +1,48 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content %}
+<div style="max-width:900px">
+  <h1>{{ title }}</h1>
+  <p style="opacity:.7;font-size:.85em">
+    Template: <strong>{{ template.name }}</strong> &nbsp;|&nbsp;
+    Format: <code>{{ template.format }}</code> &nbsp;|&nbsp;
+    Code: <code>{{ template.code }}</code>
+  </p>
+
+  {% if not invoice %}
+  <p class="errornote">No invoices found in the system — cannot simulate.</p>
+  {% else %}
+  <p style="font-size:.85em;opacity:.7">
+    Rendering against invoice <strong>#{{ invoice.pk }}</strong>: {{ invoice.title }}
+  </p>
+
+  {% if error %}
+  <div class="errornote">
+    <strong>Template error:</strong><br>
+    <pre style="white-space:pre-wrap;margin:0">{{ error }}</pre>
+  </div>
+  {% else %}
+
+    {% if template.format == "html" %}
+    <div style="border:1px solid #ccc;border-radius:6px;padding:1rem;margin-top:1rem;background:#fff;color:#111">
+      {{ rendered }}
+    </div>
+    {% else %}
+    <pre style="background:#1e1e1e;color:#d4d4d4;padding:1.5rem;border-radius:6px;overflow:auto;font-size:.8em;line-height:1.5;margin-top:1rem">{{ rendered }}</pre>
+    {% endif %}
+
+    <form method="post" action="" style="margin-top:1rem">
+      {% csrf_token %}
+      <input type="hidden" name="_download" value="1">
+      <button type="submit" class="button">⬇ Download rendered file</button>
+    </form>
+
+  {% endif %}
+  {% endif %}
+
+  <p style="margin-top:2rem">
+    <a href="{% url 'admin:invoice_invoicereporttemplate_change' template.pk %}">&larr; Back to template</a>
+  </p>
+</div>
+{% endblock %}
