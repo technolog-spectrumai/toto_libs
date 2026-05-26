@@ -291,6 +291,28 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
         else:
             location = "Root"
 
+        # ── Upload cost estimate from bucket tariff ────────────────────────
+        upload_cost = None
+        tariff = gateway.bucket.tariff if gateway.bucket_id else None
+        if tariff:
+            items = {
+                item.metric.code: item
+                for item in tariff.items.filter(active=True).select_related("metric", "charged_asset")
+            }
+            size_mb = Decimal(str(uploaded_file.size)) / Decimal("1048576")
+            cost = Decimal("0")
+            token = None
+            req_item = items.get("storage.request")
+            xfer_item = items.get("storage.transfer_mb")
+            if req_item:
+                cost += req_item.price_per_unit_display
+                token = token or (req_item.charged_asset.unit_name if req_item.charged_asset else None)
+            if xfer_item:
+                cost += (size_mb * xfer_item.price_per_unit_display).quantize(Decimal("0.000001"))
+                token = token or (xfer_item.charged_asset.unit_name if xfer_item.charged_asset else None)
+            if token and cost > 0:
+                upload_cost = f"{cost:.6f} {token}"
+
         return JsonResponse({
             "result": {
                 "title": vault_file.title,
@@ -301,6 +323,7 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
                 "public": vault_file.is_public,
                 "public_url": vault_file.get_public_url(),
                 "size": f"{uploaded_file.size / (1024*1024):.2f} MB",
+                "upload_cost": upload_cost,
             },
         })
 
