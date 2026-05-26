@@ -22,6 +22,7 @@ urlpatterns = [
     path("wallet/", views.wallet, name="wallet"),
     path("wallet/pin/", views.wallet_pin_set, name="wallet_pin_set"),
     path("wallet/pin/verify/", views.wallet_pin_verify, name="wallet_pin_verify"),
+    path("wallet/authorizations/", views.authorization_list, name="authorization_list"),
     path("agreements/", views.agreement_list, name="agreement_list"),
     path("agreements/create/", views.agreement_create, name="agreement_create"),
     path("agreements/<int:pk>/", views.agreement_detail, name="agreement_detail"),

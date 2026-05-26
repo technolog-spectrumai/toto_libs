@@ -739,3 +739,47 @@ def wallet_pin_verify(request):
     return JsonResponse({'ok': False, 'error': 'Incorrect PIN.'})
 
 
+@login_required
+def authorization_list(request):
+    from .models import WalletAuthorization
+    from toto.vault.models import StorageAccount
+
+    user_account_pks = list(
+        LedgerAccount.objects.filter(user=request.user, active=True).values_list('pk', flat=True)
+    )
+    authorizations = list(
+        WalletAuthorization.objects
+        .filter(ledger_account__in=user_account_pks)
+        .select_related('ledger_account')
+        .order_by('-created_at')
+    )
+
+    # Mark which auths are currently wired to a StorageAccount
+    active_auth_pks = set(
+        StorageAccount.objects.filter(
+            user=request.user,
+            active=True,
+            authorization__isnull=False,
+        ).values_list('authorization_id', flat=True)
+    )
+    for auth in authorizations:
+        auth.in_use = auth.pk in active_auth_pks
+
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        auth_pk = request.POST.get('auth_pk')
+        if action == 'revoke' and auth_pk:
+            try:
+                auth = WalletAuthorization.objects.get(
+                    pk=auth_pk, ledger_account__in=user_account_pks
+                )
+                auth.active = False
+                auth.save(update_fields=['active', 'updated_at'])
+                messages.success(request, f"Authorization '{auth.name}' revoked.")
+            except WalletAuthorization.DoesNotExist:
+                messages.error(request, "Authorization not found.")
+        return redirect('assets:authorization_list')
+
+    return assets_render(request, 'assets/authorization_list.html', {
+        'authorizations': authorizations,
+    })

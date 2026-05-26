@@ -80,6 +80,13 @@
           {% trans "Wallet" %}
         </a>
         <a
+          href="{% url 'assets:authorization_list' %}"
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-key"></i>
+          {% trans "Authorizations" %}
+        </a>
+        <a
           href="{% url 'assets:contract_list' %}"
           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">

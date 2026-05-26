@@ -214,9 +214,20 @@ class FileGatewayPageView(LoginRequiredMixin, DetailView):
         except Exception:
             context["bucket_billing"] = None
 
-        context["has_storage_account"] = (
-            StorageAccount.objects.filter(user=user, active=True).exists()
-        )
+        has_storage_account = False
+        has_vault_authorization = False
+        try:
+            sa = StorageAccount.objects.select_related("authorization").get(user=user, active=True)
+            has_storage_account = True
+            has_vault_authorization = sa.authorization is not None and sa.authorization.active
+        except StorageAccount.DoesNotExist:
+            pass
+
+        context["has_storage_account"] = has_storage_account
+        context["has_vault_authorization"] = has_vault_authorization
+
+        from toto.bazaar.wallet_pin import has_wallet_pin
+        context["has_wallet_pin"] = has_wallet_pin(user)
 
         recent = VaultFile.objects.filter(
             directory=gateway.directory, owner=user
@@ -260,12 +271,32 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
             }, status=400)
 
         # Reject before any disk/DB write if the user can't cover the charge.
-        from toto.vault.billing import preflight_upload_check
+        from toto.vault.billing import preflight_upload_check, _get_tariff
         can_pay, pay_error = preflight_upload_check(
             request.user, gateway.bucket, uploaded_file.size
         )
         if not can_pay:
             return JsonResponse({"error": pay_error}, status=402)
+
+        # If billing is active and the user has no vault authorization,
+        # require PIN session verification so billing is not silent.
+        if _get_tariff(bucket=gateway.bucket):
+            has_auth = False
+            try:
+                sa = StorageAccount.objects.select_related("authorization").get(
+                    user=request.user, active=True
+                )
+                has_auth = sa.authorization is not None and sa.authorization.active
+            except StorageAccount.DoesNotExist:
+                pass
+
+            if not has_auth:
+                from toto.bazaar.wallet_pin import session_is_verified
+                if not session_is_verified(request.session):
+                    return JsonResponse({
+                        "error": "PIN verification required. Verify your wallet PIN or grant vault authorization to upload without a PIN.",
+                        "pin_required": True,
+                    }, status=402)
 
         directory = gateway.directory  # set at model level by admin
 
@@ -766,8 +797,9 @@ class BuyStorageTokensView(LoginRequiredMixin, View):
 
     def get(self, request):
         import json
-        from toto.vault.billing import get_payer_account
+        from toto.vault.billing import get_payer_account, get_bucket_billing_summary, _fmt_decimal
         from toto.assets.queries import get_asset_balance_display
+        from toto.bazaar.wallet_pin import has_wallet_pin
         from toto.ui import PageProcessor
 
         asset = self._get_storage_asset()
@@ -776,7 +808,7 @@ class BuyStorageTokensView(LoginRequiredMixin, View):
 
         token_balance = None
         if asset and payer:
-            token_balance = get_asset_balance_display(asset, payer)
+            token_balance = _fmt_decimal(get_asset_balance_display(asset, payer))
 
         prices = []
         if bucket_billing and payer:
@@ -792,13 +824,22 @@ class BuyStorageTokensView(LoginRequiredMixin, View):
                     "decimals": tp.currency.decimals,
                 })
 
+        billing_summary = None
+        if bucket_billing:
+            try:
+                billing_summary = get_bucket_billing_summary(bucket_billing.bucket, user=request.user)
+            except Exception:
+                pass
+
         context = {
             "asset": asset,
             "payer_account": payer,
             "token_balance": token_balance,
             "bucket_billing": bucket_billing,
+            "billing_summary": billing_summary,
             "prices": prices,
             "prices_json": json.dumps(prices),
+            "has_wallet_pin": has_wallet_pin(request.user),
         }
         return render(request, "vault/buy_tokens.html", PageProcessor().decorate(context, request))
 
@@ -809,6 +850,7 @@ class BuyStorageTokensView(LoginRequiredMixin, View):
         from toto.vault.purchase import purchase_storage_tokens
         from toto.vault.models import StorageTokenPrice
         from toto.assets.services.assets import distribute_asset
+        from toto.bazaar.wallet_pin import has_wallet_pin, session_is_verified
         from django.core.exceptions import ValidationError
 
         asset = self._get_storage_asset()
@@ -820,6 +862,14 @@ class BuyStorageTokensView(LoginRequiredMixin, View):
         if not payer:
             messages.error(request, "Connect a ledger account in your storage account settings first.")
             return redirect("vault:storage_account")
+
+        if not has_wallet_pin(request.user):
+            messages.error(request, "Set a wallet PIN before purchasing tokens.")
+            return redirect("assets:wallet_pin_set")
+
+        if not session_is_verified(request.session):
+            messages.error(request, "Verify your wallet PIN to complete the purchase.")
+            return redirect("vault:buy_tokens")
 
         try:
             token_amount = Decimal(request.POST.get("token_amount", "0"))

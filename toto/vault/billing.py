@@ -30,6 +30,17 @@ UNIT_MB      = "storage.mb"
 UNIT_MB_HOUR = "storage.mb_hour"
 
 
+def _fmt_decimal(d) -> str | None:
+    """Format a Decimal for display, stripping trailing zeros."""
+    if d is None:
+        return None
+    from decimal import Decimal
+    s = format(Decimal(str(d)), 'f')
+    if '.' in s:
+        s = s.rstrip('0').rstrip('.')
+    return s
+
+
 def _get_tariff(bucket=None):
     from toto.tariffs.models import Tariff, TariffStatus
     if bucket is not None and bucket.tariff_id:
@@ -324,9 +335,9 @@ def get_bucket_billing_summary(bucket, user=None) -> dict | None:
         "tariff_code": tariff.code,
         "token_name": asset.name,
         "token_unit": asset.unit_name,
-        "request_rate": str(request_item.price_per_unit_display) if request_item else None,
+        "request_rate": _fmt_decimal(request_item.price_per_unit_display) if request_item else None,
         "request_asset": request_item.charged_asset.unit_name if request_item else None,
-        "transfer_rate": str(transfer_item.price_per_unit_display) if transfer_item else None,
+        "transfer_rate": _fmt_decimal(transfer_item.price_per_unit_display) if transfer_item else None,
         "transfer_asset": transfer_item.charged_asset.unit_name if transfer_item else None,
         "user_balance": None,
         "user_balance_display": None,
@@ -340,8 +351,9 @@ def get_bucket_billing_summary(bucket, user=None) -> dict | None:
             result["has_billing_account"] = True
             holding = AssetHolding.objects.filter(account=account, asset=asset).first()
             if holding:
-                result["user_balance"] = str(holding.balance_display)
-                result["user_balance_display"] = f"{holding.balance_display} {asset.unit_name}"
+                bal = _fmt_decimal(holding.balance_display)
+                result["user_balance"] = bal
+                result["user_balance_display"] = f"{bal} {asset.unit_name}"
             else:
                 result["user_balance"] = "0"
                 result["user_balance_display"] = f"0 {asset.unit_name}"

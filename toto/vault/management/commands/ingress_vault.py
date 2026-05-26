@@ -234,27 +234,46 @@ class Command(IngressCommand):
 
     def _seed_finance_billing(self, bucket_finance):
         """
-        Create a BucketBilling for the Finance bucket with reasonable demo
-        pricing so the Buy Tokens page works out of the box:
+        Wire up full billing for the Finance bucket:
+          1. Set bucket.tariff  → FILE-STORAGE tariff (explicit routing, no global fallback needed)
+          2. Create BucketBilling with 500 MB quota
+          3. Seed StorageTokenPrice entries: TUSD=0.01 and TPLN=0.04 per STORAGE_TOKEN
 
-          TUSD  → 0.01 TUSD  per STORAGE_TOKEN  (1 cent each, 100 tokens = $1)
-          TPLN  → 0.04 TPLN  per STORAGE_TOKEN  (~4 groszy each, ~PLN/USD 4:1)
-
-        Uses REV-STORAGE as the revenue account (created by ingress_tariffs).
-        Falls back gracefully if any asset or account is missing.
+        Depends on ingress_tariffs --full having been run first (STORAGE_TOKEN, FILE-STORAGE,
+        TUSD, TPLN, REV-STORAGE must exist).  Skips any missing piece with a warning.
         """
         from toto.assets.models import Asset, LedgerAccount, AccountType
+        from toto.tariffs.models import Tariff, TariffStatus
 
-        # Storage token asset
-        storage_asset = Asset.objects.filter(unit_name="STORAGE_TOKEN", active=True).first()
-        if not storage_asset:
+        # ── 1. FILE-STORAGE tariff ────────────────────────────────────────
+        tariff = Tariff.objects.filter(
+            code="FILE-STORAGE", status=TariffStatus.ACTIVE
+        ).first()
+        if not tariff:
             self.stdout.write(self.style.WARNING(
-                "  ⚠  STORAGE_TOKEN asset not found — skipping BucketBilling seed. "
+                "  ⚠  FILE-STORAGE tariff not found — skipping BucketBilling seed. "
                 "Run ingress_tariffs first."
             ))
             return
 
-        # Revenue account — prefer REV-STORAGE created by ingress_tariffs
+        if bucket_finance.tariff_id != tariff.pk:
+            bucket_finance.tariff = tariff
+            bucket_finance.save(update_fields=["tariff"])
+            self.stdout.write(self.style.SUCCESS(
+                f"  + Finance bucket tariff → {tariff.name}"
+            ))
+        else:
+            self.stdout.write(f"  ~ Finance bucket tariff already set ({tariff.name})")
+
+        # ── 2. STORAGE_TOKEN asset ────────────────────────────────────────
+        storage_asset = Asset.objects.filter(unit_name="STORAGE_TOKEN", active=True).first()
+        if not storage_asset:
+            self.stdout.write(self.style.WARNING(
+                "  ⚠  STORAGE_TOKEN asset not found — skipping BucketBilling seed."
+            ))
+            return
+
+        # ── 3. Revenue account ────────────────────────────────────────────
         revenue_account, rev_created = LedgerAccount.objects.get_or_create(
             code="REV-STORAGE",
             defaults={
@@ -264,13 +283,14 @@ class Command(IngressCommand):
             },
         )
         if rev_created:
-            self.stdout.write("  + created REV-STORAGE account")
+            self.stdout.write(self.style.SUCCESS("  + created REV-STORAGE account"))
 
-        # BucketBilling (idempotent)
+        # ── 4. BucketBilling ─────────────────────────────────────────────
         billing, created = BucketBilling.objects.get_or_create(
             bucket=bucket_finance,
             defaults={
-                "storage_quota_mb": 500,   # 500 MB per user for demo
+                "storage_quota_mb": 500,
+                "tariff": tariff,
             },
         )
         if created:
@@ -278,17 +298,28 @@ class Command(IngressCommand):
                 f"  + BucketBilling for '{bucket_finance.name}' (quota 500 MB)"
             ))
         else:
-            self.stdout.write(f"  ~ BucketBilling for '{bucket_finance.name}' already exists")
+            changed = False
+            if billing.tariff_id != tariff.pk:
+                billing.tariff = tariff
+                changed = True
+            if billing.storage_quota_mb != 500:
+                billing.storage_quota_mb = 500
+                changed = True
+            if changed:
+                billing.save(update_fields=["tariff", "storage_quota_mb"])
+                self.stdout.write(f"  ~ updated BucketBilling for '{bucket_finance.name}'")
+            else:
+                self.stdout.write(f"  ~ BucketBilling for '{bucket_finance.name}' already up to date")
 
-        # Pricing table: (unit_name, price_per_token, human note)
+        # ── 5. Pricing  ───────────────────────────────────────────────────
         price_schedule = [
-            ("TUSD", Decimal("0.01"),  "1 cent per token"),
-            ("TPLN", Decimal("0.04"),  "4 groszy per token"),
+            ("TUSD", Decimal("0.01"), "1 cent per token"),
+            ("TPLN", Decimal("0.04"), "4 groszy per token"),
         ]
 
         for unit_name, price, note in price_schedule:
-            asset = Asset.objects.filter(unit_name=unit_name, active=True).first()
-            if not asset:
+            currency = Asset.objects.filter(unit_name=unit_name, active=True).first()
+            if not currency:
                 self.stdout.write(self.style.WARNING(
                     f"  ⚠  {unit_name} asset not found — skipping price entry."
                 ))
@@ -296,21 +327,21 @@ class Command(IngressCommand):
 
             tp, tp_created = StorageTokenPrice.objects.get_or_create(
                 bucket_billing=billing,
-                currency=asset,
+                currency=currency,
                 defaults={
                     "price_per_token": price,
                     "revenue_account": revenue_account,
                 },
             )
-            if not tp_created and tp.price_per_token != price:
+            if tp_created:
+                self.stdout.write(self.style.SUCCESS(
+                    f"  + {unit_name}: {price} per STORAGE_TOKEN  ({note})"
+                ))
+            elif tp.price_per_token != price:
                 tp.price_per_token = price
                 tp.revenue_account = revenue_account
                 tp.save(update_fields=["price_per_token", "revenue_account"])
                 self.stdout.write(f"  ~ updated {unit_name} price → {price} ({note})")
-            elif tp_created:
-                self.stdout.write(self.style.SUCCESS(
-                    f"  + {unit_name}: {price} per STORAGE_TOKEN  ({note})"
-                ))
             else:
                 self.stdout.write(f"  ~ {unit_name} price already set ({price})")
 

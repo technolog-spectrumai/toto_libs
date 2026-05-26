@@ -205,6 +205,12 @@
               <span>{% trans "No credit balance" %} — {% trans "contact admin to receive" %} {{ bucket_billing.token_unit }} {% trans "credits" %}</span>
             </div>
             {% endif %}
+            <a href="{% url 'vault:buy_tokens' %}"
+               :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+               class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-90 shrink-0">
+              <i class="fa-solid fa-bag-shopping"></i>
+              {% trans "Buy credits" %}
+            </a>
           {% endif %}
         </div>
       </div>
