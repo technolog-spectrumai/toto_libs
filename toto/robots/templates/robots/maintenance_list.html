@@ -1,0 +1,107 @@
+{% extends "robots/base.html" %}
+{% load i18n %}
+
+{% block robots_title %}{% trans "Maintenance" %}{% endblock %}
+{% block robots_header %}{% trans "Maintenance" %}{% endblock %}
+
+{% block robots_content %}
+<div class="grid gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
+
+  <aside :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="h-fit rounded-lg border p-5 shadow-sm">
+    <form method="get" class="space-y-4">
+      <div>
+        <label for="q" class="mb-1 block text-sm font-semibold">{% trans "Search" %}</label>
+        <div class="relative">
+          <i class="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm opacity-60"></i>
+          <input id="q" type="search" name="q" placeholder="{% trans "Title, robot…" %}" value="{{ query }}"
+                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+                 class="w-full rounded-lg border py-2 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-current/20">
+        </div>
+      </div>
+      <div>
+        <label for="status" class="mb-1 block text-sm font-semibold">{% trans "Status" %}</label>
+        <select id="status" name="status"
+                :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+                class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+          <option value="">{% trans "All statuses" %}</option>
+          {% for value, label in status_choices %}
+            <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button type="submit"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+        <i class="fa-solid fa-filter"></i> {% trans "Filter" %}
+      </button>
+    </form>
+
+    <div class="mt-5 border-t border-current/10 pt-4">
+      <a href="{% url 'robots:maintenance_create' %}"
+         :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+         class="inline-flex w-full items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+        <i class="fa-solid fa-plus"></i> {% trans "Open ticket" %}
+      </a>
+    </div>
+  </aside>
+
+  <section class="space-y-3">
+    {% for ticket in tickets %}
+      <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-primary-bg-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-primary-bg-light'"
+               class="rounded-lg border p-5 shadow-sm transition">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div class="min-w-0 space-y-1">
+            <div class="flex flex-wrap items-center gap-2">
+              <h2 class="font-bold">{{ ticket.title }}</h2>
+              <span class="inline-flex items-center gap-1 rounded-full border border-current/20 px-2 py-0.5 text-xs font-semibold opacity-75">
+                {{ ticket.get_status_display }}
+              </span>
+              <span class="inline-flex items-center gap-1 rounded-full border border-current/20 px-2 py-0.5 text-xs font-semibold opacity-75">
+                {{ ticket.get_severity_display }}
+              </span>
+            </div>
+            <p class="text-sm opacity-70">
+              <a href="{% url 'robots:robot_detail' ticket.robot.pk %}" class="underline-offset-4 hover:underline">{{ ticket.robot.callsign }}</a>
+              {% if ticket.assigned_to %} · {% trans "Assigned:" %} {{ ticket.assigned_to }}{% endif %}
+              · {{ ticket.opened_at|date:"M j, Y" }}
+            </p>
+            {% if ticket.description %}
+              <p class="text-sm opacity-80">{{ ticket.description|truncatewords:24 }}</p>
+            {% endif %}
+          </div>
+          {% if ticket.due_at %}
+            <div class="shrink-0 text-sm opacity-60">
+              <i class="fa-regular fa-clock mr-1"></i>{{ ticket.due_at|date:"M j, Y" }}
+            </div>
+          {% endif %}
+        </div>
+      </article>
+    {% empty %}
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-10 text-center shadow-sm">
+        <i class="fa-solid fa-circle-check mb-3 text-3xl opacity-30"></i>
+        <p class="text-sm opacity-60">{% trans "No maintenance tickets." %}</p>
+      </div>
+    {% endfor %}
+
+    {% if tickets.has_other_pages %}
+      <div class="flex justify-center gap-2 pt-2 text-sm">
+        {% if tickets.has_previous %}
+          <a href="?page={{ tickets.previous_page_number }}&q={{ query }}&status={{ status_filter }}"
+             class="rounded-lg border border-current/20 px-4 py-2 font-semibold hover:opacity-80">
+            {% trans "Previous" %}
+          </a>
+        {% endif %}
+        <span class="px-4 py-2 opacity-60">{{ tickets.number }} / {{ tickets.paginator.num_pages }}</span>
+        {% if tickets.has_next %}
+          <a href="?page={{ tickets.next_page_number }}&q={{ query }}&status={{ status_filter }}"
+             class="rounded-lg border border-current/20 px-4 py-2 font-semibold hover:opacity-80">
+            {% trans "Next" %}
+          </a>
+        {% endif %}
+      </div>
+    {% endif %}
+  </section>
+
+</div>
+{% endblock %}

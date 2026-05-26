@@ -1,0 +1,36 @@
+{% extends "robots/base.html" %}
+{% load i18n %}
+
+{% block robots_title %}{{ title }}{% endblock %}
+{% block robots_header %}{{ title }}{% endblock %}
+
+{% block robots_content %}
+<section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="mx-auto max-w-4xl rounded-lg border p-6 shadow-sm">
+  <a href="{{ back_url }}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+    <i class="fa-solid fa-arrow-left"></i> {% trans "Back" %}
+  </a>
+  <form method="post" class="mt-6 space-y-5">
+    {% csrf_token %}
+    {% for field in form %}
+      <div>
+        {% if field.field.widget.input_type == "checkbox" %}
+          <label class="inline-flex items-center gap-3 text-sm font-semibold">
+            {{ field }} {{ field.label }}
+          </label>
+        {% else %}
+          <label for="{{ field.id_for_label }}" class="mb-1 block text-sm font-semibold">{{ field.label }}</label>
+          {{ field }}
+        {% endif %}
+        {% if field.help_text %}<p class="mt-1 text-xs opacity-60">{{ field.help_text }}</p>{% endif %}
+        {% if field.errors %}<div class="mt-1 text-sm text-red-500">{{ field.errors }}</div>{% endif %}
+      </div>
+    {% endfor %}
+    <div class="flex justify-end gap-2 border-t border-current/10 pt-5">
+      <a href="{{ back_url }}" class="inline-flex items-center rounded-lg border border-current/20 px-4 py-2 text-sm font-semibold hover:opacity-80">{% trans "Cancel" %}</a>
+      <button type="submit" :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'" class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm hover:opacity-90">
+        <i class="fa-solid fa-floppy-disk"></i> {% trans "Save" %}
+      </button>
+    </div>
+  </form>
+</section>
+{% endblock %}

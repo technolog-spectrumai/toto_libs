@@ -1,0 +1,56 @@
+{% extends "robots/base.html" %}
+{% load i18n %}
+
+{% block robots_title %}{% trans "Robots" %}{% endblock %}
+{% block robots_header %}{% trans "Robots" %}{% endblock %}
+
+{% block robots_content %}
+<div class="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
+  <aside :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border p-5 shadow-sm">
+    <form method="get" class="space-y-4">
+      <div>
+        <label class="mb-1 block text-sm font-semibold" for="q">{% trans "Search" %}</label>
+        <input id="q" name="q" value="{{ query }}" placeholder="Callsign, serial, model..." :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'" class="w-full rounded-lg border px-3 py-2 text-sm outline-none">
+      </div>
+      <div>
+        <label class="mb-1 block text-sm font-semibold" for="status">{% trans "Status" %}</label>
+        <select id="status" name="status" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'" class="w-full rounded-lg border px-3 py-2 text-sm outline-none">
+          <option value="">{% trans "All statuses" %}</option>
+          {% for value,label in status_choices %}<option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+      <button type="submit" :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'" class="w-full rounded-lg px-4 py-2 text-sm font-semibold shadow-sm">{% trans "Filter" %}</button>
+      <a href="{% url 'robots:robot_create' %}" class="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-current/20 px-4 py-2 text-sm font-semibold hover:opacity-80"><i class="fa-solid fa-plus"></i>{% trans "New robot" %}</a>
+    </form>
+  </aside>
+
+  <section class="grid gap-3">
+    {% for robot in robots %}
+      <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border p-5 shadow-sm">
+        <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h2 class="text-xl font-bold"><a href="{% url 'robots:robot_detail' robot.pk %}" class="underline-offset-4 hover:underline">{{ robot.callsign }} · {{ robot.name }}</a></h2>
+            <p class="mt-1 text-sm opacity-70">{{ robot.model }} · {{ robot.community }}</p>
+            <div class="mt-3 flex flex-wrap gap-2 text-xs">
+              <span class="rounded border border-current/20 px-2 py-1 font-semibold">{{ robot.get_status_display }}</span>
+              <span class="rounded border border-current/20 px-2 py-1 font-semibold">{{ robot.battery_percent }}%</span>
+              {% if robot.current_location %}<span class="rounded border border-current/20 px-2 py-1 font-semibold"><i class="fa-solid fa-location-dot"></i> {{ robot.current_location }}</span>{% endif %}
+            </div>
+          </div>
+          <a href="{% url 'robots:robot_update' robot.pk %}" class="inline-flex items-center justify-center rounded-lg border border-current/20 px-3 py-2 text-sm font-semibold hover:opacity-80"><i class="fa-solid fa-pen"></i></a>
+        </div>
+      </article>
+    {% empty %}
+      <div class="rounded-lg border border-current/20 p-8 text-center opacity-70">{% trans "No robots found." %}</div>
+    {% endfor %}
+
+    {% if robots.has_other_pages %}
+      <div class="flex justify-center gap-2 text-sm">
+        {% if robots.has_previous %}<a class="rounded border border-current/20 px-3 py-2" href="?page={{ robots.previous_page_number }}&q={{ query }}&status={{ status_filter }}">{% trans "Previous" %}</a>{% endif %}
+        <span class="rounded border border-current/20 px-3 py-2">{{ robots.number }} / {{ robots.paginator.num_pages }}</span>
+        {% if robots.has_next %}<a class="rounded border border-current/20 px-3 py-2" href="?page={{ robots.next_page_number }}&q={{ query }}&status={{ status_filter }}">{% trans "Next" %}</a>{% endif %}
+      </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

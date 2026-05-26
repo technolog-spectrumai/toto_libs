@@ -1,0 +1,4 @@
+/* Optional app-level overrides. Most styling is done with the platform Tailwind utility classes. */
+.robot-status-pill {
+  border-radius: 9999px;
+}

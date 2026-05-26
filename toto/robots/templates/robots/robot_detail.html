@@ -1,0 +1,251 @@
+{% extends "robots/base.html" %}
+{% load i18n %}
+
+{% block robots_title %}{{ robot.callsign }}{% endblock %}
+{% block robots_header %}{{ robot.callsign }} · {{ robot.name }}{% endblock %}
+
+{% block robots_content %}
+<div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
+
+  <section class="space-y-5">
+
+    <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border p-6 shadow-sm">
+      <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div>
+          <a href="{% url 'robots:robot_list' %}" class="inline-flex items-center gap-2 text-sm underline-offset-4 hover:underline opacity-70">
+            <i class="fa-solid fa-arrow-left"></i> {% trans "Robots" %}
+          </a>
+          <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="mt-3 text-3xl font-bold">{{ robot.callsign }}</h2>
+          <p class="mt-1 text-sm opacity-75">{{ robot.name }} · {{ robot.model }} · {{ robot.community }}</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <a href="{% url 'robots:robot_update' robot.pk %}"
+             :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+             class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
+            <i class="fa-solid fa-pen"></i> {% trans "Edit" %}
+          </a>
+          <form method="post" action="{% url 'robots:robot_commission' robot.pk %}">
+            {% csrf_token %}
+            <button type="submit"
+                    :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                    class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
+              <i class="fa-solid fa-circle-check"></i> {% trans "Commission" %}
+            </button>
+          </form>
+          <form method="post" action="{% url 'robots:robot_retire' robot.pk %}">
+            {% csrf_token %}
+            <button type="submit"
+                    :class="darkMode ? 'border-warn-dark text-warn-dark' : 'border-warn-light text-warn-light'"
+                    class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
+              <i class="fa-solid fa-power-off"></i> {% trans "Retire" %}
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <div class="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div class="rounded-lg border border-current/10 p-4">
+          <div class="text-xs opacity-60">{% trans "Status" %}</div>
+          <div class="mt-1 font-bold">{{ robot.get_status_display }}</div>
+        </div>
+        <div class="rounded-lg border border-current/10 p-4">
+          <div class="text-xs opacity-60">{% trans "Battery" %}</div>
+          <div class="mt-1 font-bold">{{ robot.battery_percent }}%</div>
+        </div>
+        <div class="rounded-lg border border-current/10 p-4">
+          <div class="text-xs opacity-60">{% trans "Operator" %}</div>
+          <div class="mt-1 font-bold">{{ robot.operator|default:"—" }}</div>
+        </div>
+        <div class="rounded-lg border border-current/10 p-4">
+          <div class="text-xs opacity-60">{% trans "Location" %}</div>
+          <div class="mt-1 font-bold truncate">{{ robot.current_location|default:"—" }}</div>
+        </div>
+      </div>
+
+      {% if robot.firmware_version or robot.hardware_revision or robot.serial_number %}
+        <div class="mt-4 flex flex-wrap gap-2 border-t border-current/10 pt-4 text-xs opacity-65">
+          {% if robot.firmware_version %}
+            <span class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-1">
+              <i class="fa-solid fa-microchip"></i> {{ robot.firmware_version }}
+            </span>
+          {% endif %}
+          {% if robot.hardware_revision %}
+            <span class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-1">
+              <i class="fa-solid fa-wrench"></i> {{ robot.hardware_revision }}
+            </span>
+          {% endif %}
+          {% if robot.serial_number %}
+            <span class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-1">
+              <i class="fa-solid fa-barcode"></i> {{ robot.serial_number }}
+            </span>
+          {% endif %}
+        </div>
+      {% endif %}
+    </article>
+
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border p-5 shadow-sm">
+      <h3 class="flex items-center gap-2 text-lg font-bold">
+        <i class="fa-solid fa-route opacity-60"></i> {% trans "Mission assignments" %}
+      </h3>
+      <div class="mt-3 space-y-2">
+        {% for assignment in assignments %}
+          <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="flex items-center justify-between gap-4 rounded-lg px-4 py-3 text-sm">
+            <a class="font-semibold underline-offset-4 hover:underline" href="{% url 'robots:mission_detail' assignment.mission.pk %}">
+              {{ assignment.mission.title }}
+            </a>
+            <span class="inline-flex items-center rounded-full border border-current/20 px-2 py-0.5 text-xs font-semibold whitespace-nowrap opacity-75">
+              {{ assignment.get_status_display }}
+            </span>
+          </div>
+        {% empty %}
+          <p class="text-sm opacity-60">{% trans "No assignments yet." %}</p>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border p-5 shadow-sm">
+      <h3 class="flex items-center gap-2 text-lg font-bold">
+        <i class="fa-solid fa-satellite-dish opacity-60"></i> {% trans "Recent telemetry" %}
+      </h3>
+      <div class="mt-3 overflow-x-auto">
+        <table class="min-w-full text-left text-sm">
+          <thead class="border-b border-current/10 text-xs uppercase opacity-60">
+            <tr>
+              <th class="py-2 pr-4">{% trans "Time" %}</th>
+              <th class="pr-4">{% trans "Battery" %}</th>
+              <th class="pr-4">{% trans "Speed" %}</th>
+              <th>{% trans "Coordinates" %}</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-current/10">
+            {% for t in telemetry %}
+              <tr>
+                <td class="py-2 pr-4 opacity-75">{{ t.recorded_at|date:"M j, H:i" }}</td>
+                <td class="pr-4">{{ t.battery_percent|default:"—" }}{% if t.battery_percent %}%{% endif %}</td>
+                <td class="pr-4">{{ t.speed_mps|default:"—" }}{% if t.speed_mps %} m/s{% endif %}</td>
+                <td class="opacity-75">{% if t.latitude and t.longitude %}{{ t.latitude }}, {{ t.longitude }}{% else %}—{% endif %}</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="4" class="py-5 text-center opacity-60">{% trans "No telemetry yet." %}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border p-5 shadow-sm">
+      <h3 class="flex items-center gap-2 text-lg font-bold">
+        <i class="fa-solid fa-screwdriver-wrench opacity-60"></i> {% trans "Maintenance tickets" %}
+      </h3>
+      <div class="mt-3 space-y-2">
+        {% for ticket in tickets %}
+          <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="flex items-start justify-between gap-4 rounded-lg px-4 py-3 text-sm">
+            <div>
+              <div class="font-semibold">{{ ticket.title }}</div>
+              <div class="mt-0.5 text-xs opacity-60">{{ ticket.get_severity_display }} · {{ ticket.opened_at|date:"M j, Y" }}</div>
+            </div>
+            <span class="inline-flex items-center rounded-full border border-current/20 px-2 py-0.5 text-xs font-semibold whitespace-nowrap opacity-75">
+              {{ ticket.get_status_display }}
+            </span>
+          </div>
+        {% empty %}
+          <p class="text-sm opacity-60">{% trans "No tickets." %}</p>
+        {% endfor %}
+      </div>
+    </div>
+
+  </section>
+
+  <aside class="space-y-5">
+
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border p-5 shadow-sm">
+      <h3 class="flex items-center gap-2 text-lg font-bold">
+        <i class="fa-solid fa-terminal opacity-60"></i> {% trans "Queue command" %}
+      </h3>
+      <form method="post" action="{% url 'robots:robot_command_create' robot.pk %}" class="mt-4 space-y-3">
+        {% csrf_token %}
+        {% for field in command_form %}
+          {% if field.name != "robot" and field.name != "issued_by" %}
+            <div>
+              <label class="mb-1 block text-xs font-semibold opacity-70">{{ field.label }}</label>
+              {{ field }}
+              {% if field.errors %}<div class="mt-1 text-xs text-red-500">{{ field.errors }}</div>{% endif %}
+            </div>
+          {% endif %}
+        {% endfor %}
+        <button type="submit"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="w-full rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-paper-plane"></i> {% trans "Queue command" %}
+        </button>
+      </form>
+    </div>
+
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border p-5 shadow-sm">
+      <h3 class="flex items-center gap-2 text-lg font-bold">
+        <i class="fa-solid fa-wave-square opacity-60"></i> {% trans "Record telemetry" %}
+      </h3>
+      <form method="post" action="{% url 'robots:robot_telemetry_create' robot.pk %}" class="mt-4 space-y-3">
+        {% csrf_token %}
+        {% for field in telemetry_form %}
+          {% if field.name != "robot" %}
+            <div>
+              <label class="mb-1 block text-xs font-semibold opacity-70">{{ field.label }}</label>
+              {{ field }}
+              {% if field.errors %}<div class="mt-1 text-xs text-red-500">{{ field.errors }}</div>{% endif %}
+            </div>
+          {% endif %}
+        {% endfor %}
+        <button type="submit"
+                :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                class="w-full rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+          <i class="fa-solid fa-upload"></i> {% trans "Record snapshot" %}
+        </button>
+      </form>
+    </div>
+
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border p-5 shadow-sm">
+      <h3 class="flex items-center gap-2 text-lg font-bold">
+        <i class="fa-solid fa-bell opacity-60"></i> {% trans "Events" %}
+      </h3>
+      <div class="mt-3 space-y-2">
+        {% for event in events %}
+          <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3 text-sm">
+            <div class="flex items-center justify-between gap-2">
+              <span class="font-semibold truncate">{{ event.event_type }}</span>
+              <span class="text-xs opacity-60 whitespace-nowrap">{{ event.occurred_at|date:"M j, H:i" }}</span>
+            </div>
+            <div class="mt-0.5 text-xs opacity-60">{{ event.get_severity_display }}</div>
+            {% if event.message %}<p class="mt-1 opacity-80 line-clamp-2">{{ event.message }}</p>{% endif %}
+          </div>
+        {% empty %}
+          <p class="text-sm opacity-60">{% trans "No events." %}</p>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border p-5 shadow-sm">
+      <h3 class="flex items-center gap-2 text-lg font-bold">
+        <i class="fa-solid fa-code-branch opacity-60"></i> {% trans "Commands" %}
+      </h3>
+      <div class="mt-3 space-y-2">
+        {% for cmd in commands %}
+          <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3 text-sm">
+            <div class="flex items-center justify-between gap-2">
+              <span class="font-mono font-semibold">{{ cmd.command_type }}</span>
+              <span class="text-xs opacity-60 whitespace-nowrap">{{ cmd.issued_at|date:"M j, H:i" }}</span>
+            </div>
+            <div class="mt-0.5 text-xs opacity-60">
+              {% if cmd.success is not None %}{% if cmd.success %}✓ {% trans "success" %}{% else %}✗ {% trans "failed" %}{% endif %} · {% endif %}
+              {% if cmd.completed_at %}{% trans "done" %}{% elif cmd.acknowledged_at %}{% trans "ack" %}{% elif cmd.sent_at %}{% trans "sent" %}{% else %}{% trans "queued" %}{% endif %}
+            </div>
+          </div>
+        {% empty %}
+          <p class="text-sm opacity-60">{% trans "No commands." %}</p>
+        {% endfor %}
+      </div>
+    </div>
+
+  </aside>
+</div>
+{% endblock %}

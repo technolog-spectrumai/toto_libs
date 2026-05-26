@@ -1,0 +1,290 @@
+{% extends "robots/base.html" %}
+{% load i18n %}
+
+{% block robots_title %}{% trans "Fleet Metrics" %}{% endblock %}
+{% block robots_header %}{% trans "Fleet Metrics" %}{% endblock %}
+
+{% block robots_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+{{ robot_status_data|json_script:"robot-status-data" }}
+{{ mission_status_data|json_script:"mission-status-data" }}
+{{ missions_over_time_data|json_script:"missions-over-time-data" }}
+{{ battery_distribution_data|json_script:"battery-distribution-data" }}
+{{ events_severity_data|json_script:"events-severity-data" }}
+<script>
+  document.addEventListener('alpine:init', () => {
+    const _robotStatus       = JSON.parse(document.getElementById('robot-status-data').textContent);
+    const _missionStatus     = JSON.parse(document.getElementById('mission-status-data').textContent);
+    const _missionsOverTime  = JSON.parse(document.getElementById('missions-over-time-data').textContent);
+    const _batteryDist       = JSON.parse(document.getElementById('battery-distribution-data').textContent);
+    const _eventsSeverity    = JSON.parse(document.getElementById('events-severity-data').textContent);
+
+    function _colors(isDark) {
+      return {
+        grid: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)',
+        tick: isDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.45)',
+      };
+    }
+
+    function _isDark() {
+      return document.documentElement.dataset.theme === 'dark'
+        || document.body.classList.contains('dark')
+        || window.matchMedia('(prefers-color-scheme: dark)').matches;
+    }
+
+    Alpine.data('robotStatusChart', () => ({
+      empty: !_robotStatus.labels || !_robotStatus.labels.length,
+      init() {
+        if (this.empty) return;
+        const { tick } = _colors(_isDark());
+        new Chart(document.getElementById('robotStatusChart'), {
+          type: 'doughnut',
+          data: _robotStatus,
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+              legend: { position: 'right', labels: { color: tick, boxWidth: 14, padding: 14, font: { size: 11 } } },
+            },
+          },
+        });
+      },
+    }));
+
+    Alpine.data('missionStatusChart', () => ({
+      empty: !_missionStatus.labels || !_missionStatus.labels.length,
+      init() {
+        if (this.empty) return;
+        const { tick } = _colors(_isDark());
+        new Chart(document.getElementById('missionStatusChart'), {
+          type: 'doughnut',
+          data: _missionStatus,
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+              legend: { position: 'right', labels: { color: tick, boxWidth: 14, padding: 14, font: { size: 11 } } },
+            },
+          },
+        });
+      },
+    }));
+
+    Alpine.data('missionsOverTimeChart', () => ({
+      empty: !_missionsOverTime.labels || !_missionsOverTime.labels.length,
+      init() {
+        if (this.empty) return;
+        const { grid, tick } = _colors(_isDark());
+        new Chart(document.getElementById('missionsOverTimeChart'), {
+          type: 'line',
+          data: _missionsOverTime,
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { type: 'category', ticks: { color: tick, font: { size: 11 } }, grid: { color: grid } },
+              y: { ticks: { color: tick, font: { size: 11 }, precision: 0 }, grid: { color: grid } },
+            },
+          },
+        });
+      },
+    }));
+
+    Alpine.data('batteryDistChart', () => ({
+      empty: !_batteryDist.labels || !_batteryDist.labels.length,
+      init() {
+        if (this.empty) return;
+        const { grid, tick } = _colors(_isDark());
+        new Chart(document.getElementById('batteryDistChart'), {
+          type: 'bar',
+          data: _batteryDist,
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { ticks: { color: tick, font: { size: 11 } }, grid: { color: grid } },
+              y: { ticks: { color: tick, font: { size: 11 }, precision: 0 }, grid: { color: grid } },
+            },
+          },
+        });
+      },
+    }));
+
+    Alpine.data('eventsSeverityChart', () => ({
+      empty: !_eventsSeverity.labels || !_eventsSeverity.labels.length,
+      init() {
+        if (this.empty) return;
+        const { grid, tick } = _colors(_isDark());
+        new Chart(document.getElementById('eventsSeverityChart'), {
+          type: 'bar',
+          data: _eventsSeverity,
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+              legend: { position: 'bottom', labels: { color: tick, boxWidth: 12, padding: 16, font: { size: 11 } } },
+            },
+            scales: {
+              x: { stacked: true, type: 'category', ticks: { color: tick, font: { size: 11 } }, grid: { color: grid } },
+              y: { stacked: true, ticks: { color: tick, font: { size: 11 }, precision: 0 }, grid: { color: grid } },
+            },
+          },
+        });
+      },
+    }));
+  });
+</script>
+{% endblock %}
+
+{% block robots_content %}
+
+{# ─── Stat cards ──────────────────────────────────────────────── #}
+<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border p-5 shadow-sm">
+    <div class="flex items-start justify-between gap-2">
+      <div>
+        <div class="text-3xl font-bold">{{ stats.total_robots }}</div>
+        <div class="mt-1 text-sm opacity-65">{% trans "Total robots" %}</div>
+      </div>
+      <i class="fa-solid fa-robot mt-1 text-xl opacity-40"></i>
+    </div>
+  </div>
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border p-5 shadow-sm">
+    <div class="flex items-start justify-between gap-2">
+      <div>
+        <div class="text-3xl font-bold">{{ stats.active_robots }}</div>
+        <div class="mt-1 text-sm opacity-65">{% trans "Active / returning" %}</div>
+      </div>
+      <i class="fa-solid fa-circle-play mt-1 text-xl opacity-40"></i>
+    </div>
+  </div>
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border p-5 shadow-sm">
+    <div class="flex items-start justify-between gap-2">
+      <div>
+        <div class="text-3xl font-bold">{{ stats.avg_battery }}%</div>
+        <div class="mt-1 text-sm opacity-65">{% trans "Avg battery (active)" %}</div>
+      </div>
+      <i class="fa-solid fa-battery-half mt-1 text-xl opacity-40"></i>
+    </div>
+  </div>
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border p-5 shadow-sm">
+    <div class="flex items-start justify-between gap-2">
+      <div>
+        <div class="text-3xl font-bold">{{ stats.running_missions }}</div>
+        <div class="mt-1 text-sm opacity-65">{% trans "Running missions" %}</div>
+      </div>
+      <i class="fa-solid fa-route mt-1 text-xl opacity-40"></i>
+    </div>
+  </div>
+</div>
+
+<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+  <div :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'" class="rounded-lg p-4">
+    <div class="text-2xl font-bold">{{ stats.faulted_robots }}</div>
+    <div class="mt-1 text-sm opacity-65">{% trans "Faulted" %}</div>
+  </div>
+  <div :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'" class="rounded-lg p-4">
+    <div class="text-2xl font-bold">{{ stats.offline_robots }}</div>
+    <div class="mt-1 text-sm opacity-65">{% trans "Offline" %}</div>
+  </div>
+  <div :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'" class="rounded-lg p-4">
+    <div class="text-2xl font-bold">{{ stats.open_tickets }}</div>
+    <div class="mt-1 text-sm opacity-65">{% trans "Open tickets" %}</div>
+  </div>
+  <div :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'" class="rounded-lg p-4">
+    <div class="text-2xl font-bold">{{ stats.critical_tickets }}</div>
+    <div class="mt-1 text-sm opacity-65">{% trans "Critical tickets" %}</div>
+  </div>
+</div>
+
+{# ─── Charts row 1 ─────────────────────────────────────────────── #}
+<div class="grid gap-5 lg:grid-cols-2">
+
+  <div x-data="robotStatusChart()" x-init="init()"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5 shadow-sm">
+    <h2 class="flex items-center gap-2 text-lg font-bold">
+      <i class="fa-solid fa-robot opacity-60"></i>
+      {% trans "Fleet by status" %}
+    </h2>
+    <div x-show="empty" class="mt-6 py-8 text-center text-sm opacity-50">{% trans "No data yet." %}</div>
+    <div x-show="!empty" class="mt-4" style="height:240px">
+      <canvas id="robotStatusChart"></canvas>
+    </div>
+  </div>
+
+  <div x-data="missionStatusChart()" x-init="init()"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5 shadow-sm">
+    <h2 class="flex items-center gap-2 text-lg font-bold">
+      <i class="fa-solid fa-route opacity-60"></i>
+      {% trans "Missions by status" %}
+    </h2>
+    <div x-show="empty" class="mt-6 py-8 text-center text-sm opacity-50">{% trans "No data yet." %}</div>
+    <div x-show="!empty" class="mt-4" style="height:240px">
+      <canvas id="missionStatusChart"></canvas>
+    </div>
+  </div>
+
+</div>
+
+{# ─── Charts row 2 ─────────────────────────────────────────────── #}
+<div x-data="missionsOverTimeChart()" x-init="init()"
+     :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     class="rounded-lg border p-5 shadow-sm">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-chart-line opacity-60"></i>
+    {% trans "Missions created — last 30 days" %}
+  </h2>
+  <div x-show="empty" class="mt-6 py-8 text-center text-sm opacity-50">{% trans "No missions in the last 30 days." %}</div>
+  <div x-show="!empty" class="mt-4" style="height:220px">
+    <canvas id="missionsOverTimeChart"></canvas>
+  </div>
+</div>
+
+{# ─── Charts row 3 ─────────────────────────────────────────────── #}
+<div class="grid gap-5 lg:grid-cols-2">
+
+  <div x-data="batteryDistChart()" x-init="init()"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5 shadow-sm">
+    <h2 class="flex items-center gap-2 text-lg font-bold">
+      <i class="fa-solid fa-battery-half opacity-60"></i>
+      {% trans "Battery distribution (active robots)" %}
+    </h2>
+    <div x-show="empty" class="mt-6 py-8 text-center text-sm opacity-50">{% trans "No active robots." %}</div>
+    <div x-show="!empty" class="mt-4" style="height:220px">
+      <canvas id="batteryDistChart"></canvas>
+    </div>
+  </div>
+
+  <div x-data="eventsSeverityChart()" x-init="init()"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5 shadow-sm">
+    <h2 class="flex items-center gap-2 text-lg font-bold">
+      <i class="fa-solid fa-bell opacity-60"></i>
+      {% trans "Events by severity — last 7 days" %}
+    </h2>
+    <div x-show="empty" class="mt-6 py-8 text-center text-sm opacity-50">{% trans "No events in the last 7 days." %}</div>
+    <div x-show="!empty" class="mt-4" style="height:220px">
+      <canvas id="eventsSeverityChart"></canvas>
+    </div>
+  </div>
+
+</div>
+
+{# ─── Summary table ─────────────────────────────────────────────── #}
+<div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     class="rounded-lg border p-5 shadow-sm">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-table-list opacity-60"></i>
+    {% trans "Full summary" %}
+  </h2>
+  <div class="mt-4 grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+    {% for key, value in stats.items %}
+      <div class="flex items-center justify-between gap-4 border-b border-current/10 pb-3">
+        <span class="opacity-65">{{ key|title|cut:"_" }}</span>
+        <span class="font-bold tabular-nums">{{ value }}</span>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+
+{% endblock %}

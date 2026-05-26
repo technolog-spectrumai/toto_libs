@@ -1,0 +1,79 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% block robots_title %}Robot Fleet{% endblock %} | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+<style>[x-cloak] { display: none !important; }</style>
+{% block robots_head %}{% endblock %}
+{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-7xl space-y-6">
+    <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div class="space-y-2">
+        <a href="{% url 'core:dashboard' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+          <i class="fa-solid fa-arrow-left"></i> {% trans "Dashboard" %}
+        </a>
+        <div>
+          <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-xs font-semibold uppercase tracking-wide">
+            {% trans "Autonomous Operations" %}
+          </p>
+          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+            <i class="fa-solid fa-robot"></i>
+            {% block robots_header %}{% trans "Robot Fleet" %}{% endblock %}
+          </h1>
+        </div>
+      </div>
+
+      <nav class="flex flex-wrap gap-2">
+        <a href="{% url 'robots:dashboard' %}"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-gauge-high"></i> {% trans "Overview" %}
+        </a>
+        <a href="{% url 'robots:map' %}"
+           :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+           class="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-map-location-dot"></i> {% trans "Map" %}
+        </a>
+        <a href="{% url 'robots:robot_list' %}"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-robot"></i> {% trans "Robots" %}
+        </a>
+        <a href="{% url 'robots:fleet_list' %}"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-layer-group"></i> {% trans "Fleets" %}
+        </a>
+        <a href="{% url 'robots:mission_list' %}"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-route"></i> {% trans "Missions" %}
+        </a>
+        <a href="{% url 'robots:metrics' %}"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-chart-bar"></i> {% trans "Metrics" %}
+        </a>
+      </nav>
+    </header>
+
+    {% if messages %}
+      <div class="space-y-2">
+        {% for message in messages %}
+          <div class="rounded-lg border border-current/20 px-4 py-3 text-sm shadow-sm">
+            {{ message }}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {% block robots_content %}{% endblock %}
+  </div>
+</section>
+{% endblock %}

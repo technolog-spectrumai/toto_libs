@@ -1,0 +1,48 @@
+{% extends "robots/base.html" %}
+{% load i18n %}
+
+{% block robots_title %}{% trans "Charging Docks" %}{% endblock %}
+{% block robots_header %}{% trans "Charging Docks" %}{% endblock %}
+
+{% block robots_content %}
+<div class="flex items-center justify-between gap-4">
+  <p class="text-sm opacity-60">{% trans "Physical charging stations available to the fleet." %}</p>
+  <a href="{% url 'robots:dock_create' %}"
+     :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+     class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+    <i class="fa-solid fa-plus"></i> {% trans "New dock" %}
+  </a>
+</div>
+
+<div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+  {% for dock in docks %}
+    <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border p-5 shadow-sm">
+      <div class="flex items-start justify-between gap-3">
+        <h2 class="font-bold">{{ dock.name }}</h2>
+        {% if not dock.is_active %}
+          <span class="inline-flex items-center rounded-full border border-current/20 px-2 py-0.5 text-xs font-semibold opacity-60 whitespace-nowrap">
+            {% trans "Inactive" %}
+          </span>
+        {% endif %}
+      </div>
+      <p class="mt-1 text-sm opacity-70">{{ dock.community }}</p>
+      <div class="mt-4 flex flex-wrap gap-3 text-sm opacity-75">
+        <span><i class="fa-solid fa-plug mr-1 opacity-60"></i>{{ dock.slot_count }} {% trans "slots" %}</span>
+        {% if dock.power_kw %}
+          <span><i class="fa-solid fa-bolt mr-1 opacity-60"></i>{{ dock.power_kw }} kW</span>
+        {% endif %}
+        {% if dock.location %}
+          <span class="w-full"><i class="fa-solid fa-location-dot mr-1 opacity-60"></i>{{ dock.location }}</span>
+        {% endif %}
+      </div>
+    </article>
+  {% empty %}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="col-span-full rounded-lg border p-10 text-center shadow-sm">
+      <i class="fa-solid fa-charging-station mb-3 text-3xl opacity-30"></i>
+      <p class="text-sm opacity-60">{% trans "No charging docks yet." %}</p>
+    </div>
+  {% endfor %}
+</div>
+{% endblock %}
