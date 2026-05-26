@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.utils.translation import gettext_lazy as _
 
-from .models import BillingUnit, Tariff, TariffItem, UsageCharge, UsageRecord
+from .models import BillingMetric, BillingUnit, Tariff, TariffItem, UsageCharge, UsageRecord
 
 
 @admin.register(BillingUnit)
@@ -12,14 +12,24 @@ class BillingUnitAdmin(admin.ModelAdmin):
     ordering = ("dimension", "code")
 
 
+@admin.register(BillingMetric)
+class BillingMetricAdmin(admin.ModelAdmin):
+    list_display = ("code", "label", "dimension", "app_label", "default_unit", "active")
+    list_filter = ("active", "dimension", "app_label")
+    search_fields = ("code", "label", "description")
+    ordering = ("dimension", "code")
+    autocomplete_fields = ["default_unit"]
+
+
 class TariffItemInline(admin.TabularInline):
     model = TariffItem
     extra = 0
     fields = (
-        "code", "name", "charged_asset", "price_per_unit_display",
+        "metric", "name", "charged_asset", "price_per_unit_display",
         "unit", "unit_quantity", "receiving_account", "rounding_mode", "active",
     )
     readonly_fields = ("price_per_unit_base_units",)
+    autocomplete_fields = ["metric", "charged_asset", "receiving_account", "unit"]
 
 
 @admin.register(Tariff)
@@ -40,14 +50,18 @@ class TariffAdmin(admin.ModelAdmin):
 @admin.register(TariffItem)
 class TariffItemAdmin(admin.ModelAdmin):
     list_display = (
-        "code", "tariff", "name", "charged_asset",
+        "metric_code_display", "tariff", "name", "charged_asset",
         "price_per_unit_display", "unit", "unit_quantity",
         "receiving_account", "rounding_mode", "active",
     )
     list_filter = ("active", "unit", "rounding_mode", "tariff")
-    search_fields = ("code", "name", "tariff__code", "tariff__name")
+    search_fields = ("metric__code", "name", "tariff__code", "tariff__name")
     readonly_fields = ("price_per_unit_base_units", "created_at", "updated_at")
-    autocomplete_fields = ["tariff", "charged_asset", "receiving_account", "unit"]
+    autocomplete_fields = ["tariff", "metric", "charged_asset", "receiving_account", "unit"]
+
+    @admin.display(description="Metric code", ordering="metric__code")
+    def metric_code_display(self, obj):
+        return obj.metric.code
 
 
 class UsageChargeInline(admin.TabularInline):
@@ -88,7 +102,7 @@ class UsageChargeAdmin(admin.ModelAdmin):
         "payer_account", "receiving_account",
     )
     list_filter = ("charged_asset", "unit")
-    search_fields = ("usage_record__uuid", "tariff_item__code")
+    search_fields = ("usage_record__uuid", "tariff_item__metric__code")
     readonly_fields = (
         "usage_record", "tariff_item", "charged_asset",
         "quantity", "unit", "price_per_unit_base_units", "amount_base_units",

@@ -86,10 +86,10 @@ def calculate_tariff_charge(
     Returns one ChargeDraft per active TariffItem that matches metric_code.
     """
     from django.db.models import Q as _Q
-    qs = tariff.active_items.filter(code=metric_code)
+    qs = tariff.active_items.filter(metric__code=metric_code)
     if unit:
         qs = qs.filter(_Q(unit__isnull=True) | _Q(unit__code=unit))
-    items = qs.select_related("charged_asset", "receiving_account", "unit")
+    items = qs.select_related("metric", "charged_asset", "receiving_account", "unit")
     drafts = []
     for item in items:
         amount = _calculate_charge(item, Decimal(str(quantity)))
@@ -105,7 +105,7 @@ def calculate_tariff_charge(
                 "tariff_id": tariff.pk,
                 "tariff_code": tariff.code,
                 "item_id": item.pk,
-                "item_code": item.code,
+                "item_code": item.metric.code,
                 "metric_code": metric_code,
                 "quantity": str(quantity),
                 "unit": unit or "",
@@ -439,7 +439,7 @@ def simulate_tariff(
                 "metric_code": metric_code,
                 "quantity": quantity,
                 "unit": unit,
-                "item_code": draft.tariff_item.code,
+                "item_code": draft.tariff_item.metric.code,
                 "item_name": draft.tariff_item.name,
                 "asset": asset.unit_name,
                 "amount_base_units": draft.amount_base_units,

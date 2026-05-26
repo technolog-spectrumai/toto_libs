@@ -12,6 +12,7 @@
       dragging: false,
       uploading: false,
       error: null,
+      billingWarnings: [],
       results: null,
       recentUploads: [],
 
@@ -34,6 +35,7 @@
       async uploadFile(file) {
         this.uploading = true;
         this.error = null;
+        this.billingWarnings = [];
         this.results = null;
 
         const formData = new FormData();
@@ -51,6 +53,7 @@
           if (!response.ok) {
             this.error = data.error || 'Upload failed';
           } else {
+            this.billingWarnings = data.billing_warnings || [];
             this.results = data.result;
             const now = new Date();
             const ts = now.toISOString().slice(0, 16).replace('T', ' ');
@@ -162,6 +165,20 @@
           class="flex items-start gap-3 rounded-lg border p-4 text-sm">
           <i class="fa-solid fa-triangle-exclamation mt-0.5 shrink-0"></i>
           <span x-text="error"></span>
+        </div>
+      </template>
+
+      <!-- Billing warnings (file saved but billing charge failed) -->
+      <template x-if="billingWarnings.length > 0">
+        <div x-transition class="space-y-2">
+          <template x-for="(warn, i) in billingWarnings" :key="i">
+            <div
+              :class="darkMode ? 'border-warn-dark bg-warn-dark/10 text-warn-dark' : 'border-warn-light bg-warn-light/10 text-warn-light'"
+              class="flex items-start gap-3 rounded-lg border p-4 text-sm">
+              <i class="fa-solid fa-circle-exclamation mt-0.5 shrink-0"></i>
+              <span>{% trans "Billing error" %}: <span x-text="warn"></span></span>
+            </div>
+          </template>
         </div>
       </template>
     </section>

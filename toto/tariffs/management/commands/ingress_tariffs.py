@@ -19,6 +19,7 @@ from toto.assets.models import (
 )
 from toto.ingress import IngressCommand
 from toto.tariffs.models import (
+    BillingMetric,
     BillingUnit,
     RoundingMode,
     Tariff,
@@ -33,6 +34,20 @@ def _bu(code, label, dimension=""):
     obj, _ = BillingUnit.objects.get_or_create(
         code=code,
         defaults={"label": label, "dimension": dimension, "app_label": "tariffs", "active": True},
+    )
+    return obj
+
+
+def _metric(code, label, dimension="", app_label="tariffs", default_unit=None):
+    obj, _ = BillingMetric.objects.get_or_create(
+        code=code,
+        defaults={
+            "label": label,
+            "dimension": dimension,
+            "app_label": app_label,
+            "default_unit": default_unit,
+            "active": True,
+        },
     )
     return obj
 
@@ -75,12 +90,12 @@ def _tariff(code, name, description, status=TariffStatus.ACTIVE):
     return t, created
 
 
-def _item(tariff, code, name, asset, price, unit, recv, uq=1, rounding=RoundingMode.UP, min_charge=0):
+def _item(tariff, metric, name, asset, price, unit, recv, uq=1, rounding=RoundingMode.UP, min_charge=0):
     price_dec = Decimal(str(price))
     price_base = to_base_units(price_dec, asset.decimals)
     item, _ = TariffItem.objects.get_or_create(
         tariff=tariff,
-        code=code,
+        metric=metric,
         defaults={
             "name": name,
             "charged_asset": asset,
@@ -106,18 +121,51 @@ class Command(IngressCommand):
         # ------------------------------------------------------------------ #
         # 0. Billing units (owned by tariffs app)                              #
         # ------------------------------------------------------------------ #
-        bu_input_token  = _bu("ai.input_token",  "AI input token",   "ai")
-        bu_output_token = _bu("ai.output_token", "AI output token",  "ai")
-        bu_request      = _bu("request",         "Request",          "event")
-        bu_second       = _bu("time.second",     "Second",           "time")
-        bu_minute       = _bu("time.minute",     "Minute",           "time")
-        bu_hour         = _bu("time.hour",       "Hour",             "time")
-        bu_node         = _bu("graph.node",      "Graph node",       "graph")
-        bu_relationship = _bu("graph.relationship", "Graph relationship", "graph")
-        bu_mb_hour      = _bu("storage.mb_hour", "Megabyte hour",    "storage_time")
-        bu_gb_hour      = _bu("storage.gb_hour", "Gigabyte hour",    "storage_time")
-        bu_mb           = _bu("storage.mb",      "Megabyte",         "storage")
-        bu_mb_second    = _bu("storage.mb_second", "Megabyte second", "storage_time")
+        bu_input_token  = _bu("ai.input_token",       "AI input token",       "ai")
+        bu_output_token = _bu("ai.output_token",      "AI output token",      "ai")
+        bu_request      = _bu("request",              "Request",              "event")
+        bu_second       = _bu("time.second",          "Second",               "time")
+        bu_minute       = _bu("time.minute",          "Minute",               "time")
+        bu_hour         = _bu("time.hour",            "Hour",                 "time")
+        bu_node         = _bu("graph.node",           "Graph node",           "graph")
+        bu_relationship = _bu("graph.relationship",   "Graph relationship",   "graph")
+        bu_mb_hour      = _bu("storage.mb_hour",      "Megabyte hour",        "storage_time")
+        bu_gb_hour      = _bu("storage.gb_hour",      "Gigabyte hour",        "storage_time")
+        bu_mb           = _bu("storage.mb",           "Megabyte",             "storage")
+        bu_mb_second    = _bu("storage.mb_second",    "Megabyte second",      "storage_time")
+
+        # ------------------------------------------------------------------ #
+        # 0b. Billing metrics (each maps a metric code to a first-class object) #
+        # ------------------------------------------------------------------ #
+
+        # AI metrics
+        m_ai_input   = _metric("ai.input_tokens",  "LLM Input Tokens",        "ai",      "tariffs", bu_input_token)
+        m_ai_output  = _metric("ai.output_tokens", "LLM Output Tokens",       "ai",      "tariffs", bu_output_token)
+        m_ai_req     = _metric("ai.requests",      "Inference Requests",      "ai",      "tariffs", bu_request)
+
+        # Storage metrics — owned by vault, emitted as stable string codes
+        m_st_req     = _metric("storage.request",     "Storage upload request",  "storage", "vault",   bu_request)
+        m_st_xfer    = _metric("storage.transfer_mb",  "Storage upload transfer", "storage", "vault",   bu_mb)
+        m_st_hour    = _metric("storage.mb_hour",      "Storage MB-hour",         "storage", "vault",   bu_mb_hour)
+        m_st_gb_hour = _metric("storage.gb_hour",      "Storage GB-hour",         "storage", "vault",   bu_gb_hour)
+
+        # Graph metrics
+        m_neo_ns   = _metric("neo4j.node_second",         "Node·second",          "graph", "tariffs", bu_second)
+        m_neo_rs   = _metric("neo4j.relationship_second",  "Relationship·second",  "graph", "tariffs", bu_second)
+        m_neo_node = _metric("neo4j.node",                 "Node (flat)",          "graph", "tariffs", bu_node)
+        m_neo_rel  = _metric("neo4j.relationship",         "Relationship (flat)",  "graph", "tariffs", bu_relationship)
+        m_neo_q    = _metric("neo4j.query",                "Cypher Query",         "graph", "tariffs", bu_request)
+
+        # Compute metrics
+        m_cpu_s    = _metric("compute.second",    "CPU·second",    "compute", "tariffs", bu_second)
+        m_cpu_m    = _metric("compute.minute",    "CPU·minute",    "compute", "tariffs", bu_minute)
+        m_cpu_h    = _metric("compute.hour",      "CPU·hour",      "compute", "tariffs", bu_hour)
+        m_cpu_mb_s = _metric("compute.mb_second", "RAM MB·second", "compute", "tariffs", bu_mb_second)
+
+        # API metrics
+        m_api_req   = _metric("api.request",       "API Request",            "api", "tariffs", bu_request)
+        m_api_batch = _metric("api.request_batch",  "API Request (per 1000)", "api", "tariffs", bu_request)
+        m_api_hook  = _metric("api.webhook",        "Outbound Webhook",       "api", "tariffs", bu_request)
 
         # ------------------------------------------------------------------ #
         # 1. Service token assets                                              #
@@ -151,21 +199,21 @@ class Command(IngressCommand):
             "Charges AI_TOKEN per input and output LLM token. "
             "Output tokens are priced 3× higher than input.",
         )
-        _item(ta, "ai.input_tokens",  "LLM Input Tokens",  ai_token, "0.001", bu_input_token,  rev_ai, uq=1000)
-        _item(ta, "ai.output_tokens", "LLM Output Tokens", ai_token, "0.003", bu_output_token, rev_ai, uq=1000)
-        _item(ta, "ai.requests",      "Inference Requests",ai_token, "0.01",  bu_request,      rev_ai)
+        _item(ta, m_ai_input,  "LLM Input Tokens",   ai_token, "0.001", bu_input_token,  rev_ai, uq=1000)
+        _item(ta, m_ai_output, "LLM Output Tokens",  ai_token, "0.003", bu_output_token, rev_ai, uq=1000)
+        _item(ta, m_ai_req,    "Inference Requests", ai_token, "0.01",  bu_request,      rev_ai)
         self.stdout.write(f"    + {ta.code}")
 
-        # — Tariff B: File Storage
+        # — Tariff B: File Storage (vault billing emits these three metric codes)
         tb, _ = _tariff(
             "FILE-STORAGE",
             "File Storage Standard Tariff",
             "Charges STORAGE_TOKEN per MB stored per hour, with a per-file request charge.",
         )
-        _item(tb, "storage.mb_hour",  "Storage per MB·hour",    storage_token, "0.00001", bu_mb_hour, rev_storage)
-        _item(tb, "storage.gb_hour",  "Storage per GB·hour",    storage_token, "0.01",    bu_gb_hour, rev_storage)
-        _item(tb, "storage.request",  "Storage API Request",    storage_token, "0.0001",  bu_request, rev_storage)
-        _item(tb, "storage.transfer_mb", "Data Transfer per MB",storage_token, "0.005",   bu_mb,      rev_storage)
+        _item(tb, m_st_req,     "Storage API Request",     storage_token, "0.0001",  bu_request, rev_storage)
+        _item(tb, m_st_xfer,    "Data Transfer per MB",    storage_token, "0.005",   bu_mb,      rev_storage)
+        _item(tb, m_st_hour,    "Storage per MB·hour",     storage_token, "0.00001", bu_mb_hour, rev_storage)
+        _item(tb, m_st_gb_hour, "Storage per GB·hour",     storage_token, "0.01",    bu_gb_hour, rev_storage)
         self.stdout.write(f"    + {tb.code}")
 
         # — Tariff C: Neo4j Graph
@@ -175,11 +223,11 @@ class Command(IngressCommand):
             "Charges GRAPH_TOKEN per node/relationship stored per second, "
             "plus a flat rate per Cypher query.",
         )
-        _item(tc, "neo4j.node_second",          "Node·second",          graph_token, "0.00002", bu_second,       rev_graph, min_charge=1)
-        _item(tc, "neo4j.relationship_second",   "Relationship·second",  graph_token, "0.00001", bu_second,       rev_graph, min_charge=1)
-        _item(tc, "neo4j.node",                  "Node (flat)",          graph_token, "0.0001",  bu_node,         rev_graph)
-        _item(tc, "neo4j.relationship",          "Relationship (flat)",  graph_token, "0.00005", bu_relationship, rev_graph)
-        _item(tc, "neo4j.query",                 "Cypher Query",         graph_token, "0.001",   bu_request,      rev_graph)
+        _item(tc, m_neo_ns,   "Node·second",          graph_token, "0.00002", bu_second,       rev_graph, min_charge=1)
+        _item(tc, m_neo_rs,   "Relationship·second",  graph_token, "0.00001", bu_second,       rev_graph, min_charge=1)
+        _item(tc, m_neo_node, "Node (flat)",           graph_token, "0.0001",  bu_node,         rev_graph)
+        _item(tc, m_neo_rel,  "Relationship (flat)",   graph_token, "0.00005", bu_relationship, rev_graph)
+        _item(tc, m_neo_q,    "Cypher Query",          graph_token, "0.001",   bu_request,      rev_graph)
         self.stdout.write(f"    + {tc.code}")
 
         # — Tariff D: Compute
@@ -189,10 +237,10 @@ class Command(IngressCommand):
             "Charges COMPUTE_TOKEN per CPU·second. Minute and hour items for convenience "
             "— choose whichever granularity fits the workload.",
         )
-        _item(td, "compute.second",   "CPU·second",   compute_token, "0.0001",  bu_second,    rev_compute)
-        _item(td, "compute.minute",   "CPU·minute",   compute_token, "0.006",   bu_minute,    rev_compute)
-        _item(td, "compute.hour",     "CPU·hour",     compute_token, "0.36",    bu_hour,      rev_compute)
-        _item(td, "compute.mb_second","RAM MB·second",compute_token, "0.000001",bu_mb_second, rev_compute)
+        _item(td, m_cpu_s,    "CPU·second",    compute_token, "0.0001",   bu_second,    rev_compute)
+        _item(td, m_cpu_m,    "CPU·minute",    compute_token, "0.006",    bu_minute,    rev_compute)
+        _item(td, m_cpu_h,    "CPU·hour",      compute_token, "0.36",     bu_hour,      rev_compute)
+        _item(td, m_cpu_mb_s, "RAM MB·second", compute_token, "0.000001", bu_mb_second, rev_compute)
         self.stdout.write(f"    + {td.code}")
 
         # — Tariff E: API Gateway
@@ -202,9 +250,9 @@ class Command(IngressCommand):
             "Charges API_TOKEN per inbound API request. "
             "Priced per-1000 for high-volume endpoints.",
         )
-        _item(te, "api.request",       "API Request",           api_token, "0.0001", bu_request, rev_api)
-        _item(te, "api.request_batch", "API Request (per 1000)",api_token, "0.05",  bu_request, rev_api, uq=1000)
-        _item(te, "api.webhook",       "Outbound Webhook",      api_token, "0.001", bu_request, rev_api)
+        _item(te, m_api_req,   "API Request",            api_token, "0.0001", bu_request, rev_api)
+        _item(te, m_api_batch, "API Request (per 1000)", api_token, "0.05",   bu_request, rev_api, uq=1000)
+        _item(te, m_api_hook,  "Outbound Webhook",       api_token, "0.001",  bu_request, rev_api)
         self.stdout.write(f"    + {te.code}")
 
         # — Tariff F: Bundled all-in (draft, for preview)
@@ -215,12 +263,12 @@ class Command(IngressCommand):
             "into a single rate card. Set to DRAFT — not yet active.",
             status=TariffStatus.DRAFT,
         )
-        _item(tf, "ai.input_tokens",   "LLM Input",      ai_token,      "0.0008",   bu_input_token,  rev_ai,      uq=1000)
-        _item(tf, "ai.output_tokens",  "LLM Output",     ai_token,      "0.0025",   bu_output_token, rev_ai,      uq=1000)
-        _item(tf, "storage.mb_hour",   "Storage",        storage_token, "0.000008", bu_mb_hour,      rev_storage)
-        _item(tf, "neo4j.query",       "Graph Query",    graph_token,   "0.0008",   bu_request,      rev_graph)
-        _item(tf, "compute.second",    "Compute",        compute_token, "0.00008",  bu_second,       rev_compute)
-        _item(tf, "api.request",       "API Call",       api_token,     "0.00008",  bu_request,      rev_api)
+        _item(tf, m_ai_input,  "LLM Input",    ai_token,      "0.0008",   bu_input_token, rev_ai,      uq=1000)
+        _item(tf, m_ai_output, "LLM Output",   ai_token,      "0.0025",   bu_output_token,rev_ai,      uq=1000)
+        _item(tf, m_st_hour,   "Storage",      storage_token, "0.000008", bu_mb_hour,     rev_storage)
+        _item(tf, m_neo_q,     "Graph Query",  graph_token,   "0.0008",   bu_request,     rev_graph)
+        _item(tf, m_cpu_s,     "Compute",      compute_token, "0.00008",  bu_second,      rev_compute)
+        _item(tf, m_api_req,   "API Call",     api_token,     "0.00008",  bu_request,     rev_api)
         self.stdout.write(f"    + {tf.code} (draft)")
 
         if not self.full:
@@ -254,7 +302,7 @@ class Command(IngressCommand):
         self.stdout.write("  [5/5] Sample usage records…")
 
         _usage_samples = [
-            # (tariff, payer, metric, qty, unit, label)
+            # (tariff, payer, metric_code, qty, unit_code, label)
             (ta, payer_alice, "ai.input_tokens",  Decimal("1200"), bu_input_token.code,  "Alice LLM input"),
             (ta, payer_alice, "ai.output_tokens", Decimal("400"),  bu_output_token.code, "Alice LLM output"),
             (ta, payer_alice, "ai.requests",      Decimal("1"),    bu_request.code,      "Alice single inference"),
@@ -273,7 +321,6 @@ class Command(IngressCommand):
         failed = 0
         for tariff, payer, metric, qty, unit, label in _usage_samples:
             ref = f"ingress-{tariff.code}-{payer.code}-{metric}"
-            # Skip if already posted (idempotent)
             if UsageRecord.objects.filter(metadata__ingress_ref=ref).exists():
                 continue
             record = UsageRecord.objects.create(

@@ -396,7 +396,7 @@ def api_rate(request):
         "unit": unit_slug,
         "charges": [
             {
-                "item_code": d.tariff_item.code,
+                "item_code": d.tariff_item.metric.code,
                 "asset": d.tariff_item.charged_asset.unit_name,
                 "amount_base_units": d.amount_base_units,
             }

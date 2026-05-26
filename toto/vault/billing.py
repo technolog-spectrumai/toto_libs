@@ -16,13 +16,17 @@ from decimal import Decimal
 logger = logging.getLogger(__name__)
 
 STORAGE_TARIFF_CODE = "FILE-STORAGE"
-UPLOAD_REQUEST_METRIC = "storage.request"
-UPLOAD_TRANSFER_METRIC = "storage.transfer_mb"
-STORAGE_HOUR_METRIC = "storage.mb_hour"
 
-# Unit codes must match TariffItem.unit.code values seeded by ingress_tariffs
+# Stable metric codes — match BillingMetric.code rows seeded by ingress_tariffs.
+# Vault passes these as strings to tariff services; the tariffs layer resolves
+# them to first-class BillingMetric objects via metric__code= lookups.
+STORAGE_REQUEST_METRIC_CODE  = "storage.request"
+STORAGE_TRANSFER_METRIC_CODE = "storage.transfer_mb"
+STORAGE_HOUR_METRIC_CODE     = "storage.mb_hour"
+
+# Unit codes must match BillingUnit.code values seeded by ingress_tariffs.
 UNIT_REQUEST = "request"
-UNIT_MB = "storage.mb"
+UNIT_MB      = "storage.mb"
 UNIT_MB_HOUR = "storage.mb_hour"
 
 
@@ -55,20 +59,27 @@ def preflight_upload_check(user, bucket, size_bytes: int) -> tuple[bool, str]:
     the given size?  Call this BEFORE saving the VaultFile.
 
     Returns (True, "") if affordable or if no tariff/items are configured.
-    Returns (False, message) if the user lacks sufficient balance.
+    Returns (False, message) if the user lacks sufficient balance or has no
+    billing account set up.
     """
     tariff = _get_tariff(bucket=bucket)
     if not tariff:
         return True, ""
 
+    from toto.assets.models import LedgerAccount
     from toto.tariffs.services import check_can_afford
 
-    payer = get_or_create_payer_account(user)
+    code = f"vault-user-{user.pk}"
+    try:
+        payer = LedgerAccount.objects.get(code=code)
+    except LedgerAccount.DoesNotExist:
+        return False, "No billing account found for this user. Please contact support."
+
     size_mb = Decimal(str(size_bytes)) / Decimal("1048576")
 
-    charges = [(UPLOAD_REQUEST_METRIC, Decimal("1"), UNIT_REQUEST)]
+    charges = [(STORAGE_REQUEST_METRIC_CODE, Decimal("1"), UNIT_REQUEST)]
     if size_mb > 0:
-        charges.append((UPLOAD_TRANSFER_METRIC, size_mb, UNIT_MB))
+        charges.append((STORAGE_TRANSFER_METRIC_CODE, size_mb, UNIT_MB))
 
     return check_can_afford(tariff, payer, charges)
 
@@ -95,7 +106,7 @@ def charge_upload(vault_file) -> list:
         record, _ = record_and_post_usage(
             tariff=tariff,
             payer_account=payer,
-            metric_code=UPLOAD_REQUEST_METRIC,
+            metric_code=STORAGE_REQUEST_METRIC_CODE,
             quantity=Decimal("1"),
             unit=UNIT_REQUEST,
             source_type="vault_file",
@@ -117,7 +128,7 @@ def charge_upload(vault_file) -> list:
             record, _ = record_and_post_usage(
                 tariff=tariff,
                 payer_account=payer,
-                metric_code=UPLOAD_TRANSFER_METRIC,
+                metric_code=STORAGE_TRANSFER_METRIC_CODE,
                 quantity=size_mb,
                 unit=UNIT_MB,
                 source_type="vault_file",
@@ -178,7 +189,7 @@ def charge_storage_snapshot(
         record, _ = record_and_post_usage(
             tariff=tariff,
             payer_account=payer,
-            metric_code=STORAGE_HOUR_METRIC,
+            metric_code=STORAGE_HOUR_METRIC_CODE,
             quantity=total_mb,
             unit=UNIT_MB_HOUR,
             source_type="vault_storage_snapshot",

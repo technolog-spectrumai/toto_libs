@@ -7,7 +7,7 @@ from django.utils.translation import gettext_lazy as _
 
 from toto.assets.models import Asset, LedgerAccount, to_base_units
 
-from .models import BillingUnit, RoundingMode, Tariff, TariffItem, TariffStatus, UsageRecord
+from .models import BillingMetric, BillingUnit, RoundingMode, Tariff, TariffItem, TariffStatus, UsageRecord
 
 
 class TariffForm(forms.ModelForm):
@@ -38,7 +38,7 @@ class TariffItemForm(forms.ModelForm):
     class Meta:
         model = TariffItem
         fields = [
-            "name", "code", "charged_asset", "price_per_unit_display",
+            "metric", "name", "charged_asset", "price_per_unit_display",
             "unit", "unit_quantity", "receiving_account",
             "minimum_charge_base_units", "rounding_mode", "active", "metadata",
         ]
@@ -49,6 +49,7 @@ class TariffItemForm(forms.ModelForm):
     def __init__(self, *args, tariff=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.tariff = tariff
+        self.fields["metric"].queryset = BillingMetric.objects.filter(active=True)
         self.fields["charged_asset"].queryset = Asset.objects.filter(active=True)
         self.fields["receiving_account"].queryset = LedgerAccount.objects.filter(active=True)
         self.fields["unit"].queryset = BillingUnit.objects.filter(active=True)
@@ -57,7 +58,7 @@ class TariffItemForm(forms.ModelForm):
         cleaned = super().clean()
         asset = cleaned.get("charged_asset")
         price = cleaned.get("price_per_unit_display")
-        code = cleaned.get("code", "").strip()
+        metric = cleaned.get("metric")
 
         if asset and price is not None:
             try:
@@ -69,12 +70,12 @@ class TariffItemForm(forms.ModelForm):
         if uq is not None and uq <= 0:
             self.add_error("unit_quantity", _("Unit quantity must be > 0."))
 
-        if self.tariff and code:
-            qs = TariffItem.objects.filter(tariff=self.tariff, code=code)
+        if self.tariff and metric:
+            qs = TariffItem.objects.filter(tariff=self.tariff, metric=metric)
             if self.instance.pk:
                 qs = qs.exclude(pk=self.instance.pk)
             if qs.exists():
-                self.add_error("code", _("This metric code already exists in this tariff."))
+                self.add_error("metric", _("This metric already exists in this tariff."))
 
         return cleaned
 

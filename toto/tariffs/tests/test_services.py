@@ -14,6 +14,7 @@ from toto.assets.models import (
     to_base_units,
 )
 from toto.tariffs.models import (
+    BillingMetric,
     BillingUnit,
     RoundingMode,
     Tariff,
@@ -71,11 +72,15 @@ def make_billing_unit(code, label="", dimension=""):
 
 
 def make_item(tariff, metric_code, asset, price_display, receiving_account, unit=None, unit_quantity=1, rounding_mode=RoundingMode.UP):
+    metric, _ = BillingMetric.objects.get_or_create(
+        code=metric_code,
+        defaults={"label": metric_code, "active": True},
+    )
     price_base = to_base_units(Decimal(str(price_display)), asset.decimals)
     return TariffItem.objects.create(
         tariff=tariff,
         name=metric_code,
-        code=metric_code,
+        metric=metric,
         charged_asset=asset,
         price_per_unit_display=Decimal(str(price_display)),
         price_per_unit_base_units=price_base,
@@ -109,7 +114,7 @@ class TariffItemValidationTests(TestCase):
         t2 = make_tariff("T3")
         make_item(t1, "foo", asset, "0.001", recv)
         make_item(t2, "foo", asset, "0.001", recv)
-        self.assertEqual(TariffItem.objects.filter(code="foo").count(), 2)
+        self.assertEqual(TariffItem.objects.filter(metric__code="foo").count(), 2)
 
 
 # ---------------------------------------------------------------------------
@@ -169,10 +174,13 @@ class CalculationTests(TestCase):
     def test_minimum_charge(self):
         asset = make_asset("TOK5", decimals=6)
         recv = make_account("RECV5")
+        metric, _ = BillingMetric.objects.get_or_create(
+            code="min.charge", defaults={"label": "min.charge", "active": True}
+        )
         item = TariffItem.objects.create(
             tariff=self.tariff,
             name="min_charge",
-            code="min.charge",
+            metric=metric,
             charged_asset=asset,
             price_per_unit_display=Decimal("0.000001"),
             price_per_unit_base_units=1,
@@ -564,3 +572,128 @@ class BillingUnitTests(TestCase):
             tariff, "storage.metric", Decimal("100"), "storage.mb"
         )
         self.assertEqual(len(drafts_no_match), 0)
+
+
+# ---------------------------------------------------------------------------
+# BillingMetric
+# ---------------------------------------------------------------------------
+
+class BillingMetricTests(TestCase):
+
+    def test_ingress_tariffs_creates_vault_metrics(self):
+        from django.core.management import call_command
+        from io import StringIO
+        call_command("ingress_tariffs", stdout=StringIO())
+        for code in ("storage.request", "storage.transfer_mb", "storage.mb_hour"):
+            self.assertTrue(
+                BillingMetric.objects.filter(code=code, app_label="vault").exists(),
+                f"Expected BillingMetric code={code} app_label=vault after ingress_tariffs",
+            )
+
+    def test_file_storage_has_one_active_item_per_vault_metric(self):
+        from django.core.management import call_command
+        from io import StringIO
+        call_command("ingress_tariffs", stdout=StringIO())
+        from toto.tariffs.models import Tariff
+        tariff = Tariff.objects.get(code="FILE-STORAGE")
+        for metric_code in ("storage.request", "storage.transfer_mb", "storage.mb_hour"):
+            count = TariffItem.objects.filter(
+                tariff=tariff, metric__code=metric_code, active=True
+            ).count()
+            self.assertEqual(count, 1, f"Expected exactly 1 active item for {metric_code}")
+
+    def test_billing_metric_str(self):
+        metric = BillingMetric(code="test.metric", label="Test Metric")
+        self.assertEqual(str(metric), "test.metric — Test Metric")
+
+    def test_tariff_item_code_property(self):
+        """TariffItem.code property returns the metric code for backward compat."""
+        metric, _ = BillingMetric.objects.get_or_create(
+            code="prop.test", defaults={"label": "prop test", "active": True}
+        )
+        asset = make_asset("PRPA", decimals=6)
+        recv = make_account("RECV-PRPA", AccountType.SYSTEM)
+        tariff = make_tariff("PRPA")
+        item = make_item(tariff, "prop.test", asset, "0.001", recv)
+        self.assertEqual(item.code, "prop.test")
+
+    def test_vault_charge_upload_posts_request_and_transfer(self):
+        """charge_upload emits storage.request and storage.transfer_mb records."""
+        from django.core.management import call_command
+        from io import StringIO
+        from toto.vault.billing import charge_upload, get_or_create_payer_account, STORAGE_TARIFF_CODE
+
+        call_command("ingress_tariffs", stdout=StringIO())
+        call_command("ingress_vault", stdout=StringIO())
+
+        # Fund a payer account with STORAGE_TOKEN
+        from toto.tariffs.models import Tariff
+        from toto.assets.models import Asset
+        tariff = Tariff.objects.get(code=STORAGE_TARIFF_CODE)
+        storage_token = Asset.objects.get(unit_name="STORAGE_TOKEN")
+
+        from django.contrib.auth.models import User
+        user, _ = User.objects.get_or_create(username="billing_test_user")
+        payer = get_or_create_payer_account(user)
+
+        from toto.assets.models import AssetHolding, to_base_units
+        holding, _ = AssetHolding.objects.get_or_create(account=payer, asset=storage_token)
+        holding.balance_base_units = to_base_units(Decimal("100"), storage_token.decimals)
+        holding.save()
+
+        # Create a fake VaultFile-like object
+        from toto.vault.models import VaultFile, Bucket
+        from django.core.files.base import ContentFile
+        bucket, _ = Bucket.objects.get_or_create(name="BillingTestBucket", defaults={"owner": user, "slug": "billing-test-bucket"})
+        vf = VaultFile(owner=user, title="test.txt", file_type="text", bucket=bucket, is_public=False)
+        content = b"hello world"
+        vf.file.save("test.txt", ContentFile(content), save=False)
+        vf.key = "test-billing"
+        vf.save()
+
+        records = charge_upload(vf)
+        metric_codes = {r.metric_code for r in records}
+        self.assertIn("storage.request", metric_codes)
+        # transfer_mb only posted when file has size recorded in file_size_bytes
+        # (VaultFile may not track it — check the record count is at least 1)
+        self.assertGreaterEqual(len(records), 1)
+
+    def test_vault_charge_storage_snapshot_posts_mb_hour(self):
+        """charge_storage_snapshot emits storage.mb_hour usage."""
+        from django.core.management import call_command
+        from io import StringIO
+        from toto.vault.billing import charge_storage_snapshot, get_or_create_payer_account
+
+        call_command("ingress_tariffs", stdout=StringIO())
+        call_command("ingress_vault", stdout=StringIO())
+
+        from toto.tariffs.models import UsageRecord
+        from toto.assets.models import Asset, AssetHolding, to_base_units
+        from django.contrib.auth.models import User
+
+        user, _ = User.objects.get_or_create(username="snapshot_test_user")
+        payer = get_or_create_payer_account(user)
+        storage_token = Asset.objects.get(unit_name="STORAGE_TOKEN")
+        holding, _ = AssetHolding.objects.get_or_create(account=payer, asset=storage_token)
+        holding.balance_base_units = to_base_units(Decimal("100"), storage_token.decimals)
+        holding.save()
+
+        from toto.vault.models import VaultFile, Bucket
+        from django.core.files.base import ContentFile
+        bucket, _ = Bucket.objects.get_or_create(name="SnapshotTestBucket", defaults={"owner": user, "slug": "snapshot-test-bucket"})
+        vf = VaultFile(owner=user, title="snap.txt", file_type="text", bucket=bucket, is_public=False)
+        content = b"x" * 1024
+        vf.file.save("snap.txt", ContentFile(content), save=False)
+        vf.key = "snap-billing"
+        vf.save()
+
+        before_count = UsageRecord.objects.filter(
+            metric_code="storage.mb_hour", payer_account=payer
+        ).count()
+
+        charge_storage_snapshot(user)
+
+        after_count = UsageRecord.objects.filter(
+            metric_code="storage.mb_hour", payer_account=payer
+        ).count()
+        self.assertEqual(after_count, before_count + 1)

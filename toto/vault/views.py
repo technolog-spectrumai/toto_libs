@@ -258,6 +258,21 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
         vault_file.content_hash = vault_file.create_hash()
         vault_file.save()
 
+        # Collect any billing failures recorded by the post_save signal so we
+        # can surface them to the user — they don't block the upload but should
+        # be visible (e.g. "No matching tariff items found").
+        billing_warnings = []
+        try:
+            from toto.tariffs.models import UsageRecord, UsageStatus
+            failed_records = UsageRecord.objects.filter(
+                source_type="vault_file",
+                source_id=str(vault_file.pk),
+                status=UsageStatus.FAILED,
+            ).values_list("error_message", flat=True)
+            billing_warnings = [msg for msg in failed_records if msg]
+        except Exception:
+            pass
+
         if directory:
             all_dirs = list(VaultDirectory.objects.filter(bucket=gateway.bucket))
             dirs_by_pk = {d.pk: d for d in all_dirs}
@@ -284,7 +299,8 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
                 "public": vault_file.is_public,
                 "public_url": vault_file.get_public_url(),
                 "size": f"{uploaded_file.size / (1024*1024):.2f} MB",
-            }
+            },
+            "billing_warnings": billing_warnings,
         })
 
 

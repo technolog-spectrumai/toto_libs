@@ -28,6 +28,38 @@ class BillingUnit(models.Model):
 
 
 # ---------------------------------------------------------------------------
+# BillingMetric
+# ---------------------------------------------------------------------------
+
+class BillingMetric(models.Model):
+    """
+    A first-class metric descriptor. TariffItem.metric references one of these
+    instead of storing a raw code string. Services still accept metric_code strings
+    and look up items via metric__code= so callers need no changes.
+    """
+    code = models.CharField(max_length=100, unique=True)
+    label = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    default_unit = models.ForeignKey(
+        "tariffs.BillingUnit",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="metrics",
+    )
+    dimension = models.CharField(max_length=50, blank=True)
+    app_label = models.CharField(max_length=100, blank=True)
+    active = models.BooleanField(default=True)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["dimension", "code"]
+
+    def __str__(self):
+        return f"{self.code} — {self.label}"
+
+
+# ---------------------------------------------------------------------------
 # Choices
 # ---------------------------------------------------------------------------
 
@@ -36,7 +68,6 @@ class TariffStatus(models.TextChoices):
     ACTIVE = "active", _("Active")
     PAUSED = "paused", _("Paused")
     ARCHIVED = "archived", _("Archived")
-
 
 
 class RoundingMode(models.TextChoices):
@@ -100,9 +131,11 @@ class Tariff(models.Model):
 class TariffItem(models.Model):
     tariff = models.ForeignKey(Tariff, on_delete=models.CASCADE, related_name="items")
     name = models.CharField(max_length=255)
-    code = models.CharField(
-        max_length=100,
-        help_text=_("Metric key, e.g. ai.input_tokens, storage.mb_hour"),
+    metric = models.ForeignKey(
+        "tariffs.BillingMetric",
+        on_delete=models.PROTECT,
+        related_name="tariff_items",
+        help_text=_("Billing metric this item charges for, e.g. storage.request, ai.input_tokens"),
     )
     charged_asset = models.ForeignKey(
         "assets.Asset",
@@ -150,15 +183,19 @@ class TariffItem(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["code"]
-        unique_together = [("tariff", "code")]
+        ordering = ["metric__code"]
+        unique_together = [("tariff", "metric")]
         indexes = [
             models.Index(fields=["tariff", "active"]),
-            models.Index(fields=["code"]),
         ]
 
     def __str__(self):
-        return f"{self.tariff.code} / {self.code}"
+        return f"{self.tariff.code} / {self.metric.code}"
+
+    @property
+    def code(self) -> str:
+        """Convenience shim — returns the metric code. Use metric__code in ORM filters."""
+        return self.metric.code
 
     def clean(self):
         if self.price_per_unit_base_units is not None and self.price_per_unit_base_units < 0:
@@ -187,6 +224,8 @@ class UsageRecord(models.Model):
         on_delete=models.PROTECT,
         related_name="usage_records_as_payer",
     )
+    # Denormalized snapshot of the metric code at time of recording — kept for
+    # audit/history even if the BillingMetric row is later renamed or deleted.
     metric_code = models.CharField(max_length=100)
     quantity = models.DecimalField(max_digits=30, decimal_places=10)
     unit = models.CharField(max_length=100, blank=True)
@@ -280,7 +319,7 @@ class UsageCharge(models.Model):
 
     def __str__(self):
         return (
-            f"{self.usage_record.uuid} / {self.tariff_item.code}: "
+            f"{self.usage_record.uuid} / {self.tariff_item.metric.code}: "
             f"{self.amount_base_units} {self.charged_asset.unit_name}"
         )
 
