@@ -35,6 +35,7 @@ class AccountType(models.TextChoices):
 
 class TransactionType(models.TextChoices):
     ASSET_CREATE = "asset_create", "Asset Create"
+    ASSET_MINT = "asset_mint", "Asset Mint"
     ASSET_TRANSFER = "asset_transfer", "Asset Transfer"
     REVERSAL = "reversal", "Reversal"
     ADJUSTMENT = "adjustment", "Adjustment"
@@ -53,6 +54,13 @@ class Asset(models.Model):
     is_currency = models.BooleanField(default=False, help_text="Accepted as a payment currency in the bazaar")
     backing_document = models.TextField(blank=True, help_text="What this asset is backed by (e.g. 1:1 PLN reserve held by …)")
     minting_authority = models.CharField(max_length=255, blank=True, help_text="Entity authorised to mint this asset")
+    reserve_account = models.ForeignKey(
+        "LedgerAccount",
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name="reserve_assets",
+        help_text="Admin-controlled account that holds unminted supply and fulfils purchases.",
+    )
     metadata = models.JSONField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

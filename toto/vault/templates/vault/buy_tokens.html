@@ -1,0 +1,133 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{% trans "Buy Storage Tokens" %} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<div
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-xl space-y-6">
+
+    <!-- Header -->
+    <header class="space-y-2">
+      <a href="{% url 'vault:storage_account' %}"
+         class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+        <i class="fa-solid fa-arrow-left"></i>
+        {% trans "Back to Storage Account" %}
+      </a>
+      <div>
+        <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+           class="text-xs font-semibold uppercase tracking-wide">
+          <i class="fa-solid fa-vault mr-1"></i>{% trans "Vault" %}
+        </p>
+        <h1 class="mt-1 text-2xl font-bold">{% trans "Buy Storage Tokens" %}</h1>
+        <p class="text-sm opacity-60 mt-1">
+          {% trans "Top up your storage credits to upload files." %}
+        </p>
+      </div>
+    </header>
+
+    {% if messages %}
+    {% for msg in messages %}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border px-4 py-3 text-sm font-semibold">
+      {{ msg }}
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    {% if not payer_account %}
+    <!-- No linked account -->
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-xl border border-dashed p-10 text-center shadow-sm">
+      <i class="fa-solid fa-wallet text-3xl opacity-20 mb-3"></i>
+      <p class="text-sm font-semibold opacity-55">{% trans "No storage account connected." %}</p>
+      <p class="text-xs opacity-45 mt-1">{% trans "Connect a ledger account in Storage Account settings before purchasing." %}</p>
+      <a href="{% url 'vault:storage_account' %}"
+         :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+         class="mt-4 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-90">
+        <i class="fa-solid fa-link"></i>
+        {% trans "Connect account" %}
+      </a>
+    </div>
+
+    {% elif not asset %}
+    <!-- Token not available -->
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-xl border border-dashed p-10 text-center shadow-sm">
+      <i class="fa-solid fa-triangle-exclamation text-3xl opacity-20 mb-3"></i>
+      <p class="text-sm font-semibold opacity-55">{% trans "Storage tokens are not available for purchase right now." %}</p>
+      <p class="text-xs opacity-45 mt-1">{% trans "Ask an administrator to configure the storage token reserve." %}</p>
+    </div>
+
+    {% else %}
+    <!-- Current balance -->
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-xl border shadow-sm">
+      <div class="border-b px-5 py-4" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <h2 class="font-semibold flex items-center gap-2">
+          <i class="fa-solid fa-coins opacity-60"></i>
+          {% trans "Your balance" %}
+        </h2>
+      </div>
+      <div class="px-5 py-4 flex items-center justify-between gap-4">
+        <div>
+          <div class="text-xs opacity-55 uppercase tracking-wide mb-1">{{ asset.name }}</div>
+          <div class="font-mono text-2xl font-bold">
+            {% if current_balance is not None %}{{ current_balance }}{% else %}0{% endif %}
+            <span class="text-sm font-semibold opacity-60">{{ asset.unit_name }}</span>
+          </div>
+        </div>
+        <div class="text-xs opacity-50 text-right">
+          <div>{% trans "Decimals" %}: {{ asset.decimals }}</div>
+          <div class="font-mono">{{ asset.unit_name }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Purchase form -->
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-xl border shadow-sm">
+      <div class="border-b px-5 py-4" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <h2 class="font-semibold flex items-center gap-2">
+          <i class="fa-solid fa-bag-shopping opacity-60"></i>
+          {% trans "Purchase tokens" %}
+        </h2>
+        <p class="text-xs opacity-60 mt-0.5">{% trans "Tokens are credited instantly to your linked ledger account." %}</p>
+      </div>
+      <form method="post" class="px-5 py-5 space-y-4">
+        {% csrf_token %}
+        <div class="space-y-1">
+          <label class="text-xs font-semibold uppercase tracking-wide opacity-60">
+            {% trans "Amount" %} <span class="font-normal opacity-60">({{ asset.unit_name }})</span>
+          </label>
+          <div class="flex gap-2 flex-wrap">
+            {% for preset in "10 50 100 500" %}
+            <button type="button" onclick="this.closest('form').querySelector('[name=amount]').value='{{ preset }}'"
+                    :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                    class="rounded-lg border px-3 py-1.5 text-sm font-semibold transition hover:opacity-80">
+              {{ preset }}
+            </button>
+            {% endfor %}
+          </div>
+          <input type="number" name="amount" step="any" min="0.000001" required
+                 placeholder="{% trans 'Enter amount…' %}"
+                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder:opacity-30' : 'border-accent-2 bg-primary-bg-light text-text-main-light placeholder:opacity-30'"
+                 class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+        </div>
+        <button type="submit"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-90">
+          <i class="fa-solid fa-bag-shopping"></i>
+          {% trans "Buy tokens" %}
+        </button>
+      </form>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}

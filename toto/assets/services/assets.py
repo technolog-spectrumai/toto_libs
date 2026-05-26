@@ -17,6 +17,7 @@ from toto.assets.models import (
     TokenizationDefaultReason,
     TokenizationStatus,
     TransactionType,
+    from_base_units,
     to_base_units,
 )
 
@@ -98,6 +99,81 @@ def create_asset(
         attach_hash(tx)
 
         return asset
+
+
+def mint_asset(
+    *,
+    asset: Asset,
+    amount: Decimal,
+    reserve_account: LedgerAccount,
+    reference: str,
+    description: str = "",
+    metadata=None,
+) -> LedgerTransaction:
+    """
+    Mint new tokens: increase total_supply_base_units and credit reserve_account.
+    Only call this for admin-controlled assets where issuance is intentional.
+    """
+    with transaction.atomic():
+        amount_base = to_base_units(amount, asset.decimals)
+        if amount_base <= 0:
+            raise ValidationError("Mint amount must be positive.")
+        if not asset.active:
+            raise ValidationError("Asset is not active.")
+        if not reserve_account.active:
+            raise ValidationError("Reserve account is not active.")
+
+        asset = Asset.objects.select_for_update().get(pk=asset.pk)
+        asset.total_supply_base_units += amount_base
+        asset.save(update_fields=["total_supply_base_units", "updated_at"])
+
+        holding, _ = AssetHolding.objects.get_or_create(
+            asset=asset, account=reserve_account, defaults={"balance_base_units": 0}
+        )
+        holding.balance_base_units += amount_base
+        holding.save(update_fields=["balance_base_units", "updated_at"])
+
+        system_account = _get_system_issuance_account()
+        tx = LedgerTransaction.objects.create(
+            reference=reference,
+            transaction_type=TransactionType.ASSET_MINT,
+            description=description or f"Mint {from_base_units(amount_base, asset.decimals)} {asset.unit_name}",
+            asset=asset,
+            metadata=metadata,
+        )
+        LedgerEntry.objects.create(transaction=tx, account=system_account, asset=asset, amount_base_units=-amount_base)
+        LedgerEntry.objects.create(transaction=tx, account=reserve_account, asset=asset, amount_base_units=amount_base)
+
+        tx.posted = True
+        tx.save(update_fields=["posted"])
+        attach_hash(tx)
+        return tx
+
+
+def distribute_asset(
+    *,
+    asset: Asset,
+    recipient_account: LedgerAccount,
+    amount: Decimal,
+    reference: str,
+    description: str = "",
+    metadata=None,
+) -> LedgerTransaction:
+    """
+    Transfer tokens from asset.reserve_account to recipient_account.
+    This is the mechanism for admin-controlled distribution / user purchases.
+    """
+    if not asset.reserve_account_id:
+        raise ValidationError("This asset has no reserve account configured.")
+    return transfer_asset(
+        asset=asset,
+        sender_account=asset.reserve_account,
+        receiver_account=recipient_account,
+        amount=amount,
+        reference=reference,
+        description=description or f"Distribute {amount} {asset.unit_name} to {recipient_account.code}",
+        metadata=metadata,
+    )
 
 
 def transfer_asset(

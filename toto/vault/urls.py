@@ -4,7 +4,7 @@ from .views import (
     PublicFileListView, VaultFileDownloadView,
     FileGatewayPageView, FileGatewayUploadView,
     VaultMetricsView, BucketMetricsView,
-    StorageAccountView,
+    StorageAccountView, BuyStorageTokensView,
 )
 
 app_name = "vault"
@@ -18,4 +18,5 @@ urlpatterns = [
     path("metrics/", VaultMetricsView.as_view(), name="metrics"),
     path("metrics/<slug:bucket_slug>/", BucketMetricsView.as_view(), name="bucket_metrics"),
     path("account/", StorageAccountView.as_view(), name="storage_account"),
+    path("buy-tokens/", BuyStorageTokensView.as_view(), name="buy_tokens"),
 ]

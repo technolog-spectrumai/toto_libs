@@ -699,3 +699,74 @@ class StorageAccountView(LoginRequiredMixin, TemplateView):
                 messages.success(request, "Authorization removed. Manual confirmation will be required.")
 
         return redirect("vault:storage_account")
+
+
+class BuyStorageTokensView(LoginRequiredMixin, View):
+    """
+    Let a user purchase storage tokens from the asset's reserve account.
+    The purchase is free (admin pre-authorises by configuring the reserve).
+    The user must have a StorageAccount to receive tokens.
+    """
+
+    def _get_storage_asset(self):
+        from toto.tariffs.models import TariffItem
+        from toto.vault.billing import STORAGE_REQUEST_METRIC_CODE
+        item = (
+            TariffItem.objects
+            .filter(active=True, metric__code=STORAGE_REQUEST_METRIC_CODE)
+            .select_related("charged_asset__reserve_account")
+            .first()
+        )
+        if item and item.charged_asset and item.charged_asset.reserve_account_id:
+            return item.charged_asset
+        return None
+
+    def get(self, request):
+        from toto.vault.billing import get_payer_account
+        from toto.assets.queries import get_asset_balance_display
+        asset = self._get_storage_asset()
+        payer = get_payer_account(request.user)
+        balance = None
+        if asset and payer:
+            balance = get_asset_balance_display(asset, payer)
+        context = {
+            "asset": asset,
+            "payer_account": payer,
+            "current_balance": balance,
+        }
+        from toto.ui import PageProcessor
+        return render(request, "vault/buy_tokens.html", PageProcessor().decorate(context, request))
+
+    def post(self, request):
+        from decimal import Decimal
+        from toto.vault.billing import get_payer_account
+        from toto.assets.services.assets import distribute_asset
+        from django.core.exceptions import ValidationError
+
+        asset = self._get_storage_asset()
+        if not asset:
+            messages.error(request, "No storage token is available for purchase right now.")
+            return redirect("vault:buy_tokens")
+
+        payer = get_payer_account(request.user)
+        if not payer:
+            messages.error(request, "Connect a ledger account in your storage account settings first.")
+            return redirect("vault:storage_account")
+
+        try:
+            amount = Decimal(request.POST.get("amount", "0"))
+            if amount <= 0:
+                raise ValueError("Amount must be positive.")
+            import uuid as _uuid
+            ref = f"buy-tokens-{request.user.pk}-{_uuid.uuid4().hex[:8]}"
+            distribute_asset(
+                asset=asset,
+                recipient_account=payer,
+                amount=amount,
+                reference=ref,
+                description=f"Purchase by {request.user.username}",
+            )
+            messages.success(request, f"You received {amount} {asset.unit_name}.")
+        except (ValidationError, ValueError, Exception) as exc:
+            messages.error(request, str(exc))
+        return redirect("vault:buy_tokens")

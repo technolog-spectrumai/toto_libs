@@ -28,6 +28,12 @@
           {% trans "Connect a ledger account to enable upload billing credits." %}
         </p>
       </div>
+      <a href="{% url 'vault:buy_tokens' %}"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+        <i class="fa-solid fa-bag-shopping"></i>
+        {% trans "Buy tokens" %}
+      </a>
     </header>
 
     {% if messages %}
