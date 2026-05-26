@@ -148,11 +148,25 @@
           </form>
         </div>
         {% else %}
-        <p class="text-xs opacity-60">
-          <i class="fa-solid fa-triangle-exclamation mr-1"></i>
-          {% trans "No authorization available — each upload will require manual confirmation." %}
-          {% trans "Ask an administrator to create a WalletAuthorization for your ledger account." %}
-        </p>
+        <div class="space-y-2">
+          <p class="text-xs opacity-60">
+            <i class="fa-solid fa-triangle-exclamation mr-1"></i>
+            {% trans "No authorization set — each upload and token purchase will require manual confirmation (your click counts as consent)." %}
+          </p>
+          <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="grant_authorization">
+            <button type="submit"
+                    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                    class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80">
+              <i class="fa-solid fa-key"></i>
+              {% trans "Grant app authorization" %}
+            </button>
+            <p class="text-xs opacity-45 mt-1">
+              {% trans "Generates a secure keypair that lets the app sign billing transactions on your behalf. You can revoke it any time." %}
+            </p>
+          </form>
+        </div>
         {% endif %}
       </div>
 

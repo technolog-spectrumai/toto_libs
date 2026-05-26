@@ -17,6 +17,7 @@ def purchase_storage_tokens(
     revenue_account: LedgerAccount,
     reference: str,
     username: str = "",
+    signer=None,
 ) -> dict:
     """
     Atomic purchase: debit payment_asset from payer, credit storage_asset to payer.
@@ -41,6 +42,7 @@ def purchase_storage_tokens(
                 amount=payment_amount,
                 reference=f"{reference}-pay",
                 description=f"Payment for {token_amount} {storage_asset.unit_name}",
+                pre_post_hook=signer,
             )
         distribute_asset(
             asset=storage_asset,
@@ -48,6 +50,7 @@ def purchase_storage_tokens(
             amount=token_amount,
             reference=f"{reference}-recv",
             description=f"Storage token purchase by {username or payer_account.code}",
+            pre_post_hook=signer,
         )
 
     return {"token_amount": token_amount, "payment_amount": payment_amount}

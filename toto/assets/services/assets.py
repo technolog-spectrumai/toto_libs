@@ -109,6 +109,7 @@ def distribute_asset(
     reference: str,
     description: str = "",
     metadata=None,
+    pre_post_hook=None,
 ) -> LedgerTransaction:
     """
     Transfer tokens from asset.reserve_account to recipient_account.
@@ -124,6 +125,7 @@ def distribute_asset(
         reference=reference,
         description=description or f"Distribute {amount} {asset.unit_name} to {recipient_account.code}",
         metadata=metadata,
+        pre_post_hook=pre_post_hook,
     )
 
 
@@ -136,6 +138,7 @@ def transfer_asset(
     reference: str,
     description: str = "",
     metadata=None,
+    pre_post_hook=None,
 ) -> LedgerTransaction:
     with transaction.atomic():
         amount_base = to_base_units(amount, asset.decimals)
@@ -195,8 +198,20 @@ def transfer_asset(
         receiver_holding.balance_base_units += amount_base
         receiver_holding.save(update_fields=["balance_base_units", "updated_at"])
 
+        if pre_post_hook:
+            try:
+                pre_post_hook(tx)
+            except Exception:
+                pass
+
+        update_fields = ["posted"]
+        signing_fields = ["signature", "payload_hash", "nonce", "idempotency_key", "signed_at"]
+        for field in signing_fields:
+            if getattr(tx, field, None):
+                update_fields.append(field)
+
         tx.posted = True
-        tx.save(update_fields=["posted"])
+        tx.save(update_fields=update_fields)
 
         attach_hash(tx)
 

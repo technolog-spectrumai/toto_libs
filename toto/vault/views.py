@@ -675,6 +675,40 @@ class StorageAccountView(LoginRequiredMixin, TemplateView):
             StorageAccount.objects.filter(user=request.user).update(active=True)
             messages.success(request, "Storage account reconnected.")
 
+        elif action == "grant_authorization":
+            try:
+                sa = StorageAccount.objects.get(user=request.user, active=True)
+            except StorageAccount.DoesNotExist:
+                messages.error(request, "Connect a storage account first.")
+                return redirect("vault:storage_account")
+
+            from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+            from cryptography.hazmat.primitives.serialization import (
+                Encoding, PublicFormat, PrivateFormat, NoEncryption,
+            )
+            from toto.assets.models import WalletAuthorization
+
+            private_key = Ed25519PrivateKey.generate()
+            public_pem = private_key.public_key().public_bytes(
+                Encoding.PEM, PublicFormat.SubjectPublicKeyInfo
+            ).decode()
+            private_pem = private_key.private_bytes(
+                Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()
+            ).decode()
+
+            auth = WalletAuthorization(
+                name=f"Vault auto-auth ({sa.ledger_account.code})",
+                ledger_account=sa.ledger_account,
+                public_key=public_pem,
+                active=True,
+            )
+            auth.set_private_key(private_pem)
+            auth.save()
+
+            sa.authorization = auth
+            sa.save(update_fields=["authorization", "updated_at"])
+            messages.success(request, "Authorization granted — the app can now sign transactions automatically.")
+
         elif action == "set_authorization":
             auth_pk = request.POST.get("authorization_pk")
             try:
@@ -771,7 +805,7 @@ class BuyStorageTokensView(LoginRequiredMixin, View):
     def post(self, request):
         import uuid as _uuid
         from decimal import Decimal, InvalidOperation
-        from toto.vault.billing import get_payer_account
+        from toto.vault.billing import get_payer_account, _make_wallet_auth_signer
         from toto.vault.purchase import purchase_storage_tokens
         from toto.vault.models import StorageTokenPrice
         from toto.assets.services.assets import distribute_asset
@@ -790,6 +824,7 @@ class BuyStorageTokensView(LoginRequiredMixin, View):
         try:
             token_amount = Decimal(request.POST.get("token_amount", "0"))
             price_pk = request.POST.get("price_pk")
+            signer = _make_wallet_auth_signer(request.user)
 
             if price_pk:
                 tp = StorageTokenPrice.objects.select_related(
@@ -805,6 +840,7 @@ class BuyStorageTokensView(LoginRequiredMixin, View):
                     revenue_account=tp.revenue_account,
                     reference=ref,
                     username=request.user.username,
+                    signer=signer,
                 )
                 messages.success(
                     request,
@@ -812,16 +848,7 @@ class BuyStorageTokensView(LoginRequiredMixin, View):
                     f"for {result['payment_amount']} {tp.currency.unit_name}."
                 )
             else:
-                # No pricing configured — free distribution
-                ref = f"buy-tokens-{request.user.pk}-{_uuid.uuid4().hex[:8]}"
-                distribute_asset(
-                    asset=asset,
-                    recipient_account=payer,
-                    amount=token_amount,
-                    reference=ref,
-                    description=f"Storage token credit for {request.user.username}",
-                )
-                messages.success(request, f"You received {token_amount} {asset.unit_name}.")
+                raise ValidationError("No pricing is configured for storage tokens. Contact an administrator.")
         except (ValidationError, InvalidOperation, Exception) as exc:
             messages.error(request, str(exc))
         return redirect("vault:buy_tokens")
