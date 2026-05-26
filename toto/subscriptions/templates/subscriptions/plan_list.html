@@ -1,0 +1,28 @@
+{% extends "subscriptions/base.html" %}
+{% load i18n %}
+{% block subscriptions_title %}{% trans "Plans" %}{% endblock %}
+{% block subscriptions_content %}
+<div class="grid gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
+  <aside class="space-y-4 rounded-lg border p-5 shadow-sm">
+    <h2 class="text-sm font-semibold uppercase opacity-60">{% trans "Overview" %}</h2>
+    {% for key, value in stats.items %}<div class="rounded-lg border p-3"><div class="text-2xl font-bold">{{ value }}</div><div class="text-xs opacity-65">{{ key }}</div></div>{% endfor %}
+    <form method="get" class="space-y-3">
+      <input name="q" value="{{ q }}" placeholder="{% trans 'Search plans…' %}" class="w-full rounded-lg border px-3 py-2 text-sm">
+      <select name="status" class="w-full rounded-lg border px-3 py-2 text-sm"><option value="">{% trans "All status" %}</option>{% for val,label in status_choices %}<option value="{{ val }}" {% if status_filter == val %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+      <select name="kind" class="w-full rounded-lg border px-3 py-2 text-sm"><option value="">{% trans "All kinds" %}</option>{% for val,label in kind_choices %}<option value="{{ val }}" {% if kind_filter == val %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+      <button class="w-full rounded-lg border px-4 py-2 text-sm font-semibold">{% trans "Filter" %}</button>
+    </form>
+    <a href="{% url 'subscriptions:plan_create' %}" class="inline-flex w-full items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold"><i class="fa-solid fa-plus"></i>{% trans "New Plan" %}</a>
+  </aside>
+  <section class="space-y-3">
+    {% for plan in plans %}
+      <article class="rounded-lg border p-5 shadow-sm">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div><h3 class="text-lg font-bold"><a href="{% url 'subscriptions:plan_detail' plan.uid %}" class="underline">{{ plan.name }}</a></h3><p class="text-sm opacity-65">{{ plan.code }} · {{ plan.get_kind_display }} · {{ plan.get_status_display }}</p>{% if plan.description %}<p class="mt-1 text-sm opacity-70">{{ plan.description|truncatechars:180 }}</p>{% endif %}</div>
+          <div class="text-right text-xs opacity-65"><div>{{ plan.prices.count }} {% trans "prices" %}</div><div>{{ plan.features.count }} {% trans "features" %}</div></div>
+        </div>
+      </article>
+    {% empty %}<div class="rounded-lg border border-dashed p-8 text-center opacity-60">{% trans "No plans found." %}</div>{% endfor %}
+  </section>
+</div>
+{% endblock %}

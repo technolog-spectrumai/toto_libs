@@ -1,0 +1,16 @@
+{% load i18n %}
+<form method="post" class="space-y-4">
+  {% csrf_token %}
+  {% for field in form %}
+    <div>
+      <label for="{{ field.id_for_label }}" class="mb-1 block text-sm font-semibold">{{ field.label }}{% if field.field.required %} <span class="text-red-500">*</span>{% endif %}</label>
+      <div class="[&>input]:w-full [&>input]:rounded-lg [&>input]:border [&>input]:px-3 [&>input]:py-2 [&>select]:w-full [&>select]:rounded-lg [&>select]:border [&>select]:px-3 [&>select]:py-2 [&>textarea]:w-full [&>textarea]:rounded-lg [&>textarea]:border [&>textarea]:px-3 [&>textarea]:py-2">
+        {{ field }}
+      </div>
+      {% if field.help_text %}<p class="mt-1 text-xs opacity-60">{{ field.help_text }}</p>{% endif %}
+      {% for error in field.errors %}<p class="mt-1 text-xs text-red-500">{{ error }}</p>{% endfor %}
+    </div>
+  {% endfor %}
+  {% if form.non_field_errors %}{% for error in form.non_field_errors %}<p class="text-sm text-red-500">{{ error }}</p>{% endfor %}{% endif %}
+  <button type="submit" :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'" class="inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold shadow-sm"><i class="fa-solid fa-floppy-disk"></i>{% trans "Save" %}</button>
+</form>

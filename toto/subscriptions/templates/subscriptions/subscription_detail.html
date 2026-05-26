@@ -1,0 +1,14 @@
+{% extends "subscriptions/base.html" %}
+{% load i18n %}
+{% block subscriptions_title %}{{ subscription.plan.name }}{% endblock %}
+{% block subscriptions_content %}
+<div class="space-y-6">
+  <div class="rounded-lg border p-6 shadow-sm"><div class="flex flex-col gap-3 md:flex-row md:justify-between"><div><h2 class="text-2xl font-bold">{{ subscription.plan.name }}</h2><p class="text-sm opacity-70">{{ subscription.customer }} · {{ subscription.get_status_display }} · {{ subscription.current_period_start|date:"Y-m-d" }} → {{ subscription.current_period_end|date:"Y-m-d" }}</p></div><div class="flex flex-wrap gap-2"><form method="post" action="{% url 'subscriptions:invoice_create' subscription.uid %}">{% csrf_token %}<button class="rounded-lg border px-3 py-2 text-sm font-semibold">{% trans "Create Invoice" %}</button></form><form method="post" action="{% url 'subscriptions:subscription_renew' subscription.uid %}">{% csrf_token %}<button class="rounded-lg border px-3 py-2 text-sm font-semibold">{% trans "Renew" %}</button></form><form method="post" action="{% url 'subscriptions:subscription_cancel' subscription.uid %}">{% csrf_token %}<button class="rounded-lg border px-3 py-2 text-sm font-semibold">{% trans "Cancel" %}</button></form></div></div></div>
+  <div class="grid gap-5 lg:grid-cols-2">
+    <div class="rounded-lg border p-5"><h3 class="mb-3 font-semibold">{% trans "Allowances" %}</h3>{% for a in allowances %}<div class="border-t py-2"><code>{{ a.feature.code }}</code> {{ a.consumed_quantity }} / {{ a.included_quantity }} {{ a.feature.unit }}</div>{% empty %}<p class="opacity-60">{% trans "No allowances." %}</p>{% endfor %}</div>
+    <div class="rounded-lg border p-5"><h3 class="mb-3 font-semibold">{% trans "Entitlements" %}</h3>{% for e in entitlements %}<div class="border-t py-2"><code>{{ e.feature.code }}</code> {{ e.feature.name }} · {{ e.get_status_display }}</div>{% empty %}<p class="opacity-60">{% trans "No entitlements." %}</p>{% endfor %}</div>
+    <div class="rounded-lg border p-5"><h3 class="mb-3 font-semibold">{% trans "Usage" %}</h3>{% for u in usage_records %}<div class="border-t py-2"><code>{{ u.feature.code }}</code> {{ u.quantity }} {{ u.unit }} · {{ u.get_status_display }}</div>{% empty %}<p class="opacity-60">{% trans "No usage." %}</p>{% endfor %}</div>
+    <div class="rounded-lg border p-5"><h3 class="mb-3 font-semibold">{% trans "Invoices" %}</h3>{% for inv in invoices %}<div class="border-t py-2"><a class="underline" href="{% url 'subscriptions:invoice_detail' inv.uid %}">{{ inv.uid }}</a> · {{ inv.get_status_display }} · {{ inv.total_base_units }}</div>{% empty %}<p class="opacity-60">{% trans "No invoices." %}</p>{% endfor %}</div>
+  </div>
+</div>
+{% endblock %}

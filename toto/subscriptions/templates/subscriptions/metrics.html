@@ -1,0 +1,6 @@
+{% extends "subscriptions/base.html" %}
+{% load i18n %}
+{% block subscriptions_title %}{% trans "Metrics" %}{% endblock %}
+{% block subscriptions_content %}
+<div class="grid gap-5 lg:grid-cols-3"><div class="rounded-lg border p-5"><h3 class="mb-3 font-semibold">{% trans "Subscription status" %}</h3>{% for k,v in status_counts.items %}<div class="flex justify-between border-t py-2"><span>{{ k }}</span><strong>{{ v }}</strong></div>{% endfor %}</div><div class="rounded-lg border p-5"><h3 class="mb-3 font-semibold">{% trans "Invoice status" %}</h3>{% for k,v in invoice_counts.items %}<div class="flex justify-between border-t py-2"><span>{{ k }}</span><strong>{{ v }}</strong></div>{% endfor %}</div><div class="rounded-lg border p-5"><h3 class="mb-3 font-semibold">{% trans "By plan" %}</h3>{% for row in by_plan %}<div class="flex justify-between border-t py-2"><span>{{ row.plan__code }}</span><strong>{{ row.count }}</strong></div>{% endfor %}</div></div>
+{% endblock %}

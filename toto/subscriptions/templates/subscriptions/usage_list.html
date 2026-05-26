@@ -1,0 +1,6 @@
+{% extends "subscriptions/base.html" %}
+{% load i18n %}
+{% block subscriptions_title %}{% trans "Usage" %}{% endblock %}
+{% block subscriptions_content %}
+<div class="space-y-4"><div class="flex justify-between"><form method="get" class="flex gap-2"><input name="q" value="{{ q }}" class="rounded-lg border px-3 py-2 text-sm" placeholder="{% trans 'Search usage…' %}"><select name="status" class="rounded-lg border px-3 py-2 text-sm"><option value="">{% trans "All" %}</option>{% for val,label in status_choices %}<option value="{{ val }}" {% if status_filter == val %}selected{% endif %}>{{ label }}</option>{% endfor %}</select><button class="rounded-lg border px-4 py-2 text-sm">{% trans "Filter" %}</button></form><a href="{% url 'subscriptions:usage_create' %}" class="rounded-lg border px-4 py-2 text-sm font-semibold">{% trans "Record Usage" %}</a></div><div class="rounded-lg border overflow-hidden"><table class="w-full text-sm"><tbody>{% for u in usage_records %}<tr class="border-b"><td class="p-3"><code>{{ u.feature.code }}</code></td><td class="p-3">{{ u.subscription.plan.name }}</td><td class="p-3 text-right">{{ u.quantity }} {{ u.unit }}</td><td class="p-3">{{ u.get_status_display }}</td></tr>{% empty %}<tr><td class="p-6 text-center opacity-60">{% trans "No usage records." %}</td></tr>{% endfor %}</tbody></table></div></div>
+{% endblock %}

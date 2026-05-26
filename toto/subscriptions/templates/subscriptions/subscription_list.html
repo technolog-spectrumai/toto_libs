@@ -1,0 +1,9 @@
+{% extends "subscriptions/base.html" %}
+{% load i18n %}
+{% block subscriptions_title %}{% trans "Subscriptions" %}{% endblock %}
+{% block subscriptions_content %}
+<div class="space-y-4">
+  <div class="flex justify-between gap-3"><form method="get" class="flex gap-2"><input name="q" value="{{ q }}" placeholder="{% trans 'Search subscriptions…' %}" class="rounded-lg border px-3 py-2 text-sm"><select name="status" class="rounded-lg border px-3 py-2 text-sm"><option value="">{% trans "All" %}</option>{% for val,label in status_choices %}<option value="{{ val }}" {% if status_filter == val %}selected{% endif %}>{{ label }}</option>{% endfor %}</select><button class="rounded-lg border px-4 py-2 text-sm">{% trans "Filter" %}</button></form><a href="{% url 'subscriptions:subscription_create' %}" class="rounded-lg border px-4 py-2 text-sm font-semibold">{% trans "New Subscription" %}</a></div>
+  <div class="rounded-lg border shadow-sm overflow-hidden"><table class="w-full text-sm"><thead><tr class="border-b"><th class="p-3 text-left">{% trans "Plan" %}</th><th class="p-3 text-left">{% trans "Customer" %}</th><th class="p-3 text-left">{% trans "Status" %}</th><th class="p-3 text-left">{% trans "Period" %}</th></tr></thead><tbody>{% for s in subscriptions %}<tr class="border-b"><td class="p-3"><a class="underline" href="{% url 'subscriptions:subscription_detail' s.uid %}">{{ s.plan.name }}</a></td><td class="p-3">{{ s.customer }}</td><td class="p-3">{{ s.get_status_display }}</td><td class="p-3">{{ s.current_period_start|date:"Y-m-d" }} → {{ s.current_period_end|date:"Y-m-d" }}</td></tr>{% empty %}<tr><td class="p-6 text-center opacity-60" colspan="4">{% trans "No subscriptions." %}</td></tr>{% endfor %}</tbody></table></div>
+</div>
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends "subscriptions/base.html" %}
+{% load i18n %}
+{% block subscriptions_title %}{{ plan.name }}{% endblock %}
+{% block subscriptions_content %}
+<div class="space-y-6">
+  <div class="rounded-lg border p-6 shadow-sm">
+    <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+      <div><h2 class="text-2xl font-bold">{{ plan.name }}</h2><p class="text-sm opacity-70">{{ plan.code }} · {{ plan.get_kind_display }} · {{ plan.get_status_display }}</p>{% if plan.description %}<p class="mt-2 text-sm">{{ plan.description }}</p>{% endif %}<p class="mt-2 text-xs opacity-60">{{ active_subscriptions }} {% trans "active subscriptions" %}</p></div>
+      <div class="flex flex-wrap gap-2"><a href="{% url 'subscriptions:plan_edit' plan.uid %}" class="rounded-lg border px-3 py-2 text-sm font-semibold">{% trans "Edit" %}</a><a href="{% url 'subscriptions:price_create' plan.uid %}" class="rounded-lg border px-3 py-2 text-sm font-semibold">{% trans "Add Price" %}</a><a href="{% url 'subscriptions:feature_create' plan.uid %}" class="rounded-lg border px-3 py-2 text-sm font-semibold">{% trans "Add Feature" %}</a></div>
+    </div>
+  </div>
+  <div class="grid gap-5 lg:grid-cols-2">
+    <div class="rounded-lg border p-5"><h3 class="mb-3 font-semibold">{% trans "Prices" %}</h3><table class="w-full text-sm"><tbody>{% for price in prices %}<tr class="border-t"><td class="py-2">{{ price.name }} <code>{{ price.code }}</code></td><td class="py-2 text-right">{{ price.amount_base_units }} {{ price.asset.unit_name }}</td><td class="py-2 text-right">{{ price.get_interval_display }}</td></tr>{% empty %}<tr><td class="py-3 opacity-60">{% trans "No prices." %}</td></tr>{% endfor %}</tbody></table></div>
+    <div class="rounded-lg border p-5"><h3 class="mb-3 font-semibold">{% trans "Features" %}</h3><table class="w-full text-sm"><tbody>{% for feature in features %}<tr class="border-t"><td class="py-2"><code>{{ feature.code }}</code> {{ feature.name }}</td><td class="py-2 text-right">{{ feature.quantity|default:"—" }} {{ feature.unit }}</td><td class="py-2 text-right">{{ feature.get_kind_display }}</td></tr>{% empty %}<tr><td class="py-3 opacity-60">{% trans "No features." %}</td></tr>{% endfor %}</tbody></table></div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,12 @@
+{% extends "subscriptions/base.html" %}
+{% load i18n %}
+{% block subscriptions_title %}{{ customer }}{% endblock %}
+{% block subscriptions_content %}
+<div class="space-y-6">
+  <div class="rounded-lg border p-6"><h2 class="text-2xl font-bold">{{ customer }}</h2><p class="text-sm opacity-70">{{ customer.community }} · {{ customer.get_status_display }} · <code>{{ customer.billing_account.code }}</code></p></div>
+  <div class="grid gap-5 lg:grid-cols-2">
+    <div class="rounded-lg border p-5"><h3 class="mb-3 font-semibold">{% trans "Subscriptions" %}</h3>{% for s in subscriptions %}<div class="border-t py-2"><a class="underline" href="{% url 'subscriptions:subscription_detail' s.uid %}">{{ s.plan.name }}</a><span class="text-xs opacity-60"> · {{ s.get_status_display }}</span></div>{% empty %}<p class="opacity-60">{% trans "No subscriptions." %}</p>{% endfor %}</div>
+    <div class="rounded-lg border p-5"><h3 class="mb-3 font-semibold">{% trans "Recent invoices" %}</h3>{% for inv in invoices %}<div class="border-t py-2"><a class="underline" href="{% url 'subscriptions:invoice_detail' inv.uid %}">{{ inv.uid }}</a><span class="text-xs opacity-60"> · {{ inv.get_status_display }} · {{ inv.total_base_units }}</span></div>{% empty %}<p class="opacity-60">{% trans "No invoices." %}</p>{% endfor %}</div>
+  </div>
+</div>
+{% endblock %}
