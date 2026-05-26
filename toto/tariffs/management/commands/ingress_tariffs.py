@@ -5,18 +5,20 @@ Run:
   python manage.py ingress_tariffs
   python manage.py ingress_tariffs --full   # also creates sample usage records
 """
+import uuid
 from decimal import Decimal
+
+from django.db.models import Sum
 
 from toto.assets.models import (
     AccountType,
     Asset,
     AssetHolding,
     LedgerAccount,
-    LedgerTransaction,
-    TransactionType,
-    LedgerEntry,
     to_base_units,
 )
+from toto.assets.queries import get_asset_balance_display
+from toto.assets.services.assets import create_asset, transfer_asset
 from toto.ingress import IngressCommand
 from toto.tariffs.models import (
     BillingMetric,
@@ -28,6 +30,9 @@ from toto.tariffs.models import (
     UsageRecord,
 )
 from toto.tariffs.services import post_usage_record
+
+# Default total supply: 1 billion tokens (display units, 6 decimals)
+_DEFAULT_SUPPLY = Decimal("1000000000")
 
 
 def _bu(code, label, dimension=""):
@@ -52,19 +57,6 @@ def _metric(code, label, dimension="", app_label="tariffs", default_unit=None):
     return obj
 
 
-def _asset(unit_name, name, decimals=6, supply=10 ** 15):
-    asset, _ = Asset.objects.get_or_create(
-        unit_name=unit_name,
-        defaults={
-            "name": name,
-            "decimals": decimals,
-            "total_supply_base_units": supply,
-            "active": True,
-        },
-    )
-    return asset
-
-
 def _account(code, name, account_type=AccountType.SYSTEM):
     acc, _ = LedgerAccount.objects.get_or_create(
         code=code,
@@ -73,13 +65,89 @@ def _account(code, name, account_type=AccountType.SYSTEM):
     return acc
 
 
+def _asset(unit_name, name, decimals=6, total_supply=_DEFAULT_SUPPLY):
+    """
+    Get-or-create an asset with a proper reserve account, holding, and ledger
+    transaction. Idempotent: safe to call on every ingress run.
+
+    For brand-new assets: uses create_asset (writes ledger tx + reserve holding).
+    For existing assets that were created without a proper reserve holding: fills
+    the gap so supply always matches.
+    """
+    reserve = _account(
+        f"RES-{unit_name}",
+        f"{name} Reserve",
+        AccountType.RESERVE,
+    )
+
+    existing = Asset.objects.filter(unit_name=unit_name).first()
+
+    if existing is None:
+        asset = create_asset(
+            name=name,
+            unit_name=unit_name,
+            total_supply=total_supply,
+            decimals=decimals,
+            reserve_account=reserve,
+            reference=f"ingress-create-{unit_name.lower()}",
+            description=f"Ingress: initial issuance of {name}",
+        )
+        asset.reserve_account = reserve
+        asset.save(update_fields=["reserve_account", "updated_at"])
+        return asset
+
+    asset = existing
+
+    # Ensure the reserve_account FK is wired up.
+    if not asset.reserve_account_id:
+        asset.reserve_account = reserve
+        asset.save(update_fields=["reserve_account", "updated_at"])
+
+    # Reserve holding must cover the supply not yet distributed to other accounts.
+    # Handles assets created before this fix that have no reserve holding.
+    distributed = (
+        AssetHolding.objects
+        .filter(asset=asset)
+        .exclude(account=reserve)
+        .aggregate(total=Sum("balance_base_units"))["total"] or 0
+    )
+    needed = asset.total_supply_base_units - distributed
+    if needed > 0:
+        holding, _ = AssetHolding.objects.get_or_create(
+            asset=asset, account=reserve, defaults={"balance_base_units": 0}
+        )
+        if holding.balance_base_units < needed:
+            holding.balance_base_units = needed
+            holding.save(update_fields=["balance_base_units", "updated_at"])
+
+    return asset
+
+
 def _fund(account, asset, display_amount):
-    """Directly set a holding balance (for demo purposes only)."""
-    base = to_base_units(Decimal(str(display_amount)), asset.decimals)
-    holding, _ = AssetHolding.objects.get_or_create(account=account, asset=asset)
-    holding.balance_base_units = max(holding.balance_base_units, base)
-    holding.save(update_fields=["balance_base_units", "updated_at"])
-    return holding
+    """
+    Top up account to at least display_amount tokens by transferring from the
+    asset's reserve. Uses proper transfer_asset so the ledger stays consistent.
+    Idempotent: skips if the account already has enough.
+    """
+    if not asset.reserve_account_id:
+        return
+    target = Decimal(str(display_amount))
+    current = get_asset_balance_display(asset, account)
+    to_add = target - current
+    if to_add <= 0:
+        return
+    ref = f"ingress-fund-{account.code}-{asset.unit_name.lower()}-{uuid.uuid4().hex[:6]}"
+    try:
+        transfer_asset(
+            asset=asset,
+            sender_account=asset.reserve_account,
+            receiver_account=account,
+            amount=to_add,
+            reference=ref,
+            description=f"Ingress seed: fund {account.code}",
+        )
+    except Exception:
+        pass
 
 
 def _tariff(code, name, description, status=TariffStatus.ACTIVE):

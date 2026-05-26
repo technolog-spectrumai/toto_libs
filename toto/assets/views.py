@@ -25,7 +25,7 @@ from .models import (
     TransactionType,
 )
 from .queries import list_asset_holders, verify_asset_ledger
-from .services.assets import create_asset, default_tokenization, distribute_asset, mint_asset
+from .services.assets import create_asset, default_tokenization, distribute_asset
 
 
 def assets_render(request, template_name, context):
@@ -70,32 +70,6 @@ def asset_detail(request, pk):
     if request.user.is_staff:
         context["ledger_accounts"] = LedgerAccount.objects.filter(active=True).order_by("code")
     return assets_render(request, "assets/asset_detail.html", context)
-
-
-@login_required
-def asset_mint(request, pk):
-    """Mint new tokens into the reserve account. Staff only."""
-    if not request.user.is_staff:
-        from django.http import HttpResponseForbidden
-        return HttpResponseForbidden()
-    asset = get_object_or_404(Asset, pk=pk)
-    if request.method == "POST":
-        from decimal import InvalidOperation
-        try:
-            amount = Decimal(request.POST.get("amount", "0"))
-            reserve_pk = request.POST.get("reserve_account")
-            reserve = get_object_or_404(LedgerAccount, pk=reserve_pk)
-            import uuid as _uuid
-            ref = f"mint-{asset.unit_name.lower()}-{_uuid.uuid4().hex[:8]}"
-            mint_asset(asset=asset, amount=amount, reserve_account=reserve, reference=ref)
-            # Also set as reserve_account on asset if not already set
-            if not asset.reserve_account_id:
-                asset.reserve_account = reserve
-                asset.save(update_fields=["reserve_account", "updated_at"])
-            messages.success(request, f"Minted {amount} {asset.unit_name} into {reserve.code}.")
-        except (ValidationError, InvalidOperation, Exception) as exc:
-            messages.error(request, str(exc))
-    return redirect("assets:asset_detail", pk=pk)
 
 
 @login_required

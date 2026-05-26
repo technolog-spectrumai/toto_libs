@@ -56,6 +56,9 @@
             {% if ledger_status.total_supply_matches %}
               <i class="fa-solid fa-circle-check" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
               <span class="ml-1 font-semibold" :class="darkMode ? 'text-success-dark' : 'text-success-light'">{% trans "Supply verified" %}</span>
+            {% elif ledger_status.supply_diff > 0 %}
+              <i class="fa-solid fa-skull-crossbones text-red-500"></i>
+              <span class="ml-1 font-semibold text-red-500">{% trans "FRAUD — oversupply" %}</span>
             {% else %}
               <i class="fa-solid fa-circle-exclamation" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
               <span class="ml-1 font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{% trans "Supply mismatch" %}</span>
@@ -83,9 +86,9 @@
               </div>
               <p class="mt-2 opacity-70 leading-relaxed">
                 {% if ledger_status.supply_diff < 0 %}
-                  {% trans "Holdings are less than declared supply. The reserve account may be missing or its AssetHolding was never created. Use the Minting tab to create/credit a reserve." %}
+                  {% trans "Holdings are less than declared supply. The reserve account may be missing or its AssetHolding was not created at token creation time." %}
                 {% else %}
-                  {% trans "Holdings exceed declared supply. This can happen if tokens were issued without updating total_supply_base_units." %}
+                  {% trans "Holdings exceed declared supply. Supply is immutable after creation — tokens in circulation exceed the authorised limit. Treat this as a fraud signal." %}
                 {% endif %}
               </p>
             </div>
@@ -137,15 +140,14 @@
   {% endfor %}
 
   {% if user.is_staff %}
-  <!-- Minting tab (staff only) -->
-  <div x-data="{ mintTab: 'mint' }"
-       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  <!-- Distribution (staff only) -->
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
        class="rounded-xl border shadow-sm overflow-hidden">
     <div class="flex items-center justify-between border-b px-5 py-4"
          :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
       <h2 class="font-semibold flex items-center gap-2">
-        <i class="fa-solid fa-hammer opacity-60"></i>
-        {% trans "Minting" %}
+        <i class="fa-solid fa-paper-plane opacity-60"></i>
+        {% trans "Distribution" %}
       </h2>
       {% if asset.reserve_account %}
       <span class="text-xs opacity-60">
@@ -153,64 +155,13 @@
       </span>
       {% endif %}
     </div>
-    <!-- Tab switcher -->
-    <div class="flex border-b text-sm font-semibold"
-         :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
-      <button @click="mintTab = 'mint'"
-              :class="mintTab === 'mint' ? (darkMode ? 'border-b-2 border-accent-dark text-accent-dark' : 'border-b-2 border-accent-light text-accent-light') : 'opacity-50'"
-              class="px-5 py-3 transition hover:opacity-80">
-        <i class="fa-solid fa-plus-circle mr-1"></i>{% trans "Mint tokens" %}
-      </button>
-      <button @click="mintTab = 'distribute'"
-              :class="mintTab === 'distribute' ? (darkMode ? 'border-b-2 border-accent-dark text-accent-dark' : 'border-b-2 border-accent-light text-accent-light') : 'opacity-50'"
-              class="px-5 py-3 transition hover:opacity-80">
-        <i class="fa-solid fa-paper-plane mr-1"></i>{% trans "Distribute" %}
-      </button>
-    </div>
 
-    <!-- Mint form -->
-    <div x-show="mintTab === 'mint'" class="px-5 py-5 space-y-4">
-      <p class="text-xs opacity-60">{% trans "Creates new tokens and credits them to the chosen reserve account. Increases total supply." %}</p>
-      <form method="post" action="{% url 'assets:asset_mint' asset.pk %}" class="space-y-4">
-        {% csrf_token %}
-        <div class="grid gap-4 sm:grid-cols-2">
-          <div class="space-y-1">
-            <label class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Amount to mint" %}</label>
-            <input type="number" name="amount" step="any" min="0" required
-                   placeholder="e.g. 1000"
-                   :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder:opacity-30' : 'border-accent-2 bg-primary-bg-light text-text-main-light placeholder:opacity-30'"
-                   class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
-          </div>
-          <div class="space-y-1">
-            <label class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Credit to account (reserve)" %}</label>
-            <select name="reserve_account"
-                    :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
-                    class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
-              {% for acct in ledger_accounts %}
-              <option value="{{ acct.pk }}"
-                {% if asset.reserve_account_id == acct.pk %}selected{% endif %}>
-                {{ acct.code }} — {{ acct.name }}
-              </option>
-              {% endfor %}
-            </select>
-          </div>
-        </div>
-        <button type="submit"
-                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-                class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-90">
-          <i class="fa-solid fa-hammer"></i>
-          {% trans "Mint" %}
-        </button>
-      </form>
-    </div>
-
-    <!-- Distribute form -->
-    <div x-show="mintTab === 'distribute'" class="px-5 py-5 space-y-4">
+    <div class="px-5 py-5 space-y-4">
       {% if asset.reserve_account %}
       <p class="text-xs opacity-60">
         {% trans "Transfer tokens from the reserve account" %}
         (<span class="font-mono">{{ asset.reserve_account.code }}</span>)
-        {% trans "to any account. Use this to fulfil purchases." %}
+        {% trans "to any account. Supply is fixed — only existing reserve tokens can be distributed." %}
       </p>
       <form method="post" action="{% url 'assets:asset_distribute' asset.pk %}" class="space-y-4">
         {% csrf_token %}
@@ -244,7 +195,7 @@
       <div class="rounded-lg border border-dashed p-8 text-center"
            :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
         <i class="fa-solid fa-vault text-2xl opacity-20 mb-2"></i>
-        <p class="text-sm opacity-60">{% trans "No reserve account set. Mint some tokens first — the reserve will be set automatically." %}</p>
+        <p class="text-sm opacity-60">{% trans "No reserve account configured for this asset." %}</p>
       </div>
       {% endif %}
     </div>

@@ -7,7 +7,6 @@ app_name = "assets"
 urlpatterns = [
     path("", views.asset_list, name="asset_list"),
     path("assets/<int:pk>/", views.asset_detail, name="asset_detail"),
-    path("assets/<int:pk>/mint/", views.asset_mint, name="asset_mint"),
     path("assets/<int:pk>/distribute/", views.asset_distribute, name="asset_distribute"),
     path("objects/<int:object_id>/tokenize/", views.tokenization_create_for_object, name="tokenization_create_for_object"),
     path("tokenizations/<int:pk>/default/", views.tokenization_default, name="tokenization_default"),

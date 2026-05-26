@@ -35,7 +35,6 @@ class AccountType(models.TextChoices):
 
 class TransactionType(models.TextChoices):
     ASSET_CREATE = "asset_create", "Asset Create"
-    ASSET_MINT = "asset_mint", "Asset Mint"
     ASSET_TRANSFER = "asset_transfer", "Asset Transfer"
     REVERSAL = "reversal", "Reversal"
     ADJUSTMENT = "adjustment", "Adjustment"
