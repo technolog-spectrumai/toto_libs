@@ -140,15 +140,6 @@
       </div>
     </header>
 
-    {% if selected_bucket %}
-    {% with quota=bucket_quota_info|default:{} %}
-    {% for bucket in buckets %}{% if bucket.slug == selected_bucket %}
-    {% with info=bucket_quota_info|default:{} %}
-    {% endwith %}
-    {% endif %}{% endfor %}
-    {% endwith %}
-    {% endif %}
-
     <!-- JSON data island -->
     {{ flat_items|json_script:"vault-items" }}
 

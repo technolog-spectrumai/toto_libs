@@ -4,6 +4,7 @@ from django.test import TestCase, Client
 from django.urls import reverse
 from django.utils import timezone
 
+from toto.core.models import Platform
 from toto.vault.models import (
     Bucket,
     VaultInvoice,
@@ -113,6 +114,7 @@ class VaultInvoiceModelTest(TestCase):
 class VaultInvoiceListViewTest(TestCase):
 
     def setUp(self):
+        Platform.objects.create(site_name="Test", author="Test", publication_year=2024, active=True)
         self.staff = User.objects.create_user("staff", password="pass", is_staff=True)
         self.alice = User.objects.create_user("alice", password="pass")
         self.bob = User.objects.create_user("bob", password="pass")
