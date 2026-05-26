@@ -75,6 +75,10 @@ class AcceptInvoiceView(LoginRequiredMixin, View):
             messages.warning(request, "An obligation already exists for this invoice.")
             return redirect("invoice:invoice_list")
 
+        if invoice.amount <= 0:
+            messages.error(request, "Cannot create an obligation for a zero or negative invoice.")
+            return redirect("invoice:invoice_list")
+
         try:
             asset = Asset.objects.get(unit_name=invoice.currency_label, active=True)
         except Asset.DoesNotExist:
