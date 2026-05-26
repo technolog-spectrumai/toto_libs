@@ -7,13 +7,13 @@ from django.http import FileResponse, JsonResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views import View
-from django.views.generic import TemplateView, DetailView
+from django.views.generic import TemplateView, DetailView, ListView
 from django.urls import reverse
 from django.contrib.auth.mixins import LoginRequiredMixin
 
 from django.contrib import messages
 from toto.ui import PageProcessor
-from .models import StorageAccount, VaultFile, Bucket, FileGateway, VaultDirectory
+from .models import VaultFile, Bucket, FileGateway, VaultDirectory, VaultInvoice
 
 
 # ============================================================
@@ -113,7 +113,6 @@ class PublicFileListView(TemplateView):
         if bucket_slug:
             file_qs = file_qs.filter(bucket__slug=bucket_slug)
 
-        # Map directory_pk → gateway page URL (directory is always set now)
         dir_gateway_map = {
             gw.directory_id: reverse("vault:gateway_page", kwargs={"dir_pk": gw.directory_id})
             for gw in FileGateway.objects.only("directory_id")
@@ -122,25 +121,33 @@ class PublicFileListView(TemplateView):
         flat_items = self._build_flat_items(accessible_dirs, list(file_qs), dir_gateway_map)
 
         context["flat_items"] = flat_items
-        context["buckets"] = Bucket.objects.all()
         context["selected_bucket"] = bucket_slug
         context["total_files"] = sum(1 for i in flat_items if i["t"] == "file")
         context["total_dirs"] = sum(1 for i in flat_items if i["t"] == "dir")
 
-        context["bucket_billing"] = None
-        if bucket_slug:
-            try:
-                from toto.vault.billing import get_bucket_billing_summary
-                selected_bucket_obj = Bucket.objects.filter(slug=bucket_slug).first()
-                if selected_bucket_obj:
-                    context["bucket_billing"] = get_bucket_billing_summary(selected_bucket_obj, user=user)
-            except Exception:
-                pass
-
-        context["has_storage_account"] = (
-            user.is_authenticated and
-            StorageAccount.objects.filter(user=user, active=True).exists()
-        )
+        # Per-bucket quota usage so the template can show "X MB / Y MB" next to each bucket name.
+        bucket_quota_info = {}
+        buckets = list(Bucket.objects.all())
+        if buckets:
+            from django.db.models import Sum as _Sum
+            usage_qs = (
+                VaultFile.objects
+                .filter(bucket__in=buckets)
+                .values("bucket_id")
+                .annotate(used_bytes=_Sum("file_size_bytes"))
+            )
+            usage_map = {row["bucket_id"]: row["used_bytes"] or 0 for row in usage_qs}
+            for b in buckets:
+                used_mb = round((usage_map.get(b.pk, 0)) / 1_048_576, 2)
+                quota_mb = b.storage_quota_mb
+                bucket_quota_info[b.pk] = {
+                    "used_mb": used_mb,
+                    "quota_mb": quota_mb,
+                    "pct": min(round(used_mb / quota_mb * 100) if quota_mb else 0, 100),
+                    "over": quota_mb is not None and used_mb > quota_mb,
+                }
+        context["buckets"] = buckets
+        context["bucket_quota_info"] = bucket_quota_info
 
         return PageProcessor().decorate(context, self.request)
 
@@ -208,27 +215,6 @@ class FileGatewayPageView(LoginRequiredMixin, DetailView):
 
         context["target_dir_path"] = get_full_path(gateway.directory)
 
-        try:
-            from toto.vault.billing import get_bucket_billing_summary
-            context["bucket_billing"] = get_bucket_billing_summary(gateway.bucket, user=user)
-        except Exception:
-            context["bucket_billing"] = None
-
-        has_storage_account = False
-        has_vault_authorization = False
-        try:
-            sa = StorageAccount.objects.select_related("authorization").get(user=user, active=True)
-            has_storage_account = True
-            has_vault_authorization = sa.authorization is not None and sa.authorization.active
-        except StorageAccount.DoesNotExist:
-            pass
-
-        context["has_storage_account"] = has_storage_account
-        context["has_vault_authorization"] = has_vault_authorization
-
-        from toto.bazaar.wallet_pin import has_wallet_pin
-        context["has_wallet_pin"] = has_wallet_pin(user)
-
         recent = VaultFile.objects.filter(
             directory=gateway.directory, owner=user
         ).select_related("directory").order_by("-uploaded_at")[:10]
@@ -270,36 +256,7 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
                 "error": f"File too large ({uploaded_file.size / (1024*1024):.1f} MB). Max is {gateway.max_file_size / 1024:.1f} MB."
             }, status=400)
 
-        # Reject before any disk/DB write if the user can't cover the charge.
-        from toto.vault.billing import preflight_upload_check
-        can_pay, pay_error = preflight_upload_check(
-            request.user, gateway.bucket, uploaded_file.size
-        )
-        if not can_pay:
-            return JsonResponse({"error": pay_error}, status=402)
-
-        # Any bucket with BucketBilling requires either vault authorization
-        # OR an active PIN session before uploading.
-        from toto.vault.models import BucketBilling
-        if BucketBilling.objects.filter(bucket=gateway.bucket).exists():
-            has_auth = False
-            try:
-                sa = StorageAccount.objects.select_related("authorization").get(
-                    user=request.user, active=True
-                )
-                has_auth = sa.authorization is not None and sa.authorization.active
-            except StorageAccount.DoesNotExist:
-                pass
-
-            if not has_auth:
-                from toto.bazaar.wallet_pin import session_is_verified
-                if not session_is_verified(request.session):
-                    return JsonResponse({
-                        "error": "PIN verification required. Verify your wallet PIN or grant vault authorization to upload without a PIN.",
-                        "pin_required": True,
-                    }, status=402)
-
-        directory = gateway.directory  # set at model level by admin
+        directory = gateway.directory
 
         mime, _ = mimetypes.guess_type(uploaded_file.name)
         file_type = VaultFile.detect_type(mime)
@@ -316,21 +273,6 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
         vault_file.save()
         vault_file.content_hash = vault_file.create_hash()
         vault_file.save()
-
-        # Collect any billing failures recorded by the post_save signal so we
-        # can surface them to the user — they don't block the upload but should
-        # be visible (e.g. "No matching tariff items found").
-        billing_warnings = []
-        try:
-            from toto.tariffs.models import UsageRecord, UsageStatus
-            failed_records = UsageRecord.objects.filter(
-                source_type="vault_file",
-                source_id=str(vault_file.pk),
-                status=UsageStatus.FAILED,
-            ).values_list("error_message", flat=True)
-            billing_warnings = [msg for msg in failed_records if msg]
-        except Exception:
-            pass
 
         if directory:
             all_dirs = list(VaultDirectory.objects.filter(bucket=gateway.bucket))
@@ -359,7 +301,6 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
                 "public_url": vault_file.get_public_url(),
                 "size": f"{uploaded_file.size / (1024*1024):.2f} MB",
             },
-            "billing_warnings": billing_warnings,
         })
 
 
@@ -377,7 +318,6 @@ class VaultMetricsView(LoginRequiredMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
 
-        # ── Top-level counters ──────────────────────────────
         total_buckets = Bucket.objects.count()
         total_dirs = VaultDirectory.objects.count()
         total_files = VaultFile.objects.count()
@@ -395,7 +335,6 @@ class VaultMetricsView(LoginRequiredMixin, TemplateView):
             "recent_count": recent_count,
         })
 
-        # ── Chart data ──────────────────────────────────────
         context["files_by_type"] = list(
             VaultFile.objects.values("file_type")
             .annotate(count=Count("id"))
@@ -426,7 +365,6 @@ class VaultMetricsView(LoginRequiredMixin, TemplateView):
             for i in range(30)
         ]
 
-        # ── Per-bucket breakdown ────────────────────────────
         context["bucket_stats"] = list(
             Bucket.objects.annotate(
                 file_count=Count("files", distinct=True),
@@ -439,34 +377,9 @@ class VaultMetricsView(LoginRequiredMixin, TemplateView):
             FileGateway.objects.values_list("bucket_id", flat=True)
         )
 
-        # ── Recent files ────────────────────────────────────
         context["recent_files"] = VaultFile.objects.select_related(
             "owner", "bucket", "directory"
         ).order_by("-uploaded_at")[:8]
-
-        # ── Current user's storage account & usage ──────────
-        user = self.request.user
-        context["user_storage_account"] = None
-        context["user_holdings"] = []
-        context["user_recent_billing"] = []
-        try:
-            sa = StorageAccount.objects.select_related("ledger_account").get(user=user)
-            context["user_storage_account"] = sa
-            from toto.assets.models import AssetHolding
-            context["user_holdings"] = list(
-                AssetHolding.objects.filter(account=sa.ledger_account)
-                .select_related("asset")
-                .order_by("-balance_base_units")
-            )
-            from toto.tariffs.models import UsageRecord
-            context["user_recent_billing"] = list(
-                UsageRecord.objects.filter(
-                    payer_account=sa.ledger_account,
-                    source_type="vault_file",
-                ).select_related("tariff").order_by("-created_at")[:10]
-            )
-        except StorageAccount.DoesNotExist:
-            pass
 
         return PageProcessor().decorate(context, self.request)
 
@@ -482,7 +395,6 @@ class BucketMetricsView(LoginRequiredMixin, TemplateView):
         context = super().get_context_data(**kwargs)
         bucket = get_object_or_404(Bucket, slug=self.kwargs["bucket_slug"])
 
-        # ── Top-level counters ──────────────────────────────
         total_files = VaultFile.objects.filter(bucket=bucket).count()
         total_dirs = VaultDirectory.objects.filter(bucket=bucket).count()
         public_files = VaultFile.objects.filter(bucket=bucket, is_public=True).count()
@@ -504,7 +416,6 @@ class BucketMetricsView(LoginRequiredMixin, TemplateView):
             "recent_count": recent_count,
         })
 
-        # ── Chart data ──────────────────────────────────────
         context["files_by_type"] = list(
             VaultFile.objects.filter(bucket=bucket)
             .values("file_type")
@@ -542,7 +453,6 @@ class BucketMetricsView(LoginRequiredMixin, TemplateView):
             for i in range(30)
         ]
 
-        # ── Directory breakdown ─────────────────────────────
         all_bucket_dirs = list(
             VaultDirectory.objects.filter(bucket=bucket)
             .prefetch_related("allowed_users")
@@ -577,7 +487,6 @@ class BucketMetricsView(LoginRequiredMixin, TemplateView):
             key=lambda x: x["full_path"],
         )
 
-        # ── Storage totals & per-user quota ────────────────
         quota_mb = bucket.storage_quota_mb
         raw_user_stats = list(
             VaultFile.objects.filter(bucket=bucket)
@@ -604,302 +513,31 @@ class BucketMetricsView(LoginRequiredMixin, TemplateView):
         context["bucket_quota_mb"] = quota_mb
         context["bucket_total_mb"] = bucket_total_mb
 
-        # ── Recent files ────────────────────────────────────
         context["recent_files"] = VaultFile.objects.filter(bucket=bucket).select_related(
             "owner", "directory"
         ).order_by("-uploaded_at")[:8]
 
-        # ── Billing history ─────────────────────────────────
         context["bucket_tariff"] = bucket.tariff
-        try:
-            from toto.tariffs.models import UsageRecord
-            context["billing_records"] = list(
-                UsageRecord.objects
-                .filter(metadata__bucket_id=bucket.pk)
-                .select_related("payer_account", "tariff")
-                .order_by("-created_at")[:15]
-            )
-        except Exception:
-            context["billing_records"] = []
 
         return PageProcessor().decorate(context, self.request)
 
 
 # ============================================================
-# StorageAccount connect / disconnect
+# Invoices
 # ============================================================
 
-class StorageAccountView(LoginRequiredMixin, TemplateView):
-    """
-    Lets the user connect or disconnect their LedgerAccount for vault billing.
-    Shows available LedgerAccounts (type=USER) to link.
-    """
-    template_name = "vault/storage_account.html"
+class VaultInvoiceListView(LoginRequiredMixin, ListView):
+    """Shows the current user's vault invoices."""
+    template_name = "vault/invoice_list.html"
+    context_object_name = "invoices"
+    paginate_by = 20
+
+    def get_queryset(self):
+        return VaultInvoice.objects.filter(issued_to=self.request.user).order_by("-created_at")
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        user = self.request.user
-
-        try:
-            storage_account = StorageAccount.objects.select_related(
-                "ledger_account", "authorization"
-            ).get(user=user)
-        except StorageAccount.DoesNotExist:
-            storage_account = None
-
-        from toto.assets.models import AccountType, AssetHolding, LedgerAccount, WalletAuthorization
-        available = list(LedgerAccount.objects.filter(
-            user=user, account_type=AccountType.USER, active=True
-        ).exclude(
-            storage_accounts__user=user
-        ))
-
-        holdings = []
-        available_authorizations = []
-        if storage_account:
-            holdings = list(
-                AssetHolding.objects.filter(account=storage_account.ledger_account)
-                .select_related("asset")
-                .order_by("-balance_base_units")
-            )
-            available_authorizations = list(
-                WalletAuthorization.objects.filter(
-                    ledger_account=storage_account.ledger_account, active=True
-                )
-            )
-
-        context["storage_account"] = storage_account
-        context["available_accounts"] = available
-        context["holdings"] = holdings
-        context["available_authorizations"] = available_authorizations
+        qs = self.get_queryset()
+        context["pending_count"] = qs.filter(status="pending").count()
+        context["paid_count"] = qs.filter(status="paid").count()
         return PageProcessor().decorate(context, self.request)
-
-    def post(self, request, *args, **kwargs):
-        action = request.POST.get("action")
-
-        if action == "connect":
-            ledger_pk = request.POST.get("ledger_account")
-            name = request.POST.get("name", "").strip()
-            if not ledger_pk:
-                messages.error(request, "Please select a ledger account.")
-                return redirect("vault:storage_account")
-
-            from toto.assets.models import AccountType, LedgerAccount
-            try:
-                account = LedgerAccount.objects.get(
-                    pk=ledger_pk, user=request.user, account_type=AccountType.USER, active=True
-                )
-            except LedgerAccount.DoesNotExist:
-                messages.error(request, "Account not found or not available.")
-                return redirect("vault:storage_account")
-
-            StorageAccount.objects.update_or_create(
-                user=request.user,
-                defaults={"ledger_account": account, "name": name, "active": True},
-            )
-            messages.success(request, f"Storage account connected: {account.code}")
-
-        elif action == "disconnect":
-            StorageAccount.objects.filter(user=request.user).update(active=False)
-            messages.success(request, "Storage account disconnected.")
-
-        elif action == "reconnect":
-            StorageAccount.objects.filter(user=request.user).update(active=True)
-            messages.success(request, "Storage account reconnected.")
-
-        elif action == "grant_authorization":
-            try:
-                sa = StorageAccount.objects.get(user=request.user, active=True)
-            except StorageAccount.DoesNotExist:
-                messages.error(request, "Connect a storage account first.")
-                return redirect("vault:storage_account")
-
-            from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-            from cryptography.hazmat.primitives.serialization import (
-                Encoding, PublicFormat, PrivateFormat, NoEncryption,
-            )
-            from toto.assets.models import WalletAuthorization
-
-            private_key = Ed25519PrivateKey.generate()
-            public_pem = private_key.public_key().public_bytes(
-                Encoding.PEM, PublicFormat.SubjectPublicKeyInfo
-            ).decode()
-            private_pem = private_key.private_bytes(
-                Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()
-            ).decode()
-
-            auth = WalletAuthorization(
-                name=f"Vault auto-auth ({sa.ledger_account.code})",
-                ledger_account=sa.ledger_account,
-                public_key=public_pem,
-                active=True,
-            )
-            auth.set_private_key(private_pem)
-            auth.save()
-
-            sa.authorization = auth
-            sa.save(update_fields=["authorization", "updated_at"])
-            messages.success(request, "Authorization granted — the app can now sign transactions automatically.")
-
-        elif action == "set_authorization":
-            auth_pk = request.POST.get("authorization_pk")
-            try:
-                sa = StorageAccount.objects.get(user=request.user)
-            except StorageAccount.DoesNotExist:
-                messages.error(request, "Connect a storage account first.")
-                return redirect("vault:storage_account")
-            if auth_pk:
-                from toto.assets.models import WalletAuthorization
-                try:
-                    auth = WalletAuthorization.objects.get(
-                        pk=auth_pk, ledger_account=sa.ledger_account, active=True
-                    )
-                    sa.authorization = auth
-                    sa.save(update_fields=["authorization", "updated_at"])
-                    messages.success(request, f"Authorization set: {auth.name}")
-                except WalletAuthorization.DoesNotExist:
-                    messages.error(request, "Authorization not found.")
-            else:
-                sa.authorization = None
-                sa.save(update_fields=["authorization", "updated_at"])
-                messages.success(request, "Authorization removed. Manual confirmation will be required.")
-
-        return redirect("vault:storage_account")
-
-
-class BuyStorageTokensView(LoginRequiredMixin, View):
-    """
-    Let a user purchase storage tokens from the asset's reserve account.
-    The purchase is free (admin pre-authorises by configuring the reserve).
-    The user must have a StorageAccount to receive tokens.
-    """
-
-    def _get_storage_asset(self):
-        from toto.tariffs.models import TariffItem
-        from toto.vault.billing import STORAGE_REQUEST_METRIC_CODE
-        item = (
-            TariffItem.objects
-            .filter(active=True, metric__code=STORAGE_REQUEST_METRIC_CODE)
-            .select_related("charged_asset__reserve_account")
-            .first()
-        )
-        if item and item.charged_asset and item.charged_asset.reserve_account_id:
-            return item.charged_asset
-        return None
-
-    def _get_bucket_billing(self):
-        from toto.vault.models import BucketBilling
-        return (
-            BucketBilling.objects
-            .prefetch_related("token_prices__currency", "token_prices__revenue_account")
-            .filter(token_prices__isnull=False)
-            .first()
-        )
-
-    def get(self, request):
-        import json
-        from toto.vault.billing import get_payer_account, get_bucket_billing_summary, _fmt_decimal
-        from toto.assets.queries import get_asset_balance_display
-        from toto.bazaar.wallet_pin import has_wallet_pin
-        from toto.ui import PageProcessor
-
-        asset = self._get_storage_asset()
-        payer = get_payer_account(request.user)
-        bucket_billing = self._get_bucket_billing()
-
-        token_balance = None
-        if asset and payer:
-            token_balance = _fmt_decimal(get_asset_balance_display(asset, payer))
-
-        prices = []
-        if bucket_billing and payer:
-            for tp in bucket_billing.token_prices.select_related("currency"):
-                payer_balance = get_asset_balance_display(tp.currency, payer)
-                prices.append({
-                    "pk": tp.pk,
-                    "currency_pk": tp.currency.pk,
-                    "unit_name": tp.currency.unit_name,
-                    "currency_name": tp.currency.name,
-                    "price_per_token": str(tp.price_per_token),
-                    "payer_balance": str(payer_balance),
-                    "decimals": tp.currency.decimals,
-                })
-
-        billing_summary = None
-        if bucket_billing:
-            try:
-                billing_summary = get_bucket_billing_summary(bucket_billing.bucket, user=request.user)
-            except Exception:
-                pass
-
-        context = {
-            "asset": asset,
-            "payer_account": payer,
-            "token_balance": token_balance,
-            "bucket_billing": bucket_billing,
-            "billing_summary": billing_summary,
-            "prices": prices,
-            "prices_json": json.dumps(prices),
-            "has_wallet_pin": has_wallet_pin(request.user),
-        }
-        return render(request, "vault/buy_tokens.html", PageProcessor().decorate(context, request))
-
-    def post(self, request):
-        import uuid as _uuid
-        from decimal import Decimal, InvalidOperation
-        from toto.vault.billing import get_payer_account, _make_wallet_auth_signer
-        from toto.vault.purchase import purchase_storage_tokens
-        from toto.vault.models import StorageTokenPrice
-        from toto.assets.services.assets import distribute_asset
-        from toto.bazaar.wallet_pin import has_wallet_pin, session_is_verified
-        from django.core.exceptions import ValidationError
-
-        asset = self._get_storage_asset()
-        if not asset:
-            messages.error(request, "No storage token is available for purchase right now.")
-            return redirect("vault:buy_tokens")
-
-        payer = get_payer_account(request.user)
-        if not payer:
-            messages.error(request, "Connect a ledger account in your storage account settings first.")
-            return redirect("vault:storage_account")
-
-        if not has_wallet_pin(request.user):
-            messages.error(request, "Set a wallet PIN before purchasing tokens.")
-            return redirect("assets:wallet_pin_set")
-
-        if not session_is_verified(request.session):
-            messages.error(request, "Verify your wallet PIN to complete the purchase.")
-            return redirect("vault:buy_tokens")
-
-        try:
-            token_amount = Decimal(request.POST.get("token_amount", "0"))
-            price_pk = request.POST.get("price_pk")
-            signer = _make_wallet_auth_signer(request.user)
-
-            if price_pk:
-                tp = StorageTokenPrice.objects.select_related(
-                    "currency", "revenue_account"
-                ).get(pk=price_pk)
-                ref = f"buy-tokens-{request.user.pk}-{_uuid.uuid4().hex[:8]}"
-                result = purchase_storage_tokens(
-                    payer_account=payer,
-                    storage_asset=asset,
-                    payment_asset=tp.currency,
-                    token_amount=token_amount,
-                    price_per_token=tp.price_per_token,
-                    revenue_account=tp.revenue_account,
-                    reference=ref,
-                    username=request.user.username,
-                    signer=signer,
-                )
-                messages.success(
-                    request,
-                    f"Purchased {result['token_amount']} {asset.unit_name} "
-                    f"for {result['payment_amount']} {tp.currency.unit_name}."
-                )
-            else:
-                raise ValidationError("No pricing is configured for storage tokens. Contact an administrator.")
-        except (ValidationError, InvalidOperation, Exception) as exc:
-            messages.error(request, str(exc))
-        return redirect("vault:buy_tokens")

@@ -1,67 +1,15 @@
-from decimal import Decimal
-
 from django.contrib.auth.models import User
 from django.core.management.base import CommandError
 from django.core.files.base import ContentFile
 from django.utils.text import slugify
 from toto.ingress import IngressCommand
-from toto.vault.models import VaultFile, Bucket, BucketBilling, StorageTokenPrice, FileGateway, VaultDirectory
+from toto.vault.models import VaultFile, Bucket, FileGateway, VaultDirectory
 
 
 class Command(IngressCommand):
     help = "Seed Vault demo data including buckets, directories, files, and upload gateways"
 
     def process(self):
-        from toto.tariffs.models import BillingUnit
-
-        storage_units = [
-            {"code": "storage.byte",    "label": "Storage byte",      "dimension": "storage"},
-            {"code": "storage.kb",      "label": "Storage kilobyte",  "dimension": "storage"},
-            {"code": "storage.mb",      "label": "Storage megabyte",  "dimension": "storage"},
-            {"code": "storage.gb",      "label": "Storage gigabyte",  "dimension": "storage"},
-            {"code": "storage.mb_hour", "label": "Megabyte hour",     "dimension": "storage_time"},
-            {"code": "storage.gb_hour", "label": "Gigabyte hour",     "dimension": "storage_time"},
-        ]
-
-        created = updated = unchanged = 0
-        for unit in storage_units:
-            obj, was_created = BillingUnit.objects.get_or_create(
-                code=unit["code"],
-                defaults={
-                    "label": unit["label"],
-                    "dimension": unit["dimension"],
-                    "app_label": "vault",
-                    "active": True,
-                    "metadata": {},
-                },
-            )
-            if was_created:
-                created += 1
-                continue
-
-            changed = False
-            for field in ("label", "dimension"):
-                if getattr(obj, field) != unit[field]:
-                    setattr(obj, field, unit[field])
-                    changed = True
-            if obj.app_label != "vault":
-                obj.app_label = "vault"
-                changed = True
-            if obj.active is not True:
-                obj.active = True
-                changed = True
-
-            if changed:
-                obj.save(update_fields=["label", "dimension", "app_label", "active"])
-                updated += 1
-            else:
-                unchanged += 1
-
-        self.stdout.write(self.style.SUCCESS(
-            f"Vault storage billing units ready: {created} created, "
-            f"{updated} updated, {unchanged} unchanged."
-        ))
-
         if not self.full:
             return
 
@@ -71,10 +19,6 @@ class Command(IngressCommand):
             self.stdout.write(f"Found demo user: {user.username}")
         except User.DoesNotExist:
             raise CommandError("Demo user 'admin' not found. Please create the user first.")
-
-        users = list(User.objects.all())
-        if not users:
-            raise CommandError("No users found. Create at least one user first.")
 
         # ── Buckets ──────────────────────────────────────────────────────
         bucket_legal, _ = Bucket.objects.get_or_create(
@@ -91,27 +35,7 @@ class Command(IngressCommand):
         )
         self.stdout.write(self.style.SUCCESS("Buckets ready."))
 
-        # ── BucketBilling + token pricing for Finance bucket ─────────────
-        self._seed_finance_billing(bucket_finance)
-
         # ── Directory tree ───────────────────────────────────────────────
-        #
-        # Legal/
-        #   ├── Contracts/
-        #   │     ├── Vendors/
-        #   │     └── Clients/
-        #   └── Compliance/
-        #
-        # Finance/
-        #   ├── Reports/
-        #   │     ├── Q1 2026/
-        #   │     └── Q2 2026/
-        #   └── Invoices/
-        #
-        # Media/
-        #   ├── Logos/
-        #   └── Archive/
-
         def mkdir(name, bucket, parent=None, restricted=False):
             d, created = VaultDirectory.objects.get_or_create(
                 name=name, bucket=bucket, parent=parent,
@@ -142,10 +66,6 @@ class Command(IngressCommand):
         self.stdout.write(self.style.SUCCESS("Directory tree ready."))
 
         # ── Demo files ───────────────────────────────────────────────────
-        #
-        # We create small placeholder text files so no real media storage
-        # is required for seeding. Adjust file content / upload_to as needed.
-
         def mkfile(title, bucket, directory, file_type="text", notes=""):
             slug_key = slugify(title)
             if VaultFile.objects.filter(bucket=bucket, key=slug_key).exists():
@@ -177,7 +97,6 @@ class Command(IngressCommand):
         mkfile("Client Contract - Stark",   bucket_legal, clients_dir,   "pdf",  "Active")
         mkfile("Client Contract - Wayne",   bucket_legal, clients_dir,   "pdf",  "Active")
 
-        # Legal / Compliance (restricted)
         mkfile("GDPR Assessment 2025",      bucket_legal, compliance,    "pdf",  "Internal only")
         mkfile("Audit Report Q4 2025",      bucket_legal, compliance,    "pdf",  "Restricted")
 
@@ -189,7 +108,7 @@ class Command(IngressCommand):
         mkfile("Cost Breakdown Q1 2026",    bucket_finance, q1,  "json", "Exported from ERP")
         mkfile("Revenue Summary Q2 2026",   bucket_finance, q2,  "pdf",  "Draft")
 
-        # Finance / Invoices (restricted)
+        # Finance / Invoices
         invoices_dir = VaultDirectory.objects.get(name="Invoices", bucket=bucket_finance)
         mkfile("Invoice INV-2026-001",      bucket_finance, invoices_dir, "pdf", "Paid")
         mkfile("Invoice INV-2026-002",      bucket_finance, invoices_dir, "pdf", "Pending")
@@ -204,11 +123,7 @@ class Command(IngressCommand):
 
         self.stdout.write(self.style.SUCCESS("Demo files seeded."))
 
-        # ── Gateways (one per directory, no root uploads) ────────────────
-        #
-        # Seed three specific directories with upload gateways so that demo
-        # data reflects the 1-to-1 directory→gateway constraint.
-
+        # ── Gateways ─────────────────────────────────────────────────────
         gateway_dirs = [
             (contracts_dir,  "Legal Contracts Upload",   "Submit new vendor or client contracts here."),
             (reports,        "Finance Reports Upload",    "Submit quarterly financial reports here."),
@@ -231,118 +146,3 @@ class Command(IngressCommand):
                 self.stdout.write(f"Gateway already exists: {name}")
 
         self.stdout.write(self.style.SUCCESS("All vault demo data seeded."))
-
-    def _seed_finance_billing(self, bucket_finance):
-        """
-        Wire up full billing for the Finance bucket:
-          1. Set bucket.tariff  → FILE-STORAGE tariff (explicit routing, no global fallback needed)
-          2. Create BucketBilling with 500 MB quota
-          3. Seed StorageTokenPrice entries: TUSD=0.01 and TPLN=0.04 per STORAGE_TOKEN
-
-        Depends on ingress_tariffs --full having been run first (STORAGE_TOKEN, FILE-STORAGE,
-        TUSD, TPLN, REV-STORAGE must exist).  Skips any missing piece with a warning.
-        """
-        from toto.assets.models import Asset, LedgerAccount, AccountType
-        from toto.tariffs.models import Tariff, TariffStatus
-
-        # ── 1. FILE-STORAGE tariff ────────────────────────────────────────
-        tariff = Tariff.objects.filter(
-            code="FILE-STORAGE", status=TariffStatus.ACTIVE
-        ).first()
-        if not tariff:
-            self.stdout.write(self.style.WARNING(
-                "  ⚠  FILE-STORAGE tariff not found — skipping BucketBilling seed. "
-                "Run ingress_tariffs first."
-            ))
-            return
-
-        if bucket_finance.tariff_id != tariff.pk:
-            bucket_finance.tariff = tariff
-            bucket_finance.save(update_fields=["tariff"])
-            self.stdout.write(self.style.SUCCESS(
-                f"  + Finance bucket tariff → {tariff.name}"
-            ))
-        else:
-            self.stdout.write(f"  ~ Finance bucket tariff already set ({tariff.name})")
-
-        # ── 2. STORAGE_TOKEN asset ────────────────────────────────────────
-        storage_asset = Asset.objects.filter(unit_name="STORAGE_TOKEN", active=True).first()
-        if not storage_asset:
-            self.stdout.write(self.style.WARNING(
-                "  ⚠  STORAGE_TOKEN asset not found — skipping BucketBilling seed."
-            ))
-            return
-
-        # ── 3. Revenue account ────────────────────────────────────────────
-        revenue_account, rev_created = LedgerAccount.objects.get_or_create(
-            code="REV-STORAGE",
-            defaults={
-                "name": "Storage Revenue",
-                "account_type": AccountType.SYSTEM,
-                "active": True,
-            },
-        )
-        if rev_created:
-            self.stdout.write(self.style.SUCCESS("  + created REV-STORAGE account"))
-
-        # ── 4. BucketBilling ─────────────────────────────────────────────
-        billing, created = BucketBilling.objects.get_or_create(
-            bucket=bucket_finance,
-            defaults={
-                "storage_quota_mb": 500,
-                "tariff": tariff,
-            },
-        )
-        if created:
-            self.stdout.write(self.style.SUCCESS(
-                f"  + BucketBilling for '{bucket_finance.name}' (quota 500 MB)"
-            ))
-        else:
-            changed = False
-            if billing.tariff_id != tariff.pk:
-                billing.tariff = tariff
-                changed = True
-            if billing.storage_quota_mb != 500:
-                billing.storage_quota_mb = 500
-                changed = True
-            if changed:
-                billing.save(update_fields=["tariff", "storage_quota_mb"])
-                self.stdout.write(f"  ~ updated BucketBilling for '{bucket_finance.name}'")
-            else:
-                self.stdout.write(f"  ~ BucketBilling for '{bucket_finance.name}' already up to date")
-
-        # ── 5. Pricing  ───────────────────────────────────────────────────
-        price_schedule = [
-            ("TUSD", Decimal("0.01"), "1 cent per token"),
-            ("TPLN", Decimal("0.04"), "4 groszy per token"),
-        ]
-
-        for unit_name, price, note in price_schedule:
-            currency = Asset.objects.filter(unit_name=unit_name, active=True).first()
-            if not currency:
-                self.stdout.write(self.style.WARNING(
-                    f"  ⚠  {unit_name} asset not found — skipping price entry."
-                ))
-                continue
-
-            tp, tp_created = StorageTokenPrice.objects.get_or_create(
-                bucket_billing=billing,
-                currency=currency,
-                defaults={
-                    "price_per_token": price,
-                    "revenue_account": revenue_account,
-                },
-            )
-            if tp_created:
-                self.stdout.write(self.style.SUCCESS(
-                    f"  + {unit_name}: {price} per STORAGE_TOKEN  ({note})"
-                ))
-            elif tp.price_per_token != price:
-                tp.price_per_token = price
-                tp.revenue_account = revenue_account
-                tp.save(update_fields=["price_per_token", "revenue_account"])
-                self.stdout.write(f"  ~ updated {unit_name} price → {price} ({note})")
-            else:
-                self.stdout.write(f"  ~ {unit_name} price already set ({price})")
-
-        self.stdout.write(self.style.SUCCESS("Finance BucketBilling ready."))

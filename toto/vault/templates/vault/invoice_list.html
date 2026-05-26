@@ -1,0 +1,176 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Vault Invoices" %} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<div
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-4xl space-y-6">
+
+    <!-- Header -->
+    <header class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div class="space-y-2">
+        <a href="{% url 'vault:public_list' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+          <i class="fa-solid fa-arrow-left"></i>
+          {% trans "File Vault" %}
+        </a>
+        <div>
+          <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+             class="text-xs font-semibold uppercase tracking-wide">
+            {% trans "File vault" %}
+          </p>
+          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+            <i class="fa-solid fa-file-invoice"></i>
+            {% trans "Invoices" %}
+          </h1>
+        </div>
+      </div>
+
+      <!-- Summary badges -->
+      <div class="flex flex-wrap items-center gap-2">
+        {% if pending_count %}
+        <div
+          :class="darkMode ? 'border-warn-dark bg-warn-dark/10 text-warn-dark' : 'border-warn-light bg-warn-light/10 text-warn-light'"
+          class="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm">
+          <i class="fa-solid fa-clock"></i>
+          <span class="font-bold">{{ pending_count }}</span>
+          <span class="opacity-70">{% trans "pending" %}</span>
+        </div>
+        {% endif %}
+        {% if paid_count %}
+        <div
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm shadow-sm">
+          <i class="fa-solid fa-circle-check opacity-60"></i>
+          <span class="font-bold">{{ paid_count }}</span>
+          <span class="opacity-65">{% trans "paid" %}</span>
+        </div>
+        {% endif %}
+      </div>
+    </header>
+
+    <!-- Invoice list -->
+    {% if invoices %}
+    <div
+      :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+      class="overflow-hidden rounded-xl border shadow-sm">
+
+      {% for invoice in invoices %}
+      <div class="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between
+                  {% if not forloop.last %}border-b{% endif %}"
+           :class="darkMode ? 'border-accent-1/40' : 'border-accent-2/40'">
+
+        <!-- Left: title + meta -->
+        <div class="min-w-0 space-y-1">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="font-semibold text-sm">{{ invoice.title }}</span>
+
+            {% if invoice.status == "pending" %}
+            <span :class="darkMode ? 'bg-warn-dark/20 text-warn-dark' : 'bg-warn-light/10 text-warn-light'"
+                  class="rounded px-2 py-0.5 text-xs font-semibold">
+              {% trans "Pending" %}
+            </span>
+            {% elif invoice.status == "paid" %}
+            <span :class="darkMode ? 'bg-green-900/20 text-green-300' : 'bg-green-100 text-green-700'"
+                  class="rounded px-2 py-0.5 text-xs font-semibold">
+              {% trans "Paid" %}
+            </span>
+            {% elif invoice.status == "overdue" %}
+            <span class="rounded px-2 py-0.5 text-xs font-semibold bg-red-500/10 text-red-500">
+              {% trans "Overdue" %}
+            </span>
+            {% elif invoice.status == "cancelled" %}
+            <span :class="darkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-100 text-gray-500'"
+                  class="rounded px-2 py-0.5 text-xs font-semibold">
+              {% trans "Cancelled" %}
+            </span>
+            {% endif %}
+
+            {% if invoice.is_overdue %}
+            <span class="rounded px-2 py-0.5 text-xs font-semibold bg-red-500/10 text-red-500">
+              <i class="fa-solid fa-triangle-exclamation mr-0.5"></i>{% trans "Overdue" %}
+            </span>
+            {% endif %}
+          </div>
+
+          <div class="flex flex-wrap gap-x-4 gap-y-0.5 text-xs opacity-55">
+            <span><i class="fa-solid fa-calendar mr-1"></i>{{ invoice.created_at|date:"Y-m-d" }}</span>
+            {% if invoice.due_date %}
+            <span><i class="fa-solid fa-calendar-xmark mr-1"></i>{% trans "Due" %}: {{ invoice.due_date }}</span>
+            {% endif %}
+            {% if invoice.paid_at %}
+            <span><i class="fa-solid fa-circle-check mr-1"></i>{% trans "Paid" %}: {{ invoice.paid_at|date:"Y-m-d" }}</span>
+            {% endif %}
+          </div>
+
+          {% if invoice.description %}
+          <p class="text-xs opacity-50 truncate max-w-md">{{ invoice.description }}</p>
+          {% endif %}
+        </div>
+
+        <!-- Right: amount -->
+        <div class="shrink-0 text-right">
+          <div class="text-lg font-bold font-mono">
+            {{ invoice.amount }}
+            <span class="text-xs font-semibold opacity-60 ml-0.5">{{ invoice.currency_label }}</span>
+          </div>
+        </div>
+
+      </div>
+      {% endfor %}
+
+    </div>
+
+    <!-- Pagination -->
+    {% if is_paginated %}
+    <div class="flex items-center justify-center gap-2 text-sm">
+      {% if page_obj.has_previous %}
+      <a href="?page={{ page_obj.previous_page_number }}"
+         :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+         class="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80">
+        <i class="fa-solid fa-chevron-left"></i>
+        {% trans "Prev" %}
+      </a>
+      {% endif %}
+      <span class="opacity-50 text-xs">
+        {% trans "Page" %} {{ page_obj.number }} / {{ paginator.num_pages }}
+      </span>
+      {% if page_obj.has_next %}
+      <a href="?page={{ page_obj.next_page_number }}"
+         :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+         class="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80">
+        {% trans "Next" %}
+        <i class="fa-solid fa-chevron-right"></i>
+      </a>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% else %}
+    <!-- Empty state -->
+    <div
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-xl border border-dashed p-12 text-center shadow-sm">
+      <i class="fa-solid fa-file-invoice text-3xl opacity-20 mb-3"></i>
+      <p class="text-sm font-semibold opacity-55">{% trans "No invoices yet." %}</p>
+      <p class="text-xs opacity-40 mt-1">
+        {% trans "Invoices issued to your account will appear here." %}
+      </p>
+    </div>
+    {% endif %}
+
+    <!-- Info box -->
+    <div :class="darkMode ? 'border-accent-1/40 bg-primary-bg-dark' : 'border-accent-2/40 bg-primary-bg-light'"
+         class="rounded-xl border px-5 py-4 text-xs opacity-60 space-y-1">
+      <p class="font-semibold opacity-80">
+        <i class="fa-solid fa-circle-info mr-1"></i>{% trans "About vault invoices" %}
+      </p>
+      <p>{% trans "Invoices are issued manually by staff. Contact support if you have questions about a specific invoice." %}</p>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

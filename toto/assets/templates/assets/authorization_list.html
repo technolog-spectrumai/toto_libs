@@ -13,11 +13,11 @@
         {% trans "Keypairs that let apps sign billing transactions on your behalf automatically." %}
       </p>
     </div>
-    <a href="{% url 'vault:storage_account' %}"
+    <a href="{% url 'vault:invoice_list' %}"
        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
        class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
       <i class="fa-solid fa-vault"></i>
-      {% trans "Vault settings" %}
+      {% trans "Vault invoices" %}
     </a>
   </div>
 
@@ -99,11 +99,11 @@
     <p class="text-xs opacity-45 mt-1">
       {% trans "Grant vault authorization from your storage account settings to enable auto-signed billing." %}
     </p>
-    <a href="{% url 'vault:storage_account' %}"
+    <a href="{% url 'vault:invoice_list' %}"
        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
        class="mt-4 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-90">
       <i class="fa-solid fa-vault"></i>
-      {% trans "Go to Vault settings" %}
+      {% trans "Go to Vault invoices" %}
     </a>
   </div>
   {% endif %}

@@ -12,17 +12,8 @@
       dragging: false,
       uploading: false,
       error: null,
-      billingWarnings: [],
       results: null,
       recentUploads: [],
-
-      // PIN modal state
-      pinOpen: false,
-      pinValue: '',
-      pinError: '',
-      pinLoading: false,
-      pendingFile: null,
-      walletPinReady: {{ has_wallet_pin|yesno:'true,false' }},
 
       init() {
         const el = document.getElementById('recent-uploads');
@@ -43,7 +34,6 @@
       async uploadFile(file) {
         this.uploading = true;
         this.error = null;
-        this.billingWarnings = [];
         this.results = null;
 
         const formData = new FormData();
@@ -59,18 +49,8 @@
           const data = await response.json();
 
           if (!response.ok) {
-            if (data.pin_required) {
-              // Store file, open PIN modal; on success the upload retries automatically.
-              this.pendingFile = file;
-              this.pinValue = '';
-              this.pinError = '';
-              this.pinOpen = true;
-              this.uploading = false;
-              return;
-            }
             this.error = data.error || '{% trans "Upload failed" %}';
           } else {
-            this.billingWarnings = data.billing_warnings || [];
             this.results = data.result;
             const now = new Date();
             const ts = now.toISOString().slice(0, 16).replace('T', ' ');
@@ -88,33 +68,6 @@
         }
 
         this.uploading = false;
-      },
-
-      async submitPin() {
-        if (!this.pinValue) { this.pinError = '{% trans "Enter your PIN." %}'; return; }
-        this.pinLoading = true;
-        this.pinError = '';
-        try {
-          const res = await fetch('{% url "assets:wallet_pin_verify" %}', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
-            body: JSON.stringify({ pin: this.pinValue }),
-          });
-          const data = await res.json();
-          if (data.ok) {
-            this.pinOpen = false;
-            if (this.pendingFile) {
-              const f = this.pendingFile;
-              this.pendingFile = null;
-              await this.uploadFile(f);
-            }
-          } else {
-            this.pinError = data.error || '{% trans "Incorrect PIN." %}';
-          }
-        } catch {
-          this.pinError = '{% trans "Network error. Try again." %}';
-        }
-        this.pinLoading = false;
       },
     }));
   });
@@ -151,157 +104,6 @@
         {% endif %}
       </div>
     </header>
-
-    {% if not has_storage_account %}
-    <div
-      :class="darkMode ? 'border-warn-dark bg-warn-dark/10 text-warn-dark' : 'border-warn-light bg-warn-light/10 text-warn-light'"
-      class="flex items-start justify-between gap-4 rounded-xl border px-5 py-4 shadow-sm">
-      <div class="flex items-start gap-3">
-        <i class="fa-solid fa-wallet mt-0.5 shrink-0"></i>
-        <div class="space-y-0.5">
-          <p class="font-semibold text-sm">{% trans "No storage account connected" %}</p>
-          <p class="text-xs opacity-80">
-            {% trans "Connect a ledger account to enable upload billing." %}
-          </p>
-        </div>
-      </div>
-      <a href="{% url 'vault:storage_account' %}"
-         class="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-current px-3 py-1.5 text-xs font-semibold transition hover:opacity-80">
-        <i class="fa-solid fa-link"></i>
-        {% trans "Connect" %}
-      </a>
-    </div>
-    {% endif %}
-
-    {% if has_storage_account and not has_vault_authorization and bucket_billing %}
-    <!-- No vault authorization — prompt user to grant it or verify PIN -->
-    <div
-      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-      class="flex flex-col gap-3 rounded-xl border px-5 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-      <div class="flex items-start gap-3">
-        <i class="fa-solid fa-lock-open opacity-60 mt-0.5 shrink-0"
-           :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
-        <div class="space-y-0.5">
-          <p class="font-semibold text-sm">{% trans "PIN required per upload session" %}</p>
-          <p class="text-xs opacity-70">
-            {% trans "Without vault authorization, you'll verify your PIN once per session before uploading. Grant authorization to upload without a PIN." %}
-          </p>
-        </div>
-      </div>
-      <a href="{% url 'vault:storage_account' %}"
-         :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-         class="shrink-0 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-90">
-        <i class="fa-solid fa-key"></i>
-        {% trans "Grant authorization" %}
-      </a>
-    </div>
-    {% endif %}
-
-    <!-- PIN modal (triggered by upload when pin_required) -->
-    <div x-show="pinOpen"
-         x-transition:enter="transition ease-out duration-150"
-         x-transition:enter-start="opacity-0 scale-95"
-         x-transition:enter-end="opacity-100 scale-100"
-         x-cloak
-         class="fixed inset-0 z-[9999] flex items-center justify-center p-4"
-         @keydown.escape.window="pinOpen = false">
-      <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="pinOpen = false"></div>
-      <div :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
-           class="relative z-10 w-full max-w-sm rounded-2xl border p-6 shadow-2xl space-y-4">
-        <div class="flex items-center justify-between gap-3">
-          <div>
-            <h3 class="font-bold text-lg">{% trans "Wallet PIN" %}</h3>
-            <p class="text-xs opacity-50 mt-0.5">{% trans "Enter your PIN to authorise billing for this session." %}</p>
-          </div>
-          <button type="button" @click="pinOpen = false; pendingFile = null" class="opacity-40 hover:opacity-80 transition text-xl leading-none">&times;</button>
-        </div>
-        <div class="space-y-1">
-          <label class="block text-xs font-semibold opacity-60 uppercase tracking-wide">PIN</label>
-          <input type="password" inputmode="numeric" autocomplete="current-password"
-                 x-model="pinValue"
-                 @keydown.enter.prevent="submitPin()"
-                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
-                 class="w-full rounded-xl border px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] outline-none focus:ring-2 focus:ring-current/20"
-                 placeholder="••••">
-          <p x-show="pinError" x-text="pinError"
-             :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
-             class="text-xs mt-1 font-semibold"></p>
-        </div>
-        <button type="button" @click="submitPin()"
-                :disabled="pinLoading"
-                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-                class="w-full rounded-xl py-3 font-bold text-sm transition hover:opacity-85 disabled:opacity-50 flex items-center justify-center gap-2">
-          <i class="fa-solid" :class="pinLoading ? 'fa-spinner fa-spin' : 'fa-bolt'"></i>
-          <span x-text="pinLoading ? '{% trans "Verifying…" %}' : '{% trans "Confirm & upload" %}'"></span>
-        </button>
-        <div class="flex items-center justify-between text-xs opacity-50">
-          <a href="{% url 'vault:storage_account' %}" class="underline hover:opacity-80 transition">
-            <i class="fa-solid fa-key mr-1"></i>{% trans "Grant vault authorization" %}
-          </a>
-          <a href="{% url 'assets:wallet_pin_set' %}" class="underline hover:opacity-80 transition">{% trans "Change PIN" %}</a>
-        </div>
-      </div>
-    </div>
-
-    {% if bucket_billing %}
-    <!-- Billing info -->
-    <div
-      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-      class="rounded-xl border shadow-sm">
-      <div class="flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-        <div class="space-y-0.5">
-          <p class="text-xs font-semibold uppercase tracking-wide opacity-55">
-            <i class="fa-solid fa-coins mr-1"></i>{% trans "Upload credits" %}
-          </p>
-          <p class="text-sm font-bold">
-            {{ bucket_billing.token_name }}
-            <span class="font-normal opacity-60 text-xs ml-1">({{ bucket_billing.token_unit }})</span>
-          </p>
-          <p class="text-xs opacity-60">
-            {% trans "Each upload is charged in" %} <strong>{{ bucket_billing.token_unit }}</strong> {% trans "credits — not currency" %}.
-          </p>
-        </div>
-        <div class="flex flex-wrap gap-3 text-xs">
-          {% if bucket_billing.request_rate %}
-          <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg px-3 py-2 text-center">
-            <div class="font-mono font-bold">{{ bucket_billing.request_rate }}</div>
-            <div class="opacity-55 mt-0.5">{{ bucket_billing.request_asset }} / {% trans "upload" %}</div>
-          </div>
-          {% endif %}
-          {% if bucket_billing.transfer_rate %}
-          <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg px-3 py-2 text-center">
-            <div class="font-mono font-bold">{{ bucket_billing.transfer_rate }}</div>
-            <div class="opacity-55 mt-0.5">{{ bucket_billing.transfer_asset }} / MB</div>
-          </div>
-          {% endif %}
-          {% if bucket_billing.has_billing_account %}
-          <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg px-3 py-2 text-center">
-            <div class="font-mono font-bold">{{ bucket_billing.user_balance_display }}</div>
-            <div class="opacity-55 mt-0.5">{% trans "your balance" %}</div>
-          </div>
-          {% else %}
-          <div :class="darkMode ? 'border-warn-dark text-warn-dark bg-warn-dark/10' : 'border-warn-light text-warn-light bg-warn-light/10'"
-               class="flex items-center gap-2 rounded-lg border px-3 py-2 text-xs">
-            <i class="fa-solid fa-circle-exclamation shrink-0"></i>
-            <span>{% trans "No credit balance" %} — {% trans "connect a storage account to receive" %} {{ bucket_billing.token_unit }} {% trans "credits" %}</span>
-          </div>
-          {% endif %}
-        </div>
-      </div>
-      <div class="border-t px-5 py-3 flex items-center justify-between gap-4"
-           :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
-        <p class="text-xs opacity-50">
-          {% trans "Top up your" %} {{ bucket_billing.token_unit }} {% trans "balance to keep uploading." %}
-        </p>
-        <a href="{% url 'vault:buy_tokens' %}"
-           :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-           class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-90 shrink-0">
-          <i class="fa-solid fa-bag-shopping"></i>
-          {% trans "Buy credits" %}
-        </a>
-      </div>
-    </div>
-    {% endif %}
 
     <!-- Upload zone -->
     <section class="space-y-4">
@@ -363,19 +165,6 @@
         </div>
       </template>
 
-      <!-- Billing warnings (file saved but billing charge failed) -->
-      <template x-if="billingWarnings.length > 0">
-        <div x-transition class="space-y-2">
-          <template x-for="(warn, i) in billingWarnings" :key="i">
-            <div
-              :class="darkMode ? 'border-warn-dark bg-warn-dark/10 text-warn-dark' : 'border-warn-light bg-warn-light/10 text-warn-light'"
-              class="flex items-start gap-3 rounded-lg border p-4 text-sm">
-              <i class="fa-solid fa-circle-exclamation mt-0.5 shrink-0"></i>
-              <span>{% trans "Billing error" %}: <span x-text="warn"></span></span>
-            </div>
-          </template>
-        </div>
-      </template>
     </section>
 
     <!-- Upload result -->

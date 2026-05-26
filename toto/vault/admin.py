@@ -2,18 +2,11 @@ from django.contrib import admin, messages
 from django.urls import path, reverse
 from django.shortcuts import render, redirect
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
-from .models import StorageAccount, VaultFile, Bucket, BucketBilling, StorageTokenPrice, FileGateway, VaultDirectory
-from toto.core.batch import BatchAction
+from django.utils import timezone
 from django.utils.html import format_html
 
-
-@admin.register(StorageAccount)
-class StorageAccountAdmin(admin.ModelAdmin):
-    list_display = ("user", "ledger_account", "name", "authorization", "active", "created_at")
-    list_filter = ("active",)
-    search_fields = ("user__username", "ledger_account__code", "name")
-    autocomplete_fields = ["ledger_account", "authorization"]
-    readonly_fields = ("created_at", "updated_at")
+from .models import VaultFile, Bucket, FileGateway, VaultDirectory, VaultInvoice
+from toto.core.batch import BatchAction
 
 
 @admin.register(Bucket)
@@ -23,25 +16,6 @@ class BucketAdmin(admin.ModelAdmin):
     list_filter = ('owner',)
     ordering = ('owner', 'name')
     autocomplete_fields = ('tariff',)
-
-
-class StorageTokenPriceInline(admin.TabularInline):
-    model = StorageTokenPrice
-    extra = 1
-    autocomplete_fields = ("currency", "revenue_account")
-    fields = ("currency", "price_per_token", "revenue_account")
-
-
-@admin.register(BucketBilling)
-class BucketBillingAdmin(admin.ModelAdmin):
-    list_display = ("bucket", "storage_quota_mb", "tariff", "currency_count", "created_at")
-    autocomplete_fields = ("bucket", "tariff")
-    readonly_fields = ("created_at", "updated_at")
-    inlines = [StorageTokenPriceInline]
-
-    def currency_count(self, obj):
-        return obj.token_prices.count()
-    currency_count.short_description = "Currencies"
 
 
 @admin.register(VaultFile)
@@ -213,3 +187,47 @@ class VaultDirectoryAdmin(admin.ModelAdmin):
     def file_count(self, obj):
         return obj.files.count()
     file_count.short_description = "Files"
+
+
+# ============================================================
+# Invoice admin
+# ============================================================
+
+@admin.register(VaultInvoice)
+class VaultInvoiceAdmin(admin.ModelAdmin):
+    list_display = (
+        "pk", "issued_to", "title", "amount", "currency_label",
+        "status", "due_date", "paid_at", "created_at",
+    )
+    list_filter = ("status", "currency_label")
+    search_fields = ("issued_to__username", "title", "description", "notes")
+    raw_id_fields = ("issued_to", "issued_by")
+    readonly_fields = ("created_at", "updated_at", "paid_at")
+    actions = ["mark_paid", "mark_cancelled"]
+
+    fieldsets = (
+        ("Invoice", {
+            "fields": ("issued_to", "issued_by", "title", "description"),
+        }),
+        ("Amount", {
+            "fields": ("amount", "currency_label"),
+        }),
+        ("Status", {
+            "fields": ("status", "due_date", "paid_at", "notes"),
+        }),
+        ("Timestamps", {
+            "fields": ("created_at", "updated_at"),
+            "classes": ("collapse",),
+        }),
+    )
+
+    @admin.action(description="Mark selected invoices as Paid")
+    def mark_paid(self, request, queryset):
+        now = timezone.now()
+        updated = queryset.exclude(status="paid").update(status="paid", paid_at=now)
+        self.message_user(request, f"{updated} invoice(s) marked as paid.")
+
+    @admin.action(description="Mark selected invoices as Cancelled")
+    def mark_cancelled(self, request, queryset):
+        updated = queryset.exclude(status="cancelled").update(status="cancelled")
+        self.message_user(request, f"{updated} invoice(s) cancelled.")

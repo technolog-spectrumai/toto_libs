@@ -37,11 +37,7 @@
           </h1>
           <p class="mt-1 text-sm opacity-55">
             {% trans "Owner" %}: {{ bucket.owner.username }}
-            {% if bucket_tariff %}
-              &middot; <i class="fa-solid fa-receipt text-xs"></i>
-              <span :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">{{ bucket_tariff.code }}</span>
-            {% endif %}
-            {% for gw in gateways %}
+              {% for gw in gateways %}
               &middot; <i class="fa-solid fa-upload text-xs"></i>
               <a href="{% url 'vault:gateway_page' gw.directory_id %}"
                  :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
@@ -310,91 +306,6 @@
       </div>
     </section>
     {% endif %}
-
-    <!-- Billing history -->
-    <section>
-      <p class="mb-3 text-xs font-semibold uppercase tracking-wide opacity-55">
-        <i class="fa-solid fa-receipt mr-1"></i>{% trans "Billing History" %}
-        {% if bucket_tariff %}
-          <span class="ml-2 font-mono normal-case opacity-70">{{ bucket_tariff.code }}</span>
-        {% else %}
-          <span class="ml-2 normal-case opacity-40">{% trans "FILE-STORAGE (default)" %}</span>
-        {% endif %}
-      </p>
-      <div
-        :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
-        class="overflow-hidden rounded-xl border shadow-sm">
-        {% if billing_records %}
-        <table class="min-w-full text-sm">
-          <thead>
-            <tr
-              :class="darkMode ? 'bg-bubble-bg-dark border-b border-accent-1' : 'bg-bubble-bg-light border-b border-accent-2'"
-              class="text-left text-xs font-semibold uppercase tracking-wide opacity-65">
-              <th class="px-4 py-3">{% trans "Payer" %}</th>
-              <th class="px-4 py-3">{% trans "Metric" %}</th>
-              <th class="px-4 py-3 text-right">{% trans "Quantity" %}</th>
-              <th class="px-4 py-3 text-center">{% trans "Status" %}</th>
-              <th class="px-4 py-3 text-right">{% trans "When" %}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for record in billing_records %}
-            <tr
-              :class="darkMode
-                ? 'border-b border-accent-1/40 hover:bg-bubble-bg-dark'
-                : 'border-b border-accent-2/40 hover:bg-bubble-bg-light'"
-              class="transition-colors duration-150">
-
-              <td class="px-4 py-3 text-xs font-mono opacity-60">
-                {{ record.payer_account.code }}
-              </td>
-
-              <td class="px-4 py-3">
-                <span class="font-mono text-xs"
-                  :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
-                  {{ record.metric_code }}
-                </span>
-              </td>
-
-              <td class="px-4 py-3 text-right font-mono text-xs">
-                {{ record.quantity|floatformat:3 }}
-                {% if record.unit %}<span class="opacity-40 ml-0.5">{{ record.unit }}</span>{% endif %}
-              </td>
-
-              <td class="px-4 py-3 text-center text-xs">
-                {% if record.status == "posted" %}
-                  <span :class="darkMode ? 'text-success-dark' : 'text-green-600'" class="font-semibold">
-                    <i class="fa-solid fa-circle-check mr-0.5"></i>{% trans "posted" %}
-                  </span>
-                {% elif record.status == "failed" %}
-                  <span class="text-red-500 font-semibold">
-                    <i class="fa-solid fa-circle-xmark mr-0.5"></i>{% trans "failed" %}
-                  </span>
-                  {% if record.error_message %}
-                    <span class="block opacity-50 text-xs font-normal truncate max-w-[200px]" title="{{ record.error_message }}">
-                      {{ record.error_message|truncatechars:40 }}
-                    </span>
-                  {% endif %}
-                {% else %}
-                  <span class="opacity-50">{{ record.status }}</span>
-                {% endif %}
-              </td>
-
-              <td class="px-4 py-3 text-right text-xs opacity-50 whitespace-nowrap">
-                {{ record.created_at|date:"Y-m-d H:i" }}
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-        {% else %}
-        <div class="px-4 py-10 text-center text-sm opacity-40">
-          <i class="fa-solid fa-receipt text-2xl mb-2 block"></i>
-          {% trans "No billing records yet for this bucket." %}
-        </div>
-        {% endif %}
-      </div>
-    </section>
 
     <!-- Recent files -->
     <section>

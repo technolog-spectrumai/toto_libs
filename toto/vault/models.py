@@ -1,54 +1,14 @@
 import hashlib
 import os
-from toto.vault.strategy.pdf import PdfStrategy
-from toto.vault.strategy.image import ImageStrategy
-from toto.vault.strategy.text import TextStrategy
 from django.conf import settings
-from django.urls import reverse
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils.text import slugify
 
-
-class StorageAccount(models.Model):
-    """
-    Links a vault user to a LedgerAccount for billing.
-    Created explicitly by the user via the connect-account flow.
-    Used by vault billing to resolve the payer account without magic code lookups.
-    """
-    user = models.OneToOneField(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="storage_account",
-    )
-    ledger_account = models.ForeignKey(
-        "assets.LedgerAccount",
-        on_delete=models.PROTECT,
-        related_name="storage_accounts",
-    )
-    name = models.CharField(max_length=255, blank=True, help_text="Display name for this storage account.")
-    authorization = models.ForeignKey(
-        "assets.WalletAuthorization",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="storage_accounts",
-        help_text="If set, vault transactions are auto-authorized. Otherwise the user must confirm manually.",
-    )
-    active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    @property
-    def is_auto_authorized(self) -> bool:
-        return self.authorization_id is not None and self.authorization.active
-
-    class Meta:
-        verbose_name = "Storage Account"
-        verbose_name_plural = "Storage Accounts"
-
-    def __str__(self):
-        return f"{self.user.username} → {self.ledger_account.code}"
+from toto.vault.strategy.pdf import PdfStrategy
+from toto.vault.strategy.image import ImageStrategy
+from toto.vault.strategy.text import TextStrategy
+from django.urls import reverse
 
 
 class Bucket(models.Model):
@@ -75,88 +35,6 @@ class Bucket(models.Model):
 
     def __str__(self):
         return f"Bucket {self.name}"
-
-
-class BucketBilling(models.Model):
-    """
-    Billing profile for a Bucket. One per bucket; created by admins.
-    Defines allowed payment currencies and their exchange rates for
-    purchasing storage tokens, plus optional quota / tariff overrides.
-    """
-    bucket = models.OneToOneField(
-        Bucket,
-        on_delete=models.CASCADE,
-        related_name="billing",
-    )
-    storage_quota_mb = models.PositiveIntegerField(
-        null=True, blank=True,
-        help_text="Per-user storage quota in MB. Overrides the bucket default when set.",
-    )
-    tariff = models.ForeignKey(
-        "tariffs.Tariff",
-        on_delete=models.SET_NULL,
-        null=True, blank=True,
-        related_name="bucket_billings",
-        help_text="Billing tariff override. Falls back to bucket tariff when blank.",
-    )
-    allowed_currencies = models.ManyToManyField(
-        "assets.Asset",
-        through="StorageTokenPrice",
-        blank=True,
-        related_name="bucket_billings",
-        help_text="Assets accepted as payment for storage tokens.",
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        verbose_name = "Bucket Billing"
-        verbose_name_plural = "Bucket Billings"
-
-    def __str__(self):
-        return f"Billing for {self.bucket.name}"
-
-    def get_effective_quota(self):
-        return self.storage_quota_mb if self.storage_quota_mb is not None else self.bucket.storage_quota_mb
-
-    def get_effective_tariff(self):
-        return self.tariff or self.bucket.tariff
-
-
-class StorageTokenPrice(models.Model):
-    """
-    Exchange rate: how much `currency` asset the user pays per 1 STORAGE_TOKEN.
-    Also specifies which ledger account receives the payment.
-    """
-    bucket_billing = models.ForeignKey(
-        BucketBilling,
-        on_delete=models.CASCADE,
-        related_name="token_prices",
-    )
-    currency = models.ForeignKey(
-        "assets.Asset",
-        on_delete=models.CASCADE,
-        related_name="storage_token_prices",
-        help_text="Asset used to pay for storage tokens.",
-    )
-    price_per_token = models.DecimalField(
-        max_digits=30, decimal_places=10,
-        help_text="Cost of 1 STORAGE_TOKEN in this currency (e.g. 0.01 TUSD per token).",
-    )
-    revenue_account = models.ForeignKey(
-        "assets.LedgerAccount",
-        on_delete=models.PROTECT,
-        related_name="storage_token_revenues",
-        help_text="Ledger account that receives payments in this currency.",
-    )
-
-    class Meta:
-        verbose_name = "Storage Token Price"
-        verbose_name_plural = "Storage Token Prices"
-        unique_together = ("bucket_billing", "currency")
-
-    def __str__(self):
-        return f"1 STORAGE_TOKEN = {self.price_per_token} {self.currency.unit_name}"
 
 
 class VaultFile(models.Model):
@@ -221,7 +99,6 @@ class VaultFile(models.Model):
         return f"{self.title} ({self.owner.username})"
 
     def save(self, *args, **kwargs):
-        # Generate key from filename if missing
         if self.file and not self.key:
             base_name = os.path.splitext(os.path.basename(self.file.name))[0]
             candidate_key = slugify(base_name)
@@ -229,7 +106,6 @@ class VaultFile(models.Model):
                 raise ValueError(f"A file with key '{candidate_key}' already exists in this bucket.")
             self.key = candidate_key
 
-        # Capture file size on first save (when file is being attached)
         if self.file and not self.file_size_bytes:
             try:
                 self.file_size_bytes = self.file.size
@@ -282,14 +158,10 @@ class VaultFile(models.Model):
         strategy.decrypt(self, password=password)
 
     def get_public_url(self):
-        # If key is missing or empty, no public URL can be generated
         if not self.key:
             return None
-
-        # If bucket is missing (shouldn't happen, but safe)
         if not self.bucket:
             return None
-
         try:
             return reverse('vault:public_file', args=[self.bucket.slug, self.key])
         except Exception:
@@ -304,24 +176,20 @@ class FileGateway(models.Model):
 
     name = models.CharField(max_length=200)
 
-    # Each directory may have at most one gateway.
     directory = models.OneToOneField(
         'VaultDirectory',
         on_delete=models.CASCADE,
         related_name='gateway',
     )
 
-    # Denormalised for easy filtering — must always equal directory.bucket.
     bucket = models.ForeignKey(
         Bucket,
         on_delete=models.CASCADE,
         related_name='gateways',
     )
 
-    # Who can use this gateway
     allowed_users = models.ManyToManyField(User, blank=True)
 
-    # Optional description for UI
     description = models.TextField(blank=True, null=True)
 
     make_public = models.BooleanField(
@@ -342,7 +210,6 @@ class FileGateway(models.Model):
         return f"Gateway → {self.directory}"
 
     def save(self, *args, **kwargs):
-        # Keep bucket in sync with directory so queries on bucket stay valid.
         if self.directory_id:
             self.bucket_id = (
                 VaultDirectory.objects
@@ -389,7 +256,6 @@ class VaultDirectory(models.Model):
         return "/".join(reversed(parts))
 
     def breadcrumb(self):
-        """Return list of VaultDirectory from root down to self."""
         crumbs = []
         node = self
         while node is not None:
@@ -405,3 +271,72 @@ class VaultDirectory(models.Model):
         if not self.allowed_users.exists():
             return True
         return self.allowed_users.filter(pk=user.pk).exists()
+
+
+# ---------------------------------------------------------------------------
+# Invoice
+# ---------------------------------------------------------------------------
+
+class InvoiceStatus(models.TextChoices):
+    PENDING = "pending", "Pending"
+    PAID = "paid", "Paid"
+    OVERDUE = "overdue", "Overdue"
+    CANCELLED = "cancelled", "Cancelled"
+
+
+class VaultInvoice(models.Model):
+    """
+    Manual invoice issued to a vault user by staff.
+    Standalone — no relation to assets or ledger.
+    """
+    issued_to = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="vault_invoices",
+    )
+    issued_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="issued_vault_invoices",
+    )
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    amount = models.DecimalField(max_digits=18, decimal_places=2)
+    currency_label = models.CharField(
+        max_length=20,
+        default="USD",
+        help_text="Currency code or label, e.g. USD, PLN, EUR.",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=InvoiceStatus.choices,
+        default=InvoiceStatus.PENDING,
+    )
+    due_date = models.DateField(null=True, blank=True)
+    paid_at = models.DateTimeField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Vault Invoice"
+        verbose_name_plural = "Vault Invoices"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Invoice #{self.pk} — {self.issued_to.username} — {self.amount} {self.currency_label} [{self.status}]"
+
+    @property
+    def is_paid(self) -> bool:
+        return self.status == InvoiceStatus.PAID
+
+    @property
+    def is_overdue(self) -> bool:
+        from django.utils import timezone
+        if self.status != InvoiceStatus.PENDING:
+            return False
+        if self.due_date and timezone.now().date() > self.due_date:
+            return True
+        return False
