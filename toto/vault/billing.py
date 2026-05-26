@@ -39,17 +39,53 @@ def _get_tariff(bucket=None):
     return Tariff.objects.filter(code=STORAGE_TARIFF_CODE, status=TariffStatus.ACTIVE).first()
 
 
+def _resolve_token_name(tariff) -> str:
+    """Look up the primary token name for a tariff's storage items."""
+    from toto.tariffs.models import TariffItem
+    item = (
+        TariffItem.objects
+        .filter(tariff=tariff, active=True, metric__code=STORAGE_REQUEST_METRIC_CODE)
+        .select_related("charged_asset")
+        .first()
+    )
+    if item:
+        return item.charged_asset.name
+    return "upload"
+
+
+def get_payer_account(user):
+    """
+    Returns the LedgerAccount linked via the user's StorageAccount.
+    Returns None if no StorageAccount exists or it is inactive.
+    """
+    from toto.vault.models import StorageAccount
+    try:
+        sa = StorageAccount.objects.select_related("ledger_account").get(user=user, active=True)
+        return sa.ledger_account
+    except StorageAccount.DoesNotExist:
+        return None
+
+
 def get_or_create_payer_account(user):
+    """Legacy helper used by charge_upload / charge_storage_snapshot.
+    Prefers StorageAccount.ledger_account; falls back to creating one via magic code."""
+    account = get_payer_account(user)
+    if account:
+        return account
     from toto.assets.models import AccountType, LedgerAccount
     code = f"vault-user-{user.pk}"
-    account, _ = LedgerAccount.objects.get_or_create(
+    account, created = LedgerAccount.objects.get_or_create(
         code=code,
         defaults={
             "name": user.get_full_name() or user.username,
             "account_type": AccountType.USER,
             "active": True,
+            "user": user,
         },
     )
+    if not created and account.user_id != user.pk:
+        account.user = user
+        account.save(update_fields=["user", "updated_at"])
     return account
 
 
@@ -66,22 +102,26 @@ def preflight_upload_check(user, bucket, size_bytes: int) -> tuple[bool, str]:
     if not tariff:
         return True, ""
 
-    from toto.assets.models import LedgerAccount
     from toto.tariffs.services import check_can_afford
 
-    code = f"vault-user-{user.pk}"
-    try:
-        payer = LedgerAccount.objects.get(code=code)
-    except LedgerAccount.DoesNotExist:
-        return False, "No billing account found for this user. Please contact support."
+    token_name = _resolve_token_name(tariff)
+
+    payer = get_payer_account(user)
+    if payer is None:
+        return False, (
+            f"Uploading to this bucket uses {token_name} credits. "
+            "Connect a storage account in your vault settings to enable uploads."
+        )
 
     size_mb = Decimal(str(size_bytes)) / Decimal("1048576")
-
     charges = [(STORAGE_REQUEST_METRIC_CODE, Decimal("1"), UNIT_REQUEST)]
     if size_mb > 0:
         charges.append((STORAGE_TRANSFER_METRIC_CODE, size_mb, UNIT_MB))
 
-    return check_can_afford(tariff, payer, charges)
+    ok, msg = check_can_afford(tariff, payer, charges)
+    if not ok:
+        return False, f"Not enough {token_name} credits. {msg}"
+    return True, ""
 
 
 def charge_upload(vault_file) -> list:
@@ -207,6 +247,62 @@ def charge_storage_snapshot(
     except ValueError as exc:
         logger.warning("vault billing: storage snapshot failed for user %s: %s", user.pk, exc)
         return None
+
+
+def get_bucket_billing_summary(bucket, user=None) -> dict | None:
+    """
+    Returns billing display info for a bucket: token names, rates, user balance.
+    Returns None if no tariff or no active items are configured.
+    Called from views to populate billing context shown in public file list and gateway pages.
+    """
+    tariff = _get_tariff(bucket=bucket)
+    if not tariff:
+        return None
+
+    from toto.tariffs.models import TariffItem
+
+    items = list(
+        TariffItem.objects
+        .filter(tariff=tariff, active=True)
+        .filter(metric__code__in=[STORAGE_REQUEST_METRIC_CODE, STORAGE_TRANSFER_METRIC_CODE])
+        .select_related("metric", "charged_asset")
+    )
+
+    request_item = next((i for i in items if i.metric.code == STORAGE_REQUEST_METRIC_CODE), None)
+    transfer_item = next((i for i in items if i.metric.code == STORAGE_TRANSFER_METRIC_CODE), None)
+    primary_item = request_item or transfer_item
+    if not primary_item:
+        return None
+
+    asset = primary_item.charged_asset
+    result = {
+        "tariff_name": tariff.name,
+        "tariff_code": tariff.code,
+        "token_name": asset.name,
+        "token_unit": asset.unit_name,
+        "request_rate": str(request_item.price_per_unit_display) if request_item else None,
+        "request_asset": request_item.charged_asset.unit_name if request_item else None,
+        "transfer_rate": str(transfer_item.price_per_unit_display) if transfer_item else None,
+        "transfer_asset": transfer_item.charged_asset.unit_name if transfer_item else None,
+        "user_balance": None,
+        "user_balance_display": None,
+        "has_billing_account": False,
+    }
+
+    if user is not None and getattr(user, "is_authenticated", False):
+        from toto.assets.models import AssetHolding
+        account = get_payer_account(user)
+        if account:
+            result["has_billing_account"] = True
+            holding = AssetHolding.objects.filter(account=account, asset=asset).first()
+            if holding:
+                result["user_balance"] = str(holding.balance_display)
+                result["user_balance_display"] = f"{holding.balance_display} {asset.unit_name}"
+            else:
+                result["user_balance"] = "0"
+                result["user_balance_display"] = f"0 {asset.unit_name}"
+
+    return result
 
 
 def get_user_storage_summary(user) -> dict:

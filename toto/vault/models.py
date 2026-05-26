@@ -3,10 +3,52 @@ import os
 from toto.vault.strategy.pdf import PdfStrategy
 from toto.vault.strategy.image import ImageStrategy
 from toto.vault.strategy.text import TextStrategy
+from django.conf import settings
 from django.urls import reverse
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils.text import slugify
+
+
+class StorageAccount(models.Model):
+    """
+    Links a vault user to a LedgerAccount for billing.
+    Created explicitly by the user via the connect-account flow.
+    Used by vault billing to resolve the payer account without magic code lookups.
+    """
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="storage_account",
+    )
+    ledger_account = models.ForeignKey(
+        "assets.LedgerAccount",
+        on_delete=models.PROTECT,
+        related_name="storage_accounts",
+    )
+    name = models.CharField(max_length=255, blank=True, help_text="Display name for this storage account.")
+    authorization = models.ForeignKey(
+        "assets.WalletAuthorization",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="storage_accounts",
+        help_text="If set, vault transactions are auto-authorized. Otherwise the user must confirm manually.",
+    )
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    @property
+    def is_auto_authorized(self) -> bool:
+        return self.authorization_id is not None and self.authorization.active
+
+    class Meta:
+        verbose_name = "Storage Account"
+        verbose_name_plural = "Storage Accounts"
+
+    def __str__(self):
+        return f"{self.user.username} → {self.ledger_account.code}"
 
 
 class Bucket(models.Model):

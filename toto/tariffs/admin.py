@@ -34,13 +34,14 @@ class TariffItemInline(admin.TabularInline):
 
 @admin.register(Tariff)
 class TariffAdmin(admin.ModelAdmin):
-    list_display = ("name", "code", "status", "created_at", "updated_at")
+    list_display = ("name", "code", "status", "owner", "created_at", "updated_at")
     list_filter = ("status",)
-    search_fields = ("name", "code", "source_type", "source_id")
+    search_fields = ("name", "code", "source_type", "source_id", "owner__username")
     readonly_fields = ("uuid", "created_at", "updated_at")
     inlines = [TariffItemInline]
+    autocomplete_fields = ["owner"]
     fieldsets = (
-        (None, {"fields": ("uuid", "name", "code", "status", "description")}),
+        (None, {"fields": ("uuid", "name", "code", "status", "description", "owner")}),
         (_("Source"), {"fields": ("source_type", "source_id"), "classes": ("collapse",)}),
         (_("Metadata"), {"fields": ("metadata",), "classes": ("collapse",)}),
         (_("Timestamps"), {"fields": ("created_at", "updated_at"), "classes": ("collapse",)}),

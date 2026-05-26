@@ -15,6 +15,7 @@ from .models import (
     LedgerTransaction,
     Obligation,
     Tokenization,
+    WalletAuthorization,
 )
 
 
@@ -293,3 +294,20 @@ class ObligationAdmin(admin.ModelAdmin):
     collateral_display.short_description = "Collateral"
 
 
+
+
+@admin.register(WalletAuthorization)
+class WalletAuthorizationAdmin(admin.ModelAdmin):
+    list_display = ("name", "ledger_account", "active", "created_at")
+    list_filter = ("active",)
+    search_fields = ("name", "ledger_account__code")
+    readonly_fields = ("created_at", "updated_at", "private_key_encrypted")
+    autocomplete_fields = ["ledger_account"]
+    fieldsets = (
+        (None, {"fields": ("name", "ledger_account", "active")}),
+        ("Keys", {
+            "fields": ("public_key", "private_key_encrypted"),
+            "description": "Private key is stored encrypted. Use set_private_key() programmatically.",
+        }),
+        ("Timestamps", {"fields": ("created_at", "updated_at"), "classes": ("collapse",)}),
+    )

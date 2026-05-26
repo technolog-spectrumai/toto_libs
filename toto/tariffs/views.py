@@ -4,9 +4,10 @@ import json
 from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.db.models import Count, Q, Sum
-from django.http import JsonResponse
+from django.http import HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
@@ -29,6 +30,14 @@ from .services import (
 
 def _render(request, template, context):
     return render(request, template, PageProcessor().decorate(context, request))
+
+
+def _can_edit_tariff(user, tariff) -> bool:
+    if not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    return tariff.owner_id is not None and tariff.owner_id == user.pk
 
 
 # ---------------------------------------------------------------------------
@@ -81,6 +90,8 @@ def tariff_create(request):
 
 def tariff_edit(request, uuid):
     tariff = get_object_or_404(Tariff, uuid=uuid)
+    if not _can_edit_tariff(request.user, tariff):
+        return HttpResponseForbidden(_("Only the tariff owner can edit this tariff."))
     if request.method == "POST":
         form = TariffForm(request.POST, instance=tariff)
         if form.is_valid():
@@ -124,6 +135,7 @@ def tariff_detail(request, uuid):
         "recent_usage": recent_usage,
         "usage_stats": usage_stats,
         "sim_form": sim_form,
+        "is_owner": _can_edit_tariff(request.user, tariff),
     })
 
 
@@ -133,6 +145,8 @@ def tariff_detail(request, uuid):
 
 def tariff_item_create(request, uuid):
     tariff = get_object_or_404(Tariff, uuid=uuid)
+    if not _can_edit_tariff(request.user, tariff):
+        return HttpResponseForbidden(_("Only the tariff owner can add items."))
     if request.method == "POST":
         form = TariffItemForm(request.POST, tariff=tariff)
         if form.is_valid():
@@ -150,6 +164,8 @@ def tariff_item_create(request, uuid):
 
 def tariff_item_edit(request, pk):
     item = get_object_or_404(TariffItem.objects.select_related("tariff"), pk=pk)
+    if not _can_edit_tariff(request.user, item.tariff):
+        return HttpResponseForbidden(_("Only the tariff owner can edit items."))
     if request.method == "POST":
         form = TariffItemForm(request.POST, instance=item, tariff=item.tariff)
         if form.is_valid():

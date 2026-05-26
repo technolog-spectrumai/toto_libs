@@ -13,7 +13,7 @@ from .models import BillingMetric, BillingUnit, RoundingMode, Tariff, TariffItem
 class TariffForm(forms.ModelForm):
     class Meta:
         model = Tariff
-        fields = ["name", "code", "status", "description", "source_type", "source_id", "metadata"]
+        fields = ["name", "code", "status", "description", "owner", "source_type", "source_id", "metadata"]
         widgets = {
             "description": forms.Textarea(attrs={"rows": 3}),
             "metadata": forms.Textarea(attrs={"rows": 3}),

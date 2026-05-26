@@ -1,3 +1,5 @@
+import base64
+import hashlib
 import uuid as _uuid
 from decimal import Decimal, ROUND_DOWN
 
@@ -492,6 +494,57 @@ class Agreement(models.Model):
         if self.source_account_id and self.target_account_id:
             if self.source_account_id == self.target_account_id:
                 raise ValidationError("Source and target accounts must differ.")
+
+
+# ---------------------------------------------------------------------------
+# WalletAuthorization
+# ---------------------------------------------------------------------------
+
+def _fernet_key() -> bytes:
+    """Derive a 32-byte Fernet key from Django's SECRET_KEY."""
+    raw = settings.SECRET_KEY.encode()
+    return base64.urlsafe_b64encode(hashlib.sha256(raw).digest())
+
+
+class WalletAuthorization(models.Model):
+    """
+    A named keypair that authorizes automated transactions on a LedgerAccount.
+    When a StorageAccount has an associated WalletAuthorization, vault billing
+    can sign operations without interactive PIN confirmation.
+    The private key is encrypted at rest with a key derived from SECRET_KEY.
+    """
+    name = models.CharField(max_length=255)
+    ledger_account = models.ForeignKey(
+        LedgerAccount,
+        on_delete=models.CASCADE,
+        related_name="wallet_authorizations",
+    )
+    public_key = models.TextField(help_text="Public key (PEM or hex).")
+    private_key_encrypted = models.TextField(
+        blank=True,
+        help_text="Private key encrypted with the server master secret. Do not expose.",
+    )
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+        verbose_name = "Wallet Authorization"
+        verbose_name_plural = "Wallet Authorizations"
+
+    def __str__(self):
+        return f"{self.name} ({self.ledger_account.code})"
+
+    def set_private_key(self, raw_private_key: str) -> None:
+        from cryptography.fernet import Fernet
+        f = Fernet(_fernet_key())
+        self.private_key_encrypted = f.encrypt(raw_private_key.encode()).decode()
+
+    def get_private_key(self) -> str:
+        from cryptography.fernet import Fernet
+        f = Fernet(_fernet_key())
+        return f.decrypt(self.private_key_encrypted.encode()).decode()
 
 
 # ---------------------------------------------------------------------------

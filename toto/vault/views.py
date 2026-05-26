@@ -11,8 +11,9 @@ from django.views.generic import TemplateView, DetailView
 from django.urls import reverse
 from django.contrib.auth.mixins import LoginRequiredMixin
 
+from django.contrib import messages
 from toto.ui import PageProcessor
-from .models import VaultFile, Bucket, FileGateway, VaultDirectory
+from .models import StorageAccount, VaultFile, Bucket, FileGateway, VaultDirectory
 
 
 # ============================================================
@@ -125,6 +126,22 @@ class PublicFileListView(TemplateView):
         context["selected_bucket"] = bucket_slug
         context["total_files"] = sum(1 for i in flat_items if i["t"] == "file")
         context["total_dirs"] = sum(1 for i in flat_items if i["t"] == "dir")
+
+        context["bucket_billing"] = None
+        if bucket_slug:
+            try:
+                from toto.vault.billing import get_bucket_billing_summary
+                selected_bucket_obj = Bucket.objects.filter(slug=bucket_slug).first()
+                if selected_bucket_obj:
+                    context["bucket_billing"] = get_bucket_billing_summary(selected_bucket_obj, user=user)
+            except Exception:
+                pass
+
+        context["has_storage_account"] = (
+            user.is_authenticated and
+            StorageAccount.objects.filter(user=user, active=True).exists()
+        )
+
         return PageProcessor().decorate(context, self.request)
 
 
@@ -191,6 +208,16 @@ class FileGatewayPageView(LoginRequiredMixin, DetailView):
 
         context["target_dir_path"] = get_full_path(gateway.directory)
 
+        try:
+            from toto.vault.billing import get_bucket_billing_summary
+            context["bucket_billing"] = get_bucket_billing_summary(gateway.bucket, user=user)
+        except Exception:
+            context["bucket_billing"] = None
+
+        context["has_storage_account"] = (
+            StorageAccount.objects.filter(user=user, active=True).exists()
+        )
+
         recent = VaultFile.objects.filter(
             directory=gateway.directory, owner=user
         ).select_related("directory").order_by("-uploaded_at")[:10]
@@ -238,7 +265,7 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
             request.user, gateway.bucket, uploaded_file.size
         )
         if not can_pay:
-            return JsonResponse({"error": f"Payment required: {pay_error}"}, status=402)
+            return JsonResponse({"error": pay_error}, status=402)
 
         directory = gateway.directory  # set at model level by admin
 
@@ -384,6 +411,30 @@ class VaultMetricsView(LoginRequiredMixin, TemplateView):
         context["recent_files"] = VaultFile.objects.select_related(
             "owner", "bucket", "directory"
         ).order_by("-uploaded_at")[:8]
+
+        # ── Current user's storage account & usage ──────────
+        user = self.request.user
+        context["user_storage_account"] = None
+        context["user_holdings"] = []
+        context["user_recent_billing"] = []
+        try:
+            sa = StorageAccount.objects.select_related("ledger_account").get(user=user)
+            context["user_storage_account"] = sa
+            from toto.assets.models import AssetHolding
+            context["user_holdings"] = list(
+                AssetHolding.objects.filter(account=sa.ledger_account)
+                .select_related("asset")
+                .order_by("-balance_base_units")
+            )
+            from toto.tariffs.models import UsageRecord
+            context["user_recent_billing"] = list(
+                UsageRecord.objects.filter(
+                    payer_account=sa.ledger_account,
+                    source_type="vault_file",
+                ).select_related("tariff").order_by("-created_at")[:10]
+            )
+        except StorageAccount.DoesNotExist:
+            pass
 
         return PageProcessor().decorate(context, self.request)
 
@@ -540,3 +591,111 @@ class BucketMetricsView(LoginRequiredMixin, TemplateView):
             context["billing_records"] = []
 
         return PageProcessor().decorate(context, self.request)
+
+
+# ============================================================
+# StorageAccount connect / disconnect
+# ============================================================
+
+class StorageAccountView(LoginRequiredMixin, TemplateView):
+    """
+    Lets the user connect or disconnect their LedgerAccount for vault billing.
+    Shows available LedgerAccounts (type=USER) to link.
+    """
+    template_name = "vault/storage_account.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        user = self.request.user
+
+        try:
+            storage_account = StorageAccount.objects.select_related(
+                "ledger_account", "authorization"
+            ).get(user=user)
+        except StorageAccount.DoesNotExist:
+            storage_account = None
+
+        from toto.assets.models import AccountType, AssetHolding, LedgerAccount, WalletAuthorization
+        available = list(LedgerAccount.objects.filter(
+            user=user, account_type=AccountType.USER, active=True
+        ).exclude(
+            storage_accounts__user=user
+        ))
+
+        holdings = []
+        available_authorizations = []
+        if storage_account:
+            holdings = list(
+                AssetHolding.objects.filter(account=storage_account.ledger_account)
+                .select_related("asset")
+                .order_by("-balance_base_units")
+            )
+            available_authorizations = list(
+                WalletAuthorization.objects.filter(
+                    ledger_account=storage_account.ledger_account, active=True
+                )
+            )
+
+        context["storage_account"] = storage_account
+        context["available_accounts"] = available
+        context["holdings"] = holdings
+        context["available_authorizations"] = available_authorizations
+        return PageProcessor().decorate(context, self.request)
+
+    def post(self, request, *args, **kwargs):
+        action = request.POST.get("action")
+
+        if action == "connect":
+            ledger_pk = request.POST.get("ledger_account")
+            name = request.POST.get("name", "").strip()
+            if not ledger_pk:
+                messages.error(request, "Please select a ledger account.")
+                return redirect("vault:storage_account")
+
+            from toto.assets.models import AccountType, LedgerAccount
+            try:
+                account = LedgerAccount.objects.get(
+                    pk=ledger_pk, user=request.user, account_type=AccountType.USER, active=True
+                )
+            except LedgerAccount.DoesNotExist:
+                messages.error(request, "Account not found or not available.")
+                return redirect("vault:storage_account")
+
+            StorageAccount.objects.update_or_create(
+                user=request.user,
+                defaults={"ledger_account": account, "name": name, "active": True},
+            )
+            messages.success(request, f"Storage account connected: {account.code}")
+
+        elif action == "disconnect":
+            StorageAccount.objects.filter(user=request.user).update(active=False)
+            messages.success(request, "Storage account disconnected.")
+
+        elif action == "reconnect":
+            StorageAccount.objects.filter(user=request.user).update(active=True)
+            messages.success(request, "Storage account reconnected.")
+
+        elif action == "set_authorization":
+            auth_pk = request.POST.get("authorization_pk")
+            try:
+                sa = StorageAccount.objects.get(user=request.user)
+            except StorageAccount.DoesNotExist:
+                messages.error(request, "Connect a storage account first.")
+                return redirect("vault:storage_account")
+            if auth_pk:
+                from toto.assets.models import WalletAuthorization
+                try:
+                    auth = WalletAuthorization.objects.get(
+                        pk=auth_pk, ledger_account=sa.ledger_account, active=True
+                    )
+                    sa.authorization = auth
+                    sa.save(update_fields=["authorization", "updated_at"])
+                    messages.success(request, f"Authorization set: {auth.name}")
+                except WalletAuthorization.DoesNotExist:
+                    messages.error(request, "Authorization not found.")
+            else:
+                sa.authorization = None
+                sa.save(update_fields=["authorization", "updated_at"])
+                messages.success(request, "Authorization removed. Manual confirmation will be required.")
+
+        return redirect("vault:storage_account")

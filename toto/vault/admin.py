@@ -2,9 +2,18 @@ from django.contrib import admin, messages
 from django.urls import path, reverse
 from django.shortcuts import render, redirect
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
-from .models import VaultFile, Bucket, FileGateway, VaultDirectory
+from .models import StorageAccount, VaultFile, Bucket, FileGateway, VaultDirectory
 from toto.core.batch import BatchAction
 from django.utils.html import format_html
+
+
+@admin.register(StorageAccount)
+class StorageAccountAdmin(admin.ModelAdmin):
+    list_display = ("user", "ledger_account", "name", "authorization", "active", "created_at")
+    list_filter = ("active",)
+    search_fields = ("user__username", "ledger_account__code", "name")
+    autocomplete_fields = ["ledger_account", "authorization"]
+    readonly_fields = ("created_at", "updated_at")
 
 
 @admin.register(Bucket)

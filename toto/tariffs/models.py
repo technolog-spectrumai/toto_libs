@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid as _uuid
 from decimal import Decimal
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.translation import gettext_lazy as _
@@ -98,6 +99,14 @@ class Tariff(models.Model):
         default=TariffStatus.DRAFT,
     )
     description = models.TextField(blank=True)
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="owned_tariffs",
+        help_text=_("Only this user can edit the tariff and its items."),
+    )
     source_type = models.CharField(max_length=100, blank=True)
     source_id = models.CharField(max_length=255, blank=True)
     metadata = models.JSONField(default=dict, blank=True)

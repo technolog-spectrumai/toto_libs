@@ -40,6 +40,7 @@
         </div>
       </div>
       <div class="flex shrink-0 flex-wrap gap-2">
+        {% if is_owner %}
         <a
           href="{% url 'tariffs:tariff_edit' tariff.uuid %}"
           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
@@ -54,6 +55,7 @@
           <i class="fa-solid fa-plus"></i>
           {% trans "Add Item" %}
         </a>
+        {% endif %}
         <a
           href="{% url 'tariffs:tariff_simulate' tariff.uuid %}"
           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
@@ -68,6 +70,12 @@
           <i class="fa-solid fa-bolt"></i>
           {% trans "Record Usage" %}
         </a>
+        {% if tariff.owner %}
+        <span class="flex items-center gap-1.5 text-xs opacity-50 self-center">
+          <i class="fa-solid fa-user-shield"></i>
+          {{ tariff.owner.username }}
+        </span>
+        {% endif %}
       </div>
     </div>
   </div>
@@ -94,6 +102,7 @@
         <i class="fa-solid fa-table-list mr-2 opacity-60"></i>
         {% trans "Tariff Items" %}
       </h3>
+      {% if is_owner %}
       <a
         href="{% url 'tariffs:tariff_item_create' tariff.uuid %}"
         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
@@ -101,6 +110,7 @@
         <i class="fa-solid fa-plus"></i>
         {% trans "Add Item" %}
       </a>
+      {% endif %}
     </div>
     <div class="overflow-x-auto">
       <table class="w-full text-sm">
@@ -150,11 +160,13 @@
                 {% endif %}
               </td>
               <td class="px-5 py-3">
+                {% if is_owner %}
                 <a href="{% url 'tariffs:tariff_item_edit' item.pk %}"
                    :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
                    class="inline-flex items-center gap-1 rounded border px-2 py-1 text-xs font-semibold transition hover:opacity-80">
                   <i class="fa-solid fa-pen"></i>
                 </a>
+                {% endif %}
               </td>
             </tr>
           {% empty %}

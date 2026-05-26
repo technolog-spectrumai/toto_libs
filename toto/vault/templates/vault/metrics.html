@@ -220,6 +220,82 @@
       </div>
     </section>
 
+    <!-- ── Your storage account ── -->
+    <section class="space-y-4">
+      <h2 class="text-lg font-bold flex items-center gap-2">
+        <i class="fa-solid fa-wallet opacity-60"></i>
+        {% trans "Your Storage Account" %}
+      </h2>
+      {% if user_storage_account %}
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-xl border shadow-sm overflow-hidden">
+        <div class="flex items-center justify-between px-5 py-3 border-b"
+             :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+          <div class="flex items-center gap-3 text-sm">
+            <code class="font-mono font-semibold">{{ user_storage_account.ledger_account.code }}</code>
+            {% if user_storage_account.name %}
+            <span class="opacity-60">{{ user_storage_account.name }}</span>
+            {% endif %}
+          </div>
+          <a href="{% url 'vault:storage_account' %}"
+             :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+             class="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80">
+            <i class="fa-solid fa-gear"></i>
+            {% trans "Manage" %}
+          </a>
+        </div>
+        {% if user_holdings %}
+        <div class="flex flex-wrap gap-3 px-5 py-4">
+          {% for h in user_holdings %}
+          <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg px-4 py-3 text-center">
+            <div class="font-mono font-bold">{{ h.balance_display }}</div>
+            <div class="text-xs opacity-55 mt-0.5">{{ h.asset.unit_name }}</div>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% if user_recent_billing %}
+        <div class="border-t" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+          <div class="px-5 py-2 text-xs font-semibold uppercase tracking-wide opacity-55">
+            {% trans "Recent billing" %}
+          </div>
+          <div class="divide-y" :class="darkMode ? 'divide-accent-1/30' : 'divide-accent-2/30'">
+            {% for rec in user_recent_billing %}
+            <div class="flex items-center gap-3 px-5 py-2.5 text-xs">
+              <code :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+                    class="rounded px-1.5 py-0.5">{{ rec.metric_code }}</code>
+              <span class="font-mono opacity-70">{{ rec.quantity }}</span>
+              <span class="opacity-50 flex-1 hidden sm:block">{{ rec.source_id }}</span>
+              <span class="opacity-50">{{ rec.created_at|date:"m-d H:i" }}</span>
+              <span class="rounded px-1.5 py-0.5 font-semibold
+                {% if rec.status == 'posted' %}:class="darkMode ? 'bg-green-900/20 text-green-300' : 'bg-green-100 text-green-700'"
+                {% elif rec.status == 'failed' %}:class="darkMode ? 'bg-red-900/20 text-red-300' : 'bg-red-100 text-red-700'"
+                {% else %}:class="darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'"{% endif %}">
+                {{ rec.get_status_display }}
+              </span>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+      </div>
+      {% else %}
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-xl border border-dashed px-6 py-10 text-center shadow-sm">
+        <i class="fa-solid fa-wallet text-3xl opacity-20 mb-3"></i>
+        <p class="text-sm font-semibold opacity-55">{% trans "No storage account connected." %}</p>
+        <a href="{% url 'vault:storage_account' %}"
+           :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+           class="mt-4 inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+          <i class="fa-solid fa-link"></i>
+          {% trans "Connect account" %}
+        </a>
+      </div>
+      {% endif %}
+    </section>
+
   </div>
 </div>
 
