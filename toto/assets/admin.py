@@ -10,6 +10,8 @@ from .models import (
     Contract,
     Currency,
     LedgerAccount,
+    LedgerAccountKey,
+    LedgerAuthorization,
     LedgerEntry,
     LedgerHash,
     LedgerTransaction,
@@ -294,6 +296,40 @@ class ObligationAdmin(admin.ModelAdmin):
     collateral_display.short_description = "Collateral"
 
 
+
+
+@admin.register(LedgerAccountKey)
+class LedgerAccountKeyAdmin(admin.ModelAdmin):
+    list_display = ("key_id", "ledger_account", "algorithm", "state", "valid_from", "valid_until", "created_at")
+    list_filter = ("state", "algorithm")
+    search_fields = ("key_id", "ledger_account__code")
+    readonly_fields = ("created_at", "updated_at")
+    raw_id_fields = ("ledger_account", "encrypted_private_key")
+    fieldsets = (
+        (None, {"fields": ("ledger_account", "encrypted_private_key", "key_id", "algorithm", "state")}),
+        ("Validity", {"fields": ("valid_from", "valid_until")}),
+        ("Public key snapshot", {"fields": ("public_key_pem",), "classes": ("collapse",)}),
+        ("Timestamps", {"fields": ("created_at", "updated_at"), "classes": ("collapse",)}),
+    )
+
+
+@admin.register(LedgerAuthorization)
+class LedgerAuthorizationAdmin(admin.ModelAdmin):
+    list_display = ("ledger_account", "delegate_user", "scopes_display", "asset", "valid_from", "valid_until", "revoked_at", "created_at")
+    list_filter = ("asset",)
+    search_fields = ("ledger_account__code", "delegate_user__username")
+    readonly_fields = ("created_at", "updated_at", "signed_grant_payload", "grant_signature")
+    raw_id_fields = ("ledger_account", "delegate_user", "delegate_key", "asset", "signed_by_account_key")
+    fieldsets = (
+        (None, {"fields": ("ledger_account", "delegate_user", "delegate_key", "scopes", "asset", "max_amount_base_units")}),
+        ("Validity", {"fields": ("valid_from", "valid_until", "revoked_at")}),
+        ("Grant signature", {"fields": ("signed_by_account_key", "signed_grant_payload", "grant_signature"), "classes": ("collapse",)}),
+        ("Timestamps", {"fields": ("created_at", "updated_at"), "classes": ("collapse",)}),
+    )
+
+    def scopes_display(self, obj):
+        return ", ".join(obj.scopes or []) or "—"
+    scopes_display.short_description = "Scopes"
 
 
 @admin.register(WalletAuthorization)

@@ -140,6 +140,7 @@ def charge_upload(vault_file) -> list:
     size_bytes = vault_file.file_size_bytes or 0
     size_mb = Decimal(str(size_bytes)) / Decimal("1048576")
     results = []
+    signer = _make_wallet_auth_signer(vault_file.owner)
 
     # Charge 1: upload request event
     try:
@@ -157,6 +158,7 @@ def charge_upload(vault_file) -> list:
                 "bucket_slug": vault_file.bucket.slug if vault_file.bucket else None,
                 "bucket_id": vault_file.bucket.pk if vault_file.bucket else None,
             },
+            pre_post_hook=signer,
         )
         results.append(record)
     except ValueError as exc:
@@ -177,6 +179,7 @@ def charge_upload(vault_file) -> list:
                     "vault_file_id": vault_file.pk,
                     "size_bytes": size_bytes,
                 },
+                pre_post_hook=signer,
             )
             results.append(record)
         except ValueError as exc:
@@ -224,6 +227,7 @@ def charge_storage_snapshot(
         total_mb = min(total_mb, Decimal(str(quota_mb)))
 
     payer = get_or_create_payer_account(user)
+    signer = _make_wallet_auth_signer(user)
 
     try:
         record, _ = record_and_post_usage(
@@ -234,6 +238,7 @@ def charge_storage_snapshot(
             unit=UNIT_MB_HOUR,
             source_type="vault_storage_snapshot",
             source_id=f"user-{user.pk}" if bucket is None else f"user-{user.pk}-bucket-{bucket.pk}",
+            pre_post_hook=signer,
             metadata={
                 "user_id": user.pk,
                 "username": user.username,
@@ -247,6 +252,45 @@ def charge_storage_snapshot(
     except ValueError as exc:
         logger.warning("vault billing: storage snapshot failed for user %s: %s", user.pk, exc)
         return None
+
+
+def _make_wallet_auth_signer(user):
+    """
+    Return a pre_post_hook that signs the billing transaction using the user's
+    WalletAuthorization. Returns None if no active auto-authorization is configured.
+    The hook is best-effort: signing errors are swallowed so uploads never block.
+    """
+    try:
+        from toto.vault.models import StorageAccount
+        sa = StorageAccount.objects.select_related("authorization").get(user=user, active=True)
+    except Exception:
+        return None
+
+    auth = sa.authorization
+    if not auth or not auth.active:
+        return None
+
+    def _sign_tx(tx):
+        import base64
+        import os
+        import uuid as _uuid
+        from django.utils import timezone
+        from toto.assets.signing import build_transaction_payload, hash_payload, sign_payload
+
+        pem = auth.get_private_key()
+        if not pem:
+            return
+        nonce = base64.b64encode(os.urandom(16)).decode()
+        idempotency_key = tx.idempotency_key or str(_uuid.uuid4())
+        payload = build_transaction_payload(tx, nonce, idempotency_key)
+        sig = sign_payload(payload, pem, "auto")
+        tx.signature = sig
+        tx.payload_hash = hash_payload(payload)
+        tx.nonce = nonce
+        tx.idempotency_key = idempotency_key
+        tx.signed_at = timezone.now()
+
+    return _sign_tx
 
 
 def get_bucket_billing_summary(bucket, user=None) -> dict | None:

@@ -217,6 +217,7 @@ def post_usage_record(
     usage_record: UsageRecord,
     reference: str | None = None,
     description: str | None = None,
+    pre_post_hook=None,
 ) -> LedgerTransaction:
     """
     Drain payer holdings and credit receiving accounts via immutable ledger.
@@ -352,8 +353,24 @@ def post_usage_record(
             recv_holding.balance_base_units += amount
             recv_holding.save(update_fields=["balance_base_units", "updated_at"])
 
+        # Allow a caller to attach signing metadata before the tx is frozen.
+        if pre_post_hook:
+            try:
+                pre_post_hook(tx)
+            except Exception as _hook_exc:
+                import logging as _log
+                _log.getLogger(__name__).warning("billing: pre_post_hook failed: %s", _hook_exc)
+
+        post_fields = ["posted"]
+        if tx.signature:
+            post_fields += ["signature", "payload_hash", "nonce", "idempotency_key", "signed_at"]
+        if tx.signed_by_key_id:
+            post_fields.append("signed_by_key")
+        if tx.authorization_id:
+            post_fields.append("authorization")
+
         tx.posted = True
-        tx.save(update_fields=["posted"])
+        tx.save(update_fields=post_fields)
 
         usage_record.status = UsageStatus.POSTED
         usage_record.ledger_transaction = tx
@@ -385,6 +402,7 @@ def record_and_post_usage(
     metadata: dict | None = None,
     reference: str | None = None,
     description: str | None = None,
+    pre_post_hook=None,
 ) -> tuple[UsageRecord, LedgerTransaction]:
     """Create a UsageRecord and immediately post it."""
     record = UsageRecord.objects.create(
@@ -398,7 +416,7 @@ def record_and_post_usage(
         occurred_at=timezone.now(),
         metadata=metadata or {},
     )
-    tx = post_usage_record(record, reference=reference, description=description)
+    tx = post_usage_record(record, reference=reference, description=description, pre_post_hook=pre_post_hook)
     record.refresh_from_db()
     return record, tx
 

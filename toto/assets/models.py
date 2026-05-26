@@ -221,6 +221,169 @@ class AssetHolding(models.Model):
 
 
 # ---------------------------------------------------------------------------
+# LedgerAccountKey (forward-declared; full definition after LedgerAuthorization)
+# ---------------------------------------------------------------------------
+
+class LedgerAccountKeyState(models.TextChoices):
+    ACTIVE      = "active",      "Active"
+    SUSPENDED   = "suspended",   "Suspended"
+    RETIRED     = "retired",     "Retired"
+    COMPROMISED = "compromised", "Compromised"
+    DESTROYED   = "destroyed",   "Destroyed"
+
+
+class LedgerAccountKey(models.Model):
+    """
+    Binding between a LedgerAccount and an EncryptedPrivateKey in Gervazy.
+    The account owns its keys; keys never delegate ownership — only sign.
+    public_key_pem is a snapshot that must match the Gervazy EPK at creation time.
+    """
+    ledger_account = models.ForeignKey(
+        LedgerAccount,
+        on_delete=models.PROTECT,
+        related_name="signing_keys",
+    )
+    encrypted_private_key = models.ForeignKey(
+        "gervazy.EncryptedPrivateKey",
+        on_delete=models.PROTECT,
+        related_name="ledger_account_keys",
+    )
+    key_id = models.CharField(max_length=100, unique=True)
+    public_key_pem = models.TextField(
+        help_text="Plaintext snapshot of the public key PEM. Must match gervazy.EncryptedPrivateKey.public_key_pem.",
+    )
+    algorithm = models.CharField(max_length=32, default="Ed25519")
+    state = models.CharField(
+        max_length=20,
+        choices=LedgerAccountKeyState.choices,
+        default=LedgerAccountKeyState.ACTIVE,
+    )
+    valid_from = models.DateTimeField()
+    valid_until = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["ledger_account", "state"]),
+            models.Index(fields=["key_id"]),
+        ]
+
+    def __str__(self):
+        return f"LedgerAccountKey({self.key_id}, {self.ledger_account.code}, {self.state})"
+
+    @property
+    def is_active(self) -> bool:
+        from django.utils import timezone
+        if self.state != LedgerAccountKeyState.ACTIVE:
+            return False
+        now = timezone.now()
+        if now < self.valid_from:
+            return False
+        if self.valid_until and now > self.valid_until:
+            return False
+        return True
+
+    def clean(self):
+        if self.encrypted_private_key_id and self.public_key_pem:
+            epk = self.encrypted_private_key
+            if epk.public_key_pem.strip() != self.public_key_pem.strip():
+                raise ValidationError({
+                    "public_key_pem": "public_key_pem does not match gervazy.EncryptedPrivateKey.public_key_pem."
+                })
+
+
+# ---------------------------------------------------------------------------
+# LedgerAuthorization
+# ---------------------------------------------------------------------------
+
+class LedgerAuthorization(models.Model):
+    """
+    Scoped delegation: a LedgerAccount grants a user or key the right to sign
+    within explicit limits (scopes, amount, asset, time window).
+    An authorization never owns assets and never acts as the account itself.
+    """
+    ledger_account = models.ForeignKey(
+        LedgerAccount,
+        on_delete=models.PROTECT,
+        related_name="authorizations",
+    )
+    delegate_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="delegated_authorizations",
+    )
+    delegate_key = models.ForeignKey(
+        "gervazy.EncryptedPrivateKey",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="delegated_authorizations",
+    )
+    scopes = models.JSONField(
+        default=list,
+        help_text='List of allowed scope strings, e.g. ["transfer", "sign"].',
+    )
+    max_amount_base_units = models.BigIntegerField(
+        null=True, blank=True,
+        help_text="Per-operation ceiling. None = unlimited.",
+    )
+    asset = models.ForeignKey(
+        Asset,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="authorizations",
+        help_text="If set, delegation is restricted to this asset only.",
+    )
+    valid_from = models.DateTimeField()
+    valid_until = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    signed_grant_payload = models.JSONField(default=dict)
+    grant_signature = models.TextField(blank=True)
+    signed_by_account_key = models.ForeignKey(
+        LedgerAccountKey,
+        on_delete=models.PROTECT,
+        related_name="signed_authorizations",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        delegate = self.delegate_user or self.delegate_key_id or "?"
+        return f"LedgerAuthorization({self.ledger_account.code} → {delegate})"
+
+    def is_valid_now(self) -> bool:
+        from django.utils import timezone
+        if self.revoked_at:
+            return False
+        now = timezone.now()
+        if now < self.valid_from:
+            return False
+        if self.valid_until and now > self.valid_until:
+            return False
+        if not self.signed_by_account_key.is_active:
+            return False
+        return True
+
+    def allows_scope(self, scope: str) -> bool:
+        return scope in (self.scopes or [])
+
+    def allows_amount(self, asset_obj, amount_base_units: int) -> bool:
+        if self.asset_id and self.asset_id != asset_obj.pk:
+            return False
+        if self.max_amount_base_units is not None and amount_base_units > self.max_amount_base_units:
+            return False
+        return True
+
+
+# ---------------------------------------------------------------------------
 # LedgerTransaction
 # ---------------------------------------------------------------------------
 
@@ -241,6 +404,25 @@ class LedgerTransaction(models.Model):
     )
     metadata = models.JSONField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    # ── Cryptographic signing fields (all optional; backwards-compatible) ──
+    signed_by_key = models.ForeignKey(
+        LedgerAccountKey,
+        null=True, blank=True,
+        on_delete=models.PROTECT,
+        related_name="signed_transactions",
+    )
+    authorization = models.ForeignKey(
+        LedgerAuthorization,
+        null=True, blank=True,
+        on_delete=models.PROTECT,
+        related_name="signed_transactions",
+    )
+    payload_hash = models.CharField(max_length=128, blank=True)
+    signature = models.TextField(blank=True)
+    nonce = models.CharField(max_length=128, blank=True)
+    idempotency_key = models.CharField(max_length=128, null=True, blank=True, unique=True)
+    signed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-created_at"]

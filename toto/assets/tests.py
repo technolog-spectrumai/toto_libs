@@ -1518,3 +1518,270 @@ class ContractEventTests(TestCase):
 
 
 # View tests for lifecycle primitives will live in the dedicated claims app.
+
+
+# ---------------------------------------------------------------------------
+# Signing helpers
+# ---------------------------------------------------------------------------
+
+def _generate_ed25519_pem_pair():
+    """Return (private_key_pem str, public_key_pem str) for Ed25519."""
+    from cryptography.hazmat.primitives.asymmetric import ed25519 as _ed
+    from cryptography.hazmat.primitives import serialization as _ser
+    priv = _ed.Ed25519PrivateKey.generate()
+    priv_pem = priv.private_bytes(
+        _ser.Encoding.PEM, _ser.PrivateFormat.PKCS8, _ser.NoEncryption()
+    ).decode()
+    pub_pem = priv.public_key().public_bytes(
+        _ser.Encoding.PEM, _ser.PublicFormat.SubjectPublicKeyInfo
+    ).decode()
+    return priv_pem, pub_pem
+
+
+_strongbox_counter = 0
+
+
+def _make_gervazy_session_and_epk(user, private_key_pem, public_key_pem, key_id="test-key-1"):
+    """Create a Gervazy strongbox + EncryptedPrivateKey; return (session, epk)."""
+    global _strongbox_counter
+    _strongbox_counter += 1
+    from toto.gervazy.crypto import GervazyCryptoSession
+    session, wrapped_key = GervazyCryptoSession.initialize_strongbox(
+        user, f"test-strongbox-{_strongbox_counter}", "testpassword"
+    )
+    epk = session.encrypt_private_key(
+        wrapped_key,
+        private_key_pem,
+        key_id=key_id,
+        key_type="Ed25519",
+        public_key_pem=public_key_pem,
+    )
+    return session, epk
+
+
+def _make_ledger_account_key(ledger_account, epk, public_key_pem):
+    from django.utils import timezone
+    from .models import LedgerAccountKey
+    return LedgerAccountKey.objects.create(
+        ledger_account=ledger_account,
+        encrypted_private_key=epk,
+        key_id=epk.key_id,
+        public_key_pem=public_key_pem,
+        algorithm="Ed25519",
+        valid_from=timezone.now(),
+    )
+
+
+def _build_simple_tx(asset, sender, receiver, amount_base_units=100, reference="sign-tx-1"):
+    """Create an unposted transfer transaction with two entries."""
+    from .models import LedgerTransaction, LedgerEntry, TransactionType
+    tx = LedgerTransaction.objects.create(
+        reference=reference,
+        transaction_type=TransactionType.ASSET_TRANSFER,
+        asset=asset,
+    )
+    LedgerEntry.objects.create(transaction=tx, account=sender, asset=asset, amount_base_units=-amount_base_units)
+    LedgerEntry.objects.create(transaction=tx, account=receiver, asset=asset, amount_base_units=amount_base_units)
+    return tx
+
+
+# ---------------------------------------------------------------------------
+# Signing service tests
+# ---------------------------------------------------------------------------
+
+class SigningServiceTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        self.user = User.objects.create_user(username="signer", password="pass")
+        self.reserve = make_account("sign-reserve", "reserve")
+        self.alice = make_account("sign-alice")
+        self.bob = make_account("sign-bob")
+        self.asset = create_asset(
+            name="SignAsset", unit_name="SGN", total_supply=Decimal("10000"),
+            decimals=2, reserve_account=self.reserve, reference="create-sgn",
+        )
+        self.priv_pem, self.pub_pem = _generate_ed25519_pem_pair()
+        self.session, self.epk = _make_gervazy_session_and_epk(self.user, self.priv_pem, self.pub_pem)
+        self.account_key = _make_ledger_account_key(self.reserve, self.epk, self.pub_pem)
+
+    def test_sign_and_verify_direct(self):
+        from .signing import sign_transaction_directly, verify_transaction
+        tx = _build_simple_tx(self.asset, self.reserve, self.alice, reference="sgn-direct-1")
+        sign_transaction_directly(tx, self.account_key, self.session)
+        tx.save()
+        ok, msg = verify_transaction(tx)
+        self.assertTrue(ok, msg)
+
+    def test_verify_tampered_payload_fails(self):
+        from .signing import sign_transaction_directly, verify_transaction
+        tx = _build_simple_tx(self.asset, self.reserve, self.alice, reference="sgn-tamper-1")
+        sign_transaction_directly(tx, self.account_key, self.session)
+        tx.save()
+        # Tamper a field without re-signing.
+        tx.entries.filter(amount_base_units=-100).update(amount_base_units=-999)
+        ok, msg = verify_transaction(tx)
+        self.assertFalse(ok)
+
+    def test_unsigned_transaction_fails_verify(self):
+        from .signing import verify_transaction
+        tx = _build_simple_tx(self.asset, self.reserve, self.alice, reference="sgn-unsigned-1")
+        ok, msg = verify_transaction(tx)
+        self.assertFalse(ok)
+        self.assertIn("not signed", msg)
+
+    def test_idempotency_key_set_on_sign(self):
+        from .signing import sign_transaction_directly
+        tx = _build_simple_tx(self.asset, self.reserve, self.alice, reference="sgn-idem-1")
+        sign_transaction_directly(tx, self.account_key, self.session)
+        self.assertIsNotNone(tx.idempotency_key)
+
+    def test_idempotency_key_preserved_if_already_set(self):
+        from .signing import sign_transaction_directly
+        tx = _build_simple_tx(self.asset, self.reserve, self.alice, reference="sgn-idem-2")
+        tx.idempotency_key = "my-idempotency-key"
+        tx.save()
+        sign_transaction_directly(tx, self.account_key, self.session)
+        self.assertEqual(tx.idempotency_key, "my-idempotency-key")
+
+    def test_sign_posted_raises(self):
+        from .signing import sign_transaction_directly
+        tx = _build_simple_tx(self.asset, self.reserve, self.alice, reference="sgn-posted-1")
+        # Post it directly via update to bypass immutability guard.
+        from .models import LedgerTransaction
+        LedgerTransaction.objects.filter(pk=tx.pk).update(posted=True)
+        tx.refresh_from_db()
+        with self.assertRaises(ValueError):
+            sign_transaction_directly(tx, self.account_key, self.session)
+
+    def test_inactive_key_raises(self):
+        from .signing import sign_transaction_directly
+        from .models import LedgerAccountKeyState
+        self.account_key.state = LedgerAccountKeyState.SUSPENDED
+        self.account_key.save()
+        tx = _build_simple_tx(self.asset, self.reserve, self.alice, reference="sgn-inactive-1")
+        with self.assertRaises(ValueError):
+            sign_transaction_directly(tx, self.account_key, self.session)
+
+
+class DelegatedSigningTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        from django.utils import timezone
+        User = get_user_model()
+        self.user = User.objects.create_user(username="delegated", password="pass")
+        self.reserve = make_account("del-reserve", "reserve")
+        self.alice = make_account("del-alice")
+        self.asset = create_asset(
+            name="DelAsset", unit_name="DEL", total_supply=Decimal("10000"),
+            decimals=2, reserve_account=self.reserve, reference="create-del",
+        )
+        # Account owner key.
+        self.priv_pem, self.pub_pem = _generate_ed25519_pem_pair()
+        self.session, self.epk = _make_gervazy_session_and_epk(self.user, self.priv_pem, self.pub_pem)
+        self.account_key = _make_ledger_account_key(self.reserve, self.epk, self.pub_pem)
+
+        # Delegate key (separate key material).
+        self.del_priv_pem, self.del_pub_pem = _generate_ed25519_pem_pair()
+        self.del_session, self.del_epk = _make_gervazy_session_and_epk(
+            self.user, self.del_priv_pem, self.del_pub_pem, key_id="del-key-1"
+        )
+
+        from .models import LedgerAuthorization
+        self.auth = LedgerAuthorization.objects.create(
+            ledger_account=self.reserve,
+            delegate_user=self.user,
+            delegate_key=self.del_epk,
+            scopes=["transfer"],
+            max_amount_base_units=500,
+            asset=self.asset,
+            valid_from=timezone.now(),
+            signed_by_account_key=self.account_key,
+        )
+
+    def test_delegated_sign_and_verify(self):
+        from .signing import sign_transaction_delegated, verify_transaction
+        tx = _build_simple_tx(self.asset, self.reserve, self.alice, amount_base_units=100, reference="del-sign-1")
+        sign_transaction_delegated(tx, self.auth, self.del_session, scope="transfer")
+        tx.save()
+        ok, msg = verify_transaction(tx)
+        self.assertTrue(ok, msg)
+
+    def test_wrong_scope_raises(self):
+        from .signing import sign_transaction_delegated
+        tx = _build_simple_tx(self.asset, self.reserve, self.alice, reference="del-scope-1")
+        with self.assertRaises(ValueError, msg="scope"):
+            sign_transaction_delegated(tx, self.auth, self.del_session, scope="admin")
+
+    def test_amount_exceeded_raises(self):
+        from .signing import sign_transaction_delegated
+        tx = _build_simple_tx(self.asset, self.reserve, self.alice, amount_base_units=1000, reference="del-amt-1")
+        with self.assertRaises(ValueError, msg="ceiling"):
+            sign_transaction_delegated(tx, self.auth, self.del_session, scope="transfer")
+
+    def test_revoked_authorization_raises(self):
+        from django.utils import timezone
+        from .signing import sign_transaction_delegated
+        self.auth.revoked_at = timezone.now()
+        self.auth.save()
+        tx = _build_simple_tx(self.asset, self.reserve, self.alice, reference="del-revoke-1")
+        with self.assertRaises(ValueError):
+            sign_transaction_delegated(tx, self.auth, self.del_session, scope="transfer")
+
+    def test_expired_authorization_raises(self):
+        import datetime
+        from django.utils import timezone
+        from .signing import sign_transaction_delegated
+        self.auth.valid_until = timezone.now() - datetime.timedelta(seconds=1)
+        self.auth.save()
+        tx = _build_simple_tx(self.asset, self.reserve, self.alice, reference="del-exp-1")
+        with self.assertRaises(ValueError):
+            sign_transaction_delegated(tx, self.auth, self.del_session, scope="transfer")
+
+
+class AuthorizationGrantSigningTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        from django.utils import timezone
+        User = get_user_model()
+        self.user = User.objects.create_user(username="grant-signer", password="pass")
+        self.reserve = make_account("grant-reserve", "reserve")
+        self.asset = create_asset(
+            name="GrantAsset", unit_name="GRT", total_supply=Decimal("100"),
+            decimals=0, reserve_account=self.reserve, reference="create-grt",
+        )
+        self.priv_pem, self.pub_pem = _generate_ed25519_pem_pair()
+        self.session, self.epk = _make_gervazy_session_and_epk(self.user, self.priv_pem, self.pub_pem)
+        self.account_key = _make_ledger_account_key(self.reserve, self.epk, self.pub_pem)
+
+        self.del_priv_pem, self.del_pub_pem = _generate_ed25519_pem_pair()
+        self.del_session, self.del_epk = _make_gervazy_session_and_epk(
+            self.user, self.del_priv_pem, self.del_pub_pem, key_id="grant-del-key-1"
+        )
+
+        from .models import LedgerAuthorization
+        self.auth = LedgerAuthorization.objects.create(
+            ledger_account=self.reserve,
+            delegate_user=self.user,
+            delegate_key=self.del_epk,
+            scopes=["transfer"],
+            valid_from=timezone.now(),
+            signed_by_account_key=self.account_key,
+        )
+
+    def test_sign_grant_stores_payload_and_signature(self):
+        from .signing import sign_authorization_grant
+        sign_authorization_grant(self.auth, self.account_key, self.session)
+        self.assertTrue(bool(self.auth.grant_signature))
+        self.assertIn("scopes", self.auth.signed_grant_payload)
+
+    def test_wrong_account_key_raises(self):
+        from .signing import sign_authorization_grant
+        other_priv, other_pub = _generate_ed25519_pem_pair()
+        other_session, other_epk = _make_gervazy_session_and_epk(
+            self.user, other_priv, other_pub, key_id="other-key-grant"
+        )
+        other_ledger = make_account("other-grant-acct")
+        other_key = _make_ledger_account_key(other_ledger, other_epk, other_pub)
+        with self.assertRaises(ValueError):
+            sign_authorization_grant(self.auth, other_key, other_session)
