@@ -159,9 +159,4 @@ class InvoiceReportAdmin(admin.ModelAdmin):
             import json
             raw = json.dumps(flat, indent=2, default=str)
 
-        return format_html(
-            '<pre style="background:#1e1e1e;color:#d4d4d4;padding:1rem;'
-            'border-radius:6px;overflow:auto;font-size:.78em;line-height:1.5;'
-            'max-height:400px">{}</pre>',
-            raw,
-        )
+        return format_html('<pre>{}</pre>', raw)
