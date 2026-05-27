@@ -5,7 +5,7 @@ from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.utils import timezone
 from django.utils.html import format_html
 
-from .models import VaultFile, Bucket, FileGateway, VaultDirectory
+from .models import VaultFile, Bucket, FileGateway, VaultDirectory, BucketCopyLog
 from toto.core.batch import BatchAction
 
 
@@ -159,6 +159,14 @@ class FileGatewayAdmin(admin.ModelAdmin):
     def directory_path(self, obj):
         return obj.directory.full_path() if obj.directory_id else "—"
     directory_path.short_description = "Directory"
+
+
+@admin.register(BucketCopyLog)
+class BucketCopyLogAdmin(admin.ModelAdmin):
+    list_display = ("from_bucket", "to_bucket", "performed_by", "file_count", "performed_at")
+    list_filter = ("from_bucket", "to_bucket", "performed_by")
+    ordering = ("-performed_at",)
+    readonly_fields = ("performed_at",)
 
 
 @admin.register(VaultDirectory)

@@ -19,7 +19,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 
 from django.contrib import messages
 from toto.ui import PageProcessor
-from .models import VaultFile, Bucket, FileGateway, VaultDirectory
+from .models import VaultFile, Bucket, FileGateway, VaultDirectory, BucketCopyLog
 
 
 # ============================================================
@@ -413,6 +413,33 @@ class VaultMetricsView(LoginRequiredMixin, TemplateView):
             "owner", "bucket", "directory"
         ).order_by("-uploaded_at")[:8]
 
+        # Copy flow data
+        from django.db.models import Max
+        context["copy_flows"] = list(
+            BucketCopyLog.objects
+            .filter(from_bucket__isnull=False, to_bucket__isnull=False)
+            .values("from_bucket__name", "from_bucket__slug", "to_bucket__name", "to_bucket__slug")
+            .annotate(total_files=Sum("file_count"), last_copy=Max("performed_at"))
+            .order_by("-total_files")[:20]
+        )
+
+        thirty_days_ago_dt = timezone.now() - timedelta(days=29)
+        copy_daily_qs = {
+            entry["day"]: entry["count"]
+            for entry in BucketCopyLog.objects
+            .filter(performed_at__gte=thirty_days_ago_dt)
+            .annotate(day=TruncDate("performed_at"))
+            .values("day")
+            .annotate(count=Sum("file_count"))
+        }
+        context["copy_daily_series"] = [
+            {
+                "date": (today - timedelta(days=29 - i)).strftime("%m-%d"),
+                "count": copy_daily_qs.get(today - timedelta(days=29 - i), 0),
+            }
+            for i in range(30)
+        ]
+
         return PageProcessor().decorate(context, self.request)
 
 
@@ -757,6 +784,12 @@ class CopyFilesToBucketView(LoginRequiredMixin, View):
                 new_file.save()
 
         count = len(selected_files)
+        BucketCopyLog.objects.create(
+            from_bucket=source_bucket,
+            to_bucket=destination_bucket,
+            performed_by=request.user,
+            file_count=count,
+        )
         messages.success(
             request,
             f"Copied {count} file{'s' if count != 1 else ''} to \"{destination_bucket.name}\".",
@@ -821,6 +854,12 @@ class BucketCopyAjaxView(LoginRequiredMixin, View):
                 new_file.save()
 
         count = len(selected_files)
+        BucketCopyLog.objects.create(
+            from_bucket=source_bucket,
+            to_bucket=destination_bucket,
+            performed_by=request.user,
+            file_count=count,
+        )
         return JsonResponse({
             "ok": True,
             "count": count,

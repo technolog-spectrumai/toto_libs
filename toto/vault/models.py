@@ -235,6 +235,26 @@ class FileGateway(models.Model):
         super().save(*args, **kwargs)
 
 
+class BucketCopyLog(models.Model):
+    from_bucket = models.ForeignKey(
+        Bucket, on_delete=models.SET_NULL, null=True, related_name="copies_out"
+    )
+    to_bucket = models.ForeignKey(
+        Bucket, on_delete=models.SET_NULL, null=True, related_name="copies_in"
+    )
+    performed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    file_count = models.PositiveIntegerField(default=1)
+    performed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Bucket Copy Log"
+        verbose_name_plural = "Bucket Copy Logs"
+        ordering = ["-performed_at"]
+
+    def __str__(self):
+        return f"{self.from_bucket} → {self.to_bucket} ({self.file_count} files)"
+
+
 class VaultDirectory(models.Model):
     """
     A named folder inside a Bucket. May be nested (parent → subdirectories).
