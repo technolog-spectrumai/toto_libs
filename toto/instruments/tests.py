@@ -425,100 +425,6 @@ def _make_asset(code, reserve):
     )
 
 
-class SubscriptionContractGenerationTests(TestCase):
-    def setUp(self):
-        self.reserve = _make_ledger_account("lc-reserve")
-        self.subscriber = _make_ledger_account("lc-subscriber")
-        self.provider = _make_ledger_account("lc-provider")
-        self.asset = _make_asset("LCT", self.reserve)
-
-        from toto.instruments.models import FinancialInstrument, SubscriptionContract
-        from datetime import timedelta
-        now = timezone.now()
-        self.instrument = FinancialInstrument.objects.create(
-            reference="SUB-LC-001", instrument_type="subscription",
-        )
-        self.sub = SubscriptionContract.objects.create(
-            instrument=self.instrument,
-            subscriber_account=self.subscriber,
-            provider_account=self.provider,
-            asset=self.asset,
-            amount_base_units=500,
-            billing_cycle="monthly",
-            current_period_start=now,
-            current_period_end=now + timedelta(days=30),
-            next_billing_at=now + timedelta(days=30),
-        )
-
-    def test_sync_creates_linked_contract(self):
-        from toto.instruments.lapis_contracts import sync_contract_for_instrument
-        contract = sync_contract_for_instrument(self.instrument)
-        self.instrument.refresh_from_db()
-        self.assertIsNotNone(contract.pk)
-        self.assertEqual(self.instrument.contract_id, contract.pk)
-
-    def test_generated_flow_validates(self):
-        from toto.instruments.lapis_contracts import render_lapis_for_instrument
-        from toto.assets.lapis.loader import loads_contract
-        from toto.assets.lapis.compiler import ContractFlowValidator
-        code = render_lapis_for_instrument(self.instrument)
-        tree = loads_contract(code, fmt="yaml")
-        ContractFlowValidator().validate(tree)
-
-    def test_generated_flow_is_contract_flow_kind(self):
-        from toto.instruments.lapis_contracts import render_lapis_for_instrument
-        from toto.assets.lapis.loader import loads_contract
-        code = render_lapis_for_instrument(self.instrument)
-        tree = loads_contract(code, fmt="yaml")
-        self.assertEqual(tree.get("kind"), "contract_flow")
-
-    def test_generated_flow_has_steps(self):
-        from toto.instruments.lapis_contracts import render_lapis_for_instrument
-        from toto.assets.lapis.loader import loads_contract
-        code = render_lapis_for_instrument(self.instrument)
-        tree = loads_contract(code, fmt="yaml")
-        self.assertIn("steps", tree)
-        self.assertGreater(len(tree["steps"]), 0)
-        for step in tree["steps"]:
-            self.assertIn("id", step)
-            self.assertIn("type", step)
-            self.assertIn("title", step)
-
-    def test_metadata_has_obligation_memory(self):
-        from toto.instruments.lapis_contracts import build_contract_metadata_for_instrument
-        meta = build_contract_metadata_for_instrument(self.instrument)
-        self.assertIn("obligations", meta)
-        self.assertEqual(len(meta["obligations"]), 1)
-        self.assertEqual(meta["obligations"][0]["role"], "recurring_payment")
-        self.assertEqual(meta["obligations"][0]["amount_base_units"], 500)
-
-    def test_sync_is_idempotent(self):
-        from toto.instruments.lapis_contracts import sync_contract_for_instrument
-        c1 = sync_contract_for_instrument(self.instrument)
-        c2 = sync_contract_for_instrument(self.instrument)
-        self.assertEqual(c1.pk, c2.pk)
-
-    def test_sync_does_not_create_ledger_transaction(self):
-        from toto.assets.models import LedgerTransaction
-        from toto.instruments.lapis_contracts import sync_contract_for_instrument
-        before = LedgerTransaction.objects.count()
-        sync_contract_for_instrument(self.instrument)
-        self.assertEqual(LedgerTransaction.objects.count(), before)
-
-    def test_sync_does_not_create_ledger_entry(self):
-        from toto.assets.models import LedgerEntry
-        from toto.instruments.lapis_contracts import sync_contract_for_instrument
-        before = LedgerEntry.objects.count()
-        sync_contract_for_instrument(self.instrument)
-        self.assertEqual(LedgerEntry.objects.count(), before)
-
-    def test_build_contract_is_noop_if_already_linked(self):
-        from toto.instruments.lapis_contracts import build_contract_for_instrument, sync_contract_for_instrument
-        c1 = sync_contract_for_instrument(self.instrument)
-        c2 = build_contract_for_instrument(self.instrument)
-        self.assertEqual(c1.pk, c2.pk)
-
-
 class ForwardContractGenerationTests(TestCase):
     def setUp(self):
         from datetime import timedelta
@@ -632,7 +538,7 @@ class InstrumentWithoutSubtypeTests(TestCase):
         from toto.instruments.models import FinancialInstrument
         from toto.instruments.lapis_contracts import render_lapis_for_instrument
         instrument = FinancialInstrument.objects.create(
-            reference="NOSUB-001", instrument_type="subscription",
+            reference="NOSUB-001", instrument_type="lease",
         )
         with self.assertRaises(ValueError):
             render_lapis_for_instrument(instrument)
@@ -659,7 +565,6 @@ class InstrumentWithoutSubtypeTests(TestCase):
 # ---------------------------------------------------------------------------
 
 _DEMO_TYPES = [
-    "subscription",
     "lease",
     "amortization",
     "vesting",
@@ -722,7 +627,7 @@ class IngressInstrumentsTests(TestCase):
     def test_force_contracts_updates_existing_code(self):
         _run_ingress("--deploy-contracts")
         instr = FinancialInstrument.objects.select_related("contract").get(
-            reference=_ref("subscription")
+            reference=_ref("lease")
         )
         instr.contract.code = "tampered_xyz"
         instr.contract.save(update_fields=["code"])
@@ -848,15 +753,6 @@ class InstrumentLifecycleSyncTests(TestCase):
     def _get_instr(self, ref):
         return FinancialInstrument.objects.get(reference=ref)
 
-    def test_subscription_creates_entitlement_and_schedule(self):
-        from toto.claims.models import Entitlement, Schedule
-        instr = self._get_instr("demo-subscription-001")
-        self.assertTrue(Entitlement.objects.for_source if hasattr(Entitlement.objects, 'for_source') else True)
-        ents = Entitlement.objects.filter(source_type="instruments.FinancialInstrument", source_id=str(instr.pk))
-        scheds = Schedule.objects.filter(source_type="instruments.FinancialInstrument", source_id=str(instr.pk))
-        self.assertGreaterEqual(ents.count(), 1)
-        self.assertGreaterEqual(scheds.count(), 1)
-
     def test_lease_creates_entitlement_schedule_condition(self):
         from toto.claims.models import Entitlement, Schedule, Condition
         instr = self._get_instr("demo-lease-001")
@@ -921,20 +817,6 @@ class InstrumentLifecycleSyncTests(TestCase):
         )
         self.assertGreaterEqual(ents.count(), 2)
 
-    def test_idempotency_subscription(self):
-        from toto.claims.models import Entitlement, Schedule, ContractEvent
-        instr = self._get_instr("demo-subscription-001")
-        src = {"source_type": "instruments.FinancialInstrument", "source_id": str(instr.pk)}
-        before_ents = Entitlement.objects.filter(**src).count()
-        before_scheds = Schedule.objects.filter(**src).count()
-        before_events = ContractEvent.objects.filter(**src).count()
-        # Run sync again
-        from toto.instruments.lifecycle import sync_lifecycle_for_instrument
-        sync_lifecycle_for_instrument(instr)
-        self.assertEqual(Entitlement.objects.filter(**src).count(), before_ents)
-        self.assertEqual(Schedule.objects.filter(**src).count(), before_scheds)
-        self.assertEqual(ContractEvent.objects.filter(**src).count(), before_events)
-
     def test_idempotency_all_instruments(self):
         """Running sync twice creates no duplicate records."""
         from toto.claims.models import Entitlement, Schedule, Condition, Allocation, ContractEvent
@@ -961,7 +843,7 @@ class InstrumentLifecycleSyncTests(TestCase):
     def test_created_events_exist_for_each_instrument(self):
         from toto.claims.models import ContractEvent, ContractEventKind
         refs = [
-            "demo-subscription-001", "demo-lease-001", "demo-amortization-001",
+            "demo-lease-001", "demo-amortization-001",
             "demo-vesting-001", "demo-escrow-001", "demo-forward-001",
             "demo-option-001", "demo-staking-001", "demo-revenue-share-001",
         ]

@@ -125,12 +125,6 @@ def sync_lifecycle_for_instrument(instrument) -> dict:
 
     itype = instrument.instrument_type
     try:
-        if itype == "subscription":
-            sub = _m.SubscriptionContract.objects.select_related(
-                "subscriber_account", "provider_account", "asset"
-            ).get(instrument=instrument)
-            return sync_subscription_lifecycle(sub)
-
         if itype == "lease":
             lease = _m.LeaseContract.objects.select_related(
                 "lessor_account", "lessee_account", "payment_asset"
@@ -188,38 +182,6 @@ def sync_lifecycle_for_instrument(instrument) -> dict:
 # ---------------------------------------------------------------------------
 # Per-type sync functions
 # ---------------------------------------------------------------------------
-
-def sync_subscription_lifecycle(subscription) -> dict:
-    instr = subscription.instrument
-    src_type, src_id = _src(instr)
-
-    ent, _ = _get_or_create_entitlement(
-        holder_account=subscription.subscriber_account,
-        kind=EntitlementKind.SERVICE_ACCESS,
-        resource_label=f"Subscription: {instr.reference}",
-        source_type=src_type,
-        source_id=src_id,
-        starts_at=subscription.current_period_start,
-        ends_at=subscription.current_period_end,
-    )
-    sched, _ = _get_or_create_schedule(
-        name=f"Billing: {instr.reference}",
-        kind=ScheduleKind.BILLING,
-        source_type=src_type,
-        source_id=src_id,
-        starts_at=subscription.current_period_start,
-        ends_at=subscription.current_period_end,
-        next_run_at=subscription.next_billing_at,
-        frequency=subscription.billing_cycle,
-    )
-    _ensure_created_event(
-        src_type, src_id,
-        f"Subscription created: {instr.reference}",
-        schedule=sched,
-        entitlement=ent,
-    )
-    return {"entitlements": 1, "schedules": 1}
-
 
 def sync_lease_lifecycle(lease) -> dict:
     instr = lease.instrument

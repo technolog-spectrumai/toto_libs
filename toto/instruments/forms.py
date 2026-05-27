@@ -12,7 +12,6 @@ from .models import (
     RevenueShareContract,
     RevenueShareRecipient,
     StakingPosition,
-    SubscriptionContract,
     VestingContract,
 )
 
@@ -296,41 +295,6 @@ class LeaseContractForm(_InstrumentNameMixin, forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         _apply_bento_style(self)
-
-
-class SubscriptionContractForm(_InstrumentNameMixin, forms.ModelForm):
-    name = forms.CharField(
-        max_length=255,
-        label="Name",
-        help_text="A unique name for this subscription (e.g. 'sub-acme-monthly').",
-    )
-    current_period_start = _split_dt(label="Period start", help_text="When the first billing period begins (usually today).")
-    trial_ends_at = _split_dt(required=False, label="Trial ends", help_text="Leave blank for no trial. First charge is deferred until this time.")
-
-    class Meta:
-        model = SubscriptionContract
-        fields = [
-            "subscriber_account", "provider_account", "asset",
-            "amount_base_units", "billing_cycle", "trial_ends_at",
-            "current_period_start", "metadata",
-        ]
-        widgets = {"metadata": forms.Textarea(attrs={"rows": 3})}
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        _apply_bento_style(self)
-
-    def save(self, commit=True):
-        from .services import SubscriptionService
-        instance = super().save(commit=False)
-        start = instance.current_period_start
-        cycle = instance.billing_cycle
-        period_end = SubscriptionService._next_period_end(start, cycle)
-        instance.current_period_end = period_end
-        instance.next_billing_at = instance.trial_ends_at if instance.trial_ends_at else period_end
-        if commit:
-            instance.save()
-        return instance
 
 
 # ---------------------------------------------------------------------------

@@ -42,13 +42,6 @@ urlpatterns = [
     path("<int:pk>/staking/stake/", views.staking_stake, name="staking_stake"),
     path("<int:pk>/staking/unstake/", views.staking_unstake, name="staking_unstake"),
 
-    # Subscription
-    path("subscriptions/create/", views.subscription_create, name="subscription_create"),
-    path("<int:pk>/subscription/activate/", views.subscription_activate, name="subscription_activate"),
-    path("<int:pk>/subscription/cancel/", views.subscription_cancel, name="subscription_cancel"),
-    path("<int:pk>/subscription/pause/", views.subscription_pause, name="subscription_pause"),
-    path("<int:pk>/subscription/resume/", views.subscription_resume, name="subscription_resume"),
-
     # Lease
     path("leases/", views.lease_list, name="lease_list"),
     path("leases/create/", views.lease_create, name="lease_create"),

@@ -114,6 +114,15 @@ class SubscriptionPaymentAdmin(admin.ModelAdmin):
     autocomplete_fields = ["invoice", "payer_account", "receiving_account"]
 
 
+@admin.register(SubscriptionAllowance)
+class SubscriptionAllowanceAdmin(admin.ModelAdmin):
+    list_display = ("subscription", "feature", "period_start", "period_end", "included_quantity", "consumed_quantity")
+    list_filter = ("feature",)
+    search_fields = ("subscription__plan__code", "feature__code")
+    readonly_fields = ("period_start", "period_end", "included_quantity", "consumed_quantity")
+    autocomplete_fields = ["subscription", "feature"]
+
+
 @admin.register(SubscriptionUsage)
 class SubscriptionUsageAdmin(admin.ModelAdmin):
     list_display = ("subscription", "feature", "quantity", "unit", "status", "occurred_at")

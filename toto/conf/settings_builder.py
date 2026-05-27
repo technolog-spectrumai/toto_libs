@@ -119,8 +119,8 @@ def _build_beat_schedule() -> dict:
             "task": "toto.kanban.tasks.pay_daily_allowances",
             "schedule": crontab(hour=17, minute=0, day_of_week="1-5"),
         },
-        "process-due-subscriptions": {
-            "task": "toto.instruments.tasks.process_due_subscriptions",
+        "renew-due-subscriptions": {
+            "task": "toto.subscriptions.tasks.renew_due_subscriptions",
             "schedule": crontab(minute=0),  # every hour
         },
     }

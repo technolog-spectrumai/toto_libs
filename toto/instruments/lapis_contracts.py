@@ -39,41 +39,6 @@ def _to_yaml(tree: dict) -> str:
 
 # ── instrument-specific renderers ────────────────────────────────────────────
 
-def render_subscription_lapis(sub) -> str:
-    instr = sub.instrument
-    asset_label = sub.asset.unit_name if sub.asset_id else "Payment Asset"
-    tree = _flow(
-        name=f"Subscription:{instr.reference}",
-        parties=[
-            _party("subscriber", "Subscriber"),
-            _party("provider", "Provider"),
-        ],
-        assets=[_asset("payment", asset_label)],
-        steps=[
-            _step("draft", "start", "Subscription created in draft status", next="activate"),
-            _step("activate", "condition", "Status is draft?",
-                  description="Only draft subscriptions can be activated",
-                  then="set_active", **{"else": "stop_invalid_status"}),
-            _step("set_active", "state", "Set status = active", next="stop_activated"),
-            _step("stop_activated", "stop", "Subscription is now active"),
-            _step("stop_invalid_status", "stop", "Cannot activate — status is not draft"),
-            _step("billing_trigger", "start", "Monthly billing cycle triggered", next="check_active"),
-            _step("check_active", "condition", "Subscription is active?",
-                  then="make_payment", **{"else": "stop_not_billable"}),
-            _step("make_payment", "payment", f"Bill subscriber ({sub.amount_base_units} base units per {sub.billing_cycle})",
-                  **{"from": "subscriber", "to": "provider", "asset": "payment",
-                     "amount_base_units": sub.amount_base_units, "next": "record_billing"}),
-            _step("record_billing", "record", "Log billing event", next="stop_billed"),
-            _step("stop_billed", "stop", "Period billed successfully"),
-            _step("stop_not_billable", "stop", "Cannot bill — subscription not active"),
-            _step("cancel_trigger", "start", "Cancellation requested", next="set_cancelled"),
-            _step("set_cancelled", "state", "Set status = cancelled", next="stop_cancelled"),
-            _step("stop_cancelled", "stop", "Subscription cancelled"),
-        ],
-    )
-    return _to_yaml(tree)
-
-
 def render_lease_lapis(lease) -> str:
     instr = lease.instrument
     payment_label = lease.payment_asset.unit_name if lease.payment_asset_id else "Payment Asset"
@@ -362,7 +327,6 @@ def render_revenue_share_lapis(rs) -> str:
 # ── subtype resolution ────────────────────────────────────────────────────────
 
 _RENDERERS = {
-    "subscription": render_subscription_lapis,
     "lease": render_lease_lapis,
     "amortization": render_amortization_lapis,
     "vesting": render_vesting_lapis,
@@ -378,7 +342,6 @@ def _get_subtype(instrument):
     from toto.instruments import models as _m
 
     _model_map = {
-        "subscription": _m.SubscriptionContract,
         "lease": _m.LeaseContract,
         "amortization": _m.AmortizationContract,
         "vesting": _m.VestingContract,
@@ -404,17 +367,6 @@ def build_obligation_memory_for_instrument(instrument) -> list[dict]:
     sub = _get_subtype(instrument)
     if not sub:
         return []
-
-    if t == "subscription":
-        return [{
-            "role": "recurring_payment",
-            "debtor_account_id": sub.subscriber_account_id,
-            "creditor_account_id": sub.provider_account_id,
-            "asset_id": sub.asset_id,
-            "amount_base_units": sub.amount_base_units,
-            "billing_cycle": sub.billing_cycle,
-            "note": f"Subscriber owes {sub.amount_base_units} base units per {sub.billing_cycle}.",
-        }]
 
     if t == "lease":
         return [{

@@ -14,12 +14,10 @@ from toto.instruments.models import (
     RevenueShareContract,
     RevenueShareRecipient,
     StakingPosition,
-    SubscriptionContract,
     VestingContract,
 )
 
 _DEMO_TYPES = [
-    "subscription",
     "lease",
     "amortization",
     "vesting",
@@ -145,26 +143,6 @@ class Command(IngressCommand):
         staking = accounts["instr-staking"]
 
         instruments = {}
-
-        # ── subscription ─────────────────────────────────────────────────
-        instr, _ = FinancialInstrument.objects.get_or_create(
-            reference="demo-subscription-001",
-            defaults={"instrument_type": "subscription"},
-        )
-        SubscriptionContract.objects.get_or_create(
-            instrument=instr,
-            defaults=dict(
-                subscriber_account=alice,
-                provider_account=bob,
-                asset=idemo,
-                amount_base_units=1000,
-                billing_cycle="monthly",
-                current_period_start=now,
-                current_period_end=now + timedelta(days=30),
-                next_billing_at=now + timedelta(days=30),
-            ),
-        )
-        instruments["subscription"] = instr
 
         # ── lease ────────────────────────────────────────────────────────
         instr, _ = FinancialInstrument.objects.get_or_create(

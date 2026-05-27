@@ -23,7 +23,6 @@ from .forms import (
     RevenueShareContractForm,
     RevenueShareRecipientInlineForm,
     StakingPositionForm,
-    SubscriptionContractForm,
     VestingContractForm,
 )
 from .models import (
@@ -38,10 +37,9 @@ from .models import (
     OptionContract,
     RevenueShareRecipient,
     StakingPosition,
-    SubscriptionContract,
 )
 from .queries import dashboard_counts, list_instruments
-from .services import AmortizationService, EscrowService, ForwardService, LeaseService, OptionService, StakingService, SubscriptionService
+from .services import AmortizationService, EscrowService, ForwardService, LeaseService, OptionService, StakingService
 
 
 def instruments_render(request, template_name, context):
@@ -376,99 +374,6 @@ def staking_unstake(request, pk):
     try:
         StakingService.unstake(stk)
         messages.success(request, "Assets unstaked.")
-    except ValidationError as exc:
-        messages.error(request, "; ".join(exc.messages))
-    return redirect("instruments:instrument_detail", pk=pk)
-
-
-# ── Subscription ──────────────────────────────────────────────────────────────
-
-@login_required
-def subscription_create(request):
-    if request.method == "POST":
-        form = SubscriptionContractForm(request.POST)
-        if form.is_valid():
-            instrument = _create_instrument_and_contract(form, InstrumentType.SUBSCRIPTION, request.user)
-            messages.success(request, "Subscription created.")
-            return redirect("instruments:instrument_detail", pk=instrument.pk)
-    else:
-        form = SubscriptionContractForm()
-    return instruments_render(request, "instruments/subscription_form.html", {"form": form})
-
-
-@require_POST
-@login_required
-def subscription_activate(request, pk):
-    instrument = get_object_or_404(
-        FinancialInstrument.objects.select_related("subscription_contract__asset"),
-        pk=pk,
-    )
-    sub = getattr(instrument, "subscription_contract", None)
-    if not sub:
-        messages.error(request, "No subscription contract attached.")
-        return redirect("instruments:instrument_detail", pk=pk)
-    try:
-        SubscriptionService.activate(sub)
-        messages.success(request, "Subscription activated.")
-    except ValidationError as exc:
-        messages.error(request, "; ".join(exc.messages))
-    return redirect("instruments:instrument_detail", pk=pk)
-
-
-@require_POST
-@login_required
-def subscription_cancel(request, pk):
-    instrument = get_object_or_404(
-        FinancialInstrument.objects.select_related("subscription_contract"),
-        pk=pk,
-    )
-    sub = getattr(instrument, "subscription_contract", None)
-    if not sub:
-        messages.error(request, "No subscription contract attached.")
-        return redirect("instruments:instrument_detail", pk=pk)
-    at_period_end = request.POST.get("at_period_end", "1") != "0"
-    try:
-        SubscriptionService.cancel(sub, at_period_end=at_period_end)
-        msg = "Subscription will cancel at period end." if at_period_end else "Subscription cancelled immediately."
-        messages.success(request, msg)
-    except ValidationError as exc:
-        messages.error(request, "; ".join(exc.messages))
-    return redirect("instruments:instrument_detail", pk=pk)
-
-
-@require_POST
-@login_required
-def subscription_pause(request, pk):
-    instrument = get_object_or_404(
-        FinancialInstrument.objects.select_related("subscription_contract"),
-        pk=pk,
-    )
-    sub = getattr(instrument, "subscription_contract", None)
-    if not sub:
-        messages.error(request, "No subscription contract attached.")
-        return redirect("instruments:instrument_detail", pk=pk)
-    try:
-        SubscriptionService.pause(sub)
-        messages.success(request, "Subscription paused.")
-    except ValidationError as exc:
-        messages.error(request, "; ".join(exc.messages))
-    return redirect("instruments:instrument_detail", pk=pk)
-
-
-@require_POST
-@login_required
-def subscription_resume(request, pk):
-    instrument = get_object_or_404(
-        FinancialInstrument.objects.select_related("subscription_contract"),
-        pk=pk,
-    )
-    sub = getattr(instrument, "subscription_contract", None)
-    if not sub:
-        messages.error(request, "No subscription contract attached.")
-        return redirect("instruments:instrument_detail", pk=pk)
-    try:
-        SubscriptionService.resume(sub)
-        messages.success(request, "Subscription resumed.")
     except ValidationError as exc:
         messages.error(request, "; ".join(exc.messages))
     return redirect("instruments:instrument_detail", pk=pk)

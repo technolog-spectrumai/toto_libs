@@ -73,15 +73,10 @@ def period_end_for(start, interval: str, interval_count: int = 1):
 
 
 def _event(community, kind, *, actor=None, subscription=None, target=None, metadata=None):
-    event = SubscriptionEvent.objects.create(
-        community=community,
-        kind=kind,
-        actor=actor,
-        subscription=subscription,
-        target=target,
-        metadata=metadata or {},
-    )
-    return event
+    kwargs = dict(community=community, kind=kind, actor=actor, subscription=subscription, metadata=metadata or {})
+    if target is not None:
+        kwargs["target"] = target
+    return SubscriptionEvent.objects.create(**kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -170,7 +165,7 @@ def create_subscription(
         trial_ends_at = starts_at + timedelta(days=plan.trial_days)
         status = Subscription.Status.TRIALING
 
-    subscription = Subscription.objects.create(
+    create_kwargs = dict(
         customer=customer,
         plan=plan,
         price=price,
@@ -179,8 +174,10 @@ def create_subscription(
         current_period_start=period_start,
         current_period_end=period_end,
         trial_ends_at=trial_ends_at,
-        source=source,
     )
+    if source is not None:
+        create_kwargs["source"] = source
+    subscription = Subscription.objects.create(**create_kwargs)
     grant_entitlements(subscription)
     reset_allowances(subscription)
     _event(plan.community, SubscriptionEvent.Kind.SUBSCRIPTION_CREATED, actor=actor, subscription=subscription)
@@ -402,16 +399,18 @@ def record_usage(
         else:
             allowance.consumed_quantity += quantity
             allowance.save(update_fields=["consumed_quantity", "updated_at"])
-    usage = SubscriptionUsage.objects.create(
+    usage_kwargs = dict(
         subscription=subscription,
         feature=feature,
         allowance=allowance,
         quantity=quantity,
         unit=unit or feature.unit,
         status=status,
-        source=source,
         note=note,
     )
+    if source is not None:
+        usage_kwargs["source"] = source
+    usage = SubscriptionUsage.objects.create(**usage_kwargs)
     _event(subscription.plan.community, SubscriptionEvent.Kind.USAGE_RECORDED, subscription=subscription, target=usage)
     return usage
 

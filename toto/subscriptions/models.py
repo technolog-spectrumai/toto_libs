@@ -208,7 +208,7 @@ class Subscription(TimestampedModel):
     ended_at = models.DateTimeField(null=True, blank=True)
 
     source_content_type = models.ForeignKey(ContentType, on_delete=models.SET_NULL, null=True, blank=True, related_name="subscription_sources")
-    source_object_id = models.CharField(max_length=64, blank=True)
+    source_object_id = models.CharField(max_length=64, blank=True, default="")
     source = GenericForeignKey("source_content_type", "source_object_id")
 
     class Meta:
@@ -311,7 +311,7 @@ class SubscriptionUsage(TimestampedModel):
     note = models.TextField(blank=True)
 
     source_content_type = models.ForeignKey(ContentType, on_delete=models.SET_NULL, null=True, blank=True, related_name="subscription_usage_sources")
-    source_object_id = models.CharField(max_length=64, blank=True)
+    source_object_id = models.CharField(max_length=64, blank=True, default="")
     source = GenericForeignKey("source_content_type", "source_object_id")
 
     class Meta:
@@ -474,7 +474,7 @@ class SubscriptionEvent(TimestampedModel):
     subscription = models.ForeignKey(Subscription, on_delete=models.SET_NULL, null=True, blank=True, related_name="events")
 
     target_content_type = models.ForeignKey(ContentType, on_delete=models.SET_NULL, null=True, blank=True, related_name="subscription_event_targets")
-    target_object_id = models.CharField(max_length=64, blank=True)
+    target_object_id = models.CharField(max_length=64, blank=True, default="")
     target = GenericForeignKey("target_content_type", "target_object_id")
 
     class Meta:
