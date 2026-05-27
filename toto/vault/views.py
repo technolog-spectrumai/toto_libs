@@ -133,10 +133,28 @@ class PublicFileListView(TemplateView):
         if bucket_slug:
             file_qs = file_qs.filter(bucket__slug=bucket_slug)
 
-        dir_gateway_map = {
-            gw.directory_id: reverse("vault:gateway_page", kwargs={"dir_pk": gw.directory_id})
-            for gw in FileGateway.objects.only("directory_id")
-        }
+        _gw_direct = {gw.directory_id for gw in FileGateway.objects.only("directory_id")}
+        _dirs_by_pk = {d.pk: d for d in accessible_dirs}
+
+        def _find_gateway_dir(dir_pk):
+            node_pk, seen = dir_pk, set()
+            while node_pk is not None and node_pk not in seen:
+                seen.add(node_pk)
+                if node_pk in _gw_direct:
+                    return node_pk
+                node = _dirs_by_pk.get(node_pk)
+                if node is None:
+                    break
+                node_pk = node.parent_id
+            return None
+
+        dir_gateway_map = {}
+        for _d in accessible_dirs:
+            _gw_pk = _find_gateway_dir(_d.pk)
+            if _gw_pk is None:
+                continue
+            _gw_url = reverse("vault:gateway_page", kwargs={"dir_pk": _gw_pk})
+            dir_gateway_map[_d.pk] = _gw_url if _gw_pk == _d.pk else f"{_gw_url}?target_dir={_d.pk}"
 
         flat_items = self._build_flat_items(accessible_dirs, list(file_qs), dir_gateway_map)
 
@@ -233,10 +251,20 @@ class FileGatewayPageView(LoginRequiredMixin, DetailView):
                 node = dirs_by_pk.get(node.parent_id) if node.parent_id else None
             return "/".join(reversed(parts))
 
-        context["target_dir_path"] = get_full_path(gateway.directory)
+        target_dir = gateway.directory
+        target_dir_id_str = self.request.GET.get("target_dir", "").strip()
+        if target_dir_id_str:
+            try:
+                td = VaultDirectory.objects.get(pk=int(target_dir_id_str), bucket=gateway.bucket)
+                target_dir = td
+            except (VaultDirectory.DoesNotExist, ValueError):
+                pass
+
+        context["target_dir_path"] = get_full_path(target_dir)
+        context["target_dir_id"] = target_dir.pk
 
         recent = VaultFile.objects.filter(
-            directory=gateway.directory, owner=user
+            directory=target_dir, owner=user
         ).select_related("directory").order_by("-uploaded_at")[:10]
 
         context["recent_uploads_list"] = [
@@ -276,7 +304,14 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
                 "error": f"File too large ({uploaded_file.size / (1024*1024):.1f} MB). Max is {gateway.max_file_size / 1024:.1f} MB."
             }, status=400)
 
-        directory = gateway.directory
+        target_directory_id = request.POST.get("target_directory_id", "").strip()
+        if target_directory_id:
+            try:
+                directory = VaultDirectory.objects.get(pk=int(target_directory_id), bucket=gateway.bucket)
+            except (VaultDirectory.DoesNotExist, ValueError):
+                return JsonResponse({"error": "Invalid target directory."}, status=400)
+        else:
+            directory = gateway.directory
 
         mime, _ = mimetypes.guess_type(uploaded_file.name)
         auto_file_type = VaultFile.detect_type(mime)

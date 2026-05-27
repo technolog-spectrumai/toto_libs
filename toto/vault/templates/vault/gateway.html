@@ -40,6 +40,8 @@
         const formData = new FormData();
         formData.append('file', file);
         if (this.manualFileType) formData.append('file_type', this.manualFileType);
+        const _targetDirId = '{{ target_dir_id|default:"" }}';
+        if (_targetDirId) formData.append('target_directory_id', _targetDirId);
 
         try {
           const response = await fetch("{% url 'vault:gateway_upload' gateway.directory_id %}", {
