@@ -374,3 +374,213 @@ class CopyFilesToBucketTest(TestCase):
             response,
             reverse("vault:bucket_metrics", kwargs={"bucket_slug": self.dst_bucket.slug}),
         )
+
+
+class BucketCopyAjaxViewTest(TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.temp_media = tempfile.mkdtemp()
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.temp_media, ignore_errors=True)
+        super().tearDownClass()
+
+    def setUp(self):
+        self._override = override_settings(MEDIA_ROOT=self.temp_media)
+        self._override.enable()
+
+        Platform.objects.create(site_name="Test", author="Test", publication_year=2024, active=True)
+        self.alice = User.objects.create_user("alice", password="pass")
+        self.bob = User.objects.create_user("bob", password="pass")
+        self.client = Client()
+
+        self.src_bucket = Bucket.objects.create(name="Source", slug="source-ajax", owner=self.alice)
+        self.dst_bucket = Bucket.objects.create(name="Dest", slug="dest-ajax", owner=self.alice)
+        self.bob_bucket = Bucket.objects.create(name="Bob", slug="bob-ajax", owner=self.bob)
+
+        self.src_file = VaultFile.objects.create(
+            owner=self.alice,
+            title="ajax file",
+            key="ajax-file",
+            file=SimpleUploadedFile("ajax_file.txt", b"ajax content"),
+            file_type="text",
+            bucket=self.src_bucket,
+        )
+
+    def tearDown(self):
+        self._override.disable()
+
+    def _ajax_url(self, slug):
+        return reverse("vault:copy_files_ajax", kwargs={"source_slug": slug})
+
+    def _post(self, file_ids, dest_bucket_id):
+        return self.client.post(
+            self._ajax_url(self.src_bucket.slug),
+            {"files": file_ids, "destination_bucket": dest_bucket_id},
+        )
+
+    def test_requires_login(self):
+        response = self._post([self.src_file.pk], self.dst_bucket.pk)
+        self.assertNotEqual(response.status_code, 200)
+
+    def test_successful_copy_returns_ok_json(self):
+        self.client.login(username="alice", password="pass")
+        response = self._post([self.src_file.pk], self.dst_bucket.pk)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["count"], 1)
+        self.assertEqual(data["dest_slug"], self.dst_bucket.slug)
+        self.assertIn("dest_url", data)
+
+    def test_copy_creates_file_in_destination(self):
+        self.client.login(username="alice", password="pass")
+        self._post([self.src_file.pk], self.dst_bucket.pk)
+        self.assertTrue(VaultFile.objects.filter(bucket=self.dst_bucket, title="ajax file").exists())
+
+    def test_source_file_unchanged(self):
+        self.client.login(username="alice", password="pass")
+        self._post([self.src_file.pk], self.dst_bucket.pk)
+        self.assertTrue(VaultFile.objects.filter(pk=self.src_file.pk, bucket=self.src_bucket).exists())
+
+    def test_empty_files_returns_error(self):
+        self.client.login(username="alice", password="pass")
+        response = self._post([], self.dst_bucket.pk)
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json()["ok"])
+
+    def test_missing_destination_returns_error(self):
+        self.client.login(username="alice", password="pass")
+        response = self.client.post(
+            self._ajax_url(self.src_bucket.slug),
+            {"files": [self.src_file.pk]},
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json()["ok"])
+
+    def test_cannot_copy_to_other_users_bucket(self):
+        self.client.login(username="alice", password="pass")
+        response = self._post([self.src_file.pk], self.bob_bucket.pk)
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json()["ok"])
+        self.assertFalse(VaultFile.objects.filter(bucket=self.bob_bucket).exists())
+
+    def test_cannot_copy_from_other_users_bucket(self):
+        self.client.login(username="alice", password="pass")
+        response = self.client.post(
+            self._ajax_url(self.bob_bucket.slug),
+            {"files": [self.src_file.pk], "destination_bucket": self.dst_bucket.pk},
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_duplicate_key_renamed(self):
+        VaultFile.objects.create(
+            owner=self.alice,
+            title="existing",
+            key="ajax-file",
+            file=SimpleUploadedFile("existing.txt", b"x"),
+            file_type="text",
+            bucket=self.dst_bucket,
+        )
+        self.client.login(username="alice", password="pass")
+        self._post([self.src_file.pk], self.dst_bucket.pk)
+        keys = list(VaultFile.objects.filter(bucket=self.dst_bucket).values_list("key", flat=True))
+        self.assertEqual(len(keys), 2)
+        self.assertIn("ajax-file", keys)
+        self.assertIn("ajax-file-1", keys)
+
+    def test_dest_url_points_to_correct_bucket(self):
+        self.client.login(username="alice", password="pass")
+        response = self._post([self.src_file.pk], self.dst_bucket.pk)
+        data = response.json()
+        expected_url = reverse("vault:bucket_metrics", kwargs={"bucket_slug": self.dst_bucket.slug})
+        self.assertEqual(data["dest_url"], expected_url)
+
+
+class BucketMetricsViewContextTest(TestCase):
+
+    def setUp(self):
+        Platform.objects.create(site_name="Test", author="Test", publication_year=2024, active=True)
+        self.alice = User.objects.create_user("alice", password="pass")
+        self.bob = User.objects.create_user("bob", password="pass")
+        self.client = Client()
+
+        self.bucket = Bucket.objects.create(name="Main", slug="main-bucket", owner=self.alice)
+        self.other_bucket = Bucket.objects.create(name="Other", slug="other-bucket", owner=self.alice)
+        self.bob_bucket = Bucket.objects.create(name="BobBucket", slug="bob-main", owner=self.bob)
+
+    def _url(self, slug=None):
+        return reverse("vault:bucket_metrics", kwargs={"bucket_slug": slug or self.bucket.slug})
+
+    def test_requires_login(self):
+        response = self.client.get(self._url())
+        self.assertNotEqual(response.status_code, 200)
+
+    def test_page_loads(self):
+        self.client.login(username="alice", password="pass")
+        response = self.client.get(self._url())
+        self.assertEqual(response.status_code, 200)
+
+    def test_dest_buckets_excludes_current(self):
+        self.client.login(username="alice", password="pass")
+        response = self.client.get(self._url())
+        dest_buckets = response.context["dest_buckets"]
+        dest_pks = [b.pk for b in dest_buckets]
+        self.assertNotIn(self.bucket.pk, dest_pks)
+        self.assertIn(self.other_bucket.pk, dest_pks)
+
+    def test_dest_buckets_excludes_other_users(self):
+        self.client.login(username="alice", password="pass")
+        response = self.client.get(self._url())
+        dest_buckets = response.context["dest_buckets"]
+        dest_pks = [b.pk for b in dest_buckets]
+        self.assertNotIn(self.bob_bucket.pk, dest_pks)
+
+    def test_copy_files_data_contains_only_own_files(self):
+        import tempfile, shutil
+        from django.test import override_settings
+        temp_media = tempfile.mkdtemp()
+        try:
+            with override_settings(MEDIA_ROOT=temp_media):
+                VaultFile.objects.create(
+                    owner=self.alice, title="Alice File", key="alice-file",
+                    file=SimpleUploadedFile("a.txt", b"a"), file_type="text",
+                    bucket=self.bucket,
+                )
+                VaultFile.objects.create(
+                    owner=self.bob, title="Bob File", key="bob-file",
+                    file=SimpleUploadedFile("b.txt", b"b"), file_type="text",
+                    bucket=self.bucket,
+                )
+                self.client.login(username="alice", password="pass")
+                response = self.client.get(self._url())
+                files_data = response.context["copy_files_data"]
+                titles = [f["title"] for f in files_data]
+                self.assertIn("Alice File", titles)
+                self.assertNotIn("Bob File", titles)
+        finally:
+            shutil.rmtree(temp_media, ignore_errors=True)
+
+    def test_copy_files_data_structure(self):
+        import tempfile, shutil
+        from django.test import override_settings
+        temp_media = tempfile.mkdtemp()
+        try:
+            with override_settings(MEDIA_ROOT=temp_media):
+                VaultFile.objects.create(
+                    owner=self.alice, title="Structured File", key="struct-file",
+                    file=SimpleUploadedFile("s.txt", b"s"), file_type="text",
+                    bucket=self.bucket,
+                )
+                self.client.login(username="alice", password="pass")
+                response = self.client.get(self._url())
+                files_data = response.context["copy_files_data"]
+                self.assertGreater(len(files_data), 0)
+                entry = files_data[0]
+                for key in ("id", "title", "file_type", "key"):
+                    self.assertIn(key, entry)
+        finally:
+            shutil.rmtree(temp_media, ignore_errors=True)

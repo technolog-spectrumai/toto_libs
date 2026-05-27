@@ -426,6 +426,16 @@ class BucketMetricsView(LoginRequiredMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         bucket = get_object_or_404(Bucket, slug=self.kwargs["bucket_slug"])
+        copy_files_qs = VaultFile.objects.filter(
+            owner=self.request.user, bucket=bucket
+        ).order_by("title")
+        context["copy_files_data"] = [
+            {"id": str(f.pk), "title": f.title, "file_type": f.file_type, "key": f.key or ""}
+            for f in copy_files_qs
+        ]
+        context["dest_buckets"] = list(
+            Bucket.objects.filter(owner=self.request.user).exclude(pk=bucket.pk).order_by("name")
+        )
 
         total_files = VaultFile.objects.filter(bucket=bucket).count()
         total_dirs = VaultDirectory.objects.filter(bucket=bucket).count()
@@ -652,6 +662,72 @@ class CopyFilesToBucketView(LoginRequiredMixin, View):
             f"Copied {count} file{'s' if count != 1 else ''} to \"{destination_bucket.name}\".",
         )
         return redirect("vault:bucket_metrics", bucket_slug=destination_bucket.slug)
+
+
+class BucketCopyAjaxView(LoginRequiredMixin, View):
+    """
+    JSON endpoint used by the inline copy modal on the bucket metrics page.
+    Accepts POST: files[] (IDs) + destination_bucket (ID).
+    Returns {"ok": true, "count": N, "dest_slug": "...", "dest_name": "...", "dest_url": "..."}
+    or {"ok": false, "error": "..."}.
+    """
+    def post(self, request, source_slug):
+        source_bucket = get_object_or_404(Bucket, slug=source_slug, owner=request.user)
+
+        file_ids = request.POST.getlist("files")
+        dest_bucket_id = request.POST.get("destination_bucket", "").strip()
+
+        if not file_ids:
+            return JsonResponse({"ok": False, "error": "Select at least one file."}, status=400)
+        if not dest_bucket_id:
+            return JsonResponse({"ok": False, "error": "Choose a destination bucket."}, status=400)
+
+        try:
+            destination_bucket = Bucket.objects.get(pk=dest_bucket_id, owner=request.user)
+        except Bucket.DoesNotExist:
+            return JsonResponse({"ok": False, "error": "Invalid destination bucket."}, status=400)
+
+        if destination_bucket.pk == source_bucket.pk:
+            return JsonResponse({"ok": False, "error": "Source and destination must differ."}, status=400)
+
+        selected_files = list(
+            VaultFile.objects.filter(pk__in=file_ids, bucket=source_bucket, owner=request.user)
+        )
+        if len(selected_files) != len(file_ids):
+            return JsonResponse({"ok": False, "error": "Some selected files are invalid."}, status=400)
+
+        with transaction.atomic():
+            for source_file in selected_files:
+                unique_key = _unique_copy_key(source_file, destination_bucket)
+                source_file.file.open("rb")
+                try:
+                    content = source_file.file.read()
+                finally:
+                    source_file.file.close()
+                new_file = VaultFile(
+                    owner=source_file.owner,
+                    title=source_file.title,
+                    key=unique_key,
+                    content_hash=source_file.content_hash,
+                    file_type=source_file.file_type,
+                    is_encrypted=source_file.is_encrypted,
+                    is_public=source_file.is_public,
+                    notes=source_file.notes,
+                    file_size_bytes=source_file.file_size_bytes,
+                    bucket=destination_bucket,
+                )
+                orig_name = os.path.basename(source_file.file.name)
+                new_file.file.save(orig_name, DjangoContentFile(content), save=False)
+                new_file.save()
+
+        count = len(selected_files)
+        return JsonResponse({
+            "ok": True,
+            "count": count,
+            "dest_slug": destination_bucket.slug,
+            "dest_name": destination_bucket.name,
+            "dest_url": reverse("vault:bucket_metrics", kwargs={"bucket_slug": destination_bucket.slug}),
+        })
 
 
 # ============================================================
