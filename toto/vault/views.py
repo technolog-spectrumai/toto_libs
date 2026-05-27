@@ -797,6 +797,18 @@ class CopyFilesToBucketView(LoginRequiredMixin, View):
         return redirect("vault:bucket_metrics", bucket_slug=destination_bucket.slug)
 
 
+class RenameFileView(LoginRequiredMixin, View):
+    def post(self, request):
+        file_pk = request.POST.get("file_pk", "").strip()
+        new_title = request.POST.get("title", "").strip()
+        if not file_pk or not new_title:
+            return JsonResponse({"ok": False, "error": "Missing required fields."}, status=400)
+        vault_file = get_object_or_404(VaultFile, pk=file_pk, owner=request.user)
+        vault_file.title = new_title
+        vault_file.save(update_fields=["title"])
+        return JsonResponse({"ok": True, "title": new_title})
+
+
 class BucketCopyAjaxView(LoginRequiredMixin, View):
     """
     JSON endpoint used by the inline copy modal on the bucket metrics page.

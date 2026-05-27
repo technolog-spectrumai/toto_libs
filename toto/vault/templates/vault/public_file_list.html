@@ -7,6 +7,9 @@
 {% block start_script %}
 <style>[x-cloak] { display: none !important; }</style>
 <script>
+  const _renameUrl    = "{% url 'vault:rename_file' %}";
+  const _currentUser  = "{{ user.username|escapejs }}";
+
   document.addEventListener('alpine:init', () => {
     Alpine.data('vaultTree', () => {
       const raw = document.getElementById('vault-items');
@@ -19,6 +22,22 @@
         items,
         dirMap,
         openDirs: {},
+        currentUser: _currentUser,
+
+        // rename state
+        renameModal: false,
+        renameFileId: null,
+        renameOldTitle: '',
+        renameNewTitle: '',
+        renameError: '',
+        renameLoading: false,
+
+        init() {
+          this.$watch('renameModal', open => {
+            if (open) this.$nextTick(() => this.$refs.renameInput?.select());
+          });
+        },
+
         toggle(id) {
           if (this.openDirs[id]) {
             this.openDirs[id] = false;
@@ -43,6 +62,41 @@
           return this.isVisible(parent);
         },
         isOpen(id) { return !!this.openDirs[id]; },
+
+        openRename(item) {
+          this.renameFileId  = item.id;
+          this.renameOldTitle = item.title;
+          this.renameNewTitle = item.title;
+          this.renameError   = '';
+          this.renameModal   = true;
+        },
+        async submitRename() {
+          const title = this.renameNewTitle.trim();
+          if (!title) { this.renameError = 'Name cannot be empty.'; return; }
+          if (title === this.renameOldTitle) { this.renameModal = false; return; }
+          this.renameLoading = true;
+          this.renameError   = '';
+          try {
+            const csrf = document.cookie.split(';')
+              .find(c => c.trim().startsWith('csrftoken='))?.split('=')[1] ?? '';
+            const res  = await fetch(_renameUrl, {
+              method: 'POST',
+              headers: { 'X-CSRFToken': csrf, 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({ file_pk: this.renameFileId, title }),
+            });
+            const data = await res.json();
+            if (data.ok) {
+              const item = this.items.find(i => i.id === this.renameFileId);
+              if (item) item.title = data.title;
+              this.renameModal = false;
+            } else {
+              this.renameError = data.error || 'Rename failed.';
+            }
+          } catch {
+            this.renameError = 'Network error. Please try again.';
+          }
+          this.renameLoading = false;
+        },
       };
     });
   });
@@ -225,7 +279,7 @@
                   :class="darkMode
                     ? 'border-b border-accent-1/20 hover:bg-bubble-bg-dark/50'
                     : 'border-b border-accent-2/20 hover:bg-bubble-bg-light/50'"
-                  class="flex items-center gap-3 py-2.5 pr-4 text-sm transition-colors duration-150">
+                  class="group flex items-center gap-3 py-2.5 pr-4 text-sm transition-colors duration-150">
 
                   <i class="fa-regular fa-file w-3 shrink-0 text-xs opacity-30"></i>
 
@@ -249,6 +303,15 @@
                      class="inline-flex items-center gap-1 text-xs font-semibold hover:underline underline-offset-2 shrink-0">
                     <i class="fa-solid fa-download"></i>
                   </a>
+
+                  <!-- Rename pencil — owner only, revealed on row hover -->
+                  <button x-show="item.owner === currentUser"
+                          @click.stop="openRename(item)"
+                          :class="darkMode ? 'text-accent-dark hover:bg-accent-dark/15' : 'text-accent-light hover:bg-accent-light/15'"
+                          class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
+                          :title="`Rename ${item.title}`">
+                    <i class="fa-solid fa-pencil text-xs"></i>
+                  </button>
                 </div>
               </template>
 
@@ -258,7 +321,83 @@
         </div>
       </template>
 
-    </div>
+      <!-- Rename modal -->
+      <div x-show="renameModal"
+           x-cloak
+           x-transition:enter="transition ease-out duration-150"
+           x-transition:enter-start="opacity-0"
+           x-transition:enter-end="opacity-100"
+           x-transition:leave="transition ease-in duration-100"
+           x-transition:leave-start="opacity-100"
+           x-transition:leave-end="opacity-0"
+           @keydown.escape.window="renameModal = false"
+           class="fixed inset-0 z-50 flex items-center justify-center p-4">
+
+        <!-- Backdrop -->
+        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="renameModal = false"></div>
+
+        <!-- Dialog -->
+        <div :class="darkMode
+                      ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark'
+                      : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+             class="relative z-10 w-full max-w-sm rounded-2xl border p-6 shadow-2xl space-y-5"
+             @click.stop>
+
+          <h2 class="flex items-center gap-2 text-base font-bold">
+            <i class="fa-solid fa-pencil text-sm"
+               :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+            {% trans "Rename file" %}
+          </h2>
+
+          <!-- Current name -->
+          <div>
+            <p class="mb-1 text-xs font-semibold opacity-50">{% trans "Current name" %}</p>
+            <p class="truncate rounded-lg px-3 py-2 text-sm font-mono opacity-60"
+               :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'"
+               x-text="renameOldTitle"></p>
+          </div>
+
+          <!-- New name -->
+          <div>
+            <label class="mb-1 block text-xs font-semibold opacity-60" for="rename-input">
+              {% trans "New name" %}
+            </label>
+            <input id="rename-input"
+                   x-ref="renameInput"
+                   x-model="renameNewTitle"
+                   @keydown.enter.prevent="submitRename"
+                   :class="darkMode
+                     ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark placeholder:text-text-main-dark/30'
+                     : 'bg-bubble-bg-light border-accent-2 text-text-main-light placeholder:text-text-main-light/30'"
+                   class="w-full rounded-xl border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-current/20 transition"
+                   autocomplete="off">
+          </div>
+
+          <!-- Error -->
+          <p x-show="renameError" x-text="renameError" class="text-xs text-red-500 -mt-2"></p>
+
+          <!-- Actions -->
+          <div class="flex gap-3">
+            <button @click="submitRename"
+                    :disabled="renameLoading"
+                    :class="darkMode
+                      ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90'
+                      : 'bg-accent-light text-primary-bg-light hover:opacity-90'"
+                    class="flex-1 rounded-xl px-4 py-2.5 text-sm font-bold transition disabled:opacity-50 disabled:cursor-not-allowed">
+              <span x-show="!renameLoading">{% trans "Rename" %}</span>
+              <span x-show="renameLoading"><i class="fa-solid fa-spinner fa-spin"></i></span>
+            </button>
+            <button @click="renameModal = false"
+                    :class="darkMode ? 'border-accent-1 hover:bg-bubble-bg-dark' : 'border-accent-2 hover:bg-bubble-bg-light'"
+                    class="flex-1 rounded-xl border px-4 py-2.5 text-sm font-semibold transition">
+              {% trans "Cancel" %}
+            </button>
+          </div>
+
+        </div>
+      </div>
+
+    </div><!-- /vaultTree -->
 
   </div>
 </div>
