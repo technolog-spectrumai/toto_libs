@@ -29,6 +29,7 @@
         renameFileId: null,
         renameOldTitle: '',
         renameNewTitle: '',
+        renameFileType: '',
         renameError: '',
         renameLoading: false,
 
@@ -64,16 +65,20 @@
         isOpen(id) { return !!this.openDirs[id]; },
 
         openRename(item) {
-          this.renameFileId  = item.id;
+          this.renameFileId   = item.id;
           this.renameOldTitle = item.title;
           this.renameNewTitle = item.title;
-          this.renameError   = '';
-          this.renameModal   = true;
+          this.renameFileType = item.file_type || '';
+          this.renameError    = '';
+          this.renameModal    = true;
         },
         async submitRename() {
           const title = this.renameNewTitle.trim();
           if (!title) { this.renameError = 'Name cannot be empty.'; return; }
-          if (title === this.renameOldTitle) { this.renameModal = false; return; }
+          const item0 = this.items.find(i => i.id === this.renameFileId);
+          if (title === this.renameOldTitle && this.renameFileType === (item0?.file_type || '')) {
+            this.renameModal = false; return;
+          }
           this.renameLoading = true;
           this.renameError   = '';
           try {
@@ -82,12 +87,12 @@
             const res  = await fetch(_renameUrl, {
               method: 'POST',
               headers: { 'X-CSRFToken': csrf, 'Content-Type': 'application/x-www-form-urlencoded' },
-              body: new URLSearchParams({ file_pk: this.renameFileId, title }),
+              body: new URLSearchParams({ file_pk: this.renameFileId, title, file_type: this.renameFileType }),
             });
             const data = await res.json();
             if (data.ok) {
               const item = this.items.find(i => i.id === this.renameFileId);
-              if (item) item.title = data.title;
+              if (item) { item.title = data.title; item.file_type = data.file_type; }
               this.renameModal = false;
             } else {
               this.renameError = data.error || 'Rename failed.';
@@ -371,6 +376,33 @@
                      : 'bg-bubble-bg-light border-accent-2 text-text-main-light placeholder:text-text-main-light/30'"
                    class="w-full rounded-xl border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-current/20 transition"
                    autocomplete="off">
+          </div>
+
+          <!-- File type -->
+          <div>
+            <label class="mb-1 block text-xs font-semibold opacity-60" for="rename-type">
+              {% trans "File type" %}
+            </label>
+            <select id="rename-type"
+                    x-model="renameFileType"
+                    :class="darkMode
+                      ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
+                      : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+                    class="w-full rounded-xl border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-current/20 transition">
+              <option value="pdf">pdf</option>
+              <option value="image">image</option>
+              <option value="html">html</option>
+              <option value="text">text</option>
+              <option value="json">json</option>
+              <option value="yaml">yaml</option>
+              <option value="xml">xml</option>
+              <option value="latex">latex</option>
+              <option value="bib">bib</option>
+              <option value="csv">csv</option>
+              <option value="svg">svg</option>
+              <option value="audio">audio</option>
+              <option value="video">video</option>
+            </select>
           </div>
 
           <!-- Error -->

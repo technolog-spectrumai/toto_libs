@@ -798,15 +798,24 @@ class CopyFilesToBucketView(LoginRequiredMixin, View):
 
 
 class RenameFileView(LoginRequiredMixin, View):
+    _VALID_TYPES = {k for k, _ in VaultFile.FILE_TYPES}
+
     def post(self, request):
-        file_pk = request.POST.get("file_pk", "").strip()
+        file_pk   = request.POST.get("file_pk", "").strip()
         new_title = request.POST.get("title", "").strip()
+        file_type = request.POST.get("file_type", "").strip()
         if not file_pk or not new_title:
             return JsonResponse({"ok": False, "error": "Missing required fields."}, status=400)
+        if file_type and file_type not in self._VALID_TYPES:
+            return JsonResponse({"ok": False, "error": "Invalid file type."}, status=400)
         vault_file = get_object_or_404(VaultFile, pk=file_pk, owner=request.user)
         vault_file.title = new_title
-        vault_file.save(update_fields=["title"])
-        return JsonResponse({"ok": True, "title": new_title})
+        update_fields = ["title"]
+        if file_type and file_type != vault_file.file_type:
+            vault_file.file_type = file_type
+            update_fields.append("file_type")
+        vault_file.save(update_fields=update_fields)
+        return JsonResponse({"ok": True, "title": vault_file.title, "file_type": vault_file.file_type})
 
 
 class BucketCopyAjaxView(LoginRequiredMixin, View):
