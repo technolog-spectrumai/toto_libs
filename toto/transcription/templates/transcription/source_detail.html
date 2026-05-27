@@ -1,0 +1,72 @@
+{% extends "transcription/base.html" %}
+{% load i18n %}
+{% block transcription_title %}{{ source.title }}{% endblock %}
+{% block transcription_content %}
+<div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+  <div class="space-y-4">
+    {% if access.allowed %}
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="overflow-hidden rounded-2xl border shadow-sm">
+        {% if source.is_video_source %}
+          <video id="transcript-player" controls playsinline preload="metadata" class="aspect-video w-full bg-black" src="{{ source.source_url }}"></video>
+        {% else %}
+          <div class="p-6">
+            <div class="mb-4 flex items-center gap-3">
+              <div :class="darkMode ? 'bg-accent-dark/20' : 'bg-accent-light/15'" class="flex h-12 w-12 items-center justify-center rounded-xl"><i class="fa-solid fa-microphone-lines text-xl" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i></div>
+              <div><h2 class="font-bold">{{ source.title }}</h2><p class="text-xs opacity-55">{% trans "Audio recording" %}</p></div>
+            </div>
+            <audio id="transcript-player" controls preload="metadata" class="w-full" src="{{ source.source_url }}"></audio>
+          </div>
+        {% endif %}
+      </div>
+      <script>
+        const el = document.getElementById("transcript-player");
+        const eventUrl = "{% url 'transcription:source_event_api' collection.slug source.slug %}";
+        const csrf = "{{ csrf_token }}";
+        function postEvent(kind, seconds) { const fd = new FormData(); fd.append("event", kind); fd.append("seconds_played", String(seconds || 0)); fetch(eventUrl, {method:"POST", headers:{"X-CSRFToken": csrf}, body: fd, credentials:"same-origin"}).catch(()=>{}); }
+        if (el) { el.addEventListener("play", () => postEvent("play", 0), {once: true}); setInterval(() => { if (!el.paused && !el.ended) postEvent("play", 15); }, 15000); }
+      </script>
+    {% else %}
+      <div :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'" class="flex flex-col items-center justify-center rounded-2xl border py-16 text-center shadow-sm">
+        <i class="fa-solid fa-lock mb-4 text-4xl opacity-30"></i>
+        <h3 class="text-lg font-bold">{% trans "Access required" %}</h3>
+        <p class="mt-1 max-w-sm text-sm opacity-60">{% trans "This transcript is private or not ready yet." %}</p>
+      </div>
+    {% endif %}
+    <div class="space-y-3">
+      <h1 class="text-xl font-bold leading-snug sm:text-2xl">{{ source.title }}</h1>
+      <div class="flex flex-wrap items-center gap-3 text-sm opacity-60">
+        <a href="{{ collection.get_absolute_url }}" class="hover:underline font-medium">{{ collection.title }}</a><span>·</span><span>{{ source.segments_count }} {% trans "segments" %}</span>
+        {% if source.language %}<span>·</span><span>{{ source.language }}</span>{% endif %}
+        {% if can_manage %}<span>·</span><a href="{{ source.get_manage_url }}" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="font-medium hover:underline"><i class="fa-solid fa-sliders mr-1 text-xs"></i>{% trans "Manage" %}</a>{% endif %}
+      </div>
+      {% if source.description %}<div :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'" class="rounded-xl p-4 text-sm leading-relaxed opacity-80">{{ source.description|linebreaksbr }}</div>{% endif %}
+    </div>
+    {% if access.allowed and source.has_transcript %}
+      <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm">
+        <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <h2 class="font-bold"><i class="fa-solid fa-file-lines mr-2 opacity-60"></i>{% trans "Transcript" %}</h2>
+          <div class="flex flex-wrap gap-2 text-xs">
+            <a href="{% url 'transcription:source_export' collection.slug source.slug 'txt' %}" class="rounded-lg border border-current/20 px-3 py-1.5 font-semibold hover:opacity-80">TXT</a>
+            <a href="{% url 'transcription:source_export' collection.slug source.slug 'srt' %}" class="rounded-lg border border-current/20 px-3 py-1.5 font-semibold hover:opacity-80">SRT</a>
+            <a href="{% url 'transcription:source_export' collection.slug source.slug 'vtt' %}" class="rounded-lg border border-current/20 px-3 py-1.5 font-semibold hover:opacity-80">VTT</a>
+            <a href="{% url 'transcription:source_export' collection.slug source.slug 'json' %}" class="rounded-lg border border-current/20 px-3 py-1.5 font-semibold hover:opacity-80">JSON</a>
+          </div>
+        </div>
+        <div class="space-y-3">
+          {% for segment in source.segments.all %}
+            <div class="grid gap-2 rounded-xl border border-current/10 p-3 text-sm sm:grid-cols-[90px_minmax(0,1fr)]">
+              <button type="button" onclick="document.getElementById('transcript-player').currentTime={{ segment.start_ms }} / 1000; document.getElementById('transcript-player').play();" class="text-left font-mono text-xs opacity-60 hover:opacity-100">{{ segment.start_label }}</button>
+              <p class="leading-6">{% if segment.speaker %}<strong>{{ segment.speaker.label }}:</strong> {% endif %}{{ segment.text }}</p>
+            </div>
+          {% empty %}
+            <p class="text-sm opacity-60">{{ source.transcript_text|linebreaksbr }}</p>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+  </div>
+  {% if related_sources %}
+    <aside class="space-y-3"><h3 class="text-sm font-semibold uppercase tracking-wide opacity-60">{% trans "More from this collection" %}</h3>{% for rs in related_sources %}{% include "transcription/_source_card.html" with source=rs %}{% endfor %}</aside>
+  {% endif %}
+</div>
+{% endblock %}
