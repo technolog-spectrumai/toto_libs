@@ -1,9 +1,76 @@
 {% extends "subscriptions/base.html" %}
 {% load i18n %}
 {% block subscriptions_title %}{% trans "Customers" %}{% endblock %}
+
 {% block subscriptions_content %}
 <div class="space-y-4">
-  <div class="flex justify-between gap-3"><form method="get" class="flex gap-2"><input name="q" value="{{ q }}" placeholder="{% trans 'Search customers…' %}" class="rounded-lg border px-3 py-2 text-sm"><select name="status" class="rounded-lg border px-3 py-2 text-sm"><option value="">{% trans "All" %}</option>{% for val,label in status_choices %}<option value="{{ val }}" {% if status_filter == val %}selected{% endif %}>{{ label }}</option>{% endfor %}</select><button class="rounded-lg border px-4 py-2 text-sm">{% trans "Filter" %}</button></form><a href="{% url 'subscriptions:customer_create' %}" class="rounded-lg border px-4 py-2 text-sm font-semibold">{% trans "New Customer" %}</a></div>
-  <div class="rounded-lg border shadow-sm overflow-hidden"><table class="w-full text-sm"><thead><tr class="border-b"><th class="p-3 text-left">{% trans "Customer" %}</th><th class="p-3 text-left">{% trans "Community" %}</th><th class="p-3 text-left">{% trans "Billing account" %}</th><th class="p-3 text-left">{% trans "Status" %}</th></tr></thead><tbody>{% for c in customers %}<tr class="border-b"><td class="p-3"><a class="underline" href="{% url 'subscriptions:customer_detail' c.uid %}">{{ c }}</a></td><td class="p-3">{{ c.community }}</td><td class="p-3"><code>{{ c.billing_account.code }}</code></td><td class="p-3">{{ c.get_status_display }}</td></tr>{% empty %}<tr><td class="p-6 text-center opacity-60" colspan="4">{% trans "No customers." %}</td></tr>{% endfor %}</tbody></table></div>
+
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <form method="get" class="flex flex-wrap gap-2">
+      <div class="relative">
+        <i class="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm opacity-50"></i>
+        <input name="q" value="{{ q }}" type="search"
+               placeholder="{% trans 'Search customers…' %}"
+               :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+               class="rounded-lg border py-2 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-current/20">
+      </div>
+      <select name="status"
+              :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+              class="rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+        <option value="">{% trans "All status" %}</option>
+        {% for val, label in status_choices %}
+          <option value="{{ val }}" {% if status_filter == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit"
+              :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+              class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-85">
+        <i class="fa-solid fa-filter"></i>{% trans "Filter" %}
+      </button>
+    </form>
+    <a href="{% url 'subscriptions:customer_create' %}"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+       class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+      <i class="fa-solid fa-plus"></i>{% trans "New Customer" %}
+    </a>
+  </div>
+
+  <div
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="overflow-hidden rounded-lg border shadow-sm">
+    <table class="w-full text-sm">
+      <thead>
+        <tr :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="border-b">
+          <th class="p-3 text-left font-semibold">{% trans "Customer" %}</th>
+          <th class="p-3 text-left font-semibold">{% trans "Community" %}</th>
+          <th class="p-3 text-left font-semibold">{% trans "Billing account" %}</th>
+          <th class="p-3 text-left font-semibold">{% trans "Status" %}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in customers %}
+          <tr :class="darkMode ? 'border-accent-1 hover:bg-primary-bg-dark' : 'border-accent-2 hover:bg-primary-bg-light'" class="border-b transition">
+            <td class="p-3">
+              <a :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                 class="font-medium underline-offset-2 hover:underline"
+                 href="{% url 'subscriptions:customer_detail' c.uid %}">{{ c }}</a>
+            </td>
+            <td class="p-3 opacity-80">{{ c.community }}</td>
+            <td class="p-3"><code class="text-xs opacity-70">{{ c.billing_account.code }}</code></td>
+            <td class="p-3">
+              <span class="rounded border border-current/20 px-2 py-0.5 text-xs">{{ c.get_status_display }}</span>
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="4" class="p-8 text-center opacity-55">
+              <i class="fa-solid fa-users mb-2 block text-2xl"></i>
+              {% trans "No customers found." %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
 {% endblock %}

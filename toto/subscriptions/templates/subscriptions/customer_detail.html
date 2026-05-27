@@ -1,12 +1,56 @@
 {% extends "subscriptions/base.html" %}
 {% load i18n %}
 {% block subscriptions_title %}{{ customer }}{% endblock %}
+
 {% block subscriptions_content %}
 <div class="space-y-6">
-  <div class="rounded-lg border p-6"><h2 class="text-2xl font-bold">{{ customer }}</h2><p class="text-sm opacity-70">{{ customer.community }} · {{ customer.get_status_display }} · <code>{{ customer.billing_account.code }}</code></p></div>
+
+  <div
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="rounded-lg border p-6 shadow-sm">
+    <h2 class="text-2xl font-bold">{{ customer }}</h2>
+    <div class="mt-2 flex flex-wrap gap-2 text-xs opacity-70">
+      <span class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-0.5">{{ customer.community }}</span>
+      <span class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-0.5">{{ customer.get_status_display }}</span>
+      <code class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-0.5">{{ customer.billing_account.code }}</code>
+    </div>
+  </div>
+
   <div class="grid gap-5 lg:grid-cols-2">
-    <div class="rounded-lg border p-5"><h3 class="mb-3 font-semibold">{% trans "Subscriptions" %}</h3>{% for s in subscriptions %}<div class="border-t py-2"><a class="underline" href="{% url 'subscriptions:subscription_detail' s.uid %}">{{ s.plan.name }}</a><span class="text-xs opacity-60"> · {{ s.get_status_display }}</span></div>{% empty %}<p class="opacity-60">{% trans "No subscriptions." %}</p>{% endfor %}</div>
-    <div class="rounded-lg border p-5"><h3 class="mb-3 font-semibold">{% trans "Recent invoices" %}</h3>{% for inv in invoices %}<div class="border-t py-2"><a class="underline" href="{% url 'subscriptions:invoice_detail' inv.uid %}">{{ inv.uid }}</a><span class="text-xs opacity-60"> · {{ inv.get_status_display }} · {{ inv.total_base_units }}</span></div>{% empty %}<p class="opacity-60">{% trans "No invoices." %}</p>{% endfor %}</div>
+
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border p-5 shadow-sm">
+      <h3 class="mb-4 font-semibold">
+        <i class="fa-solid fa-id-card mr-2 opacity-60"></i>{% trans "Subscriptions" %}
+      </h3>
+      {% for s in subscriptions %}
+        <div class="flex items-center justify-between border-t border-current/10 py-2.5">
+          <a :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+             class="font-medium underline-offset-2 hover:underline"
+             href="{% url 'subscriptions:subscription_detail' s.uid %}">{{ s.plan.name }}</a>
+          <span class="rounded border border-current/20 px-2 py-0.5 text-xs opacity-70">{{ s.get_status_display }}</span>
+        </div>
+      {% empty %}
+        <p class="text-sm opacity-55">{% trans "No subscriptions." %}</p>
+      {% endfor %}
+    </div>
+
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border p-5 shadow-sm">
+      <h3 class="mb-4 font-semibold">
+        <i class="fa-solid fa-file-invoice mr-2 opacity-60"></i>{% trans "Recent invoices" %}
+      </h3>
+      {% for inv in invoices %}
+        <div class="flex items-center justify-between border-t border-current/10 py-2.5">
+          <a :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+             class="font-mono text-xs underline-offset-2 hover:underline"
+             href="{% url 'subscriptions:invoice_detail' inv.uid %}">{{ inv.uid|truncatechars:16 }}</a>
+          <span class="rounded border border-current/20 px-2 py-0.5 text-xs opacity-70">{{ inv.get_status_display }}</span>
+          <span class="font-mono text-xs">{{ inv.total_base_units }}</span>
+        </div>
+      {% empty %}
+        <p class="text-sm opacity-55">{% trans "No invoices." %}</p>
+      {% endfor %}
+    </div>
+
   </div>
 </div>
 {% endblock %}

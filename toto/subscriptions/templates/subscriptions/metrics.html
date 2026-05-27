@@ -1,6 +1,57 @@
 {% extends "subscriptions/base.html" %}
 {% load i18n %}
 {% block subscriptions_title %}{% trans "Metrics" %}{% endblock %}
+
 {% block subscriptions_content %}
-<div class="grid gap-5 lg:grid-cols-3"><div class="rounded-lg border p-5"><h3 class="mb-3 font-semibold">{% trans "Subscription status" %}</h3>{% for k,v in status_counts.items %}<div class="flex justify-between border-t py-2"><span>{{ k }}</span><strong>{{ v }}</strong></div>{% endfor %}</div><div class="rounded-lg border p-5"><h3 class="mb-3 font-semibold">{% trans "Invoice status" %}</h3>{% for k,v in invoice_counts.items %}<div class="flex justify-between border-t py-2"><span>{{ k }}</span><strong>{{ v }}</strong></div>{% endfor %}</div><div class="rounded-lg border p-5"><h3 class="mb-3 font-semibold">{% trans "By plan" %}</h3>{% for row in by_plan %}<div class="flex justify-between border-t py-2"><span>{{ row.plan__code }}</span><strong>{{ row.count }}</strong></div>{% endfor %}</div></div>
+<div class="grid gap-5 lg:grid-cols-3">
+
+  <div
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="rounded-lg border p-5 shadow-sm">
+    <h3 class="mb-4 font-semibold">
+      <i class="fa-solid fa-id-card mr-2 opacity-60"></i>{% trans "Subscription status" %}
+    </h3>
+    {% for k, v in status_counts.items %}
+      <div class="flex items-center justify-between border-t border-current/10 py-2.5">
+        <span class="text-sm opacity-80">{{ k }}</span>
+        <strong class="font-mono">{{ v }}</strong>
+      </div>
+    {% empty %}
+      <p class="text-sm opacity-55">{% trans "No data." %}</p>
+    {% endfor %}
+  </div>
+
+  <div
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="rounded-lg border p-5 shadow-sm">
+    <h3 class="mb-4 font-semibold">
+      <i class="fa-solid fa-file-invoice mr-2 opacity-60"></i>{% trans "Invoice status" %}
+    </h3>
+    {% for k, v in invoice_counts.items %}
+      <div class="flex items-center justify-between border-t border-current/10 py-2.5">
+        <span class="text-sm opacity-80">{{ k }}</span>
+        <strong class="font-mono">{{ v }}</strong>
+      </div>
+    {% empty %}
+      <p class="text-sm opacity-55">{% trans "No data." %}</p>
+    {% endfor %}
+  </div>
+
+  <div
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="rounded-lg border p-5 shadow-sm">
+    <h3 class="mb-4 font-semibold">
+      <i class="fa-solid fa-layer-group mr-2 opacity-60"></i>{% trans "By plan" %}
+    </h3>
+    {% for row in by_plan %}
+      <div class="flex items-center justify-between border-t border-current/10 py-2.5">
+        <span class="text-sm opacity-80">{{ row.plan__code }}</span>
+        <strong class="font-mono">{{ row.count }}</strong>
+      </div>
+    {% empty %}
+      <p class="text-sm opacity-55">{% trans "No data." %}</p>
+    {% endfor %}
+  </div>
+
+</div>
 {% endblock %}

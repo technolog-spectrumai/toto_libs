@@ -1,17 +1,100 @@
 {% extends "subscriptions/base.html" %}
 {% load i18n %}
 {% block subscriptions_title %}{{ plan.name }}{% endblock %}
+
 {% block subscriptions_content %}
 <div class="space-y-6">
-  <div class="rounded-lg border p-6 shadow-sm">
+
+  <div
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="rounded-lg border p-6 shadow-sm">
     <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-      <div><h2 class="text-2xl font-bold">{{ plan.name }}</h2><p class="text-sm opacity-70">{{ plan.code }} · {{ plan.get_kind_display }} · {{ plan.get_status_display }}</p>{% if plan.description %}<p class="mt-2 text-sm">{{ plan.description }}</p>{% endif %}<p class="mt-2 text-xs opacity-60">{{ active_subscriptions }} {% trans "active subscriptions" %}</p></div>
-      <div class="flex flex-wrap gap-2"><a href="{% url 'subscriptions:plan_edit' plan.uid %}" class="rounded-lg border px-3 py-2 text-sm font-semibold">{% trans "Edit" %}</a><a href="{% url 'subscriptions:price_create' plan.uid %}" class="rounded-lg border px-3 py-2 text-sm font-semibold">{% trans "Add Price" %}</a><a href="{% url 'subscriptions:feature_create' plan.uid %}" class="rounded-lg border px-3 py-2 text-sm font-semibold">{% trans "Add Feature" %}</a></div>
+      <div class="min-w-0 space-y-2">
+        <h2 class="text-2xl font-bold">{{ plan.name }}</h2>
+        <div class="flex flex-wrap gap-2 text-xs opacity-70">
+          <span class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-0.5 font-mono">{{ plan.code }}</span>
+          <span class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-0.5">{{ plan.get_kind_display }}</span>
+          <span class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-0.5">{{ plan.get_status_display }}</span>
+          {% if plan.trial_days %}
+            <span class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-0.5">
+              <i class="fa-solid fa-clock"></i> {{ plan.trial_days }}d trial
+            </span>
+          {% endif %}
+        </div>
+        {% if plan.description %}
+          <p class="text-sm opacity-75">{{ plan.description }}</p>
+        {% endif %}
+        <p class="text-xs opacity-55">
+          <i class="fa-solid fa-users"></i>
+          {{ active_subscriptions }} {% trans "active subscriptions" %}
+        </p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <a href="{% url 'subscriptions:plan_edit' plan.uid %}"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
+          <i class="fa-solid fa-pen"></i>{% trans "Edit" %}
+        </a>
+        <a href="{% url 'subscriptions:price_create' plan.uid %}"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
+          <i class="fa-solid fa-plus"></i>{% trans "Add Price" %}
+        </a>
+        <a href="{% url 'subscriptions:feature_create' plan.uid %}"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
+          <i class="fa-solid fa-puzzle-piece"></i>{% trans "Add Feature" %}
+        </a>
+      </div>
     </div>
   </div>
+
   <div class="grid gap-5 lg:grid-cols-2">
-    <div class="rounded-lg border p-5"><h3 class="mb-3 font-semibold">{% trans "Prices" %}</h3><table class="w-full text-sm"><tbody>{% for price in prices %}<tr class="border-t"><td class="py-2">{{ price.name }} <code>{{ price.code }}</code></td><td class="py-2 text-right">{{ price.amount_base_units }} {{ price.asset.unit_name }}</td><td class="py-2 text-right">{{ price.get_interval_display }}</td></tr>{% empty %}<tr><td class="py-3 opacity-60">{% trans "No prices." %}</td></tr>{% endfor %}</tbody></table></div>
-    <div class="rounded-lg border p-5"><h3 class="mb-3 font-semibold">{% trans "Features" %}</h3><table class="w-full text-sm"><tbody>{% for feature in features %}<tr class="border-t"><td class="py-2"><code>{{ feature.code }}</code> {{ feature.name }}</td><td class="py-2 text-right">{{ feature.quantity|default:"—" }} {{ feature.unit }}</td><td class="py-2 text-right">{{ feature.get_kind_display }}</td></tr>{% empty %}<tr><td class="py-3 opacity-60">{% trans "No features." %}</td></tr>{% endfor %}</tbody></table></div>
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border p-5 shadow-sm">
+      <h3 class="mb-4 font-semibold">{% trans "Prices" %}</h3>
+      {% if prices %}
+        <table class="w-full text-sm">
+          <tbody>
+            {% for price in prices %}
+              <tr class="border-t border-current/10">
+                <td class="py-2.5 pr-3">
+                  <div class="font-medium">{{ price.name }}</div>
+                  <code class="text-xs opacity-60">{{ price.code }}</code>
+                </td>
+                <td class="py-2.5 text-right font-mono">{{ price.amount_base_units }} <span class="opacity-60">{{ price.asset.unit_name }}</span></td>
+                <td class="py-2.5 pl-3 text-right opacity-65">{{ price.get_interval_display }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="text-sm opacity-55">{% trans "No prices yet." %}</p>
+      {% endif %}
+    </div>
+
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border p-5 shadow-sm">
+      <h3 class="mb-4 font-semibold">{% trans "Features" %}</h3>
+      {% if features %}
+        <table class="w-full text-sm">
+          <tbody>
+            {% for feature in features %}
+              <tr class="border-t border-current/10">
+                <td class="py-2.5 pr-3">
+                  <code class="text-xs">{{ feature.code }}</code>
+                  <div class="mt-0.5 opacity-75">{{ feature.name }}</div>
+                </td>
+                <td class="py-2.5 text-right opacity-65">{{ feature.quantity|default:"—" }} {{ feature.unit }}</td>
+                <td class="py-2.5 pl-3 text-right">
+                  <span class="rounded border border-current/20 px-2 py-0.5 text-xs">{{ feature.get_kind_display }}</span>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="text-sm opacity-55">{% trans "No features yet." %}</p>
+      {% endif %}
+    </div>
   </div>
 </div>
 {% endblock %}

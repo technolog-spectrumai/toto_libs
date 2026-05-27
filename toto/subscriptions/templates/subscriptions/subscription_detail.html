@@ -1,14 +1,125 @@
 {% extends "subscriptions/base.html" %}
 {% load i18n %}
 {% block subscriptions_title %}{{ subscription.plan.name }}{% endblock %}
+
 {% block subscriptions_content %}
 <div class="space-y-6">
-  <div class="rounded-lg border p-6 shadow-sm"><div class="flex flex-col gap-3 md:flex-row md:justify-between"><div><h2 class="text-2xl font-bold">{{ subscription.plan.name }}</h2><p class="text-sm opacity-70">{{ subscription.customer }} · {{ subscription.get_status_display }} · {{ subscription.current_period_start|date:"Y-m-d" }} → {{ subscription.current_period_end|date:"Y-m-d" }}</p></div><div class="flex flex-wrap gap-2"><form method="post" action="{% url 'subscriptions:invoice_create' subscription.uid %}">{% csrf_token %}<button class="rounded-lg border px-3 py-2 text-sm font-semibold">{% trans "Create Invoice" %}</button></form><form method="post" action="{% url 'subscriptions:subscription_renew' subscription.uid %}">{% csrf_token %}<button class="rounded-lg border px-3 py-2 text-sm font-semibold">{% trans "Renew" %}</button></form><form method="post" action="{% url 'subscriptions:subscription_cancel' subscription.uid %}">{% csrf_token %}<button class="rounded-lg border px-3 py-2 text-sm font-semibold">{% trans "Cancel" %}</button></form></div></div></div>
+
+  <div
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="rounded-lg border p-6 shadow-sm">
+    <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+      <div class="space-y-2">
+        <h2 class="text-2xl font-bold">{{ subscription.plan.name }}</h2>
+        <div class="flex flex-wrap gap-2 text-xs opacity-70">
+          <span class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-0.5">{{ subscription.customer }}</span>
+          <span class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-0.5">{{ subscription.get_status_display }}</span>
+          <span class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-0.5 font-mono">
+            {{ subscription.current_period_start|date:"Y-m-d" }} → {{ subscription.current_period_end|date:"Y-m-d" }}
+          </span>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <form method="post" action="{% url 'subscriptions:invoice_create' subscription.uid %}">
+          {% csrf_token %}
+          <button type="submit"
+                  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                  class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
+            <i class="fa-solid fa-file-invoice"></i>{% trans "Create Invoice" %}
+          </button>
+        </form>
+        <form method="post" action="{% url 'subscriptions:subscription_renew' subscription.uid %}">
+          {% csrf_token %}
+          <button type="submit"
+                  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                  class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
+            <i class="fa-solid fa-rotate"></i>{% trans "Renew" %}
+          </button>
+        </form>
+        <form method="post" action="{% url 'subscriptions:subscription_cancel' subscription.uid %}">
+          {% csrf_token %}
+          <button type="submit"
+                  class="inline-flex items-center gap-2 rounded-lg border border-red-400/40 px-3 py-2 text-sm font-semibold text-red-500 transition hover:opacity-80">
+            <i class="fa-solid fa-ban"></i>{% trans "Cancel" %}
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
   <div class="grid gap-5 lg:grid-cols-2">
-    <div class="rounded-lg border p-5"><h3 class="mb-3 font-semibold">{% trans "Allowances" %}</h3>{% for a in allowances %}<div class="border-t py-2"><code>{{ a.feature.code }}</code> {{ a.consumed_quantity }} / {{ a.included_quantity }} {{ a.feature.unit }}</div>{% empty %}<p class="opacity-60">{% trans "No allowances." %}</p>{% endfor %}</div>
-    <div class="rounded-lg border p-5"><h3 class="mb-3 font-semibold">{% trans "Entitlements" %}</h3>{% for e in entitlements %}<div class="border-t py-2"><code>{{ e.feature.code }}</code> {{ e.feature.name }} · {{ e.get_status_display }}</div>{% empty %}<p class="opacity-60">{% trans "No entitlements." %}</p>{% endfor %}</div>
-    <div class="rounded-lg border p-5"><h3 class="mb-3 font-semibold">{% trans "Usage" %}</h3>{% for u in usage_records %}<div class="border-t py-2"><code>{{ u.feature.code }}</code> {{ u.quantity }} {{ u.unit }} · {{ u.get_status_display }}</div>{% empty %}<p class="opacity-60">{% trans "No usage." %}</p>{% endfor %}</div>
-    <div class="rounded-lg border p-5"><h3 class="mb-3 font-semibold">{% trans "Invoices" %}</h3>{% for inv in invoices %}<div class="border-t py-2"><a class="underline" href="{% url 'subscriptions:invoice_detail' inv.uid %}">{{ inv.uid }}</a> · {{ inv.get_status_display }} · {{ inv.total_base_units }}</div>{% empty %}<p class="opacity-60">{% trans "No invoices." %}</p>{% endfor %}</div>
+
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border p-5 shadow-sm">
+      <h3 class="mb-4 font-semibold">
+        <i class="fa-solid fa-gauge mr-2 opacity-60"></i>{% trans "Allowances" %}
+      </h3>
+      {% for a in allowances %}
+        <div class="border-t border-current/10 py-2.5">
+          <div class="flex items-center justify-between">
+            <code class="text-xs">{{ a.feature.code }}</code>
+            <span class="text-sm font-mono">{{ a.consumed_quantity }} / {{ a.included_quantity }} <span class="opacity-55">{{ a.feature.unit }}</span></span>
+          </div>
+          {% if a.included_quantity %}
+            <div class="mt-1.5 h-1.5 w-full overflow-hidden rounded-full" :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
+              <div :class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'" class="h-full rounded-full transition-all"
+                   style="width: {{ a.consumed_quantity|default:0 }}%"></div>
+            </div>
+          {% endif %}
+        </div>
+      {% empty %}
+        <p class="text-sm opacity-55">{% trans "No allowances." %}</p>
+      {% endfor %}
+    </div>
+
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border p-5 shadow-sm">
+      <h3 class="mb-4 font-semibold">
+        <i class="fa-solid fa-puzzle-piece mr-2 opacity-60"></i>{% trans "Entitlements" %}
+      </h3>
+      {% for e in entitlements %}
+        <div class="flex items-center justify-between border-t border-current/10 py-2.5">
+          <div>
+            <code class="text-xs">{{ e.feature.code }}</code>
+            <span class="ml-2 text-sm opacity-80">{{ e.feature.name }}</span>
+          </div>
+          <span class="rounded border border-current/20 px-2 py-0.5 text-xs">{{ e.get_status_display }}</span>
+        </div>
+      {% empty %}
+        <p class="text-sm opacity-55">{% trans "No entitlements." %}</p>
+      {% endfor %}
+    </div>
+
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border p-5 shadow-sm">
+      <h3 class="mb-4 font-semibold">
+        <i class="fa-solid fa-chart-simple mr-2 opacity-60"></i>{% trans "Usage" %}
+      </h3>
+      {% for u in usage_records %}
+        <div class="flex items-center justify-between border-t border-current/10 py-2.5 text-sm">
+          <code class="text-xs">{{ u.feature.code }}</code>
+          <span class="font-mono">{{ u.quantity }} <span class="opacity-55">{{ u.unit }}</span></span>
+          <span class="rounded border border-current/20 px-2 py-0.5 text-xs">{{ u.get_status_display }}</span>
+        </div>
+      {% empty %}
+        <p class="text-sm opacity-55">{% trans "No usage records." %}</p>
+      {% endfor %}
+    </div>
+
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border p-5 shadow-sm">
+      <h3 class="mb-4 font-semibold">
+        <i class="fa-solid fa-file-invoice mr-2 opacity-60"></i>{% trans "Invoices" %}
+      </h3>
+      {% for inv in invoices %}
+        <div class="flex items-center justify-between border-t border-current/10 py-2.5 text-sm">
+          <a :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+             class="font-mono text-xs underline-offset-2 hover:underline"
+             href="{% url 'subscriptions:invoice_detail' inv.uid %}">{{ inv.uid|truncatechars:16 }}</a>
+          <span class="rounded border border-current/20 px-2 py-0.5 text-xs">{{ inv.get_status_display }}</span>
+          <span class="font-mono text-xs">{{ inv.total_base_units }}</span>
+        </div>
+      {% empty %}
+        <p class="text-sm opacity-55">{% trans "No invoices." %}</p>
+      {% endfor %}
+    </div>
+
   </div>
 </div>
 {% endblock %}

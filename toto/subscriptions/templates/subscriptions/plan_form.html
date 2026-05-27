@@ -2,8 +2,10 @@
 {% load i18n %}
 {% block subscriptions_title %}{{ action }}{% endblock %}
 {% block subscriptions_content %}
-<div class="mx-auto max-w-2xl rounded-lg border p-6 shadow-sm">
-  <h2 class="mb-5 text-xl font-bold">{{ action }}</h2>
+<section
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="mx-auto max-w-2xl rounded-lg border p-6 shadow-sm">
+  <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="mb-6 text-2xl font-bold">{{ action }}</h2>
   {% include "subscriptions/_form.html" %}
-</div>
+</section>
 {% endblock %}
