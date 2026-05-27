@@ -5,32 +5,50 @@ from django.utils.translation import gettext_lazy as _
 
 from toto.subscriptions.models import SubscriptionPlan
 
-from .models import VodAccessMode, VodCollection, VodVideo, VodVideoAccessMode
+from .models import VodCollection, VodVideo, VodVideoAccessMode
 from .services import create_video_from_upload
+
+_INPUT = (
+    "w-full rounded-lg border px-3 py-2 text-sm outline-none transition focus:ring-2 focus:ring-current/20"
+)
+_XBIND = (
+    "darkMode "
+    "? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' "
+    ": 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+)
+
+
+def _text(placeholder=""):
+    return forms.TextInput(attrs={"placeholder": placeholder, "class": _INPUT, "x-bind:class": _XBIND})
+
+
+def _textarea(rows=3, placeholder=""):
+    return forms.Textarea(attrs={"rows": rows, "placeholder": placeholder, "class": _INPUT, "x-bind:class": _XBIND})
+
+
+def _select():
+    return forms.Select(attrs={"class": _INPUT, "x-bind:class": _XBIND})
+
+
+def _number(placeholder=""):
+    return forms.NumberInput(attrs={"placeholder": placeholder, "class": _INPUT, "x-bind:class": _XBIND})
 
 
 class VodCollectionForm(forms.ModelForm):
     class Meta:
         model = VodCollection
         fields = [
-            "title",
-            "slug",
-            "description",
-            "owner",
-            "bucket",
-            "cover_file",
-            "access_mode",
-            "required_plan",
-            "usage_feature_code",
-            "invoice_amount",
-            "invoice_currency_label",
-            "allow_downloads",
-            "position",
-            "metadata",
+            "title", "slug", "description", "access_mode", "required_plan",
+            "invoice_amount", "invoice_currency_label", "allow_downloads", "position",
         ]
         widgets = {
-            "description": forms.Textarea(attrs={"rows": 3}),
-            "metadata": forms.Textarea(attrs={"rows": 3}),
+            "title": _text(_("Collection title")),
+            "slug": _text(_("url-slug")),
+            "description": _textarea(3, _("Describe this collection…")),
+            "access_mode": _select(),
+            "invoice_amount": _number("0.00"),
+            "invoice_currency_label": _text("USD"),
+            "position": _number("0"),
         }
 
     def __init__(self, *args, **kwargs):
@@ -38,35 +56,29 @@ class VodCollectionForm(forms.ModelForm):
         self.fields["required_plan"].queryset = SubscriptionPlan.objects.filter(
             status=SubscriptionPlan.Status.ACTIVE
         ).select_related("community")
+        self.fields["required_plan"].widget = _select()
 
 
 class VodVideoForm(forms.ModelForm):
     class Meta:
         model = VodVideo
         fields = [
-            "collection",
-            "source_file",
-            "poster_file",
-            "title",
-            "slug",
-            "description",
-            "status",
-            "access_mode",
-            "required_plan",
-            "usage_feature_code",
-            "duration_seconds",
-            "position",
-            "tags",
-            "hls_bucket",
-            "hls_segment_seconds",
-            "invoice_amount",
-            "invoice_currency_label",
-            "metadata",
+            "title", "slug", "description", "status", "access_mode", "required_plan",
+            "duration_seconds", "position", "tags", "hls_segment_seconds",
+            "invoice_amount", "invoice_currency_label",
         ]
         widgets = {
-            "description": forms.Textarea(attrs={"rows": 3}),
-            "metadata": forms.Textarea(attrs={"rows": 3}),
-            "tags": forms.Textarea(attrs={"rows": 2}),
+            "title": _text(_("Video title")),
+            "slug": _text(_("url-slug")),
+            "description": _textarea(3),
+            "status": _select(),
+            "access_mode": _select(),
+            "tags": _textarea(2, _('["tag1", "tag2"]')),
+            "duration_seconds": _number(),
+            "position": _number("0"),
+            "hls_segment_seconds": _number("6"),
+            "invoice_amount": _number("0.00"),
+            "invoice_currency_label": _text("USD"),
         }
 
     def __init__(self, *args, **kwargs):
@@ -74,22 +86,37 @@ class VodVideoForm(forms.ModelForm):
         self.fields["required_plan"].queryset = SubscriptionPlan.objects.filter(
             status=SubscriptionPlan.Status.ACTIVE
         ).select_related("community")
+        self.fields["required_plan"].widget = _select()
 
 
 class VodUploadForm(forms.Form):
-    collection = forms.ModelChoiceField(queryset=VodCollection.objects.all())
-    title = forms.CharField(max_length=240)
-    description = forms.CharField(widget=forms.Textarea(attrs={"rows": 3}), required=False)
+    collection = forms.ModelChoiceField(
+        queryset=VodCollection.objects.all(),
+        widget=_select(),
+    )
+    title = forms.CharField(max_length=240, widget=_text(_("Video title")))
+    description = forms.CharField(
+        widget=_textarea(3, _("Optional description…")),
+        required=False,
+    )
     video_file = forms.FileField(label=_("Video file"))
     poster_file = forms.FileField(label=_("Poster image"), required=False)
-    status = forms.ChoiceField(choices=VodVideo.Status.choices, initial=VodVideo.Status.DRAFT)
-    access_mode = forms.ChoiceField(choices=VodVideoAccessMode.choices, initial=VodVideoAccessMode.INHERIT)
+    status = forms.ChoiceField(
+        choices=VodVideo.Status.choices,
+        initial=VodVideo.Status.DRAFT,
+        widget=_select(),
+    )
+    access_mode = forms.ChoiceField(
+        choices=VodVideoAccessMode.choices,
+        initial=VodVideoAccessMode.INHERIT,
+        widget=_select(),
+    )
     required_plan = forms.ModelChoiceField(
         queryset=SubscriptionPlan.objects.none(),
         required=False,
-        help_text=_("Use an existing toto.subscriptions plan. Leave blank to inherit collection plan."),
+        help_text=_("Leave blank to inherit collection plan."),
+        widget=_select(),
     )
-    build_hls = forms.BooleanField(required=False, initial=False, help_text=_("Run ffmpeg now."))
 
     def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -118,5 +145,5 @@ class VodUploadForm(forms.Form):
             status=self.cleaned_data.get("status") or VodVideo.Status.DRAFT,
             access_mode=self.cleaned_data.get("access_mode") or VodVideoAccessMode.INHERIT,
             required_plan=self.cleaned_data.get("required_plan"),
-            build_hls=self.cleaned_data.get("build_hls", False),
+            build_hls=False,
         )

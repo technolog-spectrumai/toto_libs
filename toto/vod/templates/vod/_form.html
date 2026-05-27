@@ -1,17 +1,34 @@
 {% load i18n %}
-<form method="post" enctype="multipart/form-data" class="space-y-4">
+<form method="post" enctype="multipart/form-data" class="space-y-5">
   {% csrf_token %}
-  {% if form.non_field_errors %}<div class="rounded-lg border border-red-400 p-3 text-sm">{{ form.non_field_errors }}</div>{% endif %}
+  {% if form.non_field_errors %}
+    <div :class="darkMode ? 'border-red-500/50 bg-red-500/10' : 'border-red-400/50 bg-red-50'"
+         class="rounded-xl border p-3 text-sm text-red-500">
+      {{ form.non_field_errors }}
+    </div>
+  {% endif %}
   {% for field in form %}
-    <div class="space-y-1">
+    <div class="space-y-1.5">
       <label class="text-sm font-semibold" for="{{ field.id_for_label }}">{{ field.label }}</label>
       {{ field }}
-      {% if field.help_text %}<p class="text-xs opacity-70">{{ field.help_text }}</p>{% endif %}
-      {% for error in field.errors %}<p class="text-xs text-red-500">{{ error }}</p>{% endfor %}
+      {% if field.help_text %}
+        <p class="text-xs opacity-55">{{ field.help_text }}</p>
+      {% endif %}
+      {% for error in field.errors %}
+        <p class="text-xs text-red-500">{{ error }}</p>
+      {% endfor %}
     </div>
   {% endfor %}
-  <div class="flex gap-2 pt-2">
-    <button class="rounded-lg border px-4 py-2 text-sm font-semibold" type="submit">{{ action }}</button>
-    <a class="rounded-lg border px-4 py-2 text-sm" href="{% url 'vod:collection_list' %}">{% trans "Cancel" %}</a>
+  <div class="flex gap-3 pt-2">
+    <button :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold shadow-sm transition hover:opacity-90"
+            type="submit">
+      {{ action }}
+    </button>
+    <a href="{{ back_url|default_if_none:'/' }}"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="inline-flex items-center gap-2 rounded-xl border px-5 py-2.5 text-sm font-medium transition hover:opacity-80">
+      {% trans "Cancel" %}
+    </a>
   </div>
 </form>

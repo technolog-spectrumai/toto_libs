@@ -1,0 +1,51 @@
+{% load i18n %}
+<article class="group cursor-pointer">
+  <a href="{{ video.get_absolute_url }}" class="block">
+    {# ── Thumbnail ── #}
+    <div class="relative overflow-hidden rounded-xl aspect-video bg-black shadow-sm">
+      {% if video.poster_url %}
+        <img src="{{ video.poster_url }}" alt="{{ video.title }}"
+             class="h-full w-full object-cover transition duration-300 group-hover:scale-105">
+      {% else %}
+        <div class="flex h-full w-full items-center justify-center"
+             :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'">
+          <i class="fa-solid fa-video text-4xl opacity-20"></i>
+        </div>
+      {% endif %}
+      {# Play overlay #}
+      <div class="absolute inset-0 flex items-center justify-center opacity-0 transition group-hover:opacity-100">
+        <div class="flex h-12 w-12 items-center justify-center rounded-full bg-black/70 text-white shadow-lg">
+          <i class="fa-solid fa-play ml-0.5 text-lg"></i>
+        </div>
+      </div>
+      {# HLS badge #}
+      {% if video.hls_ready %}
+        <span class="absolute bottom-2 right-2 rounded px-1.5 py-0.5 text-xs font-bold bg-black/70 text-white">HLS</span>
+      {% endif %}
+      {# Duration badge #}
+      {% if video.duration_seconds %}
+        <span class="absolute bottom-2 left-2 rounded px-1.5 py-0.5 text-xs font-medium bg-black/70 text-white">
+          {% widthratio video.duration_seconds 60 1 %}m
+        </span>
+      {% endif %}
+    </div>
+  </a>
+
+  {# ── Meta ── #}
+  <div class="mt-2.5 space-y-1">
+    <a href="{{ video.get_absolute_url }}"
+       class="line-clamp-2 text-sm font-semibold leading-snug hover:underline">{{ video.title }}</a>
+    <div class="flex items-center gap-2 text-xs opacity-55">
+      <a href="{{ video.collection.get_absolute_url }}" class="hover:underline truncate">{{ video.collection.title }}</a>
+      <span>·</span>
+      <span>{{ video.views_count }} {% trans "views" %}</span>
+      {% if video.tags %}
+        <span>·</span>
+        {% for tag in video.tags|slice:":2" %}
+          <span :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'"
+                class="rounded-full border px-2 py-0.5 text-xs">{{ tag }}</span>
+        {% endfor %}
+      {% endif %}
+    </div>
+  </div>
+</article>

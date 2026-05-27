@@ -167,6 +167,7 @@ class VodVideo(TimestampedModel):
     invoice_amount = models.DecimalField(max_digits=18, decimal_places=2, null=True, blank=True)
     invoice_currency_label = models.CharField(max_length=20, blank=True)
     published_at = models.DateTimeField(null=True, blank=True)
+    views_count = models.PositiveIntegerField(default=0)
 
     class Meta:
         ordering = ["collection", "position", "title"]
@@ -335,13 +336,6 @@ class VodPlaybackEvent(TimestampedModel):
     user_agent = models.CharField(max_length=512, blank=True)
     seconds_watched = models.PositiveIntegerField(default=0)
     referrer = models.URLField(blank=True)
-    subscription_usage = models.ForeignKey(
-        "subscriptions.SubscriptionUsage",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="vod_playback_events",
-    )
 
     class Meta:
         ordering = ["-created_at"]
@@ -349,7 +343,6 @@ class VodPlaybackEvent(TimestampedModel):
             models.Index(fields=["video", "event", "created_at"]),
             models.Index(fields=["user", "created_at"]),
             models.Index(fields=["session_key"]),
-            models.Index(fields=["subscription_usage"]),
         ]
 
     def __str__(self):

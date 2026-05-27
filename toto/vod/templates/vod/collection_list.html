@@ -1,55 +1,106 @@
 {% extends "vod/base.html" %}
 {% load i18n %}
-{% block vod_title %}{% trans "VOD Collections" %}{% endblock %}
+{% block vod_title %}{% trans "Collections" %}{% endblock %}
 {% block vod_content %}
-<div class="grid gap-3 md:grid-cols-4">
-  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-xl border p-4 shadow-sm"><p class="text-xs uppercase opacity-60">{% trans "Collections" %}</p><p class="text-2xl font-bold">{{ stats.collections }}</p></div>
-  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-xl border p-4 shadow-sm"><p class="text-xs uppercase opacity-60">{% trans "Published" %}</p><p class="text-2xl font-bold">{{ stats.published }}</p></div>
-  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-xl border p-4 shadow-sm"><p class="text-xs uppercase opacity-60">{% trans "HLS ready" %}</p><p class="text-2xl font-bold">{{ stats.hls_ready }}</p></div>
-  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-xl border p-4 shadow-sm"><p class="text-xs uppercase opacity-60">{% trans "Plays" %}</p><p class="text-2xl font-bold">{{ stats.plays }}</p></div>
+
+{# ── Top bar: search + new ── #}
+<div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+  <h1 class="text-2xl font-bold">{% trans "Collections" %}</h1>
+  <div class="flex gap-2">
+    <form method="get" class="flex gap-2">
+      <input name="q" value="{{ q }}"
+             placeholder="{% trans 'Search…' %}"
+             :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder-text-main-dark/40' : 'border-accent-2 bg-primary-bg-light text-text-main-light placeholder-text-main-light/40'"
+             class="w-48 rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20 sm:w-64">
+      <button type="submit"
+              :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:opacity-80' : 'border-accent-2 bg-bubble-bg-light hover:opacity-80'"
+              class="rounded-xl border px-4 py-2 text-sm font-medium transition">
+        <i class="fa-solid fa-magnifying-glass"></i>
+      </button>
+    </form>
+    <a href="{% url 'vod:collection_create' %}"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+       class="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+      <i class="fa-solid fa-plus"></i>{% trans "New" %}
+    </a>
+  </div>
 </div>
 
-<div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-  <form method="get" class="flex gap-2">
-    <input
-      name="q" value="{{ q }}"
-      placeholder="{% trans 'Search VOD…' %}"
-      :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
-      class="rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
-    <button
-      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-      class="rounded-lg border px-4 py-2 text-sm font-semibold">{% trans "Filter" %}</button>
-  </form>
-  <a
-    href="{% url 'vod:collection_create' %}"
-    :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-    class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-    <i class="fa-solid fa-plus"></i>
-    {% trans "New Collection" %}
-  </a>
+{# ── Stats strip ── #}
+<div class="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-xl border px-4 py-3 text-center shadow-sm">
+    <p class="text-2xl font-bold">{{ stats.collections }}</p>
+    <p class="mt-0.5 text-xs uppercase opacity-55 tracking-wide">{% trans "Collections" %}</p>
+  </div>
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-xl border px-4 py-3 text-center shadow-sm">
+    <p class="text-2xl font-bold">{{ stats.published }}</p>
+    <p class="mt-0.5 text-xs uppercase opacity-55 tracking-wide">{% trans "Published" %}</p>
+  </div>
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-xl border px-4 py-3 text-center shadow-sm">
+    <p class="text-2xl font-bold">{{ stats.hls_ready }}</p>
+    <p class="mt-0.5 text-xs uppercase opacity-55 tracking-wide">{% trans "HLS ready" %}</p>
+  </div>
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-xl border px-4 py-3 text-center shadow-sm">
+    <p class="text-2xl font-bold">{{ stats.plays }}</p>
+    <p class="mt-0.5 text-xs uppercase opacity-55 tracking-wide">{% trans "Total plays" %}</p>
+  </div>
 </div>
 
-<div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-  {% for collection in collections %}
-    <article
-      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-      class="rounded-xl border p-5 shadow-sm">
-      <div class="flex items-start justify-between gap-3">
-        <h2 class="text-xl font-bold">
-          <a class="underline hover:opacity-80" href="{{ collection.get_absolute_url }}">{{ collection.title }}</a>
-        </h2>
-        <span
-          :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
-          class="rounded-full border px-2 py-1 text-xs">{{ collection.get_access_mode_display }}</span>
-      </div>
-      <p class="mt-2 line-clamp-3 text-sm opacity-75">{{ collection.description|default:"—" }}</p>
-      <div class="mt-4 text-xs opacity-70">
-        {% if collection.required_plan %}<p>{% trans "Plan" %}: <code>{{ collection.required_plan.code }}</code></p>{% endif %}
-        {% if collection.bucket %}<p>{% trans "Vault bucket" %}: {{ collection.bucket }}</p>{% endif %}
-      </div>
-    </article>
-  {% empty %}
-    <div class="rounded-xl border p-6 text-center opacity-70 md:col-span-2 xl:col-span-3">{% trans "No VOD collections." %}</div>
-  {% endfor %}
-</div>
+{# ── Collection grid ── #}
+{% if collections %}
+  <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+    {% for collection in collections %}
+      <article class="group overflow-hidden rounded-2xl border shadow-sm transition hover:shadow-md"
+               :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+
+        {# Cover area — placeholder with icon #}
+        <a href="{{ collection.get_absolute_url }}" class="block">
+          <div class="relative aspect-video overflow-hidden bg-black">
+            <div class="flex h-full w-full items-center justify-center"
+                 :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'">
+              <i class="fa-solid fa-film text-5xl opacity-10"></i>
+            </div>
+            {# Access mode badge #}
+            <span class="absolute bottom-2 right-2 rounded px-1.5 py-0.5 text-xs font-semibold bg-black/70 text-white">
+              {{ collection.get_access_mode_display }}
+            </span>
+          </div>
+        </a>
+
+        {# Info #}
+        <div class="p-4 space-y-2">
+          <h2 class="font-bold leading-snug">
+            <a href="{{ collection.get_absolute_url }}" class="hover:underline">{{ collection.title }}</a>
+          </h2>
+          {% if collection.description %}
+            <p class="line-clamp-2 text-sm opacity-60">{{ collection.description }}</p>
+          {% endif %}
+          <div class="flex items-center gap-2 text-xs opacity-50">
+            {% if collection.required_plan %}
+              <span><i class="fa-solid fa-lock mr-1"></i>{{ collection.required_plan.code }}</span>
+              <span>·</span>
+            {% endif %}
+            <span>{{ collection.get_access_mode_display }}</span>
+          </div>
+        </div>
+      </article>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="flex flex-col items-center justify-center rounded-2xl border border-dashed py-20 opacity-60"
+       :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+    <i class="fa-solid fa-film mb-4 text-5xl opacity-30"></i>
+    <p class="text-lg font-semibold">{% trans "No collections yet" %}</p>
+    <p class="mt-1 text-sm">{% trans "Create your first collection to organise your videos." %}</p>
+    <a href="{% url 'vod:collection_create' %}"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+       class="mt-5 inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold shadow-sm transition hover:opacity-90">
+      <i class="fa-solid fa-plus"></i>{% trans "New collection" %}
+    </a>
+  </div>
+{% endif %}
 {% endblock %}

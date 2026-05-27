@@ -6,7 +6,6 @@ import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass
-from decimal import Decimal
 from pathlib import Path
 
 from django.apps import apps
@@ -20,7 +19,7 @@ from django.utils.module_loading import import_string
 from django.utils.text import slugify
 
 from toto.subscriptions.models import Subscription
-from toto.subscriptions.services import active_subscriptions_for_person, record_usage
+from toto.subscriptions.services import active_subscriptions_for_person
 
 from .models import (
     VodAccessGrant,
@@ -108,7 +107,7 @@ def models_current_period_filter(now):
 def user_is_vod_manager(user, collection: VodCollection | None = None) -> bool:
     if not user or not getattr(user, "is_authenticated", False):
         return False
-    if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
+    if getattr(user, "is_superuser", False):
         return True
     return bool(collection and collection.owner_id == user.id)
 
@@ -407,7 +406,6 @@ def client_ip_hash(request) -> str:
     return hashlib.sha256(f"{secret}:{raw}".encode("utf-8")).hexdigest()
 
 
-@transaction.atomic
 def record_playback_event(*, request, video: VodVideo, event: str, seconds_watched: int = 0) -> VodPlaybackEvent:
     user = request.user if getattr(request, "user", None) and request.user.is_authenticated else None
     session = getattr(request, "session", None)
@@ -422,28 +420,7 @@ def record_playback_event(*, request, video: VodVideo, event: str, seconds_watch
         seconds_watched=max(0, int(seconds_watched or 0)),
         referrer=request.META.get("HTTP_REFERER", "")[:200],
     )
-
-    feature_code = video.effective_usage_feature_code
-    if not user or not feature_code or playback.seconds_watched <= 0:
-        return playback
-
-    plan = video.effective_required_plan
-    subscription = find_active_subscription_for_plan(user, plan) if plan else None
-    if not subscription:
-        return playback
-
-    try:
-        usage = record_usage(
-            subscription=subscription,
-            feature_code=feature_code,
-            quantity=Decimal(str(playback.seconds_watched)),
-            unit="seconds",
-            source=playback,
-            note=f"VOD playback: {video.title}",
-        )
-        playback.subscription_usage = usage
-        playback.save(update_fields=["subscription_usage", "updated_at"])
-    except Exception as exc:
-        playback.metadata = {**(playback.metadata or {}), "subscription_usage_error": str(exc)}
-        playback.save(update_fields=["metadata", "updated_at"])
+    if event == VodPlaybackEvent.EventKind.PLAY:
+        from django.db.models import F
+        VodVideo.objects.filter(pk=video.pk).update(views_count=F("views_count") + 1)
     return playback

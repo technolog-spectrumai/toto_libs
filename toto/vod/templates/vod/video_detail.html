@@ -2,96 +2,136 @@
 {% load i18n %}
 {% block vod_title %}{{ video.title }}{% endblock %}
 {% block vod_content %}
-<article class="space-y-6">
-  <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-    <div>
-      <p class="text-sm opacity-70">
-        <a class="underline hover:opacity-80" href="{{ collection.get_absolute_url }}">{{ collection.title }}</a>
-      </p>
-      <h2 class="mt-1 text-3xl font-bold">{{ video.title }}</h2>
-      <p class="mt-2 max-w-3xl text-sm opacity-75">{{ video.description|default:"—" }}</p>
-    </div>
-    <div class="flex flex-wrap gap-2">
-      <span :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="rounded-full border px-3 py-1 text-xs">{{ video.get_status_display }}</span>
-      <span :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="rounded-full border px-3 py-1 text-xs">{{ video.effective_access_mode }}</span>
-      {% if video.effective_required_plan %}<span :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="rounded-full border px-3 py-1 text-xs">{{ video.effective_required_plan.code }}</span>{% endif %}
+<div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+
+  {# ── Main column ── #}
+  <div class="space-y-4">
+
+    {# Player or access panel #}
+    {% if access.allowed %}
+      <div class="overflow-hidden rounded-2xl bg-black shadow-lg aspect-video">
+        <video id="vod-player" controls playsinline preload="metadata"
+               class="h-full w-full"
+               {% if video.poster_url %}poster="{{ video.poster_url }}"{% endif %}></video>
+      </div>
+      <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+      <script>
+        const videoEl = document.getElementById("vod-player");
+        const playlistUrl = "{{ video.playlist_url|escapejs }}";
+        const sourceUrl = "{{ video.source_url|escapejs }}";
+        const eventUrl = "{% url 'vod:playback_event_api' collection.slug video.slug %}";
+        const csrf = "{{ csrf_token }}";
+        if (playlistUrl && videoEl.canPlayType("application/vnd.apple.mpegurl")) {
+          videoEl.src = playlistUrl;
+        } else if (playlistUrl && window.Hls && Hls.isSupported()) {
+          const hls = new Hls();
+          hls.loadSource(playlistUrl);
+          hls.attachMedia(videoEl);
+        } else {
+          videoEl.src = sourceUrl;
+        }
+        function postEvent(kind, seconds) {
+          const fd = new FormData();
+          fd.append("event", kind);
+          fd.append("seconds_watched", String(seconds || 0));
+          fetch(eventUrl, {method:"POST", headers:{"X-CSRFToken": csrf}, body: fd, credentials:"same-origin"}).catch(()=>{});
+        }
+        videoEl.addEventListener("play", () => postEvent("play", 0), {once: true});
+        videoEl.addEventListener("ended", () => postEvent("complete", Math.floor(videoEl.currentTime || 0)));
+        setInterval(() => { if (!videoEl.paused && !videoEl.ended) postEvent("progress", 15); }, 15000);
+      </script>
+    {% else %}
+      <div :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+           class="flex flex-col items-center justify-center rounded-2xl border py-16 text-center shadow-sm">
+        <i class="fa-solid fa-lock mb-4 text-4xl opacity-30"></i>
+        <h3 class="text-lg font-bold">{% trans "Access required" %}</h3>
+        <p class="mt-1 max-w-sm text-sm opacity-60">{{ access.reason }}</p>
+        {% if video.effective_access_mode == "subscribers" and video.effective_required_plan %}
+          <p class="mt-3 text-sm">{% trans "Required plan" %}: <code class="font-mono">{{ video.effective_required_plan.code }}</code></p>
+          <a href="{% url 'subscriptions:plan_list' %}"
+             :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+             class="mt-5 inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold shadow-sm transition hover:opacity-90">
+            <i class="fa-solid fa-repeat"></i>{% trans "View plans" %}
+          </a>
+        {% endif %}
+        {% if video.effective_access_mode == "invoice" %}
+          <form method="post" action="{% url 'vod:request_invoice_access' collection.slug video.slug %}" class="mt-5">
+            {% csrf_token %}
+            <button :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                    class="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold shadow-sm transition hover:opacity-90">
+              <i class="fa-solid fa-file-invoice"></i>
+              {% trans "Create invoice" %} — {{ video.effective_invoice_amount }} {{ video.effective_invoice_currency_label }}
+            </button>
+          </form>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    {# Video info #}
+    <div class="space-y-3">
+      <h1 class="text-xl font-bold leading-snug sm:text-2xl">{{ video.title }}</h1>
+
+      <div class="flex flex-wrap items-center gap-3 text-sm opacity-60">
+        <a href="{{ collection.get_absolute_url }}" class="hover:underline font-medium">{{ collection.title }}</a>
+        <span>·</span>
+        <span>{{ video.views_count }} {% trans "views" %}</span>
+        {% if video.duration_seconds %}<span>·</span><span>{{ video.duration_seconds|floatformat:0 }}s</span>{% endif %}
+        {% if video.published_at %}<span>·</span><span>{{ video.published_at|date:"Y-m-d" }}</span>{% endif %}
+        {% if can_manage %}
+          <span>·</span>
+          <a href="{% url 'vod:video_manage' collection.slug video.slug %}"
+             :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+             class="font-medium hover:underline">
+            <i class="fa-solid fa-sliders mr-1 text-xs"></i>{% trans "Manage" %}
+          </a>
+        {% endif %}
+      </div>
+
+      {# Tags #}
+      {% if video.tags %}
+        <div class="flex flex-wrap gap-1.5">
+          {% for tag in video.tags %}
+            <span :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                  class="rounded-full border px-3 py-1 text-xs font-medium">{{ tag }}</span>
+          {% endfor %}
+        </div>
+      {% endif %}
+
+      {# Description #}
+      {% if video.description %}
+        <div :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'"
+             class="rounded-xl p-4 text-sm leading-relaxed opacity-80">
+          {{ video.description|linebreaksbr }}
+        </div>
+      {% endif %}
     </div>
   </div>
 
-  {% if access.allowed %}
-    <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="rounded-xl border bg-black p-2 shadow-sm">
-      <video id="vod-player" controls playsinline preload="metadata" class="aspect-video w-full rounded-lg" {% if video.poster_url %}poster="{{ video.poster_url }}"{% endif %}></video>
-    </div>
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-    <script>
-      const videoEl = document.getElementById("vod-player");
-      const playlistUrl = "{{ video.playlist_url|escapejs }}";
-      const sourceUrl = "{{ video.source_url|escapejs }}";
-      const eventUrl = "{% url 'vod:playback_event_api' collection.slug video.slug %}";
-      const csrf = "{{ csrf_token }}";
-      if (playlistUrl && videoEl.canPlayType("application/vnd.apple.mpegurl")) {
-        videoEl.src = playlistUrl;
-      } else if (playlistUrl && window.Hls && Hls.isSupported()) {
-        const hls = new Hls();
-        hls.loadSource(playlistUrl);
-        hls.attachMedia(videoEl);
-      } else {
-        videoEl.src = sourceUrl;
-      }
-      function postEvent(kind, seconds) {
-        const form = new FormData();
-        form.append("event", kind);
-        form.append("seconds_watched", String(seconds || 0));
-        fetch(eventUrl, {method: "POST", headers: {"X-CSRFToken": csrf}, body: form, credentials: "same-origin"}).catch(() => {});
-      }
-      videoEl.addEventListener("play", () => postEvent("play", 0), {once: true});
-      videoEl.addEventListener("ended", () => postEvent("complete", Math.floor(videoEl.currentTime || 0)));
-      setInterval(() => { if (!videoEl.paused && !videoEl.ended) postEvent("progress", 15); }, 15000);
-    </script>
-  {% else %}
-    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-xl border p-6 shadow-sm">
-      <h3 class="text-xl font-bold">{% trans "Access required" %}</h3>
-      <p class="mt-2 text-sm opacity-75">{% trans "Reason" %}: {{ access.reason }}</p>
-      {% if video.effective_access_mode == "subscribers" and video.effective_required_plan %}
-        <p class="mt-2 text-sm">{% trans "Required plan" %}: <code>{{ video.effective_required_plan.code }}</code></p>
-        <a
-          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-          class="mt-4 inline-flex rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-85"
-          href="{% url 'subscriptions:plan_list' %}">{% trans "View subscription plans" %}</a>
-      {% endif %}
-      {% if video.effective_access_mode == "invoice" %}
-        <form method="post" action="{% url 'vod:request_invoice_access' collection.slug video.slug %}" class="mt-4">
-          {% csrf_token %}
-          <button
-            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-            class="rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-85">
-            {% trans "Create access invoice" %} — {{ video.effective_invoice_amount }} {{ video.effective_invoice_currency_label }}
-          </button>
-        </form>
-      {% endif %}
-    </div>
+  {# ── Related videos sidebar ── #}
+  {% if related_videos %}
+    <aside class="space-y-3">
+      <h3 class="text-sm font-semibold uppercase tracking-wide opacity-60">{% trans "More from this collection" %}</h3>
+      {% for rv in related_videos %}
+        <a href="{{ rv.get_absolute_url }}" class="group flex gap-3 rounded-xl p-2 transition hover:opacity-80"
+           :class="darkMode ? 'hover:bg-bubble-bg-dark' : 'hover:bg-bubble-bg-light'">
+          <div class="relative aspect-video w-36 shrink-0 overflow-hidden rounded-lg bg-black">
+            {% if rv.poster_url %}
+              <img src="{{ rv.poster_url }}" alt="{{ rv.title }}" class="h-full w-full object-cover">
+            {% else %}
+              <div class="flex h-full w-full items-center justify-center"
+                   :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'">
+                <i class="fa-solid fa-video opacity-20"></i>
+              </div>
+            {% endif %}
+          </div>
+          <div class="min-w-0 flex-1">
+            <p class="line-clamp-2 text-xs font-semibold leading-snug">{{ rv.title }}</p>
+            <p class="mt-1 text-xs opacity-50">{{ rv.views_count }} {% trans "views" %}</p>
+          </div>
+        </a>
+      {% endfor %}
+    </aside>
   {% endif %}
 
-  {% if can_manage %}
-    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-xl border p-4 shadow-sm">
-      <h3 class="mb-3 font-bold">{% trans "Management" %}</h3>
-      <div class="flex flex-wrap gap-2">
-        <a
-          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-          class="rounded-lg border px-4 py-2 text-sm transition hover:opacity-85"
-          href="{% url 'vod:video_edit' collection.slug video.slug %}">{% trans "Edit" %}</a>
-        <form method="post" action="{% url 'vod:build_hls' collection.slug video.slug %}">
-          {% csrf_token %}
-          <input type="hidden" name="force" value="1">
-          <button
-            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-            class="rounded-lg border px-4 py-2 text-sm transition hover:opacity-85">{% trans "Rebuild HLS" %}</button>
-        </form>
-      </div>
-      {% if video.hls_error %}
-        <pre :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="mt-3 whitespace-pre-wrap rounded-lg border p-3 text-xs">{{ video.hls_error }}</pre>
-      {% endif %}
-    </div>
-  {% endif %}
-</article>
+</div>
 {% endblock %}
