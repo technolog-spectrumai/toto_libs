@@ -1,12 +1,15 @@
+import shutil
+import tempfile
 from decimal import Decimal
 from django.contrib.auth.models import User
-from django.test import TestCase, Client
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, Client, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
 from toto.core.models import Platform
 from toto.invoice.models import Invoice, InvoiceStatus, BillingCycle, BillingCycleFrequency
-from toto.vault.models import Bucket, VaultDirectory
+from toto.vault.models import Bucket, VaultDirectory, VaultFile
 
 
 class InvoiceModelTest(TestCase):
@@ -253,3 +256,121 @@ class NoVaultAssetsLinkTest(TestCase):
                         app, "assets",
                         msg=f"{Model.__name__}.{field.name} points to assets app model {related.__name__}",
                     )
+
+
+class CopyFilesToBucketTest(TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.temp_media = tempfile.mkdtemp()
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.temp_media, ignore_errors=True)
+        super().tearDownClass()
+
+    def setUp(self):
+        self._override = override_settings(MEDIA_ROOT=self.temp_media)
+        self._override.enable()
+
+        Platform.objects.create(site_name="Test", author="Test", publication_year=2024, active=True)
+        self.alice = User.objects.create_user("alice", password="pass")
+        self.bob = User.objects.create_user("bob", password="pass")
+        self.client = Client()
+
+        self.src_bucket = Bucket.objects.create(name="Source", slug="source", owner=self.alice)
+        self.dst_bucket = Bucket.objects.create(name="Dest", slug="dest", owner=self.alice)
+        self.bob_bucket = Bucket.objects.create(name="Bob", slug="bob-bucket", owner=self.bob)
+
+        self.src_file = VaultFile.objects.create(
+            owner=self.alice,
+            title="test file",
+            key="test-file",
+            file=SimpleUploadedFile("test_file.txt", b"hello world"),
+            file_type="text",
+            bucket=self.src_bucket,
+        )
+
+    def tearDown(self):
+        self._override.disable()
+
+    def _copy_url(self, slug):
+        return reverse("vault:copy_files", kwargs={"source_slug": slug})
+
+    def test_copy_file_creates_new_record_in_target(self):
+        self.client.login(username="alice", password="pass")
+        response = self.client.post(self._copy_url(self.src_bucket.slug), {
+            "files": [self.src_file.pk],
+            "destination_bucket": self.dst_bucket.pk,
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(
+            VaultFile.objects.filter(bucket=self.dst_bucket, title="test file").exists()
+        )
+
+    def test_source_file_remains_in_source_bucket(self):
+        self.client.login(username="alice", password="pass")
+        self.client.post(self._copy_url(self.src_bucket.slug), {
+            "files": [self.src_file.pk],
+            "destination_bucket": self.dst_bucket.pk,
+        })
+        self.assertTrue(
+            VaultFile.objects.filter(pk=self.src_file.pk, bucket=self.src_bucket).exists()
+        )
+
+    def test_new_file_exists_only_in_target(self):
+        self.client.login(username="alice", password="pass")
+        self.client.post(self._copy_url(self.src_bucket.slug), {
+            "files": [self.src_file.pk],
+            "destination_bucket": self.dst_bucket.pk,
+        })
+        self.assertEqual(VaultFile.objects.filter(bucket=self.dst_bucket).count(), 1)
+        self.assertEqual(VaultFile.objects.filter(bucket=self.src_bucket).count(), 1)
+
+    def test_duplicate_key_is_renamed(self):
+        VaultFile.objects.create(
+            owner=self.alice,
+            title="existing",
+            key="test-file",
+            file=SimpleUploadedFile("existing.txt", b"existing"),
+            file_type="text",
+            bucket=self.dst_bucket,
+        )
+        self.client.login(username="alice", password="pass")
+        self.client.post(self._copy_url(self.src_bucket.slug), {
+            "files": [self.src_file.pk],
+            "destination_bucket": self.dst_bucket.pk,
+        })
+        keys = list(VaultFile.objects.filter(bucket=self.dst_bucket).values_list("key", flat=True))
+        self.assertEqual(len(keys), 2)
+        self.assertIn("test-file", keys)
+        self.assertIn("test-file-1", keys)
+
+    def test_cannot_copy_to_other_users_bucket(self):
+        self.client.login(username="alice", password="pass")
+        self.client.post(self._copy_url(self.src_bucket.slug), {
+            "files": [self.src_file.pk],
+            "destination_bucket": self.bob_bucket.pk,
+        })
+        self.assertFalse(VaultFile.objects.filter(bucket=self.bob_bucket).exists())
+
+    def test_cannot_copy_from_other_users_bucket(self):
+        self.client.login(username="alice", password="pass")
+        response = self.client.get(self._copy_url(self.bob_bucket.slug))
+        self.assertEqual(response.status_code, 404)
+
+    def test_requires_login(self):
+        response = self.client.get(self._copy_url(self.src_bucket.slug))
+        self.assertNotEqual(response.status_code, 200)
+
+    def test_redirect_to_target_bucket_on_success(self):
+        self.client.login(username="alice", password="pass")
+        response = self.client.post(self._copy_url(self.src_bucket.slug), {
+            "files": [self.src_file.pk],
+            "destination_bucket": self.dst_bucket.pk,
+        })
+        self.assertRedirects(
+            response,
+            reverse("vault:bucket_metrics", kwargs={"bucket_slug": self.dst_bucket.slug}),
+        )

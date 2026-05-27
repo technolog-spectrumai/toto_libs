@@ -54,6 +54,12 @@
           <i class="fa-solid fa-folder-open"></i>
           {% trans "Browse" %}
         </a>
+        <a href="{% url 'vault:copy_files' bucket.slug %}"
+           :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+           class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+          <i class="fa-solid fa-copy"></i>
+          {% trans "Copy files" %}
+        </a>
         {% for gw in gateways %}
           <a href="{% url 'vault:gateway_page' gw.directory_id %}"
              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"

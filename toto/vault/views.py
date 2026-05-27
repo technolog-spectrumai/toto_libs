@@ -1,12 +1,17 @@
+import json
 import mimetypes
+import os
 from datetime import date, timedelta
 from decimal import Decimal
 
+from django.core.files.base import ContentFile as DjangoContentFile
+from django.db import transaction
 from django.db.models import Count, Q, Sum
 from django.db.models.functions import TruncDate
 from django.http import FileResponse, JsonResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.utils.text import slugify
 from django.views import View
 from django.views.generic import TemplateView, DetailView, ListView
 from django.urls import reverse
@@ -557,6 +562,96 @@ class BucketMetricsView(LoginRequiredMixin, TemplateView):
         ).count()
 
         return PageProcessor().decorate(context, self.request)
+
+
+# ============================================================
+# Copy Files
+# ============================================================
+
+def _unique_copy_key(source_file, target_bucket):
+    base_key = source_file.key or slugify(source_file.title) or "file"
+    key = base_key
+    counter = 1
+    while VaultFile.objects.filter(bucket=target_bucket, key=key).exists():
+        key = f"{base_key}-{counter}"
+        counter += 1
+    return key
+
+
+class CopyFilesToBucketView(LoginRequiredMixin, View):
+    template_name = "vault/copy_files.html"
+
+    def _source_bucket(self, request, source_slug):
+        return get_object_or_404(Bucket, slug=source_slug, owner=request.user)
+
+    def _build_context(self, request, source_bucket, form=None):
+        from .forms import CopyFilesForm
+        files_qs = VaultFile.objects.filter(
+            owner=request.user, bucket=source_bucket
+        ).order_by("title")
+        files_data = [
+            {"id": str(f.pk), "title": f.title, "file_type": f.file_type, "key": f.key}
+            for f in files_qs
+        ]
+        dest_buckets = list(
+            Bucket.objects.filter(owner=request.user).exclude(pk=source_bucket.pk).order_by("name")
+        )
+        context = {
+            "source_bucket": source_bucket,
+            "form": form or CopyFilesForm(request.user, source_bucket),
+            "files_data": files_data,
+            "dest_buckets": dest_buckets,
+        }
+        return PageProcessor().decorate(context, request)
+
+    def get(self, request, source_slug):
+        source_bucket = self._source_bucket(request, source_slug)
+        return render(request, self.template_name, self._build_context(request, source_bucket))
+
+    def post(self, request, source_slug):
+        from .forms import CopyFilesForm
+        source_bucket = self._source_bucket(request, source_slug)
+        form = CopyFilesForm(request.user, source_bucket, request.POST)
+        if not form.is_valid():
+            return render(
+                request,
+                self.template_name,
+                self._build_context(request, source_bucket, form),
+            )
+
+        destination_bucket = form.cleaned_data["destination_bucket"]
+        selected_files = list(form.cleaned_data["files"])
+
+        with transaction.atomic():
+            for source_file in selected_files:
+                unique_key = _unique_copy_key(source_file, destination_bucket)
+                source_file.file.open("rb")
+                try:
+                    content = source_file.file.read()
+                finally:
+                    source_file.file.close()
+                new_file = VaultFile(
+                    owner=source_file.owner,
+                    title=source_file.title,
+                    key=unique_key,
+                    content_hash=source_file.content_hash,
+                    file_type=source_file.file_type,
+                    is_encrypted=source_file.is_encrypted,
+                    is_public=source_file.is_public,
+                    notes=source_file.notes,
+                    file_size_bytes=source_file.file_size_bytes,
+                    bucket=destination_bucket,
+                )
+                orig_name = os.path.basename(source_file.file.name)
+                new_file.file.save(orig_name, DjangoContentFile(content), save=False)
+                new_file.save()
+
+        count = len(selected_files)
+        messages.success(
+            request,
+            f"Copied {count} file{'s' if count != 1 else ''} to \"{destination_bucket.name}\".",
+        )
+        return redirect("vault:bucket_metrics", bucket_slug=destination_bucket.slug)
 
 
 # ============================================================

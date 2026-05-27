@@ -1,0 +1,245 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{% trans "Copy Files" %} | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+<style>[x-cloak] { display: none !important; }</style>
+{% endblock %}
+
+{% block content %}
+{{ files_data|json_script:"copy-files-data" }}
+
+<div
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-3xl space-y-8">
+
+    <!-- Header -->
+    <header class="space-y-1">
+      <a href="{% url 'vault:bucket_metrics' source_bucket.slug %}"
+         class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+        <i class="fa-solid fa-arrow-left"></i>
+        {{ source_bucket.name }}
+      </a>
+      <div>
+        <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+           class="text-xs font-semibold uppercase tracking-wide">
+          {% trans "Vault" %}
+        </p>
+        <h1 class="mt-1 text-3xl font-bold">
+          {% trans "Copy files from" %} &ldquo;{{ source_bucket.name }}&rdquo;
+        </h1>
+      </div>
+    </header>
+
+    <!-- Copy form -->
+    <div x-data="copyFilesPage()" x-cloak>
+      <form method="post" action="">
+        {% csrf_token %}
+
+        <div class="space-y-6">
+
+          <!-- Info messages -->
+          <div
+            :class="darkMode ? 'border-accent-1/50 bg-bubble-bg-dark' : 'border-accent-2/50 bg-bubble-bg-light'"
+            class="rounded-xl border p-4 text-sm space-y-1.5">
+            <p>
+              <i class="fa-solid fa-circle-info mr-1.5 opacity-60"></i>
+              {% trans "Original files will remain unchanged." %}
+            </p>
+            <p class="opacity-60">
+              <i class="fa-solid fa-tag mr-1.5"></i>
+              {% trans "Files with existing keys in the destination bucket will be renamed automatically." %}
+            </p>
+          </div>
+
+          <!-- Form errors -->
+          {% if form.errors %}
+          <div class="rounded-xl border border-red-400/40 bg-red-500/5 p-4 text-sm text-red-500 space-y-1">
+            {% for field, errors in form.errors.items %}
+              {% for error in errors %}<p><i class="fa-solid fa-triangle-exclamation mr-1"></i>{{ error }}</p>{% endfor %}
+            {% endfor %}
+          </div>
+          {% endif %}
+
+          <!-- File list panel -->
+          <section>
+            <p class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-55">
+              <i class="fa-solid fa-file mr-1"></i>{% trans "Files in source bucket" %}
+            </p>
+            <div
+              :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+              class="rounded-xl border shadow-sm overflow-hidden">
+
+              <!-- Toolbar: select-all + search -->
+              <div
+                :class="darkMode ? 'bg-bubble-bg-dark border-b border-accent-1' : 'bg-bubble-bg-light border-b border-accent-2'"
+                class="flex items-center gap-3 px-4 py-3">
+                <label class="flex items-center gap-2 cursor-pointer text-sm font-semibold select-none">
+                  <input
+                    type="checkbox"
+                    :checked="allVisibleSelected"
+                    :indeterminate="someVisibleSelected && !allVisibleSelected"
+                    @change="toggleAll"
+                    class="rounded">
+                  {% trans "Select all" %}
+                </label>
+                <div class="flex-1"></div>
+                <input
+                  type="text"
+                  x-model="search"
+                  placeholder="{% trans 'Filter files…' %}"
+                  :class="darkMode
+                    ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark placeholder:text-text-main-dark/30'
+                    : 'bg-primary-bg-light border-accent-2 text-text-main-light placeholder:text-text-main-light/30'"
+                  class="w-44 rounded-lg border px-3 py-1.5 text-sm focus:outline-none"
+                  autocomplete="off">
+              </div>
+
+              <!-- Scrollable file list -->
+              <div class="max-h-80 overflow-y-auto divide-y"
+                   :class="darkMode ? 'divide-accent-1/30' : 'divide-accent-2/30'">
+                <template x-for="file in filtered" :key="file.id">
+                  <label
+                    class="flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors"
+                    :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'">
+                    <input
+                      type="checkbox"
+                      name="files"
+                      :value="file.id"
+                      x-model="selectedFiles"
+                      class="rounded shrink-0">
+                    <span
+                      :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
+                      class="shrink-0 rounded border px-1.5 py-0.5 text-xs font-semibold uppercase"
+                      x-text="file.file_type">
+                    </span>
+                    <span class="flex-1 min-w-0 text-sm font-medium truncate" x-text="file.title"></span>
+                    <span class="shrink-0 font-mono text-xs opacity-40" x-text="file.key"></span>
+                  </label>
+                </template>
+
+                <!-- Empty states -->
+                <div x-show="allFiles.length === 0"
+                     class="px-4 py-8 text-center text-sm opacity-50">
+                  <i class="fa-solid fa-folder-open mb-2 text-xl block"></i>
+                  {% trans "No files in this bucket." %}
+                </div>
+                <div x-show="allFiles.length > 0 && filtered.length === 0"
+                     class="px-4 py-8 text-center text-sm opacity-50">
+                  {% trans "No files match your search." %}
+                </div>
+              </div>
+            </div>
+
+            <!-- Selection counter -->
+            <p class="mt-2 text-xs opacity-50">
+              <span x-text="selectedFiles.length"></span>
+              {% trans "of" %}
+              <span x-text="allFiles.length"></span>
+              {% trans "file(s) selected" %}
+            </p>
+          </section>
+
+          <!-- Destination bucket -->
+          <section class="space-y-2">
+            <label class="text-sm font-semibold" for="id_destination_bucket">
+              {% trans "Destination bucket" %}
+            </label>
+            {% if dest_buckets %}
+            <select
+              id="id_destination_bucket"
+              name="destination_bucket"
+              x-model="destBucket"
+              :class="darkMode
+                ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark'
+                : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+              class="w-full rounded-xl border px-3 py-2.5 text-sm focus:outline-none">
+              <option value="">— {% trans "select destination" %} —</option>
+              {% for bucket in dest_buckets %}
+              <option value="{{ bucket.pk }}">{{ bucket.name }}</option>
+              {% endfor %}
+            </select>
+            {% else %}
+            <p class="rounded-xl border border-dashed px-4 py-3 text-sm opacity-50"
+               :class="darkMode ? 'border-accent-1/40' : 'border-accent-2/40'">
+              {% trans "No other buckets available. Create another bucket first." %}
+            </p>
+            {% endif %}
+          </section>
+
+          <!-- Actions -->
+          <div class="flex items-center gap-3 pt-1">
+            <button
+              type="submit"
+              :disabled="!canSubmit"
+              :class="canSubmit
+                ? (darkMode
+                    ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90'
+                    : 'bg-accent-light text-primary-bg-light hover:opacity-90')
+                : 'cursor-not-allowed opacity-40 bg-gray-400 text-white'"
+              class="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold transition">
+              <i class="fa-solid fa-copy"></i>
+              {% trans "Copy selected files" %}
+              <span
+                x-show="selectedFiles.length > 0"
+                x-text="'(' + selectedFiles.length + ')'"
+                class="opacity-70">
+              </span>
+            </button>
+            <a
+              href="{% url 'vault:bucket_metrics' source_bucket.slug %}"
+              :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+              class="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition hover:opacity-80">
+              {% trans "Cancel" %}
+            </a>
+          </div>
+
+        </div>
+      </form>
+    </div>
+
+  </div>
+</div>
+
+<script>
+function copyFilesPage() {
+  const allFiles = JSON.parse(document.getElementById('copy-files-data').textContent);
+  return {
+    search: '',
+    destBucket: '',
+    allFiles: allFiles,
+    selectedFiles: [],
+    get filtered() {
+      const s = this.search.toLowerCase().trim();
+      return s ? this.allFiles.filter(f => f.title.toLowerCase().includes(s)) : this.allFiles;
+    },
+    get allVisibleSelected() {
+      if (this.filtered.length === 0) return false;
+      return this.filtered.every(f => this.selectedFiles.includes(f.id));
+    },
+    get someVisibleSelected() {
+      return this.filtered.some(f => this.selectedFiles.includes(f.id));
+    },
+    toggleAll() {
+      if (this.allVisibleSelected) {
+        const visibleIds = new Set(this.filtered.map(f => f.id));
+        this.selectedFiles = this.selectedFiles.filter(id => !visibleIds.has(id));
+      } else {
+        this.filtered.forEach(f => {
+          if (!this.selectedFiles.includes(f.id)) {
+            this.selectedFiles.push(f.id);
+          }
+        });
+      }
+    },
+    get canSubmit() {
+      return this.selectedFiles.length > 0 && this.destBucket !== '';
+    },
+  };
+}
+</script>
+{% endblock %}
