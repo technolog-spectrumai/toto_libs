@@ -41,6 +41,11 @@ class FileStrategy(ABC):
         return 'admin/decrypt_file.html'
 
     @abstractmethod
+    def decrypt_to_bytes(self, file_instance, password: str) -> tuple:
+        """Decrypt file in-memory without saving. Returns (bytes, content_type)."""
+        pass
+
+    @abstractmethod
     def get_encrypt_form(self, request, ids):
         pass
 

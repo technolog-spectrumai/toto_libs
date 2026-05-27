@@ -1,6 +1,7 @@
 import json
 import mimetypes
 import os
+from io import BytesIO
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -71,6 +72,7 @@ class PublicFileListView(TemplateView):
                 })
                 visit(d.pk, depth + 1)
                 for f in sorted(files_by_dir.get(d.pk, []), key=lambda x: x.title):
+                    _url = f.get_public_url() or ""
                     flat.append({
                         "t": "file",
                         "id": f.pk,
@@ -81,13 +83,15 @@ class PublicFileListView(TemplateView):
                         "owner": f.owner.username,
                         "uploaded": f.uploaded_at.strftime("%Y-%m-%d"),
                         "encrypted": f.is_encrypted,
-                        "url": f.get_public_url() or "",
+                        "url": _url if not f.is_encrypted else "",
+                        "raw_url": _url,
                         "bpk": f.bucket_id,
                     })
 
         visit(None, 0)
 
         for f in sorted(files_by_dir.get(None, []), key=lambda x: x.title):
+            _url = f.get_public_url() or ""
             flat.append({
                 "t": "file",
                 "id": f.pk,
@@ -98,7 +102,8 @@ class PublicFileListView(TemplateView):
                 "owner": f.owner.username,
                 "uploaded": f.uploaded_at.strftime("%Y-%m-%d"),
                 "encrypted": f.is_encrypted,
-                "url": f.get_public_url() or "",
+                "url": _url if not f.is_encrypted else "",
+                "raw_url": _url,
                 "bpk": f.bucket_id,
             })
 
@@ -825,7 +830,7 @@ class EncryptFileView(LoginRequiredMixin, View):
             if "EOF marker not found" in msg or "PdfRead" in type(e).__name__:
                 msg = "File does not appear to be a valid PDF."
             return JsonResponse({"ok": False, "error": msg}, status=500)
-        return JsonResponse({"ok": True})
+        return JsonResponse({"ok": True, "raw_url": vault_file.get_public_url() or ""})
 
 
 class DecryptFileView(LoginRequiredMixin, View):
@@ -844,6 +849,28 @@ class DecryptFileView(LoginRequiredMixin, View):
         except Exception as e:
             return JsonResponse({"ok": False, "error": str(e)}, status=500)
         return JsonResponse({"ok": True, "url": vault_file.get_public_url() or ""})
+
+
+class EncryptedDownloadView(LoginRequiredMixin, View):
+    def post(self, request):
+        file_pk  = request.POST.get("file_pk", "").strip()
+        password = request.POST.get("password", "").strip()
+        if not file_pk or not password:
+            return JsonResponse({"ok": False, "error": "Missing required fields."}, status=400)
+        try:
+            vault_file = VaultFile.objects.select_related("owner", "bucket").get(
+                pk=file_pk, owner=request.user
+            )
+        except VaultFile.DoesNotExist:
+            return JsonResponse({"ok": False, "error": "File not found."}, status=404)
+        if not vault_file.is_encrypted:
+            return JsonResponse({"ok": False, "error": "File is not encrypted."}, status=400)
+        try:
+            data, content_type = vault_file.get_strategy().decrypt_to_bytes(vault_file, password=password)
+        except Exception as e:
+            return JsonResponse({"ok": False, "error": str(e)}, status=400)
+        filename = vault_file.title or os.path.basename(vault_file.file.name)
+        return FileResponse(BytesIO(data), content_type=content_type, as_attachment=True, filename=filename)
 
 
 class MoveFileView(LoginRequiredMixin, View):

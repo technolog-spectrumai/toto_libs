@@ -57,6 +57,21 @@ class PdfStrategy(FileStrategy):
         file_instance.is_encrypted = False
         file_instance.save()
 
+    def decrypt_to_bytes(self, file_instance, password: str) -> tuple:
+        from io import BytesIO
+        reader = PdfReader(file_instance.file.path)
+        if not reader.is_encrypted:
+            raise ValueError("PDF is not encrypted.")
+        result = reader.decrypt(password)
+        if result == 0:
+            raise ValueError("Incorrect password.")
+        writer = PdfWriter()
+        for page in reader.pages:
+            writer.add_page(page)
+        buf = BytesIO()
+        writer.write(buf)
+        return buf.getvalue(), "application/pdf"
+
     def parse_encrypt_form(self, form):
         user_password = form.cleaned_data['user_password']
         owner_password = form.cleaned_data['owner_password'] or user_password
