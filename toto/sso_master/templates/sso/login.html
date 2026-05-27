@@ -169,7 +169,12 @@
                 {% endif %}
               </div>
               <div>
-                {{ form.password.label_tag }}
+                <div class="flex items-center justify-between mb-2">
+                  {{ form.password.label_tag }}
+                  <a href="{% url 'sso:password_reset' %}"
+                     :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                     class="text-xs font-medium hover:underline">Forgot password?</a>
+                </div>
                 {{ form.password }}
                 {% if form.password.errors %}
                   <p :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" class="mt-2 text-xs font-medium">

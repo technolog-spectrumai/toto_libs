@@ -15,4 +15,10 @@ urlpatterns = [
     path("sso/my-profile/", views.my_profile, name="my_profile"),
     path("sso/admin-test/<uuid:pk>/", views.admin_test_login, name="admin_test_login"),
     path("sso/admin-test-callback/", views.admin_test_callback, name="admin_test_callback"),
+
+    # Password reset flow
+    path("sso/password-reset/", views.password_reset_view, name="password_reset"),
+    path("sso/password-reset/done/", views.password_reset_done_view, name="password_reset_done"),
+    path("sso/password-reset/<uidb64>/<token>/", views.password_reset_confirm_view, name="password_reset_confirm"),
+    path("sso/password-reset/complete/", views.password_reset_complete_view, name="password_reset_complete"),
 ]

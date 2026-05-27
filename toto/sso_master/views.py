@@ -2,16 +2,18 @@ import base64
 from urllib.parse import urlencode
 
 from django.contrib import messages
-from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.forms import PasswordResetForm, SetPasswordForm
+from django.contrib.auth.tokens import default_token_generator
 from django.http import HttpResponseBadRequest, HttpResponseForbidden, JsonResponse
 from django.shortcuts import redirect, render
-from django.urls import reverse
+from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
+from django.utils.encoding import force_str
+from django.utils.http import urlsafe_base64_decode
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
-
-from django.urls import NoReverseMatch
 
 from toto.core.forms import LoginForm
 from toto.ui import PageProcessor
@@ -352,3 +354,55 @@ def my_profile(request):
         except NoReverseMatch:
             pass
     return redirect("core:dashboard")
+
+
+def password_reset_view(request):
+    processor = PageProcessor()
+    form = PasswordResetForm(request.POST or None)
+    context = {"form": form, "page_title": "Reset Password"}
+
+    if request.method == "POST" and form.is_valid():
+        form.save(
+            request=request,
+            use_https=request.is_secure(),
+            email_template_name="sso/password_reset_email.html",
+            subject_template_name="sso/password_reset_subject.txt",
+            extra_email_context=None,
+        )
+        return redirect(reverse("sso:password_reset_done"))
+
+    return render(request, "sso/password_reset.html", processor.decorate(context, request))
+
+
+def password_reset_done_view(request):
+    processor = PageProcessor()
+    context = {"page_title": "Check Your Email"}
+    return render(request, "sso/password_reset_done.html", processor.decorate(context, request))
+
+
+def password_reset_confirm_view(request, uidb64, token):
+    processor = PageProcessor()
+    User = get_user_model()
+
+    user = None
+    try:
+        uid = force_str(urlsafe_base64_decode(uidb64))
+        user = User.objects.get(pk=uid)
+    except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+        pass
+
+    valid = user is not None and default_token_generator.check_token(user, token)
+    form = SetPasswordForm(user, request.POST or None) if valid else None
+    context = {"form": form, "validlink": valid, "page_title": "Set New Password"}
+
+    if request.method == "POST" and valid and form.is_valid():
+        form.save()
+        return redirect(reverse("sso:password_reset_complete"))
+
+    return render(request, "sso/password_reset_confirm.html", processor.decorate(context, request))
+
+
+def password_reset_complete_view(request):
+    processor = PageProcessor()
+    context = {"page_title": "Password Reset Complete"}
+    return render(request, "sso/password_reset_complete.html", processor.decorate(context, request))
