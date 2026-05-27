@@ -594,23 +594,91 @@ class CopyFilesToBucketView(LoginRequiredMixin, View):
     def _source_bucket(self, request, source_slug):
         return get_object_or_404(Bucket, slug=source_slug, owner=request.user)
 
-    def _build_context(self, request, source_bucket, form=None):
-        from .forms import CopyFilesForm
-        files_qs = VaultFile.objects.filter(
-            owner=request.user, bucket=source_bucket
-        ).order_by("title")
-        files_data = [
-            {"id": str(f.pk), "title": f.title, "file_type": f.file_type, "key": f.key}
-            for f in files_qs
-        ]
-        dest_buckets = list(
+    @staticmethod
+    def _build_source_tree(request, source_bucket):
+        dirs = list(
+            VaultDirectory.objects.filter(bucket=source_bucket)
+            .prefetch_related("allowed_users")
+            .order_by("name")
+        )
+        files = list(
+            VaultFile.objects.filter(bucket=source_bucket, owner=request.user).order_by("title")
+        )
+        by_parent = {}
+        for d in dirs:
+            by_parent.setdefault(d.parent_id, []).append(d)
+        files_by_dir = {}
+        for f in files:
+            files_by_dir.setdefault(f.directory_id, []).append(f)
+        accessible_pks = {d.pk for d in dirs}
+        flat = []
+
+        def _file_item(f, depth):
+            return {
+                "t": "file", "id": str(f.pk),
+                "pid": str(f.directory_id) if f.directory_id else None,
+                "depth": depth, "title": f.title, "file_type": f.file_type, "key": f.key,
+            }
+
+        def visit(parent_pk, depth):
+            for d in sorted(by_parent.get(parent_pk, []), key=lambda x: x.name):
+                n_files = len(files_by_dir.get(d.pk, []))
+                n_dirs = sum(1 for c in by_parent.get(d.pk, []) if c.pk in accessible_pks)
+                flat.append({
+                    "t": "dir", "id": str(d.pk),
+                    "pid": str(d.parent_id) if d.parent_id else None,
+                    "depth": depth, "name": d.name,
+                    "n_files": n_files, "n_dirs": n_dirs,
+                })
+                visit(d.pk, depth + 1)
+                for f in sorted(files_by_dir.get(d.pk, []), key=lambda x: x.title):
+                    flat.append(_file_item(f, depth + 1))
+
+        visit(None, 0)
+        for f in sorted(files_by_dir.get(None, []), key=lambda x: x.title):
+            flat.append(_file_item(f, 0))
+        return flat
+
+    @staticmethod
+    def _build_dest_tree(request, source_bucket):
+        buckets = list(
             Bucket.objects.filter(owner=request.user).exclude(pk=source_bucket.pk).order_by("name")
         )
+        bucket_pks = [b.pk for b in buckets]
+        all_dirs = list(VaultDirectory.objects.filter(bucket__in=bucket_pks).order_by("name"))
+        dirs_by_bucket = {}
+        for d in all_dirs:
+            dirs_by_bucket.setdefault(d.bucket_id, []).append(d)
+        by_parent_bucket = {}
+        for d in all_dirs:
+            by_parent_bucket.setdefault((d.parent_id, d.bucket_id), []).append(d)
+        flat = []
+
+        def visit_dest(parent_id, depth, bucket_pk):
+            pid_val = str(parent_id) if parent_id else f"b{bucket_pk}"
+            for d in sorted(by_parent_bucket.get((parent_id, bucket_pk), []), key=lambda x: x.name):
+                flat.append({
+                    "t": "dir", "id": str(d.pk), "bpk": d.bucket_id,
+                    "pid": pid_val, "depth": depth, "name": d.name,
+                })
+                visit_dest(d.pk, depth + 1, bucket_pk)
+
+        for bucket in buckets:
+            flat.append({
+                "t": "bucket_root", "id": f"b{bucket.pk}", "bpk": bucket.pk,
+                "pid": None, "depth": 0, "name": bucket.name,
+                "n_dirs": len(dirs_by_bucket.get(bucket.pk, [])),
+            })
+            visit_dest(None, 1, bucket.pk)
+        return flat
+
+    def _build_context(self, request, source_bucket, form=None):
+        from .forms import CopyFilesForm
         context = {
             "source_bucket": source_bucket,
             "form": form or CopyFilesForm(request.user, source_bucket),
-            "files_data": files_data,
-            "dest_buckets": dest_buckets,
+            "source_items": self._build_source_tree(request, source_bucket),
+            "dest_items": self._build_dest_tree(request, source_bucket),
         }
         return PageProcessor().decorate(context, request)
 
@@ -623,27 +691,58 @@ class CopyFilesToBucketView(LoginRequiredMixin, View):
         source_bucket = self._source_bucket(request, source_slug)
         form = CopyFilesForm(request.user, source_bucket, request.POST)
         if not form.is_valid():
-            return render(
-                request,
-                self.template_name,
-                self._build_context(request, source_bucket, form),
-            )
+            return render(request, self.template_name, self._build_context(request, source_bucket, form))
 
         destination_bucket = form.cleaned_data["destination_bucket"]
         selected_files = list(form.cleaned_data["files"])
 
+        dest_dir_id = request.POST.get("destination_directory", "").strip()
+        destination_directory = None
+        if dest_dir_id:
+            try:
+                destination_directory = VaultDirectory.objects.get(
+                    pk=dest_dir_id, bucket=destination_bucket
+                )
+            except VaultDirectory.DoesNotExist:
+                form.add_error(None, "Invalid destination directory.")
+                return render(request, self.template_name, self._build_context(request, source_bucket, form))
+
+        copy_policy = request.POST.get("copy_policy", "add_suffix")
+        if copy_policy not in ("replace", "fail", "add_suffix"):
+            copy_policy = "add_suffix"
+
+        if copy_policy == "fail":
+            conflicts = [
+                f.key for f in selected_files
+                if VaultFile.objects.filter(bucket=destination_bucket, key=f.key).exists()
+            ]
+            if conflicts:
+                preview = ", ".join(f'"{k}"' for k in conflicts[:5])
+                if len(conflicts) > 5:
+                    preview += f" … (+{len(conflicts) - 5} more)"
+                form.add_error(None, f"Key conflict(s): {preview}")
+                return render(request, self.template_name, self._build_context(request, source_bucket, form))
+
         with transaction.atomic():
             for source_file in selected_files:
-                unique_key = _unique_copy_key(source_file, destination_bucket)
+                if copy_policy == "replace":
+                    VaultFile.objects.filter(bucket=destination_bucket, key=source_file.key).delete()
+                    key = source_file.key
+                elif copy_policy == "fail":
+                    key = source_file.key
+                else:
+                    key = _unique_copy_key(source_file, destination_bucket)
+
                 source_file.file.open("rb")
                 try:
                     content = source_file.file.read()
                 finally:
                     source_file.file.close()
+
                 new_file = VaultFile(
                     owner=source_file.owner,
                     title=source_file.title,
-                    key=unique_key,
+                    key=key,
                     content_hash=source_file.content_hash,
                     file_type=source_file.file_type,
                     is_encrypted=source_file.is_encrypted,
@@ -651,6 +750,7 @@ class CopyFilesToBucketView(LoginRequiredMixin, View):
                     notes=source_file.notes,
                     file_size_bytes=source_file.file_size_bytes,
                     bucket=destination_bucket,
+                    directory=destination_directory,
                 )
                 orig_name = os.path.basename(source_file.file.name)
                 new_file.file.save(orig_name, DjangoContentFile(content), save=False)

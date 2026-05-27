@@ -137,6 +137,16 @@
           </a>
         {% endif %}
 
+        <!-- Copy files button — only when a bucket is filtered and user is logged in -->
+        {% if selected_bucket and user.is_authenticated %}
+          <a href="{% url 'vault:copy_files' selected_bucket %}"
+             :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+             class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+            <i class="fa-solid fa-copy"></i>
+            {% trans "Copy files" %}
+          </a>
+        {% endif %}
+
       </div>
     </header>
 
