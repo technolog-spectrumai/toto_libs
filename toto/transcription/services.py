@@ -305,6 +305,11 @@ def _run_openai_whisper_backend(job: TranscriptionJob, local_path: str):
         TRANSCRIPTION_OPENAI_WHISPER_MODEL = "small"
         TRANSCRIPTION_OPENAI_WHISPER_DEVICE = "cuda" | "cpu" | None
         TRANSCRIPTION_OPENAI_WHISPER_FP16 = True | False | None
+        TRANSCRIPTION_WHISPER_DOWNLOAD_ROOT = "/srv/models/whisper"
+            Cache directory for model weights. Pre-download once with:
+            python -c "import whisper; whisper.load_model('small', download_root='/srv/models/whisper')"
+        TRANSCRIPTION_WHISPER_LOCAL_FILES_ONLY = True
+            Raise an error instead of downloading if the model is not cached.
     """
 
     try:
@@ -319,8 +324,19 @@ def _run_openai_whisper_backend(job: TranscriptionJob, local_path: str):
     )
     device = getattr(settings, "TRANSCRIPTION_OPENAI_WHISPER_DEVICE", None)
     fp16 = getattr(settings, "TRANSCRIPTION_OPENAI_WHISPER_FP16", None)
+    download_root = getattr(settings, "TRANSCRIPTION_WHISPER_DOWNLOAD_ROOT", None)
+    local_only = getattr(settings, "TRANSCRIPTION_WHISPER_LOCAL_FILES_ONLY", False)
 
-    model = whisper.load_model(model_name, device=device) if device else whisper.load_model(model_name)
+    if local_only:
+        import os
+        os.environ["HF_HUB_OFFLINE"] = "1"
+
+    load_kwargs: dict[str, Any] = {}
+    if device:
+        load_kwargs["device"] = device
+    if download_root:
+        load_kwargs["download_root"] = download_root
+    model = whisper.load_model(model_name, **load_kwargs)
 
     kwargs = {
         "language": _language_for_job(job),
@@ -360,9 +376,16 @@ def _run_faster_whisper_backend(job: TranscriptionJob, local_path: str):
 
     Settings:
         TRANSCRIPTION_FASTER_WHISPER_MODEL = "small"
+            Model name ("tiny", "base", "small", "medium", "large-v3") or an
+            absolute path to a locally exported CTranslate2 model directory.
         TRANSCRIPTION_FASTER_WHISPER_DEVICE = "cpu" | "cuda"
         TRANSCRIPTION_FASTER_WHISPER_COMPUTE_TYPE = "int8" | "float16" | "float32"
         TRANSCRIPTION_FASTER_WHISPER_BEAM_SIZE = 5
+        TRANSCRIPTION_WHISPER_DOWNLOAD_ROOT = "/srv/models/faster-whisper"
+            Directory where downloaded model weights are cached. Pre-download once:
+            python -c "from faster_whisper import WhisperModel; WhisperModel('small', download_root='/srv/models/faster-whisper')"
+        TRANSCRIPTION_WHISPER_LOCAL_FILES_ONLY = True
+            Never contact HuggingFace Hub — raise immediately if model not cached.
     """
 
     try:
@@ -378,8 +401,16 @@ def _run_faster_whisper_backend(job: TranscriptionJob, local_path: str):
     device = getattr(settings, "TRANSCRIPTION_FASTER_WHISPER_DEVICE", "cpu")
     compute_type = getattr(settings, "TRANSCRIPTION_FASTER_WHISPER_COMPUTE_TYPE", "int8")
     beam_size = int(getattr(settings, "TRANSCRIPTION_FASTER_WHISPER_BEAM_SIZE", 5))
+    download_root = getattr(settings, "TRANSCRIPTION_WHISPER_DOWNLOAD_ROOT", None)
+    local_only = getattr(settings, "TRANSCRIPTION_WHISPER_LOCAL_FILES_ONLY", False)
 
-    model = WhisperModel(model_name, device=device, compute_type=compute_type)
+    model_kwargs: dict[str, Any] = {"device": device, "compute_type": compute_type}
+    if download_root:
+        model_kwargs["download_root"] = download_root
+    if local_only:
+        model_kwargs["local_files_only"] = True
+
+    model = WhisperModel(model_name, **model_kwargs)
     language = _language_for_job(job)
     task = _whisper_task(job)
     segments_iter, info = model.transcribe(
@@ -499,6 +530,64 @@ def run_transcription_job(job_id: int) -> dict[str, Any]:
     job = TranscriptionJob.objects.select_related("source", "source__source_file", "source__collection").get(pk=job_id)
     run_transcription(job)
     return {"job_id": job.pk, "status": job.status, "source_id": job.source_id}
+
+
+def celery_workers_available(timeout: float = 1.0) -> bool:
+    """Return True if at least one Celery worker responds within *timeout* seconds."""
+    try:
+        from celery import current_app
+        responses = current_app.control.inspect(timeout=timeout).ping()
+        return bool(responses)
+    except Exception:
+        return False
+
+
+def run_transcription_with_timeout(job: TranscriptionJob, timeout_seconds: int) -> TranscriptionJob:
+    """Run transcription synchronously but abort after *timeout_seconds*.
+
+    The underlying thread is allowed to finish naturally (Python threads cannot be
+    forcibly killed), but the job is marked FAILED immediately so the caller gets
+    a timely response.
+    """
+    import concurrent.futures
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(run_transcription, job)
+        try:
+            return future.result(timeout=timeout_seconds)
+        except concurrent.futures.TimeoutError:
+            job_fresh = TranscriptionJob.objects.get(pk=job.pk)
+            if job_fresh.status not in {TranscriptionJob.Status.SUCCESS, TranscriptionJob.Status.FAILED, TranscriptionJob.Status.CANCELLED}:
+                job_fresh.status = TranscriptionJob.Status.FAILED
+                job_fresh.finished_at = timezone.now()
+                job_fresh.error_message = f"Timed out after {timeout_seconds}s."
+                job_fresh.save(update_fields=["status", "finished_at", "error_message", "updated_at"])
+                TranscriptSource.objects.filter(pk=job_fresh.source_id, status=TranscriptSource.Status.PROCESSING).update(status=TranscriptSource.Status.FAILED)
+            raise TimeoutError(f"Transcription timed out after {timeout_seconds}s.")
+
+
+def cancel_job(job_pk: int, *, user=None) -> TranscriptionJob:
+    """Mark a queued or running job as CANCELLED and revoke the Celery task if known."""
+    job = TranscriptionJob.objects.select_related("source").get(pk=job_pk)
+    cancellable = {TranscriptionJob.Status.QUEUED, TranscriptionJob.Status.RUNNING}
+    if job.status not in cancellable:
+        raise ValueError(f"Job {job_pk} is {job.status} and cannot be cancelled.")
+    if job.celery_task_id:
+        try:
+            from celery import current_app
+            current_app.control.revoke(job.celery_task_id, terminate=True, signal="SIGTERM")
+        except Exception:
+            pass
+    job.status = TranscriptionJob.Status.CANCELLED
+    job.finished_at = timezone.now()
+    job.error_message = f"Cancelled by {user}." if user else "Cancelled."
+    job.save(update_fields=["status", "finished_at", "error_message", "updated_at"])
+    source = job.source
+    still_active = source.jobs.filter(status__in=[TranscriptionJob.Status.QUEUED, TranscriptionJob.Status.RUNNING]).exclude(pk=job.pk).exists()
+    if not still_active and source.status in {TranscriptSource.Status.QUEUED, TranscriptSource.Status.PROCESSING}:
+        source.status = TranscriptSource.Status.DRAFT
+        source.save(update_fields=["status", "updated_at"])
+    return job
 
 
 def ms_to_srt_time(ms: int) -> str:

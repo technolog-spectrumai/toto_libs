@@ -209,6 +209,7 @@ class TranscriptionJob(TimestampedModel):
     prompt = models.TextField(blank=True)
     error_message = models.TextField(blank=True)
     raw_response = models.JSONField(default=dict, blank=True)
+    celery_task_id = models.CharField(max_length=255, blank=True, help_text=_("Celery task ID for async jobs — used for revocation."))
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
 

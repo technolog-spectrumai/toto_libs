@@ -40,22 +40,49 @@
           <a href="{% url 'transcription:source_export' collection.slug source.slug 'json' %}" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition hover:opacity-80"><i class="fa-solid fa-download"></i>JSON</a>
         {% endif %}
       </div>
-      <form method="post" action="{% url 'transcription:start_transcription' collection.slug source.slug %}" class="mt-5 space-y-4 border-t border-current/10 pt-5">
+      <form method="post" action="{% url 'transcription:start_transcription' collection.slug source.slug %}"
+            class="mt-5 space-y-4 border-t border-current/10 pt-5"
+            x-data="{ runAsync: true }">
         {% csrf_token %}
         <h3 class="text-sm font-bold uppercase tracking-wide opacity-60">{% trans "Run transcription" %}</h3>
         <div class="grid gap-4 md:grid-cols-2">
           {% for field in job_form %}
-            <div class="space-y-1.5 {% if field.name == 'prompt' %}md:col-span-2{% endif %}">
-              {% if field.field.widget.input_type == "checkbox" %}
-                <label class="inline-flex items-center gap-3 text-sm font-semibold">{{ field }} {{ field.label }}</label>
-              {% else %}
-                <label class="text-sm font-semibold" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}
-              {% endif %}
-              {% if field.help_text %}<p class="text-xs opacity-55">{{ field.help_text }}</p>{% endif %}
-            </div>
+            {% if field.name == 'run_async' %}
+              <div class="space-y-1.5 md:col-span-2">
+                <label class="inline-flex items-center gap-3 text-sm font-semibold">
+                  <input type="checkbox" name="{{ field.html_name }}" id="{{ field.id_for_label }}"
+                         class="rounded border-current/20" x-model="runAsync" {% if field.value %}checked{% endif %}>
+                  {{ field.label }}
+                </label>
+              </div>
+            {% elif field.name == 'timeout_seconds' %}
+              <div class="space-y-1.5" x-show="!runAsync">
+                <label class="text-sm font-semibold" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {{ field }}
+                {% if field.help_text %}<p class="text-xs opacity-55">{{ field.help_text }}</p>{% endif %}
+              </div>
+            {% elif field.name == 'prompt' %}
+              <div class="space-y-1.5 md:col-span-2">
+                <label class="text-sm font-semibold" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {{ field }}
+              </div>
+            {% else %}
+              <div class="space-y-1.5">
+                {% if field.field.widget.input_type == "checkbox" %}
+                  <label class="inline-flex items-center gap-3 text-sm font-semibold">{{ field }} {{ field.label }}</label>
+                {% else %}
+                  <label class="text-sm font-semibold" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}
+                {% endif %}
+                {% if field.help_text %}<p class="text-xs opacity-55">{{ field.help_text }}</p>{% endif %}
+                {% for error in field.errors %}<p class="text-xs text-red-500">{{ error }}</p>{% endfor %}
+              </div>
+            {% endif %}
           {% endfor %}
         </div>
-        <button :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'" class="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90"><i class="fa-solid fa-wand-magic-sparkles"></i>{% trans "Start transcription" %}</button>
+        <button :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-wand-magic-sparkles"></i>{% trans "Start transcription" %}
+        </button>
       </form>
       {% if source.source_file %}<p class="mt-4 text-xs opacity-60"><i class="fa-solid fa-file-audio mr-1"></i>{% trans "Source" %}: {{ source.source_file.title }}</p>{% endif %}
     </div>
@@ -64,12 +91,52 @@
       <h2 class="mb-4 font-semibold">{% trans "Recent jobs" %}</h2>
       <div class="overflow-x-auto">
         <table class="min-w-full text-left text-sm">
-          <thead class="border-b border-current/10 text-xs uppercase opacity-60"><tr><th class="py-2 pr-4">{% trans "Created" %}</th><th class="pr-4">{% trans "Status" %}</th><th class="pr-4">{% trans "Engine" %}</th><th>{% trans "Error" %}</th></tr></thead>
+          <thead class="border-b border-current/10 text-xs uppercase opacity-60">
+            <tr>
+              <th class="py-2 pr-4">{% trans "Created" %}</th>
+              <th class="pr-4">{% trans "Status" %}</th>
+              <th class="pr-4">{% trans "Engine" %}</th>
+              <th class="pr-4">{% trans "Duration" %}</th>
+              <th class="pr-4">{% trans "Error" %}</th>
+              <th></th>
+            </tr>
+          </thead>
           <tbody class="divide-y divide-current/10">
             {% for job in jobs %}
-              <tr><td class="py-2 pr-4 opacity-70">{{ job.created_at|date:"Y-m-d H:i" }}</td><td class="pr-4">{{ job.get_status_display }}</td><td class="pr-4">{{ job.get_engine_display }}</td><td class="max-w-md truncate text-red-500">{{ job.error_message }}</td></tr>
+              <tr>
+                <td class="py-2 pr-4 opacity-70">{{ job.created_at|date:"Y-m-d H:i" }}</td>
+                <td class="pr-4">
+                  {% if job.status == "queued" or job.status == "running" %}
+                    <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold border"
+                          :class="darkMode ? 'border-amber-500/50 text-amber-400' : 'border-amber-500/50 text-amber-600'">
+                      <i class="fa-solid fa-spinner fa-spin text-[10px]"></i>{{ job.get_status_display }}
+                    </span>
+                  {% elif job.status == "success" %}
+                    <span class="text-emerald-500 font-semibold">{{ job.get_status_display }}</span>
+                  {% elif job.status == "failed" %}
+                    <span class="text-red-500 font-semibold">{{ job.get_status_display }}</span>
+                  {% else %}
+                    <span class="opacity-60">{{ job.get_status_display }}</span>
+                  {% endif %}
+                </td>
+                <td class="pr-4 opacity-70">{{ job.get_engine_display }}</td>
+                <td class="pr-4 opacity-60 font-mono text-xs">{{ job.duration_label }}</td>
+                <td class="max-w-xs truncate text-red-500 pr-4">{{ job.error_message }}</td>
+                <td>
+                  {% if job.status == "queued" or job.status == "running" %}
+                    <form method="post" action="{% url 'transcription:job_cancel' collection.slug source.slug job.pk %}" class="inline">
+                      {% csrf_token %}
+                      <button type="submit"
+                              class="rounded-lg border border-red-500/40 px-2.5 py-1 text-xs font-semibold text-red-500 transition hover:bg-red-500/10"
+                              onclick="return confirm('{% trans "Cancel this job?" %}')">
+                        <i class="fa-solid fa-xmark mr-1"></i>{% trans "Cancel" %}
+                      </button>
+                    </form>
+                  {% endif %}
+                </td>
+              </tr>
             {% empty %}
-              <tr><td colspan="4" class="py-6 text-center opacity-60">{% trans "No jobs yet." %}</td></tr>
+              <tr><td colspan="6" class="py-6 text-center opacity-60">{% trans "No jobs yet." %}</td></tr>
             {% endfor %}
           </tbody>
         </table>

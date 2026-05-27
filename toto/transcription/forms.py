@@ -100,7 +100,15 @@ class TranscriptUploadForm(forms.Form):
 
 
 class TranscriptionJobForm(forms.ModelForm):
-    run_async = forms.BooleanField(label=_("Run in Celery"), required=False, initial=True, widget=_checkbox())
+    run_async = forms.BooleanField(label=_("Run in Celery (async)"), required=False, initial=True, widget=_checkbox())
+    timeout_seconds = forms.IntegerField(
+        label=_("Sync timeout (seconds)"),
+        required=False,
+        min_value=10,
+        max_value=7200,
+        widget=_number(_("e.g. 300")),
+        help_text=_("Max seconds for synchronous runs. Leave blank for no limit."),
+    )
 
     class Meta:
         model = TranscriptionJob

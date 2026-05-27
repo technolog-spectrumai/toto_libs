@@ -16,11 +16,14 @@ from .models import TranscriptAccessMode, TranscriptCollection, TranscriptEvent,
 from .queries import jobs_by_day_chart_data, source_stats, top_sources_chart_data, transcription_overview_stats
 from .services import (
     can_access_source,
+    cancel_job as cancel_transcription_job,
+    celery_workers_available,
     create_transcription_job,
     export_transcript,
     readable_collections_for_user,
     readable_sources_for_user,
     record_event,
+    run_transcription_with_timeout,
     user_can_create_collections,
     user_is_transcription_manager,
 )
@@ -137,6 +140,10 @@ def start_transcription(request, collection_slug, source_slug):
     if not form.is_valid():
         messages.error(request, form.errors.as_text())
         return redirect(source.get_manage_url())
+    run_async = form.cleaned_data.get("run_async")
+    if run_async and not celery_workers_available():
+        messages.error(request, _("No Celery workers are running. Run synchronously or start a worker first."))
+        return redirect(source.get_manage_url())
     job = create_transcription_job(
         source=source,
         user=request.user,
@@ -146,17 +153,39 @@ def start_transcription(request, collection_slug, source_slug):
         prompt=form.cleaned_data.get("prompt") or "",
     )
     record_event(request=request, source=source, event=TranscriptEvent.EventKind.TRANSCRIBE)
-    if form.cleaned_data.get("run_async"):
+    if run_async:
         from .tasks import run_transcription_job
-        run_transcription_job.delay(job.pk)
+        result = run_transcription_job.delay(job.pk)
+        job.celery_task_id = result.id
+        job.save(update_fields=["celery_task_id"])
         messages.success(request, _("Transcription job queued."))
     else:
+        timeout = form.cleaned_data.get("timeout_seconds") or 0
         try:
-            from .services import run_transcription
-            run_transcription(job)
+            if timeout:
+                run_transcription_with_timeout(job, timeout)
+            else:
+                from .services import run_transcription
+                run_transcription(job)
             messages.success(request, _("Transcription completed."))
+        except TimeoutError as exc:
+            messages.error(request, str(exc))
         except Exception as exc:
             messages.error(request, str(exc))
+    return redirect(source.get_manage_url())
+
+
+@login_required
+@require_POST
+def job_cancel(request, collection_slug, source_slug, job_pk):
+    source = get_object_or_404(TranscriptSource.objects.select_related("collection"), collection__slug=collection_slug, slug=source_slug)
+    if not user_is_transcription_manager(request.user, source.collection):
+        return HttpResponseForbidden(_("Only collection writers can cancel jobs."))
+    try:
+        cancel_transcription_job(job_pk, user=request.user)
+        messages.success(request, _("Job cancelled."))
+    except Exception as exc:
+        messages.error(request, str(exc))
     return redirect(source.get_manage_url())
 
 

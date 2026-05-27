@@ -14,6 +14,7 @@ urlpatterns = [
     path("<slug:collection_slug>/<slug:source_slug>/manage/", views.source_manage, name="source_manage"),
     path("<slug:collection_slug>/<slug:source_slug>/edit/", views.source_edit, name="source_edit"),
     path("<slug:collection_slug>/<slug:source_slug>/transcribe/", views.start_transcription, name="start_transcription"),
+    path("<slug:collection_slug>/<slug:source_slug>/jobs/<int:job_pk>/cancel/", views.job_cancel, name="job_cancel"),
     path("<slug:collection_slug>/<slug:source_slug>/export/<str:kind>/", views.source_export, name="source_export"),
     path("<slug:collection_slug>/<slug:source_slug>/event/", views.source_event_api, name="source_event_api"),
 ]

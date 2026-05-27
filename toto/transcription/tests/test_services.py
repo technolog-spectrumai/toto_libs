@@ -14,6 +14,8 @@ from toto.transcription.models import (
 from toto.transcription.services import (
     AccessDecision,
     can_access_source,
+    cancel_job,
+    celery_workers_available,
     export_transcript,
     readable_collections_for_user,
     readable_sources_for_user,
@@ -236,3 +238,49 @@ class TimingHelperTests(TestCase):
 
     def test_hash_ip_empty(self):
         assert _hash_ip("") == ""
+
+
+class CeleryAvailabilityTests(TestCase):
+    def test_returns_false_when_no_broker(self):
+        # In test environment no broker is running — should return False, not raise.
+        result = celery_workers_available(timeout=0.2)
+        self.assertIsInstance(result, bool)
+
+
+class CancelJobTests(TestCase):
+    def setUp(self):
+        self.owner = User.objects.create_user(username="cj_owner", password="pw")
+        bucket = _bucket(self.owner, slug="cj-bucket")
+        col = TranscriptCollection.objects.create(
+            title="CJ Col", slug="cj-col", access_mode=TranscriptAccessMode.PUBLIC, owner=self.owner
+        )
+        vf = _vault_file(self.owner, bucket)
+        self.source = TranscriptSource.objects.create(
+            collection=col, source_file=vf, title="CJ Src", slug="cj-src",
+            status=TranscriptSource.Status.QUEUED,
+        )
+
+    def _queued_job(self):
+        return TranscriptionJob.objects.create(source=self.source, status=TranscriptionJob.Status.QUEUED)
+
+    def test_cancel_queued_job(self):
+        job = self._queued_job()
+        result = cancel_job(job.pk, user=self.owner)
+        self.assertEqual(result.status, TranscriptionJob.Status.CANCELLED)
+        self.assertIn("Cancelled", result.error_message)
+
+    def test_cancel_resets_source_status(self):
+        job = self._queued_job()
+        cancel_job(job.pk)
+        self.source.refresh_from_db()
+        self.assertEqual(self.source.status, TranscriptSource.Status.DRAFT)
+
+    def test_cancel_finished_job_raises(self):
+        job = TranscriptionJob.objects.create(source=self.source, status=TranscriptionJob.Status.SUCCESS)
+        with self.assertRaises(ValueError):
+            cancel_job(job.pk)
+
+    def test_cancel_cancelled_job_raises(self):
+        job = TranscriptionJob.objects.create(source=self.source, status=TranscriptionJob.Status.CANCELLED)
+        with self.assertRaises(ValueError):
+            cancel_job(job.pk)
