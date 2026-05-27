@@ -315,3 +315,85 @@ class TranscriptEvent(TimestampedModel):
 
     def __str__(self):
         return f"{self.source} · {self.event}"
+
+
+# ---------------------------------------------------------------------------
+# Whisper model weight registry
+# ---------------------------------------------------------------------------
+
+class WhisperModelConfig(TimestampedModel):
+    """Tracks a locally cached Whisper model variant.
+
+    Admin must create at least one record and set ``download_path`` before
+    any download can be triggered through the UI.  The ``bucket`` FK is an
+    optional organisational reference — it does **not** store files via Vault;
+    the actual weights live at ``download_path`` on the server filesystem.
+    """
+
+    class Backend(models.TextChoices):
+        FASTER_WHISPER = "faster_whisper", _("faster-whisper")
+        OPENAI_WHISPER = "openai_whisper", _("openai-whisper")
+
+    class Status(models.TextChoices):
+        NOT_DOWNLOADED = "not_downloaded", _("Not downloaded")
+        DOWNLOADING    = "downloading",    _("Downloading…")
+        READY          = "ready",          _("Ready")
+        FAILED         = "failed",         _("Failed")
+
+    # Catalogue of available model sizes with approximate sizes in MB.
+    CATALOGUE: list[tuple[str, str, int]] = [
+        ("tiny",     "faster_whisper", 75),
+        ("base",     "faster_whisper", 145),
+        ("small",    "faster_whisper", 480),
+        ("medium",   "faster_whisper", 1_500),
+        ("large-v3", "faster_whisper", 3_100),
+        ("tiny",     "openai_whisper", 75),
+        ("base",     "openai_whisper", 145),
+        ("small",    "openai_whisper", 480),
+        ("medium",   "openai_whisper", 1_500),
+        ("large",    "openai_whisper", 3_100),
+    ]
+
+    name         = models.CharField(max_length=80, help_text=_("Model size: tiny / base / small / medium / large-v3"))
+    backend      = models.CharField(max_length=32, choices=Backend.choices, default=Backend.FASTER_WHISPER)
+    download_path = models.CharField(
+        max_length=512, blank=True,
+        help_text=_("Absolute directory path on the server where this model will be stored. "
+                    "Set this before triggering a download."),
+    )
+    bucket = models.ForeignKey(
+        "vault.Bucket",
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="whisper_model_configs",
+        help_text=_("Optional vault bucket for organisational reference."),
+    )
+    status       = models.CharField(max_length=24, choices=Status.choices, default=Status.NOT_DOWNLOADED)
+    is_active    = models.BooleanField(default=False, help_text=_("Use this model for default transcription jobs."))
+    celery_task_id = models.CharField(max_length=255, blank=True)
+    progress_pct = models.PositiveSmallIntegerField(default=0)
+    error_message = models.TextField(blank=True)
+    size_mb      = models.PositiveIntegerField(default=0, help_text=_("Approximate size in MB (populated automatically)."))
+
+    class Meta:
+        ordering = ["backend", "name"]
+        constraints = [
+            models.UniqueConstraint(fields=["name", "backend"], name="uniq_whisper_model_name_backend"),
+        ]
+
+    def __str__(self):
+        return f"{self.get_backend_display()} / {self.name}"
+
+    @property
+    def display_name(self) -> str:
+        return f"Whisper {self.name.capitalize()} ({self.get_backend_display()})"
+
+    @property
+    def is_ready(self) -> bool:
+        return self.status == self.Status.READY
+
+    @property
+    def is_downloading(self) -> bool:
+        return self.status == self.Status.DOWNLOADING
+
+    def get_absolute_url(self):
+        return reverse("transcription:model_setup")

@@ -1,0 +1,178 @@
+{% extends "transcription/base.html" %}
+{% load i18n %}
+{% block transcription_title %}{% trans "Model Setup" %}{% endblock %}
+
+{% block transcription_content %}
+<div class="mb-6 flex items-center justify-between">
+  <h1 class="text-2xl font-bold">{% trans "Whisper Model Setup" %}</h1>
+  {% if not celery_ok %}
+    <span class="inline-flex items-center gap-2 rounded-xl border border-amber-500/50 px-3 py-1.5 text-sm text-amber-500">
+      <i class="fa-solid fa-triangle-exclamation"></i>{% trans "No Celery worker running" %}
+    </span>
+  {% endif %}
+</div>
+
+{% if not celery_ok %}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="mb-6 rounded-2xl border p-4 text-sm">
+    <p class="font-semibold text-amber-500 mb-1"><i class="fa-solid fa-triangle-exclamation mr-1"></i>{% trans "Celery is not available" %}</p>
+    <p class="opacity-70">{% trans "Downloads run as Celery tasks. Start a worker before triggering a download:" %}</p>
+    <code class="mt-2 block rounded-lg bg-current/5 px-3 py-2 text-xs font-mono">celery -A portal worker -l info</code>
+  </div>
+{% endif %}
+
+<div class="space-y-5">
+
+  <!-- Configured models -->
+  {% if configs %}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm">
+      <h2 class="mb-4 font-semibold">{% trans "Configured Models" %}</h2>
+      <div class="space-y-4">
+        {% for cfg in configs %}
+          <div x-data="modelPoller({{ cfg.pk }}, '{{ cfg.status }}')" x-init="init()"
+               :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+               class="rounded-xl border p-4">
+            <div class="flex flex-wrap items-start gap-3">
+              <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-center gap-2 mb-1">
+                  <span class="font-semibold">{{ cfg.name }}</span>
+                  <span :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="rounded-full border px-2 py-0.5 text-xs opacity-60">{{ cfg.get_backend_display }}</span>
+                  {% if cfg.size_mb %}<span class="text-xs opacity-50">~{{ cfg.size_mb }} MB</span>{% endif %}
+                  {% if cfg.is_active %}
+                    <span class="rounded-full border border-emerald-500 px-2 py-0.5 text-xs font-semibold text-emerald-500">
+                      <i class="fa-solid fa-check mr-0.5"></i>{% trans "Active" %}
+                    </span>
+                  {% endif %}
+                </div>
+                {% if cfg.download_path %}
+                  <p class="font-mono text-xs opacity-50 truncate">{{ cfg.download_path }}</p>
+                {% else %}
+                  <p class="text-xs text-amber-500"><i class="fa-solid fa-triangle-exclamation mr-1"></i>{% trans "No download path set — configure in admin before downloading." %}</p>
+                {% endif %}
+              </div>
+
+              <!-- Status badge (live-updated) -->
+              <div class="shrink-0">
+                <span x-text="statusDisplay"
+                      :class="{
+                        'text-emerald-500 border-emerald-500/50': status === 'ready',
+                        'text-amber-500 border-amber-500/50': status === 'downloading',
+                        'text-red-500 border-red-500/50': status === 'failed',
+                        '{{ darkMode ? \"border-accent-1\" : \"border-accent-2\" }} opacity-60': status === 'not_downloaded'
+                      }"
+                      class="rounded-full border px-2.5 py-0.5 text-xs font-semibold"></span>
+              </div>
+            </div>
+
+            <!-- Progress bar (shown when downloading) -->
+            <div x-show="status === 'downloading'" class="mt-3">
+              <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="h-2 w-full overflow-hidden rounded-full border border-current/10">
+                <div class="h-full rounded-full bg-amber-500 transition-all duration-500"
+                     :style="'width:' + progressPct + '%'"></div>
+              </div>
+              <p class="mt-1 text-xs opacity-60" x-text="progressPct + '%'"></p>
+            </div>
+
+            <!-- Error message -->
+            <p x-show="status === 'failed' && errorMsg" x-text="errorMsg" class="mt-2 text-xs text-red-500"></p>
+
+            <!-- Action buttons -->
+            <div class="mt-3 flex flex-wrap gap-2">
+              {% if cfg.download_path %}
+                <form method="post" action="{% url 'transcription:model_download' cfg.pk %}">
+                  {% csrf_token %}
+                  <button type="submit"
+                          :disabled="status === 'downloading' || status === 'ready'"
+                          :class="status === 'downloading' || status === 'ready' ? 'opacity-40 cursor-not-allowed' : 'hover:opacity-80'"
+                          :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                          class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition">
+                    <i class="fa-solid fa-download"></i>
+                    <span x-text="status === 'downloading' ? '{% trans "Downloading…" %}' : '{% trans "Download" %}'"></span>
+                  </button>
+                </form>
+              {% endif %}
+
+              {% if cfg.is_ready and not cfg.is_active %}
+                <form method="post" action="{% url 'transcription:model_activate' cfg.pk %}">
+                  {% csrf_token %}
+                  <button type="submit"
+                          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                          class="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold shadow-sm transition hover:opacity-90">
+                    <i class="fa-solid fa-bolt"></i>{% trans "Set as Active" %}
+                  </button>
+                </form>
+              {% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+
+  <!-- Catalogue / add new -->
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm">
+    <h2 class="mb-1 font-semibold">{% trans "Available Models" %}</h2>
+    <p class="mb-4 text-sm opacity-60">{% trans "To add a model, create it in the admin panel, set a download path, then come back here to download it." %}</p>
+    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {% for item in catalogue %}
+        <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+             class="flex items-center justify-between rounded-xl border px-4 py-3">
+          <div>
+            <p class="font-semibold text-sm">{{ item.name }}</p>
+            <p class="text-xs opacity-60">{{ item.backend }} &bull; ~{{ item.size_mb }} MB</p>
+          </div>
+          {% if item.exists %}
+            <span class="text-xs font-semibold text-emerald-500"><i class="fa-solid fa-check mr-1"></i>{% trans "Added" %}</span>
+          {% else %}
+            <a href="{% url 'admin:transcription_whispermodelconfig_add' %}?name={{ item.name }}&backend={{ item.backend }}"
+               class="text-xs opacity-60 hover:opacity-100 transition">
+              <i class="fa-solid fa-plus mr-1"></i>{% trans "Add" %}
+            </a>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+</div>
+
+<script>
+function modelPoller(pk, initialStatus) {
+  return {
+    pk,
+    status: initialStatus,
+    statusDisplay: '',
+    progressPct: 0,
+    errorMsg: '',
+    _timer: null,
+    init() {
+      this.fetchStatus();
+      if (this.status === 'downloading') this._startPolling();
+    },
+    async fetchStatus() {
+      try {
+        const r = await fetch(`/transcription/models/${this.pk}/progress/`);
+        if (!r.ok) return;
+        const d = await r.json();
+        this.status = d.status;
+        this.statusDisplay = d.status_display;
+        this.progressPct = d.progress_pct;
+        this.errorMsg = d.error_message || '';
+        if (this.status === 'downloading') {
+          this._startPolling();
+        } else {
+          this._stopPolling();
+        }
+      } catch {}
+    },
+    _startPolling() {
+      if (this._timer) return;
+      this._timer = setInterval(() => this.fetchStatus(), 2000);
+    },
+    _stopPolling() {
+      if (this._timer) { clearInterval(this._timer); this._timer = null; }
+    },
+  };
+}
+</script>
+{% endblock %}

@@ -8,6 +8,7 @@ from .models import (
     TranscriptSegment,
     TranscriptSource,
     TranscriptSpeaker,
+    WhisperModelConfig,
 )
 
 
@@ -61,6 +62,21 @@ class TranscriptArtifactAdmin(admin.ModelAdmin):
     list_filter = ("kind", "created_at")
     search_fields = ("source__title", "vault_file__title")
     raw_id_fields = ("source", "job", "vault_file", "created_by")
+
+
+@admin.register(WhisperModelConfig)
+class WhisperModelConfigAdmin(admin.ModelAdmin):
+    list_display = ("__str__", "backend", "status", "is_active", "progress_pct", "download_path", "bucket")
+    list_filter = ("backend", "status", "is_active")
+    search_fields = ("name", "download_path")
+    readonly_fields = ("status", "progress_pct", "celery_task_id", "error_message", "created_at", "updated_at")
+    raw_id_fields = ("bucket",)
+    fieldsets = (
+        (None, {"fields": ("name", "backend", "bucket")}),
+        ("Storage", {"fields": ("download_path", "size_mb"), "description": "Set download_path to an absolute server directory before triggering a download from the UI."}),
+        ("Status (read-only)", {"fields": ("status", "progress_pct", "is_active", "celery_task_id", "error_message")}),
+        ("Timestamps", {"fields": ("created_at", "updated_at"), "classes": ("collapse",)}),
+    )
 
 
 @admin.register(TranscriptEvent)

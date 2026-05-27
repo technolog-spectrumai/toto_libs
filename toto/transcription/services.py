@@ -327,15 +327,21 @@ def _run_openai_whisper_backend(job: TranscriptionJob, local_path: str):
     download_root = getattr(settings, "TRANSCRIPTION_WHISPER_DOWNLOAD_ROOT", None)
     local_only = getattr(settings, "TRANSCRIPTION_WHISPER_LOCAL_FILES_ONLY", False)
 
-    if local_only:
-        import os
-        os.environ["HF_HUB_OFFLINE"] = "1"
-
-    load_kwargs: dict[str, Any] = {}
-    if device:
-        load_kwargs["device"] = device
-    if download_root:
-        load_kwargs["download_root"] = download_root
+    # Active model from DB (set via the Model Setup UI) overrides settings.
+    active_path = _active_model_path("openai_whisper")
+    if active_path:
+        model_name = active_path
+        load_kwargs: dict[str, Any] = {"device": device} if device else {}
+        load_kwargs["download_root"] = active_path
+    else:
+        if local_only:
+            import os
+            os.environ["HF_HUB_OFFLINE"] = "1"
+        load_kwargs = {}
+        if device:
+            load_kwargs["device"] = device
+        if download_root:
+            load_kwargs["download_root"] = download_root
     model = whisper.load_model(model_name, **load_kwargs)
 
     kwargs = {
@@ -404,11 +410,17 @@ def _run_faster_whisper_backend(job: TranscriptionJob, local_path: str):
     download_root = getattr(settings, "TRANSCRIPTION_WHISPER_DOWNLOAD_ROOT", None)
     local_only = getattr(settings, "TRANSCRIPTION_WHISPER_LOCAL_FILES_ONLY", False)
 
-    model_kwargs: dict[str, Any] = {"device": device, "compute_type": compute_type}
-    if download_root:
-        model_kwargs["download_root"] = download_root
-    if local_only:
-        model_kwargs["local_files_only"] = True
+    # Active model from DB (set via the Model Setup UI) overrides settings.
+    active_path = _active_model_path("faster_whisper")
+    if active_path:
+        model_name = active_path
+        model_kwargs: dict[str, Any] = {"device": device, "compute_type": compute_type, "local_files_only": True}
+    else:
+        model_kwargs = {"device": device, "compute_type": compute_type}
+        if download_root:
+            model_kwargs["download_root"] = download_root
+        if local_only:
+            model_kwargs["local_files_only"] = True
 
     model = WhisperModel(model_name, **model_kwargs)
     language = _language_for_job(job)
@@ -532,6 +544,16 @@ def run_transcription_job(job_id: int) -> dict[str, Any]:
     return {"job_id": job.pk, "status": job.status, "source_id": job.source_id}
 
 
+def _active_model_path(backend: str) -> str | None:
+    """Return the download_path of the active, ready WhisperModelConfig for *backend*, or None."""
+    try:
+        from .models import WhisperModelConfig
+        cfg = WhisperModelConfig.objects.filter(backend=backend, status=WhisperModelConfig.Status.READY, is_active=True).first()
+        return cfg.download_path if cfg else None
+    except Exception:
+        return None
+
+
 def celery_workers_available(timeout: float = 1.0) -> bool:
     """Return True if at least one Celery worker responds within *timeout* seconds."""
     try:
@@ -566,6 +588,29 @@ def run_transcription_with_timeout(job: TranscriptionJob, timeout_seconds: int) 
             raise TimeoutError(f"Transcription timed out after {timeout_seconds}s.")
 
 
+def transcribe_demo_file(audio_path: str, *, engine: str = TranscriptionJob.Engine.DEFAULT, language: str = "") -> dict[str, Any]:
+    """Transcribe a local file path without persisting any DB rows.
+
+    Returns a dict with keys: text (str), segments (list of dicts), engine (str).
+    Raises RuntimeError on failure.
+    """
+    job = TranscriptionJob(engine=engine, language=language)
+    job.translate_to = ""
+    job.prompt = ""
+    # Attach a dummy source for language lookup used inside backends.
+    dummy_source = TranscriptSource(language=language)
+    job.source = dummy_source
+
+    result = run_backend(job, audio_path)
+    segments, _ = _normalize_backend_result(result)
+    text = "\n".join(s.text for s in segments).strip()
+    return {
+        "text": text,
+        "segments": [{"start_ms": s.start_ms, "end_ms": s.end_ms, "text": s.text} for s in segments],
+        "engine": engine,
+    }
+
+
 def cancel_job(job_pk: int, *, user=None) -> TranscriptionJob:
     """Mark a queued or running job as CANCELLED and revoke the Celery task if known."""
     job = TranscriptionJob.objects.select_related("source").get(pk=job_pk)
@@ -588,6 +633,109 @@ def cancel_job(job_pk: int, *, user=None) -> TranscriptionJob:
         source.status = TranscriptSource.Status.DRAFT
         source.save(update_fields=["status", "updated_at"])
     return job
+
+
+def start_model_download(config_pk: int) -> None:
+    """Validate config and queue the Celery download task."""
+    from .models import WhisperModelConfig
+    cfg = WhisperModelConfig.objects.get(pk=config_pk)
+    if not cfg.download_path:
+        raise ValueError("Set a download_path on this model config (via admin) before downloading.")
+    if cfg.status == WhisperModelConfig.Status.DOWNLOADING:
+        raise ValueError("A download is already in progress for this model.")
+    if cfg.status == WhisperModelConfig.Status.READY:
+        raise ValueError("Model is already downloaded. Use --reset or delete the config to re-download.")
+    # Populate approximate size from catalogue if not set.
+    if not cfg.size_mb:
+        for name, backend, size_mb in WhisperModelConfig.CATALOGUE:
+            if name == cfg.name and backend == cfg.backend:
+                cfg.size_mb = size_mb
+                break
+    cfg.status = WhisperModelConfig.Status.DOWNLOADING
+    cfg.progress_pct = 0
+    cfg.error_message = ""
+    cfg.save(update_fields=["status", "progress_pct", "error_message", "size_mb", "updated_at"])
+    from .tasks import download_whisper_model
+    result = download_whisper_model.delay(config_pk)
+    WhisperModelConfig.objects.filter(pk=config_pk).update(celery_task_id=result.id)
+
+
+def activate_model_config(config_pk: int) -> None:
+    """Mark config as active, deactivating any other active config for the same backend."""
+    from .models import WhisperModelConfig
+    cfg = WhisperModelConfig.objects.get(pk=config_pk)
+    if cfg.status != WhisperModelConfig.Status.READY:
+        raise ValueError("Only a READY model can be set as active.")
+    WhisperModelConfig.objects.filter(backend=cfg.backend).update(is_active=False)
+    WhisperModelConfig.objects.filter(pk=config_pk).update(is_active=True)
+
+
+def download_model_weights(config_pk: int) -> None:
+    """Called inside the Celery task — does the actual download with progress tracking."""
+    import os
+    import threading
+    from pathlib import Path
+    from .models import WhisperModelConfig
+
+    cfg = WhisperModelConfig.objects.get(pk=config_pk)
+    local_dir = cfg.download_path
+    os.makedirs(local_dir, exist_ok=True)
+
+    expected_bytes = cfg.size_mb * 1024 * 1024 if cfg.size_mb else 0
+    stop_event = threading.Event()
+
+    def _watch():
+        p = Path(local_dir)
+        while not stop_event.is_set():
+            try:
+                current = sum(f.stat().st_size for f in p.rglob("*") if f.is_file())
+                pct = min(95, int(current * 100 / expected_bytes)) if expected_bytes else 1
+                WhisperModelConfig.objects.filter(pk=config_pk).update(progress_pct=pct)
+            except Exception:
+                pass
+            stop_event.wait(2.0)
+
+    watcher = threading.Thread(target=_watch, daemon=True)
+    watcher.start()
+
+    try:
+        if cfg.backend == WhisperModelConfig.Backend.FASTER_WHISPER:
+            _download_faster_whisper_weights(cfg.name, local_dir)
+        elif cfg.backend == WhisperModelConfig.Backend.OPENAI_WHISPER:
+            _download_openai_whisper_weights(cfg.name, local_dir)
+        else:
+            raise ValueError(f"Unknown backend: {cfg.backend}")
+        stop_event.set()
+        WhisperModelConfig.objects.filter(pk=config_pk).update(
+            status=WhisperModelConfig.Status.READY, progress_pct=100, error_message=""
+        )
+    except Exception as exc:
+        stop_event.set()
+        WhisperModelConfig.objects.filter(pk=config_pk).update(
+            status=WhisperModelConfig.Status.FAILED,
+            error_message=str(exc)[:1000],
+        )
+        raise
+
+
+def _download_faster_whisper_weights(model_name: str, local_dir: str) -> None:
+    try:
+        from huggingface_hub import snapshot_download
+    except ImportError as exc:
+        raise RuntimeError("Install huggingface_hub: pip install huggingface-hub") from exc
+    snapshot_download(
+        repo_id=f"Systran/faster-whisper-{model_name}",
+        local_dir=local_dir,
+        ignore_patterns=["*.msgpack", "*.h5", "flax_model*", "tf_model*", "rust_model*"],
+    )
+
+
+def _download_openai_whisper_weights(model_name: str, local_dir: str) -> None:
+    try:
+        import whisper
+    except ImportError as exc:
+        raise RuntimeError("Install openai-whisper: pip install -U openai-whisper") from exc
+    whisper.load_model(model_name, download_root=local_dir)
 
 
 def ms_to_srt_time(ms: int) -> str:

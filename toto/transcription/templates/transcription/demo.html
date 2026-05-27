@@ -1,0 +1,241 @@
+{% extends "transcription/base.html" %}
+{% load i18n %}
+{% block transcription_title %}{% trans "Demo" %}{% endblock %}
+
+{% block transcription_content %}
+<div class="mx-auto max-w-2xl">
+  <div class="mb-6">
+    <h1 class="text-2xl font-bold mb-1">{% trans "Live Transcription Demo" %}</h1>
+    <p class="text-sm opacity-60">{% trans "Record up to 15 seconds of audio and get an instant transcript." %}</p>
+  </div>
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-2xl border p-6 shadow-sm"
+       x-data="demoRecorder()"
+       x-init="init()">
+
+    <!-- Engine + language controls -->
+    <div class="mb-5 grid gap-4 sm:grid-cols-2">
+      <div class="space-y-1.5">
+        <label class="text-sm font-semibold">{% trans "Engine" %}</label>
+        <select x-model="engine"
+                :disabled="recording || transcribing"
+                :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+                class="w-full rounded-lg border px-3 py-2 text-sm outline-none transition focus:ring-2 focus:ring-current/20 disabled:opacity-50">
+          {% for value, label in engines %}
+            <option value="{{ value }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="space-y-1.5">
+        <label class="text-sm font-semibold">{% trans "Language" %} <span class="font-normal opacity-50">({% trans "optional" %})</span></label>
+        <input type="text" x-model="language" placeholder="en, pl, de…"
+               :disabled="recording || transcribing"
+               :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder-text-main-dark/40' : 'border-accent-2 bg-primary-bg-light text-text-main-light placeholder-text-main-light/40'"
+               class="w-full rounded-lg border px-3 py-2 text-sm outline-none transition focus:ring-2 focus:ring-current/20 disabled:opacity-50">
+      </div>
+    </div>
+
+    <!-- Recorder UI -->
+    <div class="flex flex-col items-center gap-5 py-4">
+
+      <!-- Big record button -->
+      <button @click="toggleRecord()"
+              :disabled="transcribing"
+              class="relative flex h-24 w-24 items-center justify-center rounded-full shadow-lg transition focus:outline-none disabled:opacity-40"
+              :class="recording
+                ? 'bg-red-500 hover:bg-red-600 animate-pulse'
+                : (darkMode ? 'bg-accent-dark hover:opacity-90' : 'bg-accent-light hover:opacity-90')">
+        <i class="fa-solid text-3xl"
+           :class="recording ? 'fa-stop text-white' : 'fa-microphone'"
+           :style="recording ? '' : (darkMode ? 'color:var(--color-primary-bg-dark)' : 'color:var(--color-primary-bg-light)')"></i>
+      </button>
+
+      <!-- Timer -->
+      <div class="text-center">
+        <p class="font-mono text-4xl font-bold tabular-nums" x-text="timerDisplay"></p>
+        <p class="mt-1 text-xs opacity-50">
+          <span x-show="!recording && !audioBlob && !transcribing">{% trans "Press to start recording" %}</span>
+          <span x-show="recording">{% trans "Recording… press to stop" %}</span>
+          <span x-show="!recording && audioBlob && !transcribing">{% trans "Recording ready" %}</span>
+          <span x-show="transcribing"><i class="fa-solid fa-spinner fa-spin mr-1"></i>{% trans "Transcribing…" %}</span>
+        </p>
+      </div>
+
+      <!-- Waveform / progress bar -->
+      <div x-show="recording"
+           :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+           class="h-2 w-full max-w-xs overflow-hidden rounded-full border border-current/10">
+        <div class="h-full rounded-full bg-red-500 transition-all duration-500"
+             :style="'width:' + (elapsed / {{ max_seconds }} * 100) + '%'"></div>
+      </div>
+
+      <!-- Transcribe button (after recording) -->
+      <button x-show="audioBlob && !transcribing && !recording"
+              @click="transcribeNow()"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold shadow-sm transition hover:opacity-90">
+        <i class="fa-solid fa-wand-magic-sparkles"></i>{% trans "Transcribe" %}
+      </button>
+
+      <button x-show="audioBlob && !transcribing && !recording"
+              @click="reset()"
+              :class="darkMode ? 'hover:bg-bubble-bg-dark' : 'hover:bg-bubble-bg-light'"
+              class="text-xs opacity-60 hover:opacity-100 transition rounded-lg px-3 py-1.5">
+        <i class="fa-solid fa-rotate-left mr-1"></i>{% trans "Record again" %}
+      </button>
+    </div>
+
+    <!-- Error -->
+    <div x-show="errorMsg" class="mt-2 rounded-xl border border-red-500/40 px-4 py-2.5 text-sm text-red-500" x-text="errorMsg"></div>
+
+    <!-- Result -->
+    <div x-show="result" class="mt-6 space-y-3">
+      <div class="flex items-center justify-between">
+        <h2 class="font-semibold">{% trans "Transcript" %}</h2>
+        <button @click="copyResult()"
+                :class="darkMode ? 'hover:bg-bubble-bg-dark' : 'hover:bg-bubble-bg-light'"
+                class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition opacity-70 hover:opacity-100">
+          <i class="fa-solid fa-copy"></i><span x-text="copied ? '{% trans "Copied!" %}' : '{% trans "Copy" %}'"></span>
+        </button>
+      </div>
+      <div :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
+           class="rounded-xl border p-4 text-sm leading-relaxed whitespace-pre-wrap font-mono"
+           x-text="result"></div>
+    </div>
+
+    <!-- Microphone permission error -->
+    <div x-show="permissionDenied"
+         class="mt-4 rounded-xl border border-amber-500/40 px-4 py-3 text-sm text-amber-500">
+      <i class="fa-solid fa-microphone-slash mr-1"></i>{% trans "Microphone access was denied. Allow microphone access in your browser settings and reload." %}
+    </div>
+  </div>
+</div>
+
+<script>
+function demoRecorder() {
+  return {
+    engine: '{{ engines.0.0 }}',
+    language: '',
+    recording: false,
+    transcribing: false,
+    audioBlob: null,
+    mediaRecorder: null,
+    chunks: [],
+    elapsed: 0,
+    _ticker: null,
+    _stopTimer: null,
+    timerDisplay: '0:00',
+    result: '',
+    errorMsg: '',
+    permissionDenied: false,
+    copied: false,
+
+    init() {},
+
+    async toggleRecord() {
+      if (this.recording) {
+        this.stopRecording();
+      } else {
+        await this.startRecording();
+      }
+    },
+
+    async startRecording() {
+      this.reset();
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch {
+        this.permissionDenied = true;
+        return;
+      }
+      this.chunks = [];
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : (MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '');
+      const opts = mimeType ? { mimeType } : {};
+      this.mediaRecorder = new MediaRecorder(stream, opts);
+      this.mediaRecorder.ondataavailable = e => { if (e.data.size) this.chunks.push(e.data); };
+      this.mediaRecorder.onstop = () => {
+        stream.getTracks().forEach(t => t.stop());
+        const mime = this.mediaRecorder.mimeType || 'audio/webm';
+        this.audioBlob = new Blob(this.chunks, { type: mime });
+      };
+      this.mediaRecorder.start(100);
+      this.recording = true;
+      this.elapsed = 0;
+      this._ticker = setInterval(() => {
+        this.elapsed++;
+        const m = Math.floor(this.elapsed / 60);
+        const s = String(this.elapsed % 60).padStart(2, '0');
+        this.timerDisplay = `${m}:${s}`;
+        if (this.elapsed >= {{ max_seconds }}) this.stopRecording();
+      }, 1000);
+    },
+
+    stopRecording() {
+      if (!this.recording) return;
+      clearInterval(this._ticker);
+      this._ticker = null;
+      this.recording = false;
+      if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+        this.mediaRecorder.stop();
+      }
+    },
+
+    async transcribeNow() {
+      if (!this.audioBlob) return;
+      this.transcribing = true;
+      this.result = '';
+      this.errorMsg = '';
+      const ext = this.audioBlob.type.includes('webm') ? '.webm' : '.wav';
+      const form = new FormData();
+      form.append('audio', this.audioBlob, 'demo' + ext);
+      form.append('engine', this.engine);
+      form.append('language', this.language);
+      form.append('csrfmiddlewaretoken', this._csrf());
+      try {
+        const r = await fetch('{% url "transcription:demo" %}', { method: 'POST', body: form });
+        const d = await r.json();
+        if (d.ok) {
+          this.result = d.text || '(no speech detected)';
+        } else {
+          this.errorMsg = d.error || 'Transcription failed.';
+        }
+      } catch (e) {
+        this.errorMsg = 'Network error: ' + e.message;
+      } finally {
+        this.transcribing = false;
+      }
+    },
+
+    reset() {
+      this.stopRecording();
+      this.audioBlob = null;
+      this.result = '';
+      this.errorMsg = '';
+      this.elapsed = 0;
+      this.timerDisplay = '0:00';
+      this.copied = false;
+    },
+
+    async copyResult() {
+      if (!this.result) return;
+      try {
+        await navigator.clipboard.writeText(this.result);
+        this.copied = true;
+        setTimeout(() => { this.copied = false; }, 2000);
+      } catch {}
+    },
+
+    _csrf() {
+      const el = document.querySelector('[name=csrfmiddlewaretoken]');
+      if (el) return el.value;
+      const m = document.cookie.match(/csrftoken=([^;]+)/);
+      return m ? m[1] : '';
+    },
+  };
+}
+</script>
+{% endblock %}
