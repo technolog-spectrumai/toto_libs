@@ -4,7 +4,7 @@
 
 {% block transcription_content %}
 <div class="mb-6 flex items-center justify-between">
-  <h1 class="text-2xl font-bold">{% trans "Whisper Model Setup" %}</h1>
+  <h1 class="text-2xl font-bold">{% trans "Audio Interpreter Setup" %}</h1>
   {% if not celery_ok %}
     <span class="inline-flex items-center gap-2 rounded-xl border border-amber-500/50 px-3 py-1.5 text-sm text-amber-500">
       <i class="fa-solid fa-triangle-exclamation"></i>{% trans "No Celery worker running" %}
@@ -58,7 +58,8 @@
                         'text-emerald-500 border-emerald-500/50': status === 'ready',
                         'text-amber-500 border-amber-500/50': status === 'downloading',
                         'text-red-500 border-red-500/50': status === 'failed',
-                        '{{ darkMode ? \"border-accent-1\" : \"border-accent-2\" }} opacity-60': status === 'not_downloaded'
+                        'border-accent-1 opacity-60': status === 'not_downloaded' && darkMode,
+                        'border-accent-2 opacity-60': status === 'not_downloaded' && !darkMode
                       }"
                       class="rounded-full border px-2.5 py-0.5 text-xs font-semibold"></span>
               </div>

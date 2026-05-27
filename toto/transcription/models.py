@@ -195,8 +195,8 @@ class TranscriptionJob(TimestampedModel):
 
     class Engine(models.TextChoices):
         DEFAULT = "default", _("Default backend")
-        OPENAI_WHISPER = "openai_whisper", _("openai-whisper")
-        FASTER_WHISPER = "faster_whisper", _("faster-whisper")
+        OPENAI_WHISPER = "openai_whisper", _("Audio Interpreter AI")
+        FASTER_WHISPER = "faster_whisper", _("Audio Interpreter Fast")
         COMMAND = "command", _("Command backend")
         CUSTOM = "custom", _("Custom callable")
 
@@ -331,8 +331,8 @@ class WhisperModelConfig(TimestampedModel):
     """
 
     class Backend(models.TextChoices):
-        FASTER_WHISPER = "faster_whisper", _("faster-whisper")
-        OPENAI_WHISPER = "openai_whisper", _("openai-whisper")
+        FASTER_WHISPER = "faster_whisper", _("Audio Interpreter Fast")
+        OPENAI_WHISPER = "openai_whisper", _("Audio Interpreter AI")
 
     class Status(models.TextChoices):
         NOT_DOWNLOADED = "not_downloaded", _("Not downloaded")
@@ -385,7 +385,7 @@ class WhisperModelConfig(TimestampedModel):
 
     @property
     def display_name(self) -> str:
-        return f"Whisper {self.name.capitalize()} ({self.get_backend_display()})"
+        return f"{self.get_backend_display()} / {self.name.capitalize()}"
 
     @property
     def is_ready(self) -> bool:
