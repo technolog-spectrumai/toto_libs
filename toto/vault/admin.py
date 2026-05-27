@@ -11,11 +11,25 @@ from toto.core.batch import BatchAction
 
 @admin.register(Bucket)
 class BucketAdmin(admin.ModelAdmin):
-    list_display = ('name', 'slug', 'owner', 'tariff', 'storage_quota_mb')
+    list_display = ('name', 'slug', 'owner', 'storage_backend', 'tariff', 'storage_quota_mb')
     search_fields = ('name', 'owner__username')
-    list_filter = ('owner',)
+    list_filter = ('owner', 'storage_backend')
     ordering = ('owner', 'name')
     autocomplete_fields = ('tariff',)
+    fieldsets = (
+        (None, {
+            'fields': ('name', 'slug', 'owner', 'tariff', 'storage_quota_mb'),
+        }),
+        ('Storage backend', {
+            'fields': ('storage_backend', 'storage_config'),
+            'description': (
+                'For S3-compatible backends supply non-secret config here: '
+                'bucket_name, endpoint_url, region_name, prefix, use_ssl, '
+                'addressing_style, aws_profile. '
+                'Access keys and secrets must come from environment variables.'
+            ),
+        }),
+    )
 
 
 @admin.register(VaultFile)

@@ -11,6 +11,11 @@ from toto.vault.strategy.text import TextStrategy
 from django.urls import reverse
 
 
+class StorageBackend(models.TextChoices):
+    LOCAL = "local", "Local"
+    S3 = "s3", "S3-compatible"
+
+
 class Bucket(models.Model):
     name = models.CharField(max_length=100, unique=True)
     owner = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -26,6 +31,21 @@ class Bucket(models.Model):
         blank=True,
         related_name="buckets",
         help_text="Billing tariff for this bucket. Defaults to FILE-STORAGE when blank.",
+    )
+    storage_backend = models.CharField(
+        max_length=8,
+        choices=StorageBackend.choices,
+        default=StorageBackend.LOCAL,
+        help_text="Storage backend for files in this bucket.",
+    )
+    storage_config = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=(
+            "Non-secret backend config: bucket_name, endpoint_url, region_name, "
+            "prefix, use_ssl, addressing_style, aws_profile. "
+            "Credentials must come from environment variables, not this field."
+        ),
     )
 
     class Meta:

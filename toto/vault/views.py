@@ -5,7 +5,6 @@ from io import BytesIO
 from datetime import date, timedelta
 from decimal import Decimal
 
-from django.core.files.base import ContentFile as DjangoContentFile
 from django.db import transaction
 from django.db.models import Count, Q, Sum
 from django.db.models.functions import TruncDate
@@ -21,6 +20,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib import messages
 from toto.ui import PageProcessor
 from .models import VaultFile, Bucket, FileGateway, VaultDirectory, BucketCopyLog
+from .storage_backends import get_bucket_storage
 
 
 # ============================================================
@@ -799,6 +799,9 @@ class CopyFilesToBucketView(LoginRequiredMixin, View):
                 form.add_error(None, f"Key conflict(s): {preview}")
                 return render(request, self.template_name, self._build_context(request, source_bucket, form))
 
+        src_driver = get_bucket_storage(source_bucket)
+        dst_driver = get_bucket_storage(destination_bucket)
+
         with transaction.atomic():
             for source_file in selected_files:
                 if copy_policy == "replace":
@@ -809,11 +812,8 @@ class CopyFilesToBucketView(LoginRequiredMixin, View):
                 else:
                     key = _unique_copy_key(source_file, destination_bucket)
 
-                source_file.file.open("rb")
-                try:
-                    content = source_file.file.read()
-                finally:
-                    source_file.file.close()
+                content = src_driver.read(source_file.file.name)
+                stored_name = dst_driver.save(source_file.file.name, content)
 
                 new_file = VaultFile(
                     owner=source_file.owner,
@@ -824,12 +824,11 @@ class CopyFilesToBucketView(LoginRequiredMixin, View):
                     is_encrypted=source_file.is_encrypted,
                     is_public=source_file.is_public,
                     notes=source_file.notes,
-                    file_size_bytes=source_file.file_size_bytes,
+                    file_size_bytes=len(content),
                     bucket=destination_bucket,
                     directory=destination_directory,
                 )
-                orig_name = os.path.basename(source_file.file.name)
-                new_file.file.save(orig_name, DjangoContentFile(content), save=False)
+                new_file.file = stored_name
                 new_file.save()
 
         count = len(selected_files)
@@ -988,14 +987,14 @@ class BucketCopyAjaxView(LoginRequiredMixin, View):
         if len(selected_files) != len(file_ids):
             return JsonResponse({"ok": False, "error": "Some selected files are invalid."}, status=400)
 
+        src_driver = get_bucket_storage(source_bucket)
+        dst_driver = get_bucket_storage(destination_bucket)
+
         with transaction.atomic():
             for source_file in selected_files:
                 unique_key = _unique_copy_key(source_file, destination_bucket)
-                source_file.file.open("rb")
-                try:
-                    content = source_file.file.read()
-                finally:
-                    source_file.file.close()
+                content = src_driver.read(source_file.file.name)
+                stored_name = dst_driver.save(source_file.file.name, content)
                 new_file = VaultFile(
                     owner=source_file.owner,
                     title=source_file.title,
@@ -1005,11 +1004,10 @@ class BucketCopyAjaxView(LoginRequiredMixin, View):
                     is_encrypted=source_file.is_encrypted,
                     is_public=source_file.is_public,
                     notes=source_file.notes,
-                    file_size_bytes=source_file.file_size_bytes,
+                    file_size_bytes=len(content),
                     bucket=destination_bucket,
                 )
-                orig_name = os.path.basename(source_file.file.name)
-                new_file.file.save(orig_name, DjangoContentFile(content), save=False)
+                new_file.file = stored_name
                 new_file.save()
 
         count = len(selected_files)
