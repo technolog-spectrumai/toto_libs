@@ -63,6 +63,7 @@ class PublicFileListView(TemplateView):
                     "depth": depth,
                     "name": d.name,
                     "bucket": d.bucket.name,
+                    "bpk": d.bucket_id,
                     "n_files": n_files,
                     "n_dirs": n_dirs,
                     "locked": d.allowed_users.exists(),
@@ -81,6 +82,7 @@ class PublicFileListView(TemplateView):
                         "uploaded": f.uploaded_at.strftime("%Y-%m-%d"),
                         "encrypted": f.is_encrypted,
                         "url": f.get_public_url() or "",
+                        "bpk": f.bucket_id,
                     })
 
         visit(None, 0)
@@ -97,6 +99,7 @@ class PublicFileListView(TemplateView):
                 "uploaded": f.uploaded_at.strftime("%Y-%m-%d"),
                 "encrypted": f.is_encrypted,
                 "url": f.get_public_url() or "",
+                "bpk": f.bucket_id,
             })
 
         return flat
@@ -795,6 +798,22 @@ class CopyFilesToBucketView(LoginRequiredMixin, View):
             f"Copied {count} file{'s' if count != 1 else ''} to \"{destination_bucket.name}\".",
         )
         return redirect("vault:bucket_metrics", bucket_slug=destination_bucket.slug)
+
+
+class MoveFileView(LoginRequiredMixin, View):
+    def post(self, request):
+        file_pk = request.POST.get("file_pk", "").strip()
+        dest_dir_pk = request.POST.get("destination_directory", "").strip()
+        if not file_pk:
+            return JsonResponse({"ok": False, "error": "Missing file_pk."}, status=400)
+        vault_file = get_object_or_404(VaultFile, pk=file_pk, owner=request.user)
+        if dest_dir_pk:
+            dest_dir = get_object_or_404(VaultDirectory, pk=dest_dir_pk, bucket=vault_file.bucket)
+            vault_file.directory = dest_dir
+        else:
+            vault_file.directory = None
+        vault_file.save(update_fields=["directory"])
+        return JsonResponse({"ok": True, "new_pid": vault_file.directory_id})
 
 
 class RenameFileView(LoginRequiredMixin, View):

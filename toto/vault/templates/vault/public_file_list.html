@@ -7,6 +7,7 @@
 {% block start_script %}
 <style>[x-cloak] { display: none !important; }</style>
 <script>
+  const _moveUrl      = "{% url 'vault:move_file' %}";
   const _renameUrl    = "{% url 'vault:rename_file' %}";
   const _deleteUrl    = "{% url 'vault:delete_file' %}";
   const _currentUser  = "{{ user.username|escapejs }}";
@@ -24,6 +25,17 @@
         dirMap,
         openDirs: {},
         currentUser: _currentUser,
+
+        // move state
+        moveModal: false,
+        moveFileId: null,
+        moveFileTitle: '',
+        moveFileBucketPk: null,
+        moveFilePid: null,
+        moveOpenDirs: {},
+        moveSelectedId: 'root',  // 'root' = bucket root, or dir pk (number)
+        moveLoading: false,
+        moveError: '',
 
         // delete state
         deleteModal: false,
@@ -71,6 +83,55 @@
           return this.isVisible(parent);
         },
         isOpen(id) { return !!this.openDirs[id]; },
+
+        openMove(item) {
+          this.moveFileId     = item.id;
+          this.moveFileTitle  = item.title;
+          this.moveFileBucketPk = item.bpk;
+          this.moveFilePid    = item.pid;
+          this.moveOpenDirs   = {};
+          this.moveSelectedId = item.pid === null ? 'root' : item.pid;
+          this.moveError      = '';
+          this.moveModal      = true;
+        },
+        get moveDirs() {
+          return this.items.filter(i => i.t === 'dir' && i.bpk === this.moveFileBucketPk);
+        },
+        isMoveVisible(item) {
+          if (item.pid === null || item.pid === undefined) return true;
+          if (!this.moveOpenDirs[item.pid]) return false;
+          const parent = this.dirMap[item.pid];
+          if (!parent) return true;
+          return this.isMoveVisible(parent);
+        },
+        toggleMoveDir(id) {
+          this.moveOpenDirs[id] = !this.moveOpenDirs[id];
+        },
+        async submitMove() {
+          const destDirPk = this.moveSelectedId === 'root' ? '' : String(this.moveSelectedId);
+          this.moveLoading = true;
+          this.moveError   = '';
+          try {
+            const csrf = document.cookie.split(';')
+              .find(c => c.trim().startsWith('csrftoken='))?.split('=')[1] ?? '';
+            const res  = await fetch(_moveUrl, {
+              method: 'POST',
+              headers: { 'X-CSRFToken': csrf, 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({ file_pk: this.moveFileId, destination_directory: destDirPk }),
+            });
+            const data = await res.json();
+            if (data.ok) {
+              const item = this.items.find(i => i.id === this.moveFileId);
+              if (item) item.pid = data.new_pid;
+              this.moveModal = false;
+            } else {
+              this.moveError = data.error || 'Move failed.';
+            }
+          } catch {
+            this.moveError = 'Network error. Please try again.';
+          }
+          this.moveLoading = false;
+        },
 
         openDelete(item) {
           this.deleteFileId    = item.id;
@@ -347,6 +408,15 @@
                     <i class="fa-solid fa-download"></i>
                   </a>
 
+                  <!-- Move — owner only, revealed on row hover -->
+                  <button x-show="item.owner === currentUser"
+                          @click.stop="openMove(item)"
+                          :class="darkMode ? 'text-accent-dark hover:bg-accent-dark/15' : 'text-accent-light hover:bg-accent-light/15'"
+                          class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
+                          :title="`Move ${item.title}`">
+                    <i class="fa-solid fa-up-down text-xs"></i>
+                  </button>
+
                   <!-- Rename pencil — owner only, revealed on row hover -->
                   <button x-show="item.owner === currentUser"
                           @click.stop="openRename(item)"
@@ -371,6 +441,124 @@
 
         </div>
       </template>
+
+      <!-- Move modal -->
+      <div x-show="moveModal"
+           x-cloak
+           x-transition:enter="transition ease-out duration-150"
+           x-transition:enter-start="opacity-0"
+           x-transition:enter-end="opacity-100"
+           x-transition:leave="transition ease-in duration-100"
+           x-transition:leave-start="opacity-100"
+           x-transition:leave-end="opacity-0"
+           @keydown.escape.window="moveModal = false"
+           class="fixed inset-0 z-50 flex items-center justify-center p-4">
+
+        <!-- Backdrop -->
+        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="moveModal = false"></div>
+
+        <!-- Dialog -->
+        <div :class="darkMode
+                      ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark'
+                      : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+             class="relative z-10 w-full max-w-md rounded-2xl border p-6 shadow-2xl space-y-5"
+             @click.stop>
+
+          <h2 class="flex items-center gap-2 text-base font-bold">
+            <i class="fa-solid fa-up-down text-sm"
+               :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+            {% trans "Move file" %}
+          </h2>
+
+          <!-- File name -->
+          <div>
+            <p class="mb-1 text-xs font-semibold opacity-50">{% trans "File" %}</p>
+            <p class="truncate rounded-lg px-3 py-2 text-sm font-mono opacity-60"
+               :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'"
+               x-text="moveFileTitle"></p>
+          </div>
+
+          <!-- Destination tree -->
+          <div>
+            <p class="mb-2 text-xs font-semibold opacity-50">{% trans "Move to" %}</p>
+            <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                 class="overflow-hidden rounded-xl border max-h-64 overflow-y-auto">
+
+              <!-- Bucket root row -->
+              <div @click="moveSelectedId = 'root'"
+                   :class="[
+                     moveSelectedId === 'root'
+                       ? (darkMode ? 'border-l-2 border-accent-dark bg-accent-dark/10' : 'border-l-2 border-accent-light bg-accent-light/10')
+                       : (darkMode ? 'border-b border-accent-1/30 hover:bg-bubble-bg-dark' : 'border-b border-accent-2/30 hover:bg-bubble-bg-light')
+                   ]"
+                   class="flex items-center gap-2 cursor-pointer px-3 py-2.5 text-sm transition-colors duration-100 select-none">
+                <i class="fa-solid fa-database w-3 shrink-0 text-xs opacity-50"></i>
+                <span class="font-semibold flex-1">{% trans "Bucket root" %}</span>
+                <span x-show="moveFilePid === null"
+                      class="text-xs opacity-40 italic">{% trans "current" %}</span>
+                <i x-show="moveSelectedId === 'root'"
+                   class="fa-solid fa-check text-xs"
+                   :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+              </div>
+
+              <!-- Dir rows -->
+              <template x-for="item in moveDirs" :key="item.id">
+                <div x-show="isMoveVisible(item)">
+                  <div @click="moveSelectedId = item.id"
+                       :style="`padding-left: calc(${item.depth} * 1.25rem + 0.75rem)`"
+                       :class="[
+                         moveSelectedId === item.id
+                           ? (darkMode ? 'border-l-2 border-accent-dark bg-accent-dark/10' : 'border-l-2 border-accent-light bg-accent-light/10')
+                           : (darkMode ? 'border-b border-accent-1/20 hover:bg-bubble-bg-dark' : 'border-b border-accent-2/20 hover:bg-bubble-bg-light')
+                       ]"
+                       class="flex items-center gap-2 cursor-pointer py-2.5 pr-3 text-sm transition-colors duration-100 select-none">
+
+                    <!-- Expand chevron if has sub-dirs -->
+                    <i x-show="item.n_dirs > 0"
+                       @click.stop="toggleMoveDir(item.id)"
+                       class="fa-solid fa-chevron-right w-3 shrink-0 text-xs opacity-40 transition-transform duration-150"
+                       :class="moveOpenDirs[item.id] ? 'rotate-90' : ''"></i>
+                    <span x-show="item.n_dirs === 0" class="w-3 shrink-0"></span>
+
+                    <i class="fa-solid fa-folder shrink-0 text-xs"
+                       :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+                    <span class="truncate flex-1 font-medium" x-text="item.name"></span>
+
+                    <span x-show="moveFilePid === item.id"
+                          class="text-xs opacity-40 italic shrink-0">{% trans "current" %}</span>
+                    <i x-show="moveSelectedId === item.id"
+                       class="fa-solid fa-check text-xs shrink-0"
+                       :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+                  </div>
+                </div>
+              </template>
+
+            </div>
+          </div>
+
+          <!-- Error -->
+          <p x-show="moveError" x-text="moveError" class="text-xs text-red-500 -mt-2"></p>
+
+          <!-- Actions -->
+          <div class="flex gap-3">
+            <button @click="submitMove"
+                    :disabled="moveLoading || moveSelectedId === moveFilePid || (moveSelectedId === 'root' && moveFilePid === null)"
+                    :class="darkMode
+                      ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90'
+                      : 'bg-accent-light text-primary-bg-light hover:opacity-90'"
+                    class="flex-1 rounded-xl px-4 py-2.5 text-sm font-bold transition disabled:opacity-40 disabled:cursor-not-allowed">
+              <span x-show="!moveLoading">{% trans "Move here" %}</span>
+              <span x-show="moveLoading"><i class="fa-solid fa-spinner fa-spin"></i></span>
+            </button>
+            <button @click="moveModal = false"
+                    :class="darkMode ? 'border-accent-1 hover:bg-bubble-bg-dark' : 'border-accent-2 hover:bg-bubble-bg-light'"
+                    class="flex-1 rounded-xl border px-4 py-2.5 text-sm font-semibold transition">
+              {% trans "Cancel" %}
+            </button>
+          </div>
+
+        </div>
+      </div>
 
       <!-- Delete modal -->
       <div x-show="deleteModal"
