@@ -7,6 +7,7 @@ class Command(IngressCommand):
 
     def process(self):
         self._ensure_workflows()
+        self._ensure_graph_analysis_workflow()
         self._ensure_cypher_queries()
 
     def _ensure_workflows(self):
@@ -130,6 +131,86 @@ class Command(IngressCommand):
             self.stdout.write(self.style.SUCCESS("📊 Created workflow: Ravioli Run Cypher Query"))
         else:
             self.stdout.write(self.style.WARNING("ℹ️  Workflow 'Ravioli Run Cypher Query' already exists"))
+
+    def _ensure_graph_analysis_workflow(self):
+        from toto.workflows.models import LambdaFunction, Workflow, WorkflowEdge, WorkflowNode
+
+        _BASIC_LAMBDA_CONTENT = (
+            "import json\n"
+            "\n"
+            "data = _input.get('data', {})\n"
+            "graph_payload = data.get('graph') or {}\n"
+            "\n"
+            "try:\n"
+            "    import networkx as nx\n"
+            "    G = nx.node_link_graph(graph_payload)\n"
+            "    metrics = {\n"
+            "        'node_count': G.number_of_nodes(),\n"
+            "        'edge_count': G.number_of_edges(),\n"
+            "        'density': round(nx.density(G), 6),\n"
+            "    }\n"
+            "    if G.number_of_nodes() > 0 and G.number_of_edges() > 0:\n"
+            "        try:\n"
+            "            metrics['is_weakly_connected'] = nx.is_weakly_connected(G)\n"
+            "        except Exception:\n"
+            "            pass\n"
+            "except ImportError:\n"
+            "    metrics = data.get('graph_summary') or {}\n"
+            "\n"
+            "out = {k: v for k, v in data.items() if k != 'graph'}\n"
+            "out['metrics'] = metrics\n"
+            "print(json.dumps({'data': out}))\n"
+        )
+
+        lambda_fn, lf_created = LambdaFunction.objects.get_or_create(
+            function_name="graph_analysis_basic_metrics",
+            defaults={"content": _BASIC_LAMBDA_CONTENT},
+        )
+        if lf_created:
+            self.stdout.write(self.style.SUCCESS("🔧 Created LambdaFunction: graph_analysis_basic_metrics"))
+        else:
+            self.stdout.write(self.style.WARNING("ℹ️  LambdaFunction 'graph_analysis_basic_metrics' already exists"))
+
+        wf, created = Workflow.objects.get_or_create(
+            slug="graph-analysis-basic",
+            defaults={
+                "name": "Graph Analysis Basic",
+                "description": (
+                    "Prepare a NetworkX graph from a Cypher query result, "
+                    "compute basic metrics, and save the output to Vault."
+                ),
+            },
+        )
+        if created:
+            prepare = WorkflowNode.objects.create(
+                workflow=wf,
+                node_type=WorkflowNode.PREDEFINED_TASK,
+                label="Prepare graph",
+                task_name="ravioli_prepare_graph_analysis",
+                position_x=0,
+                position_y=0,
+            )
+            compute = WorkflowNode.objects.create(
+                workflow=wf,
+                node_type=WorkflowNode.LAMBDA,
+                label="Compute metrics",
+                lambda_function=lambda_fn,
+                position_x=300,
+                position_y=0,
+            )
+            save = WorkflowNode.objects.create(
+                workflow=wf,
+                node_type=WorkflowNode.PREDEFINED_TASK,
+                label="Save to Vault",
+                task_name="ravioli_save_graph_analysis_output",
+                position_x=600,
+                position_y=0,
+            )
+            WorkflowEdge.objects.create(workflow=wf, source=prepare, target=compute)
+            WorkflowEdge.objects.create(workflow=wf, source=compute, target=save)
+            self.stdout.write(self.style.SUCCESS("📊 Created workflow: Graph Analysis Basic"))
+        else:
+            self.stdout.write(self.style.WARNING("ℹ️  Workflow 'Graph Analysis Basic' already exists"))
 
     def _ensure_cypher_queries(self):
         query_text = """
