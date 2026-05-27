@@ -55,10 +55,8 @@
       <div class="text-center">
         <p class="font-mono text-4xl font-bold tabular-nums" x-text="timerDisplay"></p>
         <p class="mt-1 text-xs opacity-50">
-          <span x-show="!recording && !audioBlob && !transcribing">{% trans "Press to start recording" %}</span>
+          <span x-show="!recording && !audioBlob">{% trans "Press to start recording" %}</span>
           <span x-show="recording">{% trans "Recording… press to stop" %}</span>
-          <span x-show="!recording && audioBlob && !transcribing">{% trans "Recording ready" %}</span>
-          <span x-show="transcribing"><i class="fa-solid fa-spinner fa-spin mr-1"></i>{% trans "Transcribing…" %}</span>
         </p>
       </div>
 
@@ -70,20 +68,26 @@
              :style="'width:' + (elapsed / {{ max_seconds }} * 100) + '%'"></div>
       </div>
 
-      <!-- Transcribe button (after recording) -->
-      <button x-show="audioBlob && !transcribing && !recording"
-              @click="transcribeNow()"
-              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-              class="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold shadow-sm transition hover:opacity-90">
-        <i class="fa-solid fa-wand-magic-sparkles"></i>{% trans "Transcribe" %}
-      </button>
-
-      <button x-show="audioBlob && !transcribing && !recording"
-              @click="reset()"
-              :class="darkMode ? 'hover:bg-bubble-bg-dark' : 'hover:bg-bubble-bg-light'"
-              class="text-xs opacity-60 hover:opacity-100 transition rounded-lg px-3 py-1.5">
-        <i class="fa-solid fa-rotate-left mr-1"></i>{% trans "Record again" %}
-      </button>
+      <!-- Playback + actions (after recording) -->
+      <div x-show="audioUrl && !recording" class="w-full space-y-3">
+        <audio :src="audioUrl" controls preload="auto"
+               class="w-full rounded-xl"></audio>
+        <div class="flex flex-wrap justify-center gap-2">
+          <button @click="transcribeNow()"
+                  :disabled="transcribing || !audioBlob"
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                  class="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold shadow-sm transition hover:opacity-90 disabled:opacity-40">
+            <i class="fa-solid" :class="transcribing ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'"></i>
+            <span x-text="transcribing ? '{% trans "Transcribing…" %}' : '{% trans "Transcribe" %}'"></span>
+          </button>
+          <button @click="reset()"
+                  :disabled="transcribing"
+                  :class="darkMode ? 'hover:bg-bubble-bg-dark border-accent-1' : 'hover:bg-bubble-bg-light border-accent-2'"
+                  class="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium transition hover:opacity-80 disabled:opacity-40">
+            <i class="fa-solid fa-rotate-left"></i>{% trans "Record again" %}
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Error -->
@@ -120,11 +124,11 @@ function demoRecorder() {
     recording: false,
     transcribing: false,
     audioBlob: null,
+    audioUrl: '',
     mediaRecorder: null,
     chunks: [],
     elapsed: 0,
     _ticker: null,
-    _stopTimer: null,
     timerDisplay: '0:00',
     result: '',
     errorMsg: '',
@@ -161,6 +165,8 @@ function demoRecorder() {
         stream.getTracks().forEach(t => t.stop());
         const mime = this.mediaRecorder.mimeType || 'audio/webm';
         this.audioBlob = new Blob(this.chunks, { type: mime });
+        if (this.audioUrl) URL.revokeObjectURL(this.audioUrl);
+        this.audioUrl = URL.createObjectURL(this.audioBlob);
       };
       this.mediaRecorder.start(100);
       this.recording = true;
@@ -212,6 +218,7 @@ function demoRecorder() {
 
     reset() {
       this.stopRecording();
+      if (this.audioUrl) { URL.revokeObjectURL(this.audioUrl); this.audioUrl = ''; }
       this.audioBlob = null;
       this.result = '';
       this.errorMsg = '';
