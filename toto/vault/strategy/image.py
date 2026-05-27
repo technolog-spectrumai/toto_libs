@@ -12,7 +12,7 @@ class ImageStrategy(FileStrategy):
         input_path = file_instance.file.path
         _, ext = os.path.splitext(input_path)
 
-        keyring = file_instance.owner.uservaults.first()
+        keyring = file_instance.owner.user_strongboxes.first()
         if not keyring:
             raise ValueError("No UserVault associated with user.")
 
@@ -42,7 +42,7 @@ class ImageStrategy(FileStrategy):
         input_path = file_instance.file.path
         _, ext = os.path.splitext(input_path)
 
-        keyring = file_instance.owner.uservaults.first()
+        keyring = file_instance.owner.user_strongboxes.first()
         if not keyring:
             raise ValueError("No UserVault associated with user.")
 

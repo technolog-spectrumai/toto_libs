@@ -116,7 +116,13 @@ class PublicFileListView(TemplateView):
             dir_qs = dir_qs.filter(bucket__slug=bucket_slug)
         accessible_dirs = [d for d in dir_qs if d.user_can_access(user)]
 
-        file_qs = VaultFile.objects.filter(is_public=True).select_related(
+        # Public files + the authenticated owner's encrypted-but-private files
+        # (so they can decrypt from this view after encrypting)
+        if user.is_authenticated:
+            visibility_q = Q(is_public=True) | Q(owner=user, is_encrypted=True)
+        else:
+            visibility_q = Q(is_public=True)
+        file_qs = VaultFile.objects.filter(visibility_q).distinct().select_related(
             "owner", "bucket", "directory"
         ).order_by("title")
         if bucket_slug:
@@ -798,6 +804,46 @@ class CopyFilesToBucketView(LoginRequiredMixin, View):
             f"Copied {count} file{'s' if count != 1 else ''} to \"{destination_bucket.name}\".",
         )
         return redirect("vault:bucket_metrics", bucket_slug=destination_bucket.slug)
+
+
+class EncryptFileView(LoginRequiredMixin, View):
+    def post(self, request):
+        file_pk = request.POST.get("file_pk", "").strip()
+        password = request.POST.get("password", "").strip()
+        owner_password = request.POST.get("owner_password", "").strip() or None
+        if not file_pk or not password:
+            return JsonResponse({"ok": False, "error": "Missing required fields."}, status=400)
+        vault_file = get_object_or_404(VaultFile, pk=file_pk, owner=request.user)
+        if vault_file.is_encrypted:
+            return JsonResponse({"ok": False, "error": "File is already encrypted."}, status=400)
+        try:
+            vault_file.encrypt(password=password, owner_password=owner_password)
+            vault_file.is_public = False
+            vault_file.save(update_fields=["is_public"])
+        except Exception as e:
+            msg = str(e)
+            if "EOF marker not found" in msg or "PdfRead" in type(e).__name__:
+                msg = "File does not appear to be a valid PDF."
+            return JsonResponse({"ok": False, "error": msg}, status=500)
+        return JsonResponse({"ok": True})
+
+
+class DecryptFileView(LoginRequiredMixin, View):
+    def post(self, request):
+        file_pk = request.POST.get("file_pk", "").strip()
+        password = request.POST.get("password", "").strip()
+        if not file_pk or not password:
+            return JsonResponse({"ok": False, "error": "Missing required fields."}, status=400)
+        vault_file = get_object_or_404(VaultFile, pk=file_pk, owner=request.user)
+        if not vault_file.is_encrypted:
+            return JsonResponse({"ok": False, "error": "File is not encrypted."}, status=400)
+        try:
+            vault_file.decrypt(password=password)
+            vault_file.is_public = True
+            vault_file.save(update_fields=["is_public"])
+        except Exception as e:
+            return JsonResponse({"ok": False, "error": str(e)}, status=500)
+        return JsonResponse({"ok": True, "url": vault_file.get_public_url() or ""})
 
 
 class MoveFileView(LoginRequiredMixin, View):

@@ -5,6 +5,7 @@ from .views import (
     FileGatewayPageView, FileGatewayUploadView,
     VaultMetricsView, BucketMetricsView,
     CopyFilesToBucketView, BucketCopyAjaxView,
+    EncryptFileView, DecryptFileView,
     MoveFileView, RenameFileView, DeleteFileView,
     GenerateInvoiceView,
 )
@@ -21,6 +22,8 @@ urlpatterns = [
     path("metrics/<slug:bucket_slug>/", BucketMetricsView.as_view(), name="bucket_metrics"),
     path("copy/<slug:source_slug>/", CopyFilesToBucketView.as_view(), name="copy_files"),
     path("copy/<slug:source_slug>/ajax/", BucketCopyAjaxView.as_view(), name="copy_files_ajax"),
+    path("file/encrypt/", EncryptFileView.as_view(), name="encrypt_file"),
+    path("file/decrypt/", DecryptFileView.as_view(), name="decrypt_file"),
     path("file/move/", MoveFileView.as_view(), name="move_file"),
     path("file/rename/", RenameFileView.as_view(), name="rename_file"),
     path("file/delete/", DeleteFileView.as_view(), name="delete_file"),
