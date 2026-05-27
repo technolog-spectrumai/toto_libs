@@ -14,6 +14,5 @@ urlpatterns = [
     path("<slug:collection_slug>/<slug:video_slug>/manage/", views.video_manage, name="video_manage"),
     path("<slug:collection_slug>/<slug:video_slug>/edit/", views.video_edit, name="video_edit"),
     path("<slug:collection_slug>/<slug:video_slug>/build-hls/", views.build_hls, name="build_hls"),
-    path("<slug:collection_slug>/<slug:video_slug>/invoice-access/", views.request_invoice_access, name="request_invoice_access"),
     path("<slug:collection_slug>/<slug:video_slug>/event/", views.playback_event_api, name="playback_event_api"),
 ]

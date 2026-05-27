@@ -17,7 +17,6 @@ from .queries import plays_by_day_chart_data, top_videos_chart_data, video_stats
 from .services import (
     build_hls_for_video,
     can_access_video,
-    create_invoice_for_video_access,
     record_playback_event,
     user_is_vod_manager,
 )
@@ -32,13 +31,12 @@ def _render(request, template, context):
 # ---------------------------------------------------------------------------
 
 def home(request):
-    qs = VodVideo.objects.select_related("collection", "source_file", "poster_file").filter(
-        status=VodVideo.Status.PUBLISHED
-    )
+    qs = VodVideo.objects.select_related("collection", "source_file", "poster_file")
     if not user_is_vod_manager(request.user):
-        qs = qs.exclude(collection__access_mode=VodAccessMode.STAFF)
-
-    recent = qs.order_by("-published_at", "-created_at")[:24]
+        qs = qs.filter(status=VodVideo.Status.PUBLISHED).exclude(
+            collection__access_mode=VodAccessMode.PRIVATE
+        )
+    recent = qs.order_by("-created_at")[:24]
     stats = vod_overview_stats()
     plays_chart = plays_by_day_chart_data(30)
     top_chart = top_videos_chart_data(8)
@@ -55,9 +53,9 @@ def home(request):
 # ---------------------------------------------------------------------------
 
 def collection_list(request):
-    qs = VodCollection.objects.select_related("owner", "required_plan")
+    qs = VodCollection.objects.select_related("owner")
     if not user_is_vod_manager(request.user):
-        qs = qs.filter(access_mode=VodAccessMode.PUBLIC)
+        qs = qs.exclude(access_mode=VodAccessMode.PRIVATE)
     q = request.GET.get("q", "").strip()
     if q:
         qs = qs.filter(Q(title__icontains=q) | Q(slug__icontains=q) | Q(description__icontains=q))
@@ -66,17 +64,13 @@ def collection_list(request):
 
 
 def collection_detail(request, slug):
-    collection = get_object_or_404(
-        VodCollection.objects.select_related("owner", "required_plan"), slug=slug
-    )
-    if collection.access_mode == VodAccessMode.STAFF and not user_is_vod_manager(request.user, collection):
-        return HttpResponseForbidden(_("This VOD collection is staff-only."))
+    collection = get_object_or_404(VodCollection.objects.select_related("owner"), slug=slug)
+    if collection.access_mode == VodAccessMode.PRIVATE and not user_is_vod_manager(request.user, collection):
+        return HttpResponseForbidden(_("This collection is private."))
 
-    videos = collection.videos.select_related("source_file", "poster_file", "required_plan").order_by("position", "title")
+    videos = collection.videos.select_related("source_file", "poster_file").order_by("position", "title")
     if not user_is_vod_manager(request.user, collection):
-        videos = videos.filter(status=VodVideo.Status.PUBLISHED).exclude(access_mode=VodAccessMode.STAFF)
-        if collection.access_mode == VodAccessMode.PUBLIC:
-            videos = videos.exclude(access_mode=VodAccessMode.UNLISTED)
+        videos = videos.filter(status=VodVideo.Status.PUBLISHED)
     return _render(request, "vod/collection_detail.html", {
         "collection": collection,
         "videos": videos[:300],
@@ -107,10 +101,7 @@ def collection_create(request):
 
 def video_detail(request, collection_slug, video_slug):
     video = get_object_or_404(
-        VodVideo.objects.select_related(
-            "collection", "source_file", "poster_file",
-            "required_plan", "collection__required_plan",
-        ),
+        VodVideo.objects.select_related("collection", "source_file", "poster_file"),
         collection__slug=collection_slug,
         slug=video_slug,
     )
@@ -142,7 +133,7 @@ def video_detail(request, collection_slug, video_slug):
 @login_required
 def video_manage(request, collection_slug, video_slug):
     video = get_object_or_404(
-        VodVideo.objects.select_related("collection", "source_file", "poster_file", "required_plan"),
+        VodVideo.objects.select_related("collection", "source_file", "poster_file"),
         collection__slug=collection_slug,
         slug=video_slug,
     )
@@ -209,22 +200,10 @@ def build_hls(request, collection_slug, video_slug):
     return redirect("vod:video_manage", collection_slug=video.collection.slug, video_slug=video.slug)
 
 
-@login_required
-@require_POST
-def request_invoice_access(request, collection_slug, video_slug):
-    video = get_object_or_404(VodVideo.objects.select_related("collection", "source_file"), collection__slug=collection_slug, slug=video_slug)
-    try:
-        create_invoice_for_video_access(user=request.user, video=video, issued_by=video.collection.owner)
-        messages.success(request, _("Invoice created. Pay it to unlock this video."))
-    except Exception as exc:
-        messages.error(request, str(exc))
-    return redirect(video.get_absolute_url())
-
-
 @require_POST
 def playback_event_api(request, collection_slug, video_slug):
     video = get_object_or_404(
-        VodVideo.objects.select_related("collection", "required_plan", "collection__required_plan"),
+        VodVideo.objects.select_related("collection"),
         collection__slug=collection_slug,
         slug=video_slug,
     )

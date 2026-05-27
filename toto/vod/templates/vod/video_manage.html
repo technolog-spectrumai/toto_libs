@@ -132,7 +132,7 @@
       <h2 class="mb-3 font-semibold">{% trans "Details" %}</h2>
       {% if video.published_at %}<p class="opacity-60">{% trans "Published" %}: {{ video.published_at|date:"Y-m-d H:i" }}</p>{% endif %}
       {% if video.duration_seconds %}<p class="opacity-60">{% trans "Duration" %}: {{ video.duration_seconds }}s</p>{% endif %}
-      {% if video.effective_required_plan %}<p class="opacity-60">{% trans "Plan" %}: <code>{{ video.effective_required_plan.code }}</code></p>{% endif %}
+      <p class="opacity-60">{% trans "Access" %}: {{ video.effective_access_mode }}</p>
       <p class="opacity-60">{% trans "Views" %}: {{ video.views_count }}</p>
     </div>
 

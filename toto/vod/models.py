@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from decimal import Decimal
-
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
@@ -16,19 +14,11 @@ from toto.subscriptions.models import TimestampedModel
 
 class VodAccessMode(models.TextChoices):
     PUBLIC = "public", _("Public")
-    UNLISTED = "unlisted", _("Unlisted")
-    SUBSCRIBERS = "subscribers", _("Subscribers")
-    INVOICE = "invoice", _("Invoice access")
-    STAFF = "staff", _("Staff only")
+    PRIVATE = "private", _("Private — readers list only")
 
 
-class VodVideoAccessMode(models.TextChoices):
-    INHERIT = "inherit", _("Inherit collection access")
-    PUBLIC = VodAccessMode.PUBLIC, _("Public")
-    UNLISTED = VodAccessMode.UNLISTED, _("Unlisted")
-    SUBSCRIBERS = VodAccessMode.SUBSCRIBERS, _("Subscribers")
-    INVOICE = VodAccessMode.INVOICE, _("Invoice access")
-    STAFF = VodAccessMode.STAFF, _("Staff only")
+# Access is collection-level; this alias is kept for import compatibility
+VodVideoAccessMode = VodAccessMode
 
 
 class VodCollection(TimestampedModel):
@@ -61,21 +51,18 @@ class VodCollection(TimestampedModel):
         help_text=_("Optional VaultFile image used as collection cover."),
     )
     access_mode = models.CharField(max_length=24, choices=VodAccessMode.choices, default=VodAccessMode.PUBLIC)
-    required_plan = models.ForeignKey(
-        "subscriptions.SubscriptionPlan",
-        on_delete=models.SET_NULL,
-        null=True,
+    readers = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
         blank=True,
-        related_name="vod_collections",
-        help_text=_("Existing toto.subscriptions plan required when access is subscriber-gated."),
+        related_name="vod_readable_collections",
+        help_text=_("Users who can watch private content in this collection."),
     )
-    usage_feature_code = models.SlugField(
-        max_length=100,
+    writers = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
         blank=True,
-        help_text=_("Existing SubscriptionFeature.code to meter watch time, e.g. vod-minutes."),
+        related_name="vod_writable_collections",
+        help_text=_("Users who can upload and manage videos in this collection."),
     )
-    invoice_amount = models.DecimalField(max_digits=18, decimal_places=2, default=Decimal("0.00"))
-    invoice_currency_label = models.CharField(max_length=20, default="USD")
     allow_downloads = models.BooleanField(default=False)
     position = models.PositiveIntegerField(default=0)
 
@@ -84,7 +71,6 @@ class VodCollection(TimestampedModel):
         indexes = [
             models.Index(fields=["access_mode", "position"]),
             models.Index(fields=["slug"]),
-            models.Index(fields=["required_plan"]),
         ]
 
     def __str__(self):
@@ -101,6 +87,30 @@ class VodCollection(TimestampedModel):
     @property
     def is_publicly_listed(self) -> bool:
         return self.access_mode == VodAccessMode.PUBLIC
+
+    @property
+    def is_private(self) -> bool:
+        return self.access_mode == VodAccessMode.PRIVATE
+
+    def user_can_read(self, user) -> bool:
+        if not user or not getattr(user, "is_authenticated", False):
+            return self.access_mode == VodAccessMode.PUBLIC
+        if getattr(user, "is_superuser", False):
+            return True
+        if self.owner_id == user.id:
+            return True
+        if self.access_mode == VodAccessMode.PUBLIC:
+            return True
+        return self.readers.filter(pk=user.pk).exists() or self.writers.filter(pk=user.pk).exists()
+
+    def user_can_write(self, user) -> bool:
+        if not user or not getattr(user, "is_authenticated", False):
+            return False
+        if getattr(user, "is_superuser", False):
+            return True
+        if self.owner_id == user.id:
+            return True
+        return self.writers.filter(pk=user.pk).exists()
 
 
 class VodVideo(TimestampedModel):
@@ -132,20 +142,6 @@ class VodVideo(TimestampedModel):
     slug = models.SlugField(max_length=260)
     description = models.TextField(blank=True)
     status = models.CharField(max_length=24, choices=Status.choices, default=Status.DRAFT)
-    access_mode = models.CharField(max_length=24, choices=VodVideoAccessMode.choices, default=VodVideoAccessMode.INHERIT)
-    required_plan = models.ForeignKey(
-        "subscriptions.SubscriptionPlan",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="vod_videos",
-        help_text=_("Overrides collection plan when set."),
-    )
-    usage_feature_code = models.SlugField(
-        max_length=100,
-        blank=True,
-        help_text=_("Overrides collection usage feature code when set."),
-    )
     duration_seconds = models.PositiveIntegerField(null=True, blank=True)
     position = models.PositiveIntegerField(default=0)
     tags = models.JSONField(default=list, blank=True)
@@ -163,9 +159,6 @@ class VodVideo(TimestampedModel):
     hls_built_at = models.DateTimeField(null=True, blank=True)
     hls_error = models.TextField(blank=True)
     hls_segment_seconds = models.PositiveIntegerField(default=6)
-
-    invoice_amount = models.DecimalField(max_digits=18, decimal_places=2, null=True, blank=True)
-    invoice_currency_label = models.CharField(max_length=20, blank=True)
     published_at = models.DateTimeField(null=True, blank=True)
     views_count = models.PositiveIntegerField(default=0)
 
@@ -175,10 +168,9 @@ class VodVideo(TimestampedModel):
             models.UniqueConstraint(fields=["collection", "slug"], name="uniq_vod_video_slug_per_collection"),
         ]
         indexes = [
-            models.Index(fields=["collection", "status", "access_mode"]),
+            models.Index(fields=["collection", "status"]),
             models.Index(fields=["status", "hls_ready"]),
             models.Index(fields=["slug"]),
-            models.Index(fields=["required_plan"]),
         ]
 
     def __str__(self):
@@ -198,32 +190,10 @@ class VodVideo(TimestampedModel):
                 raise ValidationError({"source_file": _("Source VaultFile must have file_type='video'.")})
             if getattr(self.source_file, "is_encrypted", False):
                 raise ValidationError({"source_file": _("VOD cannot use encrypted VaultFiles.")})
-        if self.access_mode == VodVideoAccessMode.SUBSCRIBERS and not self.effective_required_plan:
-            raise ValidationError({"required_plan": _("Subscriber-gated videos need a SubscriptionPlan on the video or collection.")})
 
     @property
     def effective_access_mode(self) -> str:
-        if self.access_mode == VodVideoAccessMode.INHERIT:
-            return self.collection.access_mode
-        return self.access_mode
-
-    @property
-    def effective_required_plan(self):
-        return self.required_plan or self.collection.required_plan
-
-    @property
-    def effective_usage_feature_code(self) -> str:
-        return self.usage_feature_code or self.collection.usage_feature_code
-
-    @property
-    def effective_invoice_amount(self) -> Decimal:
-        if self.invoice_amount is not None:
-            return self.invoice_amount
-        return self.collection.invoice_amount
-
-    @property
-    def effective_invoice_currency_label(self) -> str:
-        return self.invoice_currency_label or self.collection.invoice_currency_label
+        return self.collection.access_mode
 
     @property
     def effective_hls_bucket(self):
@@ -231,7 +201,7 @@ class VodVideo(TimestampedModel):
 
     @property
     def is_publicly_listed(self) -> bool:
-        return self.status == self.Status.PUBLISHED and self.effective_access_mode == VodAccessMode.PUBLIC
+        return self.status == self.Status.PUBLISHED and self.collection.access_mode == VodAccessMode.PUBLIC
 
     def hls_prefix(self) -> str:
         return f"vod/hls/{self.collection.slug}/{self.slug}"

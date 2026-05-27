@@ -45,25 +45,7 @@
            class="flex flex-col items-center justify-center rounded-2xl border py-16 text-center shadow-sm">
         <i class="fa-solid fa-lock mb-4 text-4xl opacity-30"></i>
         <h3 class="text-lg font-bold">{% trans "Access required" %}</h3>
-        <p class="mt-1 max-w-sm text-sm opacity-60">{{ access.reason }}</p>
-        {% if video.effective_access_mode == "subscribers" and video.effective_required_plan %}
-          <p class="mt-3 text-sm">{% trans "Required plan" %}: <code class="font-mono">{{ video.effective_required_plan.code }}</code></p>
-          <a href="{% url 'subscriptions:plan_list' %}"
-             :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-             class="mt-5 inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold shadow-sm transition hover:opacity-90">
-            <i class="fa-solid fa-repeat"></i>{% trans "View plans" %}
-          </a>
-        {% endif %}
-        {% if video.effective_access_mode == "invoice" %}
-          <form method="post" action="{% url 'vod:request_invoice_access' collection.slug video.slug %}" class="mt-5">
-            {% csrf_token %}
-            <button :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-                    class="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold shadow-sm transition hover:opacity-90">
-              <i class="fa-solid fa-file-invoice"></i>
-              {% trans "Create invoice" %} — {{ video.effective_invoice_amount }} {{ video.effective_invoice_currency_label }}
-            </button>
-          </form>
-        {% endif %}
+        <p class="mt-1 max-w-sm text-sm opacity-60">{% trans "This content is private. Contact the collection owner to request access." %}</p>
       </div>
     {% endif %}
 

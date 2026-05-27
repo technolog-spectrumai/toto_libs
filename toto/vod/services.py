@@ -5,25 +5,24 @@ import os
 import shutil
 import subprocess
 import tempfile
+import uuid as _uuid
 from dataclasses import dataclass
 from pathlib import Path
 
 from django.apps import apps
 from django.conf import settings
-from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.exceptions import ValidationError
 from django.core.files import File
 from django.core.files.storage import default_storage
 from django.db import transaction
 from django.utils import timezone
-from django.utils.module_loading import import_string
 from django.utils.text import slugify
 
-from toto.subscriptions.models import Subscription
-from toto.subscriptions.services import active_subscriptions_for_person
 
 from .models import (
     VodAccessGrant,
     VodAccessMode,
+    # VodVideoAccessMode kept for ingress_vod backward compat
     VodCollection,
     VodPlaybackEvent,
     VodVideo,
@@ -49,67 +48,14 @@ def get_vault_models():
         raise RuntimeError("Install the existing vault app before toto.vod.") from exc
 
 
-def get_invoice_model():
-    try:
-        return apps.get_model("invoice", "Invoice")
-    except LookupError as exc:
-        raise RuntimeError("Install the existing invoice app before using invoice-gated VOD.") from exc
-
-
-def get_user_person(user):
-    """Resolve the people.Person used by toto.subscriptions without duplicating customer logic."""
-
-    if not user or not getattr(user, "is_authenticated", False):
-        return None
-
-    resolver_path = getattr(settings, "VOD_PERSON_RESOLVER", "")
-    if resolver_path:
-        return import_string(resolver_path)(user)
-
-    direct = getattr(user, "person", None)
-    if direct is not None:
-        return direct() if callable(direct) else direct
-
-    profile = getattr(user, "profile", None)
-    if profile is not None:
-        person = getattr(profile, "person", None)
-        if person is not None:
-            return person() if callable(person) else person
-
-    return None
-
-
-def find_active_subscription_for_plan(user, plan):
-    if not plan or not user or not getattr(user, "is_authenticated", False):
-        return None
-
-    checker_path = getattr(settings, "VOD_SUBSCRIPTION_RESOLVER", "")
-    if checker_path:
-        return import_string(checker_path)(user, plan)
-
-    person = get_user_person(user)
-    if person is None:
-        return None
-
-    now = timezone.now()
-    qs = active_subscriptions_for_person(person, community=getattr(plan, "community", None)).filter(plan=plan)
-    qs = qs.filter(status__in=[Subscription.Status.ACTIVE, Subscription.Status.TRIALING])
-    qs = qs.filter(current_period_start__lte=now).filter(models_current_period_filter(now))
-    return qs.order_by("-created_at").first()
-
-
-def models_current_period_filter(now):
-    from django.db.models import Q
-
-    return Q(current_period_end__isnull=True) | Q(current_period_end__gte=now)
-
-
 def user_is_vod_manager(user, collection: VodCollection | None = None) -> bool:
     if not user or not getattr(user, "is_authenticated", False):
         return False
     if getattr(user, "is_superuser", False):
         return True
-    return bool(collection and collection.owner_id == user.id)
+    if collection is None:
+        return False
+    return collection.user_can_write(user)
 
 
 def can_access_video(user, video: VodVideo) -> AccessDecision:
@@ -121,32 +67,11 @@ def can_access_video(user, video: VodVideo) -> AccessDecision:
     if user_is_vod_manager(user, video.collection):
         return AccessDecision(True, "manager")
 
-    mode = video.effective_access_mode
-    if mode in {VodAccessMode.PUBLIC, VodAccessMode.UNLISTED}:
-        return AccessDecision(True, mode)
-
+    if video.collection.user_can_read(user):
+        return AccessDecision(True, video.effective_access_mode)
     if not user or not getattr(user, "is_authenticated", False):
         return AccessDecision(False, "login-required")
-
-    if mode == VodAccessMode.STAFF:
-        return AccessDecision(False, "staff-only")
-
-    if mode == VodAccessMode.SUBSCRIBERS:
-        plan = video.effective_required_plan
-        if plan is None:
-            return AccessDecision(False, "missing-required-plan")
-        subscription = find_active_subscription_for_plan(user, plan)
-        if subscription:
-            return AccessDecision(True, "active-subscription", subscription=subscription)
-        return AccessDecision(False, "subscription-required")
-
-    if mode == VodAccessMode.INVOICE:
-        grant = current_access_grant(user, video)
-        if grant:
-            return AccessDecision(True, "invoice-paid", grant=grant, subscription=grant.subscription)
-        return AccessDecision(False, "invoice-required")
-
-    return AccessDecision(False, "unknown-access-mode")
+    return AccessDecision(False, "private")
 
 
 def current_access_grant(user, video: VodVideo) -> VodAccessGrant | None:
@@ -213,6 +138,13 @@ def create_vault_file_from_upload(*, uploaded_file, owner, bucket=None, title: s
     _, VaultFile = get_vault_models()
     bucket = bucket or get_or_create_vod_bucket(owner=owner)
     file_type = detect_upload_type(uploaded_file)
+
+    # Ensure the derived vault key won't collide within the bucket
+    base_name, ext = os.path.splitext(os.path.basename(uploaded_file.name))
+    candidate_key = slugify(base_name)
+    if candidate_key and VaultFile.objects.filter(bucket=bucket, key=candidate_key).exists():
+        uploaded_file.name = f"{base_name}-{_uuid.uuid4().hex[:8]}{ext}"
+
     vault_file = VaultFile.objects.create(
         owner=owner,
         title=title or os.path.splitext(os.path.basename(uploaded_file.name))[0],
@@ -240,8 +172,6 @@ def create_video_from_upload(
     description: str = "",
     poster_file=None,
     status: str = VodVideo.Status.DRAFT,
-    access_mode: str = VodVideoAccessMode.INHERIT,
-    required_plan=None,
     build_hls: bool = False,
 ):
     source = create_vault_file_from_upload(
@@ -260,8 +190,6 @@ def create_video_from_upload(
         title=title,
         description=description,
         status=status,
-        access_mode=access_mode,
-        required_plan=required_plan,
     )
     if poster_file:
         poster = create_vault_file_from_upload(
@@ -368,36 +296,6 @@ def build_hls_for_video(video: VodVideo, *, force: bool = False, segment_seconds
 
 
 @transaction.atomic
-def create_invoice_for_video_access(*, user, video: VodVideo, issued_by=None, due_date=None) -> VodAccessGrant:
-    if not user or not getattr(user, "is_authenticated", False):
-        raise PermissionDenied("Login required.")
-    if video.effective_access_mode != VodAccessMode.INVOICE:
-        raise ValidationError("This video is not invoice-gated.")
-    amount = video.effective_invoice_amount
-    if amount <= 0:
-        raise ValidationError("Invoice-gated videos require a positive invoice amount.")
-
-    Invoice = get_invoice_model()
-    invoice = Invoice.objects.create(
-        issued_to=user,
-        issued_by=issued_by or video.collection.owner,
-        bucket=video.effective_hls_bucket,
-        title=f"VOD access: {video.title}",
-        description=f"On-demand access for {video.collection.title} / {video.title}",
-        amount=amount,
-        currency_label=video.effective_invoice_currency_label,
-        due_date=due_date,
-        notes="Generated by toto.vod; payment/settlement remains in the invoices app.",
-    )
-    return VodAccessGrant.objects.create(
-        user=user,
-        video=video,
-        invoice=invoice,
-        status=VodAccessGrant.Status.PENDING,
-        note="Access becomes active when the linked invoice is paid.",
-    )
-
-
 def client_ip_hash(request) -> str:
     raw = request.META.get("HTTP_X_FORWARDED_FOR", "").split(",")[0].strip() or request.META.get("REMOTE_ADDR", "")
     if not raw:

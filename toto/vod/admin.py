@@ -5,26 +5,27 @@ from .models import VodAccessGrant, VodCollection, VodPlaybackEvent, VodVideo
 
 @admin.register(VodCollection)
 class VodCollectionAdmin(admin.ModelAdmin):
-    list_display = ("title", "slug", "access_mode", "required_plan", "bucket", "position")
-    list_filter = ("access_mode", "required_plan")
+    list_display = ("title", "slug", "access_mode", "bucket", "position")
+    list_filter = ("access_mode",)
     search_fields = ("title", "slug", "description")
     prepopulated_fields = {"slug": ("title",)}
-    raw_id_fields = ("owner", "bucket", "cover_file", "required_plan")
+    raw_id_fields = ("owner", "bucket", "cover_file")
+    filter_horizontal = ("readers", "writers")
 
 
 @admin.register(VodVideo)
 class VodVideoAdmin(admin.ModelAdmin):
-    list_display = ("title", "collection", "status", "access_mode", "hls_ready", "views_count", "required_plan", "position")
-    list_filter = ("status", "access_mode", "hls_ready", "collection")
+    list_display = ("title", "collection", "status", "hls_ready", "views_count", "position")
+    list_filter = ("status", "hls_ready", "collection")
     search_fields = ("title", "slug", "description", "source_file__title")
     prepopulated_fields = {"slug": ("title",)}
-    raw_id_fields = ("collection", "source_file", "poster_file", "required_plan", "hls_bucket")
+    raw_id_fields = ("collection", "source_file", "poster_file", "hls_bucket")
     readonly_fields = ("hls_playlist_path", "hls_ready", "hls_built_at", "hls_error", "published_at", "views_count")
 
 
 @admin.register(VodAccessGrant)
 class VodAccessGrantAdmin(admin.ModelAdmin):
-    list_display = ("user", "collection", "video", "status", "invoice", "subscription", "starts_at", "ends_at")
+    list_display = ("user", "collection", "video", "status", "starts_at", "ends_at")
     list_filter = ("status",)
     search_fields = ("user__username", "video__title", "collection__title", "note")
     raw_id_fields = ("user", "collection", "video", "subscription", "invoice")

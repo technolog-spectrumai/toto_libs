@@ -3,9 +3,7 @@ from __future__ import annotations
 from django import forms
 from django.utils.translation import gettext_lazy as _
 
-from toto.subscriptions.models import SubscriptionPlan
-
-from .models import VodCollection, VodVideo, VodVideoAccessMode
+from .models import VodCollection, VodVideo
 from .services import create_video_from_upload
 
 _INPUT = (
@@ -37,56 +35,33 @@ def _number(placeholder=""):
 class VodCollectionForm(forms.ModelForm):
     class Meta:
         model = VodCollection
-        fields = [
-            "title", "slug", "description", "access_mode", "required_plan",
-            "invoice_amount", "invoice_currency_label", "allow_downloads", "position",
-        ]
+        fields = ["title", "slug", "description", "access_mode", "allow_downloads", "position"]
         widgets = {
             "title": _text(_("Collection title")),
             "slug": _text(_("url-slug")),
             "description": _textarea(3, _("Describe this collection…")),
             "access_mode": _select(),
-            "invoice_amount": _number("0.00"),
-            "invoice_currency_label": _text("USD"),
             "position": _number("0"),
         }
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fields["required_plan"].queryset = SubscriptionPlan.objects.filter(
-            status=SubscriptionPlan.Status.ACTIVE
-        ).select_related("community")
-        self.fields["required_plan"].widget = _select()
 
 
 class VodVideoForm(forms.ModelForm):
     class Meta:
         model = VodVideo
         fields = [
-            "title", "slug", "description", "status", "access_mode", "required_plan",
+            "title", "slug", "description", "status",
             "duration_seconds", "position", "tags", "hls_segment_seconds",
-            "invoice_amount", "invoice_currency_label",
         ]
         widgets = {
             "title": _text(_("Video title")),
             "slug": _text(_("url-slug")),
             "description": _textarea(3),
             "status": _select(),
-            "access_mode": _select(),
             "tags": _textarea(2, _('["tag1", "tag2"]')),
             "duration_seconds": _number(),
             "position": _number("0"),
             "hls_segment_seconds": _number("6"),
-            "invoice_amount": _number("0.00"),
-            "invoice_currency_label": _text("USD"),
         }
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fields["required_plan"].queryset = SubscriptionPlan.objects.filter(
-            status=SubscriptionPlan.Status.ACTIVE
-        ).select_related("community")
-        self.fields["required_plan"].widget = _select()
 
 
 class VodUploadForm(forms.Form):
@@ -106,25 +81,11 @@ class VodUploadForm(forms.Form):
         initial=VodVideo.Status.DRAFT,
         widget=_select(),
     )
-    access_mode = forms.ChoiceField(
-        choices=VodVideoAccessMode.choices,
-        initial=VodVideoAccessMode.INHERIT,
-        widget=_select(),
-    )
-    required_plan = forms.ModelChoiceField(
-        queryset=SubscriptionPlan.objects.none(),
-        required=False,
-        help_text=_("Leave blank to inherit collection plan."),
-        widget=_select(),
-    )
 
     def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.user = user
         self.fields["collection"].queryset = VodCollection.objects.select_related("owner", "bucket").all()
-        self.fields["required_plan"].queryset = SubscriptionPlan.objects.filter(
-            status=SubscriptionPlan.Status.ACTIVE
-        ).select_related("community")
 
     def clean_video_file(self):
         f = self.cleaned_data["video_file"]
@@ -143,7 +104,5 @@ class VodUploadForm(forms.Form):
             title=self.cleaned_data["title"],
             description=self.cleaned_data.get("description") or "",
             status=self.cleaned_data.get("status") or VodVideo.Status.DRAFT,
-            access_mode=self.cleaned_data.get("access_mode") or VodVideoAccessMode.INHERIT,
-            required_plan=self.cleaned_data.get("required_plan"),
             build_hls=False,
         )
