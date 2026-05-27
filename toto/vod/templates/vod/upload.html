@@ -1,0 +1,10 @@
+{% extends "vod/base.html" %}
+{% load i18n %}
+{% block vod_title %}{{ action }}{% endblock %}
+{% block vod_content %}
+<div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="mx-auto max-w-3xl rounded-xl border p-6 shadow-sm">
+  <h2 class="mb-2 text-xl font-bold">{{ action }}</h2>
+  <p class="mb-5 text-sm opacity-75">{% trans "Uploads are saved as vault.VaultFile records; subscription gating and usage come from toto.subscriptions." %}</p>
+  {% include "vod/_form.html" %}
+</div>
+{% endblock %}

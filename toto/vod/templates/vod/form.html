@@ -1,0 +1,9 @@
+{% extends "vod/base.html" %}
+{% load i18n %}
+{% block vod_title %}{{ action }}{% endblock %}
+{% block vod_content %}
+<div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="mx-auto max-w-3xl rounded-xl border p-6 shadow-sm">
+  <h2 class="mb-5 text-xl font-bold">{{ action }}</h2>
+  {% include "vod/_form.html" %}
+</div>
+{% endblock %}

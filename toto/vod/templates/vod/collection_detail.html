@@ -1,0 +1,55 @@
+{% extends "vod/base.html" %}
+{% load i18n %}
+{% block vod_title %}{{ collection.title }}{% endblock %}
+{% block vod_content %}
+<section
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-xl border p-6 shadow-sm">
+  <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+    <div>
+      <h2 class="text-2xl font-bold">{{ collection.title }}</h2>
+      <p class="mt-2 max-w-3xl text-sm opacity-75">{{ collection.description|default:"—" }}</p>
+    </div>
+    <div class="flex flex-wrap gap-2">
+      <span :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="rounded-full border px-3 py-1 text-xs">{{ collection.get_access_mode_display }}</span>
+      {% if collection.required_plan %}<span :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="rounded-full border px-3 py-1 text-xs">{{ collection.required_plan.code }}</span>{% endif %}
+    </div>
+  </div>
+  {% if can_manage %}
+    <div class="mt-4">
+      <a
+        href="{% url 'vod:collection_create' %}"
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold shadow-sm transition hover:opacity-85">
+        <i class="fa-solid fa-upload"></i>{% trans "Upload to this collection" %}
+      </a>
+    </div>
+  {% endif %}
+</section>
+
+<div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+  {% for video in videos %}
+    <article
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="overflow-hidden rounded-xl border shadow-sm">
+      {% if video.poster_url %}<img class="aspect-video w-full object-cover" src="{{ video.poster_url }}" alt="">{% endif %}
+      <div class="space-y-2 p-4">
+        <div class="flex items-start justify-between gap-3">
+          <h3 class="font-bold">
+            <a class="underline hover:opacity-80" href="{{ video.get_absolute_url }}">{{ video.title }}</a>
+          </h3>
+          <span :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="rounded-full border px-2 py-1 text-xs">{{ video.get_status_display }}</span>
+        </div>
+        <p class="line-clamp-3 text-sm opacity-75">{{ video.description|default:"—" }}</p>
+        <div class="flex flex-wrap gap-2 text-xs opacity-70">
+          <span>{{ video.effective_access_mode }}</span>
+          {% if video.hls_ready %}<span>HLS</span>{% endif %}
+          {% if video.effective_required_plan %}<span>{{ video.effective_required_plan.code }}</span>{% endif %}
+        </div>
+      </div>
+    </article>
+  {% empty %}
+    <div class="rounded-xl border p-6 text-center opacity-70 md:col-span-2 xl:col-span-3">{% trans "No videos yet." %}</div>
+  {% endfor %}
+</div>
+{% endblock %}

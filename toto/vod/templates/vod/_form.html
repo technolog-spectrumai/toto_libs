@@ -1,0 +1,17 @@
+{% load i18n %}
+<form method="post" enctype="multipart/form-data" class="space-y-4">
+  {% csrf_token %}
+  {% if form.non_field_errors %}<div class="rounded-lg border border-red-400 p-3 text-sm">{{ form.non_field_errors }}</div>{% endif %}
+  {% for field in form %}
+    <div class="space-y-1">
+      <label class="text-sm font-semibold" for="{{ field.id_for_label }}">{{ field.label }}</label>
+      {{ field }}
+      {% if field.help_text %}<p class="text-xs opacity-70">{{ field.help_text }}</p>{% endif %}
+      {% for error in field.errors %}<p class="text-xs text-red-500">{{ error }}</p>{% endfor %}
+    </div>
+  {% endfor %}
+  <div class="flex gap-2 pt-2">
+    <button class="rounded-lg border px-4 py-2 text-sm font-semibold" type="submit">{{ action }}</button>
+    <a class="rounded-lg border px-4 py-2 text-sm" href="{% url 'vod:collection_list' %}">{% trans "Cancel" %}</a>
+  </div>
+</form>

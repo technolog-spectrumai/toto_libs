@@ -1,0 +1,136 @@
+# Generated for connected toto.vod app.
+
+import decimal
+import uuid
+from django.conf import settings
+from django.db import migrations, models
+import django.db.models.deletion
+import django.utils.timezone
+
+
+class Migration(migrations.Migration):
+    initial = True
+
+    dependencies = [
+        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
+        ("vault", "0001_initial"),
+        ("subscriptions", "0001_initial"),
+        ("invoice", "0001_initial"),
+    ]
+
+    operations = [
+        migrations.CreateModel(
+            name="VodCollection",
+            fields=[
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                ("uid", models.UUIDField(default=uuid.uuid4, editable=False, unique=True)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("metadata", models.JSONField(blank=True, default=dict)),
+                ("title", models.CharField(max_length=180)),
+                ("slug", models.SlugField(max_length=200, unique=True)),
+                ("description", models.TextField(blank=True)),
+                ("access_mode", models.CharField(choices=[("public", "Public"), ("unlisted", "Unlisted"), ("subscribers", "Subscribers"), ("invoice", "Invoice access"), ("staff", "Staff only")], default="public", max_length=24)),
+                ("usage_feature_code", models.SlugField(blank=True, help_text="Existing SubscriptionFeature.code to meter watch time, e.g. vod-minutes.", max_length=100)),
+                ("invoice_amount", models.DecimalField(decimal_places=2, default=decimal.Decimal("0.00"), max_digits=18)),
+                ("invoice_currency_label", models.CharField(default="USD", max_length=20)),
+                ("allow_downloads", models.BooleanField(default=False)),
+                ("position", models.PositiveIntegerField(default=0)),
+                ("bucket", models.ForeignKey(blank=True, help_text="Vault bucket used for source media and generated HLS paths.", null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="vod_collections", to="vault.bucket")),
+                ("cover_file", models.ForeignKey(blank=True, help_text="Optional VaultFile image used as collection cover.", null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="vod_collection_covers", to="vault.vaultfile")),
+                ("owner", models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="vod_collections", to=settings.AUTH_USER_MODEL)),
+                ("required_plan", models.ForeignKey(blank=True, help_text="Existing toto.subscriptions plan required when access is subscriber-gated.", null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="vod_collections", to="subscriptions.subscriptionplan")),
+            ],
+            options={"ordering": ["position", "title"]},
+        ),
+        migrations.CreateModel(
+            name="VodVideo",
+            fields=[
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                ("uid", models.UUIDField(default=uuid.uuid4, editable=False, unique=True)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("metadata", models.JSONField(blank=True, default=dict)),
+                ("title", models.CharField(max_length=240)),
+                ("slug", models.SlugField(max_length=260)),
+                ("description", models.TextField(blank=True)),
+                ("status", models.CharField(choices=[("draft", "Draft"), ("processing", "Processing"), ("published", "Published"), ("failed", "Failed"), ("archived", "Archived")], default="draft", max_length=24)),
+                ("access_mode", models.CharField(choices=[("inherit", "Inherit collection access"), ("public", "Public"), ("unlisted", "Unlisted"), ("subscribers", "Subscribers"), ("invoice", "Invoice access"), ("staff", "Staff only")], default="inherit", max_length=24)),
+                ("usage_feature_code", models.SlugField(blank=True, help_text="Overrides collection usage feature code when set.", max_length=100)),
+                ("duration_seconds", models.PositiveIntegerField(blank=True, null=True)),
+                ("position", models.PositiveIntegerField(default=0)),
+                ("tags", models.JSONField(blank=True, default=list)),
+                ("hls_playlist_path", models.CharField(blank=True, max_length=600)),
+                ("hls_ready", models.BooleanField(default=False)),
+                ("hls_built_at", models.DateTimeField(blank=True, null=True)),
+                ("hls_error", models.TextField(blank=True)),
+                ("hls_segment_seconds", models.PositiveIntegerField(default=6)),
+                ("invoice_amount", models.DecimalField(blank=True, decimal_places=2, max_digits=18, null=True)),
+                ("invoice_currency_label", models.CharField(blank=True, max_length=20)),
+                ("published_at", models.DateTimeField(blank=True, null=True)),
+                ("collection", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="videos", to="vod.vodcollection")),
+                ("hls_bucket", models.ForeignKey(blank=True, help_text="Optional bucket override for generated HLS assets.", null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="vod_hls_outputs", to="vault.bucket")),
+                ("poster_file", models.ForeignKey(blank=True, help_text="Optional VaultFile image poster.", null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="vod_posters", to="vault.vaultfile")),
+                ("required_plan", models.ForeignKey(blank=True, help_text="Overrides collection plan when set.", null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="vod_videos", to="subscriptions.subscriptionplan")),
+                ("source_file", models.ForeignKey(help_text="Original unencrypted VaultFile video.", on_delete=django.db.models.deletion.PROTECT, related_name="vod_source_videos", to="vault.vaultfile")),
+            ],
+            options={"ordering": ["collection", "position", "title"]},
+        ),
+        migrations.CreateModel(
+            name="VodAccessGrant",
+            fields=[
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                ("uid", models.UUIDField(default=uuid.uuid4, editable=False, unique=True)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("metadata", models.JSONField(blank=True, default=dict)),
+                ("status", models.CharField(choices=[("pending", "Pending"), ("active", "Active"), ("revoked", "Revoked"), ("expired", "Expired")], default="pending", max_length=24)),
+                ("starts_at", models.DateTimeField(default=django.utils.timezone.now)),
+                ("ends_at", models.DateTimeField(blank=True, null=True)),
+                ("note", models.TextField(blank=True)),
+                ("collection", models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name="access_grants", to="vod.vodcollection")),
+                ("invoice", models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="vod_access_grants", to="invoice.invoice")),
+                ("subscription", models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="vod_access_grants", to="subscriptions.subscription")),
+                ("user", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="vod_access_grants", to=settings.AUTH_USER_MODEL)),
+                ("video", models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name="access_grants", to="vod.vodvideo")),
+            ],
+            options={"ordering": ["-created_at"]},
+        ),
+        migrations.CreateModel(
+            name="VodPlaybackEvent",
+            fields=[
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                ("uid", models.UUIDField(default=uuid.uuid4, editable=False, unique=True)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("metadata", models.JSONField(blank=True, default=dict)),
+                ("event", models.CharField(choices=[("impression", "Impression"), ("play", "Play"), ("progress", "Progress"), ("complete", "Complete"), ("error", "Error")], default="play", max_length=24)),
+                ("session_key", models.CharField(blank=True, max_length=80)),
+                ("ip_hash", models.CharField(blank=True, max_length=64)),
+                ("user_agent", models.CharField(blank=True, max_length=512)),
+                ("seconds_watched", models.PositiveIntegerField(default=0)),
+                ("referrer", models.URLField(blank=True)),
+                ("subscription_usage", models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="vod_playback_events", to="subscriptions.subscriptionusage")),
+                ("user", models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, to=settings.AUTH_USER_MODEL)),
+                ("video", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="playback_events", to="vod.vodvideo")),
+            ],
+            options={"ordering": ["-created_at"]},
+        ),
+        migrations.AddIndex(model_name="vodcollection", index=models.Index(fields=["access_mode", "position"], name="vod_vodcoll_access__a0a872_idx")),
+        migrations.AddIndex(model_name="vodcollection", index=models.Index(fields=["slug"], name="vod_vodcoll_slug_d5f612_idx")),
+        migrations.AddIndex(model_name="vodcollection", index=models.Index(fields=["required_plan"], name="vod_vodcoll_require_b75d31_idx")),
+        migrations.AddConstraint(model_name="vodvideo", constraint=models.UniqueConstraint(fields=("collection", "slug"), name="uniq_vod_video_slug_per_collection")),
+        migrations.AddIndex(model_name="vodvideo", index=models.Index(fields=["collection", "status", "access_mode"], name="vod_vodvide_collect_806abc_idx")),
+        migrations.AddIndex(model_name="vodvideo", index=models.Index(fields=["status", "hls_ready"], name="vod_vodvide_status_eb8792_idx")),
+        migrations.AddIndex(model_name="vodvideo", index=models.Index(fields=["slug"], name="vod_vodvide_slug_362340_idx")),
+        migrations.AddIndex(model_name="vodvideo", index=models.Index(fields=["required_plan"], name="vod_vodvide_require_ea04c0_idx")),
+        migrations.AddIndex(model_name="vodaccessgrant", index=models.Index(fields=["user", "status"], name="vod_vodacce_user_id_0b5e67_idx")),
+        migrations.AddIndex(model_name="vodaccessgrant", index=models.Index(fields=["collection", "status"], name="vod_vodacce_collect_6119db_idx")),
+        migrations.AddIndex(model_name="vodaccessgrant", index=models.Index(fields=["video", "status"], name="vod_vodacce_video_i_33b975_idx")),
+        migrations.AddIndex(model_name="vodaccessgrant", index=models.Index(fields=["invoice"], name="vod_vodacce_invoice_f029fd_idx")),
+        migrations.AddIndex(model_name="vodaccessgrant", index=models.Index(fields=["subscription"], name="vod_vodacce_subscri_6f7398_idx")),
+        migrations.AddIndex(model_name="vodplaybackevent", index=models.Index(fields=["video", "event", "created_at"], name="vod_vodplay_video_i_d43f91_idx")),
+        migrations.AddIndex(model_name="vodplaybackevent", index=models.Index(fields=["user", "created_at"], name="vod_vodplay_user_id_8998d9_idx")),
+        migrations.AddIndex(model_name="vodplaybackevent", index=models.Index(fields=["session_key"], name="vod_vodplay_session_71cdcf_idx")),
+        migrations.AddIndex(model_name="vodplaybackevent", index=models.Index(fields=["subscription_usage"], name="vod_vodplay_subscri_72a4a0_idx")),
+    ]
