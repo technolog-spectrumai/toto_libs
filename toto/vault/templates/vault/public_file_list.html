@@ -8,6 +8,7 @@
 <style>[x-cloak] { display: none !important; }</style>
 <script>
   const _renameUrl    = "{% url 'vault:rename_file' %}";
+  const _deleteUrl    = "{% url 'vault:delete_file' %}";
   const _currentUser  = "{{ user.username|escapejs }}";
 
   document.addEventListener('alpine:init', () => {
@@ -23,6 +24,13 @@
         dirMap,
         openDirs: {},
         currentUser: _currentUser,
+
+        // delete state
+        deleteModal: false,
+        deleteFileId: null,
+        deleteFileTitle: '',
+        deleteLoading: false,
+        deleteError: '',
 
         // rename state
         renameModal: false,
@@ -63,6 +71,36 @@
           return this.isVisible(parent);
         },
         isOpen(id) { return !!this.openDirs[id]; },
+
+        openDelete(item) {
+          this.deleteFileId    = item.id;
+          this.deleteFileTitle = item.title;
+          this.deleteError     = '';
+          this.deleteModal     = true;
+        },
+        async submitDelete() {
+          this.deleteLoading = true;
+          this.deleteError   = '';
+          try {
+            const csrf = document.cookie.split(';')
+              .find(c => c.trim().startsWith('csrftoken='))?.split('=')[1] ?? '';
+            const res  = await fetch(_deleteUrl, {
+              method: 'POST',
+              headers: { 'X-CSRFToken': csrf, 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({ file_pk: this.deleteFileId }),
+            });
+            const data = await res.json();
+            if (data.ok) {
+              this.items = this.items.filter(i => i.id !== this.deleteFileId);
+              this.deleteModal = false;
+            } else {
+              this.deleteError = data.error || 'Delete failed.';
+            }
+          } catch {
+            this.deleteError = 'Network error. Please try again.';
+          }
+          this.deleteLoading = false;
+        },
 
         openRename(item) {
           this.renameFileId   = item.id;
@@ -317,6 +355,14 @@
                           :title="`Rename ${item.title}`">
                     <i class="fa-solid fa-pencil text-xs"></i>
                   </button>
+
+                  <!-- Delete trash — owner only, revealed on row hover -->
+                  <button x-show="item.owner === currentUser"
+                          @click.stop="openDelete(item)"
+                          class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150 text-red-500 hover:bg-red-500/10"
+                          :title="`Delete ${item.title}`">
+                    <i class="fa-solid fa-trash text-xs"></i>
+                  </button>
                 </div>
               </template>
 
@@ -325,6 +371,67 @@
 
         </div>
       </template>
+
+      <!-- Delete modal -->
+      <div x-show="deleteModal"
+           x-cloak
+           x-transition:enter="transition ease-out duration-150"
+           x-transition:enter-start="opacity-0"
+           x-transition:enter-end="opacity-100"
+           x-transition:leave="transition ease-in duration-100"
+           x-transition:leave-start="opacity-100"
+           x-transition:leave-end="opacity-0"
+           @keydown.escape.window="deleteModal = false"
+           class="fixed inset-0 z-50 flex items-center justify-center p-4">
+
+        <!-- Backdrop -->
+        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="deleteModal = false"></div>
+
+        <!-- Dialog -->
+        <div :class="darkMode
+                      ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark'
+                      : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+             class="relative z-10 w-full max-w-sm rounded-2xl border p-6 shadow-2xl space-y-5"
+             @click.stop>
+
+          <h2 class="flex items-center gap-2 text-base font-bold text-red-500">
+            <i class="fa-solid fa-triangle-exclamation text-sm"></i>
+            {% trans "Delete file" %}
+          </h2>
+
+          <!-- File name -->
+          <div>
+            <p class="truncate rounded-lg px-3 py-2 text-sm font-mono opacity-60"
+               :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'"
+               x-text="deleteFileTitle"></p>
+          </div>
+
+          <!-- Warning -->
+          <p class="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-500 font-medium">
+            <i class="fa-solid fa-circle-exclamation mr-1.5"></i>
+            {% trans "This action is permanent and cannot be undone. The file and all its data will be deleted immediately." %}
+          </p>
+
+          <!-- Error -->
+          <p x-show="deleteError" x-text="deleteError" class="text-xs text-red-500 -mt-2"></p>
+
+          <!-- Actions -->
+          <div class="flex gap-3">
+            <button @click="submitDelete"
+                    :disabled="deleteLoading"
+                    class="flex-1 rounded-xl px-4 py-2.5 text-sm font-bold transition bg-red-500 text-white hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed">
+              <span x-show="!deleteLoading">{% trans "Delete permanently" %}</span>
+              <span x-show="deleteLoading"><i class="fa-solid fa-spinner fa-spin"></i></span>
+            </button>
+            <button @click="deleteModal = false"
+                    :class="darkMode ? 'border-accent-1 hover:bg-bubble-bg-dark' : 'border-accent-2 hover:bg-bubble-bg-light'"
+                    class="flex-1 rounded-xl border px-4 py-2.5 text-sm font-semibold transition">
+              {% trans "Cancel" %}
+            </button>
+          </div>
+
+        </div>
+      </div>
 
       <!-- Rename modal -->
       <div x-show="renameModal"

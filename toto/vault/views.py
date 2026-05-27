@@ -818,6 +818,17 @@ class RenameFileView(LoginRequiredMixin, View):
         return JsonResponse({"ok": True, "title": vault_file.title, "file_type": vault_file.file_type})
 
 
+class DeleteFileView(LoginRequiredMixin, View):
+    def post(self, request):
+        file_pk = request.POST.get("file_pk", "").strip()
+        if not file_pk:
+            return JsonResponse({"ok": False, "error": "Missing file_pk."}, status=400)
+        vault_file = get_object_or_404(VaultFile, pk=file_pk, owner=request.user)
+        vault_file.file.delete(save=False)
+        vault_file.delete()
+        return JsonResponse({"ok": True})
+
+
 class BucketCopyAjaxView(LoginRequiredMixin, View):
     """
     JSON endpoint used by the inline copy modal on the bucket metrics page.
