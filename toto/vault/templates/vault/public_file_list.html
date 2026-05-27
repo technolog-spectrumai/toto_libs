@@ -29,6 +29,11 @@
         openDirs: {},
         currentUser: _currentUser,
 
+        // search state
+        search: '',
+        _matchingIds: null,        // null = no search; plain object { id: true } when active
+        _visibleAncestorIds: null, // ancestor dirs of matched files
+
         // cipher (encrypt/decrypt) state
         cipherModal: false,
         cipherMode: 'encrypt',   // 'encrypt' | 'decrypt'
@@ -97,6 +102,52 @@
           this.$watch('removeEncModal', open => {
             if (open) this.$nextTick(() => this.$refs.removeEncInput?.focus());
           });
+          this.$watch('search', () => this._updateSearch());
+        },
+
+        // ── search ──────────────────────────────────────────────
+        _scoreMatch(q, title) {
+          const t = (title || '').toLowerCase();
+          if (t === q) return 100;
+          if (t.startsWith(q)) return 90;
+          if (t.includes(q)) return 70;
+          // multi-word: every word must appear somewhere
+          const words = q.split(/[\s\-_\.]+/).filter(w => w.length > 0);
+          if (words.length > 1 && words.every(w => t.includes(w))) return 55;
+          // fuzzy: all chars of query appear in order (min 2 chars)
+          if (q.length >= 2) {
+            let qi = 0;
+            for (let ci = 0; ci < t.length && qi < q.length; ci++) {
+              if (t[ci] === q[qi]) qi++;
+            }
+            if (qi === q.length) return 30;
+          }
+          return 0;
+        },
+        _updateSearch() {
+          const q = this.search.trim().toLowerCase();
+          if (!q) { this._matchingIds = null; this._visibleAncestorIds = null; return; }
+          const matched = {};
+          for (const item of this.items) {
+            if (item.t === 'file' && this._scoreMatch(q, item.title) > 0) matched[item.id] = true;
+          }
+          const ancestors = {};
+          for (const item of this.items) {
+            if (item.t === 'file' && matched[item.id]) {
+              let pid = item.pid;
+              while (pid !== null && pid !== undefined) {
+                if (ancestors[pid]) break;
+                ancestors[pid] = true;
+                const dir = this.dirMap[pid];
+                pid = dir ? dir.pid : null;
+              }
+            }
+          }
+          this._matchingIds = matched;
+          this._visibleAncestorIds = ancestors;
+        },
+        get _matchCount() {
+          return this._matchingIds ? Object.keys(this._matchingIds).length : 0;
         },
 
         toggle(id) {
@@ -116,6 +167,11 @@
           }
         },
         isVisible(item) {
+          if (this._matchingIds !== null) {
+            return item.t === 'file'
+              ? !!this._matchingIds[item.id]
+              : !!(this._visibleAncestorIds && this._visibleAncestorIds[item.id]);
+          }
           if (item.pid === null || item.pid === undefined) return true;
           if (!this.openDirs[item.pid]) return false;
           const parent = this.dirMap[item.pid];
@@ -477,6 +533,39 @@
 
     <!-- Tree -->
     <div x-data="vaultTree()">
+
+      <!-- Search bar -->
+      <div x-show="items.length > 0" class="mb-3">
+        <div class="relative">
+          <div class="pointer-events-none absolute inset-y-0 left-3 flex items-center">
+            <i class="fa-solid fa-magnifying-glass text-xs opacity-40"></i>
+          </div>
+          <input x-model="search"
+                 type="search"
+                 placeholder="{% trans "Search files…" %}"
+                 @keydown.escape.stop="search = ''"
+                 :class="darkMode
+                   ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark placeholder:text-text-main-dark/40'
+                   : 'bg-bubble-bg-light border-accent-2 text-text-main-light placeholder:text-text-main-light/40'"
+                 class="w-full rounded-xl border py-2.5 pl-9 pr-9 text-sm focus:outline-none focus:ring-2 focus:ring-current/20 transition">
+          <button x-show="search"
+                  @click="search = ''"
+                  class="absolute inset-y-0 right-3 flex items-center opacity-40 hover:opacity-70 transition-opacity">
+            <i class="fa-solid fa-xmark text-xs"></i>
+          </button>
+        </div>
+        <div x-show="search.trim()" class="mt-1.5 flex items-center gap-1.5 px-1 text-xs opacity-55">
+          <template x-if="_matchingIds !== null && _matchCount > 0">
+            <span>
+              <span class="font-semibold" x-text="_matchCount"></span>
+              {% trans "file(s) found" %}
+            </span>
+          </template>
+          <template x-if="_matchingIds !== null && _matchCount === 0">
+            <span>{% trans "No files match your search." %}</span>
+          </template>
+        </div>
+      </div>
 
       <!-- Empty state -->
       <template x-if="items.length === 0">
