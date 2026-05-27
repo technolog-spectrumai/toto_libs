@@ -34,6 +34,10 @@
         _matchingIds: null,        // null = no search; plain object { id: true } when active
         _visibleAncestorIds: null, // ancestor dirs of matched files
 
+        // sort & date filter state
+        sortMode: 'name_asc',  // 'name_asc' | 'name_desc' | 'date_asc' | 'date_desc'
+        dateFilter: '',         // '' | 'today' | 'week' | 'month'
+
         // cipher (encrypt/decrypt) state
         cipherModal: false,
         cipherMode: 'encrypt',   // 'encrypt' | 'decrypt'
@@ -148,6 +152,51 @@
         },
         get _matchCount() {
           return this._matchingIds ? Object.keys(this._matchingIds).length : 0;
+        },
+
+        get displayItems() {
+          const cutoff = this.dateFilter === 'today'
+            ? new Date().toISOString().slice(0, 10)
+            : this.dateFilter === 'week'
+            ? new Date(Date.now() - 7*24*3600*1000).toISOString().slice(0, 10)
+            : this.dateFilter === 'month'
+            ? new Date(Date.now() - 30*24*3600*1000).toISOString().slice(0, 10)
+            : null;
+
+          const [field, dir] = this.sortMode.split('_');
+          const mult = dir === 'asc' ? 1 : -1;
+
+          // Collect files per parent dir, applying date filter and sort
+          const filesByPid = {};
+          for (const item of this.items) {
+            if (item.t !== 'file') continue;
+            if (cutoff && item.uploaded < cutoff) continue;
+            const k = String(item.pid ?? '');
+            (filesByPid[k] = filesByPid[k] || []).push(item);
+          }
+          for (const k in filesByPid) {
+            filesByPid[k].sort((a, b) => {
+              if (field === 'date')
+                return (a.uploaded < b.uploaded ? -1 : a.uploaded > b.uploaded ? 1 : 0) * mult;
+              return a.title.toLowerCase().localeCompare(b.title.toLowerCase()) * mult;
+            });
+          }
+
+          // Rebuild flat list: dirs in original DFS order, each dir's files replaced by sorted/filtered group
+          const result = [];
+          const insertedPids = new Set();
+          for (const item of this.items) {
+            if (item.t === 'dir') {
+              result.push(item);
+            } else {
+              const k = String(item.pid ?? '');
+              if (!insertedPids.has(k)) {
+                insertedPids.add(k);
+                result.push(...(filesByPid[k] || []));
+              }
+            }
+          }
+          return result;
         },
 
         toggle(id) {
@@ -542,6 +591,7 @@
           </div>
           <input x-model="search"
                  type="search"
+                 autocomplete="off"
                  placeholder="{% trans "Search files…" %}"
                  @keydown.escape.stop="search = ''"
                  :class="darkMode
@@ -567,6 +617,38 @@
         </div>
       </div>
 
+      <!-- Sort & date filter controls -->
+      <div x-show="items.length > 0" class="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+        <div class="flex items-center gap-1.5">
+          <span :class="darkMode ? 'text-text-main-dark' : 'text-text-main-light'"
+                class="opacity-45 font-semibold uppercase tracking-wide shrink-0">
+            <i class="fa-solid fa-arrow-up-wide-short mr-1"></i>{% trans "Sort" %}
+          </span>
+          <select x-model="sortMode"
+                  :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+                  class="rounded-lg border px-2 py-1 text-xs focus:outline-none cursor-pointer">
+            <option value="name_asc">{% trans "Name A–Z" %}</option>
+            <option value="name_desc">{% trans "Name Z–A" %}</option>
+            <option value="date_desc">{% trans "Date (newest)" %}</option>
+            <option value="date_asc">{% trans "Date (oldest)" %}</option>
+          </select>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <span :class="darkMode ? 'text-text-main-dark' : 'text-text-main-light'"
+                class="opacity-45 font-semibold uppercase tracking-wide shrink-0">
+            <i class="fa-solid fa-calendar-days mr-1"></i>{% trans "Uploaded" %}
+          </span>
+          <select x-model="dateFilter"
+                  :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+                  class="rounded-lg border px-2 py-1 text-xs focus:outline-none cursor-pointer">
+            <option value="">{% trans "Any time" %}</option>
+            <option value="today">{% trans "Today" %}</option>
+            <option value="week">{% trans "This week" %}</option>
+            <option value="month">{% trans "This month" %}</option>
+          </select>
+        </div>
+      </div>
+
       <!-- Empty state -->
       <template x-if="items.length === 0">
         <div
@@ -583,7 +665,7 @@
           :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
           class="overflow-hidden rounded-xl border shadow-sm">
 
-          <template x-for="item in items" :key="`${item.t}-${item.id}`">
+          <template x-for="item in displayItems" :key="`${item.t}-${item.id}`">
             <div x-show="isVisible(item)">
 
               <!-- Directory row -->
