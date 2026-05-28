@@ -47,10 +47,6 @@ class MagistrateRole(models.Model):
         default=False,
         help_text="Holder oversees public order and safety.",
     )
-    overseeing_legislation = models.BooleanField(
-        default=False,
-        help_text="Holder may propose and fast-track legislation.",
-    )
     overseeing_merchandise = models.BooleanField(
         default=False,
         help_text="Holder may inspect merchandise quality and impose fines. Fines may be contested before the tribunal.",
@@ -107,7 +103,6 @@ class MagistrateRole(models.Model):
             ("overseeing_trade", "Trade"),
             ("overseeing_finance", "Finance"),
             ("overseeing_public_order", "Public Order"),
-            ("overseeing_legislation", "Legislation"),
             ("overseeing_merchandise", "Merchandise Quality"),
             ("overseeing_education", "Education"),
             ("overseeing_relations", "Inter-Community Relations"),
@@ -200,7 +195,6 @@ class MagistrateDecision(models.Model):
         ("trade_order",            "Trade Order"),
         ("finance_directive",      "Finance Directive"),
         ("public_order_directive", "Public Order Directive"),
-        ("legislation_fast_track", "Legislation Fast-Track"),
         ("trade_reversal",         "Trade Reversal Order"),
         ("merchandise_fine",       "Merchandise Quality Fine"),
         ("education_directive",    "Education Directive"),

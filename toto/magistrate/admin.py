@@ -12,7 +12,7 @@ class MagistrateRoleAdmin(admin.ModelAdmin):
         "name", "slug",
         "overseeing_tribunal", "overseeing_trade",
         "overseeing_merchandise", "overseeing_finance", "overseeing_public_order",
-        "overseeing_legislation", "overseeing_education", "overseeing_relations",
+        "overseeing_education", "overseeing_relations",
         "overseeing_logistics", "overseeing_interior", "overseeing_productivity",
         "can_set_fines", "order",
     )

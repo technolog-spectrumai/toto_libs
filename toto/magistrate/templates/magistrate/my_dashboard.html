@@ -259,33 +259,6 @@
   </section>
   {% endif %}
 
-  {% if mag.role.overseeing_legislation %}
-  <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-           class="rounded-xl border p-5 shadow-sm">
-    <div class="mb-3 flex items-center gap-2">
-      <i class="fa-solid fa-feather-pointed" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
-      <h3 class="font-bold">{% trans "Legislation" %}</h3>
-      {% if role_stats.open_proposals is not None %}
-        <span class="ml-auto text-xs opacity-60">{{ role_stats.open_proposals }} {% trans "open proposals" %}</span>
-      {% endif %}
-    </div>
-    <p class="mb-3 text-xs opacity-60">{% trans "Issue fast-track legislation directives. These are subject to assembly ratification within 7 days or are automatically revoked." %}</p>
-    <div class="flex flex-wrap gap-2">
-      <button type="button"
-              @click="openDecision('legislation_fast_track', '{% trans "Legislation Fast-Track" %}', 'fa-solid fa-feather-pointed')"
-              :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
-              class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold hover:opacity-80">
-        <i class="fa-solid fa-feather-pointed"></i> {% trans "Issue Fast-Track Directive" %}
-      </button>
-      <a href="{% url 'assembly:community_assembly' mag.community.slug %}"
-         :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
-         class="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold hover:opacity-80">
-        <i class="fa-solid fa-arrow-right"></i> {% trans "Assembly" %}
-      </a>
-    </div>
-  </section>
-  {% endif %}
-
   {% if mag.role.overseeing_education %}
   <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
            class="rounded-xl border p-5 shadow-sm">

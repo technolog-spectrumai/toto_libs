@@ -16,7 +16,6 @@ ROLES = [
         "slug": "prefect",
         "description": "Head magistrate of a sub-community or chapter, responsible for local coordination, chapter governance, and urgent local directives.",
         "icon": "fa-solid fa-landmark-dome",
-        "overseeing_legislation": True,
         "overseeing_logistics": True,
         "overseeing_interior": True,
         "order": 10,
@@ -27,7 +26,6 @@ ROLES = [
         "description": "Protector of assembly procedure and civic rights; oversees tribunal access and legislative safeguards.",
         "icon": "fa-solid fa-scale-balanced",
         "overseeing_tribunal": True,
-        "overseeing_legislation": True,
         "order": 20,
     },
     {
@@ -243,7 +241,6 @@ class Command(IngressCommand):
                     "overseeing_trade": r.get("overseeing_trade", False),
                     "overseeing_finance": r.get("overseeing_finance", False),
                     "overseeing_public_order": r.get("overseeing_public_order", False),
-                    "overseeing_legislation": r.get("overseeing_legislation", False),
                     "overseeing_merchandise": r.get("overseeing_merchandise", False),
                     "overseeing_education": r.get("overseeing_education", False),
                     "overseeing_relations": r.get("overseeing_relations", False),

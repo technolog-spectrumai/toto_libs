@@ -121,23 +121,17 @@ def _collect_role_stats(mag):
         except Exception:
             pass
 
-    if role.overseeing_finance or role.overseeing_legislation:
+    if role.overseeing_finance:
         try:
             from toto.assembly.models import (
-                AssemblyProposal, AssemblyStatus,
                 CommunityTransactionFee, PollTax,
             )
-            if role.overseeing_finance:
-                stats["active_fees"] = CommunityTransactionFee.objects.filter(
-                    community=community, active=True
-                ).count()
-                stats["active_poll_taxes"] = PollTax.objects.filter(
-                    community=community, active=True
-                ).count()
-            if role.overseeing_legislation:
-                stats["open_proposals"] = AssemblyProposal.objects.filter(
-                    community=community, status=AssemblyStatus.OPEN
-                ).count()
+            stats["active_fees"] = CommunityTransactionFee.objects.filter(
+                community=community, active=True
+            ).count()
+            stats["active_poll_taxes"] = PollTax.objects.filter(
+                community=community, active=True
+            ).count()
         except Exception:
             pass
 
@@ -157,8 +151,6 @@ def _domain_actions(role):
         actions.append(("finance_directive", "Finance Directive", "fa-solid fa-coins", "success"))
     if role.overseeing_public_order:
         actions.append(("public_order_directive", "Public Order Directive", "fa-solid fa-shield-cat", "caution"))
-    if role.overseeing_legislation:
-        actions.append(("legislation_fast_track", "Legislation Fast-Track", "fa-solid fa-feather-pointed", "accent"))
     if role.overseeing_education:
         actions.append(("education_directive", "Education Directive", "fa-solid fa-graduation-cap", "accent"))
     if role.overseeing_relations:
