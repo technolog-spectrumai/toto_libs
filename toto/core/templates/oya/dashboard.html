@@ -112,26 +112,11 @@
                       <i class="{{ block.icon|default:'fa-solid fa-cube' }}"></i>
                     </div>
                     <div class="min-w-0">
-                      <div class="flex items-center gap-2 flex-wrap">
-                        <h3
-                          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-                          class="break-words font-bold">
-                          {{ block.title|default:"Untitled" }}
-                        </h3>
-                        {% if block.visibility == "protected" %}
-                          <span class="inline-flex items-center gap-1 rounded-full bg-blue-100 text-blue-700 px-1.5 py-0.5 text-[10px] font-semibold" title="{% trans 'Requires login' %}">
-                            <i class="fa-solid fa-lock-open"></i> {% trans "Login" %}
-                          </span>
-                        {% elif block.visibility == "private" %}
-                          <span class="inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-700 px-1.5 py-0.5 text-[10px] font-semibold" title="{% trans 'Committed citizens only' %}">
-                            <i class="fa-solid fa-scroll"></i> {% trans "Members" %}
-                          </span>
-                        {% elif block.visibility == "federal" %}
-                          <span class="inline-flex items-center gap-1 rounded-full bg-purple-100 text-purple-700 px-1.5 py-0.5 text-[10px] font-semibold" title="{% trans 'Federal tribe or agent only' %}">
-                            <i class="fa-solid fa-shield-halved"></i> {% trans "Federal" %}
-                          </span>
-                        {% endif %}
-                      </div>
+                      <h3
+                        :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                        class="break-words font-bold">
+                        {{ block.title|default:"Untitled" }}
+                      </h3>
                       <p class="mt-0.5 line-clamp-2 text-sm opacity-70">
                         {{ block.description|default:"No description available." }}
                       </p>
