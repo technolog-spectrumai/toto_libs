@@ -230,16 +230,8 @@ def model_setup(request):
     if not request.user.is_staff and not request.user.is_superuser:
         return HttpResponseForbidden(_("Model management is restricted to staff."))
     models_qs = SpeechModel.objects.order_by("backend", "name")
-    create_form = SpeechModelForm()
-    if request.method == "POST" and "create_model" in request.POST:
-        create_form = SpeechModelForm(request.POST)
-        if create_form.is_valid():
-            create_form.save()
-            messages.success(request, _("Speech model created."))
-            return redirect(reverse("transcription:model_setup"))
     return _render(request, "transcription/model_setup.html", {
         "speech_models": models_qs,
-        "create_form": create_form,
         "download_form": SpeechModelDownloadForm(),
         "celery_ok": celery_workers_available(),
     })

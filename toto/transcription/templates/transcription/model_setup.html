@@ -109,30 +109,11 @@
     </div>
   {% endif %}
 
-  <!-- Create new speech model -->
-  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm">
-    <h2 class="mb-1 font-semibold">{% trans "Add Speech Model" %}</h2>
-    <p class="mb-4 text-sm opacity-60">{% trans "Create a model entry, then use the Download weights button to fetch weights from HuggingFace or a direct URL." %}</p>
-    <form method="post">
-      {% csrf_token %}
-      <input type="hidden" name="create_model" value="1">
-      <div class="grid gap-4 sm:grid-cols-2">
-        {% for field in create_form %}
-          <div class="{% if field.name == 'description' %}sm:col-span-2{% endif %}">
-            <label class="mb-1 block text-xs font-semibold opacity-70">{{ field.label }}</label>
-            {{ field }}
-            {% if field.help_text %}<p class="mt-1 text-xs opacity-50">{{ field.help_text }}</p>{% endif %}
-            {% if field.errors %}<p class="mt-1 text-xs text-red-500">{{ field.errors.as_text }}</p>{% endif %}
-          </div>
-        {% endfor %}
-      </div>
-      <button type="submit"
-              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-              class="mt-4 inline-flex items-center gap-2 rounded-xl px-5 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-        <i class="fa-solid fa-plus"></i>{% trans "Create Model" %}
-      </button>
-    </form>
-  </div>
+  {% if not speech_models %}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 text-sm opacity-60">
+      {% trans "No speech models configured yet. Add one in the admin panel." %}
+    </div>
+  {% endif %}
 
 </div>
 
