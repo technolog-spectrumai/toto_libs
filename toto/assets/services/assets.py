@@ -151,6 +151,15 @@ def transfer_asset(
             raise ValidationError("Sender account is not active.")
         if not receiver_account.active:
             raise ValidationError("Receiver account is not active.")
+        from django.apps import apps as _apps
+        try:
+            AssetFreeze = _apps.get_model('magistrate', 'AssetFreeze')
+            if AssetFreeze.objects.filter(asset=asset, status='active').exists():
+                raise ValidationError(
+                    f"{asset.unit_name} is currently frozen by magistrate order and cannot be transferred."
+                )
+        except LookupError:
+            pass
 
         holdings = AssetHolding.objects.select_for_update().filter(
             asset=asset,
