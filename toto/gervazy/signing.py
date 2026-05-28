@@ -200,6 +200,29 @@ class SigningService:
     # ------------------------------------------------------------------
 
     @staticmethod
+    def canonical_certificate_payload(certificate, teacher, signed_at) -> bytes:
+        """
+        Build the canonical byte string for a teacher signing a certificate.
+
+        Format (newline-separated, UTF-8):
+            sign:certificate
+            uuid:<certificate.uuid>
+            person:<certificate.person.pk>
+            course:<certificate.course_id or ''>
+            teacher:<teacher.pk>
+            at:<signed_at.isoformat()>
+        """
+        lines = [
+            "sign:certificate",
+            f"uuid:{certificate.uuid}",
+            f"person:{certificate.person.pk}",
+            f"course:{certificate.course_id or ''}",
+            f"teacher:{teacher.pk}",
+            f"at:{signed_at.isoformat()}",
+        ]
+        return "\n".join(lines).encode("utf-8")
+
+    @staticmethod
     def canonical_contract_payload(contract, person, signed_at) -> bytes:
         """
         Build the canonical byte string that represents a person signing a

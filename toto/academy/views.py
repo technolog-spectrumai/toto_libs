@@ -1,9 +1,11 @@
 import json
 
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.views.generic import TemplateView
 from django.views.generic import DetailView, ListView
 
@@ -488,6 +490,135 @@ class ScriptDetailView(PageDetailMixin, DetailView):
         context["back_label"] = self.object.module.course.title
         context["page_type_label"] = "Script"
         return PageProcessor().decorate(context, self.request)
+
+
+def _render(request, template, context):
+    return render(request, template, PageProcessor().decorate(context, request))
+
+
+def certificate_detail(request, uuid):
+    certificate = get_object_or_404(
+        Certificate.objects.select_related(
+            "person", "course", "signed_by", "signed_by__person", "signing_key"
+        ),
+        uuid=uuid,
+    )
+    person = getattr(request.user, "community_profile", None)
+    teacher = None
+    if person:
+        teacher = Teacher.objects.filter(person=person).first()
+
+    return _render(request, "academy/certificate_detail.html", {
+        "certificate": certificate,
+        "teacher": teacher,
+    })
+
+
+def certificate_sign(request, uuid):
+    from toto.gervazy.models import UserStrongbox, WrappedDataKey
+    from toto.gervazy.signing import SigningService, SigningError
+    from toto.gervazy.crypto import GervazyCryptoSession
+
+    certificate = get_object_or_404(
+        Certificate.objects.select_related("person", "course"),
+        uuid=uuid,
+    )
+
+    person = getattr(request.user, "community_profile", None)
+    teacher = None
+    if person:
+        teacher = Teacher.objects.filter(person=person).first()
+
+    strongboxes = []
+    existing_signing_key = None
+    if person and request.user.is_authenticated:
+        strongboxes = list(UserStrongbox.objects.filter(owner=request.user))
+        existing_signing_key = SigningService.get_active_signing_key(person)
+
+    def _ctx():
+        required_strongbox = None
+        if existing_signing_key:
+            required_strongbox = existing_signing_key.encrypted_private_key.strongbox
+        return {
+            "certificate": certificate,
+            "teacher": teacher,
+            "strongboxes": strongboxes,
+            "existing_signing_key": existing_signing_key,
+            "required_strongbox": required_strongbox,
+        }
+
+    if request.method == "POST":
+        if not teacher:
+            messages.error(request, "Only teachers (professors) can sign certificates.")
+            return redirect("academy:certificate-detail", uuid=certificate.uuid)
+        if certificate.cryptographic_signature:
+            messages.info(request, "This certificate has already been cryptographically signed.")
+            return redirect("academy:certificate-detail", uuid=certificate.uuid)
+
+        password = request.POST.get("strongbox_password", "").strip()
+        strongbox_id = request.POST.get("strongbox_id", "").strip()
+
+        if not password:
+            messages.error(request, "Strongbox password is required to sign.")
+            return _render(request, "academy/certificate_sign.html", _ctx())
+
+        existing_signing_key = SigningService.get_active_signing_key(person)
+
+        if existing_signing_key:
+            signing_strongbox = existing_signing_key.encrypted_private_key.strongbox
+            wrapped_key = None
+        else:
+            try:
+                if strongbox_id:
+                    signing_strongbox = UserStrongbox.objects.get(pk=strongbox_id, owner=request.user)
+                elif strongboxes:
+                    signing_strongbox = strongboxes[0]
+                else:
+                    messages.error(request, "No strongbox found. Set one up in Gervazy first.")
+                    return redirect("academy:certificate-detail", uuid=certificate.uuid)
+            except UserStrongbox.DoesNotExist:
+                messages.error(request, "Invalid strongbox selection.")
+                return _render(request, "academy/certificate_sign.html", _ctx())
+
+            wrapped_key = (
+                WrappedDataKey.objects
+                .filter(strongbox=signing_strongbox, state="active")
+                .select_related("vmk")
+                .first()
+            )
+            if not wrapped_key:
+                messages.error(
+                    request,
+                    f"No active data key found in strongbox \"{signing_strongbox.name}\". "
+                    "Initialize a data key in Gervazy before signing for the first time.",
+                )
+                return _render(request, "academy/certificate_sign.html", _ctx())
+
+        try:
+            session = GervazyCryptoSession(signing_strongbox, password)
+
+            signed_at = timezone.now()
+            payload = SigningService.canonical_certificate_payload(certificate, teacher, signed_at)
+            doc_sig = SigningService.sign_document(session, person, payload, wrapped_key=wrapped_key)
+
+            certificate.signed_by = teacher
+            certificate.signing_payload = payload.decode("utf-8")
+            certificate.cryptographic_signature = doc_sig.signature_b64
+            certificate.signing_key = SigningService.get_active_signing_key(person).encrypted_private_key
+            certificate.save(update_fields=[
+                "signed_by", "signing_payload", "cryptographic_signature", "signing_key",
+            ])
+
+            session.close()
+
+        except Exception as exc:
+            messages.error(request, f"Signing failed: {exc}")
+            return _render(request, "academy/certificate_sign.html", _ctx())
+
+        messages.success(request, "Certificate signed with cryptographic signature.")
+        return redirect("academy:certificate-detail", uuid=certificate.uuid)
+
+    return _render(request, "academy/certificate_sign.html", _ctx())
 
 
 @login_required

@@ -316,6 +316,25 @@ class Certificate(models.Model):
     description = models.TextField(blank=True)
     granted_at = models.DateTimeField(default=timezone.now)
 
+    # Cryptographic signature by a teacher (professor).
+    signed_by = models.ForeignKey(
+        "academy.Teacher",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="signed_certificates",
+        help_text="Teacher who cryptographically signed this certificate.",
+    )
+    signing_payload = models.TextField(blank=True)
+    cryptographic_signature = models.TextField(blank=True)
+    signing_key = models.ForeignKey(
+        "gervazy.EncryptedPrivateKey",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="certificate_signatures",
+    )
+
     class Meta:
         ordering = ["-granted_at"]
         constraints = [

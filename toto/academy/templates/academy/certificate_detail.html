@@ -1,0 +1,132 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{{ certificate.display_title }} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-6 py-16 transition-colors duration-300">
+
+  <div class="max-w-2xl mx-auto space-y-6">
+
+    <a href="{% url 'academy:student-progress' %}"
+       class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+      <i class="fa-solid fa-arrow-left"></i>
+      {% trans "My Progress" %}
+    </a>
+
+    <!-- Certificate card -->
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-6 shadow-sm space-y-5">
+
+      <div class="flex items-start gap-4">
+        <div :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-4xl mt-1">
+          <i class="fa-solid fa-certificate"></i>
+        </div>
+        <div>
+          <h1 class="text-2xl font-bold">{{ certificate.display_title }}</h1>
+          <p class="text-sm opacity-60 mt-1">{% trans "Granted" %}: {{ certificate.granted_at|date:"Y-m-d" }}</p>
+        </div>
+      </div>
+
+      {% if certificate.description %}
+      <p class="text-sm opacity-80">{{ certificate.description }}</p>
+      {% endif %}
+
+      <dl class="text-sm space-y-1">
+        <div class="grid grid-cols-[160px_1fr]">
+          <dt class="opacity-60 font-semibold">{% trans "Recipient" %}</dt>
+          <dd>{{ certificate.person }}</dd>
+        </div>
+        {% if certificate.course %}
+        <div class="grid grid-cols-[160px_1fr]">
+          <dt class="opacity-60 font-semibold">{% trans "Course" %}</dt>
+          <dd>
+            <a href="{{ certificate.course.get_absolute_url }}" class="underline hover:opacity-80">
+              {{ certificate.course.title }}
+            </a>
+          </dd>
+        </div>
+        {% endif %}
+        {% if certificate.exam %}
+        <div class="grid grid-cols-[160px_1fr]">
+          <dt class="opacity-60 font-semibold">{% trans "Exam" %}</dt>
+          <dd>{{ certificate.exam }}</dd>
+        </div>
+        {% endif %}
+        <div class="grid grid-cols-[160px_1fr]">
+          <dt class="opacity-60 font-semibold">{% trans "UUID" %}</dt>
+          <dd class="font-mono text-xs opacity-60">{{ certificate.uuid }}</dd>
+        </div>
+      </dl>
+
+      <!-- Cryptographic signature section -->
+      {% if certificate.cryptographic_signature %}
+      <div :class="darkMode ? 'border-accent-1 bg-black/10' : 'border-accent-2 bg-blue-50/40'"
+           class="rounded-lg border p-4 space-y-3">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-circle-check"
+             :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+          <span class="font-semibold text-sm">{% trans "Cryptographically signed" %}</span>
+        </div>
+
+        <dl class="text-xs space-y-1">
+          <div class="grid grid-cols-[140px_1fr]">
+            <dt class="opacity-60 font-semibold">{% trans "Signed by" %}</dt>
+            <dd>
+              {% if certificate.signed_by %}
+                <a href="{{ certificate.signed_by.get_absolute_url }}" class="underline hover:opacity-80">
+                  {{ certificate.signed_by.display_name }}
+                </a>
+              {% else %}—{% endif %}
+            </dd>
+          </div>
+          <div class="grid grid-cols-[140px_1fr]">
+            <dt class="opacity-60 font-semibold">{% trans "Key ID" %}</dt>
+            <dd class="font-mono opacity-70 break-all">
+              {{ certificate.signing_key.key_id|default:"—" }}
+            </dd>
+          </div>
+        </dl>
+
+        <div :class="darkMode ? 'bg-black/10 border-accent-1' : 'bg-white/60 border-accent-2'"
+             class="rounded border p-3 space-y-1 text-xs font-mono">
+          <p class="font-semibold not-mono text-xs uppercase opacity-60 tracking-wide">
+            {% trans "Signature" %}
+          </p>
+          <p class="break-all opacity-80">{{ certificate.cryptographic_signature }}</p>
+        </div>
+
+        <details class="text-xs">
+          <summary class="cursor-pointer opacity-60 hover:opacity-100">
+            {% trans "Signing payload" %}
+          </summary>
+          <pre class="mt-2 whitespace-pre-wrap break-all opacity-60 font-mono text-xs">{{ certificate.signing_payload }}</pre>
+        </details>
+      </div>
+
+      {% else %}
+      <div :class="darkMode ? 'border-accent-1 bg-black/5' : 'border-accent-2 bg-gray-50/40'"
+           class="rounded-lg border p-4 flex items-center gap-3 text-sm">
+        <i class="fa-solid fa-signature opacity-40 text-xl"></i>
+        <span class="opacity-60">{% trans "Not yet cryptographically signed by a professor." %}</span>
+      </div>
+
+      {% if teacher %}
+      <a href="{% url 'academy:certificate-sign' certificate.uuid %}"
+         :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+         class="inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+        <i class="fa-solid fa-pen-nib"></i>
+        {% trans "Sign Certificate" %}
+      </a>
+      {% endif %}
+      {% endif %}
+
+    </div>
+
+  </div>
+</section>
+{% endblock %}

@@ -166,7 +166,18 @@
                   ? 'bg-primary-bg-dark border-accent-1'
                   : 'bg-primary-bg-light border-accent-2'"
                 class="border rounded p-3 space-y-1">
-                <div class="font-semibold">{{ certificate.display_title }}</div>
+                <div class="flex items-start justify-between gap-2">
+                  <a href="{% url 'academy:certificate-detail' certificate.uuid %}"
+                     class="font-semibold underline hover:opacity-80">
+                    {{ certificate.display_title }}
+                  </a>
+                  {% if certificate.cryptographic_signature %}
+                  <span :class="darkMode ? 'text-success-dark' : 'text-success-light'"
+                        class="text-xs shrink-0" title="Cryptographically signed">
+                    <i class="fa-solid fa-shield-check"></i>
+                  </span>
+                  {% endif %}
+                </div>
                 <div class="text-xs opacity-60">{{ certificate.granted_at|date:"M d, Y" }}</div>
                 {% if certificate.course %}
                   <a href="{{ certificate.course.get_absolute_url }}" class="text-sm underline hover:opacity-80">

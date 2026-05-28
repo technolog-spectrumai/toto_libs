@@ -1,0 +1,160 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Sign Certificate" %} — {{ certificate.display_title }} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-6 py-16 transition-colors duration-300">
+
+  <div class="max-w-2xl mx-auto space-y-6">
+
+    <a href="{% url 'academy:certificate-detail' certificate.uuid %}"
+       class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+      <i class="fa-solid fa-arrow-left"></i>
+      {{ certificate.display_title }}
+    </a>
+
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-6 shadow-sm space-y-5">
+
+      <h2 class="text-xl font-bold flex items-center gap-2">
+        <i class="fa-solid fa-signature" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+        {% trans "Sign Certificate" %}
+      </h2>
+
+      {% if not teacher %}
+      <div class="rounded-lg border border-caution-dark bg-caution-dark/10 p-4 text-sm"
+           :class="darkMode ? 'text-caution-dark' : 'text-caution-light'">
+        {% trans "Only teachers (professors) can cryptographically sign certificates." %}
+      </div>
+
+      {% elif certificate.cryptographic_signature %}
+      <div class="rounded-lg border p-4 text-sm space-y-3"
+           :class="darkMode ? 'border-success-dark bg-success-dark/10 text-success-dark' : 'border-success-light bg-success-light/10 text-success-light'">
+        <div class="flex items-center gap-3">
+          <i class="fa-solid fa-circle-check text-xl"></i>
+          <div>
+            <p class="font-semibold">{% trans "Already signed" %}</p>
+            {% if certificate.signed_by %}
+            <p class="opacity-80 text-xs">{% trans "By" %} {{ certificate.signed_by.display_name }}</p>
+            {% endif %}
+          </div>
+        </div>
+        <div :class="darkMode ? 'bg-black/10 border-accent-1' : 'bg-white/60 border-accent-2'"
+             class="rounded border p-3 space-y-1 text-xs font-mono">
+          <p class="font-semibold not-mono text-xs uppercase opacity-60 tracking-wide">
+            {% trans "Cryptographic signature" %}
+          </p>
+          <p class="break-all opacity-80">{{ certificate.cryptographic_signature }}</p>
+          <p class="opacity-50 break-all">{% trans "Key" %}: {{ certificate.signing_key.key_id }}</p>
+        </div>
+      </div>
+
+      {% else %}
+
+      <dl class="text-sm space-y-1">
+        <div class="grid grid-cols-[160px_1fr]">
+          <dt class="opacity-60 font-semibold">{% trans "Certificate" %}</dt>
+          <dd>{{ certificate.display_title }}</dd>
+        </div>
+        <div class="grid grid-cols-[160px_1fr]">
+          <dt class="opacity-60 font-semibold">{% trans "Recipient" %}</dt>
+          <dd>{{ certificate.person }}</dd>
+        </div>
+        <div class="grid grid-cols-[160px_1fr]">
+          <dt class="opacity-60 font-semibold">{% trans "Signing as" %}</dt>
+          <dd>{{ teacher.display_name }}</dd>
+        </div>
+        <div class="grid grid-cols-[160px_1fr]">
+          <dt class="opacity-60 font-semibold">{% trans "Signing key" %}</dt>
+          <dd>
+            {% if existing_signing_key %}
+            <span :class="darkMode ? 'text-success-dark' : 'text-success-light'" class="font-semibold">
+              <i class="fa-solid fa-key mr-1"></i>{{ existing_signing_key.encrypted_private_key.key_id }}
+            </span>
+            {% else %}
+            <span class="opacity-50 italic">{% trans "None — will be provisioned on sign" %}</span>
+            {% endif %}
+          </dd>
+        </div>
+      </dl>
+
+      <!-- How signing works -->
+      <div :class="darkMode ? 'border-accent-1 bg-black/10' : 'border-accent-2 bg-blue-50/40'"
+           class="rounded-lg border p-3 text-xs space-y-1">
+        <p class="font-semibold flex items-center gap-1">
+          <i class="fa-solid fa-shield-halved"></i>
+          {% trans "How signing works" %}
+        </p>
+        <p class="opacity-70">
+          {% trans "Your strongbox password is used to decrypt your Ed25519 private key in memory. The key signs a canonical payload (certificate UUID + recipient identity + your teacher ID + timestamp). The signature is stored with the certificate — verifiable by anyone using only the public key." %}
+        </p>
+      </div>
+
+      <form method="post" class="space-y-5">
+        {% csrf_token %}
+
+        {% if required_strongbox %}
+        <input type="hidden" name="strongbox_id" value="{{ required_strongbox.pk }}">
+        {% elif strongboxes|length > 1 %}
+        <div class="space-y-1">
+          <label class="block text-sm font-semibold opacity-70">{% trans "Strongbox" %}</label>
+          <select name="strongbox_id"
+            :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+            class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-1">
+            {% for sb in strongboxes %}
+            <option value="{{ sb.pk }}">{{ sb.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% elif strongboxes %}
+        <input type="hidden" name="strongbox_id" value="{{ strongboxes.0.pk }}">
+        {% endif %}
+
+        <div class="space-y-1">
+          <label for="strongbox_password" class="block text-sm font-semibold opacity-70">
+            {% if required_strongbox %}
+              {% trans "Password for strongbox" %} <span class="font-mono">{{ required_strongbox.name }}</span>
+            {% else %}
+              {% trans "Strongbox password" %}
+            {% endif %}
+            <span :class="darkMode ? 'text-caution-dark' : 'text-caution-light'">*</span>
+          </label>
+          <input type="password" id="strongbox_password" name="strongbox_password"
+            required autocomplete="current-password"
+            :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+            class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-1"
+            placeholder="{% trans 'Enter your strongbox password' %}">
+          <p class="text-xs opacity-50">{% trans "Used only to decrypt your private key in memory. Never stored." %}</p>
+        </div>
+
+        {% if not strongboxes %}
+        <div class="rounded-lg border p-3 text-sm"
+             :class="darkMode ? 'border-caution-dark bg-caution-dark/10 text-caution-dark' : 'border-caution-light bg-caution-light/10 text-caution-light'">
+          {% trans "No strongbox found. You need to set up a Gervazy strongbox before you can sign." %}
+        </div>
+        {% endif %}
+
+        <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+             class="rounded-lg border p-3 text-xs opacity-70 leading-relaxed">
+          {% trans "By submitting, I confirm I have reviewed this certificate and that my signature constitutes a valid academic attestation." %}
+        </div>
+
+        <button type="submit" {% if not strongboxes %}disabled{% endif %}
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed">
+          <i class="fa-solid fa-pen-nib"></i>
+          {% trans "Sign Certificate" %}
+        </button>
+      </form>
+
+      {% endif %}
+
+    </div>
+  </div>
+</section>
+{% endblock %}

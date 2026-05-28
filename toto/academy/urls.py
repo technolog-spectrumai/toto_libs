@@ -11,6 +11,8 @@ from .views import (
     SkillTreeDetailView,
     StudentProgressView,
     TeacherDetailView,
+    certificate_detail,
+    certificate_sign,
 )
 
 app_name = "academy"
@@ -70,5 +72,17 @@ urlpatterns = [
         "skills/<slug:slug>/",
         SkillTreeDetailView.as_view(),
         name="skill-tree-detail",
+    ),
+
+    # Certificates
+    path(
+        "certificates/<uuid:uuid>/",
+        certificate_detail,
+        name="certificate-detail",
+    ),
+    path(
+        "certificates/<uuid:uuid>/sign/",
+        certificate_sign,
+        name="certificate-sign",
     ),
 ]
