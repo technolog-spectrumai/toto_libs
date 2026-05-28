@@ -39,11 +39,18 @@ def _render(request, template, context):
 
 @login_required
 def assembly_overview(request):
+    person = getattr(request.user, "community_profile", None)
+    is_federal_agent = bool(person and getattr(person, "is_federal_agent", False))
+    member_community_pks = (
+        list(person.communities.values_list("pk", flat=True)) if person else []
+    )
     return _render(request, "assembly/overview.html", {
         "stats": overview_stats(),
         "communities": community_assembly_summaries(),
         "fee_current_data": json.loads(fee_current_chart_data()),
         "fee_history_data": json.loads(fee_history_chart_data()),
+        "member_community_pks": member_community_pks,
+        "is_federal_agent_overview": is_federal_agent,
     })
 
 
@@ -207,7 +214,16 @@ def _enact_proposal(proposal: AssemblyProposal) -> AssemblyDecision:
 @login_required
 def community_assembly(request, slug):
     community = get_object_or_404(Community, slug=slug)
-    person = _require_member(request, community)
+    person = getattr(request.user, "community_profile", None)
+
+    is_member = bool(person and community.members.filter(pk=person.pk).exists())
+    is_federal_agent = bool(person and getattr(person, "is_federal_agent", False))
+
+    if not is_member and not is_federal_agent:
+        messages.error(request, "You are not a member of this community's assembly.")
+        return redirect("assembly:overview")
+
+    is_read_only = not is_member
 
     proposals = (
         AssemblyProposal.objects
@@ -220,7 +236,7 @@ def community_assembly(request, slug):
     proposal_data = []
     for p in proposals:
         tally = p.tally()
-        user_vote = p.votes.filter(voter=person).first()
+        user_vote = p.votes.filter(voter=person).first() if person and not is_read_only else None
         proposal_data.append({
             "proposal": p,
             "tally": tally,
@@ -228,19 +244,19 @@ def community_assembly(request, slug):
             "user_vote": user_vote,
         })
 
-    raw_poll_taxes = PollTax.objects.filter(community=community, active=True).select_related("payment_asset", "wealth_asset")
     poll_taxes = []
-    for pt in raw_poll_taxes:
-        label = pt.current_period_label()
-        paid = PollTaxPayment.objects.filter(poll_tax=pt, person=person, period_label=label).exists()
-        amount_owed = pt.compute_amount_for(person)
-        poll_taxes.append({"poll_tax": pt, "period_label": label, "paid": paid, "amount_owed": amount_owed})
+    if not is_read_only and person:
+        raw_poll_taxes = PollTax.objects.filter(community=community, active=True).select_related("payment_asset", "wealth_asset")
+        for pt in raw_poll_taxes:
+            label = pt.current_period_label()
+            paid = PollTaxPayment.objects.filter(poll_tax=pt, person=person, period_label=label).exists()
+            amount_owed = pt.compute_amount_for(person)
+            poll_taxes.append({"poll_tax": pt, "period_label": label, "paid": paid, "amount_owed": amount_owed})
 
     import json
     from toto.assets.models import Asset
     from toto.people.models import Person as PersonModel
-    is_federal_agent = getattr(person, "is_federal_agent", False)
-    is_federal_tribe_member = person.communities.filter(is_federal_tribe=True).exists()
+    is_federal_tribe_member = bool(person and person.communities.filter(is_federal_tribe=True).exists())
     quorum_fraction = _get_quorum_fraction(community)
     available_assets_json = json.dumps(
         list(Asset.objects.order_by("name").values("id", "name", "unit_name"))
@@ -285,7 +301,7 @@ def community_assembly(request, slug):
     except Exception:
         pass
 
-    is_senator = _is_senator(person, community)
+    is_senator = _is_senator(person, community) if person else False
     pending_senate = (
         AssemblyProposal.objects
         .filter(community=community, status=AssemblyStatus.PENDING_SENATE)
@@ -300,8 +316,9 @@ def community_assembly(request, slug):
         "community_fees": CommunityTransactionFee.objects.filter(community=community, active=True).select_related("asset").order_by("asset"),
         "poll_taxes": poll_taxes,
         "decisions": AssemblyDecision.objects.filter(community=community).order_by("-created_at")[:20],
-        "has_voting_rights": _has_voting_rights(person, community),
+        "has_voting_rights": False if is_read_only else _has_voting_rights(person, community),
         "is_senator": is_senator,
+        "is_read_only": is_read_only,
         "pending_senate": pending_senate,
         "is_federal_agent": is_federal_agent,
         "is_federal_tribe_member": is_federal_tribe_member,

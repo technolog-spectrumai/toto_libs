@@ -234,12 +234,14 @@
                   {{ community.open_proposal_count }} open
                 </span>
               {% endif %}
+              {% if community.pk in member_community_pks or is_federal_agent_overview %}
               <a href="{% url 'assembly:community_assembly' community.slug %}"
                 :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
                 class="inline-flex items-center gap-2 rounded-lg px-4 py-1.5 text-sm font-semibold shadow-sm transition hover:opacity-90">
                 <i class="fa-solid fa-arrow-right text-xs"></i>
                 Open Assembly
               </a>
+              {% endif %}
             </div>
           </div>
 

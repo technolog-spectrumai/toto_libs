@@ -33,13 +33,20 @@
       </div>
 
       <div class="flex flex-wrap gap-2">
-        {% if is_federal_agent or is_federal_tribe_member %}
-          <span
-            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-            class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm">
-            <i class="fa-solid fa-shield-halved"></i>
-            Tax exempt
+        {% if is_read_only %}
+          <span class="inline-flex items-center gap-2 rounded-lg border border-blue-400/40 bg-blue-500/10 px-4 py-2 text-sm font-semibold text-blue-600 shadow-sm">
+            <i class="fa-solid fa-eye"></i>
+            Observer — read only
           </span>
+        {% else %}
+          {% if is_federal_agent or is_federal_tribe_member %}
+            <span
+              :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+              class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm">
+              <i class="fa-solid fa-shield-halved"></i>
+              Tax exempt
+            </span>
+          {% endif %}
         {% endif %}
         {% if is_senator %}
           <a href="{% url 'assembly:senate_review' community.slug %}"
@@ -162,11 +169,13 @@
           </h2>
           <p class="mt-1 text-xs opacity-60">Quorum: {{ quorum_fraction_pct }}% yes required to pass</p>
         </div>
+        {% if not is_read_only %}
         <button type="button" @click="showForm = !showForm"
           :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
           class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
           <i class="fa-solid fa-plus"></i> New Proposal
         </button>
+        {% endif %}
       </div>
 
       <!-- New proposal form -->
@@ -378,7 +387,11 @@
 
             {% if item.proposal.is_open %}
               <div class="mt-3 flex flex-wrap gap-2">
-                {% if item.user_vote %}
+                {% if is_read_only %}
+                  <span class="text-xs font-semibold opacity-50">
+                    <i class="fa-solid fa-eye text-xs"></i> Observer
+                  </span>
+                {% elif item.user_vote %}
                   <span class="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-semibold opacity-60"
                     :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
                     Your vote: {{ item.user_vote.get_vote_display }}
@@ -401,7 +414,7 @@
                   </span>
                 {% endif %}
 
-                {% if request.user.is_staff %}
+                {% if not is_read_only and request.user.is_staff %}
                   <form method="post" action="{% url 'assembly:proposal_close' community.slug item.proposal.pk %}">
                     {% csrf_token %}
                     <button type="submit"
@@ -443,7 +456,7 @@
     </section>
 
     <!-- Magistrate Election -->
-    {% if magistrate_roles %}
+    {% if magistrate_roles and not is_read_only %}
     <section x-data="{ electOpen: false }"
       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
       class="rounded-2xl border p-5 shadow-sm space-y-4">
