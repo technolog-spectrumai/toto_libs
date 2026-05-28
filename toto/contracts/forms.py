@@ -23,9 +23,10 @@ def _ta_attrs(rows=4):
 class ContractForm(forms.ModelForm):
     class Meta:
         model = Contract
-        fields = ["name", "description", "metadata"]
+        fields = ["name", "description", "body", "metadata"]
         widgets = {
             "description": forms.Textarea(attrs=_ta_attrs(4)),
+            "body": forms.Textarea(attrs=_ta_attrs(10)),
         }
 
     def __init__(self, *args, **kwargs):

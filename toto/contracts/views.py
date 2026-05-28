@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 
 from django.contrib import messages
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
@@ -67,6 +67,16 @@ def contract_detail(request, uuid):
     current_person = _get_person_for_request(request)
     current_person_signatory = next((s for s in signatories if current_person and s.person_id == current_person.pk), None)
 
+    # Encrypted files available for attaching as PDF (owned by current user).
+    from toto.gervazy.models import EncryptedFile
+    user_encrypted_files = []
+    if request.user.is_authenticated:
+        user_encrypted_files = list(
+            EncryptedFile.objects.filter(owner=request.user, state="active")
+            .select_related("strongbox")
+            .order_by("-uploaded_at")
+        )
+
     return _render(request, "contracts/contract_detail.html", {
         "contract": contract,
         "nodes": nodes,
@@ -77,6 +87,7 @@ def contract_detail(request, uuid):
         "type_counts": type_counts,
         "signatories": signatories,
         "current_person_signatory": current_person_signatory,
+        "user_encrypted_files": user_encrypted_files,
     })
 
 
@@ -391,6 +402,61 @@ def _sign_ctx(contract, person, signatory, strongboxes, existing_signing_key):
         "required_strongbox": required_strongbox,
         "existing_signature": person.digital_signature if person else "",
     }
+
+
+def contract_attach_pdf(request, uuid):
+    """POST: attach or detach an EncryptedFile as this contract's vault PDF."""
+    contract = get_object_or_404(Contract, uuid=uuid)
+    if request.method == "POST":
+        action = request.POST.get("action", "")
+        if action == "detach":
+            contract.vault_pdf = None
+            contract.save(update_fields=["vault_pdf"])
+            messages.success(request, "PDF detached.")
+        elif action == "attach":
+            from toto.gervazy.models import EncryptedFile
+            file_id = request.POST.get("encrypted_file_id", "").strip()
+            if file_id:
+                try:
+                    ef = EncryptedFile.objects.get(pk=file_id, state="active")
+                    contract.vault_pdf = ef
+                    contract.save(update_fields=["vault_pdf"])
+                    messages.success(request, "PDF attached.")
+                except EncryptedFile.DoesNotExist:
+                    messages.error(request, "File not found.")
+    return redirect("contracts:contract_detail", uuid=uuid)
+
+
+def contract_download_pdf(request, uuid):
+    """GET: show password form. POST: decrypt and serve the vault PDF."""
+    contract = get_object_or_404(Contract, uuid=uuid)
+    if not contract.vault_pdf:
+        messages.error(request, "No vault PDF attached to this contract.")
+        return redirect("contracts:contract_detail", uuid=uuid)
+
+    if request.method == "POST":
+        from toto.gervazy.crypto import GervazyCryptoSession
+        password = request.POST.get("strongbox_password", "").strip()
+        if not password:
+            messages.error(request, "Password is required.")
+            return _render(request, "contracts/contract_download_pdf.html", {"contract": contract})
+
+        ef = contract.vault_pdf
+        try:
+            session = GervazyCryptoSession(ef.strongbox, password)
+            plaintext, filename = session.decrypt_file(ef)
+            session.close()
+        except Exception as exc:
+            messages.error(request, f"Decryption failed: {exc}")
+            return _render(request, "contracts/contract_download_pdf.html", {"contract": contract})
+
+        mime = ef.mime_type or "application/octet-stream"
+        response = HttpResponse(plaintext, content_type=mime)
+        safe_name = filename.replace('"', '_') if filename else f"contract_{contract.uuid}.pdf"
+        response["Content-Disposition"] = f'attachment; filename="{safe_name}"'
+        return response
+
+    return _render(request, "contracts/contract_download_pdf.html", {"contract": contract})
 
 
 def person_update_signature(request, person_pk):

@@ -483,6 +483,40 @@ class GervazyCryptoSession:
     initialize_vault = initialize_strongbox
 
     # ------------------------------------------------------------------
+    # File decryption
+    # ------------------------------------------------------------------
+
+    def decrypt_filename(self, encrypted_file) -> str:
+        """Decrypt and return the original filename of an EncryptedFile."""
+        dek = self._unwrap_dek(encrypted_file.wrapped_key)
+        return aes_gcm_decrypt(
+            dek,
+            bytes(encrypted_file.original_name_encrypted),
+            bytes(encrypted_file.original_name_nonce),
+        ).decode("utf-8", errors="replace")
+
+    def decrypt_file(self, encrypted_file) -> tuple[bytes, str]:
+        """
+        Decrypt all chunks of an EncryptedFile and return (plaintext_bytes, original_filename).
+
+        Chunks are stored concatenated in encrypted_file.file; each chunk's nonce
+        and ciphertext_size are in the related EncryptedFileChunk rows.
+        """
+        dek = self._unwrap_dek(encrypted_file.wrapped_key)
+        chunks = list(encrypted_file.chunks.order_by("index"))
+        plaintext_parts = []
+
+        with encrypted_file.file.open("rb") as fh:
+            for chunk in chunks:
+                ciphertext = fh.read(chunk.ciphertext_size)
+                plaintext_parts.append(
+                    aes_gcm_decrypt(dek, ciphertext, bytes(chunk.nonce))
+                )
+
+        filename = self.decrypt_filename(encrypted_file)
+        return b"".join(plaintext_parts), filename
+
+    # ------------------------------------------------------------------
     # Cleanup
     # ------------------------------------------------------------------
 

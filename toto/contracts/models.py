@@ -95,6 +95,18 @@ class Contract(models.Model):
         choices=STATUS_CHOICES,
         default=STATUS_DRAFT,
     )
+    body = models.TextField(
+        blank=True,
+        help_text="Human-readable text of this contract, authored freely.",
+    )
+    vault_pdf = models.ForeignKey(
+        "gervazy.EncryptedFile",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="contract_pdfs",
+        help_text="Encrypted PDF stored in a gervazy vault.",
+    )
     metadata = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

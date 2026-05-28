@@ -95,6 +95,68 @@
     </dl>
   </div>
 
+  <!-- Body -->
+  {% if contract.body %}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5 shadow-sm space-y-2">
+    <h3 class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Contract Body" %}</h3>
+    <div class="text-sm leading-relaxed whitespace-pre-wrap">{{ contract.body }}</div>
+  </div>
+  {% endif %}
+
+  <!-- Vault PDF -->
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5 shadow-sm space-y-3">
+    <h3 class="text-xs font-semibold uppercase tracking-wide opacity-60">
+      <i class="fa-solid fa-file-pdf mr-1"></i>{% trans "Vault PDF" %}
+    </h3>
+    {% if contract.vault_pdf %}
+    <div class="flex items-center gap-3 flex-wrap">
+      <span class="text-sm opacity-70">
+        <i class="fa-solid fa-lock text-xs"></i>
+        {% trans "EncryptedFile" %} #{{ contract.vault_pdf.pk }}
+        ({{ contract.vault_pdf.strongbox.name }}, {{ contract.vault_pdf.plaintext_size|filesizeformat }})
+      </span>
+      <a href="{% url 'contracts:contract_download_pdf' contract.uuid %}"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="inline-flex items-center gap-1.5 rounded border px-3 py-1 text-xs font-semibold transition hover:opacity-80">
+        <i class="fa-solid fa-download"></i> {% trans "Download" %}
+      </a>
+      <form method="post" action="{% url 'contracts:contract_attach_pdf' contract.uuid %}" class="inline">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="detach">
+        <button type="submit"
+          class="inline-flex items-center gap-1 rounded border border-red-300 px-3 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-50">
+          <i class="fa-solid fa-unlink"></i> {% trans "Detach" %}
+        </button>
+      </form>
+    </div>
+    {% else %}
+    <p class="text-sm opacity-50">{% trans "No PDF attached." %}</p>
+    {% if user_encrypted_files %}
+    <form method="post" action="{% url 'contracts:contract_attach_pdf' contract.uuid %}" class="flex items-center gap-2 flex-wrap">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="attach">
+      <select name="encrypted_file_id"
+        :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+        class="rounded border px-3 py-1.5 text-sm focus:outline-none">
+        <option value="">— {% trans "select file" %} —</option>
+        {% for ef in user_encrypted_files %}
+        <option value="{{ ef.pk }}">#{{ ef.pk }} — {{ ef.strongbox.name }} ({{ ef.plaintext_size|filesizeformat }}, {{ ef.uploaded_at|date:"Y-m-d" }})</option>
+        {% endfor %}
+      </select>
+      <button type="submit"
+        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+        class="rounded px-3 py-1.5 text-xs font-semibold transition hover:opacity-90">
+        {% trans "Attach" %}
+      </button>
+    </form>
+    {% else %}
+    <p class="text-xs opacity-40 mt-1">{% trans "Upload an encrypted file in Gervazy to attach it here." %}</p>
+    {% endif %}
+    {% endif %}
+  </div>
+
   <!-- Signatories -->
   {% include "contracts/_signatories_card.html" %}
 

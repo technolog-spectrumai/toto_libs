@@ -1,16 +1,4 @@
 {% load i18n %}
-{#
-  Shared status-transition action panel.
-  Include with: {% include "claims/_action_panel.html" with transition_url="..." actions=... %}
-
-  actions: list of dicts — each dict has:
-    action   : str  — POST action value
-    label    : str  — button label
-    color    : str  — "red" | "yellow" | "green" | "blue" | "gray"
-    icon     : str  — Font Awesome class (fa-solid fa-...)
-    needs_reason : bool (optional) — show reason text field
-    confirm  : str (optional) — confirmation message shown inline
-#}
 {% if actions %}
 <div x-data="{ active: null }"
      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"

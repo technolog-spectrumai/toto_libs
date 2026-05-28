@@ -1,0 +1,47 @@
+{% extends "contracts/base.html" %}
+{% load i18n %}
+
+{% block contracts_title %}{% trans "Download PDF" %} — {{ contract.name }}{% endblock %}
+
+{% block contracts_content %}
+<div class="space-y-6 max-w-lg">
+  <a href="{% url 'contracts:contract_detail' contract.uuid %}"
+     class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+    <i class="fa-solid fa-arrow-left"></i>
+    {% trans "Back to contract" %}
+  </a>
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5 shadow-sm space-y-4">
+    <h2 class="text-lg font-bold flex items-center gap-2">
+      <i class="fa-solid fa-file-pdf" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+      {% trans "Download Encrypted PDF" %}
+    </h2>
+
+    <p class="text-sm opacity-70">
+      {% trans "File" %} #{{ contract.vault_pdf.pk }}
+      &mdash; {{ contract.vault_pdf.strongbox.name }}
+      ({{ contract.vault_pdf.plaintext_size|filesizeformat }})
+    </p>
+
+    <form method="post" class="space-y-4">
+      {% csrf_token %}
+      <div class="space-y-1">
+        <label class="block text-sm font-semibold opacity-70">
+          {% trans "Strongbox password" %}
+          <span class="font-normal opacity-50">({{ contract.vault_pdf.strongbox.name }})</span>
+        </label>
+        <input type="password" name="strongbox_password" autofocus
+          :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+          class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-1">
+      </div>
+      <button type="submit"
+        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+        class="inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+        <i class="fa-solid fa-download"></i>
+        {% trans "Decrypt & Download" %}
+      </button>
+    </form>
+  </div>
+</div>
+{% endblock %}
