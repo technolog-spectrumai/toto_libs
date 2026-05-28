@@ -1,0 +1,143 @@
+{% extends "contracts/base.html" %}
+{% load i18n %}
+
+{% block contracts_title %}{% trans "New Payroll Contract" %}{% endblock %}
+
+{% block contracts_content %}
+<div class="space-y-6">
+
+  <a href="{% url 'contracts:payroll_list' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+    <i class="fa-solid fa-arrow-left"></i>
+    {% trans "Back to payroll" %}
+  </a>
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-6 shadow-sm">
+    <h2 class="flex items-center gap-2 text-lg font-bold mb-6">
+      <i class="fa-solid fa-money-check-dollar" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+      {% trans "New Payroll Contract" %}
+    </h2>
+
+    <form method="post" class="space-y-5">
+      {% csrf_token %}
+
+      {% if form.non_field_errors %}
+      <div class="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
+        {{ form.non_field_errors }}
+      </div>
+      {% endif %}
+
+      <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
+
+        <div class="space-y-1">
+          <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {{ form.name.label }}
+          </label>
+          {{ form.name }}
+          {% if form.name.errors %}
+          <p class="text-xs text-red-600">{{ form.name.errors.0 }}</p>
+          {% endif %}
+        </div>
+
+        <div class="space-y-1">
+          <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {{ form.frequency.label }}
+          </label>
+          {{ form.frequency }}
+          {% if form.frequency.errors %}
+          <p class="text-xs text-red-600">{{ form.frequency.errors.0 }}</p>
+          {% endif %}
+        </div>
+
+        <div class="space-y-1">
+          <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {{ form.payer_account.label }}
+          </label>
+          {{ form.payer_account }}
+          {% if form.payer_account.errors %}
+          <p class="text-xs text-red-600">{{ form.payer_account.errors.0 }}</p>
+          {% endif %}
+        </div>
+
+        <div class="space-y-1">
+          <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {{ form.worker_person.label }}
+          </label>
+          {{ form.worker_person }}
+          {% if form.worker_person.errors %}
+          <p class="text-xs text-red-600">{{ form.worker_person.errors.0 }}</p>
+          {% endif %}
+        </div>
+
+        <div class="space-y-1">
+          <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {{ form.worker_account.label }}
+          </label>
+          {{ form.worker_account }}
+          {% if form.worker_account.errors %}
+          <p class="text-xs text-red-600">{{ form.worker_account.errors.0 }}</p>
+          {% endif %}
+        </div>
+
+        <div class="space-y-1">
+          <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {{ form.asset.label }}
+          </label>
+          {{ form.asset }}
+          {% if form.asset.errors %}
+          <p class="text-xs text-red-600">{{ form.asset.errors.0 }}</p>
+          {% endif %}
+        </div>
+
+        <div class="space-y-1">
+          <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {{ form.amount_base_units.label }}
+          </label>
+          {{ form.amount_base_units }}
+          <p class="text-xs opacity-50">{% trans "Total budget ceiling in smallest asset unit." %}</p>
+          {% if form.amount_base_units.errors %}
+          <p class="text-xs text-red-600">{{ form.amount_base_units.errors.0 }}</p>
+          {% endif %}
+        </div>
+
+      </div>
+
+      <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+           class="border-t pt-4 space-y-4">
+        <p class="text-xs font-semibold uppercase tracking-wide opacity-50">
+          {% trans "External source reference (optional)" %}
+        </p>
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div class="space-y-1">
+            <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.source_app.label }}</label>
+            {{ form.source_app }}
+          </div>
+          <div class="space-y-1">
+            <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.source_model.label }}</label>
+            {{ form.source_model }}
+          </div>
+          <div class="space-y-1">
+            <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.source_id.label }}</label>
+            {{ form.source_id }}
+          </div>
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-3 pt-2">
+        <a href="{% url 'contracts:payroll_list' %}"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+          {% trans "Cancel" %}
+        </a>
+        <button type="submit"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-check"></i>
+          {% trans "Create Payroll Contract" %}
+        </button>
+      </div>
+    </form>
+  </div>
+
+</div>
+{% endblock %}

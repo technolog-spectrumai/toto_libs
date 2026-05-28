@@ -1,6 +1,6 @@
 {% extends "oya/base.html" %}
 
-{% block title %}{% block field_title %}Field Command{% endblock %} | {{ platform.site_name }}{% endblock %}
+{% block title %}{% block field_title %}Tactical{% endblock %} | {{ platform.site_name }}{% endblock %}
 
 {% block start_script %}
 <style>[x-cloak]{display:none!important}</style>
@@ -15,7 +15,7 @@
   <nav :class="darkMode ? 'border-accent-1/30 bg-primary-bg-dark/90' : 'border-accent-2/30 bg-primary-bg-light/90'"
        class="sticky top-0 z-40 flex items-center gap-1 border-b px-4 py-2 backdrop-blur sm:px-6">
     <span :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-          class="mr-3 text-xs font-bold uppercase tracking-widest">Field</span>
+          class="mr-3 text-xs font-bold uppercase tracking-widest">Tactical</span>
     <a href="{% url 'field:command' %}"
        :class="request.resolver_match.url_name == 'command'
          ? (darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light')

@@ -1,0 +1,308 @@
+{% extends "contracts/base.html" %}
+{% load i18n %}
+
+{% block contracts_title %}{{ contract.name }}{% endblock %}
+
+{% block contracts_content %}
+<div class="space-y-6">
+
+  <a href="{% url 'contracts:payroll_list' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+    <i class="fa-solid fa-arrow-left"></i>
+    {% trans "Back to payroll" %}
+  </a>
+
+  <!-- Header card -->
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5 shadow-sm">
+    <div class="flex items-start justify-between gap-4 flex-wrap">
+      <div class="space-y-1">
+        <div class="flex items-center gap-3 flex-wrap">
+          <h2 class="flex items-center gap-2 text-lg font-bold">
+            <i class="fa-solid fa-money-check-dollar" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+            {{ contract.name }}
+          </h2>
+          <span class="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-800 px-2.5 py-0.5 text-xs font-semibold">
+            <i class="fa-solid fa-circle-check"></i> {% trans "Payroll" %}
+          </span>
+        </div>
+        <p class="text-sm opacity-70">{{ contract.description }}</p>
+      </div>
+      <div class="flex gap-2 shrink-0">
+        <a href="{% url 'contracts:payroll_duty_create' contract.uuid %}"
+           :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+           class="inline-flex items-center gap-1 rounded px-3 py-1.5 text-xs font-semibold transition hover:opacity-90">
+          <i class="fa-solid fa-plus"></i> {% trans "Add Duty" %}
+        </a>
+        <a href="{% url 'contracts:contract_detail' contract.uuid %}"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="inline-flex items-center gap-1 rounded border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80">
+          <i class="fa-solid fa-diagram-project"></i> {% trans "Graph" %}
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Info grid -->
+  <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+
+    <!-- Worker -->
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-4 shadow-sm space-y-1">
+      <p class="text-xs font-semibold uppercase tracking-wide opacity-50">{% trans "Worker" %}</p>
+      <p class="font-semibold">{{ worker|default:"—" }}</p>
+      {% if worker_account %}
+      <p class="font-mono text-xs opacity-60">{{ worker_account.code }}</p>
+      {% endif %}
+    </div>
+
+    <!-- Payer -->
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-4 shadow-sm space-y-1">
+      <p class="text-xs font-semibold uppercase tracking-wide opacity-50">{% trans "Payer" %}</p>
+      {% if payer_account %}
+      <p class="font-semibold font-mono">{{ payer_account.code }}</p>
+      <p class="text-xs opacity-60">{{ payer_account.name }}</p>
+      {% else %}
+      <p class="opacity-60">—</p>
+      {% endif %}
+    </div>
+
+    <!-- Asset / Schedule -->
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-4 shadow-sm space-y-1">
+      <p class="text-xs font-semibold uppercase tracking-wide opacity-50">{% trans "Asset / Frequency" %}</p>
+      {% if asset %}
+      <p class="font-semibold font-mono">{{ asset.unit_name }}</p>
+      {% endif %}
+      {% if schedule %}
+      <p class="text-xs opacity-60 capitalize">{{ schedule.frequency|default:"—" }}</p>
+      {% endif %}
+    </div>
+
+    <!-- Budget -->
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-4 shadow-sm space-y-1">
+      <p class="text-xs font-semibold uppercase tracking-wide opacity-50">{% trans "Budget" %}</p>
+      {% if allocation %}
+      <p class="font-semibold font-mono">{{ allocation.amount_base_units }}</p>
+      <p class="text-xs opacity-60 capitalize">
+        {{ allocation.get_kind_display }} ·
+        <span class="{% if allocation.status == 'active' %}text-green-600{% else %}text-gray-500{% endif %}">
+          {{ allocation.get_status_display }}
+        </span>
+      </p>
+      {% else %}
+      <p class="opacity-60">—</p>
+      {% endif %}
+    </div>
+
+  </div>
+
+  <!-- Duties table -->
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border shadow-sm">
+    <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+         class="flex items-center justify-between px-4 py-3 border-b">
+      <h3 class="font-semibold flex items-center gap-2 text-sm">
+        <i class="fa-solid fa-list-check opacity-60"></i>
+        {% trans "Duties" %}
+        <span class="ml-1 rounded-full px-2 py-0.5 text-xs font-bold
+          {% if duties %}bg-blue-100 text-blue-700{% else %}bg-gray-100 text-gray-500{% endif %}">
+          {{ duties|length }}
+        </span>
+      </h3>
+      <a href="{% url 'contracts:payroll_duty_create' contract.uuid %}"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="inline-flex items-center gap-1 rounded border px-3 py-1 text-xs font-semibold transition hover:opacity-80">
+        <i class="fa-solid fa-plus"></i> {% trans "Add" %}
+      </a>
+    </div>
+
+    {% if duties %}
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+              class="border-b text-xs uppercase tracking-wide opacity-50">
+            <th class="px-4 py-2 text-left">#</th>
+            <th class="px-4 py-2 text-left">{% trans "Reference" %}</th>
+            <th class="px-4 py-2 text-right">{% trans "Amount" %}</th>
+            <th class="px-4 py-2 text-left">{% trans "Due" %}</th>
+            <th class="px-4 py-2 text-left">{% trans "Obligation" %}</th>
+            <th class="px-4 py-2 text-left">{% trans "Approval" %}</th>
+            <th class="px-4 py-2 text-right">{% trans "Actions" %}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for duty in duties %}
+          <tr :class="darkMode ? 'border-accent-1 hover:bg-black/5' : 'border-accent-2 hover:bg-black/3'"
+              class="border-b transition">
+            <td class="px-4 py-3 opacity-50 text-xs font-mono">{{ forloop.counter }}</td>
+            <td class="px-4 py-3 font-mono text-xs max-w-xs truncate opacity-70">
+              {{ duty.obligation.reference }}
+            </td>
+            <td class="px-4 py-3 text-right font-mono font-semibold">
+              {{ duty.obligation.amount_display }}
+              {% if asset %}<span class="text-xs opacity-50 ml-1">{{ asset.unit_name }}</span>{% endif %}
+            </td>
+            <td class="px-4 py-3 text-xs opacity-70">
+              {{ duty.obligation.due_at|date:"Y-m-d H:i" }}
+              {% if duty.obligation.is_overdue %}
+              <span class="ml-1 inline-block rounded-full bg-red-100 text-red-700 px-1.5 py-0.5 text-xs font-semibold">
+                {% trans "Overdue" %}
+              </span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-3">
+              {% if duty.obligation.status == 'fulfilled' %}
+              <span class="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-800 px-2 py-0.5 text-xs font-semibold">
+                <i class="fa-solid fa-circle-check"></i> {% trans "Settled" %}
+              </span>
+              {% elif duty.obligation.status == 'overdue' %}
+              <span class="inline-flex items-center gap-1 rounded-full bg-red-100 text-red-700 px-2 py-0.5 text-xs font-semibold">
+                <i class="fa-solid fa-triangle-exclamation"></i> {% trans "Overdue" %}
+              </span>
+              {% else %}
+              <span class="inline-flex items-center gap-1 rounded-full bg-yellow-100 text-yellow-800 px-2 py-0.5 text-xs font-semibold">
+                <i class="fa-solid fa-clock"></i> {% trans "Pending" %}
+              </span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-3">
+              {% if duty.condition %}
+                {% if duty.condition.status == 'satisfied' %}
+                <span class="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-800 px-2 py-0.5 text-xs font-semibold">
+                  <i class="fa-solid fa-check"></i> {% trans "Approved" %}
+                </span>
+                {% elif duty.condition.status == 'failed' %}
+                <span class="inline-flex items-center gap-1 rounded-full bg-red-100 text-red-700 px-2 py-0.5 text-xs font-semibold">
+                  {% trans "Failed" %}
+                </span>
+                {% else %}
+                <span class="inline-flex items-center gap-1 rounded-full bg-gray-100 text-gray-600 px-2 py-0.5 text-xs font-semibold">
+                  <i class="fa-solid fa-hourglass-half"></i> {% trans "Awaiting" %}
+                </span>
+                {% endif %}
+              {% else %}
+              <span class="opacity-40 text-xs">—</span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-3 text-right">
+              <div class="inline-flex gap-1">
+                {% if duty.obligation.status == 'pending' %}
+                  <!-- Mark due -->
+                  <form method="post"
+                    action="{% url 'contracts:payroll_duty_mark_due' contract.uuid duty.obligation.pk %}"
+                    class="inline">
+                    {% csrf_token %}
+                    <button type="submit"
+                      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                      class="rounded border px-2 py-1 text-xs font-semibold transition hover:opacity-80"
+                      title="{% trans 'Mark as due' %}">
+                      <i class="fa-solid fa-bell"></i>
+                    </button>
+                  </form>
+
+                  <!-- Approve -->
+                  {% if duty.condition and duty.condition.status == 'pending' %}
+                  <form method="post"
+                    action="{% url 'contracts:payroll_duty_approve' contract.uuid duty.obligation.pk %}"
+                    class="inline">
+                    {% csrf_token %}
+                    <button type="submit"
+                      class="rounded bg-blue-100 text-blue-700 px-2 py-1 text-xs font-semibold transition hover:bg-blue-200"
+                      title="{% trans 'Approve duty' %}">
+                      <i class="fa-solid fa-thumbs-up"></i>
+                    </button>
+                  </form>
+                  {% endif %}
+
+                  <!-- Settle -->
+                  {% if duty.condition and duty.condition.status == 'satisfied' %}
+                  <form method="post"
+                    action="{% url 'contracts:payroll_duty_settle' contract.uuid duty.obligation.pk %}"
+                    class="inline"
+                    onsubmit="return confirm('{% trans "Settle this duty? This will transfer funds." %}')">
+                    {% csrf_token %}
+                    <button type="submit"
+                      class="rounded bg-green-100 text-green-700 px-2 py-1 text-xs font-semibold transition hover:bg-green-200"
+                      title="{% trans 'Settle (transfer funds)' %}">
+                      <i class="fa-solid fa-arrow-right-arrow-left"></i>
+                    </button>
+                  </form>
+                  {% endif %}
+
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="px-6 py-8 text-center text-sm opacity-50">
+      {% trans "No duties yet." %}
+      <a href="{% url 'contracts:payroll_duty_create' contract.uuid %}" class="ml-1 underline hover:opacity-80">
+        {% trans "Add the first one." %}
+      </a>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Audit trail -->
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border shadow-sm">
+    <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="px-4 py-3 border-b">
+      <h3 class="font-semibold flex items-center gap-2 text-sm">
+        <i class="fa-solid fa-timeline opacity-60"></i>
+        {% trans "Audit Trail" %}
+      </h3>
+    </div>
+    {% if events %}
+    <div class="divide-y" :class="darkMode ? 'divide-accent-1' : 'divide-accent-2'">
+      {% for ev in events %}
+      <div class="px-4 py-3 flex items-start gap-3 text-sm">
+        <div class="mt-0.5 shrink-0">
+          {% if ev.kind == 'settlement' %}
+          <span class="inline-block rounded-full bg-green-100 text-green-700 p-1.5 text-xs">
+            <i class="fa-solid fa-arrow-right-arrow-left"></i>
+          </span>
+          {% elif ev.kind == 'condition_satisfied' %}
+          <span class="inline-block rounded-full bg-blue-100 text-blue-700 p-1.5 text-xs">
+            <i class="fa-solid fa-check"></i>
+          </span>
+          {% elif ev.kind == 'payment_due' %}
+          <span class="inline-block rounded-full bg-yellow-100 text-yellow-700 p-1.5 text-xs">
+            <i class="fa-solid fa-bell"></i>
+          </span>
+          {% elif ev.kind == 'obligation_created' %}
+          <span class="inline-block rounded-full bg-gray-100 text-gray-600 p-1.5 text-xs">
+            <i class="fa-solid fa-plus"></i>
+          </span>
+          {% else %}
+          <span class="inline-block rounded-full bg-gray-100 text-gray-500 p-1.5 text-xs">
+            <i class="fa-solid fa-circle"></i>
+          </span>
+          {% endif %}
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="font-semibold">{{ ev.title }}</p>
+          <p class="text-xs opacity-50 mt-0.5">
+            {{ ev.get_kind_display }}
+            {% if ev.actor %} · {{ ev.actor }}{% endif %}
+          </p>
+        </div>
+        <div class="text-xs opacity-40 shrink-0">{{ ev.created_at|date:"Y-m-d H:i" }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="px-6 py-6 text-center text-sm opacity-40">
+      {% trans "No events yet." %}
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

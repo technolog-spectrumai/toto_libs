@@ -10,7 +10,10 @@ from django.utils import timezone
 from toto.ui import PageProcessor
 from toto.people.models import Person
 
-from .forms import ContractForm, ContractNodeForm, ContractEdgeForm, ContractSignatoryForm
+from .forms import (
+    ContractForm, ContractNodeForm, ContractEdgeForm, ContractSignatoryForm,
+    PayrollCreateForm, PayrollDutyForm,
+)
 from .models import Contract, ContractNode, ContractEdge, ContractSignatory
 from .services import contract_to_cytoscape, evaluate_claims_health
 
@@ -471,6 +474,230 @@ def contract_evaluate_health(request, uuid):
         messages.success(request, "Claims health evaluated.")
     return redirect("contracts:contract_detail", uuid=uuid)
 
+
+# ---------------------------------------------------------------------------
+# Payroll — helpers
+# ---------------------------------------------------------------------------
+
+def _payroll_duties(contract):
+    """Return list of duty dicts for a payroll contract graph."""
+    from toto.claims.models import ContractEvent
+    duty_nodes = contract.nodes.filter(node_type="obligation").order_by("key")
+    duties = []
+    for node in duty_nodes:
+        obligation = node.get_object()
+        if not obligation:
+            continue
+        gates_edge = (
+            contract.edges
+            .filter(target=node, edge_type="gates")
+            .select_related("source")
+            .first()
+        )
+        condition = gates_edge.source.get_object() if gates_edge else None
+        duties.append({
+            "node": node,
+            "obligation": obligation,
+            "condition": condition,
+        })
+    return duties
+
+
+def _payroll_ctx(contract):
+    """Resolve the primitive objects wired into a payroll contract graph."""
+    def _obj(key):
+        n = contract.nodes.filter(key=key).first()
+        return n.get_object() if n else None
+
+    return {
+        "contract": contract,
+        "schedule": _obj("pay_schedule"),
+        "allocation": _obj("budget"),
+        "worker": _obj("worker_person"),
+        "asset": _obj("payment_asset"),
+        "payer_account": _obj("payer_acct"),
+        "worker_account": _obj("worker_acct"),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Payroll — list
+# ---------------------------------------------------------------------------
+
+def payroll_list(request):
+    qs = (
+        Contract.objects
+        .filter(metadata__archetype="payroll")
+        .prefetch_related("nodes")
+        .order_by("name")
+    )
+    q = request.GET.get("q", "").strip()
+    if q:
+        qs = qs.filter(name__icontains=q)
+
+    rows = []
+    for c in qs:
+        def _obj(key, _c=c):
+            n = _c.nodes.filter(key=key).first()
+            return n.get_object() if n else None
+
+        rows.append({
+            "contract": c,
+            "worker": _obj("worker_person"),
+            "asset": _obj("payment_asset"),
+            "allocation": _obj("budget"),
+            "duty_count": c.nodes.filter(node_type="obligation").count(),
+        })
+
+    return _render(request, "contracts/payroll_list.html", {"rows": rows, "q": q})
+
+
+# ---------------------------------------------------------------------------
+# Payroll — create
+# ---------------------------------------------------------------------------
+
+def payroll_create(request):
+    if request.method == "POST":
+        form = PayrollCreateForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            meta = {}
+            for k in ("source_app", "source_model", "source_id"):
+                if cd.get(k):
+                    meta[k] = cd[k]
+            from .payroll import create_payroll_contract
+            contract = create_payroll_contract(
+                name=cd["name"],
+                payer_account=cd["payer_account"],
+                worker_person=cd["worker_person"],
+                worker_account=cd["worker_account"],
+                asset=cd["asset"],
+                amount_base_units=cd["amount_base_units"],
+                frequency=cd["frequency"],
+                metadata=meta or None,
+            )
+            messages.success(request, f"Payroll contract '{contract.name}' created.")
+            return redirect("contracts:payroll_detail", uuid=contract.uuid)
+    else:
+        form = PayrollCreateForm()
+    return _render(request, "contracts/payroll_form.html", {"form": form})
+
+
+# ---------------------------------------------------------------------------
+# Payroll — detail
+# ---------------------------------------------------------------------------
+
+def payroll_detail(request, uuid):
+    contract = get_object_or_404(Contract, uuid=uuid, metadata__archetype="payroll")
+    ctx = _payroll_ctx(contract)
+    ctx["duties"] = _payroll_duties(contract)
+
+    from toto.claims.models import ContractEvent
+    ctx["events"] = list(
+        ContractEvent.objects
+        .filter(source_type="contracts.Contract", source_id=str(contract.pk))
+        .order_by("-created_at")[:30]
+    )
+    return _render(request, "contracts/payroll_detail.html", ctx)
+
+
+# ---------------------------------------------------------------------------
+# Payroll — add duty
+# ---------------------------------------------------------------------------
+
+def payroll_duty_create(request, uuid):
+    contract = get_object_or_404(Contract, uuid=uuid, metadata__archetype="payroll")
+    ctx = _payroll_ctx(contract)
+
+    if request.method == "POST":
+        form = PayrollDutyForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            meta = {}
+            for k in ("source_app", "source_id"):
+                if cd.get(k):
+                    meta[k] = cd[k]
+            from .payroll import create_payroll_duty
+            try:
+                create_payroll_duty(
+                    contract=contract,
+                    worker_person=ctx["worker"],
+                    worker_account=ctx["worker_account"],
+                    amount_base_units=cd["amount_base_units"],
+                    due_at=cd.get("due_at"),
+                    metadata=meta or None,
+                )
+                messages.success(request, "Duty created.")
+                return redirect("contracts:payroll_detail", uuid=uuid)
+            except Exception as exc:
+                messages.error(request, f"Could not create duty: {exc}")
+    else:
+        form = PayrollDutyForm()
+
+    ctx["form"] = form
+    return _render(request, "contracts/payroll_duty_form.html", ctx)
+
+
+# ---------------------------------------------------------------------------
+# Payroll — duty actions (POST-only)
+# ---------------------------------------------------------------------------
+
+def payroll_duty_mark_due(request, uuid, obligation_pk):
+    contract = get_object_or_404(Contract, uuid=uuid, metadata__archetype="payroll")
+    if request.method == "POST":
+        node = get_object_or_404(ContractNode, contract=contract, node_type="obligation", object_id=str(obligation_pk))
+        from .payroll import mark_payroll_due
+        try:
+            mark_payroll_due(contract=contract, duty_node_key=node.key)
+            messages.success(request, "Duty marked as due.")
+        except Exception as exc:
+            messages.error(request, f"Error: {exc}")
+    return redirect("contracts:payroll_detail", uuid=uuid)
+
+
+def payroll_duty_approve(request, uuid, obligation_pk):
+    contract = get_object_or_404(Contract, uuid=uuid, metadata__archetype="payroll")
+    if request.method == "POST":
+        node = get_object_or_404(ContractNode, contract=contract, node_type="obligation", object_id=str(obligation_pk))
+        gates_edge = (
+            contract.edges
+            .filter(target=node, edge_type="gates")
+            .select_related("source")
+            .first()
+        )
+        if not gates_edge:
+            messages.error(request, "No approval condition found for this duty.")
+            return redirect("contracts:payroll_detail", uuid=uuid)
+        condition = gates_edge.source.get_object()
+        from .payroll import approve_payroll_duty
+        try:
+            approve_payroll_duty(
+                condition=condition,
+                approver=request.user if request.user.is_authenticated else None,
+            )
+            messages.success(request, "Duty approved.")
+        except Exception as exc:
+            messages.error(request, f"Error: {exc}")
+    return redirect("contracts:payroll_detail", uuid=uuid)
+
+
+def payroll_duty_settle(request, uuid, obligation_pk):
+    contract = get_object_or_404(Contract, uuid=uuid, metadata__archetype="payroll")
+    if request.method == "POST":
+        from toto.assets.models import Obligation
+        obligation = get_object_or_404(Obligation, pk=obligation_pk)
+        from .payroll import settle_payroll_duty
+        try:
+            settle_payroll_duty(obligation=obligation, contract=contract)
+            messages.success(request, "Duty settled.")
+        except Exception as exc:
+            messages.error(request, f"Settlement failed: {exc}")
+    return redirect("contracts:payroll_detail", uuid=uuid)
+
+
+# ---------------------------------------------------------------------------
+# Person signature
+# ---------------------------------------------------------------------------
 
 def person_update_signature(request, person_pk):
     """Allow a person to update their stored digital signature."""

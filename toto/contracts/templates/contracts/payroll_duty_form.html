@@ -1,0 +1,95 @@
+{% extends "contracts/base.html" %}
+{% load i18n %}
+
+{% block contracts_title %}{% trans "Add Duty" %} — {{ contract.name }}{% endblock %}
+
+{% block contracts_content %}
+<div class="space-y-6">
+
+  <a href="{% url 'contracts:payroll_detail' contract.uuid %}"
+     class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+    <i class="fa-solid fa-arrow-left"></i>
+    {% trans "Back to" %} {{ contract.name }}
+  </a>
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-6 shadow-sm">
+    <h2 class="flex items-center gap-2 text-lg font-bold mb-1">
+      <i class="fa-solid fa-circle-plus" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+      {% trans "Add Payroll Duty" %}
+    </h2>
+    <p class="text-sm opacity-60 mb-6">
+      {% trans "Creates an obligation + approval condition under" %} <strong>{{ contract.name }}</strong>.
+    </p>
+
+    <form method="post" class="space-y-5">
+      {% csrf_token %}
+
+      {% if form.non_field_errors %}
+      <div class="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
+        {{ form.non_field_errors }}
+      </div>
+      {% endif %}
+
+      <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
+
+        <div class="space-y-1">
+          <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {{ form.amount_base_units.label }}
+          </label>
+          {{ form.amount_base_units }}
+          {% if asset %}
+          <p class="text-xs opacity-50">{% trans "Asset:" %} {{ asset.unit_name }} ({{ asset.decimals }} {% trans "decimals" %})</p>
+          {% endif %}
+          {% if form.amount_base_units.errors %}
+          <p class="text-xs text-red-600">{{ form.amount_base_units.errors.0 }}</p>
+          {% endif %}
+        </div>
+
+        <div class="space-y-1">
+          <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {{ form.due_at.label }}
+          </label>
+          {{ form.due_at }}
+          {% if form.due_at.errors %}
+          <p class="text-xs text-red-600">{{ form.due_at.errors.0 }}</p>
+          {% endif %}
+        </div>
+
+      </div>
+
+      <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+           class="border-t pt-4 space-y-4">
+        <p class="text-xs font-semibold uppercase tracking-wide opacity-50">
+          {% trans "External source reference (optional)" %}
+        </p>
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div class="space-y-1">
+            <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.source_app.label }}</label>
+            {{ form.source_app }}
+          </div>
+          <div class="space-y-1">
+            <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.source_id.label }}</label>
+            {{ form.source_id }}
+          </div>
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-3 pt-2">
+        <a href="{% url 'contracts:payroll_detail' contract.uuid %}"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+          {% trans "Cancel" %}
+        </a>
+        <button type="submit"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-plus"></i>
+          {% trans "Add Duty" %}
+        </button>
+      </div>
+    </form>
+  </div>
+
+</div>
+{% endblock %}
