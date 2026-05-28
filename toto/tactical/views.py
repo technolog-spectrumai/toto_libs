@@ -12,31 +12,31 @@ def _page(context, request):
 
 
 class CommandView(LoginRequiredMixin, TemplateView):
-    template_name = "field/command.html"
+    template_name = "tactical/command.html"
 
     def get_context_data(self, **kwargs):
-        from toto.field.plugins import FieldMetricsPlugin
+        from toto.tactical.plugins import FieldMetricsPlugin
         context = super().get_context_data(**kwargs)
         sections = FieldMetricsPlugin.get_sections(request=self.request)
         return _page({
             **context,
             "sections": sections,
-            "map_data_url": "/field/api/map/",
+            "map_data_url": "/tactical/api/map/",
         }, self.request)
 
 
 class MapDataView(LoginRequiredMixin, TemplateView):
     def get(self, request, *args, **kwargs):
-        from toto.field.plugins import FieldMapPlugin
+        from toto.tactical.plugins import FieldMapPlugin
         features = FieldMapPlugin.get_features(request=request)
         return JsonResponse({"type": "FeatureCollection", "features": features})
 
 
 class MetricsView(LoginRequiredMixin, TemplateView):
-    template_name = "field/metrics.html"
+    template_name = "tactical/metrics.html"
 
     def get_context_data(self, **kwargs):
-        from toto.field.plugins import FieldMetricsPlugin
+        from toto.tactical.plugins import FieldMetricsPlugin
         context = super().get_context_data(**kwargs)
         sections = FieldMetricsPlugin.get_sections(request=self.request)
         return _page({
@@ -49,7 +49,7 @@ class MetricsDataView(LoginRequiredMixin, TemplateView):
     """JSON API — read-only metrics for all registered sections (mobile-friendly)."""
 
     def get(self, request, *args, **kwargs):
-        from toto.field.plugins import FieldMetricsPlugin
+        from toto.tactical.plugins import FieldMetricsPlugin
         sections = FieldMetricsPlugin.get_sections(request=request)
         ribbon = FieldMetricsPlugin.get_ribbon(request=request)
         return JsonResponse({

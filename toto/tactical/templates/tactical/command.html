@@ -1,12 +1,12 @@
-{% extends "field/base.html" %}
-{% block field_title %}Command{% endblock %}
+{% extends "tactical/base.html" %}
+{% block tactical_title %}Command{% endblock %}
 
-{% block field_start_script %}
+{% block tactical_start_script %}
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 {% endblock %}
 
-{% block field_content %}
+{% block tactical_content %}
 {{ sections|json_script:"field-sections" }}
 <div x-data="fieldCommand()" x-init="init()">
 

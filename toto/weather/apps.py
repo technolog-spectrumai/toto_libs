@@ -6,7 +6,7 @@ class WeatherConfig(AppConfig):
     verbose_name = "Weather"
 
     def ready(self):
-        from toto.field.plugins import FieldMapPlugin, FieldMetricsPlugin
+        from toto.tactical.plugins import FieldMapPlugin, FieldMetricsPlugin
         from toto.weather.plugins.field_plugins import (
             weather_map_features,
             weather_metrics_section,

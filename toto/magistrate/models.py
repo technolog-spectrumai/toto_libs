@@ -79,6 +79,10 @@ class MagistrateRole(models.Model):
         default=False,
         help_text="Holder may levy infraction fines on community members within their oversight domains. Bounded by the community max-fine-pct setting.",
     )
+    can_freeze_assets = models.BooleanField(
+        default=False,
+        help_text="Holder may issue a temporary freeze on an asset, preventing all transfers of that token until the freeze is lifted.",
+    )
 
     order = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -110,6 +114,7 @@ class MagistrateRole(models.Model):
             ("overseeing_logistics", "Logistics"),
             ("overseeing_interior", "Interior & Movement"),
             ("overseeing_productivity", "Productivity & Work"),
+            ("can_freeze_assets", "Asset Freeze"),
         ]
         return [label for field, label in mapping if getattr(self, field)]
 
@@ -204,6 +209,8 @@ class MagistrateDecision(models.Model):
         ("interior_directive",     "Interior Directive"),
         ("productivity_directive", "Productivity Directive"),
         ("infraction_fine",        "Infraction Fine"),
+        ("asset_freeze",           "Asset Freeze Order"),
+        ("asset_freeze_lift",      "Asset Freeze Lift"),
         ("general",                "General Directive"),
     ]
     STATUS_CHOICES = [
@@ -409,3 +416,57 @@ class MagistrateFine(models.Model):
 
     def __str__(self):
         return f"Fine on {self.target_person} ({self.fine_pct}%) — {self.decision.community}"
+
+
+class AssetFreeze(models.Model):
+    """
+    Magistrate-issued freeze on an asset token.
+    While an active freeze exists, transfer_asset raises ValidationError for that asset.
+    """
+    STATUS_ACTIVE = "active"
+    STATUS_LIFTED = "lifted"
+    STATUS_CHOICES = [
+        (STATUS_ACTIVE, "Active"),
+        (STATUS_LIFTED, "Lifted"),
+    ]
+
+    asset = models.ForeignKey(
+        "assets.Asset",
+        on_delete=models.CASCADE,
+        related_name="magistrate_freezes",
+    )
+    decision = models.OneToOneField(
+        MagistrateDecision,
+        on_delete=models.CASCADE,
+        related_name="asset_freeze_detail",
+    )
+    reason = models.TextField(help_text="Grounds for the freeze order.")
+    status = models.CharField(
+        max_length=16,
+        choices=STATUS_CHOICES,
+        default=STATUS_ACTIVE,
+        db_index=True,
+    )
+    lifted_at = models.DateTimeField(null=True, blank=True)
+    lift_decision = models.OneToOneField(
+        MagistrateDecision,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="asset_freeze_lift_detail",
+    )
+    lift_reason = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Asset freeze"
+        verbose_name_plural = "Asset freezes"
+
+    def __str__(self):
+        return f"Freeze on {self.asset.unit_name} ({self.status}) — {self.decision.community}"
+
+    @property
+    def is_active(self) -> bool:
+        return self.status == self.STATUS_ACTIVE

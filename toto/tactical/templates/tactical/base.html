@@ -1,10 +1,10 @@
 {% extends "oya/base.html" %}
 
-{% block title %}{% block field_title %}Tactical{% endblock %} | {{ platform.site_name }}{% endblock %}
+{% block title %}{% block tactical_title %}Tactical{% endblock %} | {{ platform.site_name }}{% endblock %}
 
 {% block start_script %}
 <style>[x-cloak]{display:none!important}</style>
-{% block field_start_script %}{% endblock %}
+{% block tactical_start_script %}{% endblock %}
 {% endblock %}
 
 {% block content %}
@@ -16,14 +16,14 @@
        class="sticky top-0 z-40 flex items-center gap-1 border-b px-4 py-2 backdrop-blur sm:px-6">
     <span :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
           class="mr-3 text-xs font-bold uppercase tracking-widest">Tactical</span>
-    <a href="{% url 'field:command' %}"
+    <a href="{% url 'tactical:command' %}"
        :class="request.resolver_match.url_name == 'command'
          ? (darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light')
          : 'opacity-60 hover:opacity-100'"
        class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition">
       <i class="fa-solid fa-map fa-fw"></i> Command
     </a>
-    <a href="{% url 'field:metrics' %}"
+    <a href="{% url 'tactical:metrics' %}"
        :class="request.resolver_match.url_name == 'metrics'
          ? (darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light')
          : 'opacity-60 hover:opacity-100'"
@@ -33,7 +33,7 @@
   </nav>
 
   <div class="px-4 py-6 sm:px-6 lg:px-8">
-    {% block field_content %}{% endblock %}
+    {% block tactical_content %}{% endblock %}
   </div>
 
 </div>

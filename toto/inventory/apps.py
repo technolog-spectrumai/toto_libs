@@ -10,7 +10,7 @@ class InventoryConfig(AppConfig):
         from toto.core.plugin_autodiscover import autodiscover_plugins
         autodiscover_plugins("plugins.inventory_object_plugins")
 
-        from toto.field.plugins import FieldMapPlugin, FieldMetricsPlugin
+        from toto.tactical.plugins import FieldMapPlugin, FieldMetricsPlugin
         from toto.inventory.plugins.field_plugins import (
             inventory_map_features,
             inventory_metrics_section,

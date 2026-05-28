@@ -195,6 +195,23 @@ def magistrate_dashboard(request, pk):
     if mag.term_end:
         days_remaining = max(0, (mag.term_end - timezone.now().date()).days)
 
+    # Asset freeze context
+    freeze_assets = []
+    active_freezes = []
+    if mag.role.can_freeze_assets:
+        try:
+            from toto.assets.models import Asset
+            freeze_assets = list(Asset.objects.filter(active=True).order_by("unit_name"))
+        except Exception:
+            pass
+        from .models import AssetFreeze
+        active_freezes = list(
+            AssetFreeze.objects
+            .filter(decision__community=mag.community, status=AssetFreeze.STATUS_ACTIVE)
+            .select_related("asset", "decision__magistrate__person")
+            .order_by("-created_at")
+        )
+
     # Fines context — only loaded when the role has overseeing_fines
     community_members = []
     available_assets = []
@@ -667,3 +684,98 @@ def issue_fine(request, pk):
     obligation_note = "Payment obligation created (due in 14 days)." if status == "obligation_created" else "Recorded — no collection account configured, manual settlement required."
     messages.success(request, f"Fine of {fine_pct}% ({fine_display} {asset.unit_name}) recorded in the decision ledger. {obligation_note}")
     return redirect("magistrate:my_dashboard", pk=pk)
+
+
+# ---------------------------------------------------------------------------
+# Asset freeze / lift
+# ---------------------------------------------------------------------------
+
+@login_required
+@require_POST
+def freeze_asset(request, pk):
+    from toto.assets.models import Asset
+    from .models import AssetFreeze
+
+    mag = get_object_or_404(
+        Magistrate.objects.select_related("person", "role", "community"),
+        pk=pk,
+    )
+    person = _person(request)
+    if mag.person != person:
+        raise PermissionDenied
+    if not mag.is_active:
+        messages.error(request, "Your seat is not currently active.")
+        return redirect("magistrate:my_dashboard", pk=pk)
+    if not mag.role.can_freeze_assets:
+        raise PermissionDenied
+
+    asset_id = request.POST.get("asset", "").strip()
+    reason = request.POST.get("reason", "").strip()
+    title = request.POST.get("title", "").strip()
+
+    if not reason:
+        messages.error(request, "A reason for the freeze is required.")
+        return redirect("magistrate:my_dashboard", pk=pk)
+
+    try:
+        asset = Asset.objects.get(pk=asset_id)
+    except Asset.DoesNotExist:
+        messages.error(request, "Asset not found.")
+        return redirect("magistrate:my_dashboard", pk=pk)
+
+    if AssetFreeze.objects.filter(asset=asset, status=AssetFreeze.STATUS_ACTIVE).exists():
+        messages.warning(request, f"{asset.unit_name} is already frozen.")
+        return redirect("magistrate:my_dashboard", pk=pk)
+
+    decision = MagistrateDecision.objects.create(
+        magistrate=mag,
+        community=mag.community,
+        decision_type="asset_freeze",
+        title=title or f"Asset Freeze — {asset.unit_name}",
+        body=reason,
+    )
+    AssetFreeze.objects.create(
+        asset=asset,
+        decision=decision,
+        reason=reason,
+    )
+    messages.success(request, f"{asset.unit_name} has been frozen. All transfers are now blocked.")
+    return redirect("magistrate:my_dashboard", pk=pk)
+
+
+@login_required
+@require_POST
+def lift_freeze(request, freeze_pk):
+    from .models import AssetFreeze
+
+    freeze = get_object_or_404(AssetFreeze, pk=freeze_pk)
+    mag = get_object_or_404(
+        Magistrate.objects.select_related("person", "role", "community"),
+        community=freeze.decision.community,
+        person=_person(request),
+    )
+    if not mag.is_active:
+        messages.error(request, "Your seat is not currently active.")
+        return redirect("magistrate:my_dashboard", pk=mag.pk)
+    if not mag.role.can_freeze_assets:
+        raise PermissionDenied
+    if freeze.status != AssetFreeze.STATUS_ACTIVE:
+        messages.warning(request, "This freeze is already lifted.")
+        return redirect("magistrate:my_dashboard", pk=mag.pk)
+
+    lift_reason = request.POST.get("lift_reason", "").strip()
+    lift_decision = MagistrateDecision.objects.create(
+        magistrate=mag,
+        community=mag.community,
+        decision_type="asset_freeze_lift",
+        title=f"Asset Freeze Lift — {freeze.asset.unit_name}",
+        body=lift_reason or f"Freeze on {freeze.asset.unit_name} lifted.",
+    )
+    freeze.status = AssetFreeze.STATUS_LIFTED
+    freeze.lifted_at = timezone.now()
+    freeze.lift_decision = lift_decision
+    freeze.lift_reason = lift_reason
+    freeze.save(update_fields=["status", "lifted_at", "lift_decision", "lift_reason", "updated_at"])
+
+    messages.success(request, f"Freeze on {freeze.asset.unit_name} has been lifted.")
+    return redirect("magistrate:my_dashboard", pk=mag.pk)

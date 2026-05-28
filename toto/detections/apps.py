@@ -15,7 +15,7 @@ class DetectionsConfig(AppConfig):
         from toto.core.plugin_autodiscover import autodiscover_plugins
         autodiscover_plugins('plugins.location_plugins')
 
-        from toto.field.plugins import FieldMapPlugin, FieldMetricsPlugin
+        from toto.tactical.plugins import FieldMapPlugin, FieldMetricsPlugin
         from toto.detections.plugins.field_plugins import (
             detections_map_features,
             detections_metrics_section,

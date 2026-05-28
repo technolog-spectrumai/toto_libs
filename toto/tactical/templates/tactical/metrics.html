@@ -1,12 +1,12 @@
-{% extends "field/base.html" %}
-{% block field_title %}Metrics{% endblock %}
+{% extends "tactical/base.html" %}
+{% block tactical_title %}Metrics{% endblock %}
 
-{% block field_start_script %}
+{% block tactical_start_script %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
 {% endblock %}
 
-{% block field_content %}
-{{ sections|json_script:"field-sections-data" }}
+{% block tactical_content %}
+{{ sections|json_script:"tactical-sections-data" }}
 
 <div x-data="fieldMetrics()" x-init="init()">
 
@@ -17,7 +17,7 @@
       <h1 class="mt-1 text-3xl font-bold">Metrics</h1>
       <p class="mt-1 text-sm opacity-50">Operational overview across all domains.</p>
     </div>
-    <a href="/field/api/metrics/"
+    <a href="/tactical/api/metrics/"
        :class="darkMode ? 'border-accent-1/40 bg-bubble-bg-dark text-accent-dark' : 'border-accent-2/40 bg-bubble-bg-light text-accent-light'"
        class="rounded-lg border px-3 py-1.5 text-xs font-semibold hover:opacity-80 transition"
        title="JSON API for mobile / external clients">
@@ -133,7 +133,7 @@ function fieldMetrics() {
 
     init() {
       const isDark = localStorage.getItem("darkMode") === "true";
-      const sections = JSON.parse(document.getElementById("field-sections-data").textContent);
+      const sections = JSON.parse(document.getElementById("tactical-sections-data").textContent);
       const text = isDark ? "#e2e8f0" : "#1e293b";
       const grid = isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)";
 

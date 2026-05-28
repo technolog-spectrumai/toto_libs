@@ -1,7 +1,7 @@
 from django.urls import path
 from . import views
 
-app_name = "field"
+app_name = "tactical"
 
 urlpatterns = [
     path("", views.CommandView.as_view(), name="command"),

@@ -7,7 +7,7 @@ class LogisticsConfig(AppConfig):
     verbose_name = "Logistics"
 
     def ready(self):
-        from toto.field.plugins import FieldMapPlugin, FieldMetricsPlugin
+        from toto.tactical.plugins import FieldMapPlugin, FieldMetricsPlugin
         from toto.logistics.plugins.field_plugins import (
             logistics_map_features,
             logistics_metrics_section,

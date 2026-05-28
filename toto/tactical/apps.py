@@ -1,7 +1,7 @@
 from django.apps import AppConfig
 
 
-class FieldConfig(AppConfig):
+class TacticalConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
-    name = "toto.field"
+    name = "toto.tactical"
     verbose_name = "Tactical"
