@@ -3,7 +3,7 @@ from toto.ravioli.models import CypherQuery, CypherQueryResult
 
 
 class Command(IngressCommand):
-    help = "Seed Ravioli with default Cypher queries and predefined workflows"
+    help = "Seed Ravioli with default Knowledge Graph and predefined workflows"
 
     def process(self):
         self._ensure_workflows()

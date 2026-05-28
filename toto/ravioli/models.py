@@ -7,8 +7,8 @@ class CypherQuery(models.Model):
     description = models.TextField(blank=True)
 
     class Meta:
-        verbose_name = "Cypher Query"
-        verbose_name_plural = "Cypher Queries"
+        verbose_name = "Knowledge Graph Query"
+        verbose_name_plural = "Knowledge Graph Queries"
 
     def __str__(self):
         return self.name

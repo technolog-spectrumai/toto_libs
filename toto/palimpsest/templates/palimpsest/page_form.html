@@ -1,7 +1,7 @@
 {% extends "oya/base.html" %}
 {% load static %}
 
-{% block title %}{{ title }} | Palimpsest | {{ platform.site_name }}{% endblock %}
+{% block title %}{{ title }} | Blog | {{ platform.site_name }}{% endblock %}
 
 {% block content %}
 <section
@@ -12,7 +12,7 @@
     <a href="{% if page %}{{ page.get_absolute_url }}{% else %}{% url 'palimpsest:page_list' %}{% endif %}"
        class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
       <i class="fa-solid fa-arrow-left"></i>
-      Palimpsest
+      Blog
     </a>
 
     <header :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"

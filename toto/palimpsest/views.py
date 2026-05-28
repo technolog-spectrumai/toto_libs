@@ -45,7 +45,7 @@ class PalimpsestListView(ListView):
         context["featured_page"] = context["pages"][0] if context["pages"] else None
         context["tags"] = Tag.objects.all().order_by("name")
         context["tag"] = getattr(self, "tag", None)
-        context["publication_name"] = "Palimpsest"
+        context["publication_name"] = "Blog"
         return PageProcessor().decorate(context, self.request)
 
 
@@ -61,9 +61,9 @@ class PalimpsestDetailView(PageDetailMixin, DetailView):
         context = super().get_context_data(**kwargs)
         context["sections"] = self.render_sections(self.object)
         context["back_url"] = "palimpsest:page_list"
-        context["back_label"] = "Palimpsest"
+        context["back_label"] = "Blog"
         context["page_type_label"] = "Essay"
-        context["publication_name"] = "Palimpsest"
+        context["publication_name"] = "Blog"
         context["tag_slug"] = (
             self.object.tags.first().slug if self.object.tags.exists() else None
         )
@@ -71,7 +71,7 @@ class PalimpsestDetailView(PageDetailMixin, DetailView):
 
 
 def palimpsest_render(request, template_name, context):
-    context.setdefault("publication_name", "Palimpsest")
+    context.setdefault("publication_name", "Blog")
     return render(request, template_name, PageProcessor().decorate(context, request))
 
 

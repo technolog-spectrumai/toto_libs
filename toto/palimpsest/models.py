@@ -9,8 +9,8 @@ from toto.verbena.utils import unique_slug
 
 class Tag(AbstractTag):
     class Meta:
-        verbose_name = "Palimpsest tag"
-        verbose_name_plural = "Palimpsest tags"
+        verbose_name = "Blog tag"
+        verbose_name_plural = "Blog tags"
 
     def save(self, *args, **kwargs):
         if not self.slug:
@@ -22,8 +22,8 @@ class Page(AbstractPage):
     tags = models.ManyToManyField(Tag, related_name="pages", blank=True)
 
     class Meta:
-        verbose_name = "Palimpsest page"
-        verbose_name_plural = "Palimpsest pages"
+        verbose_name = "Blog post"
+        verbose_name_plural = "Blog posts"
         ordering = ["-created_at"]
 
     def authors(self):
@@ -38,7 +38,7 @@ class Page(AbstractPage):
                 continue
             seen.add(section.author_id)
             names.append(section.author.display_name)
-        return ", ".join(names) if names else "Palimpsest circle"
+        return ", ".join(names) if names else "Blog circle"
 
     @property
     def section_count(self):
