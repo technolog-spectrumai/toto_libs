@@ -117,6 +117,29 @@ def deployment_detail(request, pk):
     from django.urls import reverse
     map_data_url = reverse("response:deployment_map_data", args=[pk])
 
+    from toto.contracts.models import ContractNode
+    person_ids = [a.responder.person_id for a in assignments]
+    payroll_by_person = {}
+    if person_ids:
+        nodes = (
+            ContractNode.objects
+            .filter(
+                key="worker_person",
+                object_app="people",
+                object_model="person",
+                object_id__in=[str(pid) for pid in person_ids],
+                contract__metadata__archetype="payroll",
+            )
+            .select_related("contract")
+        )
+        for node in nodes:
+            payroll_by_person.setdefault(int(node.object_id), []).append(node.contract)
+
+    assignment_payroll = [
+        {"assignment": a, "payroll_contracts": payroll_by_person.get(a.responder.person_id, [])}
+        for a in assignments
+    ]
+
     return _render(request, "response/deployment_detail.html", {
         "deployment": deployment,
         "assignments": assignments,
@@ -132,6 +155,7 @@ def deployment_detail(request, pk):
         "report_detections": report_detections,
         "linked_detection_ids": linked_detection_ids,
         "map_data_url": map_data_url,
+        "assignment_payroll": assignment_payroll,
         "dep_layer_toggles": [
             ("mission",     "Mission",    "fa-solid fa-crosshairs",          "accent"),
             ("dep_routes",  "Routes",     "fa-solid fa-route",               "success"),

@@ -444,6 +444,44 @@
         </div>
       </div>
 
+      {# — Payroll readiness — #}
+      {% if assignment_payroll %}
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-5 shadow-sm">
+        <h3 class="mb-3 font-bold flex items-center gap-2">
+          <i class="fa-solid fa-money-check-dollar" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+          {% trans "Payroll Readiness" %}
+        </h3>
+        <div class="space-y-2">
+          {% for row in assignment_payroll %}
+            <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
+              <div class="flex items-center justify-between gap-2">
+                <div>
+                  <div class="font-semibold text-xs">{{ row.assignment.responder.person }}</div>
+                  <div class="text-xs opacity-50">{{ row.assignment.get_role_display }}</div>
+                </div>
+                {% if row.payroll_contracts %}
+                  <span class="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-xs font-semibold shrink-0">
+                    <i class="fa-solid fa-circle-check"></i> {% trans "Covered" %}
+                  </span>
+                {% else %}
+                  <span class="inline-flex items-center gap-1 rounded-full bg-red-100 text-red-700 px-2 py-0.5 text-xs font-semibold shrink-0">
+                    <i class="fa-solid fa-circle-xmark"></i> {% trans "No payroll" %}
+                  </span>
+                {% endif %}
+              </div>
+              {% for contract in row.payroll_contracts %}
+                <a href="{% url 'contracts:payroll_detail' contract.uuid %}"
+                   class="mt-1.5 flex items-center gap-1 text-xs underline opacity-60 hover:opacity-100 transition">
+                  <i class="fa-solid fa-arrow-up-right-from-square"></i> {{ contract.name }}
+                </a>
+              {% endfor %}
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
       {# — Notes / meta — #}
       <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
            class="rounded-lg border p-5 shadow-sm text-xs space-y-1.5 opacity-70">

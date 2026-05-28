@@ -1,0 +1,38 @@
+{% load i18n %}
+<section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-2xl border p-5 shadow-sm">
+  <div class="mb-4 flex items-center gap-2">
+    <i class="fa-solid fa-money-check-dollar" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+    <h2 class="text-lg font-bold">{% trans "Payroll" %}</h2>
+  </div>
+
+  <div class="space-y-3">
+    {% for row in payroll_rows %}
+      {% if row.contracts %}
+        <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="rounded-lg border p-3 space-y-2">
+          <p class="text-sm font-semibold">{{ row.practitioner.person }} <span class="opacity-50 font-normal text-xs">({{ row.practitioner.get_role_display }})</span></p>
+          {% for contract in row.contracts %}
+            <a href="{% url 'contracts:payroll_detail' contract.uuid %}"
+               :class="darkMode ? 'bg-primary-bg-dark hover:bg-sunken-dark' : 'bg-primary-bg-light hover:bg-sunken-light'"
+               class="flex items-center justify-between gap-3 rounded px-3 py-2 text-xs transition">
+              <span class="font-mono truncate opacity-80">{{ contract.name }}</span>
+              {% if contract.status == 'executed' %}
+                <span class="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2 py-0.5 font-semibold shrink-0">
+                  <i class="fa-solid fa-circle-check"></i> {% trans "Active" %}
+                </span>
+              {% elif contract.status == 'pending' %}
+                <span class="inline-flex items-center gap-1 rounded-full bg-yellow-100 text-yellow-700 px-2 py-0.5 font-semibold shrink-0">
+                  <i class="fa-solid fa-pen-nib"></i> {% trans "Signing" %}
+                </span>
+              {% else %}
+                <span class="inline-flex items-center gap-1 rounded-full bg-gray-100 text-gray-600 px-2 py-0.5 font-semibold shrink-0">
+                  {% trans "Draft" %}
+                </span>
+              {% endif %}
+            </a>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endfor %}
+  </div>
+</section>
