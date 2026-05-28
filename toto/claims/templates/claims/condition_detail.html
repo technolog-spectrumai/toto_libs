@@ -70,6 +70,8 @@
   </div>
 
   {% with graph_model="condition" graph_id=condition.uuid %}
+  {% include "claims/_action_panel.html" %}
+
   {% include "claims/_lifecycle_graph.html" %}
   {% endwith %}
 

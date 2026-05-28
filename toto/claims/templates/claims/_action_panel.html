@@ -1,0 +1,94 @@
+{% load i18n %}
+{#
+  Shared status-transition action panel.
+  Include with: {% include "claims/_action_panel.html" with transition_url="..." actions=... %}
+
+  actions: list of dicts — each dict has:
+    action   : str  — POST action value
+    label    : str  — button label
+    color    : str  — "red" | "yellow" | "green" | "blue" | "gray"
+    icon     : str  — Font Awesome class (fa-solid fa-...)
+    needs_reason : bool (optional) — show reason text field
+    confirm  : str (optional) — confirmation message shown inline
+#}
+{% if actions %}
+<div x-data="{ active: null }"
+     :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     class="rounded-lg border p-4 shadow-sm space-y-3">
+
+  <h3 class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Actions" %}</h3>
+
+  <div class="flex flex-wrap gap-2">
+    {% for act in actions %}
+    <button type="button"
+      @click="active = (active === '{{ act.action }}') ? null : '{{ act.action }}'"
+      :class="{
+        {% if act.color == 'red' %}
+        'bg-red-100 text-red-800 ring-1 ring-red-300': active === '{{ act.action }}',
+        'bg-red-50 text-red-700 hover:bg-red-100': active !== '{{ act.action }}',
+        {% elif act.color == 'yellow' %}
+        'bg-yellow-100 text-yellow-800 ring-1 ring-yellow-300': active === '{{ act.action }}',
+        'bg-yellow-50 text-yellow-700 hover:bg-yellow-100': active !== '{{ act.action }}',
+        {% elif act.color == 'green' %}
+        'bg-green-100 text-green-800 ring-1 ring-green-300': active === '{{ act.action }}',
+        'bg-green-50 text-green-700 hover:bg-green-100': active !== '{{ act.action }}',
+        {% elif act.color == 'blue' %}
+        'bg-blue-100 text-blue-800 ring-1 ring-blue-300': active === '{{ act.action }}',
+        'bg-blue-50 text-blue-700 hover:bg-blue-100': active !== '{{ act.action }}',
+        {% else %}
+        'bg-gray-100 text-gray-800 ring-1 ring-gray-300': active === '{{ act.action }}',
+        'bg-gray-100 text-gray-600 hover:bg-gray-200': active !== '{{ act.action }}',
+        {% endif %}
+      }"
+      class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition">
+      <i class="{{ act.icon }}"></i>
+      {{ act.label }}
+    </button>
+    {% endfor %}
+  </div>
+
+  {% for act in actions %}
+  <div x-show="active === '{{ act.action }}'" x-cloak x-transition
+       :class="darkMode ? 'border-accent-1 bg-black/10' : 'border-accent-2 bg-white/60'"
+       class="rounded-lg border p-4 space-y-3">
+
+    {% if act.confirm %}
+    <p class="text-sm font-semibold">{{ act.confirm }}</p>
+    {% endif %}
+
+    <form method="post" action="{{ transition_url }}" class="space-y-3">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="{{ act.action }}">
+
+      {% if act.needs_reason %}
+      <div class="space-y-1">
+        <label class="block text-xs font-semibold opacity-60">{% trans "Reason" %} <span class="font-normal opacity-50">({% trans "optional" %})</span></label>
+        <textarea name="reason" rows="2"
+          :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+          class="w-full rounded border px-3 py-2 text-sm focus:outline-none focus:ring-1 resize-none"
+          placeholder="{% trans 'Enter a reason…' %}"></textarea>
+      </div>
+      {% endif %}
+
+      <div class="flex gap-2">
+        <button type="submit"
+          class="inline-flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-semibold transition
+          {% if act.color == 'red' %}bg-red-600 text-white hover:bg-red-700
+          {% elif act.color == 'yellow' %}bg-yellow-500 text-white hover:bg-yellow-600
+          {% elif act.color == 'green' %}bg-green-600 text-white hover:bg-green-700
+          {% elif act.color == 'blue' %}bg-blue-600 text-white hover:bg-blue-700
+          {% else %}bg-gray-600 text-white hover:bg-gray-700{% endif %}">
+          <i class="{{ act.icon }}"></i>
+          {% trans "Confirm" %}: {{ act.label }}
+        </button>
+        <button type="button" @click="active = null"
+          class="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold opacity-60 hover:opacity-100 transition">
+          {% trans "Cancel" %}
+        </button>
+      </div>
+    </form>
+  </div>
+  {% endfor %}
+
+</div>
+{% endif %}

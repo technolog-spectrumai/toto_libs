@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 
+from django.contrib import messages
+from django.core.exceptions import ValidationError
 from django.db.models import Q
 from django.http import JsonResponse
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
 from toto.assets.models import Obligation, ObligationStatus
@@ -98,14 +100,29 @@ def entitlement_list(request):
 
 
 def entitlement_detail(request, uuid):
+    from django.urls import reverse
     entitlement = get_object_or_404(
         Entitlement.objects.select_related("holder_account", "agreement", "contract"),
         uuid=uuid,
     )
     related_events = ContractEvent.objects.filter(entitlement=entitlement).order_by("-created_at")[:10]
+    s = entitlement.status
+    actions = []
+    if s == EntitlementStatus.ACTIVE:
+        actions = [
+            {"action": "suspend", "label": "Suspend",    "color": "yellow", "icon": "fa-solid fa-pause",       "confirm": "Suspend this entitlement?"},
+            {"action": "revoke",  "label": "Revoke",     "color": "red",    "icon": "fa-solid fa-ban",          "needs_reason": True, "confirm": "Revoke this entitlement?"},
+        ]
+    elif s == EntitlementStatus.SUSPENDED:
+        actions = [
+            {"action": "reactivate", "label": "Reactivate", "color": "green", "icon": "fa-solid fa-play",      "confirm": "Reactivate this entitlement?"},
+            {"action": "revoke",     "label": "Revoke",     "color": "red",   "icon": "fa-solid fa-ban",        "needs_reason": True, "confirm": "Revoke this entitlement?"},
+        ]
     return _render(request, "claims/entitlement_detail.html", {
         "entitlement": entitlement,
         "related_events": related_events,
+        "actions": actions,
+        "transition_url": reverse("claims:entitlement_transition", args=[uuid]),
     })
 
 
@@ -203,14 +220,35 @@ def schedule_list(request):
 
 
 def schedule_detail(request, uuid):
+    from django.urls import reverse
     schedule = get_object_or_404(
         Schedule.objects.select_related("agreement", "contract"),
         uuid=uuid,
     )
     related_events = ContractEvent.objects.filter(schedule=schedule).order_by("-created_at")[:10]
+    s = schedule.status
+    actions = []
+    if s == ScheduleStatus.DRAFT:
+        actions = [
+            {"action": "activate", "label": "Activate", "color": "green", "icon": "fa-solid fa-play",    "confirm": "Activate this schedule?"},
+            {"action": "cancel",   "label": "Cancel",   "color": "red",   "icon": "fa-solid fa-xmark",   "confirm": "Cancel this schedule?"},
+        ]
+    elif s == ScheduleStatus.ACTIVE:
+        actions = [
+            {"action": "pause",    "label": "Pause",    "color": "yellow", "icon": "fa-solid fa-pause",  "confirm": "Pause this schedule?"},
+            {"action": "complete", "label": "Complete", "color": "blue",   "icon": "fa-solid fa-check",  "confirm": "Mark this schedule as completed?"},
+            {"action": "cancel",   "label": "Cancel",   "color": "red",    "icon": "fa-solid fa-xmark",  "confirm": "Cancel this schedule?"},
+        ]
+    elif s == ScheduleStatus.PAUSED:
+        actions = [
+            {"action": "resume",  "label": "Resume",   "color": "green", "icon": "fa-solid fa-play",    "confirm": "Resume this schedule?"},
+            {"action": "cancel",  "label": "Cancel",   "color": "red",   "icon": "fa-solid fa-xmark",   "confirm": "Cancel this schedule?"},
+        ]
     return _render(request, "claims/schedule_detail.html", {
         "schedule": schedule,
         "related_events": related_events,
+        "actions": actions,
+        "transition_url": reverse("claims:schedule_transition", args=[uuid]),
     })
 
 
@@ -247,15 +285,26 @@ def condition_list(request):
 
 
 def condition_detail(request, uuid):
+    from django.urls import reverse
     condition = get_object_or_404(
         Condition.objects.select_related("agreement", "contract"),
         uuid=uuid,
     )
     related_events = ContractEvent.objects.filter(condition=condition).order_by("-created_at")[:10]
+    actions = []
+    if condition.status == ConditionStatus.PENDING:
+        actions = [
+            {"action": "satisfy", "label": "Satisfy",  "color": "green",  "icon": "fa-solid fa-check",        "confirm": "Mark this condition as satisfied?"},
+            {"action": "fail",    "label": "Fail",      "color": "red",    "icon": "fa-solid fa-xmark",        "needs_reason": True, "confirm": "Mark this condition as failed?"},
+            {"action": "waive",   "label": "Waive",     "color": "yellow", "icon": "fa-solid fa-hand",         "needs_reason": True, "confirm": "Waive this condition?"},
+            {"action": "cancel",  "label": "Cancel",    "color": "gray",   "icon": "fa-solid fa-ban",          "confirm": "Cancel this condition?"},
+        ]
     return _render(request, "claims/condition_detail.html", {
         "condition": condition,
         "related_events": related_events,
         "expression_json": json.dumps(condition.expression, indent=2) if condition.expression else "",
+        "actions": actions,
+        "transition_url": reverse("claims:condition_transition", args=[uuid]),
     })
 
 
@@ -294,6 +343,7 @@ def allocation_list(request):
 
 
 def allocation_detail(request, uuid):
+    from django.urls import reverse
     allocation = get_object_or_404(
         Allocation.objects.select_related(
             "asset", "holder_account", "beneficiary_account", "agreement", "contract"
@@ -301,9 +351,24 @@ def allocation_detail(request, uuid):
         uuid=uuid,
     )
     related_events = ContractEvent.objects.filter(allocation=allocation).order_by("-created_at")[:10]
+    s = allocation.status
+    actions = []
+    if s == AllocationStatus.DRAFT:
+        actions = [
+            {"action": "activate", "label": "Activate", "color": "green", "icon": "fa-solid fa-play",   "confirm": "Activate this allocation?"},
+            {"action": "cancel",   "label": "Cancel",   "color": "red",   "icon": "fa-solid fa-ban",    "confirm": "Cancel this allocation?"},
+        ]
+    elif s == AllocationStatus.ACTIVE:
+        actions = [
+            {"action": "release_all", "label": "Release All", "color": "blue",   "icon": "fa-solid fa-unlock",       "confirm": "Release the full remaining allocation?"},
+            {"action": "consume_all", "label": "Consume All", "color": "yellow", "icon": "fa-solid fa-fire",         "confirm": "Consume the full remaining allocation?"},
+            {"action": "cancel",      "label": "Cancel",      "color": "red",    "icon": "fa-solid fa-ban",          "confirm": "Cancel this allocation?"},
+        ]
     return _render(request, "claims/allocation_detail.html", {
         "allocation": allocation,
         "related_events": related_events,
+        "actions": actions,
+        "transition_url": reverse("claims:allocation_transition", args=[uuid]),
     })
 
 
@@ -515,3 +580,175 @@ def lifecycle_graph_json(request):
         pass
 
     return JsonResponse({"nodes": nodes, "edges": edges})
+
+
+# ---------------------------------------------------------------------------
+# Transition views (POST only)
+# ---------------------------------------------------------------------------
+
+def _actor(request):
+    return request.user if request.user.is_authenticated else None
+
+
+def entitlement_transition(request, uuid):
+    from .services.lifecycle import revoke_entitlement, suspend_entitlement, reactivate_entitlement
+    entitlement = get_object_or_404(Entitlement, uuid=uuid)
+    if request.method == "POST":
+        action = request.POST.get("action", "")
+        reason = request.POST.get("reason", "").strip()
+        try:
+            if action == "revoke":
+                revoke_entitlement(entitlement, actor=_actor(request), reason=reason)
+                messages.success(request, "Entitlement revoked.")
+            elif action == "suspend":
+                suspend_entitlement(entitlement, actor=_actor(request), reason=reason)
+                messages.success(request, "Entitlement suspended.")
+            elif action == "reactivate":
+                reactivate_entitlement(entitlement, actor=_actor(request))
+                messages.success(request, "Entitlement reactivated.")
+            else:
+                messages.error(request, f"Unknown action: {action!r}")
+        except ValidationError as e:
+            messages.error(request, str(e.message))
+    return redirect("claims:entitlement_detail", uuid=uuid)
+
+
+def schedule_transition(request, uuid):
+    from .services.lifecycle import transition_schedule
+    from .models import ScheduleStatus
+    schedule = get_object_or_404(Schedule, uuid=uuid)
+    if request.method == "POST":
+        action = request.POST.get("action", "")
+        reason = request.POST.get("reason", "").strip()
+        target_map = {
+            "activate": ScheduleStatus.ACTIVE,
+            "pause":    ScheduleStatus.PAUSED,
+            "resume":   ScheduleStatus.ACTIVE,
+            "complete": ScheduleStatus.COMPLETED,
+            "cancel":   ScheduleStatus.CANCELLED,
+        }
+        target = target_map.get(action)
+        if target:
+            try:
+                transition_schedule(schedule, target, actor=_actor(request), reason=reason)
+                messages.success(request, f"Schedule {action}d.")
+            except ValidationError as e:
+                messages.error(request, str(e.message))
+        else:
+            messages.error(request, f"Unknown action: {action!r}")
+    return redirect("claims:schedule_detail", uuid=uuid)
+
+
+def condition_transition(request, uuid):
+    from .services.lifecycle import (
+        mark_condition_satisfied, mark_condition_failed,
+        waive_condition, cancel_condition, _emit_condition_event,
+    )
+    condition = get_object_or_404(Condition, uuid=uuid)
+    if request.method == "POST":
+        action = request.POST.get("action", "")
+        reason = request.POST.get("reason", "").strip()
+        try:
+            if action == "satisfy":
+                mark_condition_satisfied(condition)
+                _emit_condition_event(
+                    condition, ContractEventKind.CONDITION_SATISFIED, actor=_actor(request)
+                )
+                messages.success(request, "Condition marked satisfied.")
+            elif action == "fail":
+                mark_condition_failed(condition, reason=reason)
+                _emit_condition_event(
+                    condition, ContractEventKind.CONDITION_FAILED,
+                    actor=_actor(request), payload={"reason": reason} if reason else {},
+                )
+                messages.success(request, "Condition marked failed.")
+            elif action == "waive":
+                waive_condition(condition, reason=reason)
+                _emit_condition_event(
+                    condition, ContractEventKind.CUSTOM,
+                    actor=_actor(request), payload={"reason": reason} if reason else {},
+                )
+                messages.success(request, "Condition waived.")
+            elif action == "cancel":
+                cancel_condition(condition, actor=_actor(request), reason=reason)
+                messages.success(request, "Condition cancelled.")
+            else:
+                messages.error(request, f"Unknown action: {action!r}")
+        except ValidationError as e:
+            messages.error(request, str(e.message))
+    return redirect("claims:condition_detail", uuid=uuid)
+
+
+def allocation_transition(request, uuid):
+    from .services.lifecycle import (
+        activate_allocation, release_allocation,
+        consume_allocation, cancel_allocation, _check_allocation_transition,
+        create_event,
+    )
+    allocation = get_object_or_404(Allocation, uuid=uuid)
+    if request.method == "POST":
+        action = request.POST.get("action", "")
+        try:
+            if action == "activate":
+                _check_allocation_transition(allocation, AllocationStatus.ACTIVE)
+                activate_allocation(allocation)
+                create_event(
+                    kind=ContractEventKind.ALLOCATION_CREATED,
+                    title=f"Allocation activated: {allocation.get_kind_display()}",
+                    allocation=allocation,
+                    actor=_actor(request),
+                    source_type="claims.Allocation",
+                    source_id=str(allocation.pk),
+                )
+                messages.success(request, "Allocation activated.")
+            elif action == "release_all":
+                _check_allocation_transition(allocation, AllocationStatus.RELEASED)
+                remaining = allocation.remaining_amount_base_units
+                if remaining > 0:
+                    release_allocation(allocation, remaining)
+                else:
+                    allocation.status = AllocationStatus.RELEASED
+                    allocation.save(update_fields=["status", "updated_at"])
+                create_event(
+                    kind=ContractEventKind.ALLOCATION_RELEASED,
+                    title=f"Allocation released: {allocation.get_kind_display()}",
+                    allocation=allocation,
+                    actor=_actor(request),
+                    source_type="claims.Allocation",
+                    source_id=str(allocation.pk),
+                )
+                messages.success(request, "Allocation released.")
+            elif action == "consume_all":
+                _check_allocation_transition(allocation, AllocationStatus.CONSUMED)
+                remaining = allocation.remaining_amount_base_units
+                if remaining > 0:
+                    consume_allocation(allocation, remaining)
+                else:
+                    allocation.status = AllocationStatus.CONSUMED
+                    allocation.save(update_fields=["status", "updated_at"])
+                create_event(
+                    kind=ContractEventKind.ALLOCATION_CONSUMED,
+                    title=f"Allocation consumed: {allocation.get_kind_display()}",
+                    allocation=allocation,
+                    actor=_actor(request),
+                    source_type="claims.Allocation",
+                    source_id=str(allocation.pk),
+                )
+                messages.success(request, "Allocation consumed.")
+            elif action == "cancel":
+                _check_allocation_transition(allocation, AllocationStatus.CANCELLED)
+                cancel_allocation(allocation)
+                create_event(
+                    kind=ContractEventKind.CANCELLED,
+                    title=f"Allocation cancelled: {allocation.get_kind_display()}",
+                    allocation=allocation,
+                    actor=_actor(request),
+                    source_type="claims.Allocation",
+                    source_id=str(allocation.pk),
+                )
+                messages.success(request, "Allocation cancelled.")
+            else:
+                messages.error(request, f"Unknown action: {action!r}")
+        except ValidationError as e:
+            messages.error(request, str(e.message))
+    return redirect("claims:allocation_detail", uuid=uuid)

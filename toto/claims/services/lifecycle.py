@@ -16,6 +16,8 @@ from toto.claims.models import (
     ConditionStatus,
     ContractEvent,
     ContractEventKind,
+    Entitlement,
+    EntitlementStatus,
     Schedule,
     ScheduleStatus,
 )
@@ -249,3 +251,160 @@ def create_checkpoint(source_type: str, source_id, data: dict) -> ContractEvent:
         source_id=str(source_id),
         payload={"checkpoint": True, **data},
     )
+
+
+# ---------------------------------------------------------------------------
+# Entitlement helpers
+# ---------------------------------------------------------------------------
+
+_ENTITLEMENT_TRANSITIONS = {
+    EntitlementStatus.ACTIVE:    {EntitlementStatus.REVOKED, EntitlementStatus.SUSPENDED},
+    EntitlementStatus.SUSPENDED: {EntitlementStatus.ACTIVE, EntitlementStatus.REVOKED},
+}
+
+
+def _check_entitlement_transition(entitlement, target: str) -> None:
+    allowed = _ENTITLEMENT_TRANSITIONS.get(entitlement.status, set())
+    if target not in allowed:
+        raise ValidationError(
+            f"Cannot transition entitlement from {entitlement.status!r} to {target!r}."
+        )
+
+
+def revoke_entitlement(entitlement, actor=None, reason: str = "") -> None:
+    _check_entitlement_transition(entitlement, EntitlementStatus.REVOKED)
+    entitlement.status = EntitlementStatus.REVOKED
+    entitlement.save(update_fields=["status", "updated_at"])
+    create_event(
+        kind=ContractEventKind.ENTITLEMENT_REVOKED,
+        title=f"Entitlement revoked: {entitlement.resource_label}",
+        entitlement=entitlement,
+        actor=actor,
+        source_type="claims.Entitlement",
+        source_id=str(entitlement.pk),
+        payload={"reason": reason} if reason else {},
+    )
+
+
+def suspend_entitlement(entitlement, actor=None, reason: str = "") -> None:
+    _check_entitlement_transition(entitlement, EntitlementStatus.SUSPENDED)
+    entitlement.status = EntitlementStatus.SUSPENDED
+    entitlement.save(update_fields=["status", "updated_at"])
+    create_event(
+        kind=ContractEventKind.CUSTOM,
+        title=f"Entitlement suspended: {entitlement.resource_label}",
+        entitlement=entitlement,
+        actor=actor,
+        source_type="claims.Entitlement",
+        source_id=str(entitlement.pk),
+        payload={"reason": reason} if reason else {},
+    )
+
+
+def reactivate_entitlement(entitlement, actor=None) -> None:
+    _check_entitlement_transition(entitlement, EntitlementStatus.ACTIVE)
+    entitlement.status = EntitlementStatus.ACTIVE
+    entitlement.save(update_fields=["status", "updated_at"])
+    create_event(
+        kind=ContractEventKind.ENTITLEMENT_GRANTED,
+        title=f"Entitlement reactivated: {entitlement.resource_label}",
+        entitlement=entitlement,
+        actor=actor,
+        source_type="claims.Entitlement",
+        source_id=str(entitlement.pk),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Schedule helpers (extended)
+# ---------------------------------------------------------------------------
+
+_SCHEDULE_TRANSITIONS = {
+    ScheduleStatus.DRAFT:  {ScheduleStatus.ACTIVE, ScheduleStatus.CANCELLED},
+    ScheduleStatus.ACTIVE: {ScheduleStatus.PAUSED, ScheduleStatus.COMPLETED, ScheduleStatus.CANCELLED},
+    ScheduleStatus.PAUSED: {ScheduleStatus.ACTIVE, ScheduleStatus.CANCELLED},
+}
+
+
+def _check_schedule_transition(schedule, target: str) -> None:
+    allowed = _SCHEDULE_TRANSITIONS.get(schedule.status, set())
+    if target not in allowed:
+        raise ValidationError(
+            f"Cannot transition schedule from {schedule.status!r} to {target!r}."
+        )
+
+
+def _schedule_event_kind(target: str) -> str:
+    return {
+        ScheduleStatus.ACTIVE:    ContractEventKind.ACTIVATED,
+        ScheduleStatus.PAUSED:    ContractEventKind.PAUSED,
+        ScheduleStatus.COMPLETED: ContractEventKind.CUSTOM,
+        ScheduleStatus.CANCELLED: ContractEventKind.CANCELLED,
+    }.get(target, ContractEventKind.CUSTOM)
+
+
+def transition_schedule(schedule, target: str, actor=None, reason: str = "") -> None:
+    _check_schedule_transition(schedule, target)
+    schedule.status = target
+    schedule.save(update_fields=["status", "updated_at"])
+    create_event(
+        kind=_schedule_event_kind(target),
+        title=f"Schedule {target}: {schedule.name}",
+        schedule=schedule,
+        actor=actor,
+        source_type="claims.Schedule",
+        source_id=str(schedule.pk),
+        payload={"reason": reason} if reason else {},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Condition helpers (extended)
+# ---------------------------------------------------------------------------
+
+def cancel_condition(condition, actor=None, reason: str = "") -> None:
+    if condition.status != "pending":
+        raise ValidationError("Can only cancel a pending condition.")
+    condition.status = ConditionStatus.CANCELLED
+    if reason:
+        condition.metadata = {**(condition.metadata or {}), "cancel_reason": reason}
+    condition.save(update_fields=["status", "metadata", "updated_at"])
+    create_event(
+        kind=ContractEventKind.CANCELLED,
+        title=f"Condition cancelled: {condition.name}",
+        condition=condition,
+        actor=actor,
+        source_type="claims.Condition",
+        source_id=str(condition.pk),
+        payload={"reason": reason} if reason else {},
+    )
+
+
+def _emit_condition_event(condition, kind: str, actor=None, payload: dict | None = None) -> None:
+    create_event(
+        kind=kind,
+        title=f"Condition {condition.status}: {condition.name}",
+        condition=condition,
+        actor=actor,
+        source_type="claims.Condition",
+        source_id=str(condition.pk),
+        payload=payload or {},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Allocation helpers (extended)
+# ---------------------------------------------------------------------------
+
+_ALLOCATION_TRANSITIONS = {
+    AllocationStatus.DRAFT:  {AllocationStatus.ACTIVE, AllocationStatus.CANCELLED},
+    AllocationStatus.ACTIVE: {AllocationStatus.RELEASED, AllocationStatus.CONSUMED, AllocationStatus.CANCELLED},
+}
+
+
+def _check_allocation_transition(allocation, target: str) -> None:
+    allowed = _ALLOCATION_TRANSITIONS.get(allocation.status, set())
+    if target not in allowed:
+        raise ValidationError(
+            f"Cannot transition allocation from {allocation.status!r} to {target!r}."
+        )

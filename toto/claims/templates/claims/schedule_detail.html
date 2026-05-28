@@ -72,6 +72,8 @@
   </div>
 
   {% with graph_model="schedule" graph_id=schedule.uuid %}
+  {% include "claims/_action_panel.html" %}
+
   {% include "claims/_lifecycle_graph.html" %}
   {% endwith %}
 
