@@ -113,8 +113,8 @@ class CreatePayrollContractTests(TestCase):
             frequency="weekly",
         )
 
-    def test_contract_created_executed(self):
-        self.assertEqual(self.contract.status, Contract.STATUS_EXECUTED)
+    def test_contract_created_draft(self):
+        self.assertEqual(self.contract.status, Contract.STATUS_DRAFT)
         self.assertEqual(self.contract.metadata["archetype"], "payroll")
 
     def test_expected_nodes_created(self):

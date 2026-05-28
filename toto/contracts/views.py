@@ -598,6 +598,14 @@ def payroll_detail(request, uuid):
         .filter(source_type="contracts.Contract", source_id=str(contract.pk))
         .order_by("-created_at")[:30]
     )
+
+    signatories = list(contract.signatories.select_related("person").all())
+    current_person = _get_person_for_request(request)
+    ctx["signatories"] = signatories
+    ctx["current_person_signatory"] = next(
+        (s for s in signatories if current_person and s.person_id == current_person.pk), None
+    )
+
     return _render(request, "contracts/payroll_detail.html", ctx)
 
 

@@ -91,7 +91,7 @@ def create_payroll_contract(
                 f"Payroll contract: {worker_person} paid by "
                 f"{payer_account.code} in {asset.unit_name}."
             ),
-            status=Contract.STATUS_EXECUTED,
+            status=Contract.STATUS_DRAFT,
             metadata={**meta, "archetype": "payroll"},
         )
 
