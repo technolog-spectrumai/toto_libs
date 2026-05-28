@@ -17,25 +17,6 @@
         <h1 class="mt-1 text-3xl font-bold">{% trans "Packages" %}</h1>
         <p class="mt-1 text-sm opacity-50">{{ packages|length }} {% trans "total" %}</p>
       </div>
-      <div x-data="{busy:false,msg:'',isError:false,
-        async exportLayers(){
-          this.busy=true;this.msg='';this.isError=false;
-          try{
-            const r=await fetch('{% url 'logistics:api-export-layers' %}',{method:'POST',headers:{'X-CSRFToken':'{{ csrf_token }}'}});
-            const d=await r.json();
-            if(!r.ok){this.isError=true;this.msg=d.error||'Export failed.';}
-            else{this.msg='Queued '+d.run_ids.length+' export(s).';}
-          }catch(e){this.isError=true;this.msg=e.message||'Network error.';}
-          finally{this.busy=false;}
-        }}" class="flex flex-col items-end gap-1">
-        <button type="button" @click="exportLayers()" :disabled="busy"
-                :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/10 disabled:opacity-40' : 'border-accent-2 hover:bg-accent-light/10 disabled:opacity-40'"
-                class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition">
-          <i class="fa-solid" :class="busy ? 'fa-spinner fa-spin' : 'fa-map-location-dot'"></i>
-          <span x-text="busy ? '{% trans 'Exporting…' %}' : '{% trans 'Export to map layers' %}'"></span>
-        </button>
-        <p x-show="msg" x-cloak class="text-xs" :class="isError ? 'text-red-500' : 'opacity-60'" x-text="msg"></p>
-      </div>
     </header>
 
     {% if packages %}

@@ -24,5 +24,4 @@ urlpatterns = [
     path("locations/", views.location_list, name="location_list"),
     path("locations/<int:location_id>/edit/", views.location_update, name="location_update"),
     path("locations/<int:location_id>/toggle-active/", views.location_toggle_active, name="location_toggle_active"),
-    path("api/export-layers/", views.api_export_layers, name="api_export_layers"),
 ]

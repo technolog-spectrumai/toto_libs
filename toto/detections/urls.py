@@ -9,5 +9,4 @@ urlpatterns = [
     path('<uuid:pk>/help/', views.DetectionHelpView.as_view(), name='detection-help'),
     path('<uuid:pk>/', views.DetectionDetailView.as_view(), name='detection-detail'),
     path('manage/', views.DetectionDashboardView.as_view(), name='dashboard'),
-    path('api/export-layers/', views.ApiExportLayersView.as_view(), name='api-export-layers'),
 ]
