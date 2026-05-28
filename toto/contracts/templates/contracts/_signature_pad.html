@@ -4,6 +4,12 @@
 <div x-data="{
   drawing: false,
   hasSignature: {{ initial_data|yesno:'true,false' }},
+  fillWhite() {
+    const c = document.getElementById('{{ pad_id }}');
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, c.width, c.height);
+  },
   startDraw(e) {
     this.drawing = true;
     const ctx = this.getCtx();
@@ -44,10 +50,12 @@
   clear() {
     const c = document.getElementById('{{ pad_id }}');
     c.getContext('2d').clearRect(0, 0, c.width, c.height);
+    this.fillWhite();
     document.getElementById('{{ pad_id }}_input').value = '';
     this.hasSignature = false;
   },
   loadExisting() {
+    this.fillWhite();
     {% if initial_data %}
     const c = document.getElementById('{{ pad_id }}');
     const img = new Image();
@@ -60,7 +68,7 @@
 
   <div class="space-y-2">
     <div class="flex items-center justify-between">
-      <span class="text-sm font-semibold opacity-70">{% trans "Draw your signature below" %}</span>
+      <span class="text-sm font-semibold opacity-70">{% trans "Draw your signature" %} <span class="text-xs font-normal opacity-50">({% trans "optional" %})</span></span>
       <button type="button" @click="clear()"
         class="text-xs underline opacity-60 hover:opacity-100">
         {% trans "Clear" %}
@@ -68,7 +76,8 @@
     </div>
     <canvas id="{{ pad_id }}"
       width="600" height="160"
-      :class="darkMode ? 'bg-white/10 border-accent-1' : 'bg-white border-accent-2'"
+      :style="darkMode ? 'filter: invert(1)' : ''"
+      :class="darkMode ? 'border-accent-1' : 'bg-white border-accent-2'"
       class="w-full rounded border cursor-crosshair touch-none"
       @mousedown="startDraw($event)"
       @mousemove="draw($event)"

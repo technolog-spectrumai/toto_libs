@@ -14,6 +14,7 @@ When a user registers or is imported, a `Person` record is created and linked on
   - `patron` — self-referential FK (mentor / sponsor relationship)
   - `address` — FK to `locations.Address`
   - `is_federal_agent` — bool; gates responder eligibility in `mobilization`
+  - `digital_signature` — TextField; base64-encoded PNG of the person's handwritten (canvas) signature, used as a decorative element in signed documents
   - `display_name`, `bio`, `avatar` — public profile fields
   - All `DomainEntity` fields: `uuid`, `slug`, `name`, `metadata`, `created_at`, `updated_at`
 
@@ -26,8 +27,12 @@ Almost every model in the system FKs into `Person`:
 - `socialhub.MembershipApplication`, `ReferenceRequest` — community onboarding
 - `tribunal.TribunalParty` — case actors
 - `academy.Teacher`, `Student` — LMS roles
+- `gervazy.PersonSigningKey` — the person's active Ed25519 signing key (stored encrypted in their strongbox)
+- `contracts.ContractSignatory` — records of contracts this person has been asked to sign
 
 `is_federal_agent` and community membership (via `communities` M2M) are read by `mobilization.Responder.clean()` to enforce eligibility.
+
+`digital_signature` stores a decorative handwritten signature (base64 PNG), separate from the cryptographic Ed25519 key managed by gervazy.
 
 ## Dependencies
 

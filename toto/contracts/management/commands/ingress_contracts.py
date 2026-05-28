@@ -1,3 +1,5 @@
+from django.contrib.auth.models import User
+
 from toto.ingress import IngressCommand
 
 from toto.contracts.models import Contract, ContractNode, ContractEdge
@@ -8,17 +10,51 @@ from toto.contracts.services import (
 )
 
 
+FOUNDER_STRONGBOX_PASSWORD = "qwerty"
+
+
 class Command(IngressCommand):
     help = "Seed demo contract graph documents for user testing."
 
     def process(self):
         self.stdout.write("📜  Seeding demo contracts…")
+        self._provision_founder_strongbox()
         self._seed_subscription_contract()
         self._seed_lease_contract()
         self._seed_escrow_contract()
         self._seed_vesting_contract()
         self._seed_reference_contract()
         self.stdout.write(self.style.SUCCESS("✅  Contracts ingress complete."))
+
+    def _provision_founder_strongbox(self):
+        """Ensure the Founder person has a gervazy strongbox (password: qwerty)."""
+        from toto.gervazy.models import UserStrongbox
+        from toto.gervazy.crypto import GervazyCryptoSession
+        from toto.people.models import Person
+
+        try:
+            founder = Person.objects.get(display_name="Founder")
+        except Person.DoesNotExist:
+            self.stdout.write("  ! Founder person not found — skipping strongbox provisioning")
+            return
+
+        if not founder.user:
+            self.stdout.write("  ! Founder has no linked user — skipping strongbox provisioning")
+            return
+
+        if UserStrongbox.objects.filter(owner=founder.user, name="founder-signing").exists():
+            self.stdout.write("  ~ Founder signing strongbox already exists")
+            return
+
+        session, _ = GervazyCryptoSession.initialize_strongbox(
+            founder.user,
+            "founder-signing",
+            FOUNDER_STRONGBOX_PASSWORD,
+        )
+        session.close()
+        self.stdout.write(
+            f"  + Founder signing strongbox created (password: {FOUNDER_STRONGBOX_PASSWORD!r})"
+        )
 
     # ------------------------------------------------------------------ #
     # Subscription                                                         #

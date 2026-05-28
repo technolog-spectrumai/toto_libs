@@ -17,7 +17,9 @@
     <div>
       <p class="text-xs font-semibold uppercase opacity-60 mb-2">{% trans "Current Signature" %}</p>
       <img src="{{ person.digital_signature }}" alt="{% trans 'Current signature' %}"
-           class="max-h-20 rounded border" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+           class="max-h-20 rounded border"
+           :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+           :style="darkMode ? 'filter: invert(1)' : ''">
     </div>
     {% endif %}
 

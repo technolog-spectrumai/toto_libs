@@ -252,12 +252,23 @@ def _get_person_for_request(request):
 
 
 def contract_sign(request, uuid):
+    from toto.gervazy.models import UserStrongbox
+    from toto.gervazy.signing import SigningService, SigningError
+    from toto.gervazy.crypto import GervazyCryptoSession
+
     contract = get_object_or_404(Contract, uuid=uuid)
     person = _get_person_for_request(request)
 
     signatory = None
     if person:
         signatory = ContractSignatory.objects.filter(contract=contract, person=person).first()
+
+    # Strongboxes available to this user (for key provisioning).
+    strongboxes = []
+    existing_signing_key = None
+    if person and request.user.is_authenticated:
+        strongboxes = list(UserStrongbox.objects.filter(owner=request.user))
+        existing_signing_key = SigningService.get_active_signing_key(person)
 
     if request.method == "POST":
         if not person:
@@ -270,30 +281,116 @@ def contract_sign(request, uuid):
             messages.info(request, "You have already signed this contract.")
             return redirect("contracts:contract_detail", uuid=contract.uuid)
 
+        strongbox_id = request.POST.get("strongbox_id", "").strip()
+        password = request.POST.get("strongbox_password", "").strip()
         signature_data = request.POST.get("signature_data", "").strip()
 
-        # Persist signature on signatory record
-        signatory.signed_at = timezone.now()
-        signatory.signature_data = signature_data
-        signatory.save(update_fields=["signed_at", "signature_data"])
+        if not password:
+            messages.error(request, "Strongbox password is required to sign.")
+            return _render(request, "contracts/contract_sign.html", _sign_ctx(
+                contract, person, signatory, strongboxes, existing_signing_key,
+            ))
 
-        # Also update person's default digital signature if they don't have one
-        if signature_data and not person.digital_signature:
-            person.digital_signature = signature_data
-            person.save(update_fields=["digital_signature"])
+        from toto.gervazy.models import WrappedDataKey
 
-        # Check if contract should be auto-executed
+        # Determine which strongbox to open.
+        # If the person already has a signing key, the session MUST be opened
+        # against that key's strongbox (not whatever the user selected).
+        existing_signing_key = SigningService.get_active_signing_key(person)
+
+        if existing_signing_key:
+            # Re-fetch with strongbox relation.
+            signing_strongbox = existing_signing_key.encrypted_private_key.strongbox
+            wrapped_key = None  # not needed — key already exists
+        else:
+            # Provisioning path — use selected (or first) strongbox and find a DEK.
+            try:
+                if strongbox_id:
+                    signing_strongbox = UserStrongbox.objects.get(pk=strongbox_id, owner=request.user)
+                elif strongboxes:
+                    signing_strongbox = strongboxes[0]
+                else:
+                    messages.error(request, "No strongbox found. Set one up in Gervazy first.")
+                    return redirect("contracts:contract_detail", uuid=contract.uuid)
+            except UserStrongbox.DoesNotExist:
+                messages.error(request, "Invalid strongbox selection.")
+                return _render(request, "contracts/contract_sign.html", _sign_ctx(
+                    contract, person, signatory, strongboxes, existing_signing_key,
+                ))
+
+            wrapped_key = (
+                WrappedDataKey.objects
+                .filter(strongbox=signing_strongbox, state="active")
+                .select_related("vmk")
+                .first()
+            )
+            if not wrapped_key:
+                messages.error(
+                    request,
+                    f"No active data key found in strongbox \"{signing_strongbox.name}\". "
+                    "Initialize a data key in Gervazy before signing for the first time.",
+                )
+                return _render(request, "contracts/contract_sign.html", _sign_ctx(
+                    contract, person, signatory, strongboxes, existing_signing_key,
+                ))
+
+        # Open session and sign.
+        try:
+            session = GervazyCryptoSession(signing_strongbox, password)
+
+            signed_at = timezone.now()
+            payload = SigningService.canonical_contract_payload(contract, person, signed_at)
+            doc_sig = SigningService.sign_document(session, person, payload, wrapped_key=wrapped_key)
+
+            signatory.signed_at = signed_at
+            signatory.signature_data = signature_data
+            signatory.signing_payload = payload.decode("utf-8")
+            signatory.cryptographic_signature = doc_sig.signature_b64
+            signatory.signing_key = (
+                SigningService.get_active_signing_key(person).encrypted_private_key
+            )
+            update_fields = [
+                "signed_at", "signature_data",
+                "signing_payload", "cryptographic_signature", "signing_key",
+            ]
+            signatory.save(update_fields=update_fields)
+
+            # Update person's decorative signature if they don't have one.
+            if signature_data and not person.digital_signature:
+                person.digital_signature = signature_data
+                person.save(update_fields=["digital_signature"])
+
+            session.close()
+
+        except Exception as exc:
+            messages.error(request, f"Signing failed: {exc}")
+            return _render(request, "contracts/contract_sign.html", _sign_ctx(
+                contract, person, signatory, strongboxes, existing_signing_key,
+            ))
+
         contract.check_and_execute()
-
-        messages.success(request, "Contract signed successfully.")
+        messages.success(request, "Contract signed and cryptographic signature recorded.")
         return redirect("contracts:contract_detail", uuid=contract.uuid)
 
-    return _render(request, "contracts/contract_sign.html", {
+    return _render(request, "contracts/contract_sign.html", _sign_ctx(
+        contract, person, signatory, strongboxes, existing_signing_key,
+    ))
+
+
+def _sign_ctx(contract, person, signatory, strongboxes, existing_signing_key):
+    # If a signing key exists, tell the template which strongbox password is needed.
+    required_strongbox = None
+    if existing_signing_key:
+        required_strongbox = existing_signing_key.encrypted_private_key.strongbox
+    return {
         "contract": contract,
         "person": person,
         "signatory": signatory,
+        "strongboxes": strongboxes,
+        "existing_signing_key": existing_signing_key,
+        "required_strongbox": required_strongbox,
         "existing_signature": person.digital_signature if person else "",
-    })
+    }
 
 
 def person_update_signature(request, person_pk):

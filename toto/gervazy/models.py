@@ -575,6 +575,44 @@ class EncryptedPrivateKey(models.Model):
         super().save(*args, **kwargs)
 
 
+class PersonSigningKey(models.Model):
+    """
+    Links a Person to their active Ed25519 signing key stored in gervazy.
+
+    Each person has at most one active signing key at a time. When a new key
+    is provisioned the old one is retired, not deleted — existing signatures
+    remain verifiable against their archived public key.
+    """
+
+    person = models.ForeignKey(
+        "people.Person",
+        on_delete=models.CASCADE,
+        related_name="signing_keys",
+    )
+
+    encrypted_private_key = models.ForeignKey(
+        EncryptedPrivateKey,
+        on_delete=models.PROTECT,
+        related_name="person_signing_keys",
+    )
+
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    retired_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        status = "active" if self.is_active else "retired"
+        return f"SigningKey({self.person}) [{status}]"
+
+    def retire(self):
+        self.is_active = False
+        self.retired_at = timezone.now()
+        self.save(update_fields=["is_active", "retired_at"])
+
+
 class CryptoAuditLog(models.Model):
     """
     Append-only audit trail for cryptographic operations.

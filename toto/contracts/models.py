@@ -240,10 +240,31 @@ class ContractSignatory(models.Model):
         help_text="If True, this person must sign before the contract can be executed.",
     )
     signed_at = models.DateTimeField(null=True, blank=True)
+
+    # Decorative pencil signature (base64 PNG canvas drawing).
     signature_data = models.TextField(
         blank=True,
-        help_text="Base64-encoded PNG captured at signing time.",
+        help_text="Base64-encoded PNG — decorative handwritten signature image.",
     )
+
+    # Cryptographic signature fields (populated by gervazy.signing.SigningService).
+    signing_payload = models.TextField(
+        blank=True,
+        help_text="Canonical UTF-8 payload that was signed.",
+    )
+    cryptographic_signature = models.TextField(
+        blank=True,
+        help_text="Base64-encoded Ed25519 signature over signing_payload.",
+    )
+    signing_key = models.ForeignKey(
+        "gervazy.EncryptedPrivateKey",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="contract_signatures",
+        help_text="The EncryptedPrivateKey used to produce the cryptographic signature.",
+    )
+
     added_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -258,3 +279,7 @@ class ContractSignatory(models.Model):
     @property
     def has_signed(self):
         return self.signed_at is not None
+
+    @property
+    def is_cryptographically_signed(self):
+        return bool(self.cryptographic_signature and self.signing_payload)
