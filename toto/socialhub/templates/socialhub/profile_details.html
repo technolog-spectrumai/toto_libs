@@ -208,22 +208,34 @@
 
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {% for community in profile.communities.all %}
-          <a
-            href="{% url 'socialhub:community_detail' community.slug %}"
+          <div
             :class="darkMode
-              ? 'border-accent-1 bg-sunken-dark text-accent-dark'
-              : 'border-accent-2 bg-sunken-light text-accent-light'"
-            class="flex items-center justify-between gap-3 rounded-xl border p-4 text-sm font-semibold shadow-sm transition hover:opacity-85">
+              ? 'border-accent-1 bg-sunken-dark'
+              : 'border-accent-2 bg-sunken-light'"
+            class="flex items-center gap-2 rounded-xl border p-3 shadow-sm">
 
-            <span class="flex min-w-0 items-center gap-2">
+            <a
+              href="{% url 'socialhub:community_detail' community.slug %}"
+              :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+              class="flex flex-1 min-w-0 items-center gap-2 text-sm font-semibold transition hover:opacity-85">
               <i class="fa-solid fa-users text-xs"></i>
-              <span class="truncate">
-                {{ community.name }}
-              </span>
-            </span>
+              <span class="truncate">{{ community.name }}</span>
+              <i class="fa-solid fa-arrow-right text-xs opacity-50 ml-auto"></i>
+            </a>
 
-            <i class="fa-solid fa-arrow-right text-xs opacity-70"></i>
-          </a>
+            {% if unsigned_constitutions and community.pk in unsigned_constitutions %}
+              <a
+                href="{% url 'socialhub:constitution_sign' community.slug %}"
+                :class="darkMode
+                  ? 'bg-accent-dark text-primary-bg-dark'
+                  : 'bg-accent-light text-primary-bg-light'"
+                class="shrink-0 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold hover:opacity-90"
+                title="Sign the {{ community.name }} constitution">
+                <i class="fa-solid fa-pen-nib"></i>
+                Sign constitution
+              </a>
+            {% endif %}
+          </div>
         {% empty %}
           <div
             :class="darkMode

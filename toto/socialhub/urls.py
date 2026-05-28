@@ -15,6 +15,7 @@ from toto.socialhub.views.community_news import (
 from toto.socialhub.views.application import membership_application_view, application_success_view, \
     verification_success_view, reference_request_view, reference_next, verify_application_view, reference_accept, \
     reference_reject
+from toto.socialhub.views.constitution import constitution_detail, constitution_sign
 
 app_name = "socialhub"
 
@@ -26,6 +27,8 @@ urlpatterns = [
     path("communities/<slug:community_slug>/news/new/", community_news_create, name="community_news_create"),
     path("communities/<slug:slug>/", CommunityDetailView.as_view(), name="community_detail"),
     path("communities/<slug:slug>/administrata/", AdministrataView.as_view(), name="administrata"),
+    path("communities/<slug:slug>/constitution/", constitution_detail, name="constitution_detail"),
+    path("communities/<slug:slug>/constitution/sign/", constitution_sign, name="constitution_sign"),
     path("communities/<slug:slug>/administrata/graph.json", community_chain_graph_data, name="community_chain_graph_data"),
     path("community-news/<int:pk>/edit/", community_news_update, name="community_news_update"),
     path("community-news/<int:pk>/delete/", community_news_delete, name="community_news_delete"),

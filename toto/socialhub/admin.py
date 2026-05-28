@@ -7,6 +7,8 @@ from .models import (
     Community,
     CommunityNewsPost,
     CommunityNewsTopic,
+    Constitution,
+    ConstitutionSignature,
     MembershipApplication,
     ReferenceRequest,
 )
@@ -113,3 +115,42 @@ class CommunityNewsTopicAdmin(TotoModelAdmin):
     list_display = ("name", "slug")
     search_fields = ("name",)
     prepopulated_fields = {"slug": ("name",)}
+
+
+class ConstitutionSignatureInline(admin.TabularInline):
+    model = ConstitutionSignature
+    extra = 0
+    fields = ("person", "signed_at", "is_cryptographically_signed_display")
+    readonly_fields = ("signed_at", "is_cryptographically_signed_display")
+
+    @admin.display(boolean=True, description="Crypto signed")
+    def is_cryptographically_signed_display(self, obj):
+        return obj.is_cryptographically_signed
+
+
+@admin.register(Constitution)
+class ConstitutionAdmin(TotoModelAdmin):
+    list_display = ("title", "community", "version", "is_active", "signature_count", "created_at")
+    list_filter = ("is_active", "community")
+    search_fields = ("title", "body", "community__name")
+    prepopulated_fields = {"slug": ("title",)}
+    raw_id_fields = ("community",)
+    readonly_fields = ("created_at", "updated_at")
+    inlines = [ConstitutionSignatureInline]
+
+    @admin.display(description="Signatures")
+    def signature_count(self, obj):
+        return obj.signature_count
+
+
+@admin.register(ConstitutionSignature)
+class ConstitutionSignatureAdmin(TotoModelAdmin):
+    list_display = ("person", "constitution", "signed_at", "is_cryptographically_signed_display", "added_at")
+    list_filter = ("constitution__community",)
+    search_fields = ("person__display_name", "constitution__title")
+    raw_id_fields = ("constitution", "person", "signing_key")
+    readonly_fields = ("signed_at", "added_at", "signing_payload", "cryptographic_signature")
+
+    @admin.display(boolean=True, description="Crypto signed")
+    def is_cryptographically_signed_display(self, obj):
+        return obj.is_cryptographically_signed

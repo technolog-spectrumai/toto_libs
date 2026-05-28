@@ -243,3 +243,15 @@ class SigningService:
             f"at:{signed_at.isoformat()}",
         ]
         return "\n".join(lines).encode("utf-8")
+
+    @staticmethod
+    def canonical_constitution_payload(constitution, person, signed_at) -> bytes:
+        lines = [
+            "sign:constitution",
+            f"id:{constitution.pk}",
+            f"slug:{constitution.slug}",
+            f"community:{constitution.community_id}",
+            f"person:{person.pk}",
+            f"at:{signed_at.isoformat()}",
+        ]
+        return "\n".join(lines).encode("utf-8")

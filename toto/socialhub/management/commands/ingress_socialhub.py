@@ -4,7 +4,7 @@ from django.utils import timezone
 from django.utils.text import slugify
 from toto.ingress import IngressCommand
 from toto.people.models import Person
-from toto.socialhub.models import Community, CommunityNewsPost, CommunityNewsTopic
+from toto.socialhub.models import Community, CommunityNewsPost, CommunityNewsTopic, Constitution
 from toto.locations.models import Address
 
 
@@ -70,6 +70,7 @@ class Command(IngressCommand):
 
         self.assign_senior_members(community, tester_person, members)
         self.create_community_news(community, tester_person)
+        self.create_constitution(community)
 
         self.stdout.write(self.style.NOTICE("🏘 Creating child communities..."))
         child_a = self.create_community(
@@ -313,6 +314,39 @@ class Command(IngressCommand):
             if created:
                 post.topics.set([topics[name] for name in data["topics"]])
                 self.stdout.write(self.style.SUCCESS(f"✔ Created community news: {post.display_title}"))
+
+    def create_constitution(self, community):
+        constitution, created = Constitution.objects.get_or_create(
+            community=community,
+            is_active=True,
+            defaults={
+                "title": f"{community.name} Constitution",
+                "version": "I",
+                "body": (
+                    f"Constitution of {community.name}\n"
+                    "Version I\n\n"
+                    "Article 1 — Purpose\n"
+                    f"{community.name} exists to advance the shared interests of its members through "
+                    "cooperation, transparency, and mutual accountability.\n\n"
+                    "Article 2 — Membership\n"
+                    "Membership is open to any person accepted through the standard application process. "
+                    "Members are expected to act in good faith and uphold the community's values.\n\n"
+                    "Article 3 — Governance\n"
+                    "Community governance is carried out through the Assembly. Executive decisions may be "
+                    "delegated to appointed Magistrates within the bounds set by the Assembly.\n\n"
+                    "Article 4 — Finances\n"
+                    "All financial decisions affecting the community treasury require Assembly ratification. "
+                    "Magistrates may issue Finance Directives as defined by community policy.\n\n"
+                    "Article 5 — Amendments\n"
+                    "This constitution may be amended by a supermajority vote of the Assembly. "
+                    "Amendments take effect upon publication of a new active version."
+                ),
+            },
+        )
+        if created:
+            self.stdout.write(self.style.SUCCESS(f"✔ Created constitution for {community.name}"))
+        else:
+            self.stdout.write(self.style.WARNING(f"⚠ Constitution for {community.name} already exists"))
 
     def create_news_topics(self):
         names = ["announcements", "community", "microblog", "craft"]
