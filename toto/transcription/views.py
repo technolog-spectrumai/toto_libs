@@ -14,11 +14,11 @@ from django.views.decorators.http import require_POST
 
 from toto.ui import PageProcessor
 
-from .forms import TranscriptCollectionForm, TranscriptionJobForm, TranscriptSourceForm, TranscriptUploadForm
-from .models import TranscriptAccessMode, TranscriptCollection, TranscriptEvent, TranscriptSource, TranscriptionJob, WhisperModelConfig
+from .forms import SpeechModelDownloadForm, TranscriptCollectionForm, TranscriptionJobForm, TranscriptSourceForm, TranscriptUploadForm
+from .models import SpeechModel, TranscriptAccessMode, TranscriptCollection, TranscriptEvent, TranscriptSource, TranscriptionJob
 from .queries import jobs_by_day_chart_data, source_stats, top_sources_chart_data, transcription_overview_stats
 from .services import (
-    activate_model_config,
+    activate_speech_model,
     can_access_source,
     cancel_job as cancel_transcription_job,
     celery_workers_available,
@@ -28,7 +28,7 @@ from .services import (
     readable_sources_for_user,
     record_event,
     run_transcription_with_timeout,
-    start_model_download,
+    start_speech_model_download,
     transcribe_demo_file,
     user_can_create_collections,
     user_is_transcription_manager,
@@ -229,43 +229,52 @@ def source_event_api(request, collection_slug, source_slug):
 def model_setup(request):
     if not request.user.is_staff and not request.user.is_superuser:
         return HttpResponseForbidden(_("Model management is restricted to staff."))
-    configs = WhisperModelConfig.objects.select_related("bucket").order_by("backend", "name")
-    catalogue = [
-        {"name": name, "backend": backend, "size_mb": size_mb,
-         "exists": configs.filter(name=name, backend=backend).exists()}
-        for name, backend, size_mb in WhisperModelConfig.CATALOGUE
-    ]
+    models_qs = SpeechModel.objects.order_by("backend", "name")
+    create_form = SpeechModelForm()
+    if request.method == "POST" and "create_model" in request.POST:
+        create_form = SpeechModelForm(request.POST)
+        if create_form.is_valid():
+            create_form.save()
+            messages.success(request, _("Speech model created."))
+            return redirect(reverse("transcription:model_setup"))
     return _render(request, "transcription/model_setup.html", {
-        "configs": configs,
-        "catalogue": catalogue,
+        "speech_models": models_qs,
+        "create_form": create_form,
+        "download_form": SpeechModelDownloadForm(),
         "celery_ok": celery_workers_available(),
     })
 
 
 @login_required
-@require_POST
 def model_download(request, pk):
     if not request.user.is_staff and not request.user.is_superuser:
         return HttpResponseForbidden(_("Model management is restricted to staff."))
-    cfg = get_object_or_404(WhisperModelConfig, pk=pk)
-    try:
-        start_model_download(cfg.pk)
-        messages.success(request, _("Download started — watch the progress bar."))
-    except Exception as exc:
-        messages.error(request, str(exc))
-    return redirect(reverse("transcription:model_setup"))
+    m = get_object_or_404(SpeechModel, pk=pk)
+    if request.method == "POST":
+        form = SpeechModelDownloadForm(request.POST)
+        if form.is_valid():
+            try:
+                start_speech_model_download(m.pk, form.cleaned_data["download_source"])
+                messages.success(request, _("Download queued — watch the progress bar."))
+            except Exception as exc:
+                messages.error(request, str(exc))
+        else:
+            messages.error(request, form.errors.as_text())
+        return redirect(reverse("transcription:model_setup"))
+    form = SpeechModelDownloadForm(initial={"download_source": m.download_source})
+    return _render(request, "transcription/model_download.html", {"speech_model": m, "form": form})
 
 
 @login_required
 def model_progress_api(request, pk):
-    cfg = get_object_or_404(WhisperModelConfig, pk=pk)
+    m = get_object_or_404(SpeechModel, pk=pk)
     return JsonResponse({
-        "pk": cfg.pk,
-        "status": cfg.status,
-        "status_display": cfg.get_status_display(),
-        "progress_pct": cfg.progress_pct,
-        "is_active": cfg.is_active,
-        "error_message": cfg.error_message,
+        "pk": m.pk,
+        "download_status": m.download_status,
+        "download_status_display": m.get_download_status_display(),
+        "download_progress": m.download_progress,
+        "is_active": m.is_active,
+        "download_error": m.download_error,
     })
 
 
@@ -274,9 +283,9 @@ def model_progress_api(request, pk):
 def model_activate(request, pk):
     if not request.user.is_staff and not request.user.is_superuser:
         return HttpResponseForbidden(_("Model management is restricted to staff."))
-    cfg = get_object_or_404(WhisperModelConfig, pk=pk)
+    m = get_object_or_404(SpeechModel, pk=pk)
     try:
-        activate_model_config(cfg.pk)
+        activate_speech_model(m.pk)
         messages.success(request, _("Model set as active — it will be used for all default transcription jobs."))
     except Exception as exc:
         messages.error(request, str(exc))

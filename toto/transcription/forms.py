@@ -3,7 +3,7 @@ from __future__ import annotations
 from django import forms
 from django.utils.translation import gettext_lazy as _
 
-from .models import TranscriptCollection, TranscriptSource, TranscriptionJob
+from .models import SpeechModel, TranscriptCollection, TranscriptSource, TranscriptionJob
 from .services import create_source_from_upload, writable_collections_for_user
 
 _INPUT = "w-full rounded-lg border px-3 py-2 text-sm outline-none transition focus:ring-2 focus:ring-current/20"
@@ -97,6 +97,36 @@ class TranscriptUploadForm(forms.Form):
             language=self.cleaned_data.get("language") or "",
             status=self.cleaned_data.get("status") or TranscriptSource.Status.DRAFT,
         )
+
+
+class SpeechModelForm(forms.ModelForm):
+    class Meta:
+        model = SpeechModel
+        fields = ["name", "slug", "backend", "description", "model_size", "device", "compute_type", "beam_size", "language", "is_active"]
+        widgets = {
+            "name": _text(_("e.g. Small Fast")),
+            "slug": _text(_("small-fast")),
+            "backend": _select(),
+            "description": _textarea(2),
+            "model_size": _text(_("tiny / base / small / medium / large-v3")),
+            "device": _select(),
+            "compute_type": _text(_("int8 / float16 / float32")),
+            "beam_size": _number("5"),
+            "language": _text(_("en, pl… or blank")),
+            "is_active": _checkbox(),
+        }
+
+
+class SpeechModelDownloadForm(forms.Form):
+    download_source = forms.CharField(
+        label=_("Download source"),
+        max_length=512,
+        widget=_text(_("e.g. Systran/faster-whisper-small  or  small  or  https://…/model.pt")),
+        help_text=_(
+            "HuggingFace repo ID, a simple size name (tiny/base/small/medium/large-v3), "
+            "or a direct HTTPS URL to a .pt file."
+        ),
+    )
 
 
 class TranscriptionJobForm(forms.ModelForm):

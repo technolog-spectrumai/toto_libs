@@ -544,12 +544,11 @@ def run_transcription_job(job_id: int) -> dict[str, Any]:
     return {"job_id": job.pk, "status": job.status, "source_id": job.source_id}
 
 
-def _active_model_path(backend: str) -> str | None:
-    """Return the download_path of the active, ready WhisperModelConfig for *backend*, or None."""
+def _active_speech_model(backend: str):
+    """Return the active SpeechModel for *backend*, or None."""
     try:
-        from .models import WhisperModelConfig
-        cfg = WhisperModelConfig.objects.filter(backend=backend, status=WhisperModelConfig.Status.READY, is_active=True).first()
-        return cfg.download_path if cfg else None
+        from .models import SpeechModel
+        return SpeechModel.objects.filter(backend=backend, is_active=True).first()
     except Exception:
         return None
 
@@ -635,107 +634,138 @@ def cancel_job(job_pk: int, *, user=None) -> TranscriptionJob:
     return job
 
 
-def start_model_download(config_pk: int) -> None:
-    """Validate config and queue the Celery download task."""
-    from .models import WhisperModelConfig
-    cfg = WhisperModelConfig.objects.get(pk=config_pk)
-    if not cfg.download_path:
-        raise ValueError("Set a download_path on this model config (via admin) before downloading.")
-    if cfg.status == WhisperModelConfig.Status.DOWNLOADING:
+def activate_speech_model(model_pk: int) -> None:
+    """Mark this SpeechModel as active, deactivating others with the same backend."""
+    from .models import SpeechModel
+    m = SpeechModel.objects.get(pk=model_pk)
+    SpeechModel.objects.filter(backend=m.backend).update(is_active=False)
+    SpeechModel.objects.filter(pk=model_pk).update(is_active=True)
+
+
+def start_speech_model_download(model_pk: int, download_source: str) -> None:
+    """Validate and queue the Celery download task for a SpeechModel."""
+    from .models import SpeechModel
+    m = SpeechModel.objects.get(pk=model_pk)
+    if m.download_status == SpeechModel.DownloadStatus.DOWNLOADING:
         raise ValueError("A download is already in progress for this model.")
-    if cfg.status == WhisperModelConfig.Status.READY:
-        raise ValueError("Model is already downloaded. Use --reset or delete the config to re-download.")
-    # Populate approximate size from catalogue if not set.
-    if not cfg.size_mb:
-        for name, backend, size_mb in WhisperModelConfig.CATALOGUE:
-            if name == cfg.name and backend == cfg.backend:
-                cfg.size_mb = size_mb
-                break
-    cfg.status = WhisperModelConfig.Status.DOWNLOADING
-    cfg.progress_pct = 0
-    cfg.error_message = ""
-    cfg.save(update_fields=["status", "progress_pct", "error_message", "size_mb", "updated_at"])
-    from .tasks import download_whisper_model
-    result = download_whisper_model.delay(config_pk)
-    WhisperModelConfig.objects.filter(pk=config_pk).update(celery_task_id=result.id)
+    source = (download_source or "").strip()
+    if not source:
+        raise ValueError("Provide a download source (HuggingFace repo ID, size name, or URL).")
+    SpeechModel.objects.filter(pk=model_pk).update(
+        download_source=source,
+        download_status=SpeechModel.DownloadStatus.DOWNLOADING,
+        download_progress=0,
+        download_error="",
+    )
+    from .tasks import download_speech_model
+    result = download_speech_model.delay(model_pk)
+    SpeechModel.objects.filter(pk=model_pk).update(celery_task_id=result.id)
 
 
-def activate_model_config(config_pk: int) -> None:
-    """Mark config as active, deactivating any other active config for the same backend."""
-    from .models import WhisperModelConfig
-    cfg = WhisperModelConfig.objects.get(pk=config_pk)
-    if cfg.status != WhisperModelConfig.Status.READY:
-        raise ValueError("Only a READY model can be set as active.")
-    WhisperModelConfig.objects.filter(backend=cfg.backend).update(is_active=False)
-    WhisperModelConfig.objects.filter(pk=config_pk).update(is_active=True)
+_SIZE_NAMES = {"tiny", "base", "small", "medium", "large", "large-v1", "large-v2", "large-v3"}
 
 
-def download_model_weights(config_pk: int) -> None:
-    """Called inside the Celery task — does the actual download with progress tracking."""
-    import os
+def download_speech_model_weights(model_pk: int) -> None:
+    """Download model weights and persist them in the SpeechModel.weights_file field."""
+    import io
     import threading
-    from pathlib import Path
-    from .models import WhisperModelConfig
+    import urllib.request
+    import zipfile
 
-    cfg = WhisperModelConfig.objects.get(pk=config_pk)
-    local_dir = cfg.download_path
-    os.makedirs(local_dir, exist_ok=True)
+    from django.core.files.base import ContentFile as DjContentFile
 
-    expected_bytes = cfg.size_mb * 1024 * 1024 if cfg.size_mb else 0
-    stop_event = threading.Event()
+    from .models import SpeechModel
 
-    def _watch():
-        p = Path(local_dir)
-        while not stop_event.is_set():
-            try:
-                current = sum(f.stat().st_size for f in p.rglob("*") if f.is_file())
-                pct = min(95, int(current * 100 / expected_bytes)) if expected_bytes else 1
-                WhisperModelConfig.objects.filter(pk=config_pk).update(progress_pct=pct)
-            except Exception:
-                pass
-            stop_event.wait(2.0)
-
-    watcher = threading.Thread(target=_watch, daemon=True)
-    watcher.start()
+    m = SpeechModel.objects.get(pk=model_pk)
+    source = m.download_source.strip()
 
     try:
-        if cfg.backend == WhisperModelConfig.Backend.FASTER_WHISPER:
-            _download_faster_whisper_weights(cfg.name, local_dir)
-        elif cfg.backend == WhisperModelConfig.Backend.OPENAI_WHISPER:
-            _download_openai_whisper_weights(cfg.name, local_dir)
-        else:
-            raise ValueError(f"Unknown backend: {cfg.backend}")
-        stop_event.set()
-        WhisperModelConfig.objects.filter(pk=config_pk).update(
-            status=WhisperModelConfig.Status.READY, progress_pct=100, error_message=""
-        )
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            stop_event = threading.Event()
+
+            def _watch_dir(watch_path: Path):
+                while not stop_event.is_set():
+                    try:
+                        current = sum(f.stat().st_size for f in watch_path.rglob("*") if f.is_file())
+                        pct = min(90, max(1, int(current / (1024 * 1024))))
+                        SpeechModel.objects.filter(pk=model_pk).update(download_progress=pct)
+                    except Exception:
+                        pass
+                    stop_event.wait(2.0)
+
+            watcher = threading.Thread(target=_watch_dir, args=(tmp_path,), daemon=True)
+            watcher.start()
+
+            try:
+                if source.startswith("https://") or source.startswith("http://"):
+                    # Direct URL download
+                    fname = source.rsplit("/", 1)[-1] or "model.bin"
+                    dest = tmp_path / fname
+                    buf = io.BytesIO()
+                    with urllib.request.urlopen(source) as resp:
+                        while True:
+                            chunk = resp.read(1024 * 1024)
+                            if not chunk:
+                                break
+                            buf.write(chunk)
+                    dest.write_bytes(buf.getvalue())
+                    stop_event.set()
+                    field_name = fname
+                    file_content = dest.read_bytes()
+                elif m.backend == SpeechModel.Backend.FASTER_WHISPER:
+                    # HuggingFace snapshot (CTranslate2 directory → zip)
+                    try:
+                        from huggingface_hub import snapshot_download
+                    except ImportError as exc:
+                        raise RuntimeError("Install huggingface_hub: pip install huggingface-hub") from exc
+                    repo_id = source if "/" in source else f"Systran/faster-whisper-{source}"
+                    model_dir = tmp_path / "model"
+                    model_dir.mkdir()
+                    snapshot_download(
+                        repo_id=repo_id,
+                        local_dir=str(model_dir),
+                        ignore_patterns=["*.msgpack", "*.h5", "flax_model*", "tf_model*", "rust_model*"],
+                    )
+                    stop_event.set()
+                    zip_buf = io.BytesIO()
+                    with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                        for f in model_dir.rglob("*"):
+                            if f.is_file():
+                                zf.write(f, f.relative_to(model_dir))
+                    slug = source.replace("/", "_")
+                    field_name = f"{slug}.zip"
+                    file_content = zip_buf.getvalue()
+                else:
+                    # openai-whisper .pt download
+                    try:
+                        import whisper
+                    except ImportError as exc:
+                        raise RuntimeError("Install openai-whisper: pip install -U openai-whisper") from exc
+                    whisper.load_model(source, download_root=str(tmp_path))
+                    stop_event.set()
+                    pt_files = list(tmp_path.glob("*.pt"))
+                    if not pt_files:
+                        raise RuntimeError("No .pt file found after openai-whisper download.")
+                    pt_file = pt_files[0]
+                    field_name = pt_file.name
+                    file_content = pt_file.read_bytes()
+            finally:
+                stop_event.set()
+
+            m.refresh_from_db()
+            m.weights_file.save(field_name, DjContentFile(file_content), save=False)
+            m.download_status = SpeechModel.DownloadStatus.DONE
+            m.download_progress = 100
+            m.download_error = ""
+            m.save(update_fields=["weights_file", "download_status", "download_progress", "download_error", "updated_at"])
+
     except Exception as exc:
-        stop_event.set()
-        WhisperModelConfig.objects.filter(pk=config_pk).update(
-            status=WhisperModelConfig.Status.FAILED,
-            error_message=str(exc)[:1000],
+        SpeechModel.objects.filter(pk=model_pk).update(
+            download_status=SpeechModel.DownloadStatus.FAILED,
+            download_error=str(exc)[:1000],
         )
         raise
-
-
-def _download_faster_whisper_weights(model_name: str, local_dir: str) -> None:
-    try:
-        from huggingface_hub import snapshot_download
-    except ImportError as exc:
-        raise RuntimeError("Install huggingface_hub: pip install huggingface-hub") from exc
-    snapshot_download(
-        repo_id=f"Systran/faster-whisper-{model_name}",
-        local_dir=local_dir,
-        ignore_patterns=["*.msgpack", "*.h5", "flax_model*", "tf_model*", "rust_model*"],
-    )
-
-
-def _download_openai_whisper_weights(model_name: str, local_dir: str) -> None:
-    try:
-        import whisper
-    except ImportError as exc:
-        raise RuntimeError("Install openai-whisper: pip install -U openai-whisper") from exc
-    whisper.load_model(model_name, download_root=local_dir)
 
 
 def ms_to_srt_time(ms: int) -> str:

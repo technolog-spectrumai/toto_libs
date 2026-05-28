@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import uuid
 
 from django.conf import settings
@@ -318,82 +319,113 @@ class TranscriptEvent(TimestampedModel):
 
 
 # ---------------------------------------------------------------------------
-# Whisper model weight registry
+# Speech model registry
 # ---------------------------------------------------------------------------
 
-class WhisperModelConfig(TimestampedModel):
-    """Tracks a locally cached Whisper model variant.
+class SpeechModel(TimestampedModel):
+    """A configured audio interpreter model used for transcription.
 
-    Admin must create at least one record and set ``download_path`` before
-    any download can be triggered through the UI.  The ``bucket`` FK is an
-    optional organisational reference — it does **not** store files via Vault;
-    the actual weights live at ``download_path`` on the server filesystem.
+    Weights can arrive two ways:
+    - Upload via admin FileField (weights_file).
+    - Download via the UI: fill download_source, hit "Download" — a Celery
+      task fetches the weights and saves them into weights_file automatically.
+
+    The ``inference_path`` property resolves what to pass to the library:
+    - faster-whisper zip → extracted directory path
+    - openai-whisper .pt → file path directly
+    - no file → model_size fallback (may trigger HuggingFace download)
     """
 
     class Backend(models.TextChoices):
         FASTER_WHISPER = "faster_whisper", _("Audio Interpreter Fast")
         OPENAI_WHISPER = "openai_whisper", _("Audio Interpreter AI")
 
-    class Status(models.TextChoices):
-        NOT_DOWNLOADED = "not_downloaded", _("Not downloaded")
-        DOWNLOADING    = "downloading",    _("Downloading…")
-        READY          = "ready",          _("Ready")
-        FAILED         = "failed",         _("Failed")
+    class Device(models.TextChoices):
+        CPU  = "cpu",  _("CPU")
+        CUDA = "cuda", _("GPU (CUDA)")
 
-    # Catalogue of available model sizes with approximate sizes in MB.
-    CATALOGUE: list[tuple[str, str, int]] = [
-        ("tiny",     "faster_whisper", 75),
-        ("base",     "faster_whisper", 145),
-        ("small",    "faster_whisper", 480),
-        ("medium",   "faster_whisper", 1_500),
-        ("large-v3", "faster_whisper", 3_100),
-        ("tiny",     "openai_whisper", 75),
-        ("base",     "openai_whisper", 145),
-        ("small",    "openai_whisper", 480),
-        ("medium",   "openai_whisper", 1_500),
-        ("large",    "openai_whisper", 3_100),
-    ]
+    class DownloadStatus(models.TextChoices):
+        IDLE        = "idle",        _("Idle")
+        DOWNLOADING = "downloading", _("Downloading…")
+        DONE        = "done",        _("Done")
+        FAILED      = "failed",      _("Failed")
 
-    name         = models.CharField(max_length=80, help_text=_("Model size: tiny / base / small / medium / large-v3"))
-    backend      = models.CharField(max_length=32, choices=Backend.choices, default=Backend.FASTER_WHISPER)
-    download_path = models.CharField(
+    # Identity
+    name        = models.CharField(max_length=120)
+    slug        = models.SlugField(unique=True)
+    backend     = models.CharField(max_length=32, choices=Backend.choices, default=Backend.FASTER_WHISPER)
+    description = models.TextField(blank=True)
+    is_active   = models.BooleanField(default=False, help_text=_("Use this model for jobs targeting its backend."))
+
+    # Weights — set by upload or populated automatically after a successful download
+    weights_file = models.FileField(
+        upload_to="speech_models/",
+        null=True, blank=True,
+        help_text=_(
+            "Model weights file. "
+            "faster-whisper: .zip of the CTranslate2 model directory. "
+            "openai-whisper: .pt weights file. "
+            "Can be populated via the Download action instead of a manual upload."
+        ),
+    )
+    model_size = models.CharField(
+        max_length=32, blank=True,
+        help_text=_("Fallback identifier when no weights_file is available: tiny / base / small / medium / large-v3"),
+    )
+
+    # Inference parameters — all in DB, not in settings
+    device       = models.CharField(max_length=16, choices=Device.choices, default=Device.CPU)
+    compute_type = models.CharField(
+        max_length=16, default="int8", blank=True,
+        help_text=_("faster-whisper only: int8, float16, float32, auto"),
+    )
+    beam_size = models.PositiveSmallIntegerField(default=5)
+    language  = models.CharField(
+        max_length=8, blank=True,
+        help_text=_("Default language code (e.g. en, pl). Blank = auto-detect per job."),
+    )
+
+    # Download tracking
+    download_source = models.CharField(
         max_length=512, blank=True,
-        help_text=_("Absolute directory path on the server where this model will be stored. "
-                    "Set this before triggering a download."),
+        help_text=_(
+            "HuggingFace repo ID (e.g. Systran/faster-whisper-small) "
+            "or direct HTTPS URL to a .pt file. "
+            "Simple size names (small, base, tiny…) are also accepted and resolved automatically."
+        ),
     )
-    bucket = models.ForeignKey(
-        "vault.Bucket",
-        on_delete=models.SET_NULL, null=True, blank=True,
-        related_name="whisper_model_configs",
-        help_text=_("Optional vault bucket for organisational reference."),
-    )
-    status       = models.CharField(max_length=24, choices=Status.choices, default=Status.NOT_DOWNLOADED)
-    is_active    = models.BooleanField(default=False, help_text=_("Use this model for default transcription jobs."))
-    celery_task_id = models.CharField(max_length=255, blank=True)
-    progress_pct = models.PositiveSmallIntegerField(default=0)
-    error_message = models.TextField(blank=True)
-    size_mb      = models.PositiveIntegerField(default=0, help_text=_("Approximate size in MB (populated automatically)."))
+    download_status   = models.CharField(max_length=16, choices=DownloadStatus.choices, default=DownloadStatus.IDLE)
+    download_progress = models.PositiveSmallIntegerField(default=0)
+    download_error    = models.TextField(blank=True)
+    celery_task_id    = models.CharField(max_length=255, blank=True)
 
     class Meta:
         ordering = ["backend", "name"]
-        constraints = [
-            models.UniqueConstraint(fields=["name", "backend"], name="uniq_whisper_model_name_backend"),
-        ]
 
-    def __str__(self):
-        return f"{self.get_backend_display()} / {self.name}"
+    def __str__(self) -> str:
+        active = " [active]" if self.is_active else ""
+        return f"{self.get_backend_display()} / {self.name}{active}"
 
     @property
-    def display_name(self) -> str:
-        return f"{self.get_backend_display()} / {self.name.capitalize()}"
-
-    @property
-    def is_ready(self) -> bool:
-        return self.status == self.Status.READY
+    def inference_path(self) -> str | None:
+        if not self.weights_file:
+            return self.model_size or None
+        try:
+            path = self.weights_file.path
+        except Exception:
+            return self.model_size or None
+        if path.endswith(".zip") and self.backend == self.Backend.FASTER_WHISPER:
+            extracted = path[:-4]
+            if not os.path.isdir(extracted):
+                import zipfile
+                with zipfile.ZipFile(path, "r") as zf:
+                    zf.extractall(extracted)
+            return extracted
+        return path
 
     @property
     def is_downloading(self) -> bool:
-        return self.status == self.Status.DOWNLOADING
+        return self.download_status == self.DownloadStatus.DOWNLOADING
 
     def get_absolute_url(self):
         return reverse("transcription:model_setup")

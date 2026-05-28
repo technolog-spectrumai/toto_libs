@@ -1,0 +1,80 @@
+{% extends "transcription/base.html" %}
+{% load i18n %}
+{% block transcription_title %}{% trans "Download Weights" %}{% endblock %}
+
+{% block transcription_content %}
+<div class="mb-6">
+  <a href="{% url 'transcription:model_setup' %}"
+     class="inline-flex items-center gap-2 text-sm opacity-60 hover:opacity-100 transition mb-4">
+    <i class="fa-solid fa-arrow-left"></i>{% trans "Back to Model Setup" %}
+  </a>
+  <h1 class="text-2xl font-bold">{% trans "Download Weights" %}</h1>
+  <p class="mt-1 opacity-60 text-sm">{{ speech_model.name }} &mdash; {{ speech_model.get_backend_display }}</p>
+</div>
+
+<div class="max-w-xl space-y-5">
+
+  <!-- Current state -->
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm">
+    <h2 class="mb-3 font-semibold text-sm">{% trans "Current state" %}</h2>
+    <dl class="space-y-2 text-sm">
+      <div class="flex items-center justify-between gap-4">
+        <dt class="opacity-60">{% trans "Status" %}</dt>
+        <dd class="font-semibold
+          {% if speech_model.download_status == 'done' %}text-emerald-500
+          {% elif speech_model.download_status == 'downloading' %}text-amber-500
+          {% elif speech_model.download_status == 'failed' %}text-red-500
+          {% endif %}">
+          {{ speech_model.get_download_status_display }}
+        </dd>
+      </div>
+      {% if speech_model.weights_file %}
+        <div class="flex items-start justify-between gap-4">
+          <dt class="opacity-60">{% trans "Weights file" %}</dt>
+          <dd class="font-mono text-xs opacity-60 text-right break-all">{{ speech_model.weights_file.name }}</dd>
+        </div>
+      {% endif %}
+      {% if speech_model.download_error %}
+        <div>
+          <dt class="opacity-60 mb-1">{% trans "Last error" %}</dt>
+          <dd class="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-500 font-mono">{{ speech_model.download_error }}</dd>
+        </div>
+      {% endif %}
+    </dl>
+  </div>
+
+  <!-- Download form -->
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm">
+    <h2 class="mb-1 font-semibold">{% trans "Start download" %}</h2>
+    <p class="mb-4 text-sm opacity-60">
+      {% trans "Provide a HuggingFace repo ID (e.g." %} <code class="font-mono">Systran/faster-whisper-small</code>{% trans "), a size shorthand (" %}<code class="font-mono">small</code>{% trans "), or a direct HTTPS URL to a .pt file." %}
+    </p>
+    <form method="post">
+      {% csrf_token %}
+      <div class="space-y-4">
+        {% for field in form %}
+          <div>
+            <label class="mb-1 block text-xs font-semibold opacity-70">{{ field.label }}</label>
+            {{ field }}
+            {% if field.help_text %}<p class="mt-1 text-xs opacity-50">{{ field.help_text }}</p>{% endif %}
+            {% if field.errors %}<p class="mt-1 text-xs text-red-500">{{ field.errors.as_text }}</p>{% endif %}
+          </div>
+        {% endfor %}
+      </div>
+      <div class="mt-5 flex gap-3">
+        <button type="submit"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="inline-flex items-center gap-2 rounded-xl px-5 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-download"></i>{% trans "Start Download" %}
+        </button>
+        <a href="{% url 'transcription:model_setup' %}"
+           :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+           class="inline-flex items-center gap-2 rounded-xl border px-5 py-2 text-sm font-semibold transition hover:opacity-80">
+          {% trans "Cancel" %}
+        </a>
+      </div>
+    </form>
+  </div>
+
+</div>
+{% endblock %}

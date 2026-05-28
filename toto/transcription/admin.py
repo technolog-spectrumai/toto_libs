@@ -1,6 +1,7 @@
 from django.contrib import admin
 
 from .models import (
+    SpeechModel,
     TranscriptArtifact,
     TranscriptCollection,
     TranscriptEvent,
@@ -8,7 +9,6 @@ from .models import (
     TranscriptSegment,
     TranscriptSource,
     TranscriptSpeaker,
-    WhisperModelConfig,
 )
 
 
@@ -64,17 +64,18 @@ class TranscriptArtifactAdmin(admin.ModelAdmin):
     raw_id_fields = ("source", "job", "vault_file", "created_by")
 
 
-@admin.register(WhisperModelConfig)
-class WhisperModelConfigAdmin(admin.ModelAdmin):
-    list_display = ("__str__", "backend", "status", "is_active", "progress_pct", "download_path", "bucket")
-    list_filter = ("backend", "status", "is_active")
-    search_fields = ("name", "download_path")
-    readonly_fields = ("status", "progress_pct", "celery_task_id", "error_message", "created_at", "updated_at")
-    raw_id_fields = ("bucket",)
+@admin.register(SpeechModel)
+class SpeechModelAdmin(admin.ModelAdmin):
+    list_display = ("name", "backend", "is_active", "download_status", "download_progress", "device", "model_size")
+    list_filter = ("backend", "is_active", "download_status", "device")
+    search_fields = ("name", "slug", "description", "download_source")
+    prepopulated_fields = {"slug": ("name",)}
+    readonly_fields = ("download_status", "download_progress", "download_error", "celery_task_id", "created_at", "updated_at")
     fieldsets = (
-        (None, {"fields": ("name", "backend", "bucket")}),
-        ("Storage", {"fields": ("download_path", "size_mb"), "description": "Set download_path to an absolute server directory before triggering a download from the UI."}),
-        ("Status (read-only)", {"fields": ("status", "progress_pct", "is_active", "celery_task_id", "error_message")}),
+        (None, {"fields": ("name", "slug", "backend", "description", "is_active")}),
+        ("Inference", {"fields": ("model_size", "device", "compute_type", "beam_size", "language")}),
+        ("Weights", {"fields": ("weights_file",)}),
+        ("Download", {"fields": ("download_source", "download_status", "download_progress", "download_error", "celery_task_id")}),
         ("Timestamps", {"fields": ("created_at", "updated_at"), "classes": ("collapse",)}),
     )
 

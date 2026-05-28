@@ -348,6 +348,18 @@ Nearly every other app links to `Person` rather than `User` directly. The FK fro
 - `VideoReference` — adds `duration_seconds`, `platform` (`youtube / vimeo / internal / other`), `url`, `embed_code`.
 - `LibraryCollection` — a named grouping. M2M to each item type. FK to `curator` (`Person`), `is_public`.
 
+**`toto.transcription`** — Audio and video transcription pipeline backed by configurable AI speech models.
+- `TranscriptCollection` — a named, slug-keyed group of transcript sources. `access_mode` (`public / private`) gates public visibility; `readers` / `writers` M2M control per-user access. Optional `vault.Bucket` FK for media and transcript file storage.
+- `TranscriptSource` — a single audio or video recording. FK to `vault.VaultFile` for the raw media. Tracks `status` (`draft / queued / processing / transcribed / failed / archived`), optional `language` and `duration_seconds`, and aggregated `segments_count`.
+- `TranscriptionJob` — one transcription run for a source. Engine choices: `default`, `openai_whisper` (Audio Interpreter AI), `faster_whisper` (Audio Interpreter Fast), `command`, `custom`. Supports speaker diarisation (`detect_speakers`), optional language override, vocabulary prompt, and Celery async execution.
+- `TranscriptSegment` — a timed text block produced by a job. Carries `start_ms`, `end_ms`, `text`, `confidence`, and an optional `speaker` FK.
+- `TranscriptSpeaker` — a speaker label produced by a diarisation run, optionally linked to a `people.Person`.
+- `TranscriptArtifact` — a generated export file (txt, json, srt, vtt, summary) stored as a `vault.VaultFile`.
+- `TranscriptEvent` — analytics: impressions, plays, transcription triggers, exports.
+- `SpeechModel` — a configurable AI speech model registry entry. Stores inference parameters (backend, device, compute_type, beam_size, language) directly in DB. Weights arrive via `FileField` upload or via the Celery download flow: fill `download_source` (HuggingFace repo ID, size shorthand, or direct URL), trigger a `download_speech_model` Celery task, and the weights zip/pt file is saved automatically. `inference_path` property resolves the live weights path at runtime.
+- Services: `create_transcription_job`, `run_transcription`, `run_transcription_with_timeout`, `export_transcript` (txt/srt/vtt/json), `start_speech_model_download`, `activate_speech_model`, `download_speech_model_weights`.
+- The management UI exposes collections, source detail/manage, upload, demo recorder (15 s MediaRecorder-based), and a staff-only model setup page for configuring and downloading speech model weights.
+
 **`toto.bento`** — Idea management and concept mapping.
 - `Category` — extends `DomainEntity`. Classification for idea boxes (`color`, `icon`, community-scoped).
 - `IdeaBox` — extends `DomainEntity`. A named idea or concept. Fields: `category`, `community`, `author`, `status` (`idea / exploring / validated / implementing / archived`), `is_public`, `tags` (M2M).
