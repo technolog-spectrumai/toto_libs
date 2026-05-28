@@ -60,6 +60,10 @@ class CommunityAssemblyConfig(models.Model):
         default="0.5100",
         help_text="Fraction of yes/(yes+no) votes required to pass a proposal (e.g. 0.51 = simple majority).",
     )
+    is_bicameral = models.BooleanField(
+        default=False,
+        help_text="When True, proposals that pass the popular vote go to senate review before enactment. Senators are the community's senior members.",
+    )
 
     class Meta:
         verbose_name = "Assembly configuration"
@@ -391,12 +395,12 @@ class PollTaxPayment(models.Model):
 
 class CommunitySenate(models.Model):
     """
-    Optional upper chamber for a community's bi-cameral assembly.
-    Senators are managed explicitly via the 'members' M2M — independent of
-    community.senior_members or community.members.
+    Senate settings for a bicameral community assembly.
+    Senators are the community's senior_members — no separate membership list.
     The senate's only power is to veto proposals that passed the popular assembly,
     within the configured veto window.
-    A person cannot vote in both chambers: senators are excluded from popular assembly voting.
+    Senators may also vote in the popular assembly.
+    Enabled only when CommunityAssemblyConfig.is_bicameral is True.
     """
     community = models.OneToOneField(
         "socialhub.Community",
@@ -412,7 +416,7 @@ class CommunitySenate(models.Model):
         "people.Person",
         blank=True,
         related_name="senate_memberships",
-        help_text="Senators. A senator is excluded from voting in the popular assembly.",
+        help_text="Legacy explicit senators. Senators are now derived from community.senior_members.",
     )
     created_at = models.DateTimeField(auto_now_add=True)
 

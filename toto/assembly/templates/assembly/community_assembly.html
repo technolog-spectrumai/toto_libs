@@ -1,5 +1,5 @@
 {% extends "oya/base.html" %}
-{% load static %}
+{% load static i18n %}
 
 {% block title %}Assembly – {{ community.name }}{% endblock %}
 
@@ -45,20 +45,21 @@
           <a href="{% url 'assembly:senate_review' community.slug %}"
              class="inline-flex items-center gap-2 rounded-lg border border-purple-400/40 bg-purple-500/10 px-4 py-2 text-sm font-semibold text-purple-600 shadow-sm hover:opacity-80">
             <i class="fa-solid fa-landmark-dome"></i>
-            {% trans "You sit in the Senate — go to your chamber" %}
+            Senate
           </a>
-        {% elif has_voting_rights %}
+        {% endif %}
+        {% if has_voting_rights %}
           <span
             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
             class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm">
             <i class="fa-solid fa-check-circle text-green-500"></i>
-            {% trans "Voting rights active" %}
+            Voting rights active
           </span>
         {% else %}
           <span
             class="inline-flex items-center gap-2 rounded-lg border border-yellow-400/40 bg-yellow-500/10 px-4 py-2 text-sm font-semibold text-yellow-600 shadow-sm">
             <i class="fa-solid fa-triangle-exclamation"></i>
-            {% trans "Poll tax due" %}
+            Poll tax due
           </span>
         {% endif %}
       </div>

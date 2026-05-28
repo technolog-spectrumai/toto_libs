@@ -70,17 +70,16 @@ def _is_poll_tax_exempt(person) -> bool:
 
 
 def _is_senator(person, community) -> bool:
-    """Senators sit in the upper chamber only — not the popular assembly."""
+    """Senators are the community's senior members when the assembly is bicameral."""
     try:
-        senate = community.senate
-        return senate.is_active and senate.members.filter(pk=person.pk).exists()
-    except CommunitySenate.DoesNotExist:
+        if not community.assembly_config.is_bicameral:
+            return False
+    except CommunityAssemblyConfig.DoesNotExist:
         return False
+    return community.senior_members.filter(pk=person.pk).exists()
 
 
 def _has_voting_rights(person, community) -> bool:
-    if _is_senator(person, community):
-        return False  # senators deliberate in the senate, not the popular assembly
     if _is_poll_tax_exempt(person):
         return True
     active_taxes = PollTax.objects.filter(community=community, active=True)
@@ -103,17 +102,21 @@ def _get_quorum_fraction(community) -> float:
 def _route_passed_proposal(proposal: AssemblyProposal) -> str:
     """
     After a proposal clears the popular vote quorum, check whether the community
-    has an active senate. If yes, park the proposal for senate review; otherwise
-    enact immediately.  Returns 'enacted' or 'pending_senate'.
+    is bicameral. If yes, park the proposal for senate review; otherwise enact
+    immediately.  Returns 'enacted' or 'pending_senate'.
     """
     try:
-        senate = proposal.community.senate
-        if senate.is_active:
+        if proposal.community.assembly_config.is_bicameral:
+            veto_window = 7
+            try:
+                veto_window = proposal.community.senate.veto_window_days
+            except CommunitySenate.DoesNotExist:
+                pass
             proposal.status = AssemblyStatus.PENDING_SENATE
-            proposal.senate_deadline = timezone.now() + timedelta(days=senate.veto_window_days)
+            proposal.senate_deadline = timezone.now() + timedelta(days=veto_window)
             proposal.save(update_fields=["status", "senate_deadline"])
             return "pending_senate"
-    except CommunitySenate.DoesNotExist:
+    except CommunityAssemblyConfig.DoesNotExist:
         pass
     _enact_proposal(proposal)
     return "enacted"
@@ -194,8 +197,7 @@ def _enact_proposal(proposal: AssemblyProposal) -> AssemblyDecision:
             try:
                 from toto.people.models import Person as _Person
                 nominee = _Person.objects.get(pk=nominee_id)
-                senate = proposal.community.senate
-                senate.members.add(nominee)
+                proposal.community.senior_members.add(nominee)
             except Exception:
                 pass
 
@@ -478,12 +480,11 @@ def senate_nominate(request, slug):
     person = _require_member(request, community)
 
     try:
-        senate = community.senate
-        if not senate.is_active:
+        if not community.assembly_config.is_bicameral:
             messages.error(request, "This community does not have an active senate.")
             return redirect("assembly:community_assembly", slug=slug)
-    except CommunitySenate.DoesNotExist:
-        messages.error(request, "This community does not have a senate.")
+    except CommunityAssemblyConfig.DoesNotExist:
+        messages.error(request, "This community does not have an active senate.")
         return redirect("assembly:community_assembly", slug=slug)
 
     nominee_id = request.POST.get("nominee_id", "").strip()
@@ -492,7 +493,7 @@ def senate_nominate(request, slug):
     from toto.people.models import Person as PersonModel
     nominee = get_object_or_404(PersonModel, pk=nominee_id)
 
-    if senate.members.filter(pk=nominee.pk).exists():
+    if community.senior_members.filter(pk=nominee.pk).exists():
         messages.info(request, f"{nominee} is already a senator.")
         return redirect("assembly:community_assembly", slug=slug)
 
@@ -519,39 +520,34 @@ def senate_nominate(request, slug):
 @require_POST
 @login_required
 def senate_appoint_federal(request, slug):
-    """A federal agent directly seats a senator, bypassing the assembly vote."""
+    """A federal agent directly seats a senator by adding them to the community's senior members."""
     community = get_object_or_404(Community, slug=slug)
     person = getattr(request.user, "community_profile", None)
     if not person or not getattr(person, "is_federal_agent", False):
         raise PermissionDenied
 
     try:
-        senate = community.senate
-    except CommunitySenate.DoesNotExist:
-        messages.error(request, "This community does not have a senate. Create one in admin first.")
+        if not community.assembly_config.is_bicameral:
+            messages.error(request, "This community does not have an active senate.")
+            return redirect("assembly:community_assembly", slug=slug)
+    except CommunityAssemblyConfig.DoesNotExist:
+        messages.error(request, "This community does not have an active senate.")
         return redirect("assembly:community_assembly", slug=slug)
 
     nominee_id = request.POST.get("nominee_id", "").strip()
-    reason = request.POST.get("reason", "").strip()
 
     from toto.people.models import Person as PersonModel
     nominee = get_object_or_404(PersonModel, pk=nominee_id)
 
-    senate.members.add(nominee)
+    community.senior_members.add(nominee)
     messages.success(request, f"{nominee} seated in the senate by federal authority.")
     return redirect("assembly:senate_review", slug=slug)
 
 
 def _require_senator(request, community):
-    """Person must be an explicit senate member for this community."""
+    """Person must be a senior member of the community (senator) in a bicameral assembly."""
     person = getattr(request.user, "community_profile", None)
-    if not person:
-        raise PermissionDenied
-    try:
-        senate = community.senate
-        if not senate.is_active or not senate.members.filter(pk=person.pk).exists():
-            raise PermissionDenied
-    except CommunitySenate.DoesNotExist:
+    if not person or not _is_senator(person, community):
         raise PermissionDenied
     return person
 
@@ -596,13 +592,6 @@ def senate_veto(request, slug, proposal_id):
     """A senator blocks a proposal that passed the popular assembly."""
     community = get_object_or_404(Community, slug=slug)
     person = _require_senator(request, community)
-
-    try:
-        senate = community.senate
-        if not senate.is_active:
-            raise PermissionDenied
-    except CommunitySenate.DoesNotExist:
-        raise PermissionDenied
 
     proposal = get_object_or_404(
         AssemblyProposal,
