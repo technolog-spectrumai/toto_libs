@@ -32,7 +32,7 @@
     </div>
     <p class="text-sm opacity-50">
       {{ community.name }} · {% trans "Adopted" %} {{ constitution.created_at|date:"Y-m-d" }}
-      · {{ constitution.signature_count }} {% trans "signature"|pluralize:constitution.signature_count %}
+      · {{ constitution.signature_count }} signature{{ constitution.signature_count|pluralize }}
     </p>
   </header>
 

@@ -78,6 +78,7 @@ class ProfileDetailView(LoginRequiredMixin, DetailView):
                 if cid not in already_signed
             }
         context["unsigned_constitutions"] = unsigned_constitutions
+        context["is_own_profile"] = is_own_profile
 
         context = PageProcessor().decorate(context, self.request)
 
