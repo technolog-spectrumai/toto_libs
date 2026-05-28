@@ -208,6 +208,18 @@ def _enact_proposal(proposal: AssemblyProposal) -> AssemblyDecision:
             except Exception:
                 pass
 
+    elif proposal.proposal_type == AssemblyProposalType.MOBILIZATION:
+        try:
+            from toto.mobilization.models import MobilizationEvent
+            MobilizationEvent.objects.create(
+                community=proposal.community,
+                title=proposal.title,
+                description=proposal.body,
+                status="active",
+            )
+        except Exception:
+            pass
+
     return decision
 
 

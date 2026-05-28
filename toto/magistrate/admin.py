@@ -10,7 +10,7 @@ from .models import (
 class MagistrateRoleAdmin(admin.ModelAdmin):
     list_display = (
         "name", "slug",
-        "overseeing_mobilization", "overseeing_tribunal", "overseeing_trade",
+        "overseeing_tribunal", "overseeing_trade",
         "overseeing_merchandise", "overseeing_finance", "overseeing_public_order",
         "overseeing_legislation", "overseeing_education", "overseeing_relations",
         "overseeing_logistics", "overseeing_interior", "overseeing_productivity",

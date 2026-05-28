@@ -19,6 +19,7 @@ class AssemblyProposalType(models.TextChoices):
     MAGISTRATE_ELECTION = "mag_elect", "Magistrate Election"
     IMPEACHMENT = "impeach", "Impeachment"
     SENATE_APPOINTMENT = "senate_appoint", "Senate Appointment"
+    MOBILIZATION = "mobilization", "Mobilization Call"
 
 
 class AssemblyStatus(models.TextChoices):

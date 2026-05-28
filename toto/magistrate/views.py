@@ -105,13 +105,6 @@ def _collect_role_stats(mag):
     role = mag.role
     community = mag.community
 
-    if role.overseeing_mobilization:
-        try:
-            from toto.response.models import Deployment
-            stats["active_deployments"] = Deployment.objects.filter(status="active").count()
-        except Exception:
-            pass
-
     if role.overseeing_tribunal:
         try:
             from toto.tribunal.models import TribunalCase
@@ -153,11 +146,6 @@ def _collect_role_stats(mag):
 
 def _domain_actions(role):
     actions = []
-    if role.overseeing_mobilization:
-        actions += [
-            ("mobilization_call",  "Mobilization Call",       "fa-solid fa-shield-halved",       "warn"),
-            ("emergency_declare",  "Emergency Declaration",   "fa-solid fa-triangle-exclamation", "warn"),
-        ]
     if role.overseeing_tribunal:
         actions.append(("tribunal_order", "Tribunal Order", "fa-solid fa-gavel", "accent"))
     if role.overseeing_trade:

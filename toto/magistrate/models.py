@@ -31,10 +31,6 @@ class MagistrateRole(models.Model):
     icon = models.CharField(max_length=100, default="fa-solid fa-scroll")
 
     # Oversight domains
-    overseeing_mobilization = models.BooleanField(
-        default=False,
-        help_text="Holder may act on emergency declarations without full assembly vote.",
-    )
     overseeing_tribunal = models.BooleanField(
         default=False,
         help_text="Holder oversees tribunal proceedings.",
@@ -103,7 +99,6 @@ class MagistrateRole(models.Model):
     @property
     def oversight_domains(self) -> list[str]:
         mapping = [
-            ("overseeing_mobilization", "Mobilization"),
             ("overseeing_tribunal", "Tribunal"),
             ("overseeing_trade", "Trade"),
             ("overseeing_finance", "Finance"),
@@ -195,7 +190,6 @@ class MagistrateDecision(models.Model):
     Enters the community decision ledger immediately and is subject to assembly review.
     """
     DECISION_TYPES = [
-        ("mobilization_call",      "Mobilization Call"),
         ("emergency_declare",      "Emergency Declaration"),
         ("tribunal_order",         "Tribunal Order"),
         ("trade_order",            "Trade Order"),
