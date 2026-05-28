@@ -5,6 +5,31 @@ from .models import Cart, CartItem, Order, OrderItem, InventoryMovement, Payment
 from .selectors import active_shop
 
 
+def _accepted_asset_ids_for_order(order):
+    """
+    Return the set of Asset PKs accepted by all restricting vendors on this order.
+    Returns None when no vendor has configured accepted currencies (no restriction).
+    Intersects across vendors so the asset must be accepted by every vendor that
+    has at least one accepted currency set.
+    """
+    vendors = {
+        item.vendor
+        for item in order.items.select_related('vendor').all()
+        if item.vendor
+    }
+    restricted = []
+    for vendor in vendors:
+        ids = set(vendor.accepted_currencies.values_list('id', flat=True))
+        if ids:
+            restricted.append(ids)
+    if not restricted:
+        return None
+    result = restricted[0]
+    for s in restricted[1:]:
+        result &= s
+    return result
+
+
 def get_user_ledger_sources(user):
     """Return holdings the user can pay with — is_currency assets only."""
     from toto.assets.models import AssetHolding, LedgerAccount
@@ -26,8 +51,11 @@ def get_stablecoin_for_order_currency(order):
 def get_wallet_payment_sources(user, order):
     """Return wallet assets that can pay this order directly or through an available quote."""
     preferred = get_stablecoin_for_order_currency(order)
+    accepted_ids = _accepted_asset_ids_for_order(order)
     result = []
     for holding in get_user_ledger_sources(user):
+        if accepted_ids is not None and holding.asset_id not in accepted_ids:
+            continue
         quote = None
         error = ""
         try:
@@ -69,6 +97,10 @@ def pay_order_with_ledger(order, buyer_account, asset):
         raise ValueError('Order is already paid.')
     if not order.shop.ledger_account:
         raise ValueError('This shop has no ledger account configured for asset payments.')
+
+    accepted_ids = _accepted_asset_ids_for_order(order)
+    if accepted_ids is not None and asset.pk not in accepted_ids:
+        raise ValueError(f'{asset.unit_name} is not accepted as payment by the vendor(s) on this order.')
 
     quote = quote_currency_payment(
         currency_code=order.currency,
@@ -178,6 +210,10 @@ def create_obligation_for_order(order, debtor_account, asset, due_at,
         raise ValueError('Order is already paid.')
     if not order.shop.ledger_account:
         raise ValueError('This shop has no ledger account configured.')
+
+    accepted_ids = _accepted_asset_ids_for_order(order)
+    if accepted_ids is not None and asset.pk not in accepted_ids:
+        raise ValueError(f'{asset.unit_name} is not accepted as payment by the vendor(s) on this order.')
 
     quote = quote_currency_payment(
         currency_code=order.currency,
