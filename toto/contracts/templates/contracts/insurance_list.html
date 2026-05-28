@@ -1,0 +1,110 @@
+{% extends "contracts/base.html" %}
+{% load i18n %}
+
+{% block contracts_title %}{% trans "Insurance" %}{% endblock %}
+
+{% block contracts_content %}
+<div class="space-y-6">
+
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <form method="get" class="flex flex-wrap gap-2">
+      <input type="text" name="q" value="{{ q }}"
+        :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+        class="rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-1"
+        placeholder="{% trans 'Search insurance policies…' %}">
+      <button type="submit"
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+        {% trans "Search" %}
+      </button>
+      {% if q %}
+      <a href="?"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+        {% trans "Clear" %}
+      </a>
+      {% endif %}
+    </form>
+    <a href="{% url 'contracts:insurance_create' %}"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+       class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+      <i class="fa-solid fa-plus"></i>
+      {% trans "New Insurance Policy" %}
+    </a>
+  </div>
+
+  {% if rows %}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border shadow-sm overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+            class="border-b text-xs uppercase tracking-wide opacity-60">
+          <th class="px-4 py-3 text-left">{% trans "Name" %}</th>
+          <th class="px-4 py-3 text-left">{% trans "Insured" %}</th>
+          <th class="px-4 py-3 text-right">{% trans "Premium" %}</th>
+          <th class="px-4 py-3 text-left">{% trans "Frequency" %}</th>
+          <th class="px-4 py-3 text-right">{% trans "Assets" %}</th>
+          <th class="px-4 py-3 text-left">{% trans "Status" %}</th>
+          <th class="px-4 py-3 text-left">{% trans "Created" %}</th>
+          <th class="px-4 py-3"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr :class="darkMode ? 'border-accent-1 hover:bg-black/10' : 'border-accent-2 hover:bg-black/5'"
+            class="border-b transition cursor-pointer"
+            onclick="window.location='{% url 'contracts:insurance_detail' row.contract.uuid %}'">
+          <td class="px-4 py-3 font-semibold">{{ row.contract.name }}</td>
+          <td class="px-4 py-3 opacity-80">{{ row.insured_person|default:"—" }}</td>
+          <td class="px-4 py-3 text-right font-mono text-xs">
+            {% if row.premium_amount_base_units %}
+              {{ row.premium_amount_base_units }}
+              {% if row.premium_asset %}<span class="opacity-50 ml-1">{{ row.premium_asset.unit_name }}</span>{% endif %}
+            {% else %}—{% endif %}
+          </td>
+          <td class="px-4 py-3 opacity-70 capitalize">{{ row.premium_frequency }}</td>
+          <td class="px-4 py-3 text-right font-mono">{{ row.item_count }}</td>
+          <td class="px-4 py-3">
+            {% if row.contract.status == 'executed' %}
+            <span class="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-800 px-2 py-0.5 text-xs font-semibold">
+              <i class="fa-solid fa-circle-check"></i> {% trans "Active" %}
+            </span>
+            {% elif row.contract.status == 'pending' %}
+            <span class="inline-flex items-center gap-1 rounded-full bg-yellow-100 text-yellow-800 px-2 py-0.5 text-xs font-semibold">
+              <i class="fa-solid fa-pen-nib"></i> {% trans "Signing" %}
+            </span>
+            {% else %}
+            <span class="inline-flex items-center gap-1 rounded-full bg-gray-100 text-gray-500 px-2 py-0.5 text-xs font-semibold">
+              {{ row.contract.get_status_display }}
+            </span>
+            {% endif %}
+          </td>
+          <td class="px-4 py-3 opacity-60 text-xs">{{ row.contract.created_at|date:"Y-m-d" }}</td>
+          <td class="px-4 py-3 text-right" onclick="event.stopPropagation()">
+            <a href="{% url 'contracts:insurance_detail' row.contract.uuid %}"
+               class="text-xs underline hover:opacity-70">{% trans "Open" %}</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border border-dashed p-10 text-center shadow-sm">
+    <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+       class="fa-solid fa-shield-halved text-4xl"></i>
+    <h2 class="mt-4 text-xl font-bold">{% trans "No insurance policies" %}</h2>
+    <p class="mt-1 text-sm opacity-70">{% trans "Create the first policy to get started." %}</p>
+    <a href="{% url 'contracts:insurance_create' %}"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+       class="mt-4 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+      <i class="fa-solid fa-plus"></i>
+      {% trans "New Insurance Policy" %}
+    </a>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

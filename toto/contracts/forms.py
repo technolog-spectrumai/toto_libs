@@ -153,3 +153,42 @@ class PayrollDutyForm(forms.Form):
         for fname in ("amount_base_units", "source_app", "source_id"):
             self.fields[fname].widget.attrs.update({"class": _CLS, ":class": _DARK})
         self.fields["due_at"].widget.attrs.update({"class": _CLS, ":class": _DARK})
+
+
+INSURANCE_FREQUENCIES = [
+    ("monthly", "Monthly"),
+    ("quarterly", "Quarterly"),
+    ("yearly", "Yearly"),
+    ("biannual", "Bi-annual"),
+    ("weekly", "Weekly"),
+]
+
+
+class InsuranceCreateForm(forms.Form):
+    name = forms.CharField(max_length=255)
+    insured_person = forms.ModelChoiceField(queryset=None, label="Insured person")
+    payer_account = forms.ModelChoiceField(queryset=None, label="Payer account (pays premiums)")
+    insurer_account = forms.ModelChoiceField(queryset=None, label="Insurer account (receives premiums)")
+    premium_asset = forms.ModelChoiceField(queryset=None, label="Premium currency")
+    premium_amount_base_units = forms.IntegerField(min_value=1, label="Premium amount (base units)")
+    premium_frequency = forms.ChoiceField(choices=INSURANCE_FREQUENCIES)
+    insured_items = forms.ModelMultipleChoiceField(
+        queryset=None,
+        label="Insured assets",
+        widget=forms.CheckboxSelectMultiple,
+        help_text="Select the inventory items to cover under this policy.",
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from toto.assets.models import Asset, LedgerAccount
+        from toto.inventory.models import RealWorldObject
+        self.fields["insured_person"].queryset = Person.objects.order_by("display_name")
+        self.fields["payer_account"].queryset = LedgerAccount.objects.filter(active=True).order_by("code")
+        self.fields["insurer_account"].queryset = LedgerAccount.objects.filter(active=True).order_by("code")
+        self.fields["premium_asset"].queryset = Asset.objects.filter(active=True).order_by("unit_name")
+        self.fields["insured_items"].queryset = RealWorldObject.objects.select_related("object_type").order_by("name")
+        for fname in ("name", "premium_amount_base_units"):
+            self.fields[fname].widget.attrs.update({"class": _CLS, ":class": _DARK})
+        for fname in ("insured_person", "payer_account", "insurer_account", "premium_asset", "premium_frequency"):
+            self.fields[fname].widget.attrs.update({"class": _CLS, ":class": _DARK})

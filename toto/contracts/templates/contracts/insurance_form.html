@@ -1,0 +1,132 @@
+{% extends "contracts/base.html" %}
+{% load i18n %}
+
+{% block contracts_title %}{% trans "New Insurance Policy" %}{% endblock %}
+
+{% block contracts_content %}
+<div class="space-y-6 max-w-2xl">
+
+  <a href="{% url 'contracts:insurance_list' %}"
+     class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+    <i class="fa-solid fa-arrow-left"></i>
+    {% trans "Back to insurance" %}
+  </a>
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-6 shadow-sm">
+    <h2 class="flex items-center gap-2 text-lg font-bold mb-6">
+      <i class="fa-solid fa-shield-halved" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+      {% trans "New Insurance Policy" %}
+    </h2>
+
+    <form method="post" class="space-y-5">
+      {% csrf_token %}
+
+      <!-- Name -->
+      <div class="space-y-1">
+        <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+          {{ form.name.label }}
+        </label>
+        {{ form.name }}
+        {% if form.name.errors %}
+        <p class="text-xs text-red-500">{{ form.name.errors.0 }}</p>
+        {% endif %}
+      </div>
+
+      <!-- Insured person -->
+      <div class="space-y-1">
+        <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+          {{ form.insured_person.label }}
+        </label>
+        {{ form.insured_person }}
+        {% if form.insured_person.errors %}
+        <p class="text-xs text-red-500">{{ form.insured_person.errors.0 }}</p>
+        {% endif %}
+      </div>
+
+      <!-- Accounts row -->
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div class="space-y-1">
+          <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {{ form.payer_account.label }}
+          </label>
+          {{ form.payer_account }}
+          {% if form.payer_account.errors %}
+          <p class="text-xs text-red-500">{{ form.payer_account.errors.0 }}</p>
+          {% endif %}
+        </div>
+        <div class="space-y-1">
+          <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {{ form.insurer_account.label }}
+          </label>
+          {{ form.insurer_account }}
+          {% if form.insurer_account.errors %}
+          <p class="text-xs text-red-500">{{ form.insurer_account.errors.0 }}</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Premium row -->
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div class="space-y-1">
+          <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {{ form.premium_asset.label }}
+          </label>
+          {{ form.premium_asset }}
+          {% if form.premium_asset.errors %}
+          <p class="text-xs text-red-500">{{ form.premium_asset.errors.0 }}</p>
+          {% endif %}
+        </div>
+        <div class="space-y-1">
+          <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {{ form.premium_amount_base_units.label }}
+          </label>
+          {{ form.premium_amount_base_units }}
+          {% if form.premium_amount_base_units.errors %}
+          <p class="text-xs text-red-500">{{ form.premium_amount_base_units.errors.0 }}</p>
+          {% endif %}
+        </div>
+        <div class="space-y-1">
+          <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {{ form.premium_frequency.label }}
+          </label>
+          {{ form.premium_frequency }}
+          {% if form.premium_frequency.errors %}
+          <p class="text-xs text-red-500">{{ form.premium_frequency.errors.0 }}</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Insured assets -->
+      <div class="space-y-2">
+        <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+          {{ form.insured_items.label }}
+        </label>
+        <p class="text-xs opacity-50">{{ form.insured_items.help_text }}</p>
+        <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border p-4 max-h-72 overflow-y-auto space-y-2">
+          {% for checkbox in form.insured_items %}
+          <label class="flex items-center gap-3 cursor-pointer group">
+            {{ checkbox.tag }}
+            <span class="text-sm group-hover:opacity-80">{{ checkbox.choice_label }}</span>
+          </label>
+          {% endfor %}
+        </div>
+        {% if form.insured_items.errors %}
+        <p class="text-xs text-red-500">{{ form.insured_items.errors.0 }}</p>
+        {% endif %}
+      </div>
+
+      <div class="pt-2">
+        <button type="submit"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-shield-halved"></i>
+          {% trans "Create Insurance Policy" %}
+        </button>
+      </div>
+
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -33,4 +33,8 @@ urlpatterns = [
     path("payroll/<uuid:uuid>/duty/<int:obligation_pk>/due/", views.payroll_duty_mark_due, name="payroll_duty_mark_due"),
     path("payroll/<uuid:uuid>/duty/<int:obligation_pk>/approve/", views.payroll_duty_approve, name="payroll_duty_approve"),
     path("payroll/<uuid:uuid>/duty/<int:obligation_pk>/settle/", views.payroll_duty_settle, name="payroll_duty_settle"),
+    # Insurance archetype
+    path("insurance/", views.insurance_list, name="insurance_list"),
+    path("insurance/new/", views.insurance_create, name="insurance_create"),
+    path("insurance/<uuid:uuid>/", views.insurance_detail, name="insurance_detail"),
 ]

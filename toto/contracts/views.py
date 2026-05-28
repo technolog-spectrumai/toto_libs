@@ -12,7 +12,7 @@ from toto.people.models import Person
 
 from .forms import (
     ContractForm, ContractNodeForm, ContractEdgeForm, ContractSignatoryForm,
-    PayrollCreateForm, PayrollDutyForm,
+    PayrollCreateForm, PayrollDutyForm, InsuranceCreateForm,
 )
 from .models import Contract, ContractNode, ContractEdge, ContractSignatory
 from .services import contract_to_cytoscape, evaluate_claims_health
@@ -701,6 +701,109 @@ def payroll_duty_settle(request, uuid, obligation_pk):
         except Exception as exc:
             messages.error(request, f"Settlement failed: {exc}")
     return redirect("contracts:payroll_detail", uuid=uuid)
+
+
+# ---------------------------------------------------------------------------
+# Insurance — helpers
+# ---------------------------------------------------------------------------
+
+def _insurance_ctx(contract):
+    def _obj(key):
+        n = contract.nodes.filter(key=key).first()
+        return n.get_object() if n else None
+
+    insured_item_nodes = contract.nodes.filter(key__startswith="insured_item_").order_by("key")
+    insured_items = [n.get_object() for n in insured_item_nodes if n.get_object()]
+
+    return {
+        "contract": contract,
+        "insured_person": _obj("insured_person"),
+        "payer_account": _obj("payer_acct"),
+        "insurer_account": _obj("insurer_acct"),
+        "premium_asset": _obj("premium_asset"),
+        "insured_items": insured_items,
+        "premium_frequency": contract.metadata.get("premium_frequency", "—"),
+        "premium_amount_base_units": contract.metadata.get("premium_amount_base_units"),
+        "total_estimated_value": contract.metadata.get("total_estimated_value"),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Insurance — list
+# ---------------------------------------------------------------------------
+
+def insurance_list(request):
+    qs = (
+        Contract.objects
+        .filter(metadata__archetype="insurance")
+        .prefetch_related("nodes")
+        .order_by("name")
+    )
+    q = request.GET.get("q", "").strip()
+    if q:
+        qs = qs.filter(name__icontains=q)
+
+    rows = []
+    for c in qs:
+        def _obj(key, _c=c):
+            n = _c.nodes.filter(key=key).first()
+            return n.get_object() if n else None
+
+        rows.append({
+            "contract": c,
+            "insured_person": _obj("insured_person"),
+            "premium_asset": _obj("premium_asset"),
+            "item_count": c.nodes.filter(key__startswith="insured_item_").count(),
+            "premium_frequency": c.metadata.get("premium_frequency", "—"),
+            "premium_amount_base_units": c.metadata.get("premium_amount_base_units"),
+        })
+
+    return _render(request, "contracts/insurance_list.html", {"rows": rows, "q": q})
+
+
+# ---------------------------------------------------------------------------
+# Insurance — create
+# ---------------------------------------------------------------------------
+
+def insurance_create(request):
+    if request.method == "POST":
+        form = InsuranceCreateForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            from .insurance import create_insurance_contract
+            contract = create_insurance_contract(
+                name=cd["name"],
+                insured_person=cd["insured_person"],
+                payer_account=cd["payer_account"],
+                insurer_account=cd["insurer_account"],
+                premium_asset=cd["premium_asset"],
+                premium_amount_base_units=cd["premium_amount_base_units"],
+                premium_frequency=cd["premium_frequency"],
+                insured_items=list(cd["insured_items"]),
+            )
+            messages.success(request, f"Insurance contract '{contract.name}' created.")
+            return redirect("contracts:insurance_detail", uuid=contract.uuid)
+    else:
+        form = InsuranceCreateForm()
+    return _render(request, "contracts/insurance_form.html", {"form": form})
+
+
+# ---------------------------------------------------------------------------
+# Insurance — detail
+# ---------------------------------------------------------------------------
+
+def insurance_detail(request, uuid):
+    contract = get_object_or_404(Contract, uuid=uuid, metadata__archetype="insurance")
+    ctx = _insurance_ctx(contract)
+
+    signatories = list(contract.signatories.select_related("person").all())
+    current_person = _get_person_for_request(request)
+    ctx["signatories"] = signatories
+    ctx["current_person_signatory"] = next(
+        (s for s in signatories if current_person and s.person_id == current_person.pk), None
+    )
+
+    return _render(request, "contracts/insurance_detail.html", ctx)
 
 
 # ---------------------------------------------------------------------------
