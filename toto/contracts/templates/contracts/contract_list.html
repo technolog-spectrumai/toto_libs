@@ -32,10 +32,10 @@
         <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
             class="border-b text-xs uppercase tracking-wide opacity-60">
           <th class="px-4 py-3 text-left">{% trans "Name" %}</th>
+          <th class="px-4 py-3 text-left">{% trans "Status" %}</th>
           <th class="px-4 py-3 text-left">{% trans "Description" %}</th>
           <th class="px-4 py-3 text-right">{% trans "Nodes" %}</th>
           <th class="px-4 py-3 text-right">{% trans "Edges" %}</th>
-          <th class="px-4 py-3 text-right">{% trans "Manual" %}</th>
           <th class="px-4 py-3 text-left">{% trans "Created" %}</th>
           <th class="px-4 py-3"></th>
         </tr>
@@ -46,12 +46,26 @@
             class="border-b transition cursor-pointer"
             onclick="window.location='{% url 'contracts:contract_detail' item.contract.uuid %}'">
           <td class="px-4 py-3 font-semibold">{{ item.contract.name }}</td>
+          <td class="px-4 py-3">
+            {% if item.contract.status == 'executed' %}
+            <span class="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-800 px-2 py-0.5 text-xs font-semibold">
+              <i class="fa-solid fa-circle-check"></i> {% trans "Executed" %}
+            </span>
+            {% elif item.contract.status == 'pending' %}
+            <span class="inline-flex items-center gap-1 rounded-full bg-yellow-100 text-yellow-800 px-2 py-0.5 text-xs font-semibold">
+              <i class="fa-solid fa-pen-nib"></i> {% trans "Pending" %}
+            </span>
+            {% else %}
+            <span class="inline-flex items-center gap-1 rounded-full bg-gray-100 text-gray-500 px-2 py-0.5 text-xs font-semibold">
+              {% trans "Draft" %}
+            </span>
+            {% endif %}
+          </td>
           <td class="px-4 py-3 opacity-70 max-w-xs truncate">
-            {{ item.contract.description|truncatechars:80 }}
+            {{ item.contract.description|truncatechars:60 }}
           </td>
           <td class="px-4 py-3 text-right font-mono">{{ item.node_count }}</td>
           <td class="px-4 py-3 text-right font-mono">{{ item.edge_count }}</td>
-          <td class="px-4 py-3 text-right font-mono opacity-60">{{ item.manual_count }}</td>
           <td class="px-4 py-3 opacity-60 text-xs">{{ item.contract.created_at|date:"Y-m-d" }}</td>
           <td class="px-4 py-3 text-right">
             <a href="{% url 'contracts:contract_update' item.contract.uuid %}"

@@ -14,4 +14,10 @@ urlpatterns = [
     path("<uuid:uuid>/nodes/<int:pk>/edit/", views.contract_node_update, name="contract_node_update"),
     path("<uuid:uuid>/edges/new/", views.contract_edge_create, name="contract_edge_create"),
     path("<uuid:uuid>/edges/<int:pk>/edit/", views.contract_edge_update, name="contract_edge_update"),
+    # Signing
+    path("<uuid:uuid>/sign/", views.contract_sign, name="contract_sign"),
+    path("<uuid:uuid>/signatories/add/", views.contract_add_signatory, name="contract_add_signatory"),
+    path("<uuid:uuid>/signatories/<int:pk>/remove/", views.contract_remove_signatory, name="contract_remove_signatory"),
+    # Person signature
+    path("person/<int:person_pk>/signature/", views.person_update_signature, name="person_update_signature"),
 ]

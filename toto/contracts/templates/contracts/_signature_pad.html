@@ -1,0 +1,85 @@
+{% load i18n %}
+{# Reusable signature pad. Requires: pad_id (unique), input_name (hidden input name), initial_data (optional base64) #}
+{% with pad_id=pad_id|default:"sigpad" %}
+<div x-data="{
+  drawing: false,
+  hasSignature: {{ initial_data|yesno:'true,false' }},
+  startDraw(e) {
+    this.drawing = true;
+    const ctx = this.getCtx();
+    const pos = this.getPos(e);
+    ctx.beginPath();
+    ctx.moveTo(pos.x, pos.y);
+  },
+  draw(e) {
+    if (!this.drawing) return;
+    const ctx = this.getCtx();
+    const pos = this.getPos(e);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.stroke();
+  },
+  stopDraw() {
+    this.drawing = false;
+    this.sync();
+    this.hasSignature = true;
+  },
+  getCtx() {
+    const c = document.getElementById('{{ pad_id }}');
+    const ctx = c.getContext('2d');
+    ctx.strokeStyle = '#1a1a1a';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    return ctx;
+  },
+  getPos(e) {
+    const c = document.getElementById('{{ pad_id }}');
+    const r = c.getBoundingClientRect();
+    const src = e.touches ? e.touches[0] : e;
+    return { x: src.clientX - r.left, y: src.clientY - r.top };
+  },
+  sync() {
+    const c = document.getElementById('{{ pad_id }}');
+    document.getElementById('{{ pad_id }}_input').value = c.toDataURL('image/png');
+  },
+  clear() {
+    const c = document.getElementById('{{ pad_id }}');
+    c.getContext('2d').clearRect(0, 0, c.width, c.height);
+    document.getElementById('{{ pad_id }}_input').value = '';
+    this.hasSignature = false;
+  },
+  loadExisting() {
+    {% if initial_data %}
+    const c = document.getElementById('{{ pad_id }}');
+    const img = new Image();
+    img.onload = () => c.getContext('2d').drawImage(img, 0, 0);
+    img.src = '{{ initial_data }}';
+    document.getElementById('{{ pad_id }}_input').value = '{{ initial_data }}';
+    {% endif %}
+  }
+}" x-init="loadExisting()">
+
+  <div class="space-y-2">
+    <div class="flex items-center justify-between">
+      <span class="text-sm font-semibold opacity-70">{% trans "Draw your signature below" %}</span>
+      <button type="button" @click="clear()"
+        class="text-xs underline opacity-60 hover:opacity-100">
+        {% trans "Clear" %}
+      </button>
+    </div>
+    <canvas id="{{ pad_id }}"
+      width="600" height="160"
+      :class="darkMode ? 'bg-white/10 border-accent-1' : 'bg-white border-accent-2'"
+      class="w-full rounded border cursor-crosshair touch-none"
+      @mousedown="startDraw($event)"
+      @mousemove="draw($event)"
+      @mouseup="stopDraw()"
+      @mouseleave="stopDraw()"
+      @touchstart.prevent="startDraw($event)"
+      @touchmove.prevent="draw($event)"
+      @touchend.prevent="stopDraw()">
+    </canvas>
+    <input type="hidden" id="{{ pad_id }}_input" name="{{ input_name|default:'signature_data' }}">
+    <p x-show="!hasSignature" class="text-xs opacity-50 italic">{% trans "Sign above to continue" %}</p>
+  </div>
+</div>
+{% endwith %}

@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import json
+
+from django.contrib import messages
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 
 from toto.ui import PageProcessor
+from toto.people.models import Person
 
-from .forms import ContractForm, ContractNodeForm, ContractEdgeForm
-from .models import Contract, ContractNode, ContractEdge
+from .forms import ContractForm, ContractNodeForm, ContractEdgeForm, ContractSignatoryForm
+from .models import Contract, ContractNode, ContractEdge, ContractSignatory
 from .services import contract_to_cytoscape
 
 
@@ -58,6 +63,10 @@ def contract_detail(request, uuid):
     for n in nodes:
         type_counts[n.node_type] = type_counts.get(n.node_type, 0) + 1
 
+    signatories = list(contract.signatories.select_related("person").all())
+    current_person = _get_person_for_request(request)
+    current_person_signatory = next((s for s in signatories if current_person and s.person_id == current_person.pk), None)
+
     return _render(request, "contracts/contract_detail.html", {
         "contract": contract,
         "nodes": nodes,
@@ -66,6 +75,8 @@ def contract_detail(request, uuid):
         "edge_count": len(edges),
         "manual_count": manual_count,
         "type_counts": type_counts,
+        "signatories": signatories,
+        "current_person_signatory": current_person_signatory,
     })
 
 
@@ -189,4 +200,112 @@ def contract_edge_update(request, uuid, pk):
         "contract": contract,
         "edge": edge,
         "is_create": False,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Signatories
+# ---------------------------------------------------------------------------
+
+def contract_add_signatory(request, uuid):
+    contract = get_object_or_404(Contract, uuid=uuid)
+    if request.method == "POST":
+        form = ContractSignatoryForm(request.POST, contract=contract)
+        if form.is_valid():
+            signatory = form.save(commit=False)
+            signatory.contract = contract
+            signatory.save()
+            if contract.status == Contract.STATUS_DRAFT:
+                contract.status = Contract.STATUS_PENDING
+                contract.save(update_fields=["status"])
+            messages.success(request, f"{signatory.person} added as signatory.")
+            return redirect("contracts:contract_detail", uuid=contract.uuid)
+    else:
+        form = ContractSignatoryForm(contract=contract)
+    return _render(request, "contracts/contract_signatory_form.html", {
+        "form": form,
+        "contract": contract,
+    })
+
+
+def contract_remove_signatory(request, uuid, pk):
+    contract = get_object_or_404(Contract, uuid=uuid)
+    signatory = get_object_or_404(ContractSignatory, pk=pk, contract=contract)
+    if request.method == "POST":
+        signatory.delete()
+        messages.success(request, "Signatory removed.")
+    return redirect("contracts:contract_detail", uuid=contract.uuid)
+
+
+# ---------------------------------------------------------------------------
+# Signing
+# ---------------------------------------------------------------------------
+
+def _get_person_for_request(request):
+    """Return the Person linked to the logged-in user, or None."""
+    if not request.user.is_authenticated:
+        return None
+    try:
+        return request.user.community_profile
+    except Exception:
+        return None
+
+
+def contract_sign(request, uuid):
+    contract = get_object_or_404(Contract, uuid=uuid)
+    person = _get_person_for_request(request)
+
+    signatory = None
+    if person:
+        signatory = ContractSignatory.objects.filter(contract=contract, person=person).first()
+
+    if request.method == "POST":
+        if not person:
+            messages.error(request, "You must have a Person profile to sign contracts.")
+            return redirect("contracts:contract_detail", uuid=contract.uuid)
+        if not signatory:
+            messages.error(request, "You are not listed as a signatory for this contract.")
+            return redirect("contracts:contract_detail", uuid=contract.uuid)
+        if signatory.has_signed:
+            messages.info(request, "You have already signed this contract.")
+            return redirect("contracts:contract_detail", uuid=contract.uuid)
+
+        signature_data = request.POST.get("signature_data", "").strip()
+
+        # Persist signature on signatory record
+        signatory.signed_at = timezone.now()
+        signatory.signature_data = signature_data
+        signatory.save(update_fields=["signed_at", "signature_data"])
+
+        # Also update person's default digital signature if they don't have one
+        if signature_data and not person.digital_signature:
+            person.digital_signature = signature_data
+            person.save(update_fields=["digital_signature"])
+
+        # Check if contract should be auto-executed
+        contract.check_and_execute()
+
+        messages.success(request, "Contract signed successfully.")
+        return redirect("contracts:contract_detail", uuid=contract.uuid)
+
+    return _render(request, "contracts/contract_sign.html", {
+        "contract": contract,
+        "person": person,
+        "signatory": signatory,
+        "existing_signature": person.digital_signature if person else "",
+    })
+
+
+def person_update_signature(request, person_pk):
+    """Allow a person to update their stored digital signature."""
+    person = get_object_or_404(Person, pk=person_pk)
+    if request.method == "POST":
+        signature_data = request.POST.get("signature_data", "").strip()
+        if signature_data:
+            person.digital_signature = signature_data
+            person.save(update_fields=["digital_signature"])
+            messages.success(request, "Signature saved.")
+        return redirect(request.META.get("HTTP_REFERER", "/"))
+    return _render(request, "contracts/person_signature_form.html", {
+        "person": person,
     })

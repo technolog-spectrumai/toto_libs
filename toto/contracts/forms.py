@@ -1,6 +1,8 @@
 from django import forms
 
-from .models import Contract, ContractNode, ContractEdge, SUPPORTED_NODE_TYPES, SUPPORTED_EDGE_TYPES
+from toto.people.models import Person
+
+from .models import Contract, ContractNode, ContractEdge, ContractSignatory, SUPPORTED_NODE_TYPES, SUPPORTED_EDGE_TYPES
 
 _CLS = "w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-1"
 _DARK = "darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
@@ -86,3 +88,17 @@ class ContractEdgeForm(forms.ModelForm):
         if self.contract:
             cleaned["contract"] = self.contract
         return cleaned
+
+
+class ContractSignatoryForm(forms.ModelForm):
+    class Meta:
+        model = ContractSignatory
+        fields = ["person", "is_required"]
+
+    def __init__(self, *args, **kwargs):
+        self.contract = kwargs.pop("contract", None)
+        super().__init__(*args, **kwargs)
+        if self.contract:
+            already = ContractSignatory.objects.filter(contract=self.contract).values_list("person_id", flat=True)
+            self.fields["person"].queryset = Person.objects.exclude(pk__in=already)
+        self.fields["person"].widget.attrs.update({"class": _CLS, ":class": _DARK})

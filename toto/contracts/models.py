@@ -5,6 +5,7 @@ import uuid as _uuid
 from django.apps import apps
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils import timezone
 
 # ---------------------------------------------------------------------------
 # Constants — supported types
@@ -74,15 +75,30 @@ NODE_TYPE_SHAPE = {
 # ---------------------------------------------------------------------------
 
 class Contract(models.Model):
+    STATUS_DRAFT = "draft"
+    STATUS_PENDING = "pending"
+    STATUS_EXECUTED = "executed"
+    STATUS_CHOICES = [
+        (STATUS_DRAFT, "Draft"),
+        (STATUS_PENDING, "Pending Signatures"),
+        (STATUS_EXECUTED, "Executed"),
+    ]
+
     uuid = models.UUIDField(default=_uuid.uuid4, editable=False, unique=True, db_index=True)
     name = models.CharField(max_length=255, unique=True)
     description = models.TextField(
         blank=True,
         help_text="Human-readable description of what this contract represents.",
     )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_DRAFT,
+    )
     metadata = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    executed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         app_label = "contracts"
@@ -90,6 +106,14 @@ class Contract(models.Model):
 
     def __str__(self):
         return self.name
+
+    def check_and_execute(self):
+        """Execute the contract if all required signatories have signed."""
+        required = self.signatories.filter(is_required=True)
+        if required.exists() and not required.filter(signed_at__isnull=True).exists():
+            self.status = self.STATUS_EXECUTED
+            self.executed_at = timezone.now()
+            self.save(update_fields=["status", "executed_at"])
 
 
 # ---------------------------------------------------------------------------
@@ -194,3 +218,43 @@ class ContractEdge(models.Model):
                 raise ValidationError("Target node belongs to a different contract.")
         if self.edge_type and self.edge_type not in SUPPORTED_EDGE_TYPES:
             raise ValidationError({"edge_type": f"Unsupported edge type: {self.edge_type!r}."})
+
+
+# ---------------------------------------------------------------------------
+# ContractSignatory
+# ---------------------------------------------------------------------------
+
+class ContractSignatory(models.Model):
+    contract = models.ForeignKey(
+        "contracts.Contract",
+        on_delete=models.CASCADE,
+        related_name="signatories",
+    )
+    person = models.ForeignKey(
+        "people.Person",
+        on_delete=models.CASCADE,
+        related_name="contract_signatories",
+    )
+    is_required = models.BooleanField(
+        default=True,
+        help_text="If True, this person must sign before the contract can be executed.",
+    )
+    signed_at = models.DateTimeField(null=True, blank=True)
+    signature_data = models.TextField(
+        blank=True,
+        help_text="Base64-encoded PNG captured at signing time.",
+    )
+    added_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        app_label = "contracts"
+        unique_together = [("contract", "person")]
+        ordering = ["added_at"]
+
+    def __str__(self):
+        signed = "signed" if self.signed_at else "pending"
+        return f"{self.person} on {self.contract} [{signed}]"
+
+    @property
+    def has_signed(self):
+        return self.signed_at is not None

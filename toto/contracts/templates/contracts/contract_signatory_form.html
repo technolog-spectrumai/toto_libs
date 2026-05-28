@@ -1,0 +1,51 @@
+{% extends "contracts/base.html" %}
+{% load i18n %}
+
+{% block contracts_title %}{% trans "Add Signatory" %} — {{ contract.name }}{% endblock %}
+
+{% block contracts_content %}
+<div class="space-y-6 max-w-xl">
+  <a href="{% url 'contracts:contract_detail' contract.uuid %}"
+     class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+    <i class="fa-solid fa-arrow-left"></i>
+    {{ contract.name }}
+  </a>
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-6 shadow-sm space-y-5">
+
+    <h2 class="text-xl font-bold flex items-center gap-2">
+      <i class="fa-solid fa-user-plus" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+      {% trans "Add Signatory" %}
+    </h2>
+
+    <form method="post" class="space-y-4">
+      {% csrf_token %}
+
+      {% for field in form %}
+      <div class="space-y-1">
+        <label class="block text-sm font-semibold opacity-70">{{ field.label }}</label>
+        {{ field }}
+        {% if field.errors %}
+        <p class="text-xs text-red-500">{{ field.errors|join:", " }}</p>
+        {% endif %}
+      </div>
+      {% endfor %}
+
+      <div class="flex gap-3 pt-2">
+        <button type="submit"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-plus"></i>
+          {% trans "Add Signatory" %}
+        </button>
+        <a href="{% url 'contracts:contract_detail' contract.uuid %}"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="inline-flex items-center gap-2 rounded-lg border px-5 py-2 text-sm font-semibold transition hover:opacity-80">
+          {% trans "Cancel" %}
+        </a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

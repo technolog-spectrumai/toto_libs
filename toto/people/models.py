@@ -48,6 +48,10 @@ class Person(DomainEntity):
         default=False,
         help_text="Federal agents are exempt from community poll taxes.",
     )
+    digital_signature = models.TextField(
+        blank=True,
+        help_text="Base64-encoded PNG of the person's handwritten signature.",
+    )
 
     class Meta:
         # Keep the same physical table — zero DB migration needed.

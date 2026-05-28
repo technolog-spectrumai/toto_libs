@@ -1,0 +1,36 @@
+{% extends "contracts/base.html" %}
+{% load i18n %}
+
+{% block contracts_title %}{% trans "Update Signature" %} — {{ person }}{% endblock %}
+
+{% block contracts_content %}
+<div class="space-y-6 max-w-2xl">
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-6 shadow-sm space-y-5">
+
+    <h2 class="text-xl font-bold flex items-center gap-2">
+      <i class="fa-solid fa-signature" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+      {% trans "Update Digital Signature" %} — {{ person }}
+    </h2>
+
+    {% if person.digital_signature %}
+    <div>
+      <p class="text-xs font-semibold uppercase opacity-60 mb-2">{% trans "Current Signature" %}</p>
+      <img src="{{ person.digital_signature }}" alt="{% trans 'Current signature' %}"
+           class="max-h-20 rounded border" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+    </div>
+    {% endif %}
+
+    <form method="post" class="space-y-4">
+      {% csrf_token %}
+      {% include "contracts/_signature_pad.html" with pad_id="personsigpad" input_name="signature_data" initial_data=person.digital_signature %}
+      <button type="submit"
+        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+        class="inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+        <i class="fa-solid fa-floppy-disk"></i>
+        {% trans "Save Signature" %}
+      </button>
+    </form>
+  </div>
+</div>
+{% endblock %}
