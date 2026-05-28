@@ -6,195 +6,190 @@
 {% endblock %}
 
 {% block field_content %}
-<div x-data x-init="initCharts()">
+{{ sections|json_script:"field-sections-data" }}
 
-  <header class="mb-6">
-    <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-       class="text-xs font-semibold uppercase tracking-wide">Field Command</p>
-    <h1 class="mt-1 text-3xl font-bold">Metrics</h1>
-    <p class="mt-1 text-sm opacity-50">Operational overview across all domains.</p>
+<div x-data="fieldMetrics()" x-init="init()">
+
+  <header class="mb-6 flex items-end justify-between gap-4">
+    <div>
+      <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+         class="text-xs font-semibold uppercase tracking-wide">Field Command</p>
+      <h1 class="mt-1 text-3xl font-bold">Metrics</h1>
+      <p class="mt-1 text-sm opacity-50">Operational overview across all domains.</p>
+    </div>
+    <a href="/field/api/metrics/"
+       :class="darkMode ? 'border-accent-1/40 bg-bubble-bg-dark text-accent-dark' : 'border-accent-2/40 bg-bubble-bg-light text-accent-light'"
+       class="rounded-lg border px-3 py-1.5 text-xs font-semibold hover:opacity-80 transition"
+       title="JSON API for mobile / external clients">
+      <i class="fa-solid fa-code mr-1"></i>API
+    </a>
   </header>
 
-  <!-- ── KPI grid ────────────────────────────────────────────────────── -->
-  <div class="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+  <!-- ── Sections ────────────────────────────────────────────────────── -->
+  <div class="space-y-8">
+    {% for section in sections %}
+    <section>
 
-    <div :class="kpi.critical_detections > 0
-                  ? (darkMode ? 'border-warn-dark/60 bg-warn-dark/10' : 'border-warn-light/60 bg-warn-light/10')
-                  : (darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light')"
-         class="rounded-xl border p-4">
-      <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Critical</p>
-      <p class="mt-1 text-3xl font-black">{{ kpi.critical_detections }}</p>
-      <p class="text-xs opacity-40">detections</p>
-    </div>
+      <!-- Section header -->
+      <div class="mb-4 flex items-center justify-between gap-3">
+        <p class="text-xs font-semibold uppercase tracking-wide opacity-55">
+          {{ section.title }}
+        </p>
+        {% if section.app_url %}
+        <a href="{{ section.app_url }}"
+           :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+           class="text-xs font-semibold hover:underline underline-offset-2 shrink-0">
+          Open {{ section.title }} <i class="fa-solid fa-arrow-right text-[10px]"></i>
+        </a>
+        {% endif %}
+      </div>
 
-    <div :class="{{ kpi.high_detections }} > 0
-                  ? (darkMode ? 'border-warn-dark/40 bg-warn-dark/5' : 'border-warn-light/40 bg-warn-light/5')
-                  : (darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light')"
-         class="rounded-xl border p-4">
-      <p class="text-xs font-semibold uppercase tracking-wide opacity-60">High Severity</p>
-      <p class="mt-1 text-3xl font-black">{{ kpi.high_detections }}</p>
-      <p class="text-xs opacity-40">detections</p>
-    </div>
-
-    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-         class="rounded-xl border p-4">
-      <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Active Detections</p>
-      <p class="mt-1 text-3xl font-black">{{ kpi.active_detections }}</p>
-      <p class="text-xs opacity-40">new / ack / handling</p>
-    </div>
-
-    <div :class="{{ kpi.packages_failed }} > 0
-                  ? (darkMode ? 'border-warn-dark/40 bg-warn-dark/5' : 'border-warn-light/40 bg-warn-light/5')
-                  : (darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light')"
-         class="rounded-xl border p-4">
-      <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Failed Packages</p>
-      <p class="mt-1 text-3xl font-black">{{ kpi.packages_failed }}</p>
-      <p class="text-xs opacity-40">require attention</p>
-    </div>
-
-    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-         class="rounded-xl border p-4">
-      <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Packages in Transit</p>
-      <p class="mt-1 text-3xl font-black">{{ kpi.packages_in_transit }}</p>
-      <p class="text-xs opacity-40">active shipments</p>
-    </div>
-
-    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-         class="rounded-xl border p-4">
-      <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Active Transports</p>
-      <p class="mt-1 text-3xl font-black">{{ kpi.active_transports }}</p>
-      <p class="text-xs opacity-40">vehicles / carriers</p>
-    </div>
-
-    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-         class="rounded-xl border p-4">
-      <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Inventory Sites</p>
-      <p class="mt-1 text-3xl font-black">{{ kpi.inventory_sites }}</p>
-      <p class="text-xs opacity-40">active</p>
-    </div>
-
-    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-         class="rounded-xl border p-4">
-      <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Inventory Objects</p>
-      <p class="mt-1 text-3xl font-black">{{ kpi.inventory_objects }}</p>
-      <p class="text-xs opacity-40">tracked items</p>
-    </div>
-
-    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-         class="rounded-xl border p-4">
-      <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Weather Coverage</p>
-      <p class="mt-1 text-3xl font-black">{{ kpi.addresses_with_weather }}</p>
-      <p class="text-xs opacity-40">of {{ kpi.total_addresses }} addresses</p>
-    </div>
-
-    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-         class="rounded-xl border p-4">
-      <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Territories</p>
-      <p class="mt-1 text-3xl font-black">{{ kpi.territories }}</p>
-      <p class="text-xs opacity-40">{{ kpi.zones }} zones</p>
-    </div>
-
-  </div>
-
-  <!-- ── Charts ──────────────────────────────────────────────────────── -->
-  <div class="mb-6 grid gap-4 lg:grid-cols-2">
-    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-         class="rounded-2xl border p-5 shadow-sm">
-      <h2 class="mb-4 text-sm font-bold">Detection Severity (active)</h2>
-      <div class="h-56"><canvas id="detSeverityChart"></canvas></div>
-    </div>
-    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-         class="rounded-2xl border p-5 shadow-sm">
-      <h2 class="mb-4 text-sm font-bold">Package Status</h2>
-      <div class="h-56"><canvas id="pkgStatusChart"></canvas></div>
-    </div>
-  </div>
-
-  <!-- ── Top detection locations ─────────────────────────────────────── -->
-  {% if top_detection_locations %}
-  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-       class="rounded-2xl border p-5 shadow-sm">
-    <h2 class="mb-4 text-sm font-bold">Highest-Risk Locations</h2>
-    <table class="w-full text-xs">
-      <thead>
-        <tr class="opacity-50">
-          <th class="pb-2 text-left font-semibold">Locality</th>
-          <th class="pb-2 text-left font-semibold">Country</th>
-          <th class="pb-2 text-right font-semibold">Active</th>
-          <th class="pb-2 text-right font-semibold">Avg severity</th>
-        </tr>
-      </thead>
-      <tbody class="divide-y divide-current/10">
-        {% for row in top_detection_locations %}
-        <tr>
-          <td class="py-1.5 font-medium">{{ row.address__locality_name|default:"—" }}</td>
-          <td class="py-1.5 opacity-60">{{ row.address__country_name|default:"—" }}</td>
-          <td class="py-1.5 text-right">{{ row.count }}</td>
-          <td class="py-1.5 text-right">
-            <span class="rounded px-1.5 py-0.5 text-xs font-bold
-              {% if row.avg_sev >= 3.5 %}bg-purple-500/15 text-purple-500
-              {% elif row.avg_sev >= 2.5 %}bg-red-500/15 text-red-500
-              {% elif row.avg_sev >= 1.5 %}bg-amber-400/15 text-amber-500
-              {% else %}bg-green-500/15 text-green-600{% endif %}">
-              {{ row.avg_sev|floatformat:1 }}
-            </span>
-          </td>
-        </tr>
+      <!-- KPI cards -->
+      {% if section.kpis %}
+      <div class="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        {% for kpi in section.kpis %}
+        <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-xl border p-4
+               {% if kpi.alert %}ring-1 ring-warn-light/50{% endif %}">
+          <p class="truncate text-xs font-semibold uppercase tracking-wide opacity-60">{{ kpi.label }}</p>
+          <p class="mt-1 text-3xl font-black">{{ kpi.value }}</p>
+          {% if kpi.sub %}<p class="text-xs opacity-40">{{ kpi.sub }}</p>{% endif %}
+        </div>
         {% endfor %}
-      </tbody>
-    </table>
+      </div>
+      {% endif %}
+
+      <!-- Chart + Table row (if either is present) -->
+      {% if section.chart or section.table %}
+      <div class="grid gap-4 {% if section.chart and section.table %}lg:grid-cols-2{% endif %}">
+
+        {% if section.chart %}
+        <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-2xl border p-5 shadow-sm">
+          <h3 class="mb-4 text-sm font-bold">{{ section.title }} Distribution</h3>
+          <div class="h-56">
+            <canvas id="chart-{{ section.key }}"></canvas>
+          </div>
+        </div>
+        {% endif %}
+
+        {% if section.table %}
+        <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-2xl border p-5 shadow-sm">
+          <h3 class="mb-4 text-sm font-bold">{{ section.title }} Breakdown</h3>
+          <div class="overflow-x-auto">
+            <table class="w-full text-xs">
+              <thead>
+                <tr class="opacity-50">
+                  {% for header in section.table.headers %}
+                  <th class="pb-2 {% if not forloop.first %}text-right{% else %}text-left{% endif %} font-semibold">
+                    {{ header }}
+                  </th>
+                  {% endfor %}
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-current/10">
+                {% for row in section.table.rows %}
+                <tr>
+                  {% for cell in row %}
+                  <td class="py-1.5 {% if not forloop.first %}text-right font-mono{% endif %}">{{ cell }}</td>
+                  {% endfor %}
+                </tr>
+                {% empty %}
+                <tr>
+                  <td colspan="{{ section.table.headers|length }}" class="py-3 text-center opacity-40">No data.</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        {% endif %}
+
+      </div>
+      {% endif %}
+
+      <!-- Section divider (not after last section) -->
+      {% if not forloop.last %}
+      <div :class="darkMode ? 'border-accent-1/20' : 'border-accent-2/20'" class="mt-8 border-b"></div>
+      {% endif %}
+
+    </section>
+    {% empty %}
+    <div :class="darkMode ? 'border-accent-1/40' : 'border-accent-2/40'"
+         class="rounded-xl border border-dashed px-6 py-12 text-center text-sm opacity-50">
+      <i class="fa-solid fa-plug mb-2 text-2xl block"></i>
+      No metrics plugins registered.
+    </div>
+    {% endfor %}
   </div>
-  {% endif %}
 
 </div>
 
-{{ det_severity_chart|json_script:"det-severity-data" }}
-{{ pkg_status_chart|json_script:"pkg-status-data" }}
-
 <script>
-function initCharts() {
-  const isDark = localStorage.getItem("darkMode") === "true";
-  const text = isDark ? "#e2e8f0" : "#1e293b";
-  const grid = isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)";
+function fieldMetrics() {
+  return {
+    charts: {},
 
-  const detData = JSON.parse(document.getElementById("det-severity-data").textContent);
-  const pkgData = JSON.parse(document.getElementById("pkg-status-data").textContent);
+    init() {
+      const isDark = localStorage.getItem("darkMode") === "true";
+      const sections = JSON.parse(document.getElementById("field-sections-data").textContent);
+      const text = isDark ? "#e2e8f0" : "#1e293b";
+      const grid = isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)";
 
-  new Chart(document.getElementById("detSeverityChart"), {
-    type: "doughnut",
-    data: {
-      labels: detData.labels,
-      datasets: [{
-        data: detData.data,
-        backgroundColor: ["#22c55e", "#f59e0b", "#ef4444", "#7c3aed"],
-        borderWidth: 0,
-      }],
-    },
-    options: {
-      plugins: {legend: {labels: {color: text}}},
-      responsive: true, maintainAspectRatio: false,
-    },
-  });
+      Chart.defaults.color = text;
+      Chart.defaults.borderColor = grid;
 
-  new Chart(document.getElementById("pkgStatusChart"), {
-    type: "bar",
-    data: {
-      labels: pkgData.labels,
-      datasets: [{
-        data: pkgData.data,
-        backgroundColor: isDark ? "rgba(99,102,241,0.6)" : "rgba(99,102,241,0.5)",
-        borderRadius: 4,
-      }],
+      sections.forEach(section => {
+        if (!section.chart) return;
+        const canvas = document.getElementById("chart-" + section.key);
+        if (!canvas) return;
+
+        const c = section.chart;
+        const defaultColors = [
+          "#6366f1","#f59e0b","#10b981","#ef4444","#3b82f6","#8b5cf6","#06b6d4","#22c55e",
+        ];
+        const colors = c.colors || c.data.map((_, i) => defaultColors[i % defaultColors.length]);
+
+        if (c.type === "doughnut") {
+          new Chart(canvas, {
+            type: "doughnut",
+            data: {
+              labels: c.labels,
+              datasets: [{data: c.data, backgroundColor: colors, borderWidth: 0}],
+            },
+            options: {
+              plugins: {legend: {position: "bottom", labels: {boxWidth: 12, padding: 12}}},
+              cutout: "60%",
+              responsive: true,
+              maintainAspectRatio: false,
+            },
+          });
+        } else {
+          new Chart(canvas, {
+            type: c.type || "bar",
+            data: {
+              labels: c.labels,
+              datasets: [{
+                data: c.data,
+                backgroundColor: isDark ? "rgba(99,102,241,0.65)" : "rgba(79,70,229,0.60)",
+                borderRadius: 5,
+              }],
+            },
+            options: {
+              plugins: {legend: {display: false}},
+              scales: {
+                x: {grid: {color: grid}, ticks: {color: text}},
+                y: {grid: {color: grid}, ticks: {color: text, precision: 0}, beginAtZero: true},
+              },
+              responsive: true,
+              maintainAspectRatio: false,
+            },
+          });
+        }
+      });
     },
-    options: {
-      plugins: {legend: {display: false}},
-      scales: {
-        x: {ticks: {color: text}, grid: {color: grid}},
-        y: {ticks: {color: text}, grid: {color: grid}},
-      },
-      responsive: true, maintainAspectRatio: false,
-    },
-  });
+  };
 }
 </script>
 {% endblock %}

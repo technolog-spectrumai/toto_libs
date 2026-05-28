@@ -7,30 +7,26 @@
 {% endblock %}
 
 {% block field_content %}
+{{ sections|json_script:"field-sections" }}
 <div x-data="fieldCommand()" x-init="init()">
 
   <!-- ── Headline KPI ribbon ─────────────────────────────────────────── -->
-  <div class="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-    <div :class="darkMode ? 'border-warn-dark/40 bg-warn-dark/10' : 'border-warn-light/40 bg-warn-light/10'"
-         class="rounded-xl border p-4">
-      <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Active Detections</p>
-      <p class="mt-1 text-3xl font-black">{{ active_detections }}</p>
-    </div>
-    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-         class="rounded-xl border p-4">
-      <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Transports</p>
-      <p class="mt-1 text-3xl font-black">{{ active_transports }}</p>
-    </div>
-    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-         class="rounded-xl border p-4">
-      <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Packages in Transit</p>
-      <p class="mt-1 text-3xl font-black">{{ packages_in_transit }}</p>
-    </div>
-    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-         class="rounded-xl border p-4">
-      <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Inventory Sites</p>
-      <p class="mt-1 text-3xl font-black">{{ inventory_sites }}</p>
-    </div>
+  <div class="mb-4 flex flex-wrap gap-3">
+    {% for section in sections %}
+      {% for item in section.ribbon %}
+      <div :class="{% if item.alert %}item.alert
+                    ? (darkMode ? 'border-warn-dark/40 bg-warn-dark/10' : 'border-warn-light/40 bg-warn-light/10')
+                    : (darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light')
+                   {% else %}darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'{% endif %}"
+           class="rounded-xl border p-4 min-w-[8rem]">
+        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{{ item.label }}</p>
+        <p class="mt-1 text-3xl font-black">{{ item.value }}</p>
+        <p class="text-xs opacity-40">{{ section.title }}</p>
+      </div>
+      {% endfor %}
+    {% empty %}
+    <p class="text-xs opacity-50">No data sources registered.</p>
+    {% endfor %}
   </div>
 
   <!-- ── Layer toggles ───────────────────────────────────────────────── -->
@@ -53,84 +49,40 @@
     <div id="field-map" style="height:100%;width:100%"></div>
   </div>
 
-  <!-- ── Data grid (3 panels) ────────────────────────────────────────── -->
-  <div class="grid gap-4 lg:grid-cols-3">
-
-    <!-- Detections panel -->
+  <!-- ── Per-section data panels ────────────────────────────────────── -->
+  <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    {% for section in sections %}
     <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
              class="rounded-2xl border p-4 shadow-sm">
-      <h2 class="mb-3 flex items-center gap-2 text-sm font-bold">
-        <i :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" class="fa-solid fa-triangle-exclamation"></i>
-        Active Detections
-      </h2>
-      {% if recent_detections %}
-      <div class="space-y-2">
-        {% for d in recent_detections %}
-        <a href="{{ d.get_absolute_url }}"
-           :class="darkMode ? 'hover:bg-sunken-dark' : 'hover:bg-sunken-light'"
-           class="flex items-start gap-2 rounded-lg p-2 transition">
-          <span class="mt-0.5 h-2 w-2 shrink-0 rounded-full
-            {% if d.severity == 'critical' %}bg-purple-500
-            {% elif d.severity == 'high' %}bg-red-500
-            {% elif d.severity == 'medium' %}bg-amber-400
-            {% else %}bg-green-500{% endif %}"></span>
-          <div class="min-w-0">
-            <p class="truncate text-xs font-semibold">{{ d.title|default:d.pk }}</p>
-            <p class="text-xs opacity-50">{{ d.get_severity_display }} · {{ d.location_label|default:"—" }}</p>
-          </div>
+
+      <div class="mb-3 flex items-center justify-between gap-2">
+        <h2 class="text-sm font-bold">{{ section.title }}</h2>
+        {% if section.app_url %}
+        <a href="{{ section.app_url }}"
+           :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+           class="shrink-0 text-xs font-semibold hover:underline underline-offset-2">
+          Manage <i class="fa-solid fa-arrow-right text-[10px]"></i>
         </a>
-        {% endfor %}
+        {% endif %}
       </div>
-      {% else %}
-      <p class="text-xs opacity-50">No active detections.</p>
-      {% endif %}
-    </section>
 
-    <!-- Transports panel -->
-    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-             class="rounded-2xl border p-4 shadow-sm">
-      <h2 class="mb-3 flex items-center gap-2 text-sm font-bold">
-        <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="fa-solid fa-truck-fast"></i>
-        Active Transports
-      </h2>
-      {% if active_transport_list %}
-      <div class="space-y-2">
-        {% for t in active_transport_list %}
-        <div :class="darkMode ? 'border-accent-1/30' : 'border-accent-2/30'"
-             class="rounded-lg border p-2 text-xs">
-          <p class="font-semibold truncate">{{ t.name }}</p>
-          <p class="opacity-50">{{ t.get_mode_display }}{% if t.current_location %} · {{ t.current_location }}{% endif %}</p>
+      <div class="grid grid-cols-2 gap-2">
+        {% for kpi in section.kpis %}
+        <div :class="{% if kpi.alert %}kpi_alert{% else %}false{% endif %}
+                      ? (darkMode ? 'border-warn-dark/30 bg-warn-dark/5' : 'border-warn-light/30 bg-warn-light/5')
+                      : (darkMode ? 'border-accent-1/30 bg-primary-bg-dark/40' : 'border-accent-2/30 bg-primary-bg-light/40')"
+             class="rounded-lg border p-2">
+          <p class="truncate text-[10px] font-semibold uppercase tracking-wide opacity-55">{{ kpi.label }}</p>
+          <p class="mt-0.5 text-2xl font-black leading-none">{{ kpi.value }}</p>
+          {% if kpi.sub %}<p class="mt-0.5 text-[10px] opacity-40">{{ kpi.sub }}</p>{% endif %}
         </div>
         {% endfor %}
       </div>
-      {% else %}
-      <p class="text-xs opacity-50">No active transports.</p>
-      {% endif %}
-    </section>
 
-    <!-- Inventory sites panel -->
-    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-             class="rounded-2xl border p-4 shadow-sm">
-      <h2 class="mb-3 flex items-center gap-2 text-sm font-bold">
-        <i :class="darkMode ? 'text-success-dark' : 'text-success-light'" class="fa-solid fa-warehouse"></i>
-        Inventory Sites
-      </h2>
-      {% if inventory_site_list %}
-      <div class="space-y-2">
-        {% for s in inventory_site_list %}
-        <div :class="darkMode ? 'border-accent-1/30' : 'border-accent-2/30'"
-             class="rounded-lg border p-2 text-xs">
-          <p class="font-semibold truncate">{{ s.name }}</p>
-          <p class="opacity-50">{{ s.site_type|default:"—" }}{% if s.address %} · {{ s.address.locality_name }}{% endif %}</p>
-        </div>
-        {% endfor %}
-      </div>
-      {% else %}
-      <p class="text-xs opacity-50">No inventory sites.</p>
-      {% endif %}
     </section>
-
+    {% endfor %}
   </div>
+
 </div>
 
 <script>
@@ -198,11 +150,11 @@ function fieldCommand() {
           let marker;
 
           if (p.layer === "detection") {
+            const col = p.color || "#ef4444";
             marker = L.circleMarker([lat, lng], {
-              radius: 8, color: p.color, fillColor: p.color,
-              fillOpacity: 0.8, weight: 2,
+              radius: 8, color: col, fillColor: col, fillOpacity: 0.8, weight: 2,
             });
-            marker.bindPopup(`<b>${p.name}</b><br>Severity: ${p.severity}<br>Status: ${p.status}`);
+            marker.bindPopup(`<b>${p.name}</b><br>Severity: ${p.severity}<br>Status: ${p.status}${p.location ? '<br>' + p.location : ''}`);
 
           } else if (p.layer === "weather") {
             const temp = p.temperature != null ? `${Math.round(p.temperature)}°C` : "?";
@@ -234,7 +186,7 @@ function fieldCommand() {
         } else if (f.geometry.type === "Polygon" || f.geometry.type === "MultiPolygon") {
           const layer = L.geoJSON(f, {
             style: {
-              color: p.layer === "detection" ? "#ef4444"
+              color: p.layer === "detection" ? (p.color || "#ef4444")
                    : p.layer === "zone" ? "#8b5cf6"
                    : p.layer === "territory" ? "#6366f1"
                    : p.layer === "map_layer" ? "#06b6d4"

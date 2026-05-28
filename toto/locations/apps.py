@@ -11,3 +11,11 @@ class LocationsConfig(AppConfig):
         autodiscover_plugins("plugins.url_plugins")
         autodiscover_plugins("plugins.map_plugins")
         autodiscover_plugins("plugins.context_plugins")
+
+        from toto.field.plugins import FieldMapPlugin, FieldMetricsPlugin
+        from toto.locations.plugins.field_plugins import (
+            locations_map_features,
+            locations_metrics_section,
+        )
+        FieldMapPlugin.register(locations_map_features)
+        FieldMetricsPlugin.register(locations_metrics_section)

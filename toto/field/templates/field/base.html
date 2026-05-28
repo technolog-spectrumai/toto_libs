@@ -23,13 +23,6 @@
        class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition">
       <i class="fa-solid fa-map fa-fw"></i> Command
     </a>
-    <a href="{% url 'field:feed' %}"
-       :class="request.resolver_match.url_name == 'feed'
-         ? (darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light')
-         : 'opacity-60 hover:opacity-100'"
-       class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition">
-      <i class="fa-solid fa-bolt fa-fw"></i> Feed
-    </a>
     <a href="{% url 'field:metrics' %}"
        :class="request.resolver_match.url_name == 'metrics'
          ? (darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light')
