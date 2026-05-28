@@ -286,27 +286,39 @@ class Command(IngressCommand):
             print("⚠  No communities found — run ingress for socialhub first.")
             return
 
+        from toto.people.civic import committed_citizen_filter
+        from toto.socialhub.models import Constitution, ConstitutionSignature
+        from django.utils import timezone
+
         federal_tribe_ids = list(
             Community.objects.filter(is_federal_tribe=True).values_list("id", flat=True)
         )
         eligible_persons = list(
             Person.objects.filter(
-                models.Q(is_federal_agent=True) | models.Q(communities__in=federal_tribe_ids)
+                committed_citizen_filter() | models.Q(communities__in=federal_tribe_ids)
             ).distinct().order_by("?")[:20]
         )
 
         if not eligible_persons:
-            # Bootstrap: promote some persons to federal agent for demo seeding
+            # Bootstrap: make candidates committed citizens by signing an active constitution
             candidates = list(Person.objects.order_by("?")[:6])
             if not candidates:
                 print("⚠  No persons in database at all — run people/socialhub ingress first.")
                 return
-            for p in candidates:
-                if not p.is_federal_agent:
-                    p.is_federal_agent = True
-                    p.save(update_fields=["is_federal_agent"])
-            eligible_persons = candidates
-            print(f"  ℹ  No eligible persons found — marked {len(candidates)} as federal agents for demo.")
+            constitution = Constitution.objects.filter(is_active=True).first()
+            if constitution:
+                now = timezone.now()
+                for p in candidates:
+                    ConstitutionSignature.objects.get_or_create(
+                        constitution=constitution,
+                        person=p,
+                        defaults={"signed_at": now},
+                    )
+                eligible_persons = candidates
+                print(f"  ℹ  No eligible persons — seeded {len(candidates)} as committed citizens via constitution signature.")
+            else:
+                print("⚠  No active constitution found — cannot seed committed citizens. Run socialhub ingress first.")
+                return
 
         skill_cache = self._get_or_create_skill_badges()
         responders = self._create_responders(eligible_persons, communities, skill_cache)

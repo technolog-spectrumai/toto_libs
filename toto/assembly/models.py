@@ -336,9 +336,10 @@ class PollTax(models.Model):
     def compute_amount_for(self, person) -> int:
         """
         Compute total tax owed (in payment_asset base units) for a given person.
-        Returns 0 if person is a federal agent or member of a federal tribe community.
+        Returns 0 if person is a committed citizen or member of a federal tribe community.
         """
-        if getattr(person, "is_federal_agent", False):
+        from toto.people.civic import is_committed_citizen
+        if is_committed_citizen(person):
             return 0
         if person.communities.filter(is_federal_tribe=True).exists():
             return 0

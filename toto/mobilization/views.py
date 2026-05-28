@@ -175,8 +175,9 @@ def responder_recruit(request):
         is_federal_tribe=True
     ).values_list("id", flat=True)
 
+    from toto.people.civic import committed_citizen_filter
     eligible = Person.objects.filter(
-        Q(is_federal_agent=True) | Q(communities__in=federal_tribe_community_ids)
+        committed_citizen_filter() | Q(communities__in=federal_tribe_community_ids)
     ).exclude(
         id__in=existing_responder_person_ids
     ).distinct().prefetch_related("communities")

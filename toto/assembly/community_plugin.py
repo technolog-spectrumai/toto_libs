@@ -39,10 +39,11 @@ class AssemblyCommunityPlugin(CommunityPlugin):
         # Voting rights: exempt, no active poll tax, or all paid
         has_voting_rights = True
         unpaid_taxes = []
+        from toto.people.civic import is_committed_citizen
         is_exempt = (
             person
             and (
-                getattr(person, "is_federal_agent", False)
+                is_committed_citizen(person)
                 or person.communities.filter(is_federal_tribe=True).exists()
             )
         )

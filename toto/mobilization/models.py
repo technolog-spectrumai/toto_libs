@@ -127,13 +127,14 @@ class Responder(models.Model):
         if not self.person_id:
             return
         from toto.people.models import Person as _Person
+        from toto.people.civic import is_committed_citizen
         p = _Person.objects.prefetch_related("communities").get(pk=self.person_id)
-        if p.is_federal_agent:
+        if is_committed_citizen(p):
             return
         if p.communities.filter(is_federal_tribe=True).exists():
             return
         raise ValidationError(
-            "Responders must be federal agents or members of a federal tribe community."
+            "Responders must be committed citizens or members of a federal tribe community."
         )
 
     def __str__(self):

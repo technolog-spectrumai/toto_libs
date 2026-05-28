@@ -39,8 +39,14 @@ def _render(request, template, context):
 
 @login_required
 def assembly_overview(request):
+    from toto.people.civic import is_committed_citizen
     person = getattr(request.user, "community_profile", None)
-    is_federal_agent = bool(person and getattr(person, "is_federal_agent", False))
+    is_broad_access = bool(
+        person and (
+            is_committed_citizen(person)
+            or person.communities.filter(is_federal_tribe=True).exists()
+        )
+    )
     member_community_pks = (
         list(person.communities.values_list("pk", flat=True)) if person else []
     )
@@ -50,7 +56,7 @@ def assembly_overview(request):
         "fee_current_data": json.loads(fee_current_chart_data()),
         "fee_history_data": json.loads(fee_history_chart_data()),
         "member_community_pks": member_community_pks,
-        "is_federal_agent_overview": is_federal_agent,
+        "is_federal_agent_overview": is_broad_access,
     })
 
 
@@ -69,7 +75,8 @@ def _require_member(request, community):
 
 
 def _is_poll_tax_exempt(person) -> bool:
-    if getattr(person, "is_federal_agent", False):
+    from toto.people.civic import is_committed_citizen
+    if is_committed_citizen(person):
         return True
     if person.communities.filter(is_federal_tribe=True).exists():
         return True
@@ -228,10 +235,13 @@ def community_assembly(request, slug):
     community = get_object_or_404(Community, slug=slug)
     person = getattr(request.user, "community_profile", None)
 
+    from toto.people.civic import is_committed_citizen
     is_member = bool(person and community.members.filter(pk=person.pk).exists())
+    is_committed = bool(person and is_committed_citizen(person))
+    is_federal_tribe_broad = bool(person and person.communities.filter(is_federal_tribe=True).exists())
     is_federal_agent = bool(person and getattr(person, "is_federal_agent", False))
 
-    if not is_member and not is_federal_agent:
+    if not is_member and not is_committed and not is_federal_tribe_broad:
         messages.error(request, "You are not a member of this community's assembly.")
         return redirect("assembly:overview")
 
