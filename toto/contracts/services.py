@@ -133,6 +133,102 @@ def _node_status(node: ContractNode) -> str:
     return ""
 
 
+def evaluate_claims_health(contract: Contract) -> dict:
+    """
+    Walk all backed ContractNode records whose type has a status lifecycle
+    (entitlement, schedule, condition, allocation, obligation) and assess the
+    live state of each linked object.
+
+    Returns a result dict stored in ``contract.metadata["claims_health"]``:
+        {
+            "evaluated_at": "<ISO 8601>",
+            "overall":       "healthy" | "warning" | "critical" | "unknown",
+            "counts":        {"total": N, "healthy": N, "warning": N,
+                              "critical": N, "unresolvable": N},
+            "details":       [ {node_key, node_type, title, object_label,
+                                status, health} … ],
+        }
+    """
+    from django.apps import apps
+    from django.utils import timezone
+
+    _HEALTH: dict[str, dict[str, str]] = {
+        "entitlement": {
+            "active": "healthy", "suspended": "warning",
+            "revoked": "critical", "expired": "critical",
+        },
+        "schedule": {
+            "active": "healthy", "completed": "healthy",
+            "draft": "warning", "paused": "warning",
+            "cancelled": "critical",
+        },
+        "condition": {
+            "satisfied": "healthy", "waived": "healthy",
+            "pending": "warning",
+            "failed": "critical",
+        },
+        "allocation": {
+            "active": "healthy", "released": "healthy", "consumed": "healthy",
+            "draft": "warning",
+            "cancelled": "critical",
+        },
+        "obligation": {
+            "fulfilled": "healthy",
+            "pending": "warning",
+            "overdue": "critical", "defaulted": "critical",
+        },
+    }
+    _TIER = {"critical": 3, "warning": 2, "healthy": 1, "unresolvable": 0}
+
+    details = []
+    counts: dict[str, int] = {"total": 0, "healthy": 0, "warning": 0, "critical": 0, "unresolvable": 0}
+    worst = "unknown"
+
+    backed = [n for n in contract.nodes.all() if n.is_backed and n.node_type in _HEALTH]
+
+    for node in backed:
+        counts["total"] += 1
+        entry: dict = {
+            "node_key": node.key,
+            "node_type": node.node_type,
+            "title": node.title,
+            "object_label": f"{node.object_app}.{node.object_model}#{node.object_id}",
+            "status": "—",
+            "health": "unresolvable",
+        }
+        try:
+            Model = apps.get_model(node.object_app, node.object_model)
+            obj = Model.objects.get(pk=node.object_id)
+            status = str(getattr(obj, "status", "—") or "—")
+            entry["status"] = status
+            entry["health"] = _HEALTH[node.node_type].get(status, "unresolvable")
+            # Pick the best human label available on the object.
+            for attr in ("resource_label", "reference", "name"):
+                val = getattr(obj, attr, None)
+                if val:
+                    entry["object_label"] = str(val)
+                    break
+        except Exception:
+            pass
+
+        tier_key = entry["health"]
+        counts[tier_key] = counts.get(tier_key, 0) + 1
+        if _TIER.get(tier_key, 0) > _TIER.get(worst, -1):
+            worst = tier_key
+
+        details.append(entry)
+
+    if not details:
+        worst = "unknown"
+
+    return {
+        "evaluated_at": timezone.now().isoformat(),
+        "overall": worst,
+        "counts": counts,
+        "details": details,
+    }
+
+
 def contract_to_cytoscape(contract: Contract) -> dict:
     """Serialize a contract graph to Cytoscape elements. No color fields returned."""
     nodes = []

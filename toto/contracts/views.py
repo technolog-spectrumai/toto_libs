@@ -12,7 +12,7 @@ from toto.people.models import Person
 
 from .forms import ContractForm, ContractNodeForm, ContractEdgeForm, ContractSignatoryForm
 from .models import Contract, ContractNode, ContractEdge, ContractSignatory
-from .services import contract_to_cytoscape
+from .services import contract_to_cytoscape, evaluate_claims_health
 
 
 def _render(request, template, context):
@@ -457,6 +457,19 @@ def contract_download_pdf(request, uuid):
         return response
 
     return _render(request, "contracts/contract_download_pdf.html", {"contract": contract})
+
+
+def contract_evaluate_health(request, uuid):
+    """POST: evaluate live claims health for this contract and persist in metadata."""
+    contract = get_object_or_404(Contract, uuid=uuid)
+    if request.method == "POST":
+        result = evaluate_claims_health(contract)
+        meta = dict(contract.metadata or {})
+        meta["claims_health"] = result
+        contract.metadata = meta
+        contract.save(update_fields=["metadata"])
+        messages.success(request, "Claims health evaluated.")
+    return redirect("contracts:contract_detail", uuid=uuid)
 
 
 def person_update_signature(request, person_pk):

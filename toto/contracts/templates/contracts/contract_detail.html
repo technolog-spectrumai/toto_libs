@@ -157,6 +157,81 @@
     {% endif %}
   </div>
 
+  <!-- Claims Health -->
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5 shadow-sm space-y-4">
+    <div class="flex items-center justify-between gap-4">
+      <h3 class="text-xs font-semibold uppercase tracking-wide opacity-60">
+        <i class="fa-solid fa-heart-pulse mr-1"></i>{% trans "Claims Health" %}
+      </h3>
+      <form method="post" action="{% url 'contracts:contract_evaluate_health' contract.uuid %}">
+        {% csrf_token %}
+        <button type="submit"
+          :class="darkMode ? 'border-accent-1 text-text-main-dark hover:bg-black/10' : 'border-accent-2 text-text-main-light hover:bg-black/5'"
+          class="inline-flex items-center gap-1.5 rounded border px-3 py-1 text-xs font-semibold transition">
+          <i class="fa-solid fa-rotate text-xs"></i> {% trans "Evaluate" %}
+        </button>
+      </form>
+    </div>
+
+    {% with health=contract.metadata.claims_health %}
+    {% if health %}
+    <div class="flex items-center gap-3 flex-wrap">
+      <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold"
+        :class="darkMode ? '{% if health.overall == 'healthy' %}bg-success-dark/20 text-success-dark{% elif health.overall == 'warning' %}bg-warn-dark/20 text-warn-dark{% elif health.overall == 'critical' %}bg-caution-dark/20 text-caution-dark{% else %}opacity-50{% endif %}' : '{% if health.overall == 'healthy' %}bg-success-light/10 text-success-light{% elif health.overall == 'warning' %}bg-warn-light/10 text-warn-light{% elif health.overall == 'critical' %}bg-caution-light/10 text-caution-light{% else %}opacity-50{% endif %}'">
+        {% if health.overall == 'healthy' %}<i class="fa-solid fa-circle-check"></i>
+        {% elif health.overall == 'warning' %}<i class="fa-solid fa-triangle-exclamation"></i>
+        {% elif health.overall == 'critical' %}<i class="fa-solid fa-circle-xmark"></i>
+        {% else %}<i class="fa-solid fa-circle-question"></i>{% endif %}
+        {{ health.overall|capfirst }}
+      </span>
+      <span class="text-xs opacity-50">{% trans "Evaluated" %} {{ health.evaluated_at|slice:":19"|default:"—" }}</span>
+      <div class="flex gap-3 text-xs">
+        {% if health.counts.healthy %}<span :class="darkMode ? 'text-success-dark' : 'text-success-light'">{{ health.counts.healthy }} {% trans "healthy" %}</span>{% endif %}
+        {% if health.counts.warning %}<span :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ health.counts.warning }} {% trans "warning" %}</span>{% endif %}
+        {% if health.counts.critical %}<span :class="darkMode ? 'text-caution-dark' : 'text-caution-light'">{{ health.counts.critical }} {% trans "critical" %}</span>{% endif %}
+        {% if health.counts.unresolvable %}<span class="opacity-50">{{ health.counts.unresolvable }} {% trans "unresolvable" %}</span>{% endif %}
+      </div>
+    </div>
+
+    {% if health.details %}
+    <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="rounded-lg border overflow-hidden">
+      <table class="w-full text-xs">
+        <thead>
+          <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-b text-xs uppercase tracking-wide opacity-60">
+            <th class="px-3 py-2 text-left">{% trans "Node" %}</th>
+            <th class="px-3 py-2 text-left">{% trans "Type" %}</th>
+            <th class="px-3 py-2 text-left">{% trans "Object" %}</th>
+            <th class="px-3 py-2 text-left">{% trans "Status" %}</th>
+            <th class="px-3 py-2 text-left">{% trans "Health" %}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for d in health.details %}
+          <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-b last:border-0">
+            <td class="px-3 py-2 font-mono opacity-60">{{ d.node_key }}</td>
+            <td class="px-3 py-2 opacity-60">{{ d.node_type }}</td>
+            <td class="px-3 py-2 font-semibold">{{ d.object_label }}</td>
+            <td class="px-3 py-2 font-mono opacity-80">{{ d.status }}</td>
+            <td class="px-3 py-2">
+              <span class="inline-block rounded px-1.5 py-0.5 font-semibold"
+                :class="darkMode ? '{% if d.health == 'healthy' %}bg-success-dark/20 text-success-dark{% elif d.health == 'warning' %}bg-warn-dark/20 text-warn-dark{% elif d.health == 'critical' %}bg-caution-dark/20 text-caution-dark{% else %}opacity-50{% endif %}' : '{% if d.health == 'healthy' %}bg-success-light/10 text-success-light{% elif d.health == 'warning' %}bg-warn-light/10 text-warn-light{% elif d.health == 'critical' %}bg-caution-light/10 text-caution-light{% else %}opacity-50{% endif %}'">
+                {{ d.health }}
+              </span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
+    {% else %}
+    <p class="text-xs opacity-50">{% trans "No evaluation run yet. Click Evaluate to check the live state of all claims objects linked to this contract's nodes." %}</p>
+    {% endif %}
+    {% endwith %}
+  </div>
+
   <!-- Signatories -->
   {% include "contracts/_signatories_card.html" %}
 

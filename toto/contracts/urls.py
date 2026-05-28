@@ -18,6 +18,8 @@ urlpatterns = [
     path("<uuid:uuid>/sign/", views.contract_sign, name="contract_sign"),
     path("<uuid:uuid>/signatories/add/", views.contract_add_signatory, name="contract_add_signatory"),
     path("<uuid:uuid>/signatories/<int:pk>/remove/", views.contract_remove_signatory, name="contract_remove_signatory"),
+    # Claims health
+    path("<uuid:uuid>/evaluate/", views.contract_evaluate_health, name="contract_evaluate_health"),
     # Vault PDF
     path("<uuid:uuid>/pdf/attach/", views.contract_attach_pdf, name="contract_attach_pdf"),
     path("<uuid:uuid>/pdf/download/", views.contract_download_pdf, name="contract_download_pdf"),
