@@ -60,6 +60,13 @@ class Vendor(DomainEntity):
     location = models.ForeignKey('locations.Address', on_delete=models.SET_NULL, null=True, blank=True, related_name='bazaar_vendors')
     territory = models.ForeignKey('locations.Territory', on_delete=models.SET_NULL, null=True, blank=True, related_name='bazaar_vendors')
     website = models.URLField(blank=True)
+    accepted_currencies = models.ManyToManyField(
+        'assets.Asset',
+        blank=True,
+        related_name='bazaar_vendors',
+        limit_choices_to={'active': True},
+        help_text="Assets this vendor accepts as payment.",
+    )
     status = models.CharField(max_length=32, choices=STATUS_CHOICES, default='draft')
     verified_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

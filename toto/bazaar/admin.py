@@ -19,6 +19,7 @@ class VendorAdmin(admin.ModelAdmin):
     list_display = ('display_name', 'shop', 'status', 'verified_at')
     list_filter = ('status', 'shop')
     prepopulated_fields = {'slug': ('display_name',)}
+    filter_horizontal = ('accepted_currencies',)
 
 @admin.register(ProductCategory)
 class ProductCategoryAdmin(admin.ModelAdmin):
