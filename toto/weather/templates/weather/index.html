@@ -622,6 +622,22 @@
       _charts[def.key] = new Chart(canvas, config);
     });
   }
+
+  function layerExportWidget(url, csrfToken) {
+    return {
+      busy: false, msg: "", isError: false,
+      async exportLayers() {
+        this.busy = true; this.msg = ""; this.isError = false;
+        try {
+          const r = await fetch(url, { method: "POST", headers: { "X-CSRFToken": csrfToken } });
+          const data = await r.json();
+          if (!r.ok) { this.isError = true; this.msg = data.error || "Export failed."; }
+          else { this.msg = `Queued ${data.run_ids.length} export(s). Check map layers in Locations.`; }
+        } catch (e) { this.isError = true; this.msg = e.message || "Network error."; }
+        finally { this.busy = false; }
+      },
+    };
+  }
 </script>
 {% endblock %}
 
@@ -736,6 +752,21 @@
                class="rounded-xl border p-3 text-sm">
             <i class="fa-solid fa-circle-exclamation mr-2"></i>
             <span x-text="currentError"></span>
+          </div>
+
+          <!-- Export to Map Layers -->
+          <div x-data="layerExportWidget('{% url 'weather:api_export_layers' %}', '{{ csrf_token }}')"
+               :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+               class="rounded-xl border p-4 shadow-sm space-y-2">
+            <p class="text-xs font-semibold opacity-60 uppercase tracking-wide"><i class="fa-solid fa-layer-group mr-1"></i> Map Layers</p>
+            <button type="button" @click="exportLayers()"
+                    :disabled="busy"
+                    :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/10 disabled:opacity-40' : 'border-accent-2 hover:bg-accent-light/10 disabled:opacity-40'"
+                    class="inline-flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition">
+              <i class="fa-solid" :class="busy ? 'fa-spinner fa-spin' : 'fa-map-location-dot'"></i>
+              <span x-text="busy ? 'Exporting…' : 'Export to map layers'"></span>
+            </button>
+            <p x-show="msg" x-cloak class="text-xs" :class="isError ? 'text-warn-dark' : 'opacity-70'" x-text="msg"></p>
           </div>
 
           <!-- Weather data cards -->

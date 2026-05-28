@@ -1,10 +1,13 @@
 """
 Slugs and seeding logic for weather workflows.
 
-These workflows are seeded by the `seed_weather_workflows` management command.
+Data-fetch workflows are seeded by `seed_weather_workflows`.
+Layer-export workflows rebuild MapLayer overlays from stored observations.
+
 External callers trigger them via:
     from toto.workflows.api import trigger_workflow
     trigger_workflow(WEATHER_CURRENT_SLUG, {"location_ids": [...], "provider": "open_meteo"})
+    trigger_workflow(LAYER_EXPORT_WEATHER_TEMPERATURE_SLUG)
 """
 
 WEATHER_CURRENT_SLUG = "weather-current"
@@ -130,4 +133,49 @@ for p in points:
 ForecastPoint.objects.bulk_create(objs, batch_size=500)
 
 print(json.dumps({"data": {"success": True, "session_id": session.id, "points_saved": len(objs)}}))
+'''.strip()
+
+
+# ---------------------------------------------------------------------------
+# Layer export workflows — build MapLayer overlays from stored observations
+# ---------------------------------------------------------------------------
+
+LAYER_EXPORT_WEATHER_TEMPERATURE_SLUG = "layer-export-weather-temperature"
+LAYER_EXPORT_WEATHER_PRECIPITATION_SLUG = "layer-export-weather-precipitation"
+LAYER_EXPORT_WEATHER_WIND_SLUG = "layer-export-weather-wind-speed"
+LAYER_EXPORT_WEATHER_CLOUD_SLUG = "layer-export-weather-cloud-cover"
+
+LAYER_EXPORT_WEATHER_SLUGS = [
+    LAYER_EXPORT_WEATHER_TEMPERATURE_SLUG,
+    LAYER_EXPORT_WEATHER_PRECIPITATION_SLUG,
+    LAYER_EXPORT_WEATHER_WIND_SLUG,
+    LAYER_EXPORT_WEATHER_CLOUD_SLUG,
+]
+
+LAYER_EXPORT_WEATHER_TEMPERATURE_LAMBDA = '''
+import json
+from toto.weather.layer_export import export_temperature_layer
+layer, count = export_temperature_layer()
+print(json.dumps({"data": {"success": True, "layer_slug": layer.slug, "polygon_count": count}}))
+'''.strip()
+
+LAYER_EXPORT_WEATHER_PRECIPITATION_LAMBDA = '''
+import json
+from toto.weather.layer_export import export_precipitation_layer
+layer, count = export_precipitation_layer()
+print(json.dumps({"data": {"success": True, "layer_slug": layer.slug, "polygon_count": count}}))
+'''.strip()
+
+LAYER_EXPORT_WEATHER_WIND_LAMBDA = '''
+import json
+from toto.weather.layer_export import export_wind_layer
+layer, count = export_wind_layer()
+print(json.dumps({"data": {"success": True, "layer_slug": layer.slug, "polygon_count": count}}))
+'''.strip()
+
+LAYER_EXPORT_WEATHER_CLOUD_LAMBDA = '''
+import json
+from toto.weather.layer_export import export_cloud_cover_layer
+layer, count = export_cloud_cover_layer()
+print(json.dumps({"data": {"success": True, "layer_slug": layer.slug, "polygon_count": count}}))
 '''.strip()

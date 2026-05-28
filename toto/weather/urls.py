@@ -10,4 +10,5 @@ urlpatterns = [
     path("api/forecast/load/", views.api_load_forecast, name="api_load_forecast"),
     path("api/forecast/", views.api_forecast_data, name="api_forecast"),
     path("api/run/<int:run_id>/status/", views.api_run_status, name="api_run_status"),
+    path("api/export-layers/", views.api_export_layers, name="api_export_layers"),
 ]

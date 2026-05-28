@@ -15,6 +15,14 @@ class Command(BaseCommand):
             WEATHER_FORECAST_SLUG,
             WEATHER_CURRENT_LAMBDA,
             WEATHER_FORECAST_LAMBDA,
+            LAYER_EXPORT_WEATHER_TEMPERATURE_SLUG,
+            LAYER_EXPORT_WEATHER_PRECIPITATION_SLUG,
+            LAYER_EXPORT_WEATHER_WIND_SLUG,
+            LAYER_EXPORT_WEATHER_CLOUD_SLUG,
+            LAYER_EXPORT_WEATHER_TEMPERATURE_LAMBDA,
+            LAYER_EXPORT_WEATHER_PRECIPITATION_LAMBDA,
+            LAYER_EXPORT_WEATHER_WIND_LAMBDA,
+            LAYER_EXPORT_WEATHER_CLOUD_LAMBDA,
         )
 
         self._seed_workflow(
@@ -30,6 +38,34 @@ class Command(BaseCommand):
             description="Fetches hourly weather forecast for a list of locations and stores a ForecastSession with ForecastPoints.",
             lambda_name="weather_fetch_forecast",
             lambda_content=WEATHER_FORECAST_LAMBDA,
+        )
+        self._seed_workflow(
+            slug=LAYER_EXPORT_WEATHER_TEMPERATURE_SLUG,
+            name="Layer Export — Weather Temperature",
+            description="Rebuilds the weather temperature MapLayer from the latest stored observations.",
+            lambda_name="layer_export_weather_temperature",
+            lambda_content=LAYER_EXPORT_WEATHER_TEMPERATURE_LAMBDA,
+        )
+        self._seed_workflow(
+            slug=LAYER_EXPORT_WEATHER_PRECIPITATION_SLUG,
+            name="Layer Export — Weather Precipitation",
+            description="Rebuilds the weather precipitation MapLayer from the latest stored observations.",
+            lambda_name="layer_export_weather_precipitation",
+            lambda_content=LAYER_EXPORT_WEATHER_PRECIPITATION_LAMBDA,
+        )
+        self._seed_workflow(
+            slug=LAYER_EXPORT_WEATHER_WIND_SLUG,
+            name="Layer Export — Weather Wind Speed",
+            description="Rebuilds the weather wind speed MapLayer from the latest stored observations.",
+            lambda_name="layer_export_weather_wind",
+            lambda_content=LAYER_EXPORT_WEATHER_WIND_LAMBDA,
+        )
+        self._seed_workflow(
+            slug=LAYER_EXPORT_WEATHER_CLOUD_SLUG,
+            name="Layer Export — Weather Cloud Cover",
+            description="Rebuilds the weather cloud cover MapLayer from the latest stored observations.",
+            lambda_name="layer_export_weather_cloud",
+            lambda_content=LAYER_EXPORT_WEATHER_CLOUD_LAMBDA,
         )
         self.stdout.write(self.style.SUCCESS("Weather workflows seeded."))
 

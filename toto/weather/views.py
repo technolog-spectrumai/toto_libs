@@ -229,3 +229,26 @@ def api_run_status(request, run_id):
             error = failed_node.error
 
     return JsonResponse({"status": run.status, "error": error})
+
+
+@login_required(login_url=reverse_lazy("core:login"))
+@require_POST
+def api_export_layers(request):
+    """Trigger all weather layer-export workflow runs."""
+    if not celery_available():
+        return JsonResponse({"error": "No Celery worker running."}, status=503)
+
+    from toto.workflows.api import trigger_workflow
+    from toto.workflows.models import Workflow
+    from .workflows import LAYER_EXPORT_WEATHER_SLUGS
+
+    try:
+        runs = [trigger_workflow(slug) for slug in LAYER_EXPORT_WEATHER_SLUGS]
+        return JsonResponse({"run_ids": [r.id for r in runs]})
+    except Workflow.DoesNotExist:
+        return JsonResponse(
+            {"error": "Layer export workflows not seeded. Run: manage.py seed_weather_workflows"},
+            status=503,
+        )
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=500)

@@ -1,6 +1,7 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db.models import Count, Sum
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 from toto.ui.page import PageProcessor
@@ -353,3 +354,27 @@ def location_toggle_active(request, location_id):
     location.save(update_fields=["is_active"])
     messages.success(request, "Storage location status updated.")
     return redirect("inventory:site_detail", site_id=location.site_id)
+
+
+@require_POST
+@login_required
+def api_export_layers(request):
+    """Trigger all inventory layer-export workflow runs."""
+    from toto.celery_utils import celery_available
+    if not celery_available():
+        return JsonResponse({"error": "No Celery worker running."}, status=503)
+
+    from toto.workflows.api import trigger_workflow
+    from toto.workflows.models import Workflow
+    from toto.inventory.workflows import LAYER_EXPORT_INVENTORY_SLUGS
+
+    try:
+        runs = [trigger_workflow(slug) for slug in LAYER_EXPORT_INVENTORY_SLUGS]
+        return JsonResponse({"run_ids": [r.id for r in runs]})
+    except Workflow.DoesNotExist:
+        return JsonResponse(
+            {"error": "Layer export workflows not seeded. Run: manage.py seed_inventory_workflows"},
+            status=503,
+        )
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=500)

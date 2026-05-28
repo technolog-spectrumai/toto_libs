@@ -1,8 +1,11 @@
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import Count, Q
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils.decorators import method_decorator
 from django.views import View
+from django.views.decorators.http import require_POST
 from django.views.generic import DetailView, ListView, TemplateView
 
 from toto.core.page import PageProcessor
@@ -204,3 +207,28 @@ class DetectionDashboardView(LoginRequiredMixin, DetectionsContextMixin, Templat
             },
         })
         return context
+
+
+@method_decorator(require_POST, name="dispatch")
+class ApiExportLayersView(LoginRequiredMixin, View):
+    """Trigger all detection layer-export workflow runs."""
+
+    def post(self, request):
+        from toto.celery_utils import celery_available
+        if not celery_available():
+            return JsonResponse({"error": "No Celery worker running."}, status=503)
+
+        from toto.workflows.api import trigger_workflow
+        from toto.workflows.models import Workflow
+        from toto.detections.workflows import LAYER_EXPORT_DETECTIONS_SLUGS
+
+        try:
+            runs = [trigger_workflow(slug) for slug in LAYER_EXPORT_DETECTIONS_SLUGS]
+            return JsonResponse({"run_ids": [r.id for r in runs]})
+        except Workflow.DoesNotExist:
+            return JsonResponse(
+                {"error": "Layer export workflows not seeded. Run: manage.py seed_detections_workflows"},
+                status=503,
+            )
+        except Exception as exc:
+            return JsonResponse({"error": str(exc)}, status=500)
