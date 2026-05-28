@@ -4,8 +4,8 @@
 {% block title %}Add Travel | {{ platform.site_name }}{% endblock %}
 
 {% block start_script %}
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="{% static 'vendor/leaflet/leaflet.css' %}" />
+<script src="{% static 'vendor/leaflet/leaflet.js' %}"></script>
 <style>[x-cloak] { display: none !important; }</style>
 {% endblock %}
 

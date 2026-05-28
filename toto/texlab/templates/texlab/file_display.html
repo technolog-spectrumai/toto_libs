@@ -5,12 +5,12 @@
 {% block title %}{{ file.vault_file.title }} – {{ workspace.name }}{% endblock %}
 
 {% block start_script %}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.3/ace.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.3/mode-latex.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.3/theme-twilight.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.3/theme-textmate.min.js"></script>
+<script src="{% static 'vendor/ace/ace.js' %}"></script>
+<script src="{% static 'vendor/ace/mode-latex.min.js' %}"></script>
+<script src="{% static 'vendor/ace/theme-twilight.min.js' %}"></script>
+<script src="{% static 'vendor/ace/theme-textmate.min.js' %}"></script>
 <script src="{% static 'oya/diff_match_patch.js' %}"></script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<link rel="stylesheet" href="{% static 'vendor/fontawesome/6.7.2/css/all.min.css' %}">
 <script>const darkMode = localStorage.getItem("darkMode") === "true";</script>
 {% endblock %}
 

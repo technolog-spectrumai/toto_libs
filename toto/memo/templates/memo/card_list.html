@@ -4,7 +4,7 @@
 {% block title %} Presentations | {{ platform.site_name }} {% endblock %}
 
 {% block start_script %}
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js/dist/reveal.css">
+  <link rel="stylesheet" href="{% static 'vendor/reveal/reveal.css' %}">
   <link rel="stylesheet" id="reveal-theme">
 
   <script>
@@ -14,8 +14,8 @@
       const themeLink = document.getElementById('reveal-theme');
       const darkMode = localStorage.getItem('darkMode');
       themeLink.href = darkMode === 'true'
-        ? "https://cdn.jsdelivr.net/npm/reveal.js/dist/theme/black.css"
-        : "https://cdn.jsdelivr.net/npm/reveal.js/dist/theme/white.css";
+        ? "{% static 'vendor/reveal/theme-black.css' %}"
+        : "{% static 'vendor/reveal/theme-white.css' %}";
     }
 
     updateRevealTheme();
@@ -79,7 +79,7 @@
 {% endblock %}
 
 {% block end_script %}
-<script src="https://cdn.jsdelivr.net/npm/reveal.js/dist/reveal.js"></script>
+<script src="{% static 'vendor/reveal/reveal.js' %}"></script>
 
 <script>
   Reveal.initialize({

@@ -1,4 +1,5 @@
 {% extends "robots/base.html" %}
+{% load static %}
 {% load i18n %}
 
 {% block robots_title %}{{ mission.title }}{% endblock %}
@@ -6,8 +7,8 @@
 
 {% block robots_head %}
 {{ mission_map_data|json_script:"mission-map-data" }}
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="{% static 'vendor/leaflet/leaflet.css' %}" />
+<script src="{% static 'vendor/leaflet/leaflet.js' %}"></script>
 <style>
   .mission-map-popup h4 { margin: 0 0 .3rem; font-weight: 700; }
   .mission-map-popup p { margin: .15rem 0; font-size: .85em; }

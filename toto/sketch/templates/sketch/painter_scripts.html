@@ -1,6 +1,7 @@
+{% load static %}
 <script type="module">
 import * as Y from "https://esm.run/yjs";
-import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+import mermaid from "{% static 'vendor/mermaid/mermaid.esm.min.mjs' %}";
 mermaid.initialize({ startOnLoad: false });
 
   window.Y = Y;

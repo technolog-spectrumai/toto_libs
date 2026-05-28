@@ -4,7 +4,7 @@
 {% block title %}Quiz Metrics – {{ quiz.title }}{% endblock %}
 
 {% block start_script %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
 {% include "oya/partials/dim.html" %}
 <style>[x-cloak] { display: none !important; }</style>
 {% endblock %}

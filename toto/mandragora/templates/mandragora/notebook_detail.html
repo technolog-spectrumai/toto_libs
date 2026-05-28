@@ -5,10 +5,10 @@
 {% block title %}{{ notebook.title }} | Mandragora | {{ platform.site_name }}{% endblock %}
 
 {% block start_script %}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.3/ace.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.3/mode-python.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.3/theme-twilight.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.3/theme-textmate.min.js"></script>
+<script src="{% static 'vendor/ace/ace.js' %}"></script>
+<script src="{% static 'vendor/ace/mode-python.min.js' %}"></script>
+<script src="{% static 'vendor/ace/theme-twilight.min.js' %}"></script>
+<script src="{% static 'vendor/ace/theme-textmate.min.js' %}"></script>
 <script>
   const darkMode = localStorage.getItem("darkMode") === "true";
 </script>

@@ -331,7 +331,7 @@
 {% endblock %}
 
 {% block end_script %}
-<script src="https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
+<script src="{% static 'vendor/cytoscape/cytoscape.min.js' %}"></script>
 
 <script>
 function queryViewer() {

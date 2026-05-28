@@ -1,4 +1,5 @@
 {% extends "assets/base.html" %}
+{% load static %}
 {% load i18n %}
 
 {% block assets_title %}{% trans "Contract" %} {{ contract.name }}{% endblock %}
@@ -146,8 +147,8 @@
 </div>
 
 {% if contract.code %}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.36.4/ace.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.29.2/cytoscape.min.js"></script>
+<script src="{% static 'vendor/ace/ace.js' %}"></script>
+<script src="{% static 'vendor/cytoscape/cytoscape.min.js' %}"></script>
 <script>
 (function () {
   var code = "{{ contract.code|escapejs }}";

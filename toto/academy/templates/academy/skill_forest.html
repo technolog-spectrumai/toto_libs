@@ -1,9 +1,10 @@
 {% extends "oya/base.html" %}
+{% load static %}
 
 {% block title %}Skill Forest | {{ platform.site_name }}{% endblock %}
 
 {% block start_script %}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
+<script src="{% static 'vendor/cytoscape/cytoscape.min.js' %}"></script>
 {% endblock %}
 
 {% block content %}

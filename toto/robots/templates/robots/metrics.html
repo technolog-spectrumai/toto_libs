@@ -1,11 +1,12 @@
 {% extends "robots/base.html" %}
+{% load static %}
 {% load i18n %}
 
 {% block robots_title %}{% trans "Fleet Metrics" %}{% endblock %}
 {% block robots_header %}{% trans "Fleet Metrics" %}{% endblock %}
 
 {% block robots_head %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
 {{ robot_status_data|json_script:"robot-status-data" }}
 {{ mission_status_data|json_script:"mission-status-data" }}
 {{ missions_over_time_data|json_script:"missions-over-time-data" }}

@@ -1,11 +1,12 @@
 {% extends "detections/base.html" %}
+{% load static %}
 {% block detections_title %}Add Detection{% endblock %}
 {% block detections_heading %}Add Detection{% endblock %}
 {% block detections_subtitle %}<p class="mt-2 max-w-2xl text-sm opacity-70">Click a point on the map, then fill the detection details.</p>{% endblock %}
 {% block detections_content %}
 
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="{% static 'vendor/leaflet/leaflet.css' %}">
+<script src="{% static 'vendor/leaflet/leaflet.js' %}"></script>
 {{ detection_features|json_script:"detection-features" }}
 
 <form method="post" class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_24rem]">{% csrf_token %}

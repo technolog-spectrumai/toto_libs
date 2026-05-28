@@ -1,4 +1,5 @@
 {% extends "robots/base.html" %}
+{% load static %}
 {% load i18n %}
 
 {% block robots_title %}{{ robot.callsign }}{% endblock %}
@@ -6,8 +7,8 @@
 
 {% block robots_head %}
 {{ track_data|json_script:"robot-track-data" }}
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="{% static 'vendor/leaflet/leaflet.css' %}" />
+<script src="{% static 'vendor/leaflet/leaflet.js' %}"></script>
 <style>
   .robot-track-popup h4 { margin: 0 0 .3rem; font-weight: 700; }
   .robot-track-popup p  { margin: .12rem 0; font-size: .85em; }

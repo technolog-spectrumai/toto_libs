@@ -4,7 +4,7 @@
 {% block title %}Assembly Overview{% endblock %}
 
 {% block start_script %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
 <style>[x-cloak]{display:none!important}</style>
 {{ fee_current_data|json_script:"fee-current-data" }}
 {{ fee_history_data|json_script:"fee-history-data" }}

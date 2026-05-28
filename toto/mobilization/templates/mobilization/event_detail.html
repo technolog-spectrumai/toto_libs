@@ -1,12 +1,13 @@
 {% extends "mobilization/base.html" %}
+{% load static %}
 {% load i18n %}
 
 {% block mob_title %}{{ event.title }}{% endblock %}
 
 {% block start_script %}
 {{ block.super }}
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="{% static 'vendor/leaflet/leaflet.css' %}" />
+<script src="{% static 'vendor/leaflet/leaflet.js' %}"></script>
 {% endblock %}
 
 {% block mob_content %}
@@ -516,8 +517,8 @@
 
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
+<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
+<script src="{% static 'vendor/cytoscape/cytoscape.min.js' %}"></script>
 <script>
 document.addEventListener("DOMContentLoaded", function () {
   const isDark = localStorage.getItem("darkMode") === "true";

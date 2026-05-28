@@ -1,8 +1,9 @@
 {% extends "detections/base.html" %}
+{% load static %}
 {% block detections_title %}Dashboard{% endblock %}
 {% block detections_heading %}Detections Dashboard{% endblock %}
 {% block detections_subtitle %}<p class="mt-2 max-w-2xl text-sm opacity-70">Detection health, mitigation coverage, and task assignment signals.</p>{% endblock %}
-{% block detections_start_script %}<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>{% endblock %}
+{% block detections_start_script %}<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>{% endblock %}
 {% block detections_content %}
 
 <div class="grid gap-4 sm:grid-cols-3">

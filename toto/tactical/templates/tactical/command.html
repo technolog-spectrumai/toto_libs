@@ -1,9 +1,10 @@
 {% extends "tactical/base.html" %}
+{% load static %}
 {% block tactical_title %}Command{% endblock %}
 
 {% block tactical_start_script %}
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="{% static 'vendor/leaflet/leaflet.css' %}"/>
+<script src="{% static 'vendor/leaflet/leaflet.js' %}"></script>
 {% endblock %}
 
 {% block tactical_content %}

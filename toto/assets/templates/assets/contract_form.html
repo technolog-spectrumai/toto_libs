@@ -1,4 +1,5 @@
 {% extends "assets/base.html" %}
+{% load static %}
 {% load i18n %}
 
 {% block assets_title %}{% if is_create %}{% trans "New Contract" %}{% else %}{% trans "Edit" %} {{ contract.name }}{% endif %}{% endblock %}
@@ -75,7 +76,7 @@
   </form>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.36.4/ace.js"></script>
+<script src="{% static 'vendor/ace/ace.js' %}"></script>
 <script>
 (function () {
   var textarea = document.getElementById("id_lapis_code");

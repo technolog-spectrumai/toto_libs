@@ -4,7 +4,7 @@
 {% block title %}Poll – {{ poll.name }}{% endblock %}
 
 {% block start_script %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
 {% include "oya/partials/dim.html" %}
 <style>
   [x-cloak] {

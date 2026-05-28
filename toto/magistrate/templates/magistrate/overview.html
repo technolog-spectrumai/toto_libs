@@ -1,10 +1,11 @@
 {% extends "magistrate/base.html" %}
+{% load static %}
 {% load i18n %}
 
 {% block mag_title %}{% trans "Magistrate Overview" %}{% endblock %}
 
 {% block start_script %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
 <style>[x-cloak] { display: none !important; }</style>
 {{ seats_by_role_data|json_script:"seats-by-role-data" }}
 {{ seats_by_status_data|json_script:"seats-by-status-data" }}

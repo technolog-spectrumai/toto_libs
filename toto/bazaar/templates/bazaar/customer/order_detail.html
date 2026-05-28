@@ -1,12 +1,13 @@
 {% extends "bazaar/base.html" %}
+{% load static %}
 {% load i18n %}
 {% block bazaar_title %}{{ order.order_number }}{% endblock %}
 {% block bazaar_heading %}{{ order.order_number }}{% endblock %}
 {% block bazaar_subtitle %}<p class="mt-2 max-w-2xl text-sm opacity-70">{% trans "Placed" %} {{ order.created_at|date:"F j, Y H:i" }}</p>{% endblock %}
 
 {% block start_script %}
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="{% static 'vendor/leaflet/leaflet.css' %}" />
+<script src="{% static 'vendor/leaflet/leaflet.js' %}"></script>
 {% endblock %}
 
 {% block bazaar_content %}

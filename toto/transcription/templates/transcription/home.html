@@ -1,4 +1,5 @@
 {% extends "transcription/base.html" %}
+{% load static %}
 {% load i18n %}
 {% block transcription_title %}{% trans "Transcribe" %}{% endblock %}
 {% block transcription_content %}
@@ -21,7 +22,7 @@
     <canvas id="chart-top" height="160"></canvas>
   </div>
 </div>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
 <script>
 (function(){
   const isDark = document.documentElement.classList.contains('dark') || window.matchMedia('(prefers-color-scheme: dark)').matches;

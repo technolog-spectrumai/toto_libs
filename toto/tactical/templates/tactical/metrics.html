@@ -1,8 +1,9 @@
 {% extends "tactical/base.html" %}
+{% load static %}
 {% block tactical_title %}Metrics{% endblock %}
 
 {% block tactical_start_script %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
 {% endblock %}
 
 {% block tactical_content %}

@@ -1,4 +1,5 @@
 {% extends "assets/base.html" %}
+{% load static %}
 {% load i18n %}
 
 {% block assets_title %}{% trans "Agreement" %} {{ agreement.uuid }}{% endblock %}
@@ -69,7 +70,7 @@
       <div id="lapis-ace-viewer" style="height:500px;border-radius:6px;overflow:hidden"></div>
     </aside>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.36.4/ace.js"></script>
+    <script src="{% static 'vendor/ace/ace.js' %}"></script>
     <script>
     (function () {
       var code = "{{ agreement.contract.code|escapejs }}";

@@ -1,3 +1,4 @@
+{% load static %}
 <script>
 class ImportModalHelper {
     constructor() {
@@ -329,7 +330,7 @@ class IconModalHelper {
     }
 
     get iconSpriteUrl() {
-        return "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/sprites/solid.svg";
+        return "{% static 'vendor/fontawesome/6.7.2/sprites/solid.svg' %}";
     }
 
     async getIconSpriteDoc() {

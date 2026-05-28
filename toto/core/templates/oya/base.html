@@ -15,9 +15,7 @@
   <!-- Tailwind & Alpine -->
   <script src="{% static 'oya/tailwind.js' %}"></script>
   <script defer src="{% static 'oya/alpine.js' %}"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css"
-        integrity="sha512-Evv84Mr4kqVGRNSgIGL/F/aIDqQb7xQ2vcrdIwxfjThSH8CSR7PBEakCr51Ck+w+/U6swU2Im1vVX0SVk9ABhg=="
-        crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <link rel="stylesheet" href="{% static 'vendor/fontawesome/6.7.2/css/all.min.css' %}" />
   <!-- Tailwind Config -->
   <script>
     tailwind.config = {
@@ -39,7 +37,7 @@
     }
   </style>
 
-<script src="https://unpkg.com/htmx.org@1.9.2"></script>
+<script src="{% static 'vendor/htmx/htmx.min.js' %}"></script>
   <script defer src="{% static 'oya/functional_zones.js' %}"></script>
   {% block start_script %}{% endblock %}
 </head>

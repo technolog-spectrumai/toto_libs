@@ -1,3 +1,4 @@
+{% load static %}
 {% load i18n %}
 {# Context vars expected: graph_model (str), graph_id (str/uuid/int) #}
 
@@ -261,7 +262,7 @@
   function loadCytoscape(cb) {
     if (window.cytoscape) { cb(); return; }
     const s = document.createElement("script");
-    s.src = "https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.29.2/cytoscape.min.js";
+    s.src = "{% static 'vendor/cytoscape/cytoscape.min.js' %}";
     s.onload = cb;
     document.head.appendChild(s);
   }

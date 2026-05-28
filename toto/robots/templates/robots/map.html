@@ -1,12 +1,13 @@
 {% extends "robots/base.html" %}
+{% load static %}
 {% load i18n %}
 
 {% block robots_title %}{% trans "Robot Map" %}{% endblock %}
 {% block robots_header %}{% trans "Robot Operations Map" %}{% endblock %}
 
 {% block robots_head %}
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="{% static 'vendor/leaflet/leaflet.css' %}" />
+<script src="{% static 'vendor/leaflet/leaflet.js' %}"></script>
 <style>
   #robots-map { min-height: 72vh; }
   .robot-map-popup h3 { margin: 0 0 .35rem 0; font-weight: 700; }

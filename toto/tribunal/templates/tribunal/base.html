@@ -1,10 +1,11 @@
 {% extends "oya/base.html" %}
+{% load static %}
 {% load i18n %}
 
 {% block title %}{% block tribunal_title %}{% trans "Tribunal" %}{% endblock %} | {{ platform.site_name }}{% endblock %}
 
 {% block start_script %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
 {% include "oya/partials/dim.html" %}
 <style>
   [x-cloak] { display: none !important; }
