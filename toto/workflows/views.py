@@ -321,6 +321,8 @@ class WorkflowDetailUIView(LoginRequiredMixin, DetailView):
                 "label": n.label or f"{n.node_type}:{n.id}",
                 "node_type": n.node_type,
                 "lambda_name": n.lambda_function.function_name if n.lambda_function else "",
+                "lambda_code": n.lambda_function.content if n.lambda_function else "",
+                "task_name": n.task_name,
             }
             for n in nodes
         ])

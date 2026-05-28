@@ -122,11 +122,28 @@
                     {% elif node.node_type == "report" %}
                       <span class="rounded-full px-2 py-0.5 text-xs font-semibold"
                             :class="darkMode ? 'bg-link-dark/15 text-link-dark' : 'bg-link-light/15 text-link-light'">report</span>
+                    {% elif node.node_type == "predefined_task" %}
+                      <span class="rounded-full bg-purple-500/15 px-2 py-0.5 text-xs font-semibold text-purple-500">task</span>
                     {% endif %}
                   </td>
                   <td class="px-4 py-3">{{ node.label|default:"—" }}</td>
-                  <td class="px-4 py-3 font-mono text-xs opacity-70">
-                    {{ node.lambda_function.function_name|default:"—" }}
+                  <td class="px-4 py-3">
+                    {% if node.lambda_function %}
+                      <div class="flex items-center gap-2">
+                        <span class="font-mono text-xs opacity-70">{{ node.lambda_function.function_name }}</span>
+                        <button
+                          onclick="openLambdaCode('{{ node.lambda_function.function_name|escapejs }}', {{ node.id }})"
+                          class="inline-flex items-center gap-1 rounded border border-current/20 px-1.5 py-0.5 text-xs font-semibold opacity-60 hover:opacity-100 transition-opacity"
+                          title="View lambda code"
+                        >
+                          <i class="fa-solid fa-code text-xs"></i> View
+                        </button>
+                      </div>
+                    {% elif node.task_name %}
+                      <span class="font-mono text-xs opacity-70">{{ node.task_name }}</span>
+                    {% else %}
+                      <span class="opacity-30">—</span>
+                    {% endif %}
                   </td>
                 </tr>
               {% endfor %}
@@ -229,7 +246,92 @@
   </div>
 </div>
 
+<script type="application/json" id="workflow-nodes-data">{{ graph_nodes_json|safe }}</script>
+
 {% if nodes %}
   {% include "workflows/workflow_graph_scripts.html" %}
 {% endif %}
+
+<!-- Lambda code viewer modal -->
+<div
+  id="lambda-modal"
+  class="fixed inset-0 z-50 hidden items-center justify-center p-4"
+  style="background: rgba(0,0,0,0.55);"
+  onclick="if(event.target===this) closeLambdaCode()"
+>
+  <div class="flex w-full max-w-3xl flex-col rounded-xl border shadow-2xl overflow-hidden"
+       style="max-height: 90vh;"
+       id="lambda-modal-box">
+    <!-- Header -->
+    <div class="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-3">
+      <h3 class="flex items-center gap-2 text-sm font-semibold">
+        <i class="fa-solid fa-code opacity-60"></i>
+        <span id="lambda-modal-title" class="font-mono"></span>
+      </h3>
+      <button onclick="closeLambdaCode()"
+              class="text-xl leading-none opacity-50 hover:opacity-100 transition-opacity">&times;</button>
+    </div>
+    <!-- Ace editor -->
+    <div id="lambda-ace-editor" style="flex: 1; min-height: 420px;"></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.36.4/ace.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+(function () {
+  var _editor = null;
+
+  function _initEditor() {
+    if (_editor) return;
+    _editor = ace.edit('lambda-ace-editor');
+    _editor.setReadOnly(true);
+    _editor.setShowPrintMargin(false);
+    _editor.setOption('useWorker', false);
+    _editor.setOptions({ fontSize: '13px', fontFamily: 'ui-monospace, monospace' });
+    _editor.session.setMode('ace/mode/python');
+    _editor.session.setTabSize(4);
+    _editor.session.setUseWrapMode(false);
+    _applyTheme();
+    // Hide cursor so it looks truly read-only
+    _editor.renderer.$cursorLayer.element.style.display = 'none';
+  }
+
+  function _applyTheme() {
+    if (!_editor) return;
+    var dark = localStorage.getItem('darkMode') === 'true';
+    _editor.setTheme(dark ? 'ace/theme/tomorrow_night' : 'ace/theme/tomorrow');
+    var box = document.getElementById('lambda-modal-box');
+    if (box) {
+      box.style.background = dark ? '#1d1f21' : '#ffffff';
+      box.style.color      = dark ? '#c5c8c6' : '#1d1f21';
+      box.style.borderColor = dark ? '#444' : '#ddd';
+    }
+  }
+
+  window.openLambdaCode = function (lambdaName, nodeId) {
+    var nodes = JSON.parse(document.getElementById('workflow-nodes-data').textContent);
+    var node  = nodes.find(function (n) { return n.id === nodeId; });
+    var code  = (node && node.lambda_code) ? node.lambda_code : '# (no code)';
+
+    _initEditor();
+    _applyTheme();
+    _editor.setValue(code, -1);
+
+    document.getElementById('lambda-modal-title').textContent = lambdaName;
+    var modal = document.getElementById('lambda-modal');
+    modal.style.display = 'flex';
+    // Notify Ace of new dimensions after the modal becomes visible
+    setTimeout(function () { _editor.resize(); }, 10);
+  };
+
+  window.closeLambdaCode = function () {
+    document.getElementById('lambda-modal').style.display = 'none';
+  };
+
+  // Close on Escape key
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeLambdaCode();
+  });
+}());
+</script>
 {% endblock %}

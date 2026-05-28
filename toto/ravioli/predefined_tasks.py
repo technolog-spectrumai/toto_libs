@@ -86,6 +86,102 @@ def ravioli_run_cypher_query(input_data: dict) -> dict:
     return {"data": {"query_id": query_id, "node_count": len(nodes), "edge_count": len(edges)}}
 
 
+@register("ravioli_prepare_graph_analysis")
+def ravioli_prepare_graph_analysis(input_data: dict) -> dict:
+    from .graph_analysis import build_networkx_graph, load_query_graph, serialize_graph
+
+    data = input_data.get("data") or {}
+    query_id = data.get("query_id")
+    refresh = bool(data.get("refresh", False))
+
+    if query_id is None:
+        raise ValueError("ravioli_prepare_graph_analysis requires query_id in input data.")
+
+    nodes, edges = load_query_graph(query_id, refresh=refresh)
+    G = build_networkx_graph(nodes, edges)
+    graph_payload = serialize_graph(G)
+
+    summary = {
+        "node_count": G.number_of_nodes(),
+        "edge_count": G.number_of_edges(),
+        "query_id": query_id,
+    }
+
+    # Pass through all input fields so downstream nodes (e.g. save) can access them
+    out = dict(data)
+    out.update({"graph": graph_payload, "graph_summary": summary})
+
+    return {"data": out}
+
+
+@register("ravioli_save_graph_analysis_output")
+def ravioli_save_graph_analysis_output(input_data: dict) -> dict:
+    import re
+    from django.contrib.auth.models import User
+    from django.core.files.base import ContentFile
+    from django.utils import timezone
+
+    from toto.vault.models import Bucket, VaultDirectory, VaultFile
+    from .graph_analysis import serialize_output
+
+    data = input_data.get("data") or {}
+    bucket_id = data.get("bucket_id")
+    directory_id = data.get("directory_id")
+    owner_id = data.get("owner_id")
+    fmt = (data.get("format") or "json").lower()
+    title = data.get("title") or "Graph Analysis"
+    query_id = data.get("query_id")
+
+    if not bucket_id:
+        raise ValueError("ravioli_save_graph_analysis_output requires bucket_id.")
+    if not owner_id:
+        raise ValueError("ravioli_save_graph_analysis_output requires owner_id.")
+    if fmt not in ("json", "yaml", "csv"):
+        raise ValueError(f"Unsupported format: {fmt!r}. Use json, yaml, or csv.")
+
+    try:
+        bucket = Bucket.objects.get(pk=bucket_id)
+    except Bucket.DoesNotExist:
+        raise ValueError(f"Bucket #{bucket_id} does not exist.")
+
+    directory = None
+    if directory_id:
+        try:
+            directory = VaultDirectory.objects.get(pk=directory_id, bucket=bucket)
+        except VaultDirectory.DoesNotExist:
+            raise ValueError(
+                f"Directory #{directory_id} does not exist in bucket #{bucket_id}."
+            )
+
+    try:
+        owner = User.objects.get(pk=owner_id)
+    except User.DoesNotExist:
+        raise ValueError(f"User #{owner_id} does not exist.")
+
+    # Strip plumbing and the raw graph blob; serialize what's left as the result
+    _skip = {"bucket_id", "directory_id", "owner_id", "format", "title", "graph"}
+    payload = {k: v for k, v in data.items() if k not in _skip}
+
+    content, mime_type, ext = serialize_output(payload, fmt)
+    file_type = VaultFile.detect_type(mime_type)
+
+    timestamp = re.sub(r"[^0-9]", "", timezone.now().isoformat()[:19])
+    filename = f"graph_analysis_q{query_id or 'x'}_{timestamp}{ext}"
+
+    vault_file = VaultFile(
+        owner=owner,
+        title=title,
+        bucket=bucket,
+        directory=directory,
+        file_type=file_type,
+        is_public=False,
+    )
+    vault_file.file.save(filename, ContentFile(content), save=False)
+    vault_file.save()
+
+    return {"data": {"vault_file_id": vault_file.pk, "download_url": vault_file.get_public_url()}}
+
+
 @register("ravioli_clear_db")
 def ravioli_clear_db(input_data: dict) -> dict:
     from .connection import Neo4jClient, is_enabled

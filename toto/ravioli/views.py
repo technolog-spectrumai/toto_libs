@@ -6,6 +6,8 @@ from django.http import JsonResponse, StreamingHttpResponse
 from django.shortcuts import redirect, render, get_object_or_404
 from django.views.decorators.http import require_GET, require_POST
 
+from django.db import models as _models
+
 from .models import CypherQuery, GraphProjectionPlan
 from toto.celery_utils import celery_available
 from toto.ui import PageProcessor
@@ -325,6 +327,168 @@ def query_cached_data(request, query_id):
             "name": selected_query.name,
             "description": selected_query.description,
         },
+    })
+
+
+@superuser_required
+def graph_analysis_view(request):
+    from toto.vault.models import Bucket, VaultDirectory
+    from toto.workflows.models import Workflow, WorkflowNodeRun, WorkflowRun
+
+    queries = list(CypherQuery.objects.all().order_by("name"))
+    workflows = list(
+        Workflow.objects.filter(
+            _models.Q(slug__startswith="graph-analysis-")
+            | _models.Q(nodes__task_name__in=[
+                "ravioli_prepare_graph_analysis",
+                "ravioli_save_graph_analysis_output",
+            ])
+        ).distinct().order_by("name")
+    )
+    buckets = list(Bucket.objects.all().order_by("name"))
+    directories = list(
+        VaultDirectory.objects.select_related("bucket").order_by("bucket__name", "name")
+    )
+
+    recent_runs = list(
+        WorkflowRun.objects
+        .filter(workflow__slug__startswith="graph-analysis-")
+        .select_related("workflow")
+        .order_by("-created_at")[:20]
+    )
+
+    file_data_by_run: dict[int, dict] = {}
+    completed_ids = [r.pk for r in recent_runs if r.status == WorkflowRun.COMPLETED]
+    if completed_ids:
+        for nr in WorkflowNodeRun.objects.filter(
+            workflow_run_id__in=completed_ids,
+            node__task_name="ravioli_save_graph_analysis_output",
+            status=WorkflowNodeRun.COMPLETED,
+        ).select_related("node"):
+            od = (nr.output_data or {}).get("data") or {}
+            if od.get("vault_file_id"):
+                file_data_by_run[nr.workflow_run_id] = od
+
+    # Annotate runs so the template can access file data without a custom filter
+    runs_with_files = [
+        (run, file_data_by_run.get(run.pk))
+        for run in recent_runs
+    ]
+
+    buckets_json = json.dumps([{"id": b.id, "name": b.name} for b in buckets])
+    directories_json = json.dumps([
+        {"id": d.id, "bucket_id": d.bucket_id, "path": d.full_path()}
+        for d in directories
+    ])
+
+    context = PageProcessor().decorate(
+        {
+            "queries": queries,
+            "workflows": workflows,
+            "buckets": buckets,
+            "buckets_json": buckets_json,
+            "directories_json": directories_json,
+            "formats": ["json", "yaml", "csv"],
+            "runs_with_files": runs_with_files,
+        },
+        request,
+    )
+    return render(request, "ravioli/graph_analysis.html", context)
+
+
+@require_POST
+@superuser_required
+def start_graph_analysis_view(request):
+    query_id = request.POST.get("query_id")
+    workflow_slug = request.POST.get("workflow_slug")
+    bucket_id = request.POST.get("bucket_id")
+    directory_id = request.POST.get("directory_id") or None
+    fmt = request.POST.get("format", "json")
+    title = request.POST.get("title", "").strip() or None
+
+    errors = []
+    if not query_id:
+        errors.append("Select a Cypher query.")
+    if not workflow_slug:
+        errors.append("Select a workflow.")
+    if not bucket_id:
+        errors.append("Select an output bucket.")
+    if fmt not in ("json", "yaml", "csv"):
+        errors.append(f"Invalid format: {fmt!r}.")
+    if errors:
+        return JsonResponse({"error": " ".join(errors)}, status=400)
+
+    if not celery_available():
+        return JsonResponse({"error": "No Celery worker is running."}, status=503)
+
+    input_data: dict = {
+        "data": {
+            "query_id": int(query_id),
+            "owner_id": request.user.pk,
+            "bucket_id": int(bucket_id),
+            "format": fmt,
+        }
+    }
+    if directory_id:
+        input_data["data"]["directory_id"] = int(directory_id)
+    if title:
+        input_data["data"]["title"] = title
+
+    try:
+        run = _trigger_workflow(workflow_slug, input_data=input_data)
+    except RuntimeError as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+
+    return JsonResponse({"run_id": run.pk})
+
+
+@require_GET
+@superuser_required
+def graph_analysis_status_view(request, run_id):
+    from toto.workflows.models import WorkflowNodeRun, WorkflowRun
+
+    run = get_object_or_404(WorkflowRun.objects.select_related("workflow"), pk=run_id)
+
+    node_runs = list(run.node_runs.select_related("node").all())
+    total = run.workflow.nodes.count()
+    done = sum(
+        1 for nr in node_runs
+        if nr.status in (
+            WorkflowNodeRun.COMPLETED,
+            WorkflowNodeRun.FAILED,
+            WorkflowNodeRun.SKIPPED,
+        )
+    )
+    percent = int(done / total * 100) if total else 0
+    if run.status == WorkflowRun.COMPLETED:
+        percent = 100
+
+    vault_file_id = None
+    download_url = None
+    for nr in node_runs:
+        if (
+            nr.node.task_name == "ravioli_save_graph_analysis_output"
+            and nr.status == WorkflowNodeRun.COMPLETED
+        ):
+            file_data = (nr.output_data or {}).get("data") or {}
+            vault_file_id = file_data.get("vault_file_id")
+            download_url = file_data.get("download_url")
+            break
+
+    error = None
+    for nr in node_runs:
+        if nr.status == WorkflowNodeRun.FAILED:
+            error = nr.error or f"Node {nr.node.label!r} failed."
+            break
+
+    return JsonResponse({
+        "status": run.status,
+        "percent": percent,
+        "completed_nodes": done,
+        "total_nodes": total,
+        "vault_file_id": vault_file_id,
+        "download_url": download_url,
+        "error": error,
     })
 
 
