@@ -94,6 +94,14 @@
         renameLoading: false,
 
         init() {
+          const clearSearchAutofill = () => {
+            this.search = '';
+            if (this.$refs.searchInput) this.$refs.searchInput.value = '';
+          };
+          this.$nextTick(() => {
+            clearSearchAutofill();
+            window.setTimeout(clearSearchAutofill, 250);
+          });
           this.$watch('renameModal', open => {
             if (open) this.$nextTick(() => this.$refs.renameInput?.select());
           });
@@ -589,10 +597,18 @@
           <div class="pointer-events-none absolute inset-y-0 left-3 flex items-center">
             <i class="fa-solid fa-magnifying-glass text-xs opacity-40"></i>
           </div>
-          <input x-model="search"
+          <input id="vault-file-search"
+                 x-ref="searchInput"
+                 x-model="search"
                  type="search"
-                 autocomplete="off"
+                 name="vault_file_filter"
+                 autocomplete="new-password"
+                 autocapitalize="none"
+                 autocorrect="off"
+                 spellcheck="false"
+                 readonly
                  placeholder="{% trans "Search files…" %}"
+                 @focus="$el.removeAttribute('readonly')"
                  @keydown.escape.stop="search = ''"
                  :class="darkMode
                    ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark placeholder:text-text-main-dark/40'
