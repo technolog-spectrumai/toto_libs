@@ -48,6 +48,7 @@
           <th class="px-4 py-3 text-left">{% trans "Holder" %}</th>
           <th class="px-4 py-3 text-left">{% trans "Source" %}</th>
           <th class="px-4 py-3 text-left">{% trans "Created" %}</th>
+          <th class="px-4 py-3"></th>
         </tr>
       </thead>
       <tbody>
@@ -58,14 +59,63 @@
           <td class="px-4 py-3 font-semibold">{{ e.resource_label }}</td>
           <td class="px-4 py-3 opacity-70">{{ e.get_kind_display }}</td>
           <td class="px-4 py-3">
-            <span class="inline-block rounded px-2 py-0.5 text-xs font-semibold
-              {% if e.status == 'active' %}bg-green-100 text-green-800{% elif e.status == 'revoked' %}bg-red-100 text-red-800{% elif e.status == 'expired' %}bg-gray-100 text-gray-500{% else %}bg-yellow-100 text-yellow-800{% endif %}">
+            <span class="inline-block rounded px-2 py-0.5 text-xs font-semibold"
+              :class="darkMode ? '{% if e.status == 'active' %}bg-success-dark/20 text-success-dark{% elif e.status == 'revoked' %}bg-caution-dark/20 text-caution-dark{% elif e.status == 'expired' %}opacity-50{% else %}bg-warn-dark/20 text-warn-dark{% endif %}' : '{% if e.status == 'active' %}bg-success-light/10 text-success-light{% elif e.status == 'revoked' %}bg-caution-light/10 text-caution-light{% elif e.status == 'expired' %}opacity-50{% else %}bg-warn-light/10 text-warn-light{% endif %}'">
               {{ e.get_status_display }}
             </span>
           </td>
           <td class="px-4 py-3 font-mono text-xs opacity-70">{{ e.holder_account.code }}</td>
           <td class="px-4 py-3 text-xs opacity-60">{{ e.source_type }}/{{ e.source_id }}</td>
           <td class="px-4 py-3 opacity-60">{{ e.created_at|date:"Y-m-d H:i" }}</td>
+          <td class="px-4 py-3 text-right" onclick="event.stopPropagation()">
+            {% if e.status == 'active' %}
+            <div class="flex items-center gap-1 justify-end">
+              <form method="post" action="{% url 'claims:entitlement_transition' e.uuid %}"
+                    onsubmit="return confirm('{% trans 'Suspend this entitlement?' %}')">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="suspend">
+                <button type="submit"
+                  :class="darkMode ? 'bg-warn-dark/20 text-warn-dark hover:bg-warn-dark/30' : 'bg-warn-light/10 text-warn-light hover:bg-warn-light/20'"
+                  class="rounded px-2 py-1 text-xs font-semibold transition whitespace-nowrap">
+                  <i class="fa-solid fa-pause text-xs"></i>
+                </button>
+              </form>
+              <form method="post" action="{% url 'claims:entitlement_transition' e.uuid %}"
+                    onsubmit="return confirm('{% trans 'Revoke this entitlement?' %}')">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="revoke">
+                <button type="submit"
+                  :class="darkMode ? 'bg-caution-dark/20 text-caution-dark hover:bg-caution-dark/30' : 'bg-caution-light/10 text-caution-light hover:bg-caution-light/20'"
+                  class="rounded px-2 py-1 text-xs font-semibold transition whitespace-nowrap">
+                  <i class="fa-solid fa-ban text-xs"></i>
+                </button>
+              </form>
+            </div>
+            {% elif e.status == 'suspended' %}
+            <div class="flex items-center gap-1 justify-end">
+              <form method="post" action="{% url 'claims:entitlement_transition' e.uuid %}"
+                    onsubmit="return confirm('{% trans 'Reactivate this entitlement?' %}')">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="reactivate">
+                <button type="submit"
+                  :class="darkMode ? 'bg-success-dark/20 text-success-dark hover:bg-success-dark/30' : 'bg-success-light/10 text-success-light hover:bg-success-light/20'"
+                  class="rounded px-2 py-1 text-xs font-semibold transition whitespace-nowrap">
+                  <i class="fa-solid fa-play text-xs"></i>
+                </button>
+              </form>
+              <form method="post" action="{% url 'claims:entitlement_transition' e.uuid %}"
+                    onsubmit="return confirm('{% trans 'Revoke this entitlement?' %}')">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="revoke">
+                <button type="submit"
+                  :class="darkMode ? 'bg-caution-dark/20 text-caution-dark hover:bg-caution-dark/30' : 'bg-caution-light/10 text-caution-light hover:bg-caution-light/20'"
+                  class="rounded px-2 py-1 text-xs font-semibold transition whitespace-nowrap">
+                  <i class="fa-solid fa-ban text-xs"></i>
+                </button>
+              </form>
+            </div>
+            {% endif %}
+          </td>
         </tr>
         {% endfor %}
       </tbody>

@@ -46,7 +46,8 @@
       </span>
 
       {% if ob.is_overdue %}
-      <span class="rounded px-1.5 py-0.5 font-semibold bg-red-500/10 text-red-500 shrink-0">
+      <span class="rounded px-1.5 py-0.5 font-semibold shrink-0"
+            :class="darkMode ? 'bg-caution-dark/20 text-caution-dark' : 'bg-caution-light/10 text-caution-light'">
         {% trans "Overdue" %}
       </span>
       {% endif %}

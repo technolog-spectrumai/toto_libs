@@ -125,6 +125,8 @@ Apps are listed in the order they appear in `INSTALLED_APPS`. Third-party librar
 
 `crypto.py` holds the pure-function encryption primitives (derive key, encrypt, decrypt, self-signed cert generation) that operate on raw bytes.
 
+`GervazyCryptoSession` (in `crypto.py`) is the high-level session object opened with a strongbox password. Key methods: `decrypt_file(encrypted_file) → (bytes, filename)` — reads `EncryptedFileChunk` records in order, decrypts each chunk with its stored nonce, and reassembles the plaintext; `decrypt_filename(encrypted_file) → str` — decrypts the AES-GCM encrypted original filename stored alongside the file record.
+
 **`toto.vault`** — User file storage with bucket organization and gateway-controlled sharing.
 - `Bucket` — a named container owned by a `User`. Has `is_public` flag.
 - `VaultFile` — a file stored in a bucket. Tracks `original_filename`, `content_type`, `size`, `checksum`, `uploaded_at`. Soft-delete only (`is_deleted` flag; actual file is not removed). Owner and optional bucket FK.
@@ -234,14 +236,15 @@ Nearly every other app links to `Person` rather than `User` directly. The FK fro
 - Posting rules: `select_for_update()` on holdings; refuses to post if any asset balance would go negative; no partial posts across multi-asset charges; all ledger writes are inside one `transaction.atomic()`.
 
 **`toto.claims`** — Contract lifecycle primitives. All four models attach to an `Agreement` or `Contract` via FK and optionally carry a `source_type` / `source_id` generic FK for provenance:
-- `Entitlement` — a right held by an account (service access, lease right, exercise right, reward eligibility, claim right, usage right). Has `starts_at` / `ends_at` and a status lifecycle.
+- `Entitlement` — a right held by an account (service access, lease right, exercise right, reward eligibility, claim right, usage right). Has `starts_at` / `ends_at` and a status lifecycle (`active → suspended → revoked / expired`). Inline quick-action buttons (pause/ban/play icons) are shown directly in the entitlement list for fast state transitions without navigating to the detail page.
 - `Schedule` — a recurring or one-shot temporal trigger (billing, renewal, vesting, payout, settlement, reward, checkpoint). `next_run_at` is indexed; a Celery beat task polls for due schedules.
 - `Condition` — a predicate that must be satisfied before an effect fires. Kinds: time, status, approval, balance, evidence, threshold, manual, external. `expression` JSON encodes the rule; evaluation is handled by the service layer.
 - `Allocation` — a reserved or ring-fenced portion of an asset (escrow hold, collateral, margin, vesting pool, staking lock, prepaid balance, budget). Tracks `allocated`, `released`, and `consumed` sub-amounts against the `amount_base_units` ceiling.
 - `ContractEvent` — append-only log of what happened under a contract (payment due, payment paid, entitlement granted, condition satisfied, allocation released, default, settlement…). Each event may link to a transaction, obligation, entitlement, schedule, condition, or allocation.
+- **Lifecycle transitions** — each of the four mutable models (Entitlement, Schedule, Condition, Allocation) exposes a `/<uuid>/transition/` POST endpoint. A reusable `_action_panel.html` partial (Alpine.js) renders state-appropriate action buttons with confirm dialogs and optional reason fields. Status badges and stat sub-labels throughout the claims UI use the OYA design system token set (`success`, `warn`, `caution`, `accent` in `-dark`/`-light` variants) rather than raw Tailwind colors.
 
 **`toto.contracts`** — Contract graph editor and human-readable document layer.
-- `Contract` — a named contract with an optional YAML snapshot (`code`, validated as `language: lapis`, `kind: claims_mesh`). This is the human-authored description layer on top of `assets.Contract`.
+- `Contract` — a named contract with an optional YAML snapshot (`code`, validated as `language: lapis`, `kind: claims_mesh`). This is the human-authored description layer on top of `assets.Contract`. Additional fields: `body` (free-text human-readable contract prose), `vault_pdf` (optional FK to `gervazy.EncryptedFile` — an encrypted PDF stored in the user's vault). A dedicated download view prompts for the strongbox password, decrypts the file in memory, and serves it with the correct content-disposition.
 - `ContractNode` — a node in the contract graph with a `node_type` (contract, obligation, entitlement, schedule, condition, allocation, event, ledger_account, asset, agreement, and more). Nodes can be manually authored or backed by a real Django object via `(object_app, object_model, object_id)` generic FK. Position stored for Cytoscape layout.
 - `ContractEdge` — a directed edge between two nodes with a typed relationship (`explains`, `grants`, `creates_duty`, `triggers`, `gates`, `allocates`, `settles`, `records`, `debtor`, `creditor`, `uses_asset`, and others).
 

@@ -19,10 +19,11 @@
       </h2>
       <div class="flex items-center gap-2 shrink-0">
         {% if obligation.is_overdue %}
-        <span class="inline-block rounded px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-700">{% trans "Overdue" %}</span>
+        <span class="inline-block rounded px-2 py-0.5 text-xs font-semibold"
+          :class="darkMode ? 'bg-caution-dark/20 text-caution-dark' : 'bg-caution-light/10 text-caution-light'">{% trans "Overdue" %}</span>
         {% endif %}
-        <span class="inline-block rounded px-2 py-0.5 text-xs font-semibold
-          {% if obligation.status == 'fulfilled' %}bg-green-100 text-green-800{% elif obligation.status == 'defaulted' %}bg-red-100 text-red-800{% elif obligation.status == 'overdue' %}bg-orange-100 text-orange-800{% else %}bg-yellow-100 text-yellow-800{% endif %}">
+        <span class="inline-block rounded px-2 py-0.5 text-xs font-semibold"
+          :class="darkMode ? '{% if obligation.status == 'fulfilled' %}bg-success-dark/20 text-success-dark{% elif obligation.status == 'defaulted' %}bg-caution-dark/20 text-caution-dark{% elif obligation.status == 'overdue' %}bg-caution-dark/20 text-caution-dark{% else %}bg-warn-dark/20 text-warn-dark{% endif %}' : '{% if obligation.status == 'fulfilled' %}bg-success-light/10 text-success-light{% elif obligation.status == 'defaulted' %}bg-caution-light/10 text-caution-light{% elif obligation.status == 'overdue' %}bg-caution-light/10 text-caution-light{% else %}bg-warn-light/10 text-warn-light{% endif %}'">
           {{ obligation.get_status_display }}
         </span>
         {% if is_my_obligation and obligation.status == 'pending' %}
@@ -55,7 +56,7 @@
       </div>
       <div class="grid grid-cols-[200px_1fr] gap-2 border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
         <dt class="font-semibold opacity-60">{% trans "Due at" %}</dt>
-        <dd class="{% if obligation.is_overdue %}text-red-500 font-semibold{% endif %}">
+        <dd :class="{% if obligation.is_overdue %}darkMode ? 'text-caution-dark font-semibold' : 'text-caution-light font-semibold'{% else %}''{% endif %}">
           {{ obligation.due_at|date:"Y-m-d H:i" }}
         </dd>
       </div>
@@ -112,8 +113,8 @@
             class="border-b transition cursor-pointer"
             onclick="window.location='{% url 'claims:event_detail' ev.uuid %}'">
           <td class="px-4 py-3">
-            <span class="inline-block rounded px-2 py-0.5 text-xs font-semibold
-              {% if ev.kind == 'created' %}bg-green-100 text-green-800{% elif ev.kind == 'cancelled' or ev.kind == 'default' %}bg-red-100 text-red-800{% elif ev.kind == 'activated' %}bg-blue-100 text-blue-800{% else %}bg-gray-100 text-gray-700{% endif %}">
+            <span class="inline-block rounded px-2 py-0.5 text-xs font-semibold"
+              :class="darkMode ? '{% if ev.kind == 'created' %}bg-success-dark/20 text-success-dark{% elif ev.kind == 'cancelled' or ev.kind == 'default' %}bg-caution-dark/20 text-caution-dark{% elif ev.kind == 'activated' %}bg-accent-dark/20 text-accent-dark{% else %}opacity-50{% endif %}' : '{% if ev.kind == 'created' %}bg-success-light/10 text-success-light{% elif ev.kind == 'cancelled' or ev.kind == 'default' %}bg-caution-light/10 text-caution-light{% elif ev.kind == 'activated' %}bg-accent-light/10 text-accent-light{% else %}opacity-50{% endif %}'">
               {{ ev.get_kind_display }}
             </span>
           </td>

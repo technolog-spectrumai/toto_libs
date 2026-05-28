@@ -10,24 +10,13 @@
     {% for act in actions %}
     <button type="button"
       @click="active = (active === '{{ act.action }}') ? null : '{{ act.action }}'"
-      :class="{
-        {% if act.color == 'red' %}
-        'bg-red-100 text-red-800 ring-1 ring-red-300': active === '{{ act.action }}',
-        'bg-red-50 text-red-700 hover:bg-red-100': active !== '{{ act.action }}',
-        {% elif act.color == 'yellow' %}
-        'bg-yellow-100 text-yellow-800 ring-1 ring-yellow-300': active === '{{ act.action }}',
-        'bg-yellow-50 text-yellow-700 hover:bg-yellow-100': active !== '{{ act.action }}',
-        {% elif act.color == 'green' %}
-        'bg-green-100 text-green-800 ring-1 ring-green-300': active === '{{ act.action }}',
-        'bg-green-50 text-green-700 hover:bg-green-100': active !== '{{ act.action }}',
-        {% elif act.color == 'blue' %}
-        'bg-blue-100 text-blue-800 ring-1 ring-blue-300': active === '{{ act.action }}',
-        'bg-blue-50 text-blue-700 hover:bg-blue-100': active !== '{{ act.action }}',
-        {% else %}
-        'bg-gray-100 text-gray-800 ring-1 ring-gray-300': active === '{{ act.action }}',
-        'bg-gray-100 text-gray-600 hover:bg-gray-200': active !== '{{ act.action }}',
-        {% endif %}
-      }"
+      :class="darkMode
+        ? (active === '{{ act.action }}'
+            ? '{% if act.color == 'red' %}ring-1 ring-caution-dark/40 bg-caution-dark/20 text-caution-dark{% elif act.color == 'yellow' %}ring-1 ring-warn-dark/40 bg-warn-dark/20 text-warn-dark{% elif act.color == 'green' %}ring-1 ring-success-dark/40 bg-success-dark/20 text-success-dark{% elif act.color == 'blue' %}ring-1 ring-accent-dark/40 bg-accent-dark/20 text-accent-dark{% else %}ring-1 ring-accent-1 bg-bubble-bg-dark opacity-80{% endif %}'
+            : '{% if act.color == 'red' %}bg-caution-dark/10 text-caution-dark hover:bg-caution-dark/20{% elif act.color == 'yellow' %}bg-warn-dark/10 text-warn-dark hover:bg-warn-dark/20{% elif act.color == 'green' %}bg-success-dark/10 text-success-dark hover:bg-success-dark/20{% elif act.color == 'blue' %}bg-accent-dark/10 text-accent-dark hover:bg-accent-dark/20{% else %}bg-bubble-bg-dark border border-accent-1 text-text-main-dark hover:opacity-80{% endif %}')
+        : (active === '{{ act.action }}'
+            ? '{% if act.color == 'red' %}ring-1 ring-caution-light/40 bg-caution-light/20 text-caution-light{% elif act.color == 'yellow' %}ring-1 ring-warn-light/40 bg-warn-light/20 text-warn-light{% elif act.color == 'green' %}ring-1 ring-success-light/40 bg-success-light/20 text-success-light{% elif act.color == 'blue' %}ring-1 ring-accent-light/40 bg-accent-light/20 text-accent-light{% else %}ring-1 ring-accent-2 bg-bubble-bg-light opacity-80{% endif %}'
+            : '{% if act.color == 'red' %}bg-caution-light/10 text-caution-light hover:bg-caution-light/20{% elif act.color == 'yellow' %}bg-warn-light/10 text-warn-light hover:bg-warn-light/20{% elif act.color == 'green' %}bg-success-light/10 text-success-light hover:bg-success-light/20{% elif act.color == 'blue' %}bg-accent-light/10 text-accent-light hover:bg-accent-light/20{% else %}bg-bubble-bg-light border border-accent-2 text-text-main-light hover:opacity-80{% endif %}')"
       class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition">
       <i class="{{ act.icon }}"></i>
       {{ act.label }}
@@ -37,7 +26,7 @@
 
   {% for act in actions %}
   <div x-show="active === '{{ act.action }}'" x-cloak x-transition
-       :class="darkMode ? 'border-accent-1 bg-black/10' : 'border-accent-2 bg-white/60'"
+       :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
        class="rounded-lg border p-4 space-y-3">
 
     {% if act.confirm %}
@@ -60,12 +49,10 @@
 
       <div class="flex gap-2">
         <button type="submit"
-          class="inline-flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-semibold transition
-          {% if act.color == 'red' %}bg-red-600 text-white hover:bg-red-700
-          {% elif act.color == 'yellow' %}bg-yellow-500 text-white hover:bg-yellow-600
-          {% elif act.color == 'green' %}bg-green-600 text-white hover:bg-green-700
-          {% elif act.color == 'blue' %}bg-blue-600 text-white hover:bg-blue-700
-          {% else %}bg-gray-600 text-white hover:bg-gray-700{% endif %}">
+          :class="darkMode
+            ? '{% if act.color == 'red' %}bg-caution-dark text-primary-bg-dark hover:opacity-90{% elif act.color == 'yellow' %}bg-warn-dark text-primary-bg-dark hover:opacity-90{% elif act.color == 'green' %}bg-success-dark text-primary-bg-dark hover:opacity-90{% elif act.color == 'blue' %}bg-accent-dark text-primary-bg-dark hover:opacity-90{% else %}bg-bubble-bg-dark border border-accent-1 text-text-main-dark hover:opacity-80{% endif %}'
+            : '{% if act.color == 'red' %}bg-caution-light text-primary-bg-light hover:opacity-90{% elif act.color == 'yellow' %}bg-warn-light text-primary-bg-light hover:opacity-90{% elif act.color == 'green' %}bg-success-light text-primary-bg-light hover:opacity-90{% elif act.color == 'blue' %}bg-accent-light text-primary-bg-light hover:opacity-90{% else %}bg-bubble-bg-light border border-accent-2 text-text-main-light hover:opacity-80{% endif %}'"
+          class="inline-flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-semibold transition">
           <i class="{{ act.icon }}"></i>
           {% trans "Confirm" %}: {{ act.label }}
         </button>

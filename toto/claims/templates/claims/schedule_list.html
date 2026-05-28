@@ -58,8 +58,8 @@
           <td class="px-4 py-3 font-semibold">{{ s.name }}</td>
           <td class="px-4 py-3">{{ s.get_kind_display }}</td>
           <td class="px-4 py-3">
-            <span class="inline-block rounded px-2 py-0.5 text-xs font-semibold
-              {% if s.status == 'active' %}bg-green-100 text-green-800{% elif s.status == 'paused' %}bg-yellow-100 text-yellow-800{% elif s.status == 'cancelled' %}bg-red-100 text-red-800{% else %}bg-gray-100 text-gray-700{% endif %}">
+            <span class="inline-block rounded px-2 py-0.5 text-xs font-semibold"
+              :class="darkMode ? '{% if s.status == 'active' %}bg-success-dark/20 text-success-dark{% elif s.status == 'paused' %}bg-warn-dark/20 text-warn-dark{% elif s.status == 'cancelled' %}bg-caution-dark/20 text-caution-dark{% else %}opacity-50{% endif %}' : '{% if s.status == 'active' %}bg-success-light/10 text-success-light{% elif s.status == 'paused' %}bg-warn-light/10 text-warn-light{% elif s.status == 'cancelled' %}bg-caution-light/10 text-caution-light{% else %}opacity-50{% endif %}'">
               {{ s.get_status_display }}
             </span>
           </td>

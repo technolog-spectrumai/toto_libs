@@ -55,8 +55,8 @@
               onclick="window.location='{% url 'claims:obligation_detail' ob.pk %}'">{{ ob.reference|default:"—" }}</td>
           <td class="px-4 py-3 cursor-pointer"
               onclick="window.location='{% url 'claims:obligation_detail' ob.pk %}'">
-            <span class="inline-block rounded px-2 py-0.5 text-xs font-semibold
-              {% if ob.status == 'fulfilled' %}bg-green-100 text-green-800{% elif ob.status == 'defaulted' %}bg-red-100 text-red-800{% elif ob.status == 'overdue' %}bg-orange-100 text-orange-800{% else %}bg-yellow-100 text-yellow-800{% endif %}">
+            <span class="inline-block rounded px-2 py-0.5 text-xs font-semibold"
+              :class="darkMode ? '{% if ob.status == 'fulfilled' %}bg-success-dark/20 text-success-dark{% elif ob.status == 'defaulted' or ob.status == 'overdue' %}bg-caution-dark/20 text-caution-dark{% else %}bg-warn-dark/20 text-warn-dark{% endif %}' : '{% if ob.status == 'fulfilled' %}bg-success-light/10 text-success-light{% elif ob.status == 'defaulted' or ob.status == 'overdue' %}bg-caution-light/10 text-caution-light{% else %}bg-warn-light/10 text-warn-light{% endif %}'">
               {{ ob.get_status_display }}
             </span>
           </td>
@@ -68,7 +68,8 @@
               onclick="window.location='{% url 'claims:obligation_detail' ob.pk %}'">{{ ob.debtor_account.code }}</td>
           <td class="px-4 py-3 font-mono text-xs opacity-70 cursor-pointer"
               onclick="window.location='{% url 'claims:obligation_detail' ob.pk %}'">{{ ob.creditor_account.code }}</td>
-          <td class="px-4 py-3 text-xs cursor-pointer {% if ob.is_overdue %}text-red-500 font-semibold{% else %}opacity-60{% endif %}"
+          <td class="px-4 py-3 text-xs cursor-pointer"
+              :class="{% if ob.is_overdue %}darkMode ? 'text-caution-dark font-semibold' : 'text-caution-light font-semibold'{% else %}'opacity-60'{% endif %}"
               onclick="window.location='{% url 'claims:obligation_detail' ob.pk %}'">{{ ob.due_at|date:"Y-m-d H:i" }}</td>
           <td class="px-4 py-3 text-right">
             {% if ob.debtor_account_id in my_account_pks and ob.status == 'pending' %}

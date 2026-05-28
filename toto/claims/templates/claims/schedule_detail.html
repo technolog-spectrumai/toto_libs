@@ -17,8 +17,8 @@
         <i class="fa-solid fa-calendar-check" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
         {{ schedule.name }}
       </h2>
-      <span class="inline-block rounded px-2 py-0.5 text-xs font-semibold shrink-0
-        {% if schedule.status == 'active' %}bg-green-100 text-green-800{% elif schedule.status == 'paused' %}bg-yellow-100 text-yellow-800{% elif schedule.status == 'cancelled' %}bg-red-100 text-red-800{% else %}bg-gray-100 text-gray-700{% endif %}">
+      <span class="inline-block rounded px-2 py-0.5 text-xs font-semibold shrink-0"
+        :class="darkMode ? '{% if schedule.status == 'active' %}bg-success-dark/20 text-success-dark{% elif schedule.status == 'paused' %}bg-warn-dark/20 text-warn-dark{% elif schedule.status == 'cancelled' %}bg-caution-dark/20 text-caution-dark{% else %}opacity-50{% endif %}' : '{% if schedule.status == 'active' %}bg-success-light/10 text-success-light{% elif schedule.status == 'paused' %}bg-warn-light/10 text-warn-light{% elif schedule.status == 'cancelled' %}bg-caution-light/10 text-caution-light{% else %}opacity-50{% endif %}'">
         {{ schedule.get_status_display }}
       </span>
     </div>
@@ -97,8 +97,8 @@
             class="border-b transition cursor-pointer"
             onclick="window.location='{% url 'claims:event_detail' ev.uuid %}'">
           <td class="px-4 py-3">
-            <span class="inline-block rounded px-2 py-0.5 text-xs font-semibold
-              {% if ev.kind == 'created' %}bg-green-100 text-green-800{% elif ev.kind == 'cancelled' or ev.kind == 'default' %}bg-red-100 text-red-800{% elif ev.kind == 'activated' %}bg-blue-100 text-blue-800{% else %}bg-gray-100 text-gray-700{% endif %}">
+            <span class="inline-block rounded px-2 py-0.5 text-xs font-semibold"
+              :class="darkMode ? '{% if ev.kind == 'created' %}bg-success-dark/20 text-success-dark{% elif ev.kind == 'cancelled' or ev.kind == 'default' %}bg-caution-dark/20 text-caution-dark{% elif ev.kind == 'activated' %}bg-accent-dark/20 text-accent-dark{% else %}opacity-50{% endif %}' : '{% if ev.kind == 'created' %}bg-success-light/10 text-success-light{% elif ev.kind == 'cancelled' or ev.kind == 'default' %}bg-caution-light/10 text-caution-light{% elif ev.kind == 'activated' %}bg-accent-light/10 text-accent-light{% else %}opacity-50{% endif %}'">
               {{ ev.get_kind_display }}
             </span>
           </td>

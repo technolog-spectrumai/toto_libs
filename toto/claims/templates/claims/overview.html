@@ -17,8 +17,8 @@
       <div class="text-2xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">{{ stats.entitlements_total }}</div>
       <div class="mt-1 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Entitlements" %}</div>
       <div class="mt-2 flex gap-2 text-xs">
-        <span class="text-green-500">{{ stats.entitlements_active }} {% trans "active" %}</span>
-        <span class="text-red-400">{{ stats.entitlements_revoked }} {% trans "revoked" %}</span>
+        <span :class="darkMode ? 'text-success-dark' : 'text-success-light'">{{ stats.entitlements_active }} {% trans "active" %}</span>
+        <span :class="darkMode ? 'text-caution-dark' : 'text-caution-light'">{{ stats.entitlements_revoked }} {% trans "revoked" %}</span>
       </div>
     </a>
 
@@ -28,8 +28,8 @@
       <div class="text-2xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">{{ stats.obligations_total }}</div>
       <div class="mt-1 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Obligations" %}</div>
       <div class="mt-2 flex gap-2 text-xs">
-        <span class="text-yellow-400">{{ stats.obligations_pending }} {% trans "pending" %}</span>
-        <span class="text-red-400">{{ stats.obligations_overdue }} {% trans "overdue" %}</span>
+        <span :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ stats.obligations_pending }} {% trans "pending" %}</span>
+        <span :class="darkMode ? 'text-caution-dark' : 'text-caution-light'">{{ stats.obligations_overdue }} {% trans "overdue" %}</span>
       </div>
     </a>
 
@@ -39,7 +39,7 @@
       <div class="text-2xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">{{ stats.schedules_total }}</div>
       <div class="mt-1 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Schedules" %}</div>
       <div class="mt-2 flex gap-2 text-xs">
-        <span class="text-green-500">{{ stats.schedules_active }} {% trans "active" %}</span>
+        <span :class="darkMode ? 'text-success-dark' : 'text-success-light'">{{ stats.schedules_active }} {% trans "active" %}</span>
         <span class="opacity-50">{{ stats.schedules_draft }} {% trans "draft" %}</span>
       </div>
     </a>
@@ -50,9 +50,9 @@
       <div class="text-2xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">{{ stats.conditions_total }}</div>
       <div class="mt-1 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Conditions" %}</div>
       <div class="mt-2 flex gap-3 text-xs">
-        <span class="text-yellow-400">{{ stats.conditions_pending }} {% trans "pending" %}</span>
-        <span class="text-green-400">{{ stats.conditions_satisfied }} {% trans "ok" %}</span>
-        <span class="text-red-400">{{ stats.conditions_failed }} {% trans "failed" %}</span>
+        <span :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ stats.conditions_pending }} {% trans "pending" %}</span>
+        <span :class="darkMode ? 'text-success-dark' : 'text-success-light'">{{ stats.conditions_satisfied }} {% trans "ok" %}</span>
+        <span :class="darkMode ? 'text-caution-dark' : 'text-caution-light'">{{ stats.conditions_failed }} {% trans "failed" %}</span>
       </div>
     </a>
 
@@ -62,7 +62,7 @@
       <div class="text-2xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">{{ stats.allocations_total }}</div>
       <div class="mt-1 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Allocations" %}</div>
       <div class="mt-2 flex gap-2 text-xs">
-        <span class="text-green-500">{{ stats.allocations_active }} {% trans "active" %}</span>
+        <span :class="darkMode ? 'text-success-dark' : 'text-success-light'">{{ stats.allocations_active }} {% trans "active" %}</span>
         <span class="opacity-50">{{ stats.allocations_draft }} {% trans "draft" %}</span>
       </div>
     </a>
@@ -99,8 +99,8 @@
             class="border-b transition cursor-pointer"
             onclick="window.location='{% url 'claims:event_detail' ev.uuid %}'">
           <td class="px-4 py-3">
-            <span class="inline-block rounded px-2 py-0.5 text-xs font-semibold
-              {% if ev.kind == 'created' %}bg-green-100 text-green-800{% elif ev.kind == 'cancelled' or ev.kind == 'default' %}bg-red-100 text-red-800{% elif ev.kind == 'activated' %}bg-blue-100 text-blue-800{% else %}bg-gray-100 text-gray-700{% endif %}">
+            <span class="inline-block rounded px-2 py-0.5 text-xs font-semibold"
+              :class="darkMode ? '{% if ev.kind == 'created' %}bg-success-dark/20 text-success-dark{% elif ev.kind == 'cancelled' or ev.kind == 'default' %}bg-caution-dark/20 text-caution-dark{% elif ev.kind == 'activated' %}bg-accent-dark/20 text-accent-dark{% else %}opacity-50{% endif %}' : '{% if ev.kind == 'created' %}bg-success-light/10 text-success-light{% elif ev.kind == 'cancelled' or ev.kind == 'default' %}bg-caution-light/10 text-caution-light{% elif ev.kind == 'activated' %}bg-accent-light/10 text-accent-light{% else %}opacity-50{% endif %}'">
               {{ ev.get_kind_display }}
             </span>
           </td>

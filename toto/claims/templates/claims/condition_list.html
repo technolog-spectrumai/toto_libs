@@ -57,8 +57,8 @@
           <td class="px-4 py-3 font-semibold">{{ c.name }}</td>
           <td class="px-4 py-3 opacity-70">{{ c.get_kind_display }}</td>
           <td class="px-4 py-3">
-            <span class="inline-block rounded px-2 py-0.5 text-xs font-semibold
-              {% if c.status == 'satisfied' %}bg-green-100 text-green-800{% elif c.status == 'failed' %}bg-red-100 text-red-800{% elif c.status == 'pending' %}bg-yellow-100 text-yellow-800{% else %}bg-gray-100 text-gray-700{% endif %}">
+            <span class="inline-block rounded px-2 py-0.5 text-xs font-semibold"
+              :class="darkMode ? '{% if c.status == 'satisfied' %}bg-success-dark/20 text-success-dark{% elif c.status == 'failed' %}bg-caution-dark/20 text-caution-dark{% elif c.status == 'pending' %}bg-warn-dark/20 text-warn-dark{% else %}opacity-50{% endif %}' : '{% if c.status == 'satisfied' %}bg-success-light/10 text-success-light{% elif c.status == 'failed' %}bg-caution-light/10 text-caution-light{% elif c.status == 'pending' %}bg-warn-light/10 text-warn-light{% else %}opacity-50{% endif %}'">
               {{ c.get_status_display }}
             </span>
           </td>
