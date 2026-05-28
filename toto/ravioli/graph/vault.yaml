@@ -1,0 +1,65 @@
+app: vault
+
+nodes:
+  - label: Bucket
+    model: toto.vault.models.Bucket
+    uuid_field: id
+    fields:
+      name: name
+      slug: slug
+      storage_backend: storage_backend
+
+  - label: VaultFile
+    model: toto.vault.models.VaultFile
+    uuid_field: id
+    fields:
+      title: title
+      key: key
+      file_type: file_type
+      uploaded_at: uploaded_at
+      is_public: is_public
+      is_encrypted: is_encrypted
+      file_size_bytes: file_size_bytes
+
+  - label: VaultDirectory
+    model: toto.vault.models.VaultDirectory
+    uuid_field: id
+    fields:
+      name: name
+      created_at: created_at
+
+links:
+  - from_label: VaultFile
+    to_label: Bucket
+    relation: STORED_IN
+    source: bucket
+    cardinality: one
+    nullable: true
+
+  - from_label: VaultFile
+    to_label: VaultDirectory
+    relation: IN_DIRECTORY
+    source: directory
+    cardinality: one
+    nullable: true
+
+  - from_label: VaultDirectory
+    to_label: Bucket
+    relation: BELONGS_TO_BUCKET
+    source: bucket
+    cardinality: one
+    nullable: false
+
+  - from_label: VaultDirectory
+    to_label: VaultDirectory
+    relation: INSIDE
+    source: parent
+    cardinality: one
+    nullable: true
+
+  - from_label: Bucket
+    to_label: Tariff
+    relation: BILLED_UNDER
+    source: tariff
+    cardinality: one
+    nullable: true

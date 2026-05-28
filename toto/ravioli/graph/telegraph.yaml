@@ -1,0 +1,19 @@
+app: telegraph
+
+nodes:
+  - label: TelegraphChannel
+    model: toto.telegraph.models.TelegraphChannel
+    uuid_field: slug
+    fields:
+      name: name
+      slug: slug
+      created_at: created_at
+
+links:
+  - from_label: TelegraphChannel
+    to_label: Person
+    relation: HAS_MEMBER
+    via_model: toto.telegraph.models.TelegraphMember
+    from_field: channel
+    to_field: person
+    cardinality: many

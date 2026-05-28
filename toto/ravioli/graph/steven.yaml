@@ -1,0 +1,60 @@
+app: steven
+
+nodes:
+  - label: AgentProfile
+    model: toto.steven.models.AgentProfile
+    uuid_field: slug
+    fields:
+      name: name
+      slug: slug
+      description: description
+      model_name: model_name
+      graph_rag_enabled: graph_rag_enabled
+      is_active: is_active
+      created_at: created_at
+
+  - label: AgentConversation
+    model: toto.steven.models.Conversation
+    uuid_field: id
+    fields:
+      title: title
+      created_at: created_at
+      updated_at: updated_at
+
+  - label: ChatMessage
+    model: toto.steven.models.ChatMessage
+    uuid_field: id
+    fields:
+      role: role
+      created_at: created_at
+
+  - label: AgentRun
+    model: toto.steven.models.AgentRun
+    uuid_field: id
+    fields:
+      status: status
+      started_at: started_at
+      finished_at: finished_at
+      created_at: created_at
+
+links:
+  - from_label: AgentConversation
+    to_label: AgentProfile
+    relation: WITH_AGENT
+    source: agent
+    cardinality: one
+    nullable: false
+
+  - from_label: ChatMessage
+    to_label: AgentConversation
+    relation: MESSAGE_IN
+    source: conversation
+    cardinality: one
+    nullable: false
+
+  - from_label: AgentRun
+    to_label: AgentProfile
+    relation: RUN_BY_AGENT
+    source: agent
+    cardinality: one
+    nullable: false

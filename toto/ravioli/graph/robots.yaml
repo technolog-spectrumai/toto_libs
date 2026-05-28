@@ -1,0 +1,206 @@
+app: robots
+
+nodes:
+  - label: RobotModel
+    model: toto.robots.models.RobotModel
+    uuid_field: uuid
+    fields:
+      manufacturer: manufacturer
+      name: name
+      slug: slug
+      kind: kind
+      description: description
+
+  - label: RobotCapability
+    model: toto.robots.models.RobotCapability
+    uuid_field: slug
+    fields:
+      name: name
+      slug: slug
+      description: description
+
+  - label: Robot
+    model: toto.robots.models.Robot
+    uuid_field: uuid
+    fields:
+      name: name
+      callsign: callsign
+      serial_number: serial_number
+      status: status
+
+  - label: RobotFleet
+    model: toto.robots.models.Fleet
+    uuid_field: uuid
+    fields:
+      name: name
+      slug: slug
+      description: description
+
+  - label: RobotMission
+    model: toto.robots.models.RobotMission
+    uuid_field: uuid
+    fields:
+      title: title
+      description: description
+      status: status
+
+  - label: MissionWaypoint
+    model: toto.robots.models.MissionWaypoint
+    uuid_field: id
+    fields:
+      order: order
+      label: label
+      instruction: instruction
+
+  - label: RobotAssignment
+    model: toto.robots.models.RobotAssignment
+    uuid_field: id
+    fields:
+      status: status
+      role: role
+
+  - label: RobotComponent
+    model: toto.robots.models.RobotComponent
+    uuid_field: id
+    fields:
+      name: name
+      component_type: component_type
+      serial_number: serial_number
+      installed_at: installed_at
+
+  - label: MaintenanceTicket
+    model: toto.robots.models.MaintenanceTicket
+    uuid_field: uuid
+    fields:
+      title: title
+      description: description
+      status: status
+
+  - label: FirmwareRelease
+    model: toto.robots.models.FirmwareRelease
+    uuid_field: id
+    fields:
+      version: version
+      release_notes: release_notes
+      checksum: checksum
+
+  - label: ChargingDock
+    model: toto.robots.models.ChargingDock
+    uuid_field: uuid
+    fields:
+      name: name
+      slug: slug
+
+links:
+  - from_label: Robot
+    to_label: RobotModel
+    relation: IS_MODEL
+    source: model
+    cardinality: one
+    nullable: false
+
+  - from_label: Robot
+    to_label: Community
+    relation: OWNED_BY_COMMUNITY
+    source: community
+    cardinality: one
+    nullable: false
+
+  - from_label: RobotFleet
+    to_label: Community
+    relation: FLEET_OF
+    source: community
+    cardinality: one
+    nullable: false
+
+  - from_label: RobotFleet
+    to_label: Person
+    relation: MANAGED_BY
+    source: manager
+    cardinality: one
+    nullable: true
+
+  - from_label: Robot
+    to_label: RobotFleet
+    relation: MEMBER_OF_FLEET
+    via_model: toto.robots.models.FleetMembership
+    from_field: robot
+    to_field: fleet
+    cardinality: many
+
+  - from_label: RobotMission
+    to_label: Community
+    relation: MISSION_OF
+    source: community
+    cardinality: one
+    nullable: false
+
+  - from_label: RobotMission
+    to_label: RobotFleet
+    relation: ASSIGNED_TO_FLEET
+    source: fleet
+    cardinality: one
+    nullable: true
+
+  - from_label: MissionWaypoint
+    to_label: RobotMission
+    relation: WAYPOINT_OF
+    source: mission
+    cardinality: one
+    nullable: false
+
+  - from_label: MissionWaypoint
+    to_label: Address
+    relation: AT_ADDRESS
+    source: address
+    cardinality: one
+    nullable: true
+
+  - from_label: RobotAssignment
+    to_label: RobotMission
+    relation: EXECUTES_MISSION
+    source: mission
+    cardinality: one
+    nullable: false
+
+  - from_label: RobotAssignment
+    to_label: Robot
+    relation: ASSIGNED_ROBOT
+    source: robot
+    cardinality: one
+    nullable: false
+
+  - from_label: RobotComponent
+    to_label: Robot
+    relation: COMPONENT_OF
+    source: robot
+    cardinality: one
+    nullable: false
+
+  - from_label: MaintenanceTicket
+    to_label: Robot
+    relation: FOR_ROBOT
+    source: robot
+    cardinality: one
+    nullable: false
+
+  - from_label: MaintenanceTicket
+    to_label: RobotComponent
+    relation: FOR_COMPONENT
+    source: component
+    cardinality: one
+    nullable: true
+
+  - from_label: FirmwareRelease
+    to_label: RobotModel
+    relation: FOR_MODEL
+    source: model
+    cardinality: one
+    nullable: false
+
+  - from_label: ChargingDock
+    to_label: Community
+    relation: DOCK_OF
+    source: community
+    cardinality: one
+    nullable: false

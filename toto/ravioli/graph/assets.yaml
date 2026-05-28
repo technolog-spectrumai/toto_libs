@@ -65,6 +65,27 @@ nodes:
       status: status
       default_reason: default_reason
 
+  - label: LapisContract
+    model: toto.assets.models.Contract
+    uuid_field: uuid
+    fields:
+      name: name
+
+  - label: Agreement
+    model: toto.assets.models.Agreement
+    uuid_field: uuid
+    fields:
+      metadata:
+        source: metadata
+        transform: default_dict
+
+  - label: LedgerEntry
+    model: toto.assets.models.LedgerEntry
+    uuid_field: id
+    fields:
+      amount_base_units: amount_base_units
+      created_at: created_at
+
 links:
   - from_label: LedgerTransaction
     to_label: Asset
@@ -149,3 +170,45 @@ links:
     source: supervisor
     cardinality: one
     nullable: true
+
+  - from_label: Agreement
+    to_label: LedgerAccount
+    relation: FROM_ACCOUNT
+    source: source_account
+    cardinality: one
+    nullable: false
+
+  - from_label: Agreement
+    to_label: LedgerAccount
+    relation: TO_ACCOUNT
+    source: target_account
+    cardinality: one
+    nullable: false
+
+  - from_label: Agreement
+    to_label: LapisContract
+    relation: GOVERNED_BY
+    source: contract
+    cardinality: one
+    nullable: true
+
+  - from_label: LedgerEntry
+    to_label: LedgerTransaction
+    relation: PART_OF_TRANSACTION
+    source: transaction
+    cardinality: one
+    nullable: false
+
+  - from_label: LedgerEntry
+    to_label: LedgerAccount
+    relation: POSTED_TO
+    source: account
+    cardinality: one
+    nullable: false
+
+  - from_label: LedgerEntry
+    to_label: Asset
+    relation: DENOMINATED_IN
+    source: asset
+    cardinality: one
+    nullable: false

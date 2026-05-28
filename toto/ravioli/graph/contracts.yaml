@@ -1,0 +1,59 @@
+app: contracts
+
+nodes:
+  - label: ContractBlueprint
+    model: toto.contracts.models.Contract
+    uuid_field: uuid
+    fields:
+      name: name
+      description: description
+
+  - label: ContractNode
+    model: toto.contracts.models.ContractNode
+    uuid_field: id
+    fields:
+      key: key
+      node_type: node_type
+      title: title
+      description: description
+      is_manual: is_manual
+      object_app: object_app
+      object_model: object_model
+      object_id: object_id
+
+  - label: ContractEdge
+    model: toto.contracts.models.ContractEdge
+    uuid_field: id
+    fields:
+      edge_type: edge_type
+      label: label
+      description: description
+
+links:
+  - from_label: ContractNode
+    to_label: ContractBlueprint
+    relation: BELONGS_TO_CONTRACT
+    source: contract
+    cardinality: one
+    nullable: false
+
+  - from_label: ContractEdge
+    to_label: ContractBlueprint
+    relation: BELONGS_TO_CONTRACT
+    source: contract
+    cardinality: one
+    nullable: false
+
+  - from_label: ContractEdge
+    to_label: ContractNode
+    relation: FROM_NODE
+    source: source
+    cardinality: one
+    nullable: false
+
+  - from_label: ContractEdge
+    to_label: ContractNode
+    relation: TO_NODE
+    source: target
+    cardinality: one
+    nullable: false

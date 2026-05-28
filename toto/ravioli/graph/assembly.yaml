@@ -52,6 +52,36 @@ nodes:
       period: period
       active: active
 
+  - label: AssemblyConfig
+    model: toto.assembly.models.CommunityAssemblyConfig
+    uuid_field: id
+    fields:
+      quorum_fraction: quorum_fraction
+
+  - label: CommunitySenate
+    model: toto.assembly.models.CommunitySenate
+    uuid_field: id
+    fields:
+      is_active: is_active
+      veto_window_days: veto_window_days
+
+  - label: PollTaxPayment
+    model: toto.assembly.models.PollTaxPayment
+    uuid_field: id
+    fields:
+      period_label: period_label
+      head_amount_paid_base_units: head_amount_paid_base_units
+      wealth_amount_paid_base_units: wealth_amount_paid_base_units
+      total_paid_base_units: total_paid_base_units
+      paid_at: paid_at
+
+  - label: SenateVeto
+    model: toto.assembly.models.SenateVeto
+    uuid_field: id
+    fields:
+      reason: reason
+      vetoed_at: vetoed_at
+
 links:
   - from_label: AssemblyProposal
     to_label: Community
@@ -157,3 +187,51 @@ links:
     source: decision
     cardinality: one
     nullable: true
+
+  - from_label: AssemblyConfig
+    to_label: Community
+    relation: CONFIGURES
+    source: community
+    cardinality: one
+    nullable: false
+
+  - from_label: CommunitySenate
+    to_label: Community
+    relation: CHAMBER_OF
+    source: community
+    cardinality: one
+    nullable: false
+
+  - from_label: CommunitySenate
+    to_label: Person
+    relation: HAS_SENATOR
+    source: members
+    cardinality: many
+
+  - from_label: PollTaxPayment
+    to_label: PollTax
+    relation: PAYS_TAX
+    source: poll_tax
+    cardinality: one
+    nullable: false
+
+  - from_label: PollTaxPayment
+    to_label: Person
+    relation: PAID_BY
+    source: person
+    cardinality: one
+    nullable: false
+
+  - from_label: SenateVeto
+    to_label: AssemblyProposal
+    relation: VETOES
+    source: proposal
+    cardinality: one
+    nullable: false
+
+  - from_label: SenateVeto
+    to_label: Person
+    relation: CAST_BY
+    source: senator
+    cardinality: one
+    nullable: false
