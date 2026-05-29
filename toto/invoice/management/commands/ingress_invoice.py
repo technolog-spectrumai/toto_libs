@@ -44,9 +44,9 @@ HTML_TEMPLATE = """\
     {% if invoice.description %}<tr><th>Description</th><td>{{ invoice.description }}</td></tr>{% endif %}
     <tr><th>Issued to</th><td>{{ issued_to.get_full_name() or issued_to.username }} ({{ issued_to.email }})</td></tr>
     {% if issued_by %}<tr><th>Issued by</th><td>{{ issued_by.get_full_name() or issued_by.username }}</td></tr>{% endif %}
-    <tr><th>Created</th><td>{{ invoice.created_at.strftime("%Y-%m-%d") }}</td></tr>
+    <tr><th>Created</th><td>{{ invoice.created_at.strftime('%Y-%m-%d') }}</td></tr>
     {% if invoice.due_date %}<tr><th>Due date</th><td>{{ invoice.due_date }}</td></tr>{% endif %}
-    {% if invoice.paid_at %}<tr><th>Paid at</th><td>{{ invoice.paid_at.strftime("%Y-%m-%d %H:%M") }}</td></tr>{% endif %}
+    {% if invoice.paid_at %}<tr><th>Paid at</th><td>{{ invoice.paid_at.strftime('%Y-%m-%d %H:%M') }}</td></tr>{% endif %}
     {% if bucket %}<tr><th>Bucket</th><td>{{ bucket.name }} ({{ bucket.slug }})</td></tr>{% endif %}
     {% if tariff %}<tr><th>Tariff</th><td>{{ tariff.code }} — {{ tariff.name }}</td></tr>{% endif %}
     {% if billing_cycle %}<tr><th>Billing cycle</th><td>{{ billing_cycle.name }}</td></tr>{% endif %}
@@ -60,7 +60,7 @@ HTML_TEMPLATE = """\
     <tr><th>Date</th><th>Amount</th><th>Method</th><th>Reference</th></tr>
     {% for s in settlements %}
     <tr>
-      <td>{{ s.settled_at.strftime("%Y-%m-%d") }}</td>
+      <td>{{ s.settled_at.strftime('%Y-%m-%d') }}</td>
       <td>{{ s.amount }} {{ s.currency_label }}</td>
       <td>{{ s.method or "—" }}</td>
       <td class="meta">{{ s.reference or "—" }}</td>
@@ -69,7 +69,7 @@ HTML_TEMPLATE = """\
   </table>
   {% endif %}
 
-  <p class="meta" style="margin-top:40px">Generated: {{ now.strftime("%Y-%m-%d %H:%M") }}</p>
+  <p class="meta" style="margin-top:40px">Generated: {{ now.strftime('%Y-%m-%d %H:%M') }}</p>
 </body>
 </html>
 """
@@ -77,71 +77,71 @@ HTML_TEMPLATE = """\
 YAML_TEMPLATE = """\
 invoice:
   id: {{ invoice.pk }}
-  title: "{{ invoice.title }}"
-  description: {{ ("\"" + invoice.description + "\"") if invoice.description else "null" }}
+  title: {{ invoice.title | string | tojson }}
+  description: {{ invoice.description | tojson if invoice.description else 'null' }}
   amount: {{ invoice.amount }}
-  currency: "{{ invoice.currency_label }}"
-  status: "{{ invoice.status }}"
+  currency: {{ invoice.currency_label | tojson }}
+  status: {{ invoice.status | tojson }}
   issued_to:
-    username: "{{ issued_to.username }}"
-    email: "{{ issued_to.email }}"
-    name: "{{ issued_to.get_full_name() }}"
-  issued_by: {{ ("\"" + issued_by.username + "\"") if issued_by else "null" }}
-  created_at: "{{ invoice.created_at.strftime("%Y-%m-%d") }}"
-  due_date: {{ ("\"" + invoice.due_date | string + "\"") if invoice.due_date else "null" }}
-  paid_at: {{ ("\"" + invoice.paid_at.strftime("%Y-%m-%d %H:%M") + "\"") if invoice.paid_at else "null" }}
-  bucket: {{ ("\"" + bucket.slug + "\"") if bucket else "null" }}
-  tariff: {{ ("\"" + tariff.code + "\"") if tariff else "null" }}
-  billing_cycle: {{ ("\"" + billing_cycle.name + "\"") if billing_cycle else "null" }}
-  obligation_reference: {{ ("\"" + invoice.obligation_reference + "\"") if invoice.obligation_reference else "null" }}
-  notes: {{ ("\"" + invoice.notes + "\"") if invoice.notes else "null" }}
+    username: {{ issued_to.username | tojson }}
+    email: {{ issued_to.email | tojson }}
+    name: {{ (issued_to.get_full_name() or issued_to.username) | tojson }}
+  issued_by: {{ issued_by.username | tojson if issued_by else 'null' }}
+  created_at: {{ invoice.created_at.strftime('%Y-%m-%d') | tojson }}
+  due_date: {{ invoice.due_date | string | tojson if invoice.due_date else 'null' }}
+  paid_at: {{ invoice.paid_at.strftime('%Y-%m-%d %H:%M') | tojson if invoice.paid_at else 'null' }}
+  bucket: {{ bucket.slug | tojson if bucket else 'null' }}
+  tariff: {{ tariff.code | tojson if tariff else 'null' }}
+  billing_cycle: {{ billing_cycle.name | tojson if billing_cycle else 'null' }}
+  obligation_reference: {{ invoice.obligation_reference | tojson if invoice.obligation_reference else 'null' }}
+  notes: {{ invoice.notes | tojson if invoice.notes else 'null' }}
 {% if settlements %}
   settlements:
 {% for s in settlements %}
-    - date: "{{ s.settled_at.strftime("%Y-%m-%d") }}"
+    - date: {{ s.settled_at.strftime('%Y-%m-%d') | tojson }}
       amount: {{ s.amount }}
-      currency: "{{ s.currency_label }}"
-      method: {{ ("\"" + s.method + "\"") if s.method else "null" }}
-      reference: {{ ("\"" + s.reference + "\"") if s.reference else "null" }}
+      currency: {{ s.currency_label | tojson }}
+      method: {{ s.method | tojson if s.method else 'null' }}
+      reference: {{ s.reference | tojson if s.reference else 'null' }}
 {% endfor %}
 {% endif %}
-generated_at: "{{ now.strftime("%Y-%m-%d %H:%M") }}"
+generated_at: {{ now.strftime('%Y-%m-%d %H:%M') | tojson }}
 """
 
 XML_TEMPLATE = """\
 <?xml version="1.0" encoding="UTF-8"?>
 <invoice id="{{ invoice.pk }}">
   <title>{{ invoice.title }}</title>
-  <description>{{ invoice.description or "" }}</description>
+  <description>{{ invoice.description or '' }}</description>
   <amount currency="{{ invoice.currency_label }}">{{ invoice.amount }}</amount>
   <status>{{ invoice.status }}</status>
   <issued_to>
     <username>{{ issued_to.username }}</username>
     <email>{{ issued_to.email }}</email>
-    <name>{{ issued_to.get_full_name() }}</name>
+    <name>{{ issued_to.get_full_name() or issued_to.username }}</name>
   </issued_to>
-  <issued_by>{{ issued_by.username if issued_by else "" }}</issued_by>
-  <created_at>{{ invoice.created_at.strftime("%Y-%m-%d") }}</created_at>
-  <due_date>{{ invoice.due_date or "" }}</due_date>
-  <paid_at>{{ invoice.paid_at.strftime("%Y-%m-%d %H:%M") if invoice.paid_at else "" }}</paid_at>
-  <bucket>{{ bucket.slug if bucket else "" }}</bucket>
-  <tariff>{{ tariff.code if tariff else "" }}</tariff>
-  <billing_cycle>{{ billing_cycle.name if billing_cycle else "" }}</billing_cycle>
-  <obligation_reference>{{ invoice.obligation_reference or "" }}</obligation_reference>
-  <notes>{{ invoice.notes or "" }}</notes>
+  <issued_by>{{ issued_by.username if issued_by else '' }}</issued_by>
+  <created_at>{{ invoice.created_at.strftime('%Y-%m-%d') }}</created_at>
+  <due_date>{{ invoice.due_date or '' }}</due_date>
+  <paid_at>{{ invoice.paid_at.strftime('%Y-%m-%d %H:%M') if invoice.paid_at else '' }}</paid_at>
+  <bucket>{{ bucket.slug if bucket else '' }}</bucket>
+  <tariff>{{ tariff.code if tariff else '' }}</tariff>
+  <billing_cycle>{{ billing_cycle.name if billing_cycle else '' }}</billing_cycle>
+  <obligation_reference>{{ invoice.obligation_reference or '' }}</obligation_reference>
+  <notes>{{ invoice.notes or '' }}</notes>
   {% if settlements %}
   <settlements>
     {% for s in settlements %}
     <settlement>
-      <date>{{ s.settled_at.strftime("%Y-%m-%d") }}</date>
+      <date>{{ s.settled_at.strftime('%Y-%m-%d') }}</date>
       <amount currency="{{ s.currency_label }}">{{ s.amount }}</amount>
-      <method>{{ s.method or "" }}</method>
-      <reference>{{ s.reference or "" }}</reference>
+      <method>{{ s.method or '' }}</method>
+      <reference>{{ s.reference or '' }}</reference>
     </settlement>
     {% endfor %}
   </settlements>
   {% endif %}
-  <generated_at>{{ now.strftime("%Y-%m-%d %H:%M") }}</generated_at>
+  <generated_at>{{ now.strftime('%Y-%m-%d %H:%M') }}</generated_at>
 </invoice>
 """
 

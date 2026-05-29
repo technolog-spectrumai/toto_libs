@@ -3,7 +3,22 @@
 
 {% block title %}{% trans "Invoices" %} | {{ platform.site_name }}{% endblock %}
 
+{% block start_script %}
+<style>[x-cloak] { display: none !important; }</style>
+<script>
+  document.addEventListener('alpine:init', () => {
+    const _dirs = JSON.parse(document.getElementById('bucket-directories-data').textContent);
+    Alpine.data('reportForm', () => ({
+      open: false,
+      bucketId: '',
+      get dirs() { return _dirs[this.bucketId] || []; },
+    }));
+  });
+</script>
+{% endblock %}
+
 {% block content %}
+{{ bucket_directories_json|json_script:"bucket-directories-data" }}
 <div
   :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
   class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
@@ -65,7 +80,7 @@
       class="overflow-hidden rounded-xl border shadow-sm">
 
       {% for invoice in invoices %}
-      <div class="{% if not forloop.last %}border-b{% endif %}"
+      <div x-data="reportForm()" class="{% if not forloop.last %}border-b{% endif %}"
            :class="darkMode ? 'border-accent-1/40' : 'border-accent-2/40'">
 
         <div class="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
@@ -129,9 +144,9 @@
             <p class="text-xs opacity-50 truncate max-w-md">{{ invoice.description }}</p>
             {% endif %}
 
-            <!-- Accept action -->
-            {% if invoice.status == "pending" and not invoice.obligation_reference and invoice.amount > 0 %}
-            <div class="pt-1">
+            <!-- Actions -->
+            <div class="flex flex-wrap items-center gap-2 pt-1">
+              {% if invoice.status == "pending" and not invoice.obligation_reference and invoice.amount > 0 %}
               <form method="post" action="{% url 'invoice:accept_invoice' invoice.pk %}" class="inline">
                 {% csrf_token %}
                 <button type="submit"
@@ -140,6 +155,77 @@
                   <i class="fa-solid fa-circle-check text-xs"></i>
                   {% trans "Accept & Create Obligation" %}
                 </button>
+              </form>
+              {% endif %}
+
+              {% if report_templates %}
+              <button type="button" @click="open = !open"
+                      :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2 text-text-main-light'"
+                      class="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs font-semibold transition hover:opacity-70">
+                <i class="fa-solid fa-file-export text-xs"></i>
+                {% trans "Generate Report" %}
+              </button>
+              {% endif %}
+            </div>
+
+            <!-- Report generation panel -->
+            {% if report_templates %}
+            <div x-show="open" x-cloak x-transition
+                 class="mt-2 rounded-lg border p-4 space-y-3"
+                 :class="darkMode ? 'border-accent-1/40 bg-black/20' : 'border-accent-2/40 bg-black/5'">
+              <form method="post" action="{% url 'invoice:generate_report' invoice.pk %}" class="space-y-3">
+                {% csrf_token %}
+
+                <div class="flex flex-wrap items-center gap-3">
+                  <label class="text-xs font-semibold uppercase tracking-wide opacity-60 shrink-0">
+                    {% trans "Template" %}
+                  </label>
+                  <select name="template_id" required
+                          :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+                          class="rounded border px-2 py-1 text-xs flex-1 min-w-[180px]">
+                    {% for tpl in report_templates %}
+                    <option value="{{ tpl.pk }}">{{ tpl.name }} [{{ tpl.format }}]</option>
+                    {% endfor %}
+                  </select>
+                </div>
+
+                {% if user_buckets %}
+                <div class="flex flex-wrap items-center gap-3">
+                  <label class="text-xs font-semibold uppercase tracking-wide opacity-60 shrink-0">
+                    {% trans "Save to Bucket" %}
+                  </label>
+                  <select name="bucket_id" x-model="bucketId"
+                          :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+                          class="rounded border px-2 py-1 text-xs flex-1 min-w-[160px]">
+                    <option value="">{% trans "— download only —" %}</option>
+                    {% for b in user_buckets %}
+                    <option value="{{ b.pk }}">{{ b.name }}</option>
+                    {% endfor %}
+                  </select>
+                  <select name="directory_id" x-show="dirs.length > 0" x-cloak
+                          :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+                          class="rounded border px-2 py-1 text-xs flex-1 min-w-[160px]">
+                    <option value="">{% trans "— root —" %}</option>
+                    <template x-for="d in dirs" :key="d.pk">
+                      <option :value="d.pk" x-text="d.name"></option>
+                    </template>
+                  </select>
+                </div>
+                {% endif %}
+
+                <div class="flex gap-2">
+                  <button type="submit"
+                          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                          class="inline-flex items-center gap-1.5 rounded px-3 py-1 text-xs font-bold transition hover:opacity-85">
+                    <i class="fa-solid fa-file-arrow-down text-xs"></i>
+                    {% trans "Generate & Download" %}
+                  </button>
+                  <button type="button" @click="open = false"
+                          :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2 text-text-main-light'"
+                          class="inline-flex items-center gap-1 rounded border px-2 py-1 text-xs font-semibold transition hover:opacity-70">
+                    {% trans "Cancel" %}
+                  </button>
+                </div>
               </form>
             </div>
             {% endif %}

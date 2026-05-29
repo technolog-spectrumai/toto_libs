@@ -143,7 +143,7 @@ class InvoiceReportTemplate(models.Model):
     description = models.TextField(blank=True)
     format = models.CharField(max_length=10, choices=ReportFormat.choices, default=ReportFormat.HTML)
     template_source = models.TextField(
-        help_text="Django template. Available context: invoice, issued_to, issued_by, bucket, tariff, billing_cycle, settlements, now."
+        help_text="Jinja2 template. Available context: invoice, issued_to, issued_by, bucket, tariff, billing_cycle, settlements, now."
     )
     is_active = models.BooleanField(default=True)
     created_by = models.ForeignKey(
