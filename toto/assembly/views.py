@@ -243,7 +243,7 @@ def community_assembly(request, slug):
 
     if not is_member and not is_committed and not is_federal_tribe_broad:
         messages.error(request, "You are not a member of this community's assembly.")
-        return redirect("assembly:overview")
+        return redirect("capitol:overview")
 
     is_read_only = not is_member
 

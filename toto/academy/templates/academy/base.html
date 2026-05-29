@@ -55,14 +55,7 @@
         <i class="fa-solid fa-circle-question"></i>
         {% trans "Quizzes" %}
       </a>
-      <a href="{% url 'palimpsest:page_list' %}"
-         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
-                {% block tab_blog %}opacity-50{% endblock %}">
-        <i class="fa-solid fa-feather-pointed"></i>
-        {% trans "Blog" %}
-      </a>
-      <a href="{% url 'library:book_list' %}"
+<a href="{% url 'library:book_list' %}"
          :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
          class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
                 {% block tab_library %}opacity-50{% endblock %}">

@@ -16,6 +16,31 @@
   class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
   <div class="mx-auto max-w-7xl space-y-6">
 
+    {% if communities %}
+    <!-- Community selector -->
+    <form method="post" action="{% url 'capitol:set_community' %}" class="flex items-center gap-3">
+      {% csrf_token %}
+      <input type="hidden" name="section" value="{% block community_section %}capitol{% endblock %}">
+      <input type="hidden" name="next" value="{{ request.path }}">
+      <label for="community-switcher"
+        :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+        class="flex items-center gap-2 text-sm font-semibold whitespace-nowrap">
+        <i class="fa-solid fa-people-group"></i>
+        {% trans "Community" %}
+      </label>
+      <select id="community-switcher" name="community"
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20 transition shadow-sm"
+        onchange="this.form.submit()">
+        {% for c in communities %}
+        <option value="{{ c.slug }}" {% if c == selected_community %}selected{% endif %}>
+          {{ c.name }}
+        </option>
+        {% endfor %}
+      </select>
+    </form>
+    {% endif %}
+
     <!-- Capitol tab nav -->
     <nav :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
          class="flex flex-wrap gap-1 border-b pb-0">
@@ -33,7 +58,7 @@
         <i class="fa-solid fa-building-columns"></i>
         {% trans "Magistrate" %}
       </a>
-      <a href="{% url 'assembly:overview' %}"
+      <a href="{% if selected_community %}{% url 'assembly:community_assembly' selected_community.slug %}{% else %}{% url 'assembly:overview' %}{% endif %}"
          :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
          class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
                 {% block tab_assembly %}opacity-50{% endblock %}">
@@ -47,7 +72,7 @@
         <i class="fa-solid fa-scale-balanced"></i>
         {% trans "Tribunal" %}
       </a>
-      <a href="{% url 'treasury:list' %}"
+      <a href="{% if selected_community %}{% url 'treasury:detail' selected_community.pk %}{% else %}{% url 'treasury:list' %}{% endif %}"
          :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
          class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
                 {% block tab_treasury %}opacity-50{% endblock %}">

@@ -40,25 +40,11 @@ def _entries_for_account(account):
 
 @login_required
 def community_list(request):
-    communities = Community.objects.all().order_by("name")
-    rows = []
-    for community in communities:
-        account = get_treasury_account(community)
-        balances = []
-        if account:
-            for holding in account.holdings.select_related("asset").order_by("-balance_base_units"):
-                if holding.balance_base_units != 0:
-                    balances.append({
-                        "unit": holding.asset.unit_name,
-                        "balance": holding.balance_display,
-                        "decimals": holding.asset.decimals,
-                    })
-        rows.append({
-            "community": community,
-            "account": account,
-            "balances": balances,
-        })
-    return _render(request, "treasury/community_list.html", {"rows": rows})
+    first = Community.objects.order_by("name").first()
+    if first:
+        from django.shortcuts import redirect
+        return redirect("treasury:detail", pk=first.pk)
+    return _render(request, "treasury/community_list.html", {"rows": [], "communities": [], "selected_community": None})
 
 
 # ---------------------------------------------------------------------------

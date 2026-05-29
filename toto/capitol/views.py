@@ -5,10 +5,16 @@ from datetime import timedelta
 
 from django.contrib.auth.decorators import login_required
 from django.db.models import Count, Q
-from django.shortcuts import render
+from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils import timezone
+from django.views.decorators.http import require_POST
 
+from toto.socialhub.models import Community
 from toto.ui import PageProcessor
+
+
+from .community_session import set_community as _set_community
 
 
 def _render(request, template, context):
@@ -141,6 +147,22 @@ def _activity_series():
         {"date": day, "decisions": d_map.get(day, 0), "proposals": p_map.get(day, 0), "cases": c_map.get(day, 0)}
         for day in all_days
     ]
+
+
+@login_required
+@require_POST
+def set_community(request):
+    slug = request.POST.get("community", "").strip()
+    section = request.POST.get("section", "capitol")
+    if slug and Community.objects.filter(slug=slug).exists():
+        _set_community(request.user.pk, slug)
+        if section == "assembly":
+            return redirect("assembly:community_assembly", slug=slug)
+        if section == "treasury":
+            community = Community.objects.get(slug=slug)
+            return redirect("treasury:detail", pk=community.pk)
+    next_url = request.POST.get("next") or reverse("capitol:overview")
+    return redirect(next_url)
 
 
 @login_required
