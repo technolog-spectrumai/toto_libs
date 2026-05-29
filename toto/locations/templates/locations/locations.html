@@ -1,9 +1,10 @@
-{% extends "oya/base.html" %}
+{% extends "locations/base.html" %}
 {% load static %}
 
-{% block title %}Locations - {{ platform.site_name }}{% endblock %}
+{% block locations_title %}Map{% endblock %}
+{% block tab_locations %}bg-accent-dark/10 opacity-100{% endblock %}
 
-{% block start_script %}
+{% block locations_start_script %}
 <link rel="stylesheet" href="{% static 'vendor/leaflet/leaflet.css' %}" />
 <script src="{% static 'vendor/leaflet/leaflet.js' %}"></script>
 <style>
@@ -359,7 +360,7 @@
 </script>
 {% endblock %}
 
-{% block content %}
+{% block locations_content %}
 <div
   x-data="locationsExplorer()"
   :class="darkMode

@@ -1,4 +1,4 @@
-{% extends "oya/base.html" %}
+{% extends "locations/base.html" %}
 {% load static %}
 {% load i18n %}
 
@@ -10,7 +10,7 @@
 <style>[x-cloak] { display: none !important; }</style>
 {% endblock %}
 
-{% block content %}
+{% block locations_content %}
 <script>
   window.routePayload = JSON.parse(`{{ route_payload_json|escapejs }}`);
 </script>

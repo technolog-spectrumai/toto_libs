@@ -10,7 +10,10 @@
 
   <div class="mx-auto max-w-5xl space-y-8">
     <header class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-      <div>
+      <div class="space-y-2">
+        <a href="{% url 'locations:locations_all' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+          <i class="fa-solid fa-arrow-left"></i> Locations
+        </a>
         <p
           :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
           class="text-xs font-semibold uppercase tracking-wide">

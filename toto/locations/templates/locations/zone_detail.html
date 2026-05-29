@@ -1,4 +1,4 @@
-{% extends "oya/base.html" %}
+{% extends "locations/base.html" %}
 {% load static %}
 
 {% block title %}Zone - {{ zone.name }}{% endblock %}
@@ -9,7 +9,7 @@
 <style>[x-cloak] { display: none !important; }</style>
 {% endblock %}
 
-{% block content %}
+{% block locations_content %}
 <script>
   window.zonePayload = JSON.parse(`{{ zone_payload_json|escapejs }}`);
 </script>

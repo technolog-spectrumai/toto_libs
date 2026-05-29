@@ -1,10 +1,10 @@
-{% extends "oya/base.html" %}
+{% extends "locations/base.html" %}
 {% load static %}
 {% load i18n %}
 
 {% block title %}{% trans "Add Travel" %} | {{ platform.site_name }}{% endblock %}
 
-{% block content %}
+{% block locations_content %}
 <section
   :class="darkMode
     ? 'bg-primary-bg-dark text-text-main-dark'

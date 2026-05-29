@@ -93,6 +93,14 @@
         <i class="fa-solid fa-scroll"></i>
         {% trans "Contracts" %}
       </a>
+      <span :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+            class="mx-1 self-center h-5 border-l opacity-30"></span>
+      <a href="{% url 'bourse:exchange_center' %}"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition opacity-50">
+        <i class="fa-solid fa-chart-line"></i>
+        {% trans "Bourse" %}
+      </a>
     </nav>
 
     {% block assets_content %}{% endblock %}
