@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.utils.translation import gettext_lazy as _
 
-from .models import BillingMetric, BillingUnit, Tariff, TariffItem, UsageCharge, UsageRecord
+from .models import BillingMetric, BillingUnit, Tariff, TariffApplication, TariffApplicationLine, TariffItem, UsageCharge, UsageRecord
 
 
 @admin.register(BillingUnit)
@@ -108,6 +108,101 @@ class UsageChargeAdmin(admin.ModelAdmin):
         "usage_record", "tariff_item", "charged_asset",
         "quantity", "unit", "price_per_unit_base_units", "amount_base_units",
         "payer_account", "receiving_account", "created_at",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+# ---------------------------------------------------------------------------
+# TariffApplication
+# ---------------------------------------------------------------------------
+
+class TariffApplicationLineInline(admin.TabularInline):
+    model = TariffApplicationLine
+    extra = 0
+    readonly_fields = (
+        "line_id", "metric_code", "quantity", "unit", "occurred_at",
+        "source_type", "source_id", "source_label", "description",
+        "tariff_item", "charged_asset", "amount_base_units", "amount_display",
+        "invoice_line_source_type", "invoice_line_source_id", "created_at",
+    )
+    can_delete = False
+
+
+@admin.register(TariffApplication)
+class TariffApplicationAdmin(admin.ModelAdmin):
+    list_display = (
+        "statement_id",
+        "tariff",
+        "detected_source_app",
+        "detected_subject_key",
+        "status",
+        "created_at",
+    )
+    list_filter = ("status", "tariff", "detected_source_app")
+    search_fields = ("statement_id", "detected_subject_key", "detected_subject_label")
+    readonly_fields = (
+        "uid",
+        "statement_id",
+        "usage_file",
+        "tariff",
+        "detected_source_app",
+        "detected_subject_key",
+        "detected_subject_type",
+        "detected_subject_id",
+        "detected_subject_label",
+        "period_start",
+        "period_end",
+        "invoice_source_type",
+        "invoice_source_id",
+        "created_by",
+        "created_at",
+        "updated_at",
+    )
+    inlines = [TariffApplicationLineInline]
+    fieldsets = (
+        (None, {"fields": (
+            "uid", "statement_id", "usage_file", "tariff", "status",
+        )}),
+        (_("Detected"), {"fields": (
+            "detected_source_app", "detected_subject_key", "detected_subject_type",
+            "detected_subject_id", "detected_subject_label",
+        )}),
+        (_("Overrides"), {"fields": (
+            "override_source_app", "override_subject_label",
+        )}),
+        (_("Period"), {"fields": ("period_start", "period_end")}),
+        (_("Invoice"), {"fields": ("invoice_source_type", "invoice_source_id")}),
+        (_("Details"), {"fields": ("title", "description", "metadata"), "classes": ("collapse",)}),
+        (_("Timestamps"), {"fields": ("created_by", "created_at", "updated_at"), "classes": ("collapse",)}),
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+
+@admin.register(TariffApplicationLine)
+class TariffApplicationLineAdmin(admin.ModelAdmin):
+    list_display = (
+        "application",
+        "line_id",
+        "metric_code",
+        "quantity",
+        "unit",
+        "charged_asset",
+        "amount_display",
+    )
+    list_filter = ("metric_code", "charged_asset")
+    search_fields = ("application__statement_id", "line_id", "metric_code", "source_label")
+    readonly_fields = (
+        "application", "line_id", "metric_code", "quantity", "unit", "occurred_at",
+        "source_type", "source_id", "source_label", "description",
+        "tariff_item", "charged_asset", "amount_base_units", "amount_display",
+        "invoice_line_source_type", "invoice_line_source_id", "created_at",
     )
 
     def has_add_permission(self, request):

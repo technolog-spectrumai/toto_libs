@@ -131,3 +131,78 @@ class UsageSimulationForm(forms.Form):
         label=_("Unit"),
         help_text=_("e.g. request, token, mb_hour"),
     )
+
+
+class ApplyUsageStatementForm(forms.Form):
+    usage_file = forms.ModelChoiceField(
+        queryset=None,
+        label=_("Usage Statement File (YAML)"),
+        help_text=_("Select a VaultFile containing a usage_statement YAML."),
+    )
+    tariff = forms.ModelChoiceField(
+        queryset=None,
+        label=_("Tariff"),
+        help_text=_("Tariff to apply for pricing."),
+    )
+    issued_to = forms.ModelChoiceField(
+        queryset=None,
+        label=_("Issued To"),
+        help_text=_("User this invoice is addressed to."),
+    )
+    due_date = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={"type": "date"}),
+        label=_("Due Date"),
+    )
+    title = forms.CharField(
+        max_length=255,
+        required=False,
+        label=_("Invoice Title Override"),
+        help_text=_("Leave blank to auto-generate from the usage statement."),
+    )
+    description = forms.CharField(
+        widget=forms.Textarea(attrs={"rows": 3}),
+        required=False,
+        label=_("Description"),
+    )
+    override_source_app = forms.CharField(
+        max_length=100,
+        required=False,
+        label=_("Override Source App"),
+        help_text=_("Override the source_app detected from the YAML."),
+    )
+    override_subject_label = forms.CharField(
+        max_length=255,
+        required=False,
+        label=_("Override Subject Label"),
+        help_text=_("Override the subject label detected from the YAML."),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from django.contrib.auth import get_user_model
+        from toto.vault.models import VaultFile
+        User = get_user_model()
+        self.fields["usage_file"].queryset = VaultFile.objects.filter(file_type="yaml").order_by("-uploaded_at")
+        self.fields["tariff"].queryset = Tariff.objects.filter(status=TariffStatus.ACTIVE).order_by("name")
+        self.fields["issued_to"].queryset = User.objects.filter(is_active=True).order_by("username")
+
+    def clean(self):
+        cleaned = super().clean()
+        usage_file = cleaned.get("usage_file")
+        tariff = cleaned.get("tariff")
+
+        if usage_file:
+            try:
+                from toto.tariffs.usage_statement_services import read_usage_statement_from_vault_file
+                read_usage_statement_from_vault_file(usage_file)
+            except Exception as exc:
+                self.add_error("usage_file", _("YAML validation failed: ") + str(exc))
+
+        if not tariff:
+            self.add_error("tariff", _("Please select a tariff."))
+
+        if not cleaned.get("issued_to"):
+            self.add_error("issued_to", _("Please select a recipient."))
+
+        return cleaned

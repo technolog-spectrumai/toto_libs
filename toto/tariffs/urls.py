@@ -25,4 +25,10 @@ urlpatterns = [
     path("api/rate/", views.api_rate, name="api_rate"),
     path("api/post/", views.api_post, name="api_post"),
     path("api/metrics/", views.api_metrics, name="api_metrics"),
+    # Usage statement billing handoff
+    path("apply-usage-statement/", views.apply_usage_statement, name="apply_usage_statement"),
+    path("apply-usage-statement/preview.json", views.preview_usage_statement_json, name="preview_usage_statement_json"),
+    path("apply-usage-statement/price.json", views.price_usage_statement_json, name="price_usage_statement_json"),
+    path("applications/", views.tariff_application_list, name="tariff_application_list"),
+    path("applications/<uuid:uid>/", views.tariff_application_detail, name="tariff_application_detail"),
 ]

@@ -206,6 +206,41 @@ class InvoiceReport(models.Model):
         return f"invoice-{self.invoice_id}-report-{self.pk}.{ext}"
 
 
+class InvoiceLine(models.Model):
+    """A line item on an Invoice. Created by Tariffs when applying a usage statement."""
+    invoice = models.ForeignKey(
+        Invoice,
+        on_delete=models.CASCADE,
+        related_name="lines",
+    )
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    quantity = models.DecimalField(max_digits=30, decimal_places=10, default=Decimal("1"))
+    unit = models.CharField(max_length=100, blank=True)
+    asset = models.ForeignKey(
+        "assets.Asset",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="invoice_lines",
+    )
+    amount_base_units = models.PositiveBigIntegerField(default=0)
+    amount = models.DecimalField(max_digits=18, decimal_places=2)
+    source_type = models.CharField(max_length=100, blank=True)
+    source_id = models.CharField(max_length=255, blank=True)
+    source_label = models.CharField(max_length=255, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Invoice Line"
+        verbose_name_plural = "Invoice Lines"
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"Line #{self.pk} — {self.title} — {self.amount}"
+
+
 class PaymentSettlement(models.Model):
     """Records an actual payment made against an invoice."""
     invoice = models.ForeignKey(

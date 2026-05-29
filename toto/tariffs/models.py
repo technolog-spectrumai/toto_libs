@@ -336,3 +336,143 @@ class UsageCharge(models.Model):
     def amount_display(self) -> Decimal:
         from toto.assets.models import from_base_units
         return from_base_units(self.amount_base_units, self.charged_asset.decimals)
+
+
+# ---------------------------------------------------------------------------
+# TariffApplicationStatus
+# ---------------------------------------------------------------------------
+
+class TariffApplicationStatus(models.TextChoices):
+    PREVIEWED = "previewed", _("Previewed")
+    PRICED = "priced", _("Priced")
+    INVOICED = "invoiced", _("Invoiced")
+    FAILED = "failed", _("Failed")
+    CANCELLED = "cancelled", _("Cancelled")
+
+
+# ---------------------------------------------------------------------------
+# TariffApplication
+# ---------------------------------------------------------------------------
+
+class TariffApplication(models.Model):
+    """
+    Audit record of a usage-statement-to-invoice conversion via a Tariff.
+    Created once per usage statement; immutable after status=invoiced.
+    """
+    uid = models.UUIDField(default=_uuid.uuid4, unique=True, editable=False)
+    statement_id = models.CharField(max_length=255, unique=True)
+    usage_file = models.ForeignKey(
+        "vault.VaultFile",
+        on_delete=models.PROTECT,
+        related_name="tariff_applications",
+    )
+    tariff = models.ForeignKey(
+        Tariff,
+        on_delete=models.PROTECT,
+        related_name="applications",
+    )
+
+    # Auto-detected from YAML
+    detected_source_app = models.CharField(max_length=100, blank=True)
+    detected_subject_key = models.CharField(max_length=255, blank=True)
+    detected_subject_type = models.CharField(max_length=100, blank=True)
+    detected_subject_id = models.CharField(max_length=255, blank=True)
+    detected_subject_label = models.CharField(max_length=255, blank=True)
+
+    # Operator overrides
+    override_source_app = models.CharField(max_length=100, blank=True)
+    override_subject_label = models.CharField(max_length=255, blank=True)
+
+    period_start = models.DateTimeField()
+    period_end = models.DateTimeField()
+
+    status = models.CharField(
+        max_length=20,
+        choices=TariffApplicationStatus.choices,
+        default=TariffApplicationStatus.PREVIEWED,
+    )
+
+    # Invoice back-reference (set after invoice creation)
+    invoice_source_type = models.CharField(max_length=100, blank=True)
+    invoice_source_id = models.CharField(max_length=255, blank=True)
+
+    title = models.CharField(max_length=255, blank=True)
+    description = models.TextField(blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tariff_applications",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["statement_id"]),
+            models.Index(fields=["status"]),
+            models.Index(fields=["detected_source_app"]),
+            models.Index(fields=["detected_subject_key"]),
+        ]
+
+    def __str__(self):
+        return f"TariffApplication {self.statement_id} [{self.get_status_display()}]"
+
+    @property
+    def effective_source_app(self) -> str:
+        return self.override_source_app or self.detected_source_app
+
+    @property
+    def effective_subject_label(self) -> str:
+        return self.override_subject_label or self.detected_subject_label
+
+
+# ---------------------------------------------------------------------------
+# TariffApplicationLine
+# ---------------------------------------------------------------------------
+
+class TariffApplicationLine(models.Model):
+    application = models.ForeignKey(
+        TariffApplication,
+        on_delete=models.CASCADE,
+        related_name="lines",
+    )
+    line_id = models.CharField(max_length=255)
+    metric_code = models.CharField(max_length=100)
+    quantity = models.DecimalField(max_digits=30, decimal_places=10)
+    unit = models.CharField(max_length=100, blank=True)
+    occurred_at = models.DateTimeField(null=True, blank=True)
+    source_type = models.CharField(max_length=100, blank=True)
+    source_id = models.CharField(max_length=255, blank=True)
+    source_label = models.CharField(max_length=255, blank=True)
+    description = models.TextField(blank=True)
+
+    tariff_item = models.ForeignKey(
+        TariffItem,
+        on_delete=models.PROTECT,
+        related_name="application_lines",
+    )
+    charged_asset = models.ForeignKey(
+        "assets.Asset",
+        on_delete=models.PROTECT,
+        related_name="application_lines",
+    )
+    amount_base_units = models.PositiveBigIntegerField()
+    amount_display = models.DecimalField(max_digits=30, decimal_places=10)
+
+    invoice_line_source_type = models.CharField(max_length=100, blank=True)
+    invoice_line_source_id = models.CharField(max_length=255, blank=True)
+
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        unique_together = [("application", "line_id")]
+
+    def __str__(self):
+        return f"{self.application.statement_id} / {self.line_id} ({self.metric_code})"

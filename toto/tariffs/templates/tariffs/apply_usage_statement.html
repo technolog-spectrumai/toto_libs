@@ -1,0 +1,246 @@
+{% extends "tariffs/base.html" %}
+{% load i18n %}
+
+{% block tariffs_title %}{% trans "Apply Usage Statement" %}{% endblock %}
+
+{% block tariffs_content %}
+<div class="space-y-6">
+
+  <!-- Notice banner -->
+  <div class="rounded-lg border px-4 py-3 text-sm font-medium"
+       :class="darkMode ? 'border-blue-500/30 bg-blue-900/20 text-blue-300' : 'border-blue-300 bg-blue-50 text-blue-700'">
+    <i class="fa-solid fa-circle-info mr-2"></i>
+    {% trans "This creates an invoice only. It does not move ledger funds." %}
+  </div>
+
+  <div class="grid gap-6 lg:grid-cols-2">
+
+    <!-- Form card -->
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border shadow-sm">
+      <div class="border-b px-5 py-4" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <h2 class="font-semibold">
+          <i class="fa-solid fa-file-invoice mr-2 opacity-60"></i>
+          {% trans "Apply Tariff to Usage Statement" %}
+        </h2>
+      </div>
+      <form method="post" class="space-y-4 p-5">
+        {% csrf_token %}
+
+        {% for field in form %}
+          <div>
+            <label class="mb-1 block text-sm font-medium opacity-80" for="{{ field.id_for_label }}">
+              {{ field.label }}
+              {% if field.field.required %}<span class="ml-1 text-red-500">*</span>{% endif %}
+            </label>
+            <div>
+              {{ field }}
+            </div>
+            {% if field.help_text %}
+              <p class="mt-1 text-xs opacity-50">{{ field.help_text }}</p>
+            {% endif %}
+            {% for error in field.errors %}
+              <p class="mt-1 text-xs text-red-500">{{ error }}</p>
+            {% endfor %}
+          </div>
+        {% endfor %}
+
+        <div class="flex flex-wrap gap-3 pt-2">
+          <button
+            type="submit"
+            name="action"
+            value="preview"
+            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+            class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+            <i class="fa-solid fa-eye"></i>
+            {% trans "Preview Statement" %}
+          </button>
+          <button
+            type="submit"
+            name="action"
+            value="apply"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-90">
+            <i class="fa-solid fa-bolt"></i>
+            {% trans "APPLY TARIFF YEAH!" %}
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Preview card -->
+    {% if preview %}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border shadow-sm">
+      <div class="border-b px-5 py-4" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <h3 class="font-semibold">
+          <i class="fa-solid fa-magnifying-glass mr-2 opacity-60"></i>
+          {% trans "Usage Statement Preview" %}
+        </h3>
+      </div>
+      <div class="space-y-4 p-5 text-sm">
+
+        <!-- Statement metadata -->
+        <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+          <dt class="opacity-60">{% trans "Statement ID" %}</dt>
+          <dd class="font-mono">{{ preview.statement_id }}</dd>
+
+          <dt class="opacity-60">{% trans "Source App" %}</dt>
+          <dd>
+            <span class="font-semibold">{{ preview.source_app }}</span>
+            {% if preview.source_label %}
+              <span class="opacity-60"> / {{ preview.source_label }}</span>
+            {% endif %}
+          </dd>
+
+          <dt class="opacity-60">{% trans "Subject" %}</dt>
+          <dd>
+            <code class="rounded px-1.5 py-0.5"
+                  :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
+              {{ preview.subject.key }}
+            </code>
+            {% if preview.subject.label %}
+              <span class="ml-1 opacity-60">{{ preview.subject.label }}</span>
+            {% endif %}
+          </dd>
+
+          <dt class="opacity-60">{% trans "Period" %}</dt>
+          <dd>{{ preview.period_start|slice:":10" }} → {{ preview.period_end|slice:":10" }}</dd>
+
+          <dt class="opacity-60">{% trans "Lines" %}</dt>
+          <dd>{{ preview.line_count }}</dd>
+        </dl>
+
+        <!-- Metrics summary -->
+        <div>
+          <h4 class="mb-2 text-xs font-semibold uppercase opacity-60">{% trans "Metrics Summary" %}</h4>
+          <div class="overflow-x-auto rounded-lg border" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+            <table class="w-full text-xs">
+              <thead>
+                <tr class="border-b text-left font-semibold uppercase opacity-50"
+                    :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+                  <th class="px-3 py-2">{% trans "Metric" %}</th>
+                  <th class="px-3 py-2 text-right">{% trans "Total Qty" %}</th>
+                  <th class="px-3 py-2">{% trans "Unit" %}</th>
+                  <th class="px-3 py-2 text-right">{% trans "Lines" %}</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y" :class="darkMode ? 'divide-accent-1' : 'divide-accent-2'">
+                {% for m in preview.metrics_summary %}
+                <tr>
+                  <td class="px-3 py-2">
+                    <code class="rounded px-1 py-0.5"
+                          :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
+                      {{ m.metric_code }}
+                    </code>
+                  </td>
+                  <td class="px-3 py-2 text-right font-mono">{{ m.total_quantity }}</td>
+                  <td class="px-3 py-2 opacity-70">{{ m.unit }}</td>
+                  <td class="px-3 py-2 text-right">{{ m.line_count }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+
+  <!-- Pricing preview -->
+  {% if pricing %}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border shadow-sm">
+    <div class="border-b px-5 py-4" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+      <h3 class="font-semibold">
+        <i class="fa-solid fa-coins mr-2 opacity-60"></i>
+        {% trans "Pricing Preview" %}
+        <span class="ml-2 text-sm font-normal opacity-60">{{ pricing.tariff_name }} ({{ pricing.tariff_code }})</span>
+      </h3>
+    </div>
+    <div class="p-5 space-y-4">
+
+      {% if pricing.has_errors %}
+      <div class="rounded-lg border px-4 py-3 text-sm"
+           :class="darkMode ? 'border-red-500/30 bg-red-900/20 text-red-300' : 'border-red-300 bg-red-50 text-red-700'">
+        <i class="fa-solid fa-triangle-exclamation mr-2"></i>
+        {% trans "Some lines could not be priced:" %}
+        <ul class="mt-2 list-disc pl-5">
+          {% for err in pricing.errors %}
+            <li>{{ err.metric_code }}: {{ err.error }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+
+      <!-- Totals by asset -->
+      {% if pricing.totals_by_asset %}
+      <div>
+        <h4 class="mb-2 text-xs font-semibold uppercase opacity-60">{% trans "Totals by Asset" %}</h4>
+        <div class="flex flex-wrap gap-3">
+          {% for total in pricing.totals_by_asset %}
+          <div class="rounded-lg border px-4 py-3 text-center"
+               :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'">
+            <div class="text-xl font-bold font-mono">{{ total.display }}</div>
+            <div class="mt-1 text-xs font-semibold opacity-60">{{ total.asset }}</div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Priced lines table -->
+      <div class="overflow-x-auto rounded-lg border" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <table class="w-full text-xs">
+          <thead>
+            <tr class="border-b text-left font-semibold uppercase opacity-50"
+                :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+              <th class="px-3 py-2">{% trans "Line" %}</th>
+              <th class="px-3 py-2">{% trans "Metric" %}</th>
+              <th class="px-3 py-2 text-right">{% trans "Qty" %}</th>
+              <th class="px-3 py-2">{% trans "Unit" %}</th>
+              <th class="px-3 py-2">{% trans "Asset" %}</th>
+              <th class="px-3 py-2 text-right">{% trans "Amount" %}</th>
+              <th class="px-3 py-2">{% trans "Source" %}</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y" :class="darkMode ? 'divide-accent-1' : 'divide-accent-2'">
+            {% for line in pricing.priced_lines %}
+              {% for charge in line.charges %}
+              <tr>
+                <td class="px-3 py-2 font-mono opacity-60">{{ line.line_id|slice:":16" }}</td>
+                <td class="px-3 py-2">
+                  <code class="rounded px-1 py-0.5"
+                        :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
+                    {{ line.metric_code }}
+                  </code>
+                </td>
+                <td class="px-3 py-2 text-right font-mono">{{ line.quantity }}</td>
+                <td class="px-3 py-2 opacity-70">{{ line.unit }}</td>
+                <td class="px-3 py-2">
+                  <span class="rounded border border-current/20 px-1.5 py-0.5 font-semibold">
+                    {{ charge.charged_asset }}
+                  </span>
+                </td>
+                <td class="px-3 py-2 text-right font-mono font-semibold">{{ charge.amount_display }}</td>
+                <td class="px-3 py-2 opacity-60">{{ line.source_label|default:"—" }}</td>
+              </tr>
+              {% endfor %}
+            {% empty %}
+              <tr>
+                <td colspan="7" class="px-3 py-6 text-center opacity-50">{% trans "No priced lines." %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

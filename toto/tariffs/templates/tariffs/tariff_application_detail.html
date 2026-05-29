@@ -1,0 +1,199 @@
+{% extends "tariffs/base.html" %}
+{% load i18n %}
+
+{% block tariffs_title %}{% trans "Application" %} {{ app.statement_id|slice:":16" }}{% endblock %}
+
+{% block tariffs_content %}
+<div class="space-y-6">
+
+  <!-- Header card -->
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-6 shadow-sm">
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div class="space-y-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <h2 class="text-2xl font-bold">
+            {% if app.title %}{{ app.title }}{% else %}{% trans "Application" %}{% endif %}
+          </h2>
+          <span class="rounded px-2 py-0.5 text-xs font-semibold
+            {% if app.status == 'invoiced' %}
+              :class="darkMode ? 'bg-green-900/20 text-green-300' : 'bg-green-100 text-green-700'"
+            {% elif app.status == 'failed' %}
+              :class="darkMode ? 'bg-red-900/20 text-red-300' : 'bg-red-100 text-red-700'"
+            {% elif app.status == 'cancelled' %}
+              :class="darkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-100 text-gray-500'"
+            {% else %}
+              :class="darkMode ? 'bg-yellow-900/20 text-yellow-300' : 'bg-yellow-100 text-yellow-700'"
+            {% endif %}">
+            {{ app.get_status_display }}
+          </span>
+        </div>
+        <div class="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
+          <span class="opacity-50">{% trans "Statement ID" %}</span>
+          <span class="font-mono">{{ app.statement_id }}</span>
+
+          <span class="opacity-50">{% trans "Source App" %}</span>
+          <span>
+            <strong>{{ app.effective_source_app|default:"—" }}</strong>
+            {% if app.override_source_app and app.override_source_app != app.detected_source_app %}
+              <span class="ml-1 opacity-50">({% trans "overridden from" %} {{ app.detected_source_app }})</span>
+            {% endif %}
+          </span>
+
+          <span class="opacity-50">{% trans "Subject Key" %}</span>
+          <span>
+            <code class="rounded px-1 py-0.5"
+                  :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
+              {{ app.detected_subject_key|default:"—" }}
+            </code>
+          </span>
+
+          <span class="opacity-50">{% trans "Subject Label" %}</span>
+          <span>
+            {{ app.effective_subject_label|default:"—" }}
+            {% if app.override_subject_label and app.override_subject_label != app.detected_subject_label %}
+              <span class="ml-1 opacity-50">({% trans "overridden" %})</span>
+            {% endif %}
+          </span>
+
+          <span class="opacity-50">{% trans "Period" %}</span>
+          <span>{{ app.period_start|date:"Y-m-d H:i" }} → {{ app.period_end|date:"Y-m-d H:i" }}</span>
+
+          <span class="opacity-50">{% trans "Tariff" %}</span>
+          <span>
+            <a href="{% url 'tariffs:tariff_detail' app.tariff.uuid %}"
+               class="underline hover:opacity-80">
+              {{ app.tariff.name }} ({{ app.tariff.code }})
+            </a>
+          </span>
+
+          <span class="opacity-50">{% trans "Usage File" %}</span>
+          <span>{{ app.usage_file.title }}</span>
+
+          <span class="opacity-50">{% trans "Created" %}</span>
+          <span>{{ app.created_at|date:"M d, Y H:i" }}{% if app.created_by %} {% trans "by" %} {{ app.created_by.username }}{% endif %}</span>
+        </div>
+      </div>
+
+      {% if invoice %}
+      <div class="shrink-0">
+        <div :class="darkMode ? 'border-green-500/30 bg-green-900/20 text-green-300' : 'border-green-300 bg-green-50 text-green-700'"
+             class="rounded-lg border p-4 text-center">
+          <div class="text-xs font-semibold uppercase opacity-70 mb-1">{% trans "Invoice" %}</div>
+          <div class="text-2xl font-bold font-mono">{{ invoice.amount }} {{ invoice.currency_label }}</div>
+          <div class="text-xs mt-1 opacity-70">
+            #{{ invoice.pk }} &bull; {{ invoice.get_status_display }}
+          </div>
+          {% if invoice.due_date %}
+            <div class="text-xs mt-1 opacity-50">{% trans "Due" %} {{ invoice.due_date }}</div>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    {% if app.description %}
+    <p class="mt-4 text-sm opacity-70">{{ app.description }}</p>
+    {% endif %}
+  </div>
+
+  <!-- Notice -->
+  <div class="rounded-lg border px-4 py-3 text-sm"
+       :class="darkMode ? 'border-blue-500/30 bg-blue-900/20 text-blue-300' : 'border-blue-300 bg-blue-50 text-blue-700'">
+    <i class="fa-solid fa-circle-info mr-2"></i>
+    {% trans "This application created an invoice only. No ledger funds were moved." %}
+  </div>
+
+  <!-- Totals by asset -->
+  {% if totals_by_asset %}
+  <div>
+    <h3 class="mb-3 text-sm font-semibold opacity-70">{% trans "Totals by Asset" %}</h3>
+    <div class="flex flex-wrap gap-3">
+      {% for total in totals_by_asset %}
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border px-5 py-3 text-center shadow-sm">
+        <div class="text-xl font-bold font-mono">{{ total.display }}</div>
+        <div class="mt-1 text-xs font-semibold opacity-60">{{ total.asset }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Application lines -->
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border shadow-sm">
+    <div class="border-b px-5 py-4" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+      <h3 class="font-semibold">
+        <i class="fa-solid fa-table-list mr-2 opacity-60"></i>
+        {% trans "Application Lines" %}
+        <span class="ml-2 text-sm font-normal opacity-50">({{ lines|length }})</span>
+      </h3>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b text-xs font-semibold uppercase opacity-60"
+              :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+            <th class="px-5 py-3 text-left">{% trans "Line" %}</th>
+            <th class="px-5 py-3 text-left">{% trans "Metric" %}</th>
+            <th class="px-5 py-3 text-right">{% trans "Quantity" %}</th>
+            <th class="px-5 py-3 text-left">{% trans "Unit" %}</th>
+            <th class="px-5 py-3 text-left">{% trans "Tariff Item" %}</th>
+            <th class="px-5 py-3 text-left">{% trans "Asset" %}</th>
+            <th class="px-5 py-3 text-right">{% trans "Amount" %}</th>
+            <th class="px-5 py-3 text-left">{% trans "Source" %}</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y" :class="darkMode ? 'divide-accent-1' : 'divide-accent-2'">
+          {% for line in lines %}
+          <tr>
+            <td class="px-5 py-3 font-mono text-xs opacity-60">{{ line.line_id|slice:":16" }}</td>
+            <td class="px-5 py-3">
+              <code class="rounded px-1.5 py-0.5 text-xs"
+                    :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
+                {{ line.metric_code }}
+              </code>
+            </td>
+            <td class="px-5 py-3 text-right font-mono text-xs">{{ line.quantity }}</td>
+            <td class="px-5 py-3 text-xs opacity-70">{{ line.unit|default:"—" }}</td>
+            <td class="px-5 py-3 text-xs">{{ line.tariff_item.name }}</td>
+            <td class="px-5 py-3">
+              <span class="rounded border border-current/20 px-2 py-0.5 text-xs font-semibold">
+                {{ line.charged_asset.unit_name }}
+              </span>
+            </td>
+            <td class="px-5 py-3 text-right font-mono text-xs font-semibold">
+              {{ line.amount_display }}
+            </td>
+            <td class="px-5 py-3 text-xs opacity-60">{{ line.source_label|default:"—" }}</td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="8" class="px-5 py-8 text-center text-sm opacity-50">{% trans "No lines." %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="flex gap-3">
+    <a href="{% url 'tariffs:tariff_application_list' %}"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+      <i class="fa-solid fa-arrow-left"></i>
+      {% trans "All Applications" %}
+    </a>
+    {% if invoice %}
+    <a href="{% url 'invoice:invoice_list' %}"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+      <i class="fa-solid fa-file-invoice"></i>
+      {% trans "View Invoices" %}
+    </a>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

@@ -17,8 +17,8 @@ from django.views.decorators.http import require_POST
 from toto.assets.models import Asset, AssetHolding, LedgerAccount
 from toto.ui import PageProcessor
 
-from .forms import TariffForm, TariffItemForm, UsageRecordForm, UsageSimulationForm
-from .models import Tariff, TariffItem, TariffStatus, UsageRecord, UsageStatus
+from .forms import ApplyUsageStatementForm, TariffForm, TariffItemForm, UsageRecordForm, UsageSimulationForm
+from .models import Tariff, TariffApplication, TariffApplicationStatus, TariffItem, TariffStatus, UsageRecord, UsageStatus
 from .services import (
     calculate_tariff_charge,
     post_usage_record,
@@ -480,3 +480,208 @@ def api_metrics(request):
         ),
     }
     return JsonResponse(data)
+
+
+# ---------------------------------------------------------------------------
+# Apply Usage Statement
+# ---------------------------------------------------------------------------
+
+def apply_usage_statement(request):
+    from toto.tariffs.usage_statement_services import (
+        preview_usage_statement,
+        price_usage_statement,
+        apply_tariff_to_usage_statement,
+    )
+
+    form = ApplyUsageStatementForm(request.POST or None)
+    preview = None
+    pricing = None
+    action = request.POST.get("action", "")
+
+    # Auto-preview when usage_file query param is present (GET)
+    if request.method == "GET":
+        file_id = request.GET.get("usage_file")
+        if file_id:
+            try:
+                from toto.vault.models import VaultFile
+                vf = VaultFile.objects.get(pk=file_id)
+                preview = preview_usage_statement(usage_file=vf)
+                form = ApplyUsageStatementForm(initial={"usage_file": vf})
+            except Exception as exc:
+                messages.error(request, _("Preview failed: %(e)s") % {"e": exc})
+
+    elif request.method == "POST":
+        if form.is_valid():
+            usage_file = form.cleaned_data["usage_file"]
+            tariff = form.cleaned_data["tariff"]
+
+            # Always show preview first
+            try:
+                preview = preview_usage_statement(usage_file=usage_file)
+            except Exception as exc:
+                messages.error(request, _("Preview failed: %(e)s") % {"e": exc})
+
+            if action == "preview":
+                try:
+                    pricing = price_usage_statement(usage_file=usage_file, tariff=tariff)
+                except Exception as exc:
+                    messages.error(request, _("Pricing failed: %(e)s") % {"e": exc})
+
+            elif action == "apply":
+                try:
+                    pricing = price_usage_statement(usage_file=usage_file, tariff=tariff)
+                    if pricing and pricing.get("has_errors"):
+                        for err in pricing["errors"]:
+                            messages.error(request, err.get("error", str(err)))
+                    else:
+                        app, invoice = apply_tariff_to_usage_statement(
+                            usage_file=usage_file,
+                            tariff=tariff,
+                            issued_to=form.cleaned_data["issued_to"],
+                            issued_by=request.user if request.user.is_authenticated else None,
+                            due_date=form.cleaned_data.get("due_date"),
+                            title=form.cleaned_data.get("title") or None,
+                            description=form.cleaned_data.get("description", ""),
+                            override_source_app=form.cleaned_data.get("override_source_app", ""),
+                            override_subject_label=form.cleaned_data.get("override_subject_label", ""),
+                        )
+                        messages.success(
+                            request,
+                            _("Invoice #%(pk)s created for usage statement %(sid)s.")
+                            % {"pk": invoice.pk, "sid": app.statement_id},
+                        )
+                        return redirect("tariffs:tariff_application_detail", uid=app.uid)
+                except ValidationError as exc:
+                    for field, errs in exc.message_dict.items():
+                        for e in errs:
+                            messages.error(request, f"{field}: {e}")
+                except Exception as exc:
+                    messages.error(request, _("Apply failed: %(e)s") % {"e": exc})
+
+    return _render(request, "tariffs/apply_usage_statement.html", {
+        "form": form,
+        "preview": preview,
+        "pricing": pricing,
+        "action": action,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Tariff Application List
+# ---------------------------------------------------------------------------
+
+def tariff_application_list(request):
+    qs = TariffApplication.objects.select_related("tariff", "usage_file", "created_by")
+
+    source_app_filter = request.GET.get("source_app", "").strip()
+    status_filter = request.GET.get("status", "").strip()
+    tariff_filter = request.GET.get("tariff", "").strip()
+    subject_key_filter = request.GET.get("subject_key", "").strip()
+
+    if source_app_filter:
+        qs = qs.filter(detected_source_app=source_app_filter)
+    if status_filter:
+        qs = qs.filter(status=status_filter)
+    if tariff_filter:
+        qs = qs.filter(tariff__code=tariff_filter)
+    if subject_key_filter:
+        qs = qs.filter(
+            Q(detected_subject_key__icontains=subject_key_filter)
+        )
+
+    return _render(request, "tariffs/tariff_application_list.html", {
+        "applications": qs[:200],
+        "total_count": qs.count(),
+        "status_choices": TariffApplicationStatus.choices,
+        "tariffs": Tariff.objects.filter(status=TariffStatus.ACTIVE).order_by("code"),
+        "source_app_filter": source_app_filter,
+        "status_filter": status_filter,
+        "tariff_filter": tariff_filter,
+        "subject_key_filter": subject_key_filter,
+        "distinct_source_apps": TariffApplication.objects.exclude(detected_source_app="")
+            .values_list("detected_source_app", flat=True).distinct().order_by("detected_source_app"),
+    })
+
+
+# ---------------------------------------------------------------------------
+# Tariff Application Detail
+# ---------------------------------------------------------------------------
+
+def tariff_application_detail(request, uid):
+    app = get_object_or_404(
+        TariffApplication.objects.select_related("tariff", "usage_file", "created_by"),
+        uid=uid,
+    )
+    lines = app.lines.select_related("tariff_item__metric", "charged_asset")
+
+    invoice = None
+    if app.invoice_source_type == "invoice.Invoice" and app.invoice_source_id:
+        try:
+            from toto.invoice.models import Invoice
+            invoice = Invoice.objects.get(pk=int(app.invoice_source_id))
+        except Exception:
+            pass
+
+    # Totals by asset
+    totals_by_asset: dict = {}
+    for line in lines:
+        key = line.charged_asset.unit_name
+        if key not in totals_by_asset:
+            totals_by_asset[key] = {"asset": key, "base_units": 0, "display": 0}
+        totals_by_asset[key]["base_units"] += line.amount_base_units
+        totals_by_asset[key]["display"] = totals_by_asset[key]["display"] + line.amount_display
+
+    return _render(request, "tariffs/tariff_application_detail.html", {
+        "app": app,
+        "lines": lines,
+        "invoice": invoice,
+        "totals_by_asset": list(totals_by_asset.values()),
+    })
+
+
+# ---------------------------------------------------------------------------
+# Optional JSON endpoints
+# ---------------------------------------------------------------------------
+
+def preview_usage_statement_json(request):
+    file_id = request.GET.get("usage_file")
+    if not file_id:
+        return JsonResponse({"error": "usage_file param required"}, status=400)
+    try:
+        from toto.vault.models import VaultFile
+        from toto.tariffs.usage_statement_services import preview_usage_statement
+        vf = VaultFile.objects.get(pk=file_id)
+        preview = preview_usage_statement(usage_file=vf)
+        from decimal import Decimal
+        import json as _json
+        return JsonResponse(_decimal_safe(preview), safe=False)
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+
+
+def price_usage_statement_json(request):
+    file_id = request.GET.get("usage_file")
+    tariff_code = request.GET.get("tariff")
+    if not file_id or not tariff_code:
+        return JsonResponse({"error": "usage_file and tariff params required"}, status=400)
+    try:
+        from toto.vault.models import VaultFile
+        from toto.tariffs.usage_statement_services import price_usage_statement
+        vf = VaultFile.objects.get(pk=file_id)
+        tariff = Tariff.objects.get(code=tariff_code)
+        pricing = price_usage_statement(usage_file=vf, tariff=tariff)
+        return JsonResponse(_decimal_safe(pricing), safe=False)
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+
+
+def _decimal_safe(obj):
+    """Recursively convert Decimal to str for JSON serialisation."""
+    from decimal import Decimal
+    if isinstance(obj, dict):
+        return {k: _decimal_safe(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_decimal_safe(i) for i in obj]
+    if isinstance(obj, Decimal):
+        return str(obj)
+    return obj
