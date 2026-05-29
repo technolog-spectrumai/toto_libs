@@ -1,142 +1,131 @@
-{% extends "oya/base.html" %}
+{% extends "logistics/base.html" %}
 {% load i18n %}
 
-{% block title %}{% trans "Packages" %} | {{ platform.site_name }}{% endblock %}
+{% block logistics_title %}{% trans "Packages" %}{% endblock %}
+{% block tab_packages %}border-b-2 border-current -mb-px{% endblock %}
 
-{% block content %}
-<div :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
-     class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8"
-     x-data="{ filter: 'all' }">
-  <div class="mx-auto max-w-5xl space-y-6">
+{% block logistics_content %}
+<div x-data="{ filter: 'all' }" class="space-y-6">
 
-    <!-- Header -->
-    <header class="flex flex-wrap items-start justify-between gap-4">
-      <div>
-        <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-           class="text-xs font-semibold uppercase tracking-wide">{% trans "Logistics" %}</p>
-        <h1 class="mt-1 text-3xl font-bold">{% trans "Packages" %}</h1>
-        <p class="mt-1 text-sm opacity-50">{{ packages|length }} {% trans "total" %}</p>
-      </div>
-    </header>
+  <p class="text-sm opacity-50">{{ packages|length }} {% trans "total" %}</p>
 
-    {% if packages %}
+  {% if packages %}
 
-    <!-- Status filter chips -->
-    <div class="flex flex-wrap gap-2 text-xs font-semibold">
-      <button type="button" @click="filter = 'all'"
-        :class="filter === 'all'
-          ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light')
-          : (darkMode ? 'border-accent-1/40 bg-bubble-bg-dark opacity-70 hover:opacity-100' : 'border-accent-2/40 bg-bubble-bg-light opacity-70 hover:opacity-100')"
-        class="rounded-full border px-3 py-1 transition">
-        {% trans "All" %}
-      </button>
-      {% for val, label in statuses %}
-      <button type="button" @click="filter = '{{ val }}'"
-        :class="filter === '{{ val }}'
-          ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light')
-          : (darkMode ? 'border-accent-1/40 bg-bubble-bg-dark opacity-70 hover:opacity-100' : 'border-accent-2/40 bg-bubble-bg-light opacity-70 hover:opacity-100')"
-        class="rounded-full border px-3 py-1 transition">
-        {{ label }}
-      </button>
-      {% endfor %}
-    </div>
-
-    <!-- Package cards -->
-    <div class="space-y-2">
-      {% for pkg in packages %}
-      <a href="{% url 'logistics:package-tracking' tracking_number=pkg.tracking_number %}"
-         x-show="filter === 'all' || filter === '{{ pkg.status }}'"
-         x-transition:enter="transition ease-out duration-150"
-         x-transition:enter-start="opacity-0 translate-y-1"
-         x-transition:enter-end="opacity-100 translate-y-0"
-         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-primary-bg-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-primary-bg-light'"
-         class="group flex items-center gap-4 rounded-2xl border p-4 shadow-sm transition">
-
-        <!-- Status dot -->
-        <span class="shrink-0 h-2.5 w-2.5 rounded-full
-          {% if pkg.status == 'delivered' %}
-          " :class="darkMode ? 'bg-success-dark' : 'bg-success-light'
-          {% elif pkg.status == 'failed' or pkg.status == 'returned' %}
-          " :class="darkMode ? 'bg-warn-dark' : 'bg-warn-light'
-          {% elif pkg.status == 'out_for_delivery' %}
-          " :class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'
-          {% else %}
-          opacity-40" :class="darkMode ? 'bg-text-main-dark' : 'bg-text-main-light'
-          {% endif %}
-          "></span>
-
-        <!-- Main info -->
-        <div class="flex-1 min-w-0">
-          <div class="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
-            <p class="font-mono font-bold text-sm">{{ pkg.tracking_number }}</p>
-            {% if pkg.carrier %}
-            <p class="text-xs opacity-50">{{ pkg.carrier }}</p>
-            {% endif %}
-          </div>
-          <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs opacity-50">
-            {% if pkg.origin %}
-            <span>
-              <i class="fa-solid fa-circle-dot mr-1" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
-              {{ pkg.origin.locality_name|default:pkg.origin }}
-            </span>
-            {% endif %}
-            {% if pkg.origin and pkg.destination %}<span class="opacity-30">→</span>{% endif %}
-            {% if pkg.destination %}
-            <span>
-              <i class="fa-solid fa-location-dot mr-1" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
-              {{ pkg.destination.locality_name|default:pkg.destination }}
-            </span>
-            {% endif %}
-            {% if pkg.estimated_delivery %}
-            <span class="ml-auto">
-              <i class="fa-regular fa-clock mr-1"></i>{{ pkg.estimated_delivery|date:"M d" }}
-            </span>
-            {% endif %}
-          </div>
-        </div>
-
-        <!-- Transport badge -->
-        {% if pkg.transport %}
-        <span :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
-              class="hidden sm:inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs opacity-60 shrink-0">
-          <i class="fa-solid
-            {% if pkg.transport.mode == 'air' %}fa-plane
-            {% elif pkg.transport.mode == 'sea' %}fa-ship
-            {% elif pkg.transport.mode == 'rail' %}fa-train
-            {% else %}fa-truck{% endif %}
-            text-[10px]"></i>
-          {{ pkg.transport.name }}
-        </span>
-        {% endif %}
-
-        <!-- Status pill -->
-        <span class="rounded-full px-2.5 py-1 text-xs font-semibold shrink-0
-          {% if pkg.status == 'delivered' %}"
-              :class="darkMode ? 'bg-success-dark/15 text-success-dark' : 'bg-success-light/15 text-success-light'
-          {% elif pkg.status == 'out_for_delivery' %}"
-              :class="darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'
-          {% elif pkg.status == 'failed' or pkg.status == 'returned' %}"
-              :class="darkMode ? 'bg-warn-dark/15 text-warn-dark' : 'bg-warn-light/15 text-warn-light'
-          {% else %}"
-              :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'
-          {% endif %}
-          ">
-          {{ pkg.get_status_display }}
-        </span>
-
-        <i class="fa-solid fa-chevron-right text-xs opacity-20 shrink-0 group-hover:opacity-50 transition"></i>
-      </a>
-      {% endfor %}
-    </div>
-
-    {% else %}
-    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-         class="rounded-2xl border p-16 text-center shadow-sm">
-      <i class="fa-solid fa-box text-5xl opacity-15 mb-5 block"></i>
-      <p class="font-semibold opacity-50">{% trans "No packages yet." %}</p>
-    </div>
-    {% endif %}
-
+  <!-- Status filter chips -->
+  <div class="flex flex-wrap gap-2 text-xs font-semibold">
+    <button type="button" @click="filter = 'all'"
+      :class="filter === 'all'
+        ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light')
+        : (darkMode ? 'border-accent-1/40 bg-bubble-bg-dark opacity-70 hover:opacity-100' : 'border-accent-2/40 bg-bubble-bg-light opacity-70 hover:opacity-100')"
+      class="rounded-full border px-3 py-1 transition">
+      {% trans "All" %}
+    </button>
+    {% for val, label in statuses %}
+    <button type="button" @click="filter = '{{ val }}'"
+      :class="filter === '{{ val }}'
+        ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light')
+        : (darkMode ? 'border-accent-1/40 bg-bubble-bg-dark opacity-70 hover:opacity-100' : 'border-accent-2/40 bg-bubble-bg-light opacity-70 hover:opacity-100')"
+      class="rounded-full border px-3 py-1 transition">
+      {{ label }}
+    </button>
+    {% endfor %}
   </div>
+
+  <!-- Package cards -->
+  <div class="space-y-2">
+    {% for pkg in packages %}
+    <a href="{% url 'logistics:package-tracking' tracking_number=pkg.tracking_number %}"
+       x-show="filter === 'all' || filter === '{{ pkg.status }}'"
+       x-transition:enter="transition ease-out duration-150"
+       x-transition:enter-start="opacity-0 translate-y-1"
+       x-transition:enter-end="opacity-100 translate-y-0"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-primary-bg-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-primary-bg-light'"
+       class="group flex items-center gap-4 rounded-2xl border p-4 shadow-sm transition">
+
+      <!-- Status dot -->
+      <span class="shrink-0 h-2.5 w-2.5 rounded-full
+        {% if pkg.status == 'delivered' %}
+        " :class="darkMode ? 'bg-success-dark' : 'bg-success-light'
+        {% elif pkg.status == 'failed' or pkg.status == 'returned' %}
+        " :class="darkMode ? 'bg-warn-dark' : 'bg-warn-light'
+        {% elif pkg.status == 'out_for_delivery' %}
+        " :class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'
+        {% else %}
+        opacity-40" :class="darkMode ? 'bg-text-main-dark' : 'bg-text-main-light'
+        {% endif %}
+        "></span>
+
+      <!-- Main info -->
+      <div class="flex-1 min-w-0">
+        <div class="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+          <p class="font-mono font-bold text-sm">{{ pkg.tracking_number }}</p>
+          {% if pkg.carrier %}
+          <p class="text-xs opacity-50">{{ pkg.carrier }}</p>
+          {% endif %}
+        </div>
+        <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs opacity-50">
+          {% if pkg.origin %}
+          <span>
+            <i class="fa-solid fa-circle-dot mr-1" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+            {{ pkg.origin.locality_name|default:pkg.origin }}
+          </span>
+          {% endif %}
+          {% if pkg.origin and pkg.destination %}<span class="opacity-30">→</span>{% endif %}
+          {% if pkg.destination %}
+          <span>
+            <i class="fa-solid fa-location-dot mr-1" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+            {{ pkg.destination.locality_name|default:pkg.destination }}
+          </span>
+          {% endif %}
+          {% if pkg.estimated_delivery %}
+          <span class="ml-auto">
+            <i class="fa-regular fa-clock mr-1"></i>{{ pkg.estimated_delivery|date:"M d" }}
+          </span>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Transport badge -->
+      {% if pkg.transport %}
+      <span :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+            class="hidden sm:inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs opacity-60 shrink-0">
+        <i class="fa-solid
+          {% if pkg.transport.mode == 'air' %}fa-plane
+          {% elif pkg.transport.mode == 'sea' %}fa-ship
+          {% elif pkg.transport.mode == 'rail' %}fa-train
+          {% else %}fa-truck{% endif %}
+          text-[10px]"></i>
+        {{ pkg.transport.name }}
+      </span>
+      {% endif %}
+
+      <!-- Status pill -->
+      <span class="rounded-full px-2.5 py-1 text-xs font-semibold shrink-0
+        {% if pkg.status == 'delivered' %}"
+            :class="darkMode ? 'bg-success-dark/15 text-success-dark' : 'bg-success-light/15 text-success-light'
+        {% elif pkg.status == 'out_for_delivery' %}"
+            :class="darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'
+        {% elif pkg.status == 'failed' or pkg.status == 'returned' %}"
+            :class="darkMode ? 'bg-warn-dark/15 text-warn-dark' : 'bg-warn-light/15 text-warn-light'
+        {% else %}"
+            :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'
+        {% endif %}
+        ">
+        {{ pkg.get_status_display }}
+      </span>
+
+      <i class="fa-solid fa-chevron-right text-xs opacity-20 shrink-0 group-hover:opacity-50 transition"></i>
+    </a>
+    {% endfor %}
+  </div>
+
+  {% else %}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-2xl border p-16 text-center shadow-sm">
+    <i class="fa-solid fa-box text-5xl opacity-15 mb-5 block"></i>
+    <p class="font-semibold opacity-50">{% trans "No packages yet." %}</p>
+  </div>
+  {% endif %}
+
 </div>
 {% endblock %}
