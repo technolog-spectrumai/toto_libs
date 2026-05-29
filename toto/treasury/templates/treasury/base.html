@@ -13,29 +13,47 @@
   class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
   <div class="mx-auto max-w-7xl space-y-6">
 
-    <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-      <div class="space-y-2">
-        <a href="/" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
-          <i class="fa-solid fa-arrow-left"></i>{% trans "Home" %}
-        </a>
-        <div>
-          <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-             class="text-xs font-semibold uppercase tracking-wide">{% trans "Community Treasury" %}</p>
-          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
-            <i class="fa-solid fa-chart-pie"></i>
-            {% trans "Treasury" %}
-          </h1>
-        </div>
-      </div>
-
-      <nav class="flex flex-wrap gap-2">
-        <a href="{% url 'treasury:list' %}"
-           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-           class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-          <i class="fa-solid fa-list"></i>{% trans "Communities" %}
-        </a>
-      </nav>
+    <header class="space-y-2">
+      <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+         class="text-xs font-semibold uppercase tracking-wide">{% trans "Community Budget" %}</p>
+      <h1 class="flex items-center gap-3 text-3xl font-bold">
+        <i class="fa-solid fa-chart-pie"></i>
+        {% trans "Treasury" %}
+      </h1>
     </header>
+
+    <!-- Top-level tabs -->
+    <nav :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+         class="flex flex-wrap gap-1 border-b pb-0">
+      <a href="{% url 'treasury:list' %}"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                {% block tab_overview %}opacity-50{% endblock %}">
+        <i class="fa-solid fa-chart-pie"></i>
+        {% trans "Overview" %}
+      </a>
+      <a href="{% url 'tariffs:tariff_list' %}"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                {% block tab_tariffs %}opacity-50{% endblock %}">
+        <i class="fa-solid fa-receipt"></i>
+        {% trans "Tariffs" %}
+      </a>
+      <a href="{% url 'subscriptions:plan_list' %}"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                {% block tab_subscriptions %}opacity-50{% endblock %}">
+        <i class="fa-solid fa-repeat"></i>
+        {% trans "Subscriptions" %}
+      </a>
+      <a href="{% url 'contracts:payroll_list' %}"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                {% block tab_payroll %}opacity-50{% endblock %}">
+        <i class="fa-solid fa-money-check-dollar"></i>
+        {% trans "Payroll" %}
+      </a>
+    </nav>
 
     {% if messages %}
       {% for message in messages %}

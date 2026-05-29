@@ -1,5 +1,6 @@
 {% extends "treasury/base.html" %}
 {% load i18n %}
+{% block tab_overview %}border-b-2 border-current -mb-px{% endblock %}
 {% block treasury_title %}{{ community.name }}{% endblock %}
 {% block treasury_content %}
 <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
