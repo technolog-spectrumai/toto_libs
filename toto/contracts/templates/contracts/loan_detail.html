@@ -1,0 +1,127 @@
+{% extends "contracts/base.html" %}
+{% load i18n %}
+
+{% block contracts_title %}{{ contract.name }}{% endblock %}
+
+{% block contracts_content %}
+<div class="space-y-6">
+
+  <a href="{% url 'contracts:loan_list' %}"
+     class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+    <i class="fa-solid fa-arrow-left"></i>
+    {% trans "Back to loans" %}
+  </a>
+
+  <!-- Header card -->
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5 shadow-sm">
+    <div class="flex items-start justify-between gap-4 flex-wrap">
+      <div class="space-y-1">
+        <div class="flex items-center gap-3 flex-wrap">
+          <h2 class="flex items-center gap-2 text-lg font-bold">
+            <i class="fa-solid fa-hand-holding-dollar" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+            {{ contract.name }}
+          </h2>
+          {% if contract.status == 'executed' %}
+          <span class="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-800 px-2.5 py-0.5 text-xs font-semibold">
+            <i class="fa-solid fa-circle-check"></i> {% trans "Active" %}
+          </span>
+          {% elif contract.status == 'pending' %}
+          <span class="inline-flex items-center gap-1 rounded-full bg-yellow-100 text-yellow-800 px-2.5 py-0.5 text-xs font-semibold">
+            <i class="fa-solid fa-pen-nib"></i> {% trans "Awaiting Signatures" %}
+          </span>
+          {% else %}
+          <span class="inline-flex items-center gap-1 rounded-full bg-gray-100 text-gray-500 px-2.5 py-0.5 text-xs font-semibold">
+            {{ contract.get_status_display }}
+          </span>
+          {% endif %}
+          <span class="inline-flex items-center gap-1 rounded-full bg-gray-100 text-gray-600 px-2.5 py-0.5 text-xs font-semibold">
+            <i class="fa-solid fa-equals"></i> {% trans "Same-currency" %}
+          </span>
+        </div>
+        <p class="text-sm opacity-70">{{ contract.description }}</p>
+      </div>
+      <a href="{% url 'contracts:contract_detail' contract.uuid %}"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="inline-flex items-center gap-1 rounded border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80 shrink-0">
+        <i class="fa-solid fa-diagram-project"></i> {% trans "Graph" %}
+      </a>
+    </div>
+  </div>
+
+  <!-- Signatories -->
+  {% include "contracts/_signatories_card.html" %}
+
+  <!-- Info grid -->
+  <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+
+    <!-- Loan currency -->
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-4 shadow-sm space-y-1">
+      <p class="text-xs font-semibold uppercase tracking-wide opacity-50">{% trans "Currency" %}</p>
+      {% if loan_asset %}
+      <p class="font-semibold font-mono text-lg">{{ loan_asset.unit_name }}</p>
+      <p class="text-xs opacity-60">{{ loan_asset.name }}</p>
+      {% else %}<p class="opacity-60">—</p>{% endif %}
+    </div>
+
+    <!-- Principal -->
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-4 shadow-sm space-y-1">
+      <p class="text-xs font-semibold uppercase tracking-wide opacity-50">{% trans "Principal" %}</p>
+      {% if principal_base_units %}
+      <p class="font-semibold font-mono">{{ principal_base_units }}</p>
+      <p class="text-xs opacity-60">{% trans "base units" %}</p>
+      {% else %}<p class="opacity-60">—</p>{% endif %}
+    </div>
+
+    <!-- Interest & Term -->
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-4 shadow-sm space-y-1">
+      <p class="text-xs font-semibold uppercase tracking-wide opacity-50">{% trans "Interest / Term" %}</p>
+      <p class="font-semibold">
+        {{ interest_rate_bps }} bps
+        <span class="text-xs opacity-60 ml-1">({{ interest_rate_pct }}% p.a.)</span>
+      </p>
+      <p class="text-xs opacity-60 capitalize">
+        {{ term_months }} {% trans "months" %} · {{ repayment_frequency }}
+      </p>
+    </div>
+
+  </div>
+
+  <!-- Parties -->
+  <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+
+    <!-- Lender -->
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-5 shadow-sm space-y-3">
+      <p class="text-xs font-semibold uppercase tracking-wide opacity-50 flex items-center gap-2">
+        <i class="fa-solid fa-circle-arrow-right"></i> {% trans "Lender" %}
+      </p>
+      <div>
+        <p class="font-semibold">{{ lender_person|default:"—" }}</p>
+        {% if lender_account %}
+        <p class="font-mono text-xs opacity-60 mt-0.5">{{ lender_account.code }} — {{ lender_account.name }}</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Borrower -->
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-5 shadow-sm space-y-3">
+      <p class="text-xs font-semibold uppercase tracking-wide opacity-50 flex items-center gap-2">
+        <i class="fa-solid fa-circle-arrow-left"></i> {% trans "Borrower" %}
+      </p>
+      <div>
+        <p class="font-semibold">{{ borrower_person|default:"—" }}</p>
+        {% if borrower_account %}
+        <p class="font-mono text-xs opacity-60 mt-0.5">{{ borrower_account.code }} — {{ borrower_account.name }}</p>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>
+
+</div>
+{% endblock %}

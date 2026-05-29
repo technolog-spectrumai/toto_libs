@@ -1,0 +1,134 @@
+{% extends "contracts/base.html" %}
+{% load i18n %}
+
+{% block contracts_title %}{% trans "New Loan" %}{% endblock %}
+
+{% block contracts_content %}
+<div class="space-y-6 max-w-2xl">
+
+  <a href="{% url 'contracts:loan_list' %}"
+     class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+    <i class="fa-solid fa-arrow-left"></i>
+    {% trans "Back to loans" %}
+  </a>
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-6 shadow-sm">
+    <h2 class="flex items-center gap-2 text-lg font-bold mb-6">
+      <i class="fa-solid fa-hand-holding-dollar" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+      {% trans "New Loan Contract" %}
+    </h2>
+
+    <form method="post" class="space-y-5">
+      {% csrf_token %}
+
+      <!-- Name -->
+      <div class="space-y-1">
+        <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+          {{ form.name.label }}
+        </label>
+        {{ form.name }}
+        {% if form.name.errors %}<p class="text-xs text-red-500">{{ form.name.errors.0 }}</p>{% endif %}
+      </div>
+
+      <!-- Parties -->
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div class="space-y-1">
+          <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {{ form.lender_person.label }}
+          </label>
+          {{ form.lender_person }}
+          {% if form.lender_person.errors %}<p class="text-xs text-red-500">{{ form.lender_person.errors.0 }}</p>{% endif %}
+        </div>
+        <div class="space-y-1">
+          <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {{ form.borrower_person.label }}
+          </label>
+          {{ form.borrower_person }}
+          {% if form.borrower_person.errors %}<p class="text-xs text-red-500">{{ form.borrower_person.errors.0 }}</p>{% endif %}
+        </div>
+      </div>
+
+      <!-- Accounts -->
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div class="space-y-1">
+          <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {{ form.lender_account.label }}
+          </label>
+          {{ form.lender_account }}
+          {% if form.lender_account.errors %}<p class="text-xs text-red-500">{{ form.lender_account.errors.0 }}</p>{% endif %}
+        </div>
+        <div class="space-y-1">
+          <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {{ form.borrower_account.label }}
+          </label>
+          {{ form.borrower_account }}
+          {% if form.borrower_account.errors %}<p class="text-xs text-red-500">{{ form.borrower_account.errors.0 }}</p>{% endif %}
+        </div>
+      </div>
+
+      <!-- Currency — single asset enforces same-currency constraint -->
+      <div class="space-y-1">
+        <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+          {{ form.loan_asset.label }}
+        </label>
+        <p class="text-xs opacity-50">Both disbursement and repayment use this currency.</p>
+        {{ form.loan_asset }}
+        {% if form.loan_asset.errors %}<p class="text-xs text-red-500">{{ form.loan_asset.errors.0 }}</p>{% endif %}
+      </div>
+
+      <!-- Loan terms -->
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div class="space-y-1">
+          <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {{ form.principal_base_units.label }}
+          </label>
+          {{ form.principal_base_units }}
+          {% if form.principal_base_units.errors %}<p class="text-xs text-red-500">{{ form.principal_base_units.errors.0 }}</p>{% endif %}
+        </div>
+        <div class="space-y-1">
+          <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {{ form.interest_rate_bps.label }}
+          </label>
+          <p class="text-xs opacity-50">{{ form.interest_rate_bps.help_text }}</p>
+          {{ form.interest_rate_bps }}
+          {% if form.interest_rate_bps.errors %}<p class="text-xs text-red-500">{{ form.interest_rate_bps.errors.0 }}</p>{% endif %}
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div class="space-y-1">
+          <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {{ form.repayment_frequency.label }}
+          </label>
+          {{ form.repayment_frequency }}
+          {% if form.repayment_frequency.errors %}<p class="text-xs text-red-500">{{ form.repayment_frequency.errors.0 }}</p>{% endif %}
+        </div>
+        <div class="space-y-1">
+          <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {{ form.term_months.label }}
+          </label>
+          {{ form.term_months }}
+          {% if form.term_months.errors %}<p class="text-xs text-red-500">{{ form.term_months.errors.0 }}</p>{% endif %}
+        </div>
+      </div>
+
+      {% if form.non_field_errors %}
+      <div class="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+        {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+      </div>
+      {% endif %}
+
+      <div class="pt-2">
+        <button type="submit"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-hand-holding-dollar"></i>
+          {% trans "Create Loan Contract" %}
+        </button>
+      </div>
+
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -102,58 +102,100 @@
 
   </div>
 
-  <!-- Insured assets -->
-  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-       class="rounded-lg border shadow-sm">
-    <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
-         class="flex items-center justify-between px-4 py-3 border-b">
-      <h3 class="font-semibold flex items-center gap-2 text-sm">
-        <i class="fa-solid fa-boxes-stacked opacity-60"></i>
-        {% trans "Covered Assets" %}
-        <span class="ml-1 rounded-full px-2 py-0.5 text-xs font-bold
-          {% if insured_items %}bg-blue-100 text-blue-700{% else %}bg-gray-100 text-gray-500{% endif %}">
-          {{ insured_items|length }}
-        </span>
-      </h3>
-      {% if total_estimated_value %}
-      <span class="text-xs opacity-60">
-        {% trans "Total est. value:" %} {{ total_estimated_value }}
-      </span>
-      {% endif %}
-    </div>
+  <!-- Covered assets — two sections side by side on wide screens -->
+  <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
 
-    {% if insured_items %}
-    <div class="divide-y" :class="darkMode ? 'divide-accent-1' : 'divide-accent-2'">
-      {% for item in insured_items %}
-      <div class="px-4 py-3 flex items-center justify-between gap-4 text-sm">
-        <div class="flex items-center gap-3 min-w-0">
-          <i class="fa-solid fa-box-archive shrink-0 opacity-40"></i>
-          <div class="min-w-0">
-            <p class="font-semibold truncate">{{ item.name }}</p>
-            {% if item.object_type %}
-            <p class="text-xs opacity-50">{{ item.object_type }}</p>
+    <!-- Inventory assets -->
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border shadow-sm">
+      <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+           class="flex items-center justify-between px-4 py-3 border-b">
+        <h3 class="font-semibold flex items-center gap-2 text-sm">
+          <i class="fa-solid fa-boxes-stacked opacity-60"></i>
+          {% trans "Inventory Assets" %}
+          <span class="ml-1 rounded-full px-2 py-0.5 text-xs font-bold
+            {% if insured_items %}bg-blue-100 text-blue-700{% else %}bg-gray-100 text-gray-500{% endif %}">
+            {{ insured_items|length }}
+          </span>
+        </h3>
+        {% if total_estimated_value %}
+        <span class="text-xs opacity-60">est. {{ total_estimated_value }}</span>
+        {% endif %}
+      </div>
+
+      {% if insured_items %}
+      <div class="divide-y" :class="darkMode ? 'divide-accent-1' : 'divide-accent-2'">
+        {% for item in insured_items %}
+        <div class="px-4 py-3 flex items-center justify-between gap-4 text-sm">
+          <div class="flex items-center gap-3 min-w-0">
+            <i class="fa-solid fa-box-archive shrink-0 opacity-40"></i>
+            <div class="min-w-0">
+              <p class="font-semibold truncate">{{ item.name }}</p>
+              {% if item.object_type %}
+              <p class="text-xs opacity-50">{{ item.object_type }}</p>
+              {% endif %}
+            </div>
+          </div>
+          <div class="text-right shrink-0">
+            {% if item.estimated_value %}
+            <p class="font-mono text-xs">
+              {{ item.estimated_value }}
+              {% if item.estimated_value_currency %}{{ item.estimated_value_currency.unit_name }}{% endif %}
+            </p>
+            {% endif %}
+            {% if item.quantity %}
+            <p class="text-xs opacity-50">qty {{ item.quantity }}</p>
             {% endif %}
           </div>
         </div>
-        <div class="text-right shrink-0">
-          {% if item.estimated_value %}
-          <p class="font-mono text-xs">
-            {{ item.estimated_value }}
-            {% if item.estimated_value_currency %}{{ item.estimated_value_currency.unit_name }}{% endif %}
-          </p>
-          {% endif %}
-          {% if item.quantity %}
-          <p class="text-xs opacity-50">qty {{ item.quantity }}</p>
-          {% endif %}
-        </div>
+        {% endfor %}
       </div>
-      {% endfor %}
+      {% else %}
+      <div class="px-6 py-8 text-center text-sm opacity-40">
+        {% trans "No inventory assets." %}
+      </div>
+      {% endif %}
     </div>
-    {% else %}
-    <div class="px-6 py-8 text-center text-sm opacity-50">
-      {% trans "No assets recorded in this policy." %}
+
+    <!-- Financial assets (ASA) -->
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border shadow-sm">
+      <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+           class="px-4 py-3 border-b">
+        <h3 class="font-semibold flex items-center gap-2 text-sm">
+          <i class="fa-solid fa-coins opacity-60"></i>
+          {% trans "Financial Assets (ASA)" %}
+          <span class="ml-1 rounded-full px-2 py-0.5 text-xs font-bold
+            {% if insured_financial_assets %}bg-blue-100 text-blue-700{% else %}bg-gray-100 text-gray-500{% endif %}">
+            {{ insured_financial_assets|length }}
+          </span>
+        </h3>
+      </div>
+
+      {% if insured_financial_assets %}
+      <div class="divide-y" :class="darkMode ? 'divide-accent-1' : 'divide-accent-2'">
+        {% for asset in insured_financial_assets %}
+        <div class="px-4 py-3 flex items-center justify-between gap-4 text-sm">
+          <div class="flex items-center gap-3 min-w-0">
+            <i class="fa-solid fa-coins shrink-0 opacity-40"></i>
+            <div class="min-w-0">
+              <p class="font-semibold truncate">{{ asset.name }}</p>
+              <p class="text-xs opacity-50 font-mono">{{ asset.unit_name }}</p>
+            </div>
+          </div>
+          <div class="text-right shrink-0">
+            <p class="text-xs opacity-50">{{ asset.decimals }} decimals</p>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="px-6 py-8 text-center text-sm opacity-40">
+        {% trans "No financial assets." %}
+      </div>
+      {% endif %}
     </div>
-    {% endif %}
+
   </div>
 
 </div>

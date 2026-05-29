@@ -12,7 +12,7 @@ from toto.people.models import Person
 
 from .forms import (
     ContractForm, ContractNodeForm, ContractEdgeForm, ContractSignatoryForm,
-    PayrollCreateForm, PayrollDutyForm, InsuranceCreateForm,
+    PayrollCreateForm, PayrollDutyForm, InsuranceCreateForm, LoanCreateForm,
 )
 from .models import Contract, ContractNode, ContractEdge, ContractSignatory
 from .services import contract_to_cytoscape, evaluate_claims_health
@@ -715,6 +715,9 @@ def _insurance_ctx(contract):
     insured_item_nodes = contract.nodes.filter(key__startswith="insured_item_").order_by("key")
     insured_items = [n.get_object() for n in insured_item_nodes if n.get_object()]
 
+    insured_fasset_nodes = contract.nodes.filter(key__startswith="insured_fasset_").order_by("key")
+    insured_financial_assets = [n.get_object() for n in insured_fasset_nodes if n.get_object()]
+
     return {
         "contract": contract,
         "insured_person": _obj("insured_person"),
@@ -722,6 +725,7 @@ def _insurance_ctx(contract):
         "insurer_account": _obj("insurer_acct"),
         "premium_asset": _obj("premium_asset"),
         "insured_items": insured_items,
+        "insured_financial_assets": insured_financial_assets,
         "premium_frequency": contract.metadata.get("premium_frequency", "—"),
         "premium_amount_base_units": contract.metadata.get("premium_amount_base_units"),
         "total_estimated_value": contract.metadata.get("total_estimated_value"),
@@ -753,7 +757,10 @@ def insurance_list(request):
             "contract": c,
             "insured_person": _obj("insured_person"),
             "premium_asset": _obj("premium_asset"),
-            "item_count": c.nodes.filter(key__startswith="insured_item_").count(),
+            "item_count": (
+                c.nodes.filter(key__startswith="insured_item_").count()
+                + c.nodes.filter(key__startswith="insured_fasset_").count()
+            ),
             "premium_frequency": c.metadata.get("premium_frequency", "—"),
             "premium_amount_base_units": c.metadata.get("premium_amount_base_units"),
         })
@@ -779,7 +786,8 @@ def insurance_create(request):
                 premium_asset=cd["premium_asset"],
                 premium_amount_base_units=cd["premium_amount_base_units"],
                 premium_frequency=cd["premium_frequency"],
-                insured_items=list(cd["insured_items"]),
+                insured_items=list(cd["insured_items"] or []),
+                insured_financial_assets=list(cd["insured_financial_assets"] or []),
             )
             messages.success(request, f"Insurance contract '{contract.name}' created.")
             return redirect("contracts:insurance_detail", uuid=contract.uuid)
@@ -804,6 +812,116 @@ def insurance_detail(request, uuid):
     )
 
     return _render(request, "contracts/insurance_detail.html", ctx)
+
+
+# ---------------------------------------------------------------------------
+# Loan — helpers
+# ---------------------------------------------------------------------------
+
+def _loan_ctx(contract):
+    def _obj(key):
+        n = contract.nodes.filter(key=key).first()
+        return n.get_object() if n else None
+
+    meta = contract.metadata or {}
+    interest_bps = meta.get("interest_rate_bps", 0)
+
+    return {
+        "contract": contract,
+        "lender_person": _obj("lender_person"),
+        "borrower_person": _obj("borrower_person"),
+        "lender_account": _obj("lender_acct"),
+        "borrower_account": _obj("borrower_acct"),
+        "loan_asset": _obj("loan_asset"),
+        "principal_base_units": meta.get("principal_base_units"),
+        "interest_rate_bps": interest_bps,
+        "interest_rate_pct": interest_bps / 100 if interest_bps else 0,
+        "repayment_frequency": meta.get("repayment_frequency", "—"),
+        "term_months": meta.get("term_months"),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Loan — list
+# ---------------------------------------------------------------------------
+
+def loan_list(request):
+    qs = (
+        Contract.objects
+        .filter(metadata__archetype="loan")
+        .prefetch_related("nodes")
+        .order_by("name")
+    )
+    q = request.GET.get("q", "").strip()
+    if q:
+        qs = qs.filter(name__icontains=q)
+
+    rows = []
+    for c in qs:
+        def _obj(key, _c=c):
+            n = _c.nodes.filter(key=key).first()
+            return n.get_object() if n else None
+
+        meta = c.metadata or {}
+        rows.append({
+            "contract": c,
+            "lender": _obj("lender_person"),
+            "borrower": _obj("borrower_person"),
+            "loan_asset": _obj("loan_asset"),
+            "principal_base_units": meta.get("principal_base_units"),
+            "interest_rate_bps": meta.get("interest_rate_bps", 0),
+            "term_months": meta.get("term_months"),
+            "repayment_frequency": meta.get("repayment_frequency", "—"),
+        })
+
+    return _render(request, "contracts/loan_list.html", {"rows": rows, "q": q})
+
+
+# ---------------------------------------------------------------------------
+# Loan — create
+# ---------------------------------------------------------------------------
+
+def loan_create(request):
+    if request.method == "POST":
+        form = LoanCreateForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            from .loan import create_loan_contract
+            contract = create_loan_contract(
+                name=cd["name"],
+                lender_person=cd["lender_person"],
+                borrower_person=cd["borrower_person"],
+                lender_account=cd["lender_account"],
+                borrower_account=cd["borrower_account"],
+                loan_asset=cd["loan_asset"],
+                principal_base_units=cd["principal_base_units"],
+                interest_rate_bps=cd["interest_rate_bps"],
+                repayment_frequency=cd["repayment_frequency"],
+                term_months=cd["term_months"],
+            )
+            messages.success(request, f"Loan contract '{contract.name}' created.")
+            return redirect("contracts:loan_detail", uuid=contract.uuid)
+    else:
+        form = LoanCreateForm()
+    return _render(request, "contracts/loan_form.html", {"form": form})
+
+
+# ---------------------------------------------------------------------------
+# Loan — detail
+# ---------------------------------------------------------------------------
+
+def loan_detail(request, uuid):
+    contract = get_object_or_404(Contract, uuid=uuid, metadata__archetype="loan")
+    ctx = _loan_ctx(contract)
+
+    signatories = list(contract.signatories.select_related("person").all())
+    current_person = _get_person_for_request(request)
+    ctx["signatories"] = signatories
+    ctx["current_person_signatory"] = next(
+        (s for s in signatories if current_person and s.person_id == current_person.pk), None
+    )
+
+    return _render(request, "contracts/loan_detail.html", ctx)
 
 
 # ---------------------------------------------------------------------------

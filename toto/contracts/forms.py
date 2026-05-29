@@ -174,9 +174,17 @@ class InsuranceCreateForm(forms.Form):
     premium_frequency = forms.ChoiceField(choices=INSURANCE_FREQUENCIES)
     insured_items = forms.ModelMultipleChoiceField(
         queryset=None,
-        label="Insured assets",
+        label="Inventory assets",
         widget=forms.CheckboxSelectMultiple,
-        help_text="Select the inventory items to cover under this policy.",
+        required=False,
+        help_text="Physical or real-world objects from inventory to cover.",
+    )
+    insured_financial_assets = forms.ModelMultipleChoiceField(
+        queryset=None,
+        label="Financial assets (ASA)",
+        widget=forms.CheckboxSelectMultiple,
+        required=False,
+        help_text="On-chain or financial assets to cover.",
     )
 
     def __init__(self, *args, **kwargs):
@@ -188,7 +196,61 @@ class InsuranceCreateForm(forms.Form):
         self.fields["insurer_account"].queryset = LedgerAccount.objects.filter(active=True).order_by("code")
         self.fields["premium_asset"].queryset = Asset.objects.filter(active=True).order_by("unit_name")
         self.fields["insured_items"].queryset = RealWorldObject.objects.select_related("object_type").order_by("name")
+        self.fields["insured_financial_assets"].queryset = Asset.objects.filter(active=True).order_by("unit_name")
         for fname in ("name", "premium_amount_base_units"):
             self.fields[fname].widget.attrs.update({"class": _CLS, ":class": _DARK})
         for fname in ("insured_person", "payer_account", "insurer_account", "premium_asset", "premium_frequency"):
             self.fields[fname].widget.attrs.update({"class": _CLS, ":class": _DARK})
+
+    def clean(self):
+        cleaned = super().clean()
+        if not cleaned.get("insured_items") and not cleaned.get("insured_financial_assets"):
+            raise forms.ValidationError("Select at least one inventory asset or financial asset to insure.")
+        return cleaned
+
+
+REPAYMENT_FREQUENCIES = [
+    ("monthly", "Monthly"),
+    ("quarterly", "Quarterly"),
+    ("biannual", "Bi-annual"),
+    ("yearly", "Yearly"),
+    ("bullet", "Bullet (at maturity)"),
+]
+
+
+class LoanCreateForm(forms.Form):
+    name = forms.CharField(max_length=255)
+    lender_person = forms.ModelChoiceField(queryset=None, label="Lender")
+    borrower_person = forms.ModelChoiceField(queryset=None, label="Borrower")
+    lender_account = forms.ModelChoiceField(queryset=None, label="Lender account (disburses funds)")
+    borrower_account = forms.ModelChoiceField(queryset=None, label="Borrower account (receives & repays)")
+    loan_asset = forms.ModelChoiceField(queryset=None, label="Loan currency (same for both sides)")
+    principal_base_units = forms.IntegerField(min_value=1, label="Principal (base units)")
+    interest_rate_bps = forms.IntegerField(
+        min_value=0, max_value=100000,
+        label="Annual interest rate (basis points)",
+        help_text="e.g. 500 = 5 %, 0 = interest-free",
+    )
+    repayment_frequency = forms.ChoiceField(choices=REPAYMENT_FREQUENCIES)
+    term_months = forms.IntegerField(min_value=1, label="Term (months)")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from toto.assets.models import Asset, LedgerAccount
+        self.fields["lender_person"].queryset = Person.objects.order_by("display_name")
+        self.fields["borrower_person"].queryset = Person.objects.order_by("display_name")
+        self.fields["lender_account"].queryset = LedgerAccount.objects.filter(active=True).order_by("code")
+        self.fields["borrower_account"].queryset = LedgerAccount.objects.filter(active=True).order_by("code")
+        self.fields["loan_asset"].queryset = Asset.objects.filter(active=True).order_by("unit_name")
+        for fname in ("name", "principal_base_units", "interest_rate_bps", "term_months"):
+            self.fields[fname].widget.attrs.update({"class": _CLS, ":class": _DARK})
+        for fname in ("lender_person", "borrower_person", "lender_account", "borrower_account",
+                      "loan_asset", "repayment_frequency"):
+            self.fields[fname].widget.attrs.update({"class": _CLS, ":class": _DARK})
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("lender_person") and cleaned.get("borrower_person"):
+            if cleaned["lender_person"] == cleaned["borrower_person"]:
+                raise forms.ValidationError("Lender and borrower must be different people.")
+        return cleaned

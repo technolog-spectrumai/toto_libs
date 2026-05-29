@@ -37,4 +37,8 @@ urlpatterns = [
     path("insurance/", views.insurance_list, name="insurance_list"),
     path("insurance/new/", views.insurance_create, name="insurance_create"),
     path("insurance/<uuid:uuid>/", views.insurance_detail, name="insurance_detail"),
+    # Loan archetype
+    path("loan/", views.loan_list, name="loan_list"),
+    path("loan/new/", views.loan_create, name="loan_create"),
+    path("loan/<uuid:uuid>/", views.loan_detail, name="loan_detail"),
 ]

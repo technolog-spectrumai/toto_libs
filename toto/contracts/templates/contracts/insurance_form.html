@@ -97,25 +97,63 @@
         </div>
       </div>
 
-      <!-- Insured assets -->
+      <!-- Inventory assets -->
       <div class="space-y-2">
         <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+          <i class="fa-solid fa-boxes-stacked mr-1 opacity-60"></i>
           {{ form.insured_items.label }}
         </label>
         <p class="text-xs opacity-50">{{ form.insured_items.help_text }}</p>
+        {% if form.insured_items %}
         <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-             class="rounded-lg border p-4 max-h-72 overflow-y-auto space-y-2">
+             class="rounded-lg border p-4 max-h-56 overflow-y-auto space-y-2">
           {% for checkbox in form.insured_items %}
           <label class="flex items-center gap-3 cursor-pointer group">
             {{ checkbox.tag }}
             <span class="text-sm group-hover:opacity-80">{{ checkbox.choice_label }}</span>
           </label>
+          {% empty %}
+          <p class="text-xs opacity-50">No inventory items available.</p>
           {% endfor %}
         </div>
+        {% endif %}
         {% if form.insured_items.errors %}
         <p class="text-xs text-red-500">{{ form.insured_items.errors.0 }}</p>
         {% endif %}
       </div>
+
+      <!-- Financial assets (ASA) -->
+      <div class="space-y-2">
+        <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+          <i class="fa-solid fa-coins mr-1 opacity-60"></i>
+          {{ form.insured_financial_assets.label }}
+        </label>
+        <p class="text-xs opacity-50">{{ form.insured_financial_assets.help_text }}</p>
+        {% if form.insured_financial_assets %}
+        <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border p-4 max-h-56 overflow-y-auto space-y-2">
+          {% for checkbox in form.insured_financial_assets %}
+          <label class="flex items-center gap-3 cursor-pointer group">
+            {{ checkbox.tag }}
+            <span class="text-sm group-hover:opacity-80">{{ checkbox.choice_label }}</span>
+          </label>
+          {% empty %}
+          <p class="text-xs opacity-50">No financial assets available.</p>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% if form.insured_financial_assets.errors %}
+        <p class="text-xs text-red-500">{{ form.insured_financial_assets.errors.0 }}</p>
+        {% endif %}
+      </div>
+
+      {% if form.non_field_errors %}
+      <div class="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+        {% for error in form.non_field_errors %}
+        <p>{{ error }}</p>
+        {% endfor %}
+      </div>
+      {% endif %}
 
       <div class="pt-2">
         <button type="submit"
