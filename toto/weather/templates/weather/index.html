@@ -1,9 +1,9 @@
-{% extends "oya/base.html" %}
+{% extends "weather/base.html" %}
 {% load static %}
 
-{% block title %}Weather | {{ platform.site_name }}{% endblock %}
+{% block weather_title %}Weather{% endblock %}
 
-{% block start_script %}
+{% block weather_start_script %}
 <link rel="stylesheet" href="{% static 'vendor/leaflet/leaflet.css' %}" />
 <script src="{% static 'vendor/leaflet/leaflet.js' %}"></script>
 <script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
@@ -626,7 +626,7 @@
 </script>
 {% endblock %}
 
-{% block content %}
+{% block weather_content %}
 <div
   x-data="weatherApp()"
   :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"

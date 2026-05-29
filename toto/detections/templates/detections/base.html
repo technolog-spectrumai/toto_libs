@@ -1,42 +1,30 @@
-{% extends "oya/base.html" %}
+{% extends "tactical/base.html" %}
 
-{% block title %}{% block detections_title %}Detections{% endblock %} | {{ platform.site_name }}{% endblock %}
+{% block tactical_title %}{% block detections_title %}Detections{% endblock %}{% endblock %}
 
-{% block start_script %}<style>[x-cloak]{display:none!important}</style>{% block detections_start_script %}{% endblock %}{% endblock %}
+{% block tactical_start_script %}{% block detections_start_script %}{% endblock %}{% endblock %}
 
-{% block content %}
-<section
-  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
-  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
-  <div class="mx-auto max-w-7xl space-y-6">
-    <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-      <div class="space-y-2">
-        <a href="{% url 'tactical:command' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80"><i class="fa-solid fa-arrow-left"></i> Tactical</a>
-        <div>
-          <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-xs font-semibold uppercase tracking-wide">Detections</p>
-          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
-            <i class="fa-solid fa-bullseye"></i>
-            {% block detections_heading %}Detections{% endblock %}
-          </h1>
-          {% block detections_subtitle %}<p class="mt-2 max-w-2xl text-sm opacity-70">Field detections, mitigation tasks, and assignment support.</p>{% endblock %}
-        </div>
-      </div>
-      <nav class="flex flex-wrap gap-2">
-        <a href="{% url 'detections:detection-list' %}" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"><i class="fa-solid fa-triangle-exclamation"></i> Detections</a>
-        {% if request.user.is_authenticated %}
-          <a href="{% url 'detections:detection-create' %}" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"><i class="fa-solid fa-location-crosshairs"></i> Add</a>
-        {% endif %}
-        {% if request.user.is_authenticated %}
-          <a href="{% url 'detections:dashboard' %}" :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'" class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
-        {% endif %}
-      </nav>
-    </header>
+{% block tactical_content %}
+<div class="mx-auto max-w-7xl space-y-6">
 
-    {% if messages %}
-      <div class="space-y-2">{% for message in messages %}<div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-xl border px-4 py-3 text-sm font-semibold shadow-sm">{{ message }}</div>{% endfor %}</div>
-    {% endif %}
+  <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+    <div class="space-y-1">
+      <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-xs font-semibold uppercase tracking-wide">Detections</p>
+      <h1 class="flex items-center gap-3 text-3xl font-bold">
+        <i class="fa-solid fa-bullseye"></i>
+        {% block detections_heading %}Detections{% endblock %}
+      </h1>
+      {% block detections_subtitle %}<p class="mt-1 max-w-2xl text-sm opacity-70">Field detections, mitigation tasks, and assignment support.</p>{% endblock %}
+    </div>
+    <nav class="flex flex-wrap gap-2">
+      <a href="{% url 'detections:detection-list' %}" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"><i class="fa-solid fa-triangle-exclamation"></i> Detections</a>
+      {% if request.user.is_authenticated %}
+        <a href="{% url 'detections:detection-create' %}" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"><i class="fa-solid fa-location-crosshairs"></i> Add</a>
+        <a href="{% url 'detections:dashboard' %}" :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'" class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
+      {% endif %}
+    </nav>
+  </header>
 
-    {% block detections_content %}{% endblock %}
-  </div>
-</section>
+  {% block detections_content %}{% endblock %}
+</div>
 {% endblock %}

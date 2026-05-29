@@ -1,15 +1,15 @@
-{% extends "oya/base.html" %}
+{% extends "travels/base.html" %}
 {% load static %}
 
-{% block title %}Travel Review | {{ platform.site_name }}{% endblock %}
+{% block travels_title %}Travel Review{% endblock %}
 
-{% block start_script %}
+{% block travels_start_script %}
 <link rel="stylesheet" href="{% static 'vendor/leaflet/leaflet.css' %}" />
 <script src="{% static 'vendor/leaflet/leaflet.js' %}"></script>
 <style>[x-cloak] { display: none !important; }</style>
 {% endblock %}
 
-{% block content %}
+{% block travels_content %}
 <script>
   window.travelPayload = JSON.parse(`{{ travel_payload_json|escapejs }}`);
 </script>

@@ -45,7 +45,8 @@
       </a>
       <a href="{% url 'inventory:dashboard' %}"
          :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold opacity-50 transition">
+         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                {% block tab_inventory %}opacity-50{% endblock %}">
         <i class="fa-solid fa-boxes-stacked"></i>
         {% trans "Inventory" %}
       </a>

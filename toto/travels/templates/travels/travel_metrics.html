@@ -1,15 +1,15 @@
-{% extends "oya/base.html" %}
+{% extends "travels/base.html" %}
 {% load static %}
 
-{% block title %}Travel Metrics | {{ platform.site_name }}{% endblock %}
+{% block travels_title %}Travel Metrics{% endblock %}
 
-{% block start_script %}
+{% block travels_start_script %}
 <script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
 {% include "oya/partials/dim.html" %}
 <style>[x-cloak] { display: none !important; }</style>
 {% endblock %}
 
-{% block content %}
+{% block travels_content %}
 <section
   :class="darkMode
     ? 'bg-primary-bg-dark text-text-main-dark'
