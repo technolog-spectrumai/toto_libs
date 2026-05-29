@@ -18,7 +18,7 @@
     <!-- Header -->
     <header class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div class="space-y-1">
-        <a href="{% url 'insurance:list' %}"
+        <a href="{% url 'contracts:insurance_list' %}"
            class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
           <i class="fa-solid fa-arrow-left"></i> {% trans "Back to Insurance" %}
         </a>
@@ -128,7 +128,7 @@
               </td>
               <td class="px-4 py-3 opacity-60 text-xs">{{ c.created_at|date:"Y-m-d" }}</td>
               <td class="px-4 py-3 text-right">
-                <a href="{% url 'insurance:detail' c.uuid %}"
+                <a href="{% url 'contracts:insurance_detail' c.uuid %}"
                    :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
                    class="text-xs font-semibold hover:underline">
                   {% trans "View" %} <i class="fa-solid fa-arrow-right text-xs"></i>

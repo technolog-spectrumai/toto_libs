@@ -538,7 +538,7 @@
                     <i class="fa-solid fa-circle-check"></i> {% trans "Covered" %}
                   </span>
                 {% else %}
-                  <a href="{% url 'payroll:create' %}"
+                  <a href="{% url 'contracts:payroll_create' %}"
                      :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
                      class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold shrink-0 hover:opacity-80 transition"
                     <i class="fa-solid fa-plus"></i> {% trans "Create payroll" %}
@@ -546,7 +546,7 @@
                 {% endif %}
               </div>
               {% for contract in row.payroll_contracts %}
-                <a href="{% url 'payroll:detail' contract.uuid %}"
+                <a href="{% url 'contracts:payroll_detail' contract.uuid %}"
                    class="mt-1.5 flex items-center gap-1 text-xs underline opacity-60 hover:opacity-100 transition">
                   <i class="fa-solid fa-arrow-up-right-from-square"></i> {{ contract.name }}
                 </a>

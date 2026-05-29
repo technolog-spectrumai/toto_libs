@@ -2,11 +2,12 @@
 {% load i18n %}
 
 {% block contracts_title %}{% trans "New Loan" %}{% endblock %}
+{% block tab_loans %}border-b-2 border-current -mb-px{% endblock %}
 
 {% block contracts_content %}
 <div class="space-y-6 max-w-2xl">
 
-  <a href="{% url 'loans:list' %}"
+  <a href="{% url 'contracts:loan_list' %}"
      class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
     <i class="fa-solid fa-arrow-left"></i>
     {% trans "Back to loans" %}

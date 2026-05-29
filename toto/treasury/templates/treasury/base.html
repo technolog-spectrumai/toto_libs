@@ -1,7 +1,7 @@
 {% extends "oya/base.html" %}
 {% load i18n %}
 
-{% block title %}{% block budget_title %}Budget{% endblock %} | {{ platform.site_name }}{% endblock %}
+{% block title %}{% block treasury_title %}Treasury{% endblock %} | {{ platform.site_name }}{% endblock %}
 
 {% block start_script %}
 <style>[x-cloak] { display: none !important; }</style>
@@ -15,14 +15,14 @@
 
     <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
       <div class="space-y-2">
-        <a href="{% url 'assets:asset_list' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
-          <i class="fa-solid fa-arrow-left"></i>{% trans "Assets" %}
+        <a href="/" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+          <i class="fa-solid fa-arrow-left"></i>{% trans "Home" %}
         </a>
         <div>
           <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
              class="text-xs font-semibold uppercase tracking-wide">{% trans "Community Treasury" %}</p>
           <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
-            <i class="fa-solid fa-vault"></i>
+            <i class="fa-solid fa-chart-pie"></i>
             {% trans "Treasury" %}
           </h1>
         </div>
@@ -32,17 +32,7 @@
         <a href="{% url 'treasury:list' %}"
            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
            class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-          <i class="fa-solid fa-list"></i>{% trans "Budgets" %}
-        </a>
-        <a href="{% url 'treasury:stream_type_list' %}"
-           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-           class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-          <i class="fa-solid fa-tags"></i>{% trans "Stream Types" %}
-        </a>
-        <a href="{% url 'treasury:create' %}"
-           :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-           class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-          <i class="fa-solid fa-plus"></i>{% trans "New Treasury" %}
+          <i class="fa-solid fa-list"></i>{% trans "Communities" %}
         </a>
       </nav>
     </header>
@@ -68,7 +58,7 @@
       {% endfor %}
     {% endif %}
 
-    {% block budget_content %}{% endblock %}
+    {% block treasury_content %}{% endblock %}
 
   </div>
 </section>

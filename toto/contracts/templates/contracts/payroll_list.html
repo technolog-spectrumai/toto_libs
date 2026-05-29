@@ -2,6 +2,7 @@
 {% load i18n %}
 
 {% block contracts_title %}{% trans "Payroll" %}{% endblock %}
+{% block tab_payroll %}border-b-2 border-current -mb-px{% endblock %}
 
 {% block contracts_content %}
 <div class="space-y-6">
@@ -24,7 +25,7 @@
       </a>
       {% endif %}
     </form>
-    <a href="{% url 'payroll:create' %}"
+    <a href="{% url 'contracts:payroll_create' %}"
        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
        class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
       <i class="fa-solid fa-plus"></i>
@@ -53,7 +54,7 @@
         {% for row in rows %}
         <tr :class="darkMode ? 'border-accent-1 hover:bg-black/10' : 'border-accent-2 hover:bg-black/5'"
             class="border-b transition cursor-pointer"
-            onclick="window.location='{% url 'payroll:detail' row.contract.uuid %}'">
+            onclick="window.location='{% url 'contracts:payroll_detail' row.contract.uuid %}'">
           <td class="px-4 py-3 font-semibold">{{ row.contract.name }}</td>
           <td class="px-4 py-3 opacity-80">{{ row.worker|default:"—" }}</td>
           <td class="px-4 py-3 font-mono text-xs">{{ row.asset.unit_name|default:"—" }}</td>
@@ -76,7 +77,7 @@
           </td>
           <td class="px-4 py-3 opacity-60 text-xs">{{ row.contract.created_at|date:"Y-m-d" }}</td>
           <td class="px-4 py-3 text-right" onclick="event.stopPropagation()">
-            <a href="{% url 'payroll:detail' row.contract.uuid %}"
+            <a href="{% url 'contracts:payroll_detail' row.contract.uuid %}"
                class="text-xs underline hover:opacity-70">{% trans "Open" %}</a>
           </td>
         </tr>
@@ -88,7 +89,7 @@
   <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
        class="rounded-lg border p-10 text-center opacity-60">
     {% trans "No payroll contracts yet." %}
-    <a href="{% url 'payroll:create' %}" class="ml-2 underline hover:opacity-80">{% trans "Create one." %}</a>
+    <a href="{% url 'contracts:payroll_create' %}" class="ml-2 underline hover:opacity-80">{% trans "Create one." %}</a>
   </div>
   {% endif %}
 

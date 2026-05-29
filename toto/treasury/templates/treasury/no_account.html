@@ -1,0 +1,11 @@
+{% extends "treasury/base.html" %}
+{% load i18n %}
+{% block treasury_title %}{{ community.name }}{% endblock %}
+{% block treasury_content %}
+<div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     class="rounded-lg border p-10 text-center shadow-sm">
+  <i class="fa-solid fa-vault text-4xl opacity-30 mb-4"></i>
+  <p class="opacity-60">{% trans "No treasury account found for this community." %}</p>
+  <p class="text-xs opacity-40 mt-2">{% trans "Run ingress_treasury to create one." %}</p>
+</div>
+{% endblock %}

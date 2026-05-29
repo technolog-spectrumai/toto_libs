@@ -1,0 +1,264 @@
+{% extends "treasury/base.html" %}
+{% load i18n static %}
+{% block treasury_title %}{{ community.name }}{% endblock %}
+{% block start_script %}
+<style>[x-cloak] { display: none !important; }</style>
+<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
+{% endblock %}
+{% block treasury_content %}
+<div class="space-y-6" x-data="treasuryDashboard()" x-init="init()">
+
+  <!-- Header -->
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-6 shadow-sm">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div class="space-y-1">
+        <h2 class="text-2xl font-bold">{{ community.name }}</h2>
+        <div class="font-mono text-xs opacity-50">{{ account.code }}</div>
+      </div>
+      <a href="{% url 'treasury:list' %}"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-sm font-semibold transition hover:opacity-80">
+        <i class="fa-solid fa-arrow-left"></i>{% trans "All Communities" %}
+      </a>
+    </div>
+  </div>
+
+  <!-- Summary stats -->
+  <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+    {% for h in holdings %}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-4 text-center shadow-sm">
+      <div class="text-xl font-bold font-mono">{{ h.balance_display }}</div>
+      <div class="mt-1 text-xs opacity-60">{{ h.asset.unit_name }}</div>
+    </div>
+    {% endfor %}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-4 text-center shadow-sm">
+      <div class="text-xl font-bold text-green-500">{{ inflow_total }}</div>
+      <div class="mt-1 text-xs opacity-60">{% trans "Total In" %}</div>
+    </div>
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-4 text-center shadow-sm">
+      <div class="text-xl font-bold text-red-500">{{ outflow_total }}</div>
+      <div class="mt-1 text-xs opacity-60">{% trans "Total Out" %}</div>
+    </div>
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-4 text-center shadow-sm">
+      <div class="text-xl font-bold {% if net >= 0 %}text-green-500{% else %}text-red-500{% endif %}">{{ net }}</div>
+      <div class="mt-1 text-xs opacity-60">{% trans "Net" %}</div>
+    </div>
+  </div>
+
+  <!-- Sankey flow diagram -->
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border shadow-sm">
+    <div class="border-b px-5 py-4" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+      <h3 class="font-semibold"><i class="fa-solid fa-diagram-project mr-2 opacity-60"></i>{% trans "Flow" %}</h3>
+    </div>
+    <div class="p-4">
+      <template x-if="flowData.nodes.length === 0">
+        <p class="py-8 text-center text-sm opacity-50">{% trans "No transaction data yet." %}</p>
+      </template>
+      <template x-if="flowData.nodes.length > 0">
+        <div id="sankey-container" class="w-full overflow-x-auto">
+          <canvas id="sankeyCanvas" class="w-full" style="min-height:240px;max-height:400px;"></canvas>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- Balance history chart -->
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border shadow-sm">
+    <div class="border-b px-5 py-4" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+      <h3 class="font-semibold"><i class="fa-solid fa-chart-line mr-2 opacity-60"></i>{% trans "Balance History" %}</h3>
+    </div>
+    <div class="p-4">
+      <template x-if="historyEmpty">
+        <p class="py-8 text-center text-sm opacity-50">{% trans "No history yet." %}</p>
+      </template>
+      <template x-if="!historyEmpty">
+        <canvas id="historyCanvas" style="max-height:280px;"></canvas>
+      </template>
+    </div>
+  </div>
+
+  <!-- Recent transactions -->
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border shadow-sm">
+    <div class="border-b px-5 py-4" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+      <h3 class="font-semibold"><i class="fa-solid fa-clock-rotate-left mr-2 opacity-60"></i>{% trans "Recent Transactions" %}</h3>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b text-xs font-semibold uppercase opacity-60"
+              :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+            <th class="px-5 py-3 text-left">{% trans "Date" %}</th>
+            <th class="px-5 py-3 text-left">{% trans "Reference" %}</th>
+            <th class="px-5 py-3 text-left">{% trans "Type" %}</th>
+            <th class="px-5 py-3 text-left">{% trans "Description" %}</th>
+            <th class="px-5 py-3 text-right">{% trans "Amount" %}</th>
+            <th class="px-5 py-3 text-left">{% trans "Asset" %}</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y" :class="darkMode ? 'divide-accent-1' : 'divide-accent-2'">
+          {% for entry in recent_entries %}
+          <tr class="hover:opacity-80 transition">
+            <td class="px-5 py-3 text-xs opacity-60">{{ entry.transaction.created_at|date:"Y-m-d" }}</td>
+            <td class="px-5 py-3 font-mono text-xs opacity-70">{{ entry.transaction.reference|truncatechars:30 }}</td>
+            <td class="px-5 py-3 text-xs">{{ entry.transaction.transaction_type }}</td>
+            <td class="px-5 py-3 text-xs opacity-70">{{ entry.transaction.description|truncatechars:50|default:"—" }}</td>
+            <td class="px-5 py-3 text-right font-mono text-xs {% if entry.amount_base_units > 0 %}text-green-500{% else %}text-red-500{% endif %}">
+              {% if entry.amount_base_units > 0 %}+{% endif %}{{ entry.amount_base_units }}
+            </td>
+            <td class="px-5 py-3 text-xs opacity-60">{{ entry.asset.unit_name }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="6" class="px-5 py-10 text-center opacity-50">{% trans "No transactions yet." %}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function treasuryDashboard() {
+  return {
+    flowData: { nodes: [], edges: [] },
+    historyData: {},
+    historyEmpty: true,
+
+    async init() {
+      const [flow, hist] = await Promise.all([
+        fetch("{% url 'treasury:flow_json' community.pk %}").then(r => r.json()),
+        fetch("{% url 'treasury:history_json' community.pk %}").then(r => r.json()),
+      ]);
+      this.flowData = flow;
+      this.historyData = hist.history || {};
+      this.historyEmpty = Object.keys(this.historyData).length === 0;
+
+      await this.$nextTick();
+      if (flow.nodes.length > 0) this._drawSankey(flow);
+      if (!this.historyEmpty) this._drawHistory(this.historyData);
+    },
+
+    _drawSankey(data) {
+      const canvas = document.getElementById('sankeyCanvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const W = canvas.parentElement.offsetWidth || 800;
+      const H = Math.max(240, Math.min(400, data.nodes.length * 28));
+      canvas.width = W; canvas.height = H;
+
+      const inNodes  = data.nodes.filter(n => n.kind === 'inflow');
+      const outNodes = data.nodes.filter(n => n.kind === 'outflow');
+      const treasury = data.nodes.find(n => n.kind === 'treasury');
+
+      const colW = 180, gap = 14;
+      const midX = W / 2;
+      const txW  = 160, txH = 36;
+
+      // position helpers
+      const pos = (nodes, x) => nodes.map((n, i) => ({
+        ...n, x, y: gap + i * (txH + gap) + txH / 2
+      }));
+
+      const leftNodes  = pos(inNodes,  colW / 2);
+      const rightNodes = pos(outNodes, W - colW / 2);
+      const cx = midX, cy = H / 2;
+
+      const dark = document.documentElement.classList.contains('dark');
+      const textCol = dark ? '#e2e8f0' : '#1a202c';
+      const alpha   = dark ? 0.25 : 0.18;
+
+      ctx.clearRect(0, 0, W, H);
+
+      // edges
+      const drawEdge = (x1, y1, x2, y2, val, dir) => {
+        const maxVal = Math.max(...data.edges.map(e => e.value), 1);
+        const w = Math.max(2, Math.min(24, (val / maxVal) * 24));
+        const cp = (x2 - x1) * 0.5;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.bezierCurveTo(x1 + cp, y1, x2 - cp, y2, x2, y2);
+        ctx.lineWidth = w;
+        ctx.strokeStyle = dir === 'in'
+          ? `rgba(34,197,94,${alpha + 0.1})`
+          : `rgba(239,68,68,${alpha + 0.1})`;
+        ctx.stroke();
+      };
+
+      data.edges.forEach(e => {
+        const src = [...leftNodes, ...rightNodes, { id: 'treasury', x: cx, y: cy }].find(n => n.id === e.source);
+        const tgt = [...leftNodes, ...rightNodes, { id: 'treasury', x: cx, y: cy }].find(n => n.id === e.target);
+        if (src && tgt) drawEdge(src.x + txW/2, src.y, tgt.x - txW/2, tgt.y, e.value, src.kind === 'inflow' ? 'in' : 'out');
+      });
+
+      // draw node boxes
+      const drawBox = (n, col) => {
+        const x = n.x - txW/2, y = n.y - txH/2;
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        ctx.roundRect(x, y, txW, txH, 6);
+        ctx.fill();
+        ctx.fillStyle = textCol;
+        ctx.font = '11px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(n.label.slice(0, 22), n.x, n.y);
+      };
+
+      const inCol  = dark ? 'rgba(21,128,61,0.5)'  : 'rgba(187,247,208,0.8)';
+      const outCol = dark ? 'rgba(153,27,27,0.5)'  : 'rgba(254,202,202,0.8)';
+      const midCol = dark ? 'rgba(30,58,138,0.5)'  : 'rgba(219,234,254,0.8)';
+
+      leftNodes.forEach(n  => drawBox(n, inCol));
+      rightNodes.forEach(n => drawBox(n, outCol));
+      if (treasury) drawBox({...treasury, x: cx, y: cy}, midCol);
+    },
+
+    _drawHistory(history) {
+      const canvas = document.getElementById('historyCanvas');
+      if (!canvas || typeof Chart === 'undefined') return;
+
+      const allMonths = [...new Set(
+        Object.values(history).flat().map(r => r.month).filter(Boolean)
+      )].sort();
+
+      const colors = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6'];
+      const datasets = Object.entries(history).map(([unit, rows], i) => {
+        const byMonth = Object.fromEntries(rows.map(r => [r.month, r.net]));
+        // cumulative
+        let cum = 0;
+        return {
+          label: unit,
+          data: allMonths.map(m => { cum += byMonth[m] || 0; return cum; }),
+          borderColor: colors[i % colors.length],
+          backgroundColor: colors[i % colors.length] + '22',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 3,
+        };
+      });
+
+      new Chart(canvas, {
+        type: 'line',
+        data: { labels: allMonths, datasets },
+        options: {
+          responsive: true,
+          maintainAspectRatio: true,
+          plugins: { legend: { position: 'bottom' } },
+          scales: {
+            y: { beginAtZero: false },
+          },
+        },
+      });
+    },
+  };
+}
+</script>
+{% endblock %}

@@ -2,6 +2,7 @@
 {% load i18n %}
 
 {% block contracts_title %}{% trans "Insurance" %}{% endblock %}
+{% block tab_insurance %}border-b-2 border-current -mb-px{% endblock %}
 
 {% block contracts_content %}
 <div class="space-y-6">
@@ -25,7 +26,7 @@
       </a>
       {% endif %}
     </form>
-    <a href="{% url 'insurance:create' %}"
+    <a href="{% url 'contracts:insurance_create' %}"
        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
        class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
       <i class="fa-solid fa-plus"></i>
@@ -54,7 +55,7 @@
         {% for row in rows %}
         <tr :class="darkMode ? 'border-accent-1 hover:bg-black/10' : 'border-accent-2 hover:bg-black/5'"
             class="border-b transition cursor-pointer"
-            onclick="window.location='{% url 'insurance:detail' row.contract.uuid %}'">
+            onclick="window.location='{% url 'contracts:insurance_detail' row.contract.uuid %}'">
           <td class="px-4 py-3 font-semibold">{{ row.contract.name }}</td>
           <td class="px-4 py-3 opacity-80">{{ row.insured_person|default:"—" }}</td>
           <td class="px-4 py-3 text-right font-mono text-xs">
@@ -82,7 +83,7 @@
           </td>
           <td class="px-4 py-3 opacity-60 text-xs">{{ row.contract.created_at|date:"Y-m-d" }}</td>
           <td class="px-4 py-3 text-right" onclick="event.stopPropagation()">
-            <a href="{% url 'insurance:detail' row.contract.uuid %}"
+            <a href="{% url 'contracts:insurance_detail' row.contract.uuid %}"
                class="text-xs underline hover:opacity-70">{% trans "Open" %}</a>
           </td>
         </tr>
@@ -97,7 +98,7 @@
        class="fa-solid fa-shield-halved text-4xl"></i>
     <h2 class="mt-4 text-xl font-bold">{% trans "No insurance policies" %}</h2>
     <p class="mt-1 text-sm opacity-70">{% trans "Create the first policy to get started." %}</p>
-    <a href="{% url 'insurance:create' %}"
+    <a href="{% url 'contracts:insurance_create' %}"
        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
        class="mt-4 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
       <i class="fa-solid fa-plus"></i>

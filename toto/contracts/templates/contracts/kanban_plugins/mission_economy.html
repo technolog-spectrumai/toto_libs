@@ -71,7 +71,7 @@
                 <i class="fa-solid fa-circle-check"></i>
               </span>
             {% else %}
-              <a href="{% url 'payroll:create' %}"
+              <a href="{% url 'contracts:payroll_create' %}"
                  :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
                  class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold shrink-0 hover:opacity-80 transition"
                 <i class="fa-solid fa-plus"></i> {% trans "Payroll" %}

@@ -2,11 +2,12 @@
 {% load i18n %}
 
 {% block contracts_title %}{{ contract.name }}{% endblock %}
+{% block tab_payroll %}border-b-2 border-current -mb-px{% endblock %}
 
 {% block contracts_content %}
 <div class="space-y-6">
 
-  <a href="{% url 'payroll:list' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+  <a href="{% url 'contracts:payroll_list' %}" class="inline-flex items-center gap-2 text-sm opacity-60 hover:opacity-100">
     <i class="fa-solid fa-arrow-left"></i>
     {% trans "Back to payroll" %}
   </a>
@@ -28,7 +29,7 @@
         <p class="text-sm opacity-70">{{ contract.description }}</p>
       </div>
       <div class="flex gap-2 shrink-0">
-        <a href="{% url 'payroll:duty_create' contract.uuid %}"
+        <a href="{% url 'contracts:payroll_duty_create' contract.uuid %}"
            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
            class="inline-flex items-center gap-1 rounded px-3 py-1.5 text-xs font-semibold transition hover:opacity-90">
           <i class="fa-solid fa-plus"></i> {% trans "Add Duty" %}
@@ -114,7 +115,7 @@
           {{ duties|length }}
         </span>
       </h3>
-      <a href="{% url 'payroll:duty_create' contract.uuid %}"
+      <a href="{% url 'contracts:payroll_duty_create' contract.uuid %}"
          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
          class="inline-flex items-center gap-1 rounded border px-3 py-1 text-xs font-semibold transition hover:opacity-80">
         <i class="fa-solid fa-plus"></i> {% trans "Add" %}
@@ -195,7 +196,7 @@
                 {% if duty.obligation.status == 'pending' %}
                   <!-- Mark due -->
                   <form method="post"
-                    action="{% url 'payroll:duty_mark_due' contract.uuid duty.obligation.pk %}"
+                    action="{% url 'contracts:payroll_duty_mark_due' contract.uuid duty.obligation.pk %}"
                     class="inline">
                     {% csrf_token %}
                     <button type="submit"
@@ -209,7 +210,7 @@
                   <!-- Approve -->
                   {% if duty.condition and duty.condition.status == 'pending' %}
                   <form method="post"
-                    action="{% url 'payroll:duty_approve' contract.uuid duty.obligation.pk %}"
+                    action="{% url 'contracts:payroll_duty_approve' contract.uuid duty.obligation.pk %}"
                     class="inline">
                     {% csrf_token %}
                     <button type="submit"
@@ -223,7 +224,7 @@
                   <!-- Settle -->
                   {% if duty.condition and duty.condition.status == 'satisfied' %}
                   <form method="post"
-                    action="{% url 'payroll:duty_settle' contract.uuid duty.obligation.pk %}"
+                    action="{% url 'contracts:payroll_duty_settle' contract.uuid duty.obligation.pk %}"
                     class="inline"
                     onsubmit="return confirm('{% trans "Settle this duty? This will transfer funds." %}')">
                     {% csrf_token %}
@@ -246,7 +247,7 @@
     {% else %}
     <div class="px-6 py-8 text-center text-sm opacity-50">
       {% trans "No duties yet." %}
-      <a href="{% url 'payroll:duty_create' contract.uuid %}" class="ml-1 underline hover:opacity-80">
+      <a href="{% url 'contracts:payroll_duty_create' contract.uuid %}" class="ml-1 underline hover:opacity-80">
         {% trans "Add the first one." %}
       </a>
     </div>

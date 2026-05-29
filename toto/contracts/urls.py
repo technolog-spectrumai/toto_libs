@@ -5,6 +5,7 @@ from . import views
 app_name = "contracts"
 
 urlpatterns = [
+    # ---- Base contracts ----
     path("", views.contract_list, name="contract_list"),
     path("new/", views.contract_create, name="contract_create"),
     path("<uuid:uuid>/", views.contract_detail, name="contract_detail"),
@@ -25,4 +26,23 @@ urlpatterns = [
     path("<uuid:uuid>/pdf/download/", views.contract_download_pdf, name="contract_download_pdf"),
     # Person signature
     path("person/<int:person_pk>/signature/", views.person_update_signature, name="person_update_signature"),
+
+    # ---- Payroll ----
+    path("payroll/", views.payroll_list, name="payroll_list"),
+    path("payroll/new/", views.payroll_create, name="payroll_create"),
+    path("payroll/<uuid:uuid>/", views.payroll_detail, name="payroll_detail"),
+    path("payroll/<uuid:uuid>/duty/new/", views.payroll_duty_create, name="payroll_duty_create"),
+    path("payroll/<uuid:uuid>/duty/<int:obligation_pk>/due/", views.payroll_duty_mark_due, name="payroll_duty_mark_due"),
+    path("payroll/<uuid:uuid>/duty/<int:obligation_pk>/approve/", views.payroll_duty_approve, name="payroll_duty_approve"),
+    path("payroll/<uuid:uuid>/duty/<int:obligation_pk>/settle/", views.payroll_duty_settle, name="payroll_duty_settle"),
+
+    # ---- Loans ----
+    path("loans/", views.loan_list, name="loan_list"),
+    path("loans/new/", views.loan_create, name="loan_create"),
+    path("loans/<uuid:uuid>/", views.loan_detail, name="loan_detail"),
+
+    # ---- Insurance ----
+    path("insurance/", views.insurance_list, name="insurance_list"),
+    path("insurance/new/", views.insurance_create, name="insurance_create"),
+    path("insurance/<uuid:uuid>/", views.insurance_detail, name="insurance_detail"),
 ]
