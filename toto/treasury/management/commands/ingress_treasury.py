@@ -1,15 +1,17 @@
 """
-ingress_treasury — seed community treasury accounts and base tariffs.
+ingress_treasury — seed budget stream types, community treasury accounts, base tariffs, and demo budgets.
 
 Run:
   python manage.py ingress_treasury
   python manage.py ingress_treasury --full
 
 What this does:
-  1. Ensures every Community has a treasury LedgerAccount.
-  2. Creates a community-specific tariff "OUR-THING-COMMUNITY-PLAN" for the
+  1. Syncs BudgetStreamType rows from the registry.
+  2. Ensures every Community has a treasury LedgerAccount.
+  3. Creates a community-specific tariff "OUR-THING-COMMUNITY-PLAN" for the
      first "Our Thing Inc." community — with 20 % discount vs. platform rates.
-  3. (--full) Funds the admin user's prepaid accounts so they can test all
+  4. Creates a demo Budget for "Our Thing Inc." with operating and reserve accounts.
+  5. (--full) Funds the admin user's prepaid accounts so they can test all
      metered features without hitting zero-balance errors.
 
 Run AFTER: ingress_tariffs, ingress_vault, ingress_vod, ingress_ravioli,

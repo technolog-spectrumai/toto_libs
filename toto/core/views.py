@@ -42,33 +42,9 @@ def welcome_view(request):
     return render(request, _get_template("home.html"), processor.decorate(context, request))
 
 
-_VISIBILITY_ORDER = {"public": 0, "protected": 1, "private": 2, "federal": 3}
-
-
-def _user_dashboard_level(request):
-    """Return the highest visibility level the current request can access."""
-    if not request.user.is_authenticated:
-        return "public"
-    try:
-        person = request.user.community_profile
-    except Exception:
-        return "protected"
-
-    # Federal: federal agent OR member of any federal-tribe community.
-    if person.is_federal_agent or person.communities.filter(is_federal_tribe=True).exists():
-        return "federal"
-
-    # Private: committed citizen (signed at least one active constitution).
-    from toto.people.civic import is_committed_citizen
-    if is_committed_citizen(person):
-        return "private"
-
-    return "protected"
-
-
-def _resolve_dashboard_item(item, user_level):
+def _resolve_dashboard_item(item, authenticated):
     visibility = item.get("visibility", "public")
-    if _VISIBILITY_ORDER.get(user_level, 0) < _VISIBILITY_ORDER.get(visibility, 0):
+    if visibility == "private" and not authenticated:
         return None
     link = item.get("link")
     if link and ":" in link:
@@ -86,10 +62,10 @@ def _resolve_dashboard_item(item, user_level):
 
 
 def _get_grouped_dashboard_items(request):
-    user_level = _user_dashboard_level(request)
+    authenticated = request.user.is_authenticated
     items_by_title = {}
     for item in settings.DASHBOARD_ITEMS:
-        resolved = _resolve_dashboard_item(item, user_level)
+        resolved = _resolve_dashboard_item(item, authenticated)
         if resolved is not None:
             items_by_title[item["title"]] = resolved
 
