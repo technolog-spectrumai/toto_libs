@@ -7,7 +7,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from .models import Contract, ContractEdge, ContractNode
-from .payroll import (
+from toto.payroll.services import (
     approve_payroll_duty,
     create_payroll_contract,
     create_payroll_duty,
@@ -77,10 +77,12 @@ def _make_payroll_contract(**kwargs):
 class PayrollImportSafetyTests(TestCase):
     def test_no_forbidden_imports(self):
         import ast, os
-        path = os.path.join(os.path.dirname(__file__), "payroll.py")
+        # Check the canonical source, not the shim
+        path = os.path.join(os.path.dirname(__file__), "..", "payroll", "services.py")
+        path = os.path.normpath(path)
         with open(path) as f:
             tree = ast.parse(f.read())
-        forbidden = {"kanban", "response", "deployment", "mobilization"}
+        forbidden = {"kanban", "academy", "mobilization", "response", "deployment"}
         for node in ast.walk(tree):
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 for alias in getattr(node, "names", []):

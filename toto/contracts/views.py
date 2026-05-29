@@ -565,7 +565,7 @@ def payroll_create(request):
             for k in ("source_app", "source_model", "source_id"):
                 if cd.get(k):
                     meta[k] = cd[k]
-            from .payroll import create_payroll_contract
+            from toto.payroll.services import create_payroll_contract
             contract = create_payroll_contract(
                 name=cd["name"],
                 payer_account=cd["payer_account"],
@@ -625,7 +625,7 @@ def payroll_duty_create(request, uuid):
             for k in ("source_app", "source_id"):
                 if cd.get(k):
                     meta[k] = cd[k]
-            from .payroll import create_payroll_duty
+            from toto.payroll.services import create_payroll_duty
             try:
                 create_payroll_duty(
                     contract=contract,
@@ -654,7 +654,7 @@ def payroll_duty_mark_due(request, uuid, obligation_pk):
     contract = get_object_or_404(Contract, uuid=uuid, metadata__archetype="payroll")
     if request.method == "POST":
         node = get_object_or_404(ContractNode, contract=contract, node_type="obligation", object_id=str(obligation_pk))
-        from .payroll import mark_payroll_due
+        from toto.payroll.services import mark_payroll_due
         try:
             mark_payroll_due(contract=contract, duty_node_key=node.key)
             messages.success(request, "Duty marked as due.")
@@ -677,7 +677,7 @@ def payroll_duty_approve(request, uuid, obligation_pk):
             messages.error(request, "No approval condition found for this duty.")
             return redirect("contracts:payroll_detail", uuid=uuid)
         condition = gates_edge.source.get_object()
-        from .payroll import approve_payroll_duty
+        from toto.payroll.services import approve_payroll_duty
         try:
             approve_payroll_duty(
                 condition=condition,
@@ -694,7 +694,7 @@ def payroll_duty_settle(request, uuid, obligation_pk):
     if request.method == "POST":
         from toto.assets.models import Obligation
         obligation = get_object_or_404(Obligation, pk=obligation_pk)
-        from .payroll import settle_payroll_duty
+        from toto.payroll.services import settle_payroll_duty
         try:
             settle_payroll_duty(obligation=obligation, contract=contract)
             messages.success(request, "Duty settled.")
