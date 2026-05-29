@@ -1,0 +1,118 @@
+{% extends "metering/base.html" %}
+{% load i18n %}
+
+{% block metering_title %}{% trans "Usage Events" %}{% endblock %}
+
+{% block metering_content %}
+<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+  <h2 class="text-xl font-bold flex items-center gap-2">
+    <i class="fa-solid fa-list-check opacity-60"></i> {% trans "Usage Events" %}
+  </h2>
+  <a href="{% url 'metering:usage_create' %}"
+     :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+     class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold shadow-sm transition hover:opacity-85">
+    <i class="fa-solid fa-plus"></i> {% trans "Record Event" %}
+  </a>
+</div>
+
+<!-- Filters -->
+<form method="get" class="flex flex-wrap gap-2">
+  <input type="text" name="q" value="{{ q }}"
+         placeholder="{% trans 'subject / source / description…' %}"
+         :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2'"
+         class="flex-1 min-w-[200px] rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500">
+  <select name="metric"
+          :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2'"
+          class="rounded-lg border px-3 py-2 text-sm">
+    <option value="">{% trans "All metrics" %}</option>
+    {% for m in metrics %}
+    <option value="{{ m.code }}" {% if m.code == metric_filter %}selected{% endif %}>{{ m.code }}</option>
+    {% endfor %}
+  </select>
+  <select name="status"
+          :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2'"
+          class="rounded-lg border px-3 py-2 text-sm">
+    <option value="">{% trans "All statuses" %}</option>
+    {% for val, label in status_choices %}
+    <option value="{{ val }}" {% if val == status_filter %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit"
+          :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2'"
+          class="rounded-lg border px-4 py-2 text-sm font-semibold hover:opacity-70">
+    <i class="fa-solid fa-magnifying-glass"></i>
+  </button>
+</form>
+
+<div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+     class="overflow-hidden rounded-xl border shadow-sm">
+  <table class="min-w-full text-sm">
+    <thead>
+      <tr :class="darkMode ? 'bg-bubble-bg-dark border-b border-accent-1' : 'bg-bubble-bg-light border-b border-accent-2'"
+          class="text-left text-xs font-semibold uppercase tracking-wide opacity-60">
+        <th class="px-4 py-3">{% trans "Metric" %}</th>
+        <th class="px-4 py-3 text-right">{% trans "Qty" %}</th>
+        <th class="px-4 py-3">{% trans "Subject" %}</th>
+        <th class="px-4 py-3">{% trans "Source" %}</th>
+        <th class="px-4 py-3">{% trans "Status" %}</th>
+        <th class="px-4 py-3">{% trans "Occurred" %}</th>
+        <th class="px-4 py-3"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for event in page_obj %}
+      <tr :class="darkMode ? 'border-b border-accent-1/30 hover:bg-bubble-bg-dark' : 'border-b border-accent-2/30 hover:bg-bubble-bg-light'"
+          class="transition-colors last:border-b-0">
+        <td class="px-4 py-2.5 font-mono text-xs font-semibold">{{ event.metric.code }}</td>
+        <td class="px-4 py-2.5 text-right font-mono text-xs">{{ event.quantity }}
+          <span class="opacity-50">{{ event.unit }}</span></td>
+        <td class="px-4 py-2.5 text-xs opacity-70">
+          {% if event.subject_label %}{{ event.subject_label }}
+          {% elif event.subject_id %}{{ event.subject_type }}:{{ event.subject_id }}
+          {% else %}—{% endif %}
+        </td>
+        <td class="px-4 py-2.5 text-xs opacity-60">{{ event.source_type|default:"—" }}</td>
+        <td class="px-4 py-2.5 text-xs">
+          <span class="rounded px-1.5 py-0.5 font-semibold uppercase
+            {% if event.status == 'recorded' %}bg-green-100 text-green-700
+            {% elif event.status == 'voided' %}bg-red-100 text-red-600
+            {% else %}bg-gray-100 text-gray-500{% endif %}">
+            {{ event.status }}
+          </span>
+        </td>
+        <td class="px-4 py-2.5 text-xs opacity-60">{{ event.occurred_at|date:"Y-m-d H:i" }}</td>
+        <td class="px-4 py-2.5 text-right">
+          <a href="{% url 'metering:usage_detail' event.uid %}"
+             :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+             class="text-xs font-semibold hover:underline">{% trans "View" %}</a>
+        </td>
+      </tr>
+      {% empty %}
+      <tr>
+        <td colspan="7" class="px-4 py-8 text-center text-sm opacity-50">{% trans "No usage events." %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if page_obj.has_other_pages %}
+<div class="flex items-center justify-center gap-2 text-sm">
+  {% if page_obj.has_previous %}
+  <a href="?page={{ page_obj.previous_page_number }}&q={{ q }}&metric={{ metric_filter }}&status={{ status_filter }}"
+     :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+     class="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-semibold hover:opacity-80">
+    <i class="fa-solid fa-chevron-left"></i>{% trans "Prev" %}
+  </a>
+  {% endif %}
+  <span class="opacity-50 text-xs">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+  {% if page_obj.has_next %}
+  <a href="?page={{ page_obj.next_page_number }}&q={{ q }}&metric={{ metric_filter }}&status={{ status_filter }}"
+     :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+     class="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-semibold hover:opacity-80">
+    {% trans "Next" %}<i class="fa-solid fa-chevron-right"></i>
+  </a>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

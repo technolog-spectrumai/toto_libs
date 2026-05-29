@@ -1,0 +1,31 @@
+{% extends "metering/base.html" %}
+{% load i18n %}
+
+{% block metering_title %}{% trans "Confirm Delete" %}{% endblock %}
+
+{% block metering_content %}
+<div class="max-w-md">
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-xl border p-6 shadow-sm space-y-4">
+    <div class="flex items-center gap-3">
+      <i class="fa-solid fa-triangle-exclamation text-2xl text-red-500"></i>
+      <h2 class="text-lg font-bold">{% trans "Delete" %} {{ object_name }}</h2>
+    </div>
+    <p class="text-sm opacity-70">
+      {% blocktrans with name=object_name %}Are you sure you want to delete <strong>{{ name }}</strong>? This cannot be undone.{% endblocktrans %}
+    </p>
+    <form method="post" class="flex gap-3">
+      {% csrf_token %}
+      <button type="submit"
+              class="inline-flex items-center gap-2 rounded-lg bg-red-600 text-white px-5 py-2 text-sm font-bold hover:bg-red-700 transition">
+        <i class="fa-solid fa-trash"></i> {% trans "Delete" %}
+      </button>
+      <a href="{% url cancel_url %}"
+         :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2'"
+         class="inline-flex items-center gap-2 rounded-lg border px-5 py-2 text-sm font-semibold hover:opacity-70">
+        {% trans "Cancel" %}
+      </a>
+    </form>
+  </div>
+</div>
+{% endblock %}

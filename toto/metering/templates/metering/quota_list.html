@@ -1,0 +1,110 @@
+{% extends "metering/base.html" %}
+{% load i18n %}
+
+{% block metering_title %}{% trans "Usage Quotas" %}{% endblock %}
+
+{% block metering_content %}
+<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+  <h2 class="text-xl font-bold flex items-center gap-2">
+    <i class="fa-solid fa-shield-halved opacity-60"></i> {% trans "Usage Quotas" %}
+  </h2>
+  <a href="{% url 'metering:quota_create' %}"
+     :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+     class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold shadow-sm transition hover:opacity-85">
+    <i class="fa-solid fa-plus"></i> {% trans "New Quota" %}
+  </a>
+</div>
+
+<form method="get" class="flex gap-2">
+  <input type="text" name="q" value="{{ q }}" placeholder="{% trans 'Search code, name, subject…' %}"
+         :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2'"
+         class="flex-1 rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500">
+  <button type="submit"
+          :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2'"
+          class="rounded-lg border px-4 py-2 text-sm font-semibold hover:opacity-70">
+    <i class="fa-solid fa-magnifying-glass"></i>
+  </button>
+</form>
+
+<div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+     class="overflow-hidden rounded-xl border shadow-sm">
+  <table class="min-w-full text-sm">
+    <thead>
+      <tr :class="darkMode ? 'bg-bubble-bg-dark border-b border-accent-1' : 'bg-bubble-bg-light border-b border-accent-2'"
+          class="text-left text-xs font-semibold uppercase tracking-wide opacity-60">
+        <th class="px-4 py-3">{% trans "Code" %}</th>
+        <th class="px-4 py-3">{% trans "Metric" %}</th>
+        <th class="px-4 py-3 text-right">{% trans "Limit" %}</th>
+        <th class="px-4 py-3">{% trans "Period" %}</th>
+        <th class="px-4 py-3">{% trans "Mode" %}</th>
+        <th class="px-4 py-3">{% trans "Subject" %}</th>
+        <th class="px-4 py-3 text-center">{% trans "Active" %}</th>
+        <th class="px-4 py-3"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for quota in page_obj %}
+      <tr :class="darkMode ? 'border-b border-accent-1/30 hover:bg-bubble-bg-dark' : 'border-b border-accent-2/30 hover:bg-bubble-bg-light'"
+          class="transition-colors last:border-b-0">
+        <td class="px-4 py-2.5 font-mono text-xs font-semibold">{{ quota.code }}</td>
+        <td class="px-4 py-2.5 font-mono text-xs opacity-70">{{ quota.metric.code }}</td>
+        <td class="px-4 py-2.5 text-right font-mono text-xs">{{ quota.limit_quantity }}
+          <span class="opacity-50">{{ quota.unit }}</span></td>
+        <td class="px-4 py-2.5 text-xs">{{ quota.get_period_display }}</td>
+        <td class="px-4 py-2.5 text-xs">
+          <span class="rounded px-1.5 py-0.5 font-semibold uppercase text-xs
+            {% if quota.mode == 'block' %}bg-red-100 text-red-600
+            {% elif quota.mode == 'warn' %}bg-yellow-100 text-yellow-700
+            {% else %}bg-gray-100 text-gray-500{% endif %}">
+            {{ quota.mode }}
+          </span>
+        </td>
+        <td class="px-4 py-2.5 text-xs opacity-60">
+          {% if quota.subject_id %}{{ quota.subject_type }}:{{ quota.subject_id }}{% else %}global{% endif %}
+        </td>
+        <td class="px-4 py-2.5 text-center text-xs">
+          {% if quota.is_active %}
+          <span :class="darkMode ? 'text-success-dark' : 'text-success-light'"><i class="fa-solid fa-circle-check"></i></span>
+          {% else %}
+          <span class="opacity-30"><i class="fa-solid fa-circle-xmark"></i></span>
+          {% endif %}
+        </td>
+        <td class="px-4 py-2.5 text-right">
+          <div class="flex items-center justify-end gap-3">
+            <a href="{% url 'metering:quota_update' quota.pk %}"
+               :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+               class="text-xs font-semibold hover:underline">{% trans "Edit" %}</a>
+            <a href="{% url 'metering:quota_delete' quota.pk %}"
+               class="text-xs text-red-500 hover:underline">{% trans "Delete" %}</a>
+          </div>
+        </td>
+      </tr>
+      {% empty %}
+      <tr>
+        <td colspan="8" class="px-4 py-8 text-center text-sm opacity-50">{% trans "No quotas yet." %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if page_obj.has_other_pages %}
+<div class="flex items-center justify-center gap-2 text-sm">
+  {% if page_obj.has_previous %}
+  <a href="?page={{ page_obj.previous_page_number }}{% if q %}&q={{ q }}{% endif %}"
+     :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+     class="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-semibold hover:opacity-80">
+    <i class="fa-solid fa-chevron-left"></i>{% trans "Prev" %}
+  </a>
+  {% endif %}
+  <span class="opacity-50 text-xs">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+  {% if page_obj.has_next %}
+  <a href="?page={{ page_obj.next_page_number }}{% if q %}&q={{ q }}{% endif %}"
+     :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+     class="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-semibold hover:opacity-80">
+    {% trans "Next" %}<i class="fa-solid fa-chevron-right"></i>
+  </a>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}
