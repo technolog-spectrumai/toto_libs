@@ -777,7 +777,7 @@ def insurance_create(request):
         form = InsuranceCreateForm(request.POST)
         if form.is_valid():
             cd = form.cleaned_data
-            from .insurance import create_insurance_contract
+            from toto.insurance.services import create_insurance_contract
             contract = create_insurance_contract(
                 name=cd["name"],
                 insured_person=cd["insured_person"],
