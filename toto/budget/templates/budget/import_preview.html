@@ -1,0 +1,65 @@
+{% extends "budget/base.html" %}
+{% load i18n %}
+{% block budget_title %}{% trans "Preview" %} — {{ importer.label }}{% endblock %}
+{% block budget_content %}
+<div class="space-y-4">
+  <div class="flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <a href="{% url 'budget:imports' budget.pk %}"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-semibold transition hover:opacity-80">
+        <i class="fa-solid fa-arrow-left"></i>{% trans "Back" %}
+      </a>
+      <h2 class="text-xl font-bold">{{ importer.label }}: {{ candidates|length }} {% trans "candidates" %} ({{ new_count }} {% trans "new" %})</h2>
+    </div>
+    <form method="post" action="{% url 'budget:import_run' budget.pk importer.code %}">
+      {% csrf_token %}
+      <button type="submit"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-90">
+        <i class="fa-solid fa-download"></i>{% trans "Import All" %}
+      </button>
+    </form>
+  </div>
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border shadow-sm overflow-x-auto">
+    <table class="w-full text-xs">
+      <thead>
+        <tr class="border-b font-semibold uppercase opacity-60"
+            :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+          <th class="px-4 py-2 text-left">{% trans "Title" %}</th>
+          <th class="px-4 py-2 text-left">{% trans "Stream" %}</th>
+          <th class="px-4 py-2 text-right">{% trans "Amount" %}</th>
+          <th class="px-4 py-2 text-left">{% trans "Source" %}</th>
+          <th class="px-4 py-2 text-left">{% trans "Status" %}</th>
+          <th class="px-4 py-2 text-left">{% trans "New?" %}</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y" :class="darkMode ? 'divide-accent-1' : 'divide-accent-2'">
+        {% for c in candidates %}
+        <tr class="hover:opacity-80 transition{% if c.import_key in existing_keys %} opacity-60{% endif %}">
+          <td class="px-4 py-2 max-w-xs">
+            <div class="font-semibold truncate">{{ c.title|truncatechars:60 }}</div>
+            <div class="opacity-50 truncate">{{ c.description|truncatechars:80 }}</div>
+          </td>
+          <td class="px-4 py-2"><code>{{ c.stream_type_code }}</code></td>
+          <td class="px-4 py-2 text-right font-mono">{{ c.amount_base_units }}</td>
+          <td class="px-4 py-2 opacity-60">{{ c.source_type }}</td>
+          <td class="px-4 py-2">{{ c.status }}</td>
+          <td class="px-4 py-2">
+            {% if c.import_key not in existing_keys %}
+              <span class="text-green-500 font-semibold">{% trans "New" %}</span>
+            {% else %}
+              <span class="opacity-50">{% trans "Exists" %}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="px-4 py-8 text-center opacity-50">{% trans "No candidates found." %}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

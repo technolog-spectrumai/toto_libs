@@ -1,0 +1,75 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% block budget_title %}Budget{% endblock %} | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+<style>[x-cloak] { display: none !important; }</style>
+{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-7xl space-y-6">
+
+    <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div class="space-y-2">
+        <a href="{% url 'assets:asset_list' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+          <i class="fa-solid fa-arrow-left"></i>{% trans "Assets" %}
+        </a>
+        <div>
+          <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+             class="text-xs font-semibold uppercase tracking-wide">{% trans "Toto Finance" %}</p>
+          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+            <i class="fa-solid fa-chart-pie"></i>
+            {% trans "Budget" %}
+          </h1>
+        </div>
+      </div>
+
+      <nav class="flex flex-wrap gap-2">
+        <a href="{% url 'budget:list' %}"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-list"></i>{% trans "Budgets" %}
+        </a>
+        <a href="{% url 'budget:stream_type_list' %}"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-tags"></i>{% trans "Stream Types" %}
+        </a>
+        <a href="{% url 'budget:create' %}"
+           :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+           class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-plus"></i>{% trans "New Budget" %}
+        </a>
+      </nav>
+    </header>
+
+    {% if messages %}
+      {% for message in messages %}
+        {% if 'error' in message.tags %}
+          <div class="rounded-lg border px-4 py-3 text-sm font-medium"
+               :class="darkMode ? 'border-red-500/30 bg-red-900/20 text-red-300' : 'border-red-300 bg-red-50 text-red-700'">
+            <i class="fa-solid fa-triangle-exclamation mr-1"></i> {{ message }}
+          </div>
+        {% elif 'success' in message.tags %}
+          <div class="rounded-lg border px-4 py-3 text-sm font-medium"
+               :class="darkMode ? 'border-green-500/30 bg-green-900/20 text-green-300' : 'border-green-300 bg-green-50 text-green-700'">
+            <i class="fa-solid fa-circle-check mr-1"></i> {{ message }}
+          </div>
+        {% else %}
+          <div class="rounded-lg border px-4 py-3 text-sm font-medium"
+               :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+            {{ message }}
+          </div>
+        {% endif %}
+      {% endfor %}
+    {% endif %}
+
+    {% block budget_content %}{% endblock %}
+
+  </div>
+</section>
+{% endblock %}

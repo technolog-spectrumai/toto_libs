@@ -1,0 +1,79 @@
+{% extends "budget/base.html" %}
+{% load i18n %}
+{% block budget_title %}{% trans "Stream Types" %}{% endblock %}
+{% block budget_content %}
+<div class="space-y-4">
+  <form method="get" class="flex flex-wrap gap-2">
+    <input type="text" name="q" value="{{ q }}" placeholder="{% trans 'Search…' %}"
+           :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-white border-accent-2'"
+           class="rounded-lg border px-3 py-1.5 text-sm w-40">
+    <select name="direction" :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-white border-accent-2'"
+            class="rounded-lg border px-3 py-1.5 text-sm">
+      <option value="">{% trans "All directions" %}</option>
+      {% for val, label in direction_choices %}
+        <option value="{{ val }}" {% if direction_filter == val %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <select name="active" :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-white border-accent-2'"
+            class="rounded-lg border px-3 py-1.5 text-sm">
+      <option value="">{% trans "All" %}</option>
+      <option value="1" {% if active_filter == '1' %}selected{% endif %}>{% trans "Active" %}</option>
+      <option value="0" {% if active_filter == '0' %}selected{% endif %}>{% trans "Inactive" %}</option>
+    </select>
+    <button type="submit" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+            class="rounded-lg border px-4 py-1.5 text-sm font-semibold transition hover:opacity-80">
+      {% trans "Filter" %}
+    </button>
+    <a href="{% url 'budget:stream_type_create' %}"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+       class="ml-auto rounded-lg px-4 py-1.5 text-sm font-semibold transition hover:opacity-90">
+      <i class="fa-solid fa-plus mr-1"></i>{% trans "New" %}
+    </a>
+  </form>
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border shadow-sm overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b text-xs font-semibold uppercase opacity-60"
+            :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+          <th class="px-5 py-3 text-left">{% trans "Code" %}</th>
+          <th class="px-5 py-3 text-left">{% trans "Name" %}</th>
+          <th class="px-5 py-3 text-left">{% trans "Direction" %}</th>
+          <th class="px-5 py-3 text-left">{% trans "Namespace" %}</th>
+          <th class="px-5 py-3 text-left">{% trans "System" %}</th>
+          <th class="px-5 py-3 text-left">{% trans "Active" %}</th>
+          <th class="px-5 py-3"></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y" :class="darkMode ? 'divide-accent-1' : 'divide-accent-2'">
+        {% for st in stream_types %}
+        <tr class="hover:opacity-80 transition">
+          <td class="px-5 py-3"><code class="text-xs">{{ st.code }}</code></td>
+          <td class="px-5 py-3">{{ st.name }}</td>
+          <td class="px-5 py-3">
+            <span class="{% if st.direction == 'inflow' %}text-green-500{% else %}text-red-500{% endif %} text-xs font-semibold">
+              {% if st.direction == 'inflow' %}↓{% else %}↑{% endif %} {{ st.get_direction_display }}
+            </span>
+          </td>
+          <td class="px-5 py-3 text-xs opacity-60">{{ st.namespace|default:"—" }}</td>
+          <td class="px-5 py-3 text-xs">{% if st.is_system %}✓{% endif %}</td>
+          <td class="px-5 py-3 text-xs">{% if st.is_active %}✓{% endif %}</td>
+          <td class="px-5 py-3">
+            {% if not st.is_system %}
+            <a href="{% url 'budget:stream_type_update' st.pk %}"
+               :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+               class="rounded border px-2 py-0.5 text-xs hover:opacity-80"><i class="fa-solid fa-pen"></i></a>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="7" class="px-5 py-8 text-center opacity-50">
+          {% trans "No stream types. Run" %} <code>sync_budget_stream_types</code>.
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
