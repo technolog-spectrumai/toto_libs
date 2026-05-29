@@ -321,4 +321,31 @@ def record_playback_event(*, request, video: VodVideo, event: str, seconds_watch
     if event == VodPlaybackEvent.EventKind.PLAY:
         from django.db.models import F
         VodVideo.objects.filter(pk=video.pk).update(views_count=F("views_count") + 1)
+
+    # ── Metering ─────────────────────────────────────────────────────────────
+    from toto.metering.utils import safe_record_usage as _m
+    _uid = str(user.pk) if user else session_key or "anon"
+    _utype = "auth.User" if user else "vod.session"
+    _ulabel = user.username if user else session_key[:20] if session_key else "anon"
+    _src = {"source_type": "vod.VodVideo", "source_id": str(video.pk), "source_label": video.title}
+    _sub = {"subject_type": _utype, "subject_id": _uid, "subject_label": _ulabel}
+
+    if event == VodPlaybackEvent.EventKind.PLAY:
+        _m(
+            metric_code="vod.view",
+            quantity=1,
+            unit="view",
+            idempotency_key=f"vod.view:{video.pk}:{_uid}:{session_key[:16] or playback.pk}",
+            **_src, **_sub,
+        )
+
+    if event == VodPlaybackEvent.EventKind.PROGRESS and playback.seconds_watched > 0:
+        _m(
+            metric_code="vod.playback_second",
+            quantity=playback.seconds_watched,
+            unit="second",
+            idempotency_key=f"vod.playback:{playback.pk}",
+            **_src, **_sub,
+        )
+
     return playback

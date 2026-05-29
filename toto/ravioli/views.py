@@ -284,6 +284,38 @@ def query_graph_data(request, query_id):
         },
     )
 
+    # Metering: cypher query + row count
+    from toto.metering.utils import safe_record_usage as _m
+    _user = request.user if getattr(request, "user", None) and request.user.is_authenticated else None
+    _sub = (
+        {"subject_type": "auth.User", "subject_id": str(_user.pk), "subject_label": _user.username}
+        if _user else {"subject_type": "system", "subject_id": "ravioli"}
+    )
+    _run_key = f"ravioli.cypher_query:view:{selected_query.pk}:{timezone.now().strftime('%Y%m%dT%H%M%S')}"
+    _m(
+        metric_code="ravioli.cypher_query",
+        quantity=1,
+        unit="query",
+        source_type="ravioli.CypherQuery",
+        source_id=str(selected_query.pk),
+        source_label=selected_query.name,
+        idempotency_key=_run_key,
+        metadata={"node_count": len(nodes), "edge_count": len(edges)},
+        **_sub,
+    )
+    _row_count = len(nodes) + len(edges)
+    if _row_count:
+        _m(
+            metric_code="ravioli.cypher_row",
+            quantity=_row_count,
+            unit="row",
+            source_type="ravioli.CypherQuery",
+            source_id=str(selected_query.pk),
+            source_label=selected_query.name,
+            idempotency_key=f"ravioli.cypher_row:view:{selected_query.pk}:{timezone.now().strftime('%Y%m%dT%H%M%S')}",
+            **_sub,
+        )
+
     return JsonResponse({
         "nodes": nodes,
         "edges": edges,

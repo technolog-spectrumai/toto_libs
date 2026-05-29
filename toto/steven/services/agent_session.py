@@ -26,6 +26,36 @@ def extract_text(agent_response) -> str:
     return str(agent_response)
 
 
+def extract_token_usage(agent_response) -> dict:
+    """
+    Best-effort extraction of token counts from a LangChain agent response.
+
+    Returns a dict with prompt_tokens, completion_tokens, total_tokens
+    (all may be None if unavailable).
+    Never raises.
+    """
+    try:
+        messages = agent_response.get("messages", []) if isinstance(agent_response, dict) else []
+        for msg in reversed(messages):
+            usage = None
+            if isinstance(msg, dict):
+                usage = msg.get("usage_metadata") or msg.get("response_metadata", {}).get("token_usage")
+            else:
+                usage = getattr(msg, "usage_metadata", None) or \
+                        getattr(msg, "response_metadata", {}).get("token_usage")
+
+            if usage:
+                if isinstance(usage, dict):
+                    return {
+                        "prompt_tokens": usage.get("input_tokens") or usage.get("prompt_tokens"),
+                        "completion_tokens": usage.get("output_tokens") or usage.get("completion_tokens"),
+                        "total_tokens": usage.get("total_tokens"),
+                    }
+    except Exception:
+        pass
+    return {"prompt_tokens": None, "completion_tokens": None, "total_tokens": None}
+
+
 
 
 class AgentSession(ABC):
@@ -54,6 +84,7 @@ class AgentSession(ABC):
         agent_run.started_at = timezone.now()
         agent_run.save(update_fields=["status", "started_at"])
 
+        self._last_token_usage = None
         try:
             agent_run.result = self.invoke(agent_run.user_prompt)
             agent_run.status = "succeeded"
@@ -72,7 +103,67 @@ class AgentSession(ABC):
                 ]
             )
 
+        # ── Metering ─────────────────────────────────────────────────────────
+        self._record_metering(agent_run, self._last_token_usage)
+
         return agent_run
+
+    def _record_metering(self, agent_run, token_usage=None):
+        """Best-effort metering for agent run and token usage."""
+        from toto.metering.utils import safe_record_usage as _m
+        _run_pk = str(agent_run.pk)
+        _profile = self.profile
+        _latency = None
+        if agent_run.started_at and agent_run.finished_at:
+            _latency = int((agent_run.finished_at - agent_run.started_at).total_seconds() * 1000)
+
+        _src = {
+            "source_type": "steven.AgentRun",
+            "source_id": _run_pk,
+            "source_label": _profile.name if _profile else "",
+        }
+        # Determine subject from agent_run.agent's owner if available
+        _sub = {"subject_type": "system", "subject_id": "steven"}
+        if hasattr(agent_run, "user") and agent_run.user_id:
+            _sub = {
+                "subject_type": "auth.User",
+                "subject_id": str(agent_run.user_id),
+                "subject_label": str(agent_run.user),
+            }
+
+        _meta = {
+            "model": getattr(_profile, "model_name", None),
+            "status": agent_run.status,
+            "latency_ms": _latency,
+        }
+        if _profile and getattr(_profile, "connector", None):
+            _meta["connector_id"] = str(_profile.connector.pk)
+
+        _m(
+            metric_code="ai.agent_run",
+            quantity=1,
+            unit="run",
+            idempotency_key=f"steven.agent_run:{_run_pk}",
+            metadata=_meta,
+            **_src, **_sub,
+        )
+
+        if token_usage:
+            pt = token_usage.get("prompt_tokens")
+            ct = token_usage.get("completion_tokens")
+            tt = token_usage.get("total_tokens")
+            if pt:
+                _m(metric_code="ai.prompt_token", quantity=pt, unit="token",
+                   idempotency_key=f"steven.prompt_token:{_run_pk}",
+                   metadata=_meta, **_src, **_sub)
+            if ct:
+                _m(metric_code="ai.completion_token", quantity=ct, unit="token",
+                   idempotency_key=f"steven.completion_token:{_run_pk}",
+                   metadata=_meta, **_src, **_sub)
+            if tt and not (pt or ct):
+                _m(metric_code="ai.total_token", quantity=tt, unit="token",
+                   idempotency_key=f"steven.total_token:{_run_pk}",
+                   metadata=_meta, **_src, **_sub)
 
     @abstractmethod
     def invoke(self, user_prompt: str, history=None) -> str:
@@ -121,6 +212,8 @@ class RealAgentSession(AgentSession):
 
             response = agent.invoke({"messages": messages})
 
+        # Stash token usage on self for _record_metering to pick up
+        self._last_token_usage = extract_token_usage(response)
         return extract_text(response)
 
     def _system_prompt_with_graph_context(self, user_prompt):

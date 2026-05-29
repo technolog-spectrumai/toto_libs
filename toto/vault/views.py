@@ -332,6 +332,37 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
         vault_file.content_hash = vault_file.create_hash()
         vault_file.save()
 
+        # ── Metering: record upload request + transferred bytes ──────────────
+        from toto.metering.utils import safe_record_usage as _m
+        _user = request.user
+        _size_mb = Decimal(str(vault_file.file_size_bytes or uploaded_file.size)) / Decimal("1048576")
+        _m(
+            metric_code="storage.request",
+            quantity=1,
+            unit="request",
+            source_type="vault.VaultFile",
+            source_id=str(vault_file.pk),
+            source_label=vault_file.title,
+            subject_type="auth.User",
+            subject_id=str(_user.pk),
+            subject_label=_user.username,
+            idempotency_key=f"vault.upload.request:{vault_file.pk}",
+            metadata={"bucket": gateway.bucket.slug if gateway.bucket_id else None},
+        )
+        _m(
+            metric_code="storage.transfer_mb",
+            quantity=_size_mb,
+            unit="MB",
+            source_type="vault.VaultFile",
+            source_id=str(vault_file.pk),
+            source_label=vault_file.title,
+            subject_type="auth.User",
+            subject_id=str(_user.pk),
+            subject_label=_user.username,
+            idempotency_key=f"vault.upload.transfer:{vault_file.pk}",
+            metadata={"bucket": gateway.bucket.slug if gateway.bucket_id else None, "direction": "upload"},
+        )
+
         if directory:
             all_dirs = list(VaultDirectory.objects.filter(bucket=gateway.bucket))
             dirs_by_pk = {d.pk: d for d in all_dirs}
