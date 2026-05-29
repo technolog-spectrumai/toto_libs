@@ -1,66 +1,53 @@
-{% extends "oya/base.html" %}
+{% extends "capitol/base.html" %}
 {% load i18n %}
 
-{% block title %}{% block mag_title %}Magistrate{% endblock %} | {{ platform.site_name }}{% endblock %}
+{% block capitol_title %}{% block mag_title %}Magistrate{% endblock %}{% endblock %}
+{% block tab_magistrate %}border-b-2 border-current -mb-px{% endblock %}
 
-{% block start_script %}
-<style>[x-cloak] { display: none !important; }</style>
-{% endblock %}
+{% block capitol_content %}
 
-{% block content %}
-<section
-  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
-  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
-  <div class="mx-auto max-w-7xl space-y-6">
+  <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+    <div class="space-y-1">
+      <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-xs font-semibold uppercase tracking-wide">
+        {% trans "Civic Government" %}
+      </p>
+      <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+        <i class="fa-solid fa-building-columns"></i>
+        {% trans "Magistrate" %}
+      </h1>
+    </div>
 
-    <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-      <div class="space-y-2">
-        <a href="{% url 'capitol:overview' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
-          <i class="fa-solid fa-arrow-left"></i> {% trans "Capitol" %}
-        </a>
-        <div>
-          <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-xs font-semibold uppercase tracking-wide">
-            {% trans "Civic Government" %}
-          </p>
-          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
-            <i class="fa-solid fa-building-columns"></i>
-            {% trans "Magistrate" %}
-          </h1>
+    <nav class="flex flex-wrap gap-2">
+      <a href="{% url 'magistrate:overview' %}"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+        <i class="fa-solid fa-users-gear"></i> {% trans "Magistrates" %}
+      </a>
+      <a href="{% url 'magistrate:role_list' %}"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+        <i class="fa-solid fa-scroll"></i> {% trans "Roles" %}
+      </a>
+      <a href="{% url 'assembly:overview' %}"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+        <i class="fa-solid fa-landmark"></i> {% trans "Assembly" %}
+      </a>
+    </nav>
+  </header>
+
+  {% if messages %}
+    <div class="space-y-2">
+      {% for message in messages %}
+        <div class="rounded-lg border px-4 py-3 text-sm font-medium
+          {% if message.tags == 'error' %}border-warn-light bg-warn-light/10 text-warn-light
+          {% else %}border-success-light bg-success-light/10 text-success-light{% endif %}">
+          {{ message }}
         </div>
-      </div>
+      {% endfor %}
+    </div>
+  {% endif %}
 
-      <nav class="flex flex-wrap gap-2">
-        <a href="{% url 'magistrate:overview' %}"
-           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-           class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-          <i class="fa-solid fa-users-gear"></i> {% trans "Magistrates" %}
-        </a>
-        <a href="{% url 'magistrate:role_list' %}"
-           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-           class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-          <i class="fa-solid fa-scroll"></i> {% trans "Roles" %}
-        </a>
-        <a href="{% url 'assembly:overview' %}"
-           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-           class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-          <i class="fa-solid fa-landmark"></i> {% trans "Assembly" %}
-        </a>
-      </nav>
-    </header>
+  {% block mag_content %}{% endblock %}
 
-    {% if messages %}
-      <div class="space-y-2">
-        {% for message in messages %}
-          <div class="rounded-lg border px-4 py-3 text-sm font-medium
-            {% if message.tags == 'error' %}border-warn-light bg-warn-light/10 text-warn-light
-            {% else %}border-success-light bg-success-light/10 text-success-light{% endif %}">
-            {{ message }}
-          </div>
-        {% endfor %}
-      </div>
-    {% endif %}
-
-    {% block mag_content %}{% endblock %}
-  </div>
-</section>
 {% endblock %}

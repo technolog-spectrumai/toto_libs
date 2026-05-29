@@ -1,318 +1,10 @@
-{% extends "oya/base.html" %}
+{% extends "capitol/base.html" %}
 {% load i18n static %}
 
-{% block title %}{% trans "Capitol" %} | {{ platform.site_name }}{% endblock %}
+{% block capitol_title %}{% trans "Capitol" %}{% endblock %}
+{% block tab_overview %}border-b-2 border-current -mb-px{% endblock %}
 
-{% block start_script %}
-<style>[x-cloak] { display: none !important; }</style>
-{% endblock %}
-
-{% block content %}
-{{ activity_series|json_script:"activity-series" }}
-{{ proposals_by_status_json|json_script:"proposals-by-status" }}
-{{ cases_by_status_json|json_script:"cases-by-status" }}
-
-<section
-  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
-  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
-
-  <div class="mx-auto max-w-7xl space-y-8">
-
-    <!-- Header breadcrumb -->
-    <div>
-      <a href="{% url 'core:dashboard' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
-        <i class="fa-solid fa-arrow-left"></i>
-        {% trans "Dashboard" %}
-      </a>
-    </div>
-
-    <!-- Arc / Gate Hero -->
-    <div
-      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-      class="relative overflow-hidden rounded-2xl border shadow-sm">
-
-      <!-- Capitol arch SVG -->
-      <div class="pointer-events-none absolute inset-0 flex items-end justify-center opacity-10"
-           aria-hidden="true">
-        <svg viewBox="0 0 800 340" class="w-full max-w-3xl" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <!-- Base platform -->
-          <rect x="50" y="310" width="700" height="18" rx="3" fill="currentColor"/>
-          <!-- Steps -->
-          <rect x="90"  y="298" width="620" height="12" rx="2" fill="currentColor"/>
-          <rect x="130" y="288" width="540" height="10" rx="2" fill="currentColor"/>
-          <!-- Left colonnade -->
-          <rect x="160" y="100" width="22" height="188" rx="4" fill="currentColor"/>
-          <rect x="210" y="100" width="22" height="188" rx="4" fill="currentColor"/>
-          <rect x="260" y="100" width="22" height="188" rx="4" fill="currentColor"/>
-          <!-- Right colonnade -->
-          <rect x="518" y="100" width="22" height="188" rx="4" fill="currentColor"/>
-          <rect x="568" y="100" width="22" height="188" rx="4" fill="currentColor"/>
-          <rect x="618" y="100" width="22" height="188" rx="4" fill="currentColor"/>
-          <!-- Entablature (horizontal bar above columns) -->
-          <rect x="140" y="88" width="520" height="18" rx="3" fill="currentColor"/>
-          <!-- Pediment triangle -->
-          <polygon points="400,18 140,88 660,88" fill="currentColor" opacity="0.7"/>
-          <!-- Central arch gate -->
-          <path d="M 310 288 L 310 180 Q 310 130 400 130 Q 490 130 490 180 L 490 288 Z"
-                fill="currentColor" opacity="0.6"/>
-          <!-- Arch keystone -->
-          <ellipse cx="400" cy="128" rx="18" ry="10" fill="currentColor"/>
-          <!-- Dome on pediment -->
-          <ellipse cx="400" cy="16" rx="28" ry="10" fill="currentColor"/>
-          <line x1="400" y1="6" x2="400" y2="0" stroke="currentColor" stroke-width="3"/>
-        </svg>
-      </div>
-
-      <!-- Hero text -->
-      <div class="relative px-8 py-12 text-center sm:py-16">
-        <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-           class="text-xs font-semibold uppercase tracking-widest">
-          {% trans "Governance Hub" %}
-        </p>
-        <h1 class="mt-2 flex items-center justify-center gap-3 text-4xl font-bold sm:text-5xl">
-          <i class="fa-solid fa-landmark-dome"></i>
-          {% trans "Capitol" %}
-        </h1>
-        <p class="mt-3 max-w-xl mx-auto text-sm opacity-60 leading-relaxed">
-          {% trans "The seat of community governance — magistrates, assembly, tribunal, and treasury all in one place." %}
-        </p>
-
-        <!-- Quick-action links -->
-        <div class="mt-6 flex flex-wrap items-center justify-center gap-3">
-          <a href="{% url 'magistrate:overview' %}"
-             :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-             class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-            <i class="fa-solid fa-building-columns"></i>
-            {% trans "Magistrate" %}
-          </a>
-          <a href="{% url 'assembly:overview' %}"
-             :class="darkMode ? 'border-accent-1 hover:bg-white/5' : 'border-accent-2 hover:bg-black/5'"
-             class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition">
-            <i class="fa-solid fa-landmark"></i>
-            {% trans "Assembly" %}
-          </a>
-          <a href="{% url 'tribunal:dashboard' %}"
-             :class="darkMode ? 'border-accent-1 hover:bg-white/5' : 'border-accent-2 hover:bg-black/5'"
-             class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition">
-            <i class="fa-solid fa-scale-balanced"></i>
-            {% trans "Tribunal" %}
-          </a>
-          <a href="{% url 'treasury:list' %}"
-             :class="darkMode ? 'border-accent-1 hover:bg-white/5' : 'border-accent-2 hover:bg-black/5'"
-             class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition">
-            <i class="fa-solid fa-chart-pie"></i>
-            {% trans "Treasury" %}
-          </a>
-        </div>
-      </div>
-    </div>
-
-    <!-- Tab nav -->
-    <nav :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
-         class="flex flex-wrap gap-1 border-b pb-0">
-      <span :class="darkMode ? 'border-accent-dark' : 'border-accent-light'"
-            class="inline-flex items-center gap-2 rounded-t border-b-2 px-4 py-2 text-sm font-semibold">
-        <i class="fa-solid fa-landmark-dome"></i>
-        {% trans "Overview" %}
-      </span>
-      <a href="{% url 'magistrate:overview' %}"
-         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold opacity-50 transition">
-        <i class="fa-solid fa-building-columns"></i>
-        {% trans "Magistrate" %}
-      </a>
-      <a href="{% url 'assembly:overview' %}"
-         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold opacity-50 transition">
-        <i class="fa-solid fa-landmark"></i>
-        {% trans "Assembly" %}
-      </a>
-      <a href="{% url 'tribunal:dashboard' %}"
-         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold opacity-50 transition">
-        <i class="fa-solid fa-scale-balanced"></i>
-        {% trans "Tribunal" %}
-      </a>
-      <a href="{% url 'treasury:list' %}"
-         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold opacity-50 transition">
-        <i class="fa-solid fa-chart-pie"></i>
-        {% trans "Treasury" %}
-      </a>
-    </nav>
-
-    <!-- Stat cards — Magistrate row -->
-    <div>
-      <p class="mb-3 text-xs font-semibold uppercase tracking-wide opacity-55">
-        <i class="fa-solid fa-building-columns mr-1"></i>{% trans "Magistrate" %}
-      </p>
-      <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-        {% include "capitol/partials/_stat_card.html" with icon="fa-solid fa-user-tie" label="Active Magistrates" value=active_magistrates color="accent" %}
-        {% include "capitol/partials/_stat_card.html" with icon="fa-solid fa-sitemap" label="Roles" value=magistrate_roles color="neutral" %}
-        {% include "capitol/partials/_stat_card.html" with icon="fa-solid fa-gavel" label="Decisions" value=magistrate_decisions color="accent" %}
-        {% include "capitol/partials/_stat_card.html" with icon="fa-solid fa-file-lines" label="Reports" value=magistrate_reports color="neutral" %}
-        {% include "capitol/partials/_stat_card.html" with icon="fa-solid fa-triangle-exclamation" label="Fines Issued" value=magistrate_fines color="warn" %}
-        {% include "capitol/partials/_stat_card.html" with icon="fa-solid fa-lock" label="Active Freezes" value=active_freezes color="warn" %}
-      </div>
-    </div>
-
-    <!-- Stat cards — Assembly row -->
-    <div>
-      <p class="mb-3 text-xs font-semibold uppercase tracking-wide opacity-55">
-        <i class="fa-solid fa-landmark mr-1"></i>{% trans "Assembly" %}
-      </p>
-      <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-        {% include "capitol/partials/_stat_card.html" with icon="fa-solid fa-file-circle-plus" label="Total Proposals" value=total_proposals color="accent" %}
-        {% include "capitol/partials/_stat_card.html" with icon="fa-solid fa-person-booth" label="Open Voting" value=voting_proposals color="warn" %}
-        {% include "capitol/partials/_stat_card.html" with icon="fa-solid fa-circle-check" label="Passed" value=enacted_proposals color="success" %}
-        {% include "capitol/partials/_stat_card.html" with icon="fa-solid fa-stamp" label="Decisions" value=assembly_decisions color="accent" %}
-        {% include "capitol/partials/_stat_card.html" with icon="fa-solid fa-scroll" label="Rules" value=community_rules color="neutral" %}
-      </div>
-    </div>
-
-    <!-- Stat cards — Tribunal row -->
-    <div>
-      <p class="mb-3 text-xs font-semibold uppercase tracking-wide opacity-55">
-        <i class="fa-solid fa-scale-balanced mr-1"></i>{% trans "Tribunal" %}
-      </p>
-      <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-        {% include "capitol/partials/_stat_card.html" with icon="fa-solid fa-folder-open" label="Total Cases" value=total_cases color="accent" %}
-        {% include "capitol/partials/_stat_card.html" with icon="fa-solid fa-circle-exclamation" label="Open Cases" value=open_cases color="warn" %}
-        {% include "capitol/partials/_stat_card.html" with icon="fa-solid fa-check-to-slot" label="Resolved" value=resolved_cases color="success" %}
-        {% include "capitol/partials/_stat_card.html" with icon="fa-solid fa-gavel" label="Rulings" value=tribunal_rulings color="accent" %}
-        {% include "capitol/partials/_stat_card.html" with icon="fa-solid fa-users" label="Jury Sessions" value=jury_sessions color="neutral" %}
-      </div>
-    </div>
-
-    <!-- Stat cards — Treasury row -->
-    <div>
-      <p class="mb-3 text-xs font-semibold uppercase tracking-wide opacity-55">
-        <i class="fa-solid fa-chart-pie mr-1"></i>{% trans "Treasury" %}
-      </p>
-      <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-        {% include "capitol/partials/_stat_card.html" with icon="fa-solid fa-building" label="Communities" value=treasury_communities color="accent" %}
-      </div>
-    </div>
-
-    <!-- Charts row -->
-    <div class="grid gap-5 lg:grid-cols-3">
-
-      <!-- Proposals by status donut -->
-      <div
-        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-        class="rounded-xl border p-5 shadow-sm">
-        <h2 class="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide opacity-60">
-          <i class="fa-solid fa-landmark"></i> {% trans "Proposals by Status" %}
-        </h2>
-        <canvas id="proposalsChart" height="220"></canvas>
-      </div>
-
-      <!-- Cases by status donut -->
-      <div
-        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-        class="rounded-xl border p-5 shadow-sm">
-        <h2 class="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide opacity-60">
-          <i class="fa-solid fa-scale-balanced"></i> {% trans "Cases by Status" %}
-        </h2>
-        <canvas id="casesChart" height="220"></canvas>
-      </div>
-
-      <!-- Activity line (30 days) -->
-      <div
-        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-        class="rounded-xl border p-5 shadow-sm">
-        <h2 class="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide opacity-60">
-          <i class="fa-solid fa-arrow-trend-up"></i> {% trans "Activity (30 days)" %}
-        </h2>
-        <canvas id="activityChart" height="220"></canvas>
-      </div>
-
-    </div>
-
-    <!-- Branch cards -->
-    <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-
-      <!-- Magistrate -->
-      <a href="{% url 'magistrate:overview' %}"
-         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-white/5' : 'border-accent-2 bg-bubble-bg-light hover:bg-black/5'"
-         class="group rounded-xl border p-6 shadow-sm transition-colors">
-        <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl"
-             :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
-          <i class="fa-solid fa-building-columns text-xl"
-             :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
-        </div>
-        <h3 class="font-bold text-base mb-1">{% trans "Magistrate" %}</h3>
-        <p class="text-xs opacity-55 leading-relaxed">
-          {% trans "Elected magistrates, roles, oversight domains, decisions, fines, and asset freezes." %}
-        </p>
-        <div class="mt-4 text-xs font-semibold"
-             :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
-          {% trans "Enter" %} <i class="fa-solid fa-arrow-right text-xs ml-1"></i>
-        </div>
-      </a>
-
-      <!-- Assembly -->
-      <a href="{% url 'assembly:overview' %}"
-         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-white/5' : 'border-accent-2 bg-bubble-bg-light hover:bg-black/5'"
-         class="group rounded-xl border p-6 shadow-sm transition-colors">
-        <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl"
-             :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
-          <i class="fa-solid fa-landmark text-xl"
-             :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
-        </div>
-        <h3 class="font-bold text-base mb-1">{% trans "Assembly" %}</h3>
-        <p class="text-xs opacity-55 leading-relaxed">
-          {% trans "Community governance, proposals, voting, rules, senate veto, and poll taxes." %}
-        </p>
-        <div class="mt-4 text-xs font-semibold"
-             :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
-          {% trans "Enter" %} <i class="fa-solid fa-arrow-right text-xs ml-1"></i>
-        </div>
-      </a>
-
-      <!-- Tribunal -->
-      <a href="{% url 'tribunal:dashboard' %}"
-         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-white/5' : 'border-accent-2 bg-bubble-bg-light hover:bg-black/5'"
-         class="group rounded-xl border p-6 shadow-sm transition-colors">
-        <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl"
-             :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
-          <i class="fa-solid fa-scale-balanced text-xl"
-             :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
-        </div>
-        <h3 class="font-bold text-base mb-1">{% trans "Tribunal" %}</h3>
-        <p class="text-xs opacity-55 leading-relaxed">
-          {% trans "Dispute resolution, cases, evidence, jury sessions, claims, and rulings." %}
-        </p>
-        <div class="mt-4 text-xs font-semibold"
-             :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
-          {% trans "Enter" %} <i class="fa-solid fa-arrow-right text-xs ml-1"></i>
-        </div>
-      </a>
-
-      <!-- Treasury -->
-      <a href="{% url 'treasury:list' %}"
-         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-white/5' : 'border-accent-2 bg-bubble-bg-light hover:bg-black/5'"
-         class="group rounded-xl border p-6 shadow-sm transition-colors">
-        <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl"
-             :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
-          <i class="fa-solid fa-chart-pie text-xl"
-             :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
-        </div>
-        <h3 class="font-bold text-base mb-1">{% trans "Treasury" %}</h3>
-        <p class="text-xs opacity-55 leading-relaxed">
-          {% trans "Community budgets, holdings, tariffs, subscriptions, payroll, and cash-flow." %}
-        </p>
-        <div class="mt-4 text-xs font-semibold"
-             :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
-          {% trans "Enter" %} <i class="fa-solid fa-arrow-right text-xs ml-1"></i>
-        </div>
-      </a>
-
-    </div>
-
-  </div>
-</section>
-
+{% block capitol_end_script %}
 <script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
 <script>
 (function () {
@@ -340,47 +32,30 @@
     return s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
   }
 
-  // Proposals by status — donut
   const propData = JSON.parse(document.getElementById('proposals-by-status').textContent);
   if (propData.length) {
     new Chart(document.getElementById('proposalsChart'), {
       type: 'doughnut',
       data: {
         labels: propData.map(d => labelFor(d.status)),
-        datasets: [{
-          data: propData.map(d => d.n),
-          backgroundColor: propData.map(d => STATUS_COLORS[d.status] || '#94a3b8'),
-          borderWidth: 0,
-        }]
+        datasets: [{ data: propData.map(d => d.n), backgroundColor: propData.map(d => STATUS_COLORS[d.status] || '#94a3b8'), borderWidth: 0 }]
       },
-      options: {
-        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 10 } } },
-        cutout: '60%',
-      }
+      options: { plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 10 } } }, cutout: '60%' }
     });
   }
 
-  // Cases by status — donut
   const caseData = JSON.parse(document.getElementById('cases-by-status').textContent);
   if (caseData.length) {
     new Chart(document.getElementById('casesChart'), {
       type: 'doughnut',
       data: {
         labels: caseData.map(d => labelFor(d.status)),
-        datasets: [{
-          data: caseData.map(d => d.n),
-          backgroundColor: caseData.map(d => STATUS_COLORS[d.status] || '#94a3b8'),
-          borderWidth: 0,
-        }]
+        datasets: [{ data: caseData.map(d => d.n), backgroundColor: caseData.map(d => STATUS_COLORS[d.status] || '#94a3b8'), borderWidth: 0 }]
       },
-      options: {
-        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 10 } } },
-        cutout: '60%',
-      }
+      options: { plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 10 } } }, cutout: '60%' }
     });
   }
 
-  // Activity line chart
   const activity = JSON.parse(document.getElementById('activity-series').textContent);
   if (activity.length) {
     new Chart(document.getElementById('activityChart'), {
@@ -388,33 +63,9 @@
       data: {
         labels: activity.map(d => d.date),
         datasets: [
-          {
-            label: 'Decisions',
-            data: activity.map(d => d.decisions),
-            borderColor: isDark ? '#818cf8' : '#4f46e5',
-            backgroundColor: 'transparent',
-            borderWidth: 2,
-            pointRadius: 2,
-            tension: 0.35,
-          },
-          {
-            label: 'Proposals',
-            data: activity.map(d => d.proposals),
-            borderColor: isDark ? '#34d399' : '#059669',
-            backgroundColor: 'transparent',
-            borderWidth: 2,
-            pointRadius: 2,
-            tension: 0.35,
-          },
-          {
-            label: 'Cases',
-            data: activity.map(d => d.cases),
-            borderColor: isDark ? '#fbbf24' : '#d97706',
-            backgroundColor: 'transparent',
-            borderWidth: 2,
-            pointRadius: 2,
-            tension: 0.35,
-          },
+          { label: 'Decisions', data: activity.map(d => d.decisions), borderColor: isDark ? '#818cf8' : '#4f46e5', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 2, tension: 0.35 },
+          { label: 'Proposals', data: activity.map(d => d.proposals), borderColor: isDark ? '#34d399' : '#059669', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 2, tension: 0.35 },
+          { label: 'Cases',     data: activity.map(d => d.cases),     borderColor: isDark ? '#fbbf24' : '#d97706', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 2, tension: 0.35 },
         ]
       },
       options: {
@@ -428,4 +79,208 @@
   }
 })();
 </script>
+{% endblock %}
+
+{% block capitol_content %}
+{{ activity_series|json_script:"activity-series" }}
+{{ proposals_by_status_json|json_script:"proposals-by-status" }}
+{{ cases_by_status_json|json_script:"cases-by-status" }}
+
+<!-- Arc / Gate Hero -->
+<div
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="relative overflow-hidden rounded-2xl border shadow-sm">
+
+  <div class="pointer-events-none absolute inset-0 flex items-end justify-center opacity-10" aria-hidden="true">
+    <svg viewBox="0 0 800 340" class="w-full max-w-3xl" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="50" y="310" width="700" height="18" rx="3" fill="currentColor"/>
+      <rect x="90"  y="298" width="620" height="12" rx="2" fill="currentColor"/>
+      <rect x="130" y="288" width="540" height="10" rx="2" fill="currentColor"/>
+      <rect x="160" y="100" width="22" height="188" rx="4" fill="currentColor"/>
+      <rect x="210" y="100" width="22" height="188" rx="4" fill="currentColor"/>
+      <rect x="260" y="100" width="22" height="188" rx="4" fill="currentColor"/>
+      <rect x="518" y="100" width="22" height="188" rx="4" fill="currentColor"/>
+      <rect x="568" y="100" width="22" height="188" rx="4" fill="currentColor"/>
+      <rect x="618" y="100" width="22" height="188" rx="4" fill="currentColor"/>
+      <rect x="140" y="88" width="520" height="18" rx="3" fill="currentColor"/>
+      <polygon points="400,18 140,88 660,88" fill="currentColor" opacity="0.7"/>
+      <path d="M 310 288 L 310 180 Q 310 130 400 130 Q 490 130 490 180 L 490 288 Z" fill="currentColor" opacity="0.6"/>
+      <ellipse cx="400" cy="128" rx="18" ry="10" fill="currentColor"/>
+      <ellipse cx="400" cy="16" rx="28" ry="10" fill="currentColor"/>
+      <line x1="400" y1="6" x2="400" y2="0" stroke="currentColor" stroke-width="3"/>
+    </svg>
+  </div>
+
+  <div class="relative px-8 py-12 text-center sm:py-16">
+    <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+       class="text-xs font-semibold uppercase tracking-widest">
+      {% trans "Governance Hub" %}
+    </p>
+    <h1 class="mt-2 flex items-center justify-center gap-3 text-4xl font-bold sm:text-5xl">
+      <i class="fa-solid fa-landmark-dome"></i>
+      {% trans "Capitol" %}
+    </h1>
+    <p class="mt-3 max-w-xl mx-auto text-sm opacity-60 leading-relaxed">
+      {% trans "The seat of community governance — magistrates, assembly, tribunal, and treasury all in one place." %}
+    </p>
+
+    <div class="mt-6 flex flex-wrap items-center justify-center gap-3">
+      <a href="{% url 'magistrate:overview' %}"
+         :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+         class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+        <i class="fa-solid fa-building-columns"></i> {% trans "Magistrate" %}
+      </a>
+      <a href="{% url 'assembly:overview' %}"
+         :class="darkMode ? 'border-accent-1 hover:bg-white/5' : 'border-accent-2 hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition">
+        <i class="fa-solid fa-landmark"></i> {% trans "Assembly" %}
+      </a>
+      <a href="{% url 'tribunal:dashboard' %}"
+         :class="darkMode ? 'border-accent-1 hover:bg-white/5' : 'border-accent-2 hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition">
+        <i class="fa-solid fa-scale-balanced"></i> {% trans "Tribunal" %}
+      </a>
+      <a href="{% url 'treasury:list' %}"
+         :class="darkMode ? 'border-accent-1 hover:bg-white/5' : 'border-accent-2 hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition">
+        <i class="fa-solid fa-chart-pie"></i> {% trans "Treasury" %}
+      </a>
+    </div>
+  </div>
+</div>
+
+<!-- Magistrate stats -->
+<div>
+  <p class="mb-3 text-xs font-semibold uppercase tracking-wide opacity-55">
+    <i class="fa-solid fa-building-columns mr-1"></i>{% trans "Magistrate" %}
+  </p>
+  <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+    {% include "capitol/partials/_stat_card.html" with icon="fa-solid fa-user-tie" label="Active Magistrates" value=active_magistrates color="accent" %}
+    {% include "capitol/partials/_stat_card.html" with icon="fa-solid fa-sitemap" label="Roles" value=magistrate_roles color="neutral" %}
+    {% include "capitol/partials/_stat_card.html" with icon="fa-solid fa-gavel" label="Decisions" value=magistrate_decisions color="accent" %}
+    {% include "capitol/partials/_stat_card.html" with icon="fa-solid fa-file-lines" label="Reports" value=magistrate_reports color="neutral" %}
+    {% include "capitol/partials/_stat_card.html" with icon="fa-solid fa-triangle-exclamation" label="Fines Issued" value=magistrate_fines color="warn" %}
+    {% include "capitol/partials/_stat_card.html" with icon="fa-solid fa-lock" label="Active Freezes" value=active_freezes color="warn" %}
+  </div>
+</div>
+
+<!-- Assembly stats -->
+<div>
+  <p class="mb-3 text-xs font-semibold uppercase tracking-wide opacity-55">
+    <i class="fa-solid fa-landmark mr-1"></i>{% trans "Assembly" %}
+  </p>
+  <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+    {% include "capitol/partials/_stat_card.html" with icon="fa-solid fa-file-circle-plus" label="Total Proposals" value=total_proposals color="accent" %}
+    {% include "capitol/partials/_stat_card.html" with icon="fa-solid fa-person-booth" label="Open Voting" value=voting_proposals color="warn" %}
+    {% include "capitol/partials/_stat_card.html" with icon="fa-solid fa-circle-check" label="Passed" value=enacted_proposals color="success" %}
+    {% include "capitol/partials/_stat_card.html" with icon="fa-solid fa-stamp" label="Decisions" value=assembly_decisions color="accent" %}
+    {% include "capitol/partials/_stat_card.html" with icon="fa-solid fa-scroll" label="Rules" value=community_rules color="neutral" %}
+  </div>
+</div>
+
+<!-- Tribunal stats -->
+<div>
+  <p class="mb-3 text-xs font-semibold uppercase tracking-wide opacity-55">
+    <i class="fa-solid fa-scale-balanced mr-1"></i>{% trans "Tribunal" %}
+  </p>
+  <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+    {% include "capitol/partials/_stat_card.html" with icon="fa-solid fa-folder-open" label="Total Cases" value=total_cases color="accent" %}
+    {% include "capitol/partials/_stat_card.html" with icon="fa-solid fa-circle-exclamation" label="Open Cases" value=open_cases color="warn" %}
+    {% include "capitol/partials/_stat_card.html" with icon="fa-solid fa-check-to-slot" label="Resolved" value=resolved_cases color="success" %}
+    {% include "capitol/partials/_stat_card.html" with icon="fa-solid fa-gavel" label="Rulings" value=tribunal_rulings color="accent" %}
+    {% include "capitol/partials/_stat_card.html" with icon="fa-solid fa-users" label="Jury Sessions" value=jury_sessions color="neutral" %}
+  </div>
+</div>
+
+<!-- Treasury stats -->
+<div>
+  <p class="mb-3 text-xs font-semibold uppercase tracking-wide opacity-55">
+    <i class="fa-solid fa-chart-pie mr-1"></i>{% trans "Treasury" %}
+  </p>
+  <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+    {% include "capitol/partials/_stat_card.html" with icon="fa-solid fa-building" label="Communities" value=treasury_communities color="accent" %}
+  </div>
+</div>
+
+<!-- Charts -->
+<div class="grid gap-5 lg:grid-cols-3">
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-xl border p-5 shadow-sm">
+    <h2 class="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide opacity-60">
+      <i class="fa-solid fa-landmark"></i> {% trans "Proposals by Status" %}
+    </h2>
+    <canvas id="proposalsChart" height="220"></canvas>
+  </div>
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-xl border p-5 shadow-sm">
+    <h2 class="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide opacity-60">
+      <i class="fa-solid fa-scale-balanced"></i> {% trans "Cases by Status" %}
+    </h2>
+    <canvas id="casesChart" height="220"></canvas>
+  </div>
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-xl border p-5 shadow-sm">
+    <h2 class="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide opacity-60">
+      <i class="fa-solid fa-arrow-trend-up"></i> {% trans "Activity (30 days)" %}
+    </h2>
+    <canvas id="activityChart" height="220"></canvas>
+  </div>
+</div>
+
+<!-- Branch cards -->
+<div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+  <a href="{% url 'magistrate:overview' %}"
+     :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-white/5' : 'border-accent-2 bg-bubble-bg-light hover:bg-black/5'"
+     class="group rounded-xl border p-6 shadow-sm transition-colors">
+    <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl"
+         :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
+      <i class="fa-solid fa-building-columns text-xl" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+    </div>
+    <h3 class="font-bold text-base mb-1">{% trans "Magistrate" %}</h3>
+    <p class="text-xs opacity-55 leading-relaxed">{% trans "Elected magistrates, roles, oversight domains, decisions, fines, and asset freezes." %}</p>
+    <div class="mt-4 text-xs font-semibold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+      {% trans "Enter" %} <i class="fa-solid fa-arrow-right text-xs ml-1"></i>
+    </div>
+  </a>
+  <a href="{% url 'assembly:overview' %}"
+     :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-white/5' : 'border-accent-2 bg-bubble-bg-light hover:bg-black/5'"
+     class="group rounded-xl border p-6 shadow-sm transition-colors">
+    <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl"
+         :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
+      <i class="fa-solid fa-landmark text-xl" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+    </div>
+    <h3 class="font-bold text-base mb-1">{% trans "Assembly" %}</h3>
+    <p class="text-xs opacity-55 leading-relaxed">{% trans "Community governance, proposals, voting, rules, senate veto, and poll taxes." %}</p>
+    <div class="mt-4 text-xs font-semibold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+      {% trans "Enter" %} <i class="fa-solid fa-arrow-right text-xs ml-1"></i>
+    </div>
+  </a>
+  <a href="{% url 'tribunal:dashboard' %}"
+     :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-white/5' : 'border-accent-2 bg-bubble-bg-light hover:bg-black/5'"
+     class="group rounded-xl border p-6 shadow-sm transition-colors">
+    <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl"
+         :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
+      <i class="fa-solid fa-scale-balanced text-xl" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+    </div>
+    <h3 class="font-bold text-base mb-1">{% trans "Tribunal" %}</h3>
+    <p class="text-xs opacity-55 leading-relaxed">{% trans "Dispute resolution, cases, evidence, jury sessions, claims, and rulings." %}</p>
+    <div class="mt-4 text-xs font-semibold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+      {% trans "Enter" %} <i class="fa-solid fa-arrow-right text-xs ml-1"></i>
+    </div>
+  </a>
+  <a href="{% url 'treasury:list' %}"
+     :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-white/5' : 'border-accent-2 bg-bubble-bg-light hover:bg-black/5'"
+     class="group rounded-xl border p-6 shadow-sm transition-colors">
+    <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl"
+         :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
+      <i class="fa-solid fa-chart-pie text-xl" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+    </div>
+    <h3 class="font-bold text-base mb-1">{% trans "Treasury" %}</h3>
+    <p class="text-xs opacity-55 leading-relaxed">{% trans "Community budgets, holdings, tariffs, subscriptions, payroll, and cash-flow." %}</p>
+    <div class="mt-4 text-xs font-semibold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+      {% trans "Enter" %} <i class="fa-solid fa-arrow-right text-xs ml-1"></i>
+    </div>
+  </a>
+</div>
+
 {% endblock %}

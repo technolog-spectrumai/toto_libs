@@ -1,86 +1,74 @@
-{% extends "oya/base.html" %}
+{% extends "capitol/base.html" %}
 {% load i18n %}
 
-{% block title %}{% block treasury_title %}Treasury{% endblock %} | {{ platform.site_name }}{% endblock %}
+{% block capitol_title %}{% block treasury_title %}Treasury{% endblock %}{% endblock %}
+{% block tab_treasury %}border-b-2 border-current -mb-px{% endblock %}
 
-{% block start_script %}
-<style>[x-cloak] { display: none !important; }</style>
-{% endblock %}
+{% block capitol_content %}
 
-{% block content %}
-<section
-  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
-  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
-  <div class="mx-auto max-w-7xl space-y-6">
+  <header class="space-y-1">
+    <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+       class="text-xs font-semibold uppercase tracking-wide">{% trans "Community Budget" %}</p>
+    <h1 class="flex items-center gap-3 text-3xl font-bold">
+      <i class="fa-solid fa-chart-pie"></i>
+      {% trans "Treasury" %}
+    </h1>
+  </header>
 
-    <header class="space-y-2">
-      <a href="{% url 'capitol:overview' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
-        <i class="fa-solid fa-arrow-left"></i> {% trans "Capitol" %}
-      </a>
-      <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-         class="text-xs font-semibold uppercase tracking-wide">{% trans "Community Budget" %}</p>
-      <h1 class="flex items-center gap-3 text-3xl font-bold">
-        <i class="fa-solid fa-chart-pie"></i>
-        {% trans "Treasury" %}
-      </h1>
-    </header>
+  <!-- Treasury tab nav -->
+  <nav :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+       class="flex flex-wrap gap-1 border-b pb-0">
+    <a href="{% url 'treasury:list' %}"
+       :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+       class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+              {% block tab_overview %}opacity-50{% endblock %}">
+      <i class="fa-solid fa-chart-pie"></i>
+      {% trans "Overview" %}
+    </a>
+    <a href="{% url 'tariffs:tariff_list' %}"
+       :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+       class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+              {% block tab_tariffs %}opacity-50{% endblock %}">
+      <i class="fa-solid fa-receipt"></i>
+      {% trans "Tariffs" %}
+    </a>
+    <a href="{% url 'subscriptions:plan_list' %}"
+       :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+       class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+              {% block tab_subscriptions %}opacity-50{% endblock %}">
+      <i class="fa-solid fa-repeat"></i>
+      {% trans "Subscriptions" %}
+    </a>
+    <a href="{% url 'contracts:payroll_list' %}"
+       :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+       class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+              {% block tab_payroll %}opacity-50{% endblock %}">
+      <i class="fa-solid fa-money-check-dollar"></i>
+      {% trans "Payroll" %}
+    </a>
+  </nav>
 
-    <!-- Top-level tabs -->
-    <nav :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
-         class="flex flex-wrap gap-1 border-b pb-0">
-      <a href="{% url 'treasury:list' %}"
-         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
-                {% block tab_overview %}opacity-50{% endblock %}">
-        <i class="fa-solid fa-chart-pie"></i>
-        {% trans "Overview" %}
-      </a>
-      <a href="{% url 'tariffs:tariff_list' %}"
-         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
-                {% block tab_tariffs %}opacity-50{% endblock %}">
-        <i class="fa-solid fa-receipt"></i>
-        {% trans "Tariffs" %}
-      </a>
-      <a href="{% url 'subscriptions:plan_list' %}"
-         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
-                {% block tab_subscriptions %}opacity-50{% endblock %}">
-        <i class="fa-solid fa-repeat"></i>
-        {% trans "Subscriptions" %}
-      </a>
-      <a href="{% url 'contracts:payroll_list' %}"
-         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
-                {% block tab_payroll %}opacity-50{% endblock %}">
-        <i class="fa-solid fa-money-check-dollar"></i>
-        {% trans "Payroll" %}
-      </a>
-    </nav>
+  {% if messages %}
+    {% for message in messages %}
+      {% if 'error' in message.tags %}
+        <div class="rounded-lg border px-4 py-3 text-sm font-medium"
+             :class="darkMode ? 'border-red-500/30 bg-red-900/20 text-red-300' : 'border-red-300 bg-red-50 text-red-700'">
+          <i class="fa-solid fa-triangle-exclamation mr-1"></i> {{ message }}
+        </div>
+      {% elif 'success' in message.tags %}
+        <div class="rounded-lg border px-4 py-3 text-sm font-medium"
+             :class="darkMode ? 'border-green-500/30 bg-green-900/20 text-green-300' : 'border-green-300 bg-green-50 text-green-700'">
+          <i class="fa-solid fa-circle-check mr-1"></i> {{ message }}
+        </div>
+      {% else %}
+        <div class="rounded-lg border px-4 py-3 text-sm font-medium"
+             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+          {{ message }}
+        </div>
+      {% endif %}
+    {% endfor %}
+  {% endif %}
 
-    {% if messages %}
-      {% for message in messages %}
-        {% if 'error' in message.tags %}
-          <div class="rounded-lg border px-4 py-3 text-sm font-medium"
-               :class="darkMode ? 'border-red-500/30 bg-red-900/20 text-red-300' : 'border-red-300 bg-red-50 text-red-700'">
-            <i class="fa-solid fa-triangle-exclamation mr-1"></i> {{ message }}
-          </div>
-        {% elif 'success' in message.tags %}
-          <div class="rounded-lg border px-4 py-3 text-sm font-medium"
-               :class="darkMode ? 'border-green-500/30 bg-green-900/20 text-green-300' : 'border-green-300 bg-green-50 text-green-700'">
-            <i class="fa-solid fa-circle-check mr-1"></i> {{ message }}
-          </div>
-        {% else %}
-          <div class="rounded-lg border px-4 py-3 text-sm font-medium"
-               :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
-            {{ message }}
-          </div>
-        {% endif %}
-      {% endfor %}
-    {% endif %}
+  {% block treasury_content %}{% endblock %}
 
-    {% block treasury_content %}{% endblock %}
-
-  </div>
-</section>
 {% endblock %}

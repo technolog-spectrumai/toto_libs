@@ -1,10 +1,11 @@
-{% extends "oya/base.html" %}
+{% extends "capitol/base.html" %}
 {% load static %}
 {% load i18n %}
 
-{% block title %}{% block tribunal_title %}{% trans "Tribunal" %}{% endblock %} | {{ platform.site_name }}{% endblock %}
+{% block capitol_title %}{% block tribunal_title %}{% trans "Tribunal" %}{% endblock %}{% endblock %}
+{% block tab_tribunal %}border-b-2 border-current -mb-px{% endblock %}
 
-{% block start_script %}
+{% block capitol_start_script %}
 <script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
 {% include "oya/partials/dim.html" %}
 <style>
@@ -31,48 +32,42 @@
 {% block tribunal_start_script %}{% endblock %}
 {% endblock %}
 
-{% block content %}
-<section
-  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
-  class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8 tribunal-shell">
-  <div class="mx-auto max-w-7xl space-y-6">
-    <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-      <div class="space-y-2">
-        <nav class="flex flex-wrap items-center gap-3 text-sm">
-          <a href="{% url 'capitol:overview' %}" class="inline-flex items-center gap-2 underline hover:opacity-80">
-            <i class="fa-solid fa-arrow-left"></i>{% trans "Capitol" %}
-          </a>
-          <a href="{% url 'tribunal:dashboard' %}" class="inline-flex items-center gap-2 underline hover:opacity-80">
-            <i class="fa-solid fa-scale-balanced"></i>{% trans "Tribunal" %}
-          </a>
-          {% block tribunal_header_nav %}{% endblock %}
-        </nav>
-        <div>
-          <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-xs font-semibold uppercase tracking-wide">
-            {% trans "Reason & Resolution" %}
-          </p>
-          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
-            {% block tribunal_heading_icon %}<i class="fa-solid fa-scale-balanced"></i>{% endblock %}
-            {% block tribunal_heading %}{% trans "Tribunal" %}{% endblock %}
-          </h1>
-        </div>
+{% block capitol_content %}
+<div class="tribunal-shell space-y-6">
+
+  <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+    <div class="space-y-2">
+      <nav class="flex flex-wrap items-center gap-3 text-sm">
+        <a href="{% url 'tribunal:dashboard' %}" class="inline-flex items-center gap-2 underline hover:opacity-80">
+          <i class="fa-solid fa-scale-balanced"></i>{% trans "Tribunal" %}
+        </a>
+        {% block tribunal_header_nav %}{% endblock %}
+      </nav>
+      <div>
+        <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-xs font-semibold uppercase tracking-wide">
+          {% trans "Reason & Resolution" %}
+        </p>
+        <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+          {% block tribunal_heading_icon %}<i class="fa-solid fa-scale-balanced"></i>{% endblock %}
+          {% block tribunal_heading %}{% trans "Tribunal" %}{% endblock %}
+        </h1>
       </div>
-      <div class="tribunal-actions">{% block tribunal_header_actions %}{% endblock %}</div>
-    </header>
+    </div>
+    <div class="tribunal-actions">{% block tribunal_header_actions %}{% endblock %}</div>
+  </header>
 
-    {% if messages %}
-      <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border p-4 shadow-sm">
-        <div class="space-y-2">
-          {% for message in messages %}
-            <div :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="rounded-lg border px-4 py-3 text-sm font-semibold">
-              {{ message }}
-            </div>
-          {% endfor %}
-        </div>
-      </section>
-    {% endif %}
+  {% if messages %}
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border p-4 shadow-sm">
+      <div class="space-y-2">
+        {% for message in messages %}
+          <div :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="rounded-lg border px-4 py-3 text-sm font-semibold">
+            {{ message }}
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
 
-    {% block tribunal_content %}{% endblock %}
-  </div>
-</section>
+  {% block tribunal_content %}{% endblock %}
+</div>
 {% endblock %}

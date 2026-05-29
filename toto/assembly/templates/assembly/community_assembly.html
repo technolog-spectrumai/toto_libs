@@ -1,13 +1,13 @@
-{% extends "oya/base.html" %}
+{% extends "assembly/base.html" %}
 {% load static i18n %}
 
-{% block title %}Assembly – {{ community.name }}{% endblock %}
+{% block assembly_title %}Assembly – {{ community.name }}{% endblock %}
 
-{% block start_script %}
+{% block assembly_start_script %}
 <style>[x-cloak]{display:none!important}</style>
 {% endblock %}
 
-{% block content %}
+{% block assembly_content %}
 <section
   :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
   class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">

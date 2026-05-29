@@ -1,0 +1,63 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% block capitol_title %}Capitol{% endblock %} | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+<style>[x-cloak] { display: none !important; }</style>
+{% block capitol_start_script %}{% endblock %}
+{% endblock %}
+
+{% block end_script %}{% block capitol_end_script %}{% endblock %}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-7xl space-y-6">
+
+    <!-- Capitol tab nav -->
+    <nav :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+         class="flex flex-wrap gap-1 border-b pb-0">
+      <a href="{% url 'capitol:overview' %}"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                {% block tab_overview %}opacity-50{% endblock %}">
+        <i class="fa-solid fa-landmark-dome"></i>
+        {% trans "Overview" %}
+      </a>
+      <a href="{% url 'magistrate:overview' %}"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                {% block tab_magistrate %}opacity-50{% endblock %}">
+        <i class="fa-solid fa-building-columns"></i>
+        {% trans "Magistrate" %}
+      </a>
+      <a href="{% url 'assembly:overview' %}"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                {% block tab_assembly %}opacity-50{% endblock %}">
+        <i class="fa-solid fa-landmark"></i>
+        {% trans "Assembly" %}
+      </a>
+      <a href="{% url 'tribunal:dashboard' %}"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                {% block tab_tribunal %}opacity-50{% endblock %}">
+        <i class="fa-solid fa-scale-balanced"></i>
+        {% trans "Tribunal" %}
+      </a>
+      <a href="{% url 'treasury:list' %}"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                {% block tab_treasury %}opacity-50{% endblock %}">
+        <i class="fa-solid fa-chart-pie"></i>
+        {% trans "Treasury" %}
+      </a>
+    </nav>
+
+    {% block capitol_content %}{% endblock %}
+
+  </div>
+</section>
+{% endblock %}

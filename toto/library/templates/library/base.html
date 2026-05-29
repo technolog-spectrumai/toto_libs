@@ -1,54 +1,39 @@
-{% extends "oya/base.html" %}
+{% extends "academy/base.html" %}
 {% load i18n %}
 
-{% block title %}{% block library_title %}Library{% endblock %} | {{ platform.site_name }}{% endblock %}
+{% block academy_title %}{% block library_title %}Library{% endblock %}{% endblock %}
+{% block tab_library %}border-b-2 border-current -mb-px{% endblock %}
 
-{% block content %}
-<section
-  :class="darkMode
-    ? 'bg-primary-bg-dark text-text-main-dark'
-    : 'bg-primary-bg-light text-text-main-light'"
-  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+{% block academy_content %}
 
-  <div class="mx-auto max-w-7xl space-y-6">
+  <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+    <div class="space-y-1">
+      <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+         class="text-xs font-semibold uppercase tracking-wide">
+        {% trans "Knowledge Base" %}
+      </p>
+      <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+        <i class="fa-solid fa-book-open"></i>
+        {% trans "Library" %}
+      </h1>
+    </div>
 
-    <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-      <div class="space-y-2">
-        <a href="{% url 'academy:course-list' %}"
-           class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
-          <i class="fa-solid fa-arrow-left"></i>
-          {% trans "Academy" %}
-        </a>
-        <div>
-          <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-             class="text-xs font-semibold uppercase tracking-wide">
-            {% trans "Knowledge Base" %}
-          </p>
-          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
-            <i class="fa-solid fa-book-open"></i>
-            {% trans "Library" %}
-          </h1>
-        </div>
-      </div>
+    <nav class="flex flex-wrap gap-2">
+      <a href="{% url 'library:book_list' %}"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+        <i class="fa-solid fa-book"></i>
+        {% trans "Books" %}
+      </a>
+      <a href="{% url 'library:article_list' %}"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+        <i class="fa-solid fa-newspaper"></i>
+        {% trans "Articles" %}
+      </a>
+    </nav>
+  </header>
 
-      <nav class="flex flex-wrap gap-2">
-        <a href="{% url 'library:book_list' %}"
-           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-           class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-          <i class="fa-solid fa-book"></i>
-          {% trans "Books" %}
-        </a>
-        <a href="{% url 'library:article_list' %}"
-           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-           class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-          <i class="fa-solid fa-newspaper"></i>
-          {% trans "Articles" %}
-        </a>
-      </nav>
-    </header>
+  {% block library_content %}{% endblock %}
 
-    {% block library_content %}{% endblock %}
-
-  </div>
-</section>
 {% endblock %}

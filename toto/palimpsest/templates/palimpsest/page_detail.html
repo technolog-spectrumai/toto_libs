@@ -1,9 +1,9 @@
-{% extends "oya/base.html" %}
+{% extends "palimpsest/base.html" %}
 {% load static %}
 
-{% block title %}{{ page.title }} | Blog | {{ platform.site_name }}{% endblock %}
+{% block palimpsest_title %}{{ page.title }} | Blog | {{ platform.site_name }}{% endblock %}
 
-{% block start_script %}
+{% block palimpsest_start_script %}
 <style>
   .palimpsest-prose {
     font-size: 1.05rem;
@@ -36,7 +36,7 @@
 </style>
 {% endblock %}
 
-{% block content %}
+{% block palimpsest_content %}
 <section
   :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
   class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
