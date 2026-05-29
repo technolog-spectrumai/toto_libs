@@ -15,8 +15,8 @@
 
     <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
       <div class="space-y-2">
-        <a href="{% url 'core:dashboard' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
-          <i class="fa-solid fa-arrow-left"></i> {% trans "Dashboard" %}
+        <a href="{% url 'capitol:overview' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+          <i class="fa-solid fa-arrow-left"></i> {% trans "Capitol" %}
         </a>
         <div>
           <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-xs font-semibold uppercase tracking-wide">

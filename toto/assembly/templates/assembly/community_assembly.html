@@ -17,11 +17,18 @@
     <!-- Header -->
     <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
       <div class="space-y-2">
-        <a href="{% url 'socialhub:community_detail' community.slug %}"
-          class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
-          <i class="fa-solid fa-arrow-left"></i>
-          {{ community.name }}
-        </a>
+        <div class="flex flex-wrap items-center gap-4">
+          <a href="{% url 'capitol:overview' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+            <i class="fa-solid fa-arrow-left"></i> Capitol
+          </a>
+          <a href="{% url 'assembly:overview' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+            <i class="fa-solid fa-landmark"></i> Assembly
+          </a>
+          <a href="{% url 'socialhub:community_detail' community.slug %}"
+            class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+            {{ community.name }}
+          </a>
+        </div>
         <div>
           <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
             class="text-xs font-semibold uppercase tracking-wide">Community Assembly</p>

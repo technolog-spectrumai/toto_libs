@@ -7,6 +7,11 @@
 {% block contracts_content %}
 <div class="space-y-6">
 
+  <a href="{% url 'treasury:list' %}" class="inline-flex items-center gap-2 text-sm opacity-60 hover:opacity-100">
+    <i class="fa-solid fa-arrow-left"></i>
+    {% trans "Treasury" %}
+  </a>
+
   <div class="flex flex-wrap items-center justify-between gap-3">
     <form method="get" class="flex flex-wrap gap-2">
       <input type="text" name="q" value="{{ q }}"
