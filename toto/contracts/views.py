@@ -886,7 +886,7 @@ def loan_create(request):
         form = LoanCreateForm(request.POST)
         if form.is_valid():
             cd = form.cleaned_data
-            from .loan import create_loan_contract
+            from toto.loans.services import create_loan_contract
             contract = create_loan_contract(
                 name=cd["name"],
                 lender_person=cd["lender_person"],
