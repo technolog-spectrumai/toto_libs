@@ -13,6 +13,9 @@
 
   <div class="mx-auto max-w-5xl space-y-6">
     <header>
+      <a href="{% url 'academy:course-list' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80 mb-2">
+        <i class="fa-solid fa-arrow-left"></i> Academy
+      </a>
       <div>
         <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
            class="text-xs font-semibold uppercase tracking-wide">Quizzes</p>

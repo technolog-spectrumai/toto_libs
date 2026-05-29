@@ -1,15 +1,9 @@
-{% extends "oya/base.html" %}
+{% extends "academy/base.html" %}
 
-{% block title %}{{ teacher.display_name }} | {{ platform.site_name }}{% endblock %}
+{% block academy_title %}{{ teacher.display_name }}{% endblock %}
+{% block tab_courses %}border-b-2 border-current -mb-px{% endblock %}
 
-{% block content %}
-<section
-  :class="darkMode
-    ? 'bg-primary-bg-dark text-text-main-dark'
-    : 'bg-primary-bg-light text-text-main-light'"
-  class="min-h-screen px-6 py-16 transition-colors duration-300">
-
-  <div class="max-w-6xl mx-auto space-y-8">
+{% block academy_content %}
 
     <div
       :class="darkMode
@@ -203,6 +197,4 @@
       {% endif %}
     </section>
 
-  </div>
-</section>
 {% endblock %}
