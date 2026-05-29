@@ -17,105 +17,83 @@
   class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
   <div class="mx-auto max-w-7xl space-y-6">
 
-    <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-      <div class="space-y-2">
-        <a href="{% url 'core:dashboard' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
-          <i class="fa-solid fa-arrow-left"></i>
-          {% trans "Dashboard" %}
-        </a>
-        <div>
-          <p
-            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-            class="text-xs font-semibold uppercase tracking-wide">
-            {% trans "Toto Studio" %}
-          </p>
-          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
-            <i class="fa-solid fa-coins"></i>
-            {% trans "Assets" %}
-          </h1>
-        </div>
-      </div>
-
-      <nav class="flex flex-wrap gap-2">
-        <a
-          href="{% url 'assets:asset_list' %}"
-          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-          <i class="fa-solid fa-layer-group"></i>
-          {% trans "Assets" %}
-        </a>
-        <a
-          href="{% url 'assets:account_list' %}"
-          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-          <i class="fa-solid fa-users"></i>
-          {% trans "Accounts" %}
-        </a>
-        <a
-          href="{% url 'assets:transaction_list' %}"
-          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-          <i class="fa-solid fa-list"></i>
-          {% trans "Transactions" %}
-        </a>
-        <a
-          href="{% url 'assets:chain_verify' %}"
-          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-          <i class="fa-solid fa-link"></i>
-          {% trans "Chain" %}
-        </a>
-        <a
-          href="{% url 'bourse:exchange_center' %}"
-          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-          <i class="fa-solid fa-chart-line"></i>
-          {% trans "Bourse" %}
-        </a>
-        <a
-          href="{% url 'assets:wallet' %}"
-          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-          <i class="fa-solid fa-wallet"></i>
-          {% trans "Wallet" %}
-        </a>
-        <a
-          href="{% url 'assets:authorization_list' %}"
-          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-          <i class="fa-solid fa-key"></i>
-          {% trans "Authorizations" %}
-        </a>
-        <a
-          href="{% url 'assets:contract_list' %}"
-          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-          <i class="fa-solid fa-scroll"></i>
-          {% trans "Contracts" %}
-        </a>
-        <a
-          href="{% url 'claims:overview' %}"
-          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-          <i class="fa-solid fa-file-contract"></i>
-          {% trans "Claims" %}
-        </a>
-        <a
-          href="{% url 'assets:ledger_flow' %}"
-          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-          <i class="fa-solid fa-diagram-project"></i>
-          {% trans "Flow" %}
-        </a>
-        <a
-          href="{% url 'tariffs:tariff_list' %}"
-          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-          class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-          <i class="fa-solid fa-receipt"></i>
-          {% trans "Tariffs" %}
-        </a>
-      </nav>
+    <header class="space-y-2">
+      <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+         class="text-xs font-semibold uppercase tracking-wide">
+        {% trans "Toto Studio" %}
+      </p>
+      <h1 class="flex items-center gap-3 text-3xl font-bold">
+        <i class="fa-solid fa-coins"></i>
+        {% trans "Assets" %}
+      </h1>
     </header>
+
+    <!-- Tab nav -->
+    <nav :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+         class="flex flex-wrap gap-1 border-b pb-0">
+      <a href="{% url 'assets:asset_list' %}"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                {% block tab_assets %}opacity-50{% endblock %}">
+        <i class="fa-solid fa-layer-group"></i>
+        {% trans "Assets" %}
+      </a>
+      <a href="{% url 'assets:account_list' %}"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                {% block tab_accounts %}opacity-50{% endblock %}">
+        <i class="fa-solid fa-users"></i>
+        {% trans "Accounts" %}
+      </a>
+      <a href="{% url 'assets:transaction_list' %}"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                {% block tab_transactions %}opacity-50{% endblock %}">
+        <i class="fa-solid fa-list"></i>
+        {% trans "Transactions" %}
+      </a>
+      <a href="{% url 'assets:wallet' %}"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                {% block tab_wallet %}opacity-50{% endblock %}">
+        <i class="fa-solid fa-wallet"></i>
+        {% trans "Wallet" %}
+      </a>
+      <a href="{% url 'assets:ledger_flow' %}"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                {% block tab_flow %}opacity-50{% endblock %}">
+        <i class="fa-solid fa-diagram-project"></i>
+        {% trans "Flow" %}
+      </a>
+      <a href="{% url 'assets:chain_verify' %}"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                {% block tab_chain %}opacity-50{% endblock %}">
+        <i class="fa-solid fa-link"></i>
+        {% trans "Chain" %}
+      </a>
+      <a href="{% url 'assets:authorization_list' %}"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                {% block tab_authorizations %}opacity-50{% endblock %}">
+        <i class="fa-solid fa-key"></i>
+        {% trans "Authorizations" %}
+      </a>
+      <a href="{% url 'invoice:invoice_list' %}"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                {% block tab_invoices %}opacity-50{% endblock %}">
+        <i class="fa-solid fa-file-invoice"></i>
+        {% trans "Invoices" %}
+      </a>
+      <a href="{% url 'contracts:contract_list' %}"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition opacity-50">
+        <i class="fa-solid fa-scroll"></i>
+        {% trans "Contracts" %}
+      </a>
+    </nav>
 
     {% block assets_content %}{% endblock %}
 

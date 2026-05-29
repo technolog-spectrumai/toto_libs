@@ -1,0 +1,9 @@
+{% extends "assets/base.html" %}
+{% load i18n %}
+
+{% block assets_title %}{% block invoice_title %}Invoices{% endblock %}{% endblock %}
+{% block tab_invoices %}border-b-2 border-current -mb-px{% endblock %}
+
+{% block assets_content %}
+  {% block invoice_content %}{% endblock %}
+{% endblock %}

@@ -1,38 +1,15 @@
-{% extends "oya/base.html" %}
+{% extends "invoice/base.html" %}
 {% load i18n %}
 
-{% block title %}{% trans "Invoice Metrics" %} | {{ platform.site_name }}{% endblock %}
+{% block invoice_title %}{% trans "Invoice Metrics" %}{% endblock %}
 
-{% block content %}
-<div
-  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
-  class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
+{% block invoice_content %}
+<div class="space-y-8">
 
-  <div class="mx-auto max-w-4xl space-y-8">
-
-    <!-- Header -->
-    <header class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-      <div class="space-y-2">
-        <a href="{% url 'invoice:invoice_list' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
-          <i class="fa-solid fa-arrow-left"></i>
-          {% trans "Invoice List" %}
-        </a>
-        <div>
-          <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-             class="text-xs font-semibold uppercase tracking-wide">{% trans "Billing" %}</p>
-          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
-            <i class="fa-solid fa-chart-bar"></i>
-            {% trans "Invoice Metrics" %}
-          </h1>
-        </div>
-      </div>
-      <a href="{% url 'invoice:invoice_list' %}"
-         :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2 text-text-main-light'"
-         class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
-        <i class="fa-solid fa-file-invoice"></i>
-        {% trans "All Invoices" %}
-      </a>
-    </header>
+  <a href="{% url 'invoice:invoice_list' %}" class="inline-flex items-center gap-2 text-sm opacity-60 hover:opacity-100">
+    <i class="fa-solid fa-arrow-left"></i>
+    {% trans "All Invoices" %}
+  </a>
 
     <!-- Status overview -->
     <section class="grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -167,5 +144,4 @@
     {% endif %}
 
   </div>
-</div>
 {% endblock %}
