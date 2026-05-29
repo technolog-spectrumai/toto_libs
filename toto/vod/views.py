@@ -210,6 +210,9 @@ def playback_event_api(request, collection_slug, video_slug):
     decision = can_access_video(request.user, video)
     if not decision.allowed:
         return JsonResponse({"ok": False, "reason": decision.reason}, status=403)
+
+    # VOD access is controlled by subscriptions (Phase 4), not per-stream tariffs.
+    # Storage of video files is metered by vault (storage.request / storage.transfer_mb).
     event = request.POST.get("event") or VodPlaybackEvent.EventKind.PLAY
     seconds = request.POST.get("seconds_watched") or request.POST.get("seconds") or 0
     playback = record_playback_event(request=request, video=video, event=event, seconds_watched=int(float(seconds)))

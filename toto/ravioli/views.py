@@ -331,6 +331,27 @@ def query_graph_data(request, query_id):
 @require_POST
 def run_cypher_query_view(request, query_id):
     selected_query = get_object_or_404(CypherQuery, pk=query_id)
+
+    # ── Tariff balance check ──────────────────────────────────────────────────
+    _ravioli_tariff = None
+    try:
+        from toto.tariffs.charge import (
+            InsufficientBalanceError, check_user_can_act, get_tariff_for_user,
+        )
+        _ravioli_tariff = get_tariff_for_user(request.user, "ravioli")
+        if _ravioli_tariff:
+            check_user_can_act(request.user, _ravioli_tariff, "ravioli.cypher_query", 1)
+    except InsufficientBalanceError as _exc:
+        return JsonResponse({
+            "error": str(_exc),
+            "insufficient_balance": True,
+            "asset": _exc.asset_name,
+            "needed": str(_exc.needed_display),
+            "have": str(_exc.have_display),
+        }, status=402)
+    except Exception:
+        _ravioli_tariff = None
+
     try:
         run = _trigger_workflow(
             "ravioli-run-cypher-query",
@@ -338,6 +359,16 @@ def run_cypher_query_view(request, query_id):
         )
     except Exception as exc:
         return JsonResponse({"error": str(exc)}, status=500)
+
+    # ── Charge after successful trigger ──────────────────────────────────────
+    try:
+        if _ravioli_tariff:
+            from toto.tariffs.charge import charge_user as _charge
+            _charge(request.user, _ravioli_tariff, "ravioli.cypher_query", 1,
+                    source_type="ravioli.CypherQuery", source_id=str(selected_query.pk))
+    except Exception:
+        pass
+
     return JsonResponse({"run_id": run.pk})
 
 

@@ -74,6 +74,13 @@ urlpatterns = [
         name="skill-tree-detail",
     ),
 
+    # Self-enrollment (subscription-gated)
+    path(
+        "courses/<slug:slug>/enroll/",
+        academy_views.course_enroll,
+        name="course-enroll",
+    ),
+
     # Certificates
     path(
         "certificates/<uuid:uuid>/",

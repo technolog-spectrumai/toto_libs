@@ -1,0 +1,32 @@
+{% extends "treasury/base.html" %}
+{% load i18n %}
+{% block budget_title %}{% trans "Confirm Delete" %}{% endblock %}
+{% block budget_content %}
+<div class="mx-auto max-w-lg">
+  <div :class="darkMode ? 'border-red-500/30 bg-red-900/10' : 'border-red-300 bg-red-50'"
+       class="rounded-lg border p-6 shadow-sm space-y-4">
+    <h2 class="text-xl font-bold text-red-500">{% trans "Confirm Delete" %}</h2>
+    <p class="text-sm">{% trans "Are you sure you want to delete:" %} <strong>{{ object }}</strong>?</p>
+    <form method="post" class="flex gap-3">
+      {% csrf_token %}
+      <button type="submit"
+              class="rounded-lg bg-red-600 px-5 py-2 text-sm font-semibold text-white transition hover:opacity-90">
+        {% trans "Delete" %}
+      </button>
+      {% if budget %}
+      <a href="{% url 'treasury:detail' budget.pk %}"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border px-5 py-2 text-sm font-semibold transition hover:opacity-80">
+        {% trans "Cancel" %}
+      </a>
+      {% else %}
+      <a href="{% url 'treasury:list' %}"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border px-5 py-2 text-sm font-semibold transition hover:opacity-80">
+        {% trans "Cancel" %}
+      </a>
+      {% endif %}
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,200 @@
+{% extends "treasury/base.html" %}
+{% load i18n %}
+{% block budget_title %}{{ budget.name }}{% endblock %}
+{% block budget_content %}
+<div class="space-y-6">
+
+  <!-- Header -->
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-6 shadow-sm">
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div class="space-y-1">
+        <div class="flex items-center gap-2">
+          <h2 class="text-2xl font-bold">{{ budget.name }}</h2>
+          <code class="rounded border border-current/20 px-2 py-0.5 text-sm">{{ budget.code }}</code>
+          <span class="rounded px-2 py-0.5 text-xs font-semibold
+            {% if budget.status == 'active' %}:class="darkMode ? 'bg-green-900/20 text-green-300' : 'bg-green-100 text-green-700'"
+            {% else %}:class="darkMode ? 'bg-yellow-900/20 text-yellow-300' : 'bg-yellow-100 text-yellow-700'"{% endif %}">
+            {{ budget.get_status_display }}
+          </span>
+        </div>
+        {% if budget.description %}<p class="text-sm opacity-70">{{ budget.description }}</p>{% endif %}
+        <div class="text-xs opacity-50">
+          {% trans "Asset" %}: {{ budget.asset.unit_name }} &bull;
+          {% trans "Account" %}: {{ budget.budget_account.code }}
+          {% if budget.starts_at %} &bull; {{ budget.starts_at|date:"Y-m-d" }} → {{ budget.ends_at|date:"Y-m-d"|default:"—" }}{% endif %}
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-2 shrink-0">
+        <a href="{% url 'treasury:update' budget.pk %}"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-sm font-semibold transition hover:opacity-80">
+          <i class="fa-solid fa-pen"></i>{% trans "Edit" %}
+        </a>
+        <a href="{% url 'treasury:account_create' budget.pk %}"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-sm font-semibold transition hover:opacity-80">
+          <i class="fa-solid fa-plus"></i>{% trans "Add Account" %}
+        </a>
+        <a href="{% url 'treasury:item_create' budget.pk %}"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-sm font-semibold transition hover:opacity-80">
+          <i class="fa-solid fa-plus"></i>{% trans "Add Item" %}
+        </a>
+        <a href="{% url 'treasury:imports' budget.pk %}"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-sm font-semibold transition hover:opacity-80">
+          <i class="fa-solid fa-download"></i>{% trans "Import" %}
+        </a>
+        <a href="{% url 'treasury:metrics' budget.pk %}"
+           :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+           class="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-semibold transition hover:opacity-90">
+          <i class="fa-solid fa-chart-bar"></i>{% trans "Metrics" %}
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Totals -->
+  <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+    {% with in=totals.total_inflow out=totals.total_outflow net=totals.net %}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-4 text-center shadow-sm">
+      <div class="text-lg font-bold text-green-500">{{ in }}</div>
+      <div class="mt-1 text-xs opacity-60">{% trans "Total Inflow" %}</div>
+    </div>
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-4 text-center shadow-sm">
+      <div class="text-lg font-bold text-red-500">{{ out }}</div>
+      <div class="mt-1 text-xs opacity-60">{% trans "Total Outflow" %}</div>
+    </div>
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-4 text-center shadow-sm">
+      <div class="text-lg font-bold {% if net >= 0 %}text-green-500{% else %}text-red-500{% endif %}">{{ net }}</div>
+      <div class="mt-1 text-xs opacity-60">{% trans "Net" %}</div>
+    </div>
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-4 text-center shadow-sm">
+      <div class="text-lg font-bold">{{ totals.booked_net }}</div>
+      <div class="mt-1 text-xs opacity-60">{% trans "Booked Net" %}</div>
+    </div>
+    {% endwith %}
+  </div>
+
+  <!-- Account bindings -->
+  {% if bindings %}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border shadow-sm">
+    <div class="flex items-center justify-between border-b px-5 py-4"
+         :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+      <h3 class="font-semibold"><i class="fa-solid fa-link mr-2 opacity-60"></i>{% trans "Account Bindings" %}</h3>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-xs">
+        <thead>
+          <tr class="border-b font-semibold uppercase opacity-50" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+            <th class="px-5 py-2 text-left">{% trans "Account" %}</th>
+            <th class="px-5 py-2 text-left">{% trans "Role" %}</th>
+            <th class="px-5 py-2">{% trans "Receive" %}</th>
+            <th class="px-5 py-2">{% trans "Pay" %}</th>
+            <th class="px-5 py-2">{% trans "Active" %}</th>
+            <th class="px-5 py-2"></th>
+          </tr>
+        </thead>
+        <tbody class="divide-y" :class="darkMode ? 'divide-accent-1' : 'divide-accent-2'">
+          {% for b in bindings %}
+          <tr>
+            <td class="px-5 py-2 font-mono">{{ b.ledger_account.code }}</td>
+            <td class="px-5 py-2">{{ b.get_role_display }}</td>
+            <td class="px-5 py-2 text-center">{% if b.can_receive %}<i class="fa-solid fa-check text-green-500"></i>{% else %}—{% endif %}</td>
+            <td class="px-5 py-2 text-center">{% if b.can_pay %}<i class="fa-solid fa-check text-green-500"></i>{% else %}—{% endif %}</td>
+            <td class="px-5 py-2 text-center">{% if b.is_active %}<i class="fa-solid fa-check text-green-500"></i>{% else %}—{% endif %}</td>
+            <td class="px-5 py-2">
+              <a href="{% url 'treasury:account_update' b.pk %}" class="underline opacity-60 hover:opacity-100">{% trans "Edit" %}</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Items -->
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border shadow-sm">
+    <div class="flex items-center justify-between border-b px-5 py-4"
+         :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+      <h3 class="font-semibold"><i class="fa-solid fa-list mr-2 opacity-60"></i>{% trans "Items" %} ({{ budget.items.count }})</h3>
+      <a href="{% url 'treasury:item_create' budget.pk %}"
+         :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+         class="rounded-lg border px-3 py-1 text-xs font-semibold transition hover:opacity-80">
+        <i class="fa-solid fa-plus mr-1"></i>{% trans "Add" %}
+      </a>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b text-xs font-semibold uppercase opacity-60"
+              :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+            <th class="px-5 py-3 text-left">{% trans "Title" %}</th>
+            <th class="px-5 py-3 text-left">{% trans "Stream" %}</th>
+            <th class="px-5 py-3 text-right">{% trans "Amount" %}</th>
+            <th class="px-5 py-3 text-left">{% trans "Status" %}</th>
+            <th class="px-5 py-3 text-left">{% trans "Source" %}</th>
+            <th class="px-5 py-3"></th>
+          </tr>
+        </thead>
+        <tbody class="divide-y" :class="darkMode ? 'divide-accent-1' : 'divide-accent-2'">
+          {% for item in items %}
+          <tr class="hover:opacity-80 transition">
+            <td class="px-5 py-3">{{ item.title|truncatechars:50 }}</td>
+            <td class="px-5 py-3 text-xs">
+              <span class="{% if item.direction == 'inflow' %}text-green-500{% else %}text-red-500{% endif %}">
+                {% if item.direction == 'inflow' %}<i class="fa-solid fa-arrow-down mr-1"></i>{% else %}<i class="fa-solid fa-arrow-up mr-1"></i>{% endif %}
+              </span>
+              {{ item.stream_type.code }}
+            </td>
+            <td class="px-5 py-3 text-right font-mono text-xs">{{ item.amount_base_units }}</td>
+            <td class="px-5 py-3 text-xs">{{ item.get_status_display }}</td>
+            <td class="px-5 py-3 text-xs opacity-60">{{ item.source_type|default:"—" }}</td>
+            <td class="px-5 py-3">
+              <a href="{% url 'treasury:item_update' item.pk %}"
+                 :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                 class="rounded border px-2 py-0.5 text-xs hover:opacity-80">
+                <i class="fa-solid fa-pen"></i>
+              </a>
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="6" class="px-5 py-8 text-center text-sm opacity-50">
+            {% trans "No items yet." %}
+            <a href="{% url 'treasury:item_create' budget.pk %}" class="underline">{% trans "Add one" %}</a>
+            {% trans "or" %}
+            <a href="{% url 'treasury:imports' budget.pk %}" class="underline">{% trans "import." %}</a>
+          </td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Import shortcuts -->
+  {% if importers %}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5 shadow-sm">
+    <h3 class="font-semibold mb-3"><i class="fa-solid fa-download mr-2 opacity-60"></i>{% trans "Quick Import" %}</h3>
+    <div class="flex flex-wrap gap-2">
+      {% for imp in importers %}
+      <a href="{% url 'treasury:import_preview' budget.pk imp.code %}"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition hover:opacity-80">
+        <i class="{{ imp.icon }}"></i>{{ imp.label }}
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

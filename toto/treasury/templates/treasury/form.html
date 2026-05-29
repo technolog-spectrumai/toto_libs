@@ -1,0 +1,86 @@
+{% extends "treasury/base.html" %}
+{% load i18n %}
+{% block budget_title %}{{ action }}{% endblock %}
+
+{% block start_script %}
+{{ block.super }}
+<style>
+  [data-dark="true"] .budget-field input:not([type=checkbox]):not([type=radio]),
+  [data-dark="true"] .budget-field select,
+  [data-dark="true"] .budget-field textarea {
+    background-color: rgb(15 17 23);
+    border-color: rgb(42 47 69);
+    color: inherit;
+  }
+  [data-dark="false"] .budget-field input:not([type=checkbox]):not([type=radio]),
+  [data-dark="false"] .budget-field select,
+  [data-dark="false"] .budget-field textarea {
+    background-color: #fff;
+    border-color: #d1d5db;
+    color: #111827;
+  }
+  .budget-field input:not([type=checkbox]):not([type=radio]),
+  .budget-field select,
+  .budget-field textarea {
+    display: block;
+    width: 100%;
+    border-radius: 0.5rem;
+    border-width: 1px;
+    padding: 0.4rem 0.75rem;
+    font-size: 0.875rem;
+    outline: none;
+  }
+  .budget-field input:not([type=checkbox]):not([type=radio]):focus,
+  .budget-field select:focus,
+  .budget-field textarea:focus {
+    outline: 2px solid currentColor;
+    outline-offset: 1px;
+    opacity: 1;
+  }
+</style>
+{% endblock %}
+
+{% block budget_content %}
+<div class="mx-auto max-w-2xl">
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border shadow-sm"
+       :data-dark="darkMode ? 'true' : 'false'">
+    <div class="border-b px-5 py-4" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+      <h2 class="font-semibold">{{ action }}</h2>
+    </div>
+    <form method="post" class="space-y-4 p-5">
+      {% csrf_token %}
+      {% for field in form %}
+      <div class="budget-field">
+        <label class="mb-1 block text-sm font-medium opacity-80" for="{{ field.id_for_label }}">
+          {{ field.label }}{% if field.field.required %}<span class="ml-1 text-red-500">*</span>{% endif %}
+        </label>
+        {{ field }}
+        {% if field.help_text %}<p class="mt-1 text-xs opacity-50">{{ field.help_text }}</p>{% endif %}
+        {% for err in field.errors %}<p class="mt-1 text-xs text-red-500">{{ err }}</p>{% endfor %}
+      </div>
+      {% endfor %}
+      <div class="flex gap-3 pt-2">
+        <button type="submit"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="rounded-lg px-5 py-2 text-sm font-semibold transition hover:opacity-90">
+          {{ action }}
+        </button>
+        {% if budget %}
+        <a href="{% url 'treasury:detail' budget.pk %}"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border px-5 py-2 text-sm font-semibold transition hover:opacity-80">
+          {% trans "Cancel" %}
+        </a>
+        {% else %}
+        <a href="{% url 'treasury:list' %}"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border px-5 py-2 text-sm font-semibold transition hover:opacity-80">
+          {% trans "Cancel" %}
+        </a>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

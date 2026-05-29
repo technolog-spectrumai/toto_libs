@@ -299,6 +299,29 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
 
         uploaded_file = request.FILES["file"]
 
+        # ── Tariff balance check ──────────────────────────────────────────────
+        _vault_tariff = None
+        try:
+            from toto.tariffs.charge import (
+                InsufficientBalanceError, check_user_can_act, get_tariff_for_user,
+            )
+            _vault_tariff = get_tariff_for_user(request.user, "vault")
+            if _vault_tariff:
+                _size_mb_est = Decimal(str(uploaded_file.size)) / Decimal("1048576")
+                check_user_can_act(request.user, _vault_tariff, "storage.request", 1)
+                if _size_mb_est > 0:
+                    check_user_can_act(request.user, _vault_tariff, "storage.transfer_mb", _size_mb_est)
+        except InsufficientBalanceError as _exc:
+            return JsonResponse({
+                "error": str(_exc),
+                "insufficient_balance": True,
+                "asset": _exc.asset_name,
+                "needed": str(_exc.needed_display),
+                "have": str(_exc.have_display),
+            }, status=402)
+        except Exception:
+            pass  # tariff system unavailable → proceed uncharged
+
         if uploaded_file.size > gateway.max_file_size * 1024:
             return JsonResponse({
                 "error": f"File too large ({uploaded_file.size / (1024*1024):.1f} MB). Max is {gateway.max_file_size / 1024:.1f} MB."
@@ -331,6 +354,19 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
         vault_file.save()
         vault_file.content_hash = vault_file.create_hash()
         vault_file.save()
+
+        # ── Tariff charge: drain prepaid balance ─────────────────────────────
+        try:
+            from toto.tariffs.charge import charge_user as _charge
+            if _vault_tariff:
+                _actual_mb = Decimal(str(vault_file.file_size_bytes or uploaded_file.size)) / Decimal("1048576")
+                _charge(request.user, _vault_tariff, "storage.request", 1,
+                        source_type="vault.VaultFile", source_id=str(vault_file.pk))
+                if _actual_mb > 0:
+                    _charge(request.user, _vault_tariff, "storage.transfer_mb", _actual_mb,
+                            unit="MB", source_type="vault.VaultFile", source_id=str(vault_file.pk))
+        except Exception:
+            pass  # charge failure is non-fatal; metering still records the event
 
         # ── Metering: record upload request + transferred bytes ──────────────
         from toto.metering.utils import safe_record_usage as _m

@@ -692,3 +692,59 @@ def course_metrics(request, slug):
         "enrollment_chart_json": enrollment_chart,
     }
     return render(request, "academy/course_metrics.html", PageProcessor().decorate(context, request))
+
+
+# ---------------------------------------------------------------------------
+# Self-enrollment (subscription-gated)
+# ---------------------------------------------------------------------------
+
+@login_required
+def course_enroll(request, slug):
+    """
+    POST-only. Enroll the current user in a course.
+
+    Subscription check: if the course community requires an 'academy' subscription,
+    the user must have an active one.  If no subscription plan is configured,
+    enrollment is open (free pass).
+    """
+    from django.views.decorators.http import require_POST
+    if request.method != "POST":
+        return redirect("academy:course-detail", slug=slug)
+
+    course = get_object_or_404(Course, slug=slug, is_published=True)
+
+    # Subscription check — graceful: if subscriptions app absent or no gate, allow
+    try:
+        from toto.subscriptions.gates import is_subscribed, SubscriptionRequired
+        # Check if any SubscriptionPlan with code "academy" exists and is active
+        from toto.subscriptions.models import SubscriptionPlan
+        academy_plans_exist = SubscriptionPlan.objects.filter(
+            code__startswith="academy", status="active"
+        ).exists()
+        if academy_plans_exist and not is_subscribed(request.user, "academy"):
+            messages.error(
+                request,
+                "An Academy subscription is required to enroll. Subscribe to continue.",
+            )
+            try:
+                from django.urls import reverse as _rev
+                return redirect(_rev("subscriptions:plan_list"))
+            except Exception:
+                return redirect("academy:course-detail", slug=slug)
+    except ImportError:
+        pass  # subscriptions app not installed → open enrollment
+
+    # Get or create student profile
+    person = getattr(request.user, "community_profile", None)
+    if not person:
+        messages.error(request, "You need a community profile to enroll.")
+        return redirect("academy:course-detail", slug=slug)
+
+    student, _ = Student.objects.get_or_create(person=person)
+    from .models import CourseEnrollment
+    _, created = CourseEnrollment.objects.get_or_create(student=student, course=course)
+    if created:
+        messages.success(request, f"You are now enrolled in {course.title}.")
+    else:
+        messages.info(request, f"You are already enrolled in {course.title}.")
+    return redirect("academy:course-detail", slug=slug)
