@@ -72,6 +72,7 @@ class Command(IngressCommand):
 
     def process(self):
         self.stdout.write(self.style.WARNING("Seeding Steven..."))
+        self._check_tariff()
 
         # Always create the default agent so the floating widget works
         # even without FULL_INGRESS (it falls back to stub mode without a connector).
@@ -231,3 +232,13 @@ class Command(IngressCommand):
                 self.stdout.write(self.style.SUCCESS(f"  Enabled tool: {tool.get_key_display()}"))
             else:
                 self.stdout.write(self.style.WARNING(f"  Tool already exists: {tool.get_key_display()}"))
+
+    def _check_tariff(self):
+        from toto.tariffs.models import Tariff
+        if Tariff.objects.filter(code="AI-INFERENCE").exists():
+            self.stdout.write("  [steven] AI-INFERENCE tariff: ready.")
+        else:
+            self.stdout.write(self.style.WARNING(
+                "  [steven] AI-INFERENCE tariff not found — run ingress_tariffs first."
+            ))
+

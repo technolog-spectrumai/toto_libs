@@ -110,6 +110,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        self._check_tariff()
         owner = self._get_owner(options["user"])
         self.stdout.write(f"Seeding as user: {owner.username}")
 
@@ -209,6 +210,15 @@ class Command(BaseCommand):
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    def _check_tariff(self):
+        from toto.tariffs.models import Tariff
+        if Tariff.objects.filter(code="TRANSCRIPTION-STANDARD").exists():
+            self.stdout.write("  [transcription] TRANSCRIPTION-STANDARD tariff: ready.")
+        else:
+            self.stdout.write(self.style.WARNING(
+                "  [transcription] TRANSCRIPTION-STANDARD tariff not found — run ingress_tariffs first."
+            ))
 
     def _get_owner(self, username: str | None):
         if username:

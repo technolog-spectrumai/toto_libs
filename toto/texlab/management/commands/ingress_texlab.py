@@ -11,6 +11,7 @@ class Command(IngressCommand):
     help = "Seed TexLab with a default workspace, bucket, and sample files"
 
     def process(self):
+        self._check_tariff()
         self._ensure_workflows()
 
         if not self.full:
@@ -142,6 +143,15 @@ Hello from TexLab!
         # Done
         # ---------------------------------------------------------
         self.stdout.write(self.style.SUCCESS("✅ TexLab seeding complete."))
+
+    def _check_tariff(self):
+        from toto.tariffs.models import Tariff
+        if Tariff.objects.filter(code="TEXLAB-STANDARD").exists():
+            self.stdout.write("  [texlab] TEXLAB-STANDARD tariff: ready.")
+        else:
+            self.stdout.write(self.style.WARNING(
+                "  [texlab] TEXLAB-STANDARD tariff not found — run ingress_tariffs first."
+            ))
 
     def _ensure_workflows(self):
         from toto.workflows.models import Workflow, WorkflowNode

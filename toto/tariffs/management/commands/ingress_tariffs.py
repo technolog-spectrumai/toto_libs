@@ -4,6 +4,12 @@ ingress_tariffs — seed demo tariffs, ledger accounts, assets, and usage record
 Run:
   python manage.py ingress_tariffs
   python manage.py ingress_tariffs --full   # also creates sample usage records
+
+Price philosophy:
+  - Minimum bill for a single action is ~0.1 token.
+  - Storage: 1.0 STORAGE_TOKEN per MB transferred/uploaded.
+  - Prices are intentionally integral so the token economy feels real and
+    users accumulate/spend meaningful quantities during testing.
 """
 import uuid
 from decimal import Decimal
@@ -44,7 +50,7 @@ def _bu(code, label, dimension=""):
 
 
 def _metric(code, label, dimension="", app_label="tariffs", default_unit=None):
-    obj, _ = BillingMetric.objects.get_or_create(
+    obj, created = BillingMetric.objects.get_or_create(
         code=code,
         defaults={
             "label": label,
@@ -54,6 +60,9 @@ def _metric(code, label, dimension="", app_label="tariffs", default_unit=None):
             "active": True,
         },
     )
+    if not created and obj.app_label != app_label:
+        obj.app_label = app_label
+        obj.save(update_fields=["app_label"])
     return obj
 
 
@@ -66,19 +75,7 @@ def _account(code, name, account_type=AccountType.SYSTEM):
 
 
 def _asset(unit_name, name, decimals=6, total_supply=_DEFAULT_SUPPLY):
-    """
-    Get-or-create an asset with a proper reserve account, holding, and ledger
-    transaction. Idempotent: safe to call on every ingress run.
-
-    For brand-new assets: uses create_asset (writes ledger tx + reserve holding).
-    For existing assets that were created without a proper reserve holding: fills
-    the gap so supply always matches.
-    """
-    reserve = _account(
-        f"RES-{unit_name}",
-        f"{name} Reserve",
-        AccountType.RESERVE,
-    )
+    reserve = _account(f"RES-{unit_name}", f"{name} Reserve", AccountType.RESERVE)
 
     existing = Asset.objects.filter(unit_name=unit_name).first()
 
@@ -97,14 +94,10 @@ def _asset(unit_name, name, decimals=6, total_supply=_DEFAULT_SUPPLY):
         return asset
 
     asset = existing
-
-    # Ensure the reserve_account FK is wired up.
     if not asset.reserve_account_id:
         asset.reserve_account = reserve
         asset.save(update_fields=["reserve_account", "updated_at"])
 
-    # Reserve holding must cover the supply not yet distributed to other accounts.
-    # Handles assets created before this fix that have no reserve holding.
     distributed = (
         AssetHolding.objects
         .filter(asset=asset)
@@ -124,11 +117,7 @@ def _asset(unit_name, name, decimals=6, total_supply=_DEFAULT_SUPPLY):
 
 
 def _fund(account, asset, display_amount):
-    """
-    Top up account to at least display_amount tokens by transferring from the
-    asset's reserve. Uses proper transfer_asset so the ledger stays consistent.
-    Idempotent: skips if the account already has enough.
-    """
+    """Top up account to at least display_amount tokens. Idempotent."""
     if not asset.reserve_account_id:
         return
     target = Decimal(str(display_amount))
@@ -155,13 +144,16 @@ def _tariff(code, name, description, status=TariffStatus.ACTIVE):
         code=code,
         defaults={"name": name, "description": description, "status": status},
     )
+    if not created and t.status != status:
+        t.status = status
+        t.save(update_fields=["status", "updated_at"])
     return t, created
 
 
 def _item(tariff, metric, name, asset, price, unit, recv, uq=1, rounding=RoundingMode.UP, min_charge=0):
     price_dec = Decimal(str(price))
     price_base = to_base_units(price_dec, asset.decimals)
-    item, _ = TariffItem.objects.get_or_create(
+    item, created = TariffItem.objects.get_or_create(
         tariff=tariff,
         metric=metric,
         defaults={
@@ -177,6 +169,10 @@ def _item(tariff, metric, name, asset, price, unit, recv, uq=1, rounding=Roundin
             "active": True,
         },
     )
+    if not created and item.price_per_unit_base_units != price_base:
+        item.price_per_unit_display = price_dec
+        item.price_per_unit_base_units = price_base
+        item.save(update_fields=["price_per_unit_display", "price_per_unit_base_units", "updated_at"])
     return item
 
 
@@ -184,10 +180,10 @@ class Command(IngressCommand):
     help = "Seed demo tariffs: service tokens, rate cards, revenue accounts, and sample usage."
 
     def process(self):
-        self.stdout.write("🧾  Seeding tariffs…")
+        self.stdout.write("  Seeding tariffs…")
 
         # ------------------------------------------------------------------ #
-        # 0. Billing units (owned by tariffs app)                              #
+        # 0. Billing units                                                      #
         # ------------------------------------------------------------------ #
         bu_input_token  = _bu("ai.input_token",       "AI input token",       "ai")
         bu_output_token = _bu("ai.output_token",      "AI output token",      "ai")
@@ -201,39 +197,71 @@ class Command(IngressCommand):
         bu_gb_hour      = _bu("storage.gb_hour",      "Gigabyte hour",        "storage_time")
         bu_mb           = _bu("storage.mb",           "Megabyte",             "storage")
         bu_mb_second    = _bu("storage.mb_second",    "Megabyte second",      "storage_time")
+        bu_image        = _bu("ocr.image",            "Image",                "ocr")
+        bu_page         = _bu("doc.page",             "Page",                 "document")
+        bu_compile      = _bu("tex.compile",          "Compile run",          "compute")
+        bu_execution    = _bu("nb.execution",         "Notebook execution",   "compute")
+        bu_task         = _bu("kanban.task",          "Task",                 "kanban")
 
         # ------------------------------------------------------------------ #
-        # 0b. Billing metrics (each maps a metric code to a first-class object) #
+        # 0b. Billing metrics                                                   #
         # ------------------------------------------------------------------ #
 
-        # AI metrics
-        m_ai_input   = _metric("ai.input_tokens",  "LLM Input Tokens",        "ai",      "tariffs", bu_input_token)
-        m_ai_output  = _metric("ai.output_tokens", "LLM Output Tokens",       "ai",      "tariffs", bu_output_token)
-        m_ai_req     = _metric("ai.requests",      "Inference Requests",      "ai",      "tariffs", bu_request)
+        # — AI (app: steven) —
+        m_ai_input   = _metric("ai.input_tokens",  "LLM Input Tokens",        "ai",      "steven", bu_input_token)
+        m_ai_output  = _metric("ai.output_tokens", "LLM Output Tokens",       "ai",      "steven", bu_output_token)
+        m_ai_req     = _metric("ai.requests",      "Inference Requests",      "ai",      "steven", bu_request)
 
-        # Storage metrics — owned by vault, emitted as stable string codes
+        # — Storage (app: vault) —
         m_st_req     = _metric("storage.request",     "Storage upload request",  "storage", "vault",   bu_request)
         m_st_xfer    = _metric("storage.transfer_mb",  "Storage upload transfer", "storage", "vault",   bu_mb)
         m_st_hour    = _metric("storage.mb_hour",      "Storage MB-hour",         "storage", "vault",   bu_mb_hour)
         m_st_gb_hour = _metric("storage.gb_hour",      "Storage GB-hour",         "storage", "vault",   bu_gb_hour)
 
-        # Graph metrics
-        m_neo_ns   = _metric("neo4j.node_second",         "Node·second",          "graph", "tariffs", bu_second)
-        m_neo_rs   = _metric("neo4j.relationship_second",  "Relationship·second",  "graph", "tariffs", bu_second)
-        m_neo_node = _metric("neo4j.node",                 "Node (flat)",          "graph", "tariffs", bu_node)
-        m_neo_rel  = _metric("neo4j.relationship",         "Relationship (flat)",  "graph", "tariffs", bu_relationship)
-        m_neo_q    = _metric("neo4j.query",                "Cypher Query",         "graph", "tariffs", bu_request)
+        # — Graph / Neo4j (app: ravioli) —
+        m_neo_ns   = _metric("neo4j.node_second",         "Node·second",          "graph", "ravioli", bu_second)
+        m_neo_rs   = _metric("neo4j.relationship_second",  "Relationship·second",  "graph", "ravioli", bu_second)
+        m_neo_node = _metric("neo4j.node",                 "Node (flat)",          "graph", "ravioli", bu_node)
+        m_neo_rel  = _metric("neo4j.relationship",         "Relationship (flat)",  "graph", "ravioli", bu_relationship)
+        m_neo_q    = _metric("neo4j.query",                "Cypher Query",         "graph", "ravioli", bu_request)
 
-        # Compute metrics
+        # — Compute (generic, used by mandragora / texlab) —
         m_cpu_s    = _metric("compute.second",    "CPU·second",    "compute", "tariffs", bu_second)
         m_cpu_m    = _metric("compute.minute",    "CPU·minute",    "compute", "tariffs", bu_minute)
         m_cpu_h    = _metric("compute.hour",      "CPU·hour",      "compute", "tariffs", bu_hour)
         m_cpu_mb_s = _metric("compute.mb_second", "RAM MB·second", "compute", "tariffs", bu_mb_second)
 
-        # API metrics
+        # — API (generic) —
         m_api_req   = _metric("api.request",       "API Request",            "api", "tariffs", bu_request)
         m_api_batch = _metric("api.request_batch",  "API Request (per 1000)", "api", "tariffs", bu_request)
         m_api_hook  = _metric("api.webhook",        "Outbound Webhook",       "api", "tariffs", bu_request)
+
+        # — OCR (app: ocr) —
+        m_ocr_image = _metric("ocr.image",  "OCR image processed",   "ocr",      "ocr",          bu_image)
+        m_ocr_page  = _metric("ocr.page",   "OCR page (in image)",   "ocr",      "ocr",          bu_page)
+
+        # — TexLab (app: texlab) —
+        m_tex_compile = _metric("texlab.compile", "LaTeX compile run",      "compute",  "texlab",       bu_compile)
+        m_tex_page    = _metric("texlab.page",    "Output PDF page",        "document", "texlab",       bu_page)
+
+        # — Notebooks / mandragora (app: mandragora) —
+        m_nb_exec    = _metric("mandragora.execution",      "Notebook cell execution", "compute", "mandragora", bu_execution)
+        m_nb_cpu_s   = _metric("mandragora.compute_second", "Notebook CPU·second",     "compute", "mandragora", bu_second)
+
+        # — VOD (app: vod) —
+        m_vod_upload = _metric("vod.upload_mb",  "VOD upload MB",   "storage", "vod", bu_mb)
+        m_vod_stream = _metric("vod.stream_mb",  "VOD stream MB",   "storage", "vod", bu_mb)
+
+        # — Transcription (app: transcription) —
+        m_tr_req  = _metric("transcription.request", "Transcription job",          "ai", "transcription", bu_request)
+        m_tr_sec  = _metric("transcription.second",  "Transcribed audio second",   "ai", "transcription", bu_second)
+
+        # — Weather (app: weather) —
+        m_wx_req  = _metric("weather.request", "Weather API request", "api", "weather", bu_request)
+
+        # — Kanban / Boards (app: kanban) —
+        m_kb_task = _metric("kanban.task",        "Task created",      "event", "kanban", bu_task)
+        m_kb_req  = _metric("kanban.api_request", "Kanban API request","event", "kanban", bu_request)
 
         # ------------------------------------------------------------------ #
         # 1. Service token assets                                              #
@@ -256,92 +284,157 @@ class Command(IngressCommand):
         rev_api     = _account("REV-API",      "API Call Revenue",        AccountType.SYSTEM)
 
         # ------------------------------------------------------------------ #
-        # 3. Tariffs and items                                                 #
+        # 3. Tariffs and items  (prices inflated so min bill ≈ 0.1 token)     #
         # ------------------------------------------------------------------ #
         self.stdout.write("  [3/5] Tariffs and items…")
 
-        # — Tariff A: AI Inference
+        # — Tariff A: AI Inference (used by steven) —
         ta, _ = _tariff(
             "AI-INFERENCE",
             "AI Inference Tariff",
             "Charges AI_TOKEN per input and output LLM token. "
             "Output tokens are priced 3× higher than input.",
         )
-        _item(ta, m_ai_input,  "LLM Input Tokens",   ai_token, "0.001", bu_input_token,  rev_ai, uq=1000)
-        _item(ta, m_ai_output, "LLM Output Tokens",  ai_token, "0.003", bu_output_token, rev_ai, uq=1000)
-        _item(ta, m_ai_req,    "Inference Requests", ai_token, "0.01",  bu_request,      rev_ai)
+        _item(ta, m_ai_input,  "LLM Input Tokens",   ai_token, "1.0",  bu_input_token,  rev_ai, uq=1000)
+        _item(ta, m_ai_output, "LLM Output Tokens",  ai_token, "3.0",  bu_output_token, rev_ai, uq=1000)
+        _item(ta, m_ai_req,    "Inference Requests", ai_token, "0.5",  bu_request,      rev_ai)
         self.stdout.write(f"    + {ta.code}")
 
-        # — Tariff B: File Storage (vault billing emits these three metric codes)
+        # — Tariff B: File Storage (vault; 1 token per MB) —
         tb, _ = _tariff(
             "FILE-STORAGE",
             "File Storage Standard Tariff",
-            "Charges STORAGE_TOKEN per MB stored per hour, with a per-file request charge.",
+            "1 STORAGE_TOKEN per MB uploaded. 0.01 per MB·hour stored.",
         )
-        _item(tb, m_st_req,     "Storage API Request",     storage_token, "0.0001",  bu_request, rev_storage)
-        _item(tb, m_st_xfer,    "Data Transfer per MB",    storage_token, "0.005",   bu_mb,      rev_storage)
-        _item(tb, m_st_hour,    "Storage per MB·hour",     storage_token, "0.00001", bu_mb_hour, rev_storage)
-        _item(tb, m_st_gb_hour, "Storage per GB·hour",     storage_token, "0.01",    bu_gb_hour, rev_storage)
+        _item(tb, m_st_req,     "Storage API Request",     storage_token, "0.1",  bu_request, rev_storage)
+        _item(tb, m_st_xfer,    "Data Transfer per MB",    storage_token, "1.0",  bu_mb,      rev_storage)
+        _item(tb, m_st_hour,    "Storage per MB·hour",     storage_token, "0.01", bu_mb_hour, rev_storage)
+        _item(tb, m_st_gb_hour, "Storage per GB·hour",     storage_token, "10.0", bu_gb_hour, rev_storage)
         self.stdout.write(f"    + {tb.code}")
 
-        # — Tariff C: Neo4j Graph
+        # — Tariff C: Neo4j Graph (used by ravioli) —
         tc, _ = _tariff(
             "NEO4J-GRAPH",
             "Neo4j Graph Usage Tariff",
-            "Charges GRAPH_TOKEN per node/relationship stored per second, "
-            "plus a flat rate per Cypher query.",
+            "Charges GRAPH_TOKEN per node/relationship and per Cypher query.",
         )
-        _item(tc, m_neo_ns,   "Node·second",          graph_token, "0.00002", bu_second,       rev_graph, min_charge=1)
-        _item(tc, m_neo_rs,   "Relationship·second",  graph_token, "0.00001", bu_second,       rev_graph, min_charge=1)
-        _item(tc, m_neo_node, "Node (flat)",           graph_token, "0.0001",  bu_node,         rev_graph)
-        _item(tc, m_neo_rel,  "Relationship (flat)",   graph_token, "0.00005", bu_relationship, rev_graph)
-        _item(tc, m_neo_q,    "Cypher Query",          graph_token, "0.001",   bu_request,      rev_graph)
+        _item(tc, m_neo_ns,   "Node·second",          graph_token, "0.02",  bu_second,       rev_graph, min_charge=1)
+        _item(tc, m_neo_rs,   "Relationship·second",  graph_token, "0.01",  bu_second,       rev_graph, min_charge=1)
+        _item(tc, m_neo_node, "Node (flat)",           graph_token, "0.1",   bu_node,         rev_graph)
+        _item(tc, m_neo_rel,  "Relationship (flat)",   graph_token, "0.05",  bu_relationship, rev_graph)
+        _item(tc, m_neo_q,    "Cypher Query",          graph_token, "0.5",   bu_request,      rev_graph)
         self.stdout.write(f"    + {tc.code}")
 
-        # — Tariff D: Compute
+        # — Tariff D: Compute (generic) —
         td, _ = _tariff(
             "COMPUTE-STANDARD",
             "Standard Compute Tariff",
-            "Charges COMPUTE_TOKEN per CPU·second. Minute and hour items for convenience "
-            "— choose whichever granularity fits the workload.",
+            "Charges COMPUTE_TOKEN per CPU·second. 0.1 token per second.",
         )
-        _item(td, m_cpu_s,    "CPU·second",    compute_token, "0.0001",   bu_second,    rev_compute)
-        _item(td, m_cpu_m,    "CPU·minute",    compute_token, "0.006",    bu_minute,    rev_compute)
-        _item(td, m_cpu_h,    "CPU·hour",      compute_token, "0.36",     bu_hour,      rev_compute)
-        _item(td, m_cpu_mb_s, "RAM MB·second", compute_token, "0.000001", bu_mb_second, rev_compute)
+        _item(td, m_cpu_s,    "CPU·second",    compute_token, "0.1",     bu_second,    rev_compute)
+        _item(td, m_cpu_m,    "CPU·minute",    compute_token, "6.0",     bu_minute,    rev_compute)
+        _item(td, m_cpu_h,    "CPU·hour",      compute_token, "360.0",   bu_hour,      rev_compute)
+        _item(td, m_cpu_mb_s, "RAM MB·second", compute_token, "0.001",   bu_mb_second, rev_compute)
         self.stdout.write(f"    + {td.code}")
 
-        # — Tariff E: API Gateway
+        # — Tariff E: API Gateway (generic) —
         te, _ = _tariff(
             "API-GATEWAY",
             "API Gateway Tariff",
-            "Charges API_TOKEN per inbound API request. "
-            "Priced per-1000 for high-volume endpoints.",
+            "0.1 API_TOKEN per request.",
         )
-        _item(te, m_api_req,   "API Request",            api_token, "0.0001", bu_request, rev_api)
-        _item(te, m_api_batch, "API Request (per 1000)", api_token, "0.05",   bu_request, rev_api, uq=1000)
-        _item(te, m_api_hook,  "Outbound Webhook",       api_token, "0.001",  bu_request, rev_api)
+        _item(te, m_api_req,   "API Request",            api_token, "0.1",  bu_request, rev_api)
+        _item(te, m_api_batch, "API Request (per 1000)", api_token, "50.0", bu_request, rev_api, uq=1000)
+        _item(te, m_api_hook,  "Outbound Webhook",       api_token, "0.5",  bu_request, rev_api)
         self.stdout.write(f"    + {te.code}")
 
-        # — Tariff F: Bundled all-in (draft, for preview)
-        tf, _ = _tariff(
+        # — Tariff F: OCR —
+        tf_ocr, _ = _tariff(
+            "OCR-STANDARD",
+            "OCR Standard Tariff",
+            "0.5 COMPUTE_TOKEN per image processed; 0.1 per page.",
+        )
+        _item(tf_ocr, m_ocr_image, "OCR image",      compute_token, "0.5",  bu_image,   rev_compute)
+        _item(tf_ocr, m_ocr_page,  "OCR page",       compute_token, "0.1",  bu_page,    rev_compute)
+        self.stdout.write(f"    + {tf_ocr.code}")
+
+        # — Tariff G: TexLab —
+        tf_tex, _ = _tariff(
+            "TEXLAB-STANDARD",
+            "TexLab Compile Tariff",
+            "1.0 COMPUTE_TOKEN per compile run; 0.1 per output PDF page.",
+        )
+        _item(tf_tex, m_tex_compile, "LaTeX compile",   compute_token, "1.0", bu_compile, rev_compute)
+        _item(tf_tex, m_tex_page,    "PDF page",        compute_token, "0.1", bu_page,    rev_compute)
+        self.stdout.write(f"    + {tf_tex.code}")
+
+        # — Tariff H: Notebooks (mandragora) —
+        tf_nb, _ = _tariff(
+            "NOTEBOOKS-STANDARD",
+            "Notebook Execution Tariff",
+            "0.1 COMPUTE_TOKEN per cell execution; 0.1 per CPU·second.",
+        )
+        _item(tf_nb, m_nb_exec,  "Cell execution",   compute_token, "0.1", bu_execution, rev_compute)
+        _item(tf_nb, m_nb_cpu_s, "Compute second",   compute_token, "0.1", bu_second,    rev_compute)
+        self.stdout.write(f"    + {tf_nb.code}")
+
+        # — Tariff I: VOD —
+        tf_vod, _ = _tariff(
+            "VOD-STANDARD",
+            "VOD Storage & Streaming Tariff",
+            "1.0 STORAGE_TOKEN per MB uploaded or streamed.",
+        )
+        _item(tf_vod, m_vod_upload, "VOD upload MB",  storage_token, "1.0", bu_mb, rev_storage)
+        _item(tf_vod, m_vod_stream, "VOD stream MB",  storage_token, "1.0", bu_mb, rev_storage)
+        self.stdout.write(f"    + {tf_vod.code}")
+
+        # — Tariff J: Transcription —
+        tf_tr, _ = _tariff(
+            "TRANSCRIPTION-STANDARD",
+            "Transcription Tariff",
+            "0.5 AI_TOKEN per job; 0.1 per audio second transcribed.",
+        )
+        _item(tf_tr, m_tr_req, "Transcription job",    ai_token, "0.5", bu_request, rev_ai)
+        _item(tf_tr, m_tr_sec, "Audio second",         ai_token, "0.1", bu_second,  rev_ai)
+        self.stdout.write(f"    + {tf_tr.code}")
+
+        # — Tariff K: Weather —
+        tf_wx, _ = _tariff(
+            "WEATHER-STANDARD",
+            "Weather API Tariff",
+            "0.1 API_TOKEN per weather data request.",
+        )
+        _item(tf_wx, m_wx_req, "Weather request", api_token, "0.1", bu_request, rev_api)
+        self.stdout.write(f"    + {tf_wx.code}")
+
+        # — Tariff L: Kanban / Boards —
+        tf_kb, _ = _tariff(
+            "KANBAN-STANDARD",
+            "Boards / Kanban Tariff",
+            "0.1 API_TOKEN per task created or API request.",
+        )
+        _item(tf_kb, m_kb_task, "Task created",      api_token, "0.1", bu_task,    rev_api)
+        _item(tf_kb, m_kb_req,  "Kanban API request",api_token, "0.1", bu_request, rev_api)
+        self.stdout.write(f"    + {tf_kb.code}")
+
+        # — Tariff M: Platform Bundle (draft) —
+        tf_bundle, _ = _tariff(
             "PLATFORM-BUNDLE",
             "Platform Bundle Tariff (Draft)",
-            "Composite tariff bundling AI, storage, graph, compute, and API charges "
-            "into a single rate card. Set to DRAFT — not yet active.",
+            "All-in bundle across AI, storage, graph, compute, API. Status: DRAFT.",
             status=TariffStatus.DRAFT,
         )
-        _item(tf, m_ai_input,  "LLM Input",    ai_token,      "0.0008",   bu_input_token, rev_ai,      uq=1000)
-        _item(tf, m_ai_output, "LLM Output",   ai_token,      "0.0025",   bu_output_token,rev_ai,      uq=1000)
-        _item(tf, m_st_hour,   "Storage",      storage_token, "0.000008", bu_mb_hour,     rev_storage)
-        _item(tf, m_neo_q,     "Graph Query",  graph_token,   "0.0008",   bu_request,     rev_graph)
-        _item(tf, m_cpu_s,     "Compute",      compute_token, "0.00008",  bu_second,      rev_compute)
-        _item(tf, m_api_req,   "API Call",     api_token,     "0.00008",  bu_request,     rev_api)
-        self.stdout.write(f"    + {tf.code} (draft)")
+        _item(tf_bundle, m_ai_input,  "LLM Input",    ai_token,      "0.8",   bu_input_token, rev_ai,      uq=1000)
+        _item(tf_bundle, m_ai_output, "LLM Output",   ai_token,      "2.5",   bu_output_token,rev_ai,      uq=1000)
+        _item(tf_bundle, m_st_hour,   "Storage",      storage_token, "0.008", bu_mb_hour,     rev_storage)
+        _item(tf_bundle, m_neo_q,     "Graph Query",  graph_token,   "0.4",   bu_request,     rev_graph)
+        _item(tf_bundle, m_cpu_s,     "Compute",      compute_token, "0.08",  bu_second,      rev_compute)
+        _item(tf_bundle, m_api_req,   "API Call",     api_token,     "0.08",  bu_request,     rev_api)
+        self.stdout.write(f"    + {tf_bundle.code} (draft)")
 
         if not self.full:
             self.stdout.write(self.style.SUCCESS(
-                "✅  Tariffs ingress complete. Run with --full to also create sample usage records."
+                "Tariffs ingress complete. Run with --full to also create sample usage records."
             ))
             return
 
@@ -354,14 +447,14 @@ class Command(IngressCommand):
         payer_carol = _account("USR-CAROL",  "Carol (API user)",        AccountType.USER)
         payer_demo  = _account("USR-DEMO",   "Demo / sandbox user",     AccountType.USER)
 
-        _fund(payer_alice, ai_token,      "100.0")
-        _fund(payer_bob,   storage_token, "50.0")
-        _fund(payer_carol, api_token,     "25.0")
-        _fund(payer_demo,  ai_token,      "10.0")
-        _fund(payer_demo,  storage_token, "10.0")
-        _fund(payer_demo,  compute_token, "5.0")
-        _fund(payer_demo,  graph_token,   "5.0")
-        _fund(payer_demo,  api_token,     "5.0")
+        _fund(payer_alice, ai_token,      "50000.0")
+        _fund(payer_bob,   storage_token, "50000.0")
+        _fund(payer_carol, api_token,     "50000.0")
+        _fund(payer_demo,  ai_token,      "10000.0")
+        _fund(payer_demo,  storage_token, "10000.0")
+        _fund(payer_demo,  compute_token, "10000.0")
+        _fund(payer_demo,  graph_token,   "10000.0")
+        _fund(payer_demo,  api_token,     "10000.0")
         self.stdout.write("    + Alice, Bob, Carol, Demo funded")
 
         # ------------------------------------------------------------------ #
@@ -370,7 +463,6 @@ class Command(IngressCommand):
         self.stdout.write("  [5/5] Sample usage records…")
 
         _usage_samples = [
-            # (tariff, payer, metric_code, qty, unit_code, label)
             (ta, payer_alice, "ai.input_tokens",  Decimal("1200"), bu_input_token.code,  "Alice LLM input"),
             (ta, payer_alice, "ai.output_tokens", Decimal("400"),  bu_output_token.code, "Alice LLM output"),
             (ta, payer_alice, "ai.requests",      Decimal("1"),    bu_request.code,      "Alice single inference"),
@@ -404,11 +496,11 @@ class Command(IngressCommand):
             try:
                 post_usage_record(record, reference=f"tariff-{ref}")
                 posted += 1
-                self.stdout.write(f"    ✓ {label}")
+                self.stdout.write(f"    + {label}")
             except ValueError as exc:
                 failed += 1
-                self.stdout.write(self.style.WARNING(f"    ✗ {label}: {exc}"))
+                self.stdout.write(self.style.WARNING(f"    - {label}: {exc}"))
 
         self.stdout.write(self.style.SUCCESS(
-            f"✅  Tariffs ingress complete — {posted} usage records posted, {failed} failed."
+            f"Tariffs ingress complete — {posted} usage records posted, {failed} failed."
         ))

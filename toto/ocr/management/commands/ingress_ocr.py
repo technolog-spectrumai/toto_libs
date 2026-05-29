@@ -21,6 +21,8 @@ class Command(IngressCommand):
     help = "Seed sample OCR projects for the admin user"
 
     def process(self):
+        self._check_tariff()
+
         if not self.full:
             return
 
@@ -52,3 +54,12 @@ class Command(IngressCommand):
                 self.stdout.write(self.style.WARNING(f"Project already exists: {name}"))
 
         self.stdout.write(self.style.SUCCESS("OCR seeding complete."))
+
+    def _check_tariff(self):
+        from toto.tariffs.models import Tariff
+        if Tariff.objects.filter(code="OCR-STANDARD").exists():
+            self.stdout.write("  [ocr] OCR-STANDARD tariff: ready.")
+        else:
+            self.stdout.write(self.style.WARNING(
+                "  [ocr] OCR-STANDARD tariff not found — run ingress_tariffs first."
+            ))
