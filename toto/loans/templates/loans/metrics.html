@@ -1,0 +1,249 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{% trans "Loan Metrics" %} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+{{ status_series|json_script:"loans-status-series" }}
+{{ repayment_status_series|json_script:"loans-repayment-series" }}
+{{ daily_series|json_script:"loans-daily-series" }}
+{{ type_series|json_script:"loans-type-series" }}
+
+<div :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+     class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-6xl space-y-8">
+
+    <!-- Header -->
+    <header class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div class="space-y-1">
+        <a href="{% url 'loans:list' %}"
+           class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+          <i class="fa-solid fa-arrow-left"></i> {% trans "Back to Loans" %}
+        </a>
+        <div>
+          <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+             class="text-xs font-semibold uppercase tracking-wide">{% trans "Loans" %}</p>
+          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+            <i class="fa-solid fa-chart-column"></i> {% trans "Metrics" %}
+          </h1>
+        </div>
+      </div>
+    </header>
+
+    <!-- Stat cards -->
+    <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+      {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-scroll" label="Loans" value=total_contracts color="accent" %}
+      {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-pen-to-square" label="Draft" value=draft_contracts color="neutral" %}
+      {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-circle-check" label="Executed" value=executed_contracts color="success" %}
+      {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-arrow-right-from-bracket" label="Disbursements" value=total_disbursements color="accent" %}
+      {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-hourglass-half" label="Repayments Due" value=pending_repayments color="warn" %}
+      {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-check-double" label="Repayments Settled" value=settled_repayments color="success" %}
+    </div>
+
+    <!-- Charts -->
+    <div class="grid gap-5 lg:grid-cols-3">
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-xl border p-5 shadow-sm">
+        <h2 class="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide opacity-60">
+          <i class="fa-solid fa-circle-half-stroke"></i> {% trans "Loans by Status" %}
+        </h2>
+        <canvas id="statusChart" height="200"></canvas>
+      </div>
+
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-xl border p-5 shadow-sm">
+        <h2 class="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide opacity-60">
+          <i class="fa-solid fa-bars"></i> {% trans "Repayment Status" %}
+        </h2>
+        <canvas id="repaymentChart" height="200"></canvas>
+      </div>
+
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-xl border p-5 shadow-sm">
+        <h2 class="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide opacity-60">
+          <i class="fa-solid fa-arrow-trend-up"></i> {% trans "New Loans (30 days)" %}
+        </h2>
+        <canvas id="activityChart" height="200"></canvas>
+      </div>
+    </div>
+
+    <!-- Disbursements vs Repayments overview -->
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-xl border p-5 shadow-sm">
+      <h2 class="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide opacity-60">
+        <i class="fa-solid fa-arrows-left-right"></i> {% trans "Obligation Type Breakdown" %}
+      </h2>
+      <canvas id="typeChart" height="80"></canvas>
+    </div>
+
+    <!-- Recent loans -->
+    <section>
+      <p class="mb-3 text-xs font-semibold uppercase tracking-wide opacity-55">
+        <i class="fa-solid fa-clock mr-1"></i>{% trans "Recent Loan Contracts" %}
+      </p>
+      <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+           class="overflow-hidden rounded-xl border shadow-sm">
+        <table class="min-w-full text-sm">
+          <thead>
+            <tr :class="darkMode ? 'bg-bubble-bg-dark border-b border-accent-1' : 'bg-bubble-bg-light border-b border-accent-2'"
+                class="text-left text-xs font-semibold uppercase tracking-wide opacity-65">
+              <th class="px-4 py-3">{% trans "Name" %}</th>
+              <th class="px-4 py-3">{% trans "Status" %}</th>
+              <th class="px-4 py-3">{% trans "Frequency" %}</th>
+              <th class="px-4 py-3">{% trans "Term" %}</th>
+              <th class="px-4 py-3">{% trans "Created" %}</th>
+              <th class="px-4 py-3"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in recent_list %}
+            <tr :class="darkMode ? 'border-b border-accent-1/40 hover:bg-bubble-bg-dark' : 'border-b border-accent-2/40 hover:bg-bubble-bg-light'"
+                class="transition-colors duration-150">
+              <td class="px-4 py-3 font-semibold">{{ c.name }}</td>
+              <td class="px-4 py-3">
+                <span class="rounded-full px-2 py-0.5 text-xs font-semibold uppercase
+                  {% if c.status == 'executed' %}bg-green-100 text-green-700
+                  {% elif c.status == 'draft' %}bg-yellow-100 text-yellow-700
+                  {% else %}bg-gray-100 text-gray-600{% endif %}">
+                  {{ c.status }}
+                </span>
+              </td>
+              <td class="px-4 py-3 opacity-70 text-xs">{{ c.metadata.repayment_frequency|default:"—" }}</td>
+              <td class="px-4 py-3 opacity-70 text-xs">
+                {% if c.metadata.term_months %}{{ c.metadata.term_months }}mo{% else %}—{% endif %}
+              </td>
+              <td class="px-4 py-3 opacity-60 text-xs">{{ c.created_at|date:"Y-m-d" }}</td>
+              <td class="px-4 py-3 text-right">
+                <a href="{% url 'loans:detail' c.uuid %}"
+                   :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                   class="text-xs font-semibold hover:underline">
+                  {% trans "View" %} <i class="fa-solid fa-arrow-right text-xs"></i>
+                </a>
+              </td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="6" class="px-4 py-8 text-center text-sm opacity-50">
+                {% trans "No loan contracts yet." %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
+<script>
+(function () {
+  const isDark = localStorage.getItem('darkMode') === 'true';
+  const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+  const textColor = isDark ? '#e2e8f0' : '#374151';
+  Chart.defaults.color = textColor;
+  Chart.defaults.borderColor = gridColor;
+
+  const STATUS_COLORS = {
+    draft:    isDark ? '#f59e0b' : '#d97706',
+    pending:  isDark ? '#818cf8' : '#4f46e5',
+    executed: isDark ? '#34d399' : '#059669',
+  };
+  const DUTY_COLORS = {
+    pending:   isDark ? '#818cf8' : '#4f46e5',
+    fulfilled: isDark ? '#34d399' : '#059669',
+    overdue:   isDark ? '#f87171' : '#dc2626',
+  };
+
+  const statusData     = JSON.parse(document.getElementById('loans-status-series').textContent);
+  const repaymentData  = JSON.parse(document.getElementById('loans-repayment-series').textContent);
+  const dailySeries    = JSON.parse(document.getElementById('loans-daily-series').textContent);
+  const typeData       = JSON.parse(document.getElementById('loans-type-series').textContent);
+
+  if (statusData.length) {
+    new Chart(document.getElementById('statusChart'), {
+      type: 'doughnut',
+      data: {
+        labels: statusData.map(d => d.status.toUpperCase()),
+        datasets: [{
+          data: statusData.map(d => d.count),
+          backgroundColor: statusData.map(d => STATUS_COLORS[d.status] || '#94a3b8'),
+          borderWidth: 0,
+        }]
+      },
+      options: {
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 12 } } },
+        cutout: '60%',
+      }
+    });
+  }
+
+  if (repaymentData.length) {
+    new Chart(document.getElementById('repaymentChart'), {
+      type: 'bar',
+      data: {
+        labels: repaymentData.map(d => d.status.toUpperCase()),
+        datasets: [{
+          data: repaymentData.map(d => d.count),
+          backgroundColor: repaymentData.map(d => DUTY_COLORS[d.status] || '#94a3b8'),
+          borderRadius: 5,
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { color: gridColor }, ticks: { precision: 0 } },
+          y: { grid: { display: false } },
+        }
+      }
+    });
+  }
+
+  new Chart(document.getElementById('activityChart'), {
+    type: 'line',
+    data: {
+      labels: dailySeries.map(d => d.date),
+      datasets: [{
+        data: dailySeries.map(d => d.count),
+        borderColor: isDark ? '#818cf8' : '#4f46e5',
+        backgroundColor: isDark ? 'rgba(99,102,241,0.15)' : 'rgba(79,70,229,0.10)',
+        borderWidth: 2, pointRadius: 2, pointHoverRadius: 4, fill: true, tension: 0.35,
+      }]
+    },
+    options: {
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false }, ticks: { maxTicksLimit: 6, maxRotation: 0 } },
+        y: { grid: { color: gridColor }, ticks: { precision: 0 }, beginAtZero: true },
+      }
+    }
+  });
+
+  // Type breakdown — grouped bar
+  new Chart(document.getElementById('typeChart'), {
+    type: 'bar',
+    data: {
+      labels: typeData.map(d => d.label),
+      datasets: [{
+        data: typeData.map(d => d.count),
+        backgroundColor: [
+          isDark ? 'rgba(99,102,241,0.7)' : 'rgba(79,70,229,0.7)',
+          isDark ? 'rgba(52,211,153,0.7)' : 'rgba(5,150,105,0.7)',
+        ],
+        borderRadius: 5,
+      }]
+    },
+    options: {
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false } },
+        y: { grid: { color: gridColor }, ticks: { precision: 0 }, beginAtZero: true },
+      }
+    }
+  });
+})();
+</script>
+{% endblock %}

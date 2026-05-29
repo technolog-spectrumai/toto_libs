@@ -160,7 +160,7 @@
               {{ practitioner_rows|length }}
             </span>
           </h2>
-          <a href="{% url 'contracts:payroll_list' %}"
+          <a href="{% url 'payroll:list' %}"
              class="text-xs underline opacity-60 hover:opacity-80">{% trans "All payroll →" %}</a>
         </div>
 
@@ -181,7 +181,7 @@
                 <i class="fa-solid fa-circle-check"></i> {% trans "Covered" %}
               </span>
               {% else %}
-              <a href="{% url 'contracts:payroll_create' %}"
+              <a href="{% url 'payroll:create' %}"
                  :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
               class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold shrink-0 hover:opacity-80 transition"
                 <i class="fa-solid fa-plus"></i> {% trans "Create payroll" %}
@@ -191,7 +191,7 @@
             {% if row.payroll %}
             <div class="ml-7 space-y-1">
               {% for contract in row.payroll %}
-              <a href="{% url 'contracts:payroll_detail' contract.uuid %}"
+              <a href="{% url 'payroll:detail' contract.uuid %}"
                  :class="darkMode ? 'bg-black/10 hover:bg-black/20' : 'bg-black/5 hover:bg-black/10'"
                  class="flex items-center justify-between gap-2 rounded px-3 py-1.5 text-xs transition">
                 <span class="font-mono truncate opacity-70">{{ contract.name }}</span>

@@ -1,0 +1,219 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{% trans "Payroll Metrics" %} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+{{ status_series|json_script:"payroll-status-series" }}
+{{ duty_status_series|json_script:"payroll-duty-series" }}
+{{ daily_series|json_script:"payroll-daily-series" }}
+
+<div :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+     class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-6xl space-y-8">
+
+    <!-- Header -->
+    <header class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div class="space-y-1">
+        <a href="{% url 'payroll:list' %}"
+           class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+          <i class="fa-solid fa-arrow-left"></i> {% trans "Back to Payroll" %}
+        </a>
+        <div>
+          <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+             class="text-xs font-semibold uppercase tracking-wide">{% trans "Payroll" %}</p>
+          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+            <i class="fa-solid fa-chart-column"></i> {% trans "Metrics" %}
+          </h1>
+        </div>
+      </div>
+    </header>
+
+    <!-- Stat cards -->
+    <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+      {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-scroll" label="Contracts" value=total_contracts color="accent" %}
+      {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-pen-to-square" label="Draft" value=draft_contracts color="neutral" %}
+      {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-circle-check" label="Executed" value=executed_contracts color="success" %}
+      {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-list-check" label="Total Duties" value=total_duties color="accent" %}
+      {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-hourglass-half" label="Pending" value=pending_duties color="warn" %}
+      {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-clock-rotate-left" label="Last 7 Days" value=recent_contracts color="accent" %}
+    </div>
+
+    <!-- Charts -->
+    <div class="grid gap-5 lg:grid-cols-3">
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-xl border p-5 shadow-sm">
+        <h2 class="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide opacity-60">
+          <i class="fa-solid fa-circle-half-stroke"></i> {% trans "Contracts by Status" %}
+        </h2>
+        <canvas id="statusChart" height="200"></canvas>
+      </div>
+
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-xl border p-5 shadow-sm">
+        <h2 class="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide opacity-60">
+          <i class="fa-solid fa-bars"></i> {% trans "Duties by Status" %}
+        </h2>
+        <canvas id="dutyChart" height="200"></canvas>
+      </div>
+
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-xl border p-5 shadow-sm">
+        <h2 class="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide opacity-60">
+          <i class="fa-solid fa-arrow-trend-up"></i> {% trans "New Contracts (30 days)" %}
+        </h2>
+        <canvas id="activityChart" height="200"></canvas>
+      </div>
+    </div>
+
+    <!-- Recent contracts -->
+    <section>
+      <p class="mb-3 text-xs font-semibold uppercase tracking-wide opacity-55">
+        <i class="fa-solid fa-clock mr-1"></i>{% trans "Recent Payroll Contracts" %}
+      </p>
+      <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+           class="overflow-hidden rounded-xl border shadow-sm">
+        <table class="min-w-full text-sm">
+          <thead>
+            <tr :class="darkMode ? 'bg-bubble-bg-dark border-b border-accent-1' : 'bg-bubble-bg-light border-b border-accent-2'"
+                class="text-left text-xs font-semibold uppercase tracking-wide opacity-65">
+              <th class="px-4 py-3">{% trans "Name" %}</th>
+              <th class="px-4 py-3">{% trans "Status" %}</th>
+              <th class="px-4 py-3">{% trans "Frequency" %}</th>
+              <th class="px-4 py-3">{% trans "Created" %}</th>
+              <th class="px-4 py-3"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in recent_list %}
+            <tr :class="darkMode ? 'border-b border-accent-1/40 hover:bg-bubble-bg-dark' : 'border-b border-accent-2/40 hover:bg-bubble-bg-light'"
+                class="transition-colors duration-150">
+              <td class="px-4 py-3 font-semibold">{{ c.name }}</td>
+              <td class="px-4 py-3">
+                <span class="rounded-full px-2 py-0.5 text-xs font-semibold uppercase
+                  {% if c.status == 'executed' %}bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300
+                  {% elif c.status == 'draft' %}bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300
+                  {% else %}bg-gray-100 text-gray-600{% endif %}">
+                  {{ c.status }}
+                </span>
+              </td>
+              <td class="px-4 py-3 opacity-70 text-xs">{{ c.metadata.frequency|default:"—" }}</td>
+              <td class="px-4 py-3 opacity-60 text-xs">{{ c.created_at|date:"Y-m-d" }}</td>
+              <td class="px-4 py-3 text-right">
+                <a href="{% url 'payroll:detail' c.uuid %}"
+                   :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                   class="text-xs font-semibold hover:underline">
+                  {% trans "View" %} <i class="fa-solid fa-arrow-right text-xs"></i>
+                </a>
+              </td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="5" class="px-4 py-8 text-center text-sm opacity-50">
+                {% trans "No payroll contracts yet." %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
+<script>
+(function () {
+  const isDark = localStorage.getItem('darkMode') === 'true';
+  const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+  const textColor = isDark ? '#e2e8f0' : '#374151';
+  Chart.defaults.color = textColor;
+  Chart.defaults.borderColor = gridColor;
+
+  const STATUS_COLORS = {
+    draft:     isDark ? '#f59e0b' : '#d97706',
+    pending:   isDark ? '#818cf8' : '#4f46e5',
+    executed:  isDark ? '#34d399' : '#059669',
+  };
+
+  const DUTY_COLORS = {
+    pending:   isDark ? '#818cf8' : '#4f46e5',
+    fulfilled: isDark ? '#34d399' : '#059669',
+    overdue:   isDark ? '#f87171' : '#dc2626',
+  };
+
+  const statusData  = JSON.parse(document.getElementById('payroll-status-series').textContent);
+  const dutyData    = JSON.parse(document.getElementById('payroll-duty-series').textContent);
+  const dailySeries = JSON.parse(document.getElementById('payroll-daily-series').textContent);
+
+  // Donut — contracts by status
+  if (statusData.length) {
+    new Chart(document.getElementById('statusChart'), {
+      type: 'doughnut',
+      data: {
+        labels: statusData.map(d => d.status.toUpperCase()),
+        datasets: [{
+          data: statusData.map(d => d.count),
+          backgroundColor: statusData.map(d => STATUS_COLORS[d.status] || '#94a3b8'),
+          borderWidth: 0,
+        }]
+      },
+      options: {
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 12 } } },
+        cutout: '60%',
+      }
+    });
+  }
+
+  // Horizontal bar — duties by status
+  if (dutyData.length) {
+    new Chart(document.getElementById('dutyChart'), {
+      type: 'bar',
+      data: {
+        labels: dutyData.map(d => d.status.toUpperCase()),
+        datasets: [{
+          data: dutyData.map(d => d.count),
+          backgroundColor: dutyData.map(d => DUTY_COLORS[d.status] || '#94a3b8'),
+          borderRadius: 5,
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { color: gridColor }, ticks: { precision: 0 } },
+          y: { grid: { display: false } },
+        }
+      }
+    });
+  }
+
+  // Line — 30-day activity
+  new Chart(document.getElementById('activityChart'), {
+    type: 'line',
+    data: {
+      labels: dailySeries.map(d => d.date),
+      datasets: [{
+        data: dailySeries.map(d => d.count),
+        borderColor: isDark ? '#818cf8' : '#4f46e5',
+        backgroundColor: isDark ? 'rgba(99,102,241,0.15)' : 'rgba(79,70,229,0.10)',
+        borderWidth: 2,
+        pointRadius: 2,
+        pointHoverRadius: 4,
+        fill: true,
+        tension: 0.35,
+      }]
+    },
+    options: {
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false }, ticks: { maxTicksLimit: 6, maxRotation: 0 } },
+        y: { grid: { color: gridColor }, ticks: { precision: 0 }, beginAtZero: true },
+      }
+    }
+  });
+})();
+</script>
+{% endblock %}

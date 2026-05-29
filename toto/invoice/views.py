@@ -1,7 +1,6 @@
 import uuid as _uuid
 from datetime import timedelta
 
-import jinja2
 import yaml
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -9,6 +8,8 @@ from django.core.files.base import ContentFile
 from django.db.models import Count, Q, Sum
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.template import Context, Template
+from django.template.exceptions import TemplateSyntaxError
 from django.utils import timezone
 from django.views import View
 from django.views.generic import ListView
@@ -56,23 +57,7 @@ class InvoiceListView(LoginRequiredMixin, ListView):
         qs = self.get_queryset()
         context["pending_count"] = qs.filter(status=InvoiceStatus.PENDING).count()
         context["paid_count"] = qs.filter(status=InvoiceStatus.PAID).count()
-        context["invoice_rows"] = [
-            {"invoice": inv, "yaml": _invoice_yaml(inv)}
-            for inv in context["invoices"]
-        ]
-        context["report_templates"] = list(InvoiceReportTemplate.objects.filter(is_active=True).order_by("name"))
-
-        import json
-        from toto.vault.models import Bucket, VaultDirectory
-        user_buckets = list(Bucket.objects.filter(owner=self.request.user).order_by("name"))
-        context["user_buckets"] = user_buckets
-        context["bucket_directories_json"] = json.dumps({
-            str(b.pk): [
-                {"pk": d.pk, "name": d.full_path()}
-                for d in VaultDirectory.objects.filter(bucket=b).order_by("name")
-            ]
-            for b in user_buckets
-        })
+        context["invoices"] = context["invoices"]
         return PageProcessor().decorate(context, self.request)
 
 
@@ -174,9 +159,9 @@ class GenerateReportView(LoginRequiredMixin, View):
         template = get_object_or_404(InvoiceReportTemplate, pk=template_id, is_active=True)
 
         try:
-            jenv = jinja2.Environment(autoescape=(template.format == "html"))
-            rendered = jenv.from_string(template.template_source).render(**_report_context(invoice))
-        except jinja2.TemplateError as exc:
+            t = Template(template.template_source)
+            rendered = t.render(Context(_report_context(invoice)))
+        except (TemplateSyntaxError, Exception) as exc:
             messages.error(request, f"Template error: {exc}")
             return redirect("invoice:invoice_list")
 

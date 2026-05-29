@@ -46,19 +46,19 @@
           <i class="fa-solid fa-list"></i>
           {% trans "All Contracts" %}
         </a>
-        <a href="{% url 'contracts:payroll_list' %}"
+        <a href="{% url 'payroll:list' %}"
            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
            class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
           <i class="fa-solid fa-money-check-dollar"></i>
           {% trans "Payroll" %}
         </a>
-        <a href="{% url 'contracts:insurance_list' %}"
+        <a href="{% url 'insurance:list' %}"
            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
            class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
           <i class="fa-solid fa-shield-halved"></i>
           {% trans "Insurance" %}
         </a>
-        <a href="{% url 'contracts:loan_list' %}"
+        <a href="{% url 'loans:list' %}"
            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
            class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
           <i class="fa-solid fa-hand-holding-dollar"></i>
