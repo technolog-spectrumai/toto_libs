@@ -18,6 +18,7 @@ urlpatterns = [
     path("deployments/<int:pk>/routes/add/", views.deployment_route_add, name="deployment_route_add"),
     path("deployments/<int:pk>/equipment/add/", views.deployment_equipment_add, name="deployment_equipment_add"),
     path("deployments/<int:pk>/metrics/", views.deployment_metrics, name="deployment_metrics"),
+    path("deployments/<int:pk>/budget/", views.deployment_budget_link, name="deployment_budget_link"),
 
     # Interventions
     path("interventions/<int:pk>/done/", views.intervention_complete, name="intervention_complete"),

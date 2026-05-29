@@ -14,6 +14,7 @@ from .views import (
     DocumentationPageDetailView,
     project_tokenize,
     project_tokenization_default,
+    mission_economy,
 )
 
 app_name = "kanban"
@@ -49,6 +50,12 @@ urlpatterns = [
         "documentation/<int:pk>/",
         DocumentationPageDetailView.as_view(),
         name="documentation_page_detail",
+    ),
+
+    path(
+        "mission/<int:pk>/economy/",
+        mission_economy,
+        name="mission_economy",
     ),
 
     path(

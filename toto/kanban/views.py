@@ -807,6 +807,148 @@ class DocumentationPageDetailView(PageDetailMixin, DetailView):
 
 
 # ---------------------------------------------------------------------------
+# Mission Economy
+# ---------------------------------------------------------------------------
+
+@login_required
+def mission_economy(request, pk):
+    mission = get_object_or_404(
+        Mission.objects.select_related(
+            "campaign__project", "campaign__owner", "owner",
+        ),
+        pk=pk,
+    )
+    project = mission.campaign.project
+
+    from toto.contracts.models import Contract, ContractNode
+
+    # Contracts linked to this mission via a ContractNode
+    linked_nodes = ContractNode.objects.filter(
+        object_app="kanban",
+        object_model="mission",
+        object_id=str(mission.pk),
+    ).select_related("contract")
+    linked_contracts = [n.contract for n in linked_nodes]
+    linked_contract_ids = {c.pk for c in linked_contracts}
+
+    # Practitioners on this mission (via tasks)
+    practitioners = (
+        Practitioner.objects
+        .filter(assigned_tasks__mission=mission, is_active=True)
+        .select_related("person")
+        .distinct()
+    )
+
+    def _payroll_for(person):
+        return list(
+            Contract.objects.filter(
+                metadata__archetype="payroll",
+                nodes__key="worker_person",
+                nodes__object_app="people",
+                nodes__object_model="person",
+                nodes__object_id=str(person.pk),
+            ).distinct()
+        )
+
+    practitioner_rows = [
+        {"practitioner": p, "payroll": _payroll_for(p.person)}
+        for p in practitioners
+    ]
+
+    # Project tokenization
+    tokenization = getattr(project, "tokenization", None)
+
+    # All contracts for the link form (exclude already linked)
+    all_contracts = Contract.objects.exclude(pk__in=linked_contract_ids).order_by("name")
+
+    # Financial planning: budget summary per contract
+    budget_summary = []
+    for contract in linked_contracts:
+        meta = contract.metadata or {}
+        archetype = meta.get("archetype", "")
+        entry = {"contract": contract, "archetype": archetype, "lines": []}
+        if archetype == "payroll":
+            allocation = meta.get("allocation_base_units")
+            asset_unit = meta.get("asset_unit_name", "")
+            if allocation is not None:
+                entry["lines"].append({"label": "Allocation", "value": f"{allocation} {asset_unit}".strip()})
+            frequency = meta.get("frequency", "")
+            if frequency:
+                entry["lines"].append({"label": "Frequency", "value": frequency.title()})
+        elif archetype == "insurance":
+            premium = meta.get("premium_amount_base_units")
+            asset_unit = meta.get("premium_asset_unit", "")
+            if premium is not None:
+                entry["lines"].append({"label": "Premium", "value": f"{premium} {asset_unit}".strip()})
+            freq = meta.get("premium_frequency", "")
+            if freq:
+                entry["lines"].append({"label": "Frequency", "value": freq.title()})
+        elif archetype == "loan":
+            principal = meta.get("principal_base_units")
+            asset_unit = meta.get("loan_asset_unit", "")
+            if principal is not None:
+                entry["lines"].append({"label": "Principal", "value": f"{principal} {asset_unit}".strip()})
+            rate_bps = meta.get("interest_rate_bps")
+            if rate_bps is not None:
+                entry["lines"].append({"label": "Rate", "value": f"{rate_bps / 100:.2f}%"})
+        budget_summary.append(entry)
+
+    # Cost history: recent ContractEvents for linked contracts
+    from toto.claims.models import ContractEvent
+    cost_history = (
+        ContractEvent.objects
+        .filter(contract_id__in=linked_contract_ids)
+        .select_related("contract", "actor")
+        .order_by("-created_at")[:20]
+    ) if linked_contract_ids else []
+
+    if request.method == "POST":
+        action = request.POST.get("action")
+
+        if action == "link":
+            contract_id = request.POST.get("contract_id")
+            if contract_id:
+                contract = get_object_or_404(Contract, pk=contract_id)
+                ContractNode.objects.get_or_create(
+                    contract=contract,
+                    key="linked_mission",
+                    object_app="kanban",
+                    object_model="mission",
+                    object_id=str(mission.pk),
+                    defaults={
+                        "node_type": "manual",
+                        "title": f"Mission: {mission.title}",
+                        "is_manual": True,
+                    },
+                )
+                messages.success(request, f'Contract "{contract.name}" linked to mission.')
+
+        elif action == "unlink":
+            contract_id = request.POST.get("contract_id")
+            ContractNode.objects.filter(
+                contract_id=contract_id,
+                object_app="kanban",
+                object_model="mission",
+                object_id=str(mission.pk),
+            ).delete()
+            messages.success(request, "Contract unlinked.")
+
+        return redirect("kanban:mission_economy", pk=pk)
+
+    context = PageProcessor().decorate({
+        "mission": mission,
+        "project": project,
+        "linked_contracts": linked_contracts,
+        "all_contracts": all_contracts,
+        "practitioner_rows": practitioner_rows,
+        "tokenization": tokenization,
+        "budget_summary": budget_summary,
+        "cost_history": cost_history,
+    }, request)
+    return render(request, "kanban/mission_economy.html", context)
+
+
+# ---------------------------------------------------------------------------
 # Project Tokenization
 # ---------------------------------------------------------------------------
 

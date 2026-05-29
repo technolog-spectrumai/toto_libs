@@ -90,6 +90,16 @@
           <i class="fa-solid fa-flag-checkered"></i>
           {% trans "Sprints" %}
         </a>
+
+        <a
+          href="{% url 'kanban:mission_economy' mission.pk %}"
+          :class="darkMode
+            ? 'border-accent-1 bg-bubble-bg-dark'
+            : 'border-accent-2 bg-bubble-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-coins"></i>
+          {% trans "Economy" %}
+        </a>
       </nav>
     </header>
 
@@ -566,12 +576,16 @@
 
                 <td class="px-4 py-3">
                   {% if task.assignee %}
+                    {% if task.assignee.slug %}
                     <a
                       href="{% url 'socialhub:profile_details' task.assignee.slug %}"
                       :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
                       class="font-semibold underline-offset-4 transition hover:underline hover:opacity-80">
                       {{ task.assignee.display_name }}
                     </a>
+                    {% else %}
+                      {{ task.assignee.display_name }}
+                    {% endif %}
                   {% else %}
                     {% trans "Unassigned" %}
                   {% endif %}
@@ -634,12 +648,16 @@
                 {% trans "Assignee:" %}
                 <span class="font-semibold">
                   {% if task.assignee %}
+                    {% if task.assignee.slug %}
                     <a
                       href="{% url 'socialhub:profile_details' task.assignee.slug %}"
                       :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
                       class="font-semibold underline-offset-4 transition hover:underline hover:opacity-80">
                       {{ task.assignee.display_name }}
                     </a>
+                    {% else %}
+                      {{ task.assignee.display_name }}
+                    {% endif %}
                   {% else %}
                     {% trans "Unassigned" %}
                   {% endif %}

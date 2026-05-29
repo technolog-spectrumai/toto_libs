@@ -140,6 +140,23 @@ def deployment_detail(request, pk):
         for a in assignments
     ]
 
+    # Deployment budget: contracts linked to this deployment
+    from toto.contracts.models import Contract
+    deployment_budget_nodes = (
+        ContractNode.objects
+        .filter(
+            object_app="response",
+            object_model="deployment",
+            object_id=str(pk),
+        )
+        .select_related("contract")
+    )
+    deployment_contracts = [n.contract for n in deployment_budget_nodes]
+
+    # All contracts for the link form
+    linked_contract_ids = {c.pk for c in deployment_contracts}
+    all_contracts_for_link = Contract.objects.exclude(pk__in=linked_contract_ids).order_by("name")
+
     return _render(request, "response/deployment_detail.html", {
         "deployment": deployment,
         "assignments": assignments,
@@ -156,6 +173,8 @@ def deployment_detail(request, pk):
         "linked_detection_ids": linked_detection_ids,
         "map_data_url": map_data_url,
         "assignment_payroll": assignment_payroll,
+        "deployment_contracts": deployment_contracts,
+        "all_contracts_for_link": all_contracts_for_link,
         "dep_layer_toggles": [
             ("mission",     "Mission",    "fa-solid fa-crosshairs",          "accent"),
             ("dep_routes",  "Routes",     "fa-solid fa-route",               "success"),
@@ -456,6 +475,47 @@ def deployment_equipment_add(request, pk):
             defaults={"quantity": quantity, "notes": notes},
         )
         messages.success(request, f"{item.name} added to deployment equipment.")
+    return redirect("response:deployment_detail", pk=pk)
+
+
+# ---------------------------------------------------------------------------
+# Deployment budget (contract linking)
+# ---------------------------------------------------------------------------
+
+@login_required
+@require_POST
+def deployment_budget_link(request, pk):
+    from toto.contracts.models import Contract, ContractNode
+    deployment = get_object_or_404(Deployment, pk=pk)
+    action = request.POST.get("action")
+
+    if action == "link":
+        contract_id = request.POST.get("contract_id")
+        if contract_id:
+            contract = get_object_or_404(Contract, pk=contract_id)
+            ContractNode.objects.get_or_create(
+                contract=contract,
+                key="linked_deployment",
+                object_app="response",
+                object_model="deployment",
+                object_id=str(pk),
+                defaults={
+                    "node_type": "manual",
+                    "title": f"Deployment: {deployment.title}",
+                    "is_manual": True,
+                },
+            )
+            messages.success(request, f'Contract "{contract.name}" linked to deployment.')
+    elif action == "unlink":
+        contract_id = request.POST.get("contract_id")
+        ContractNode.objects.filter(
+            contract_id=contract_id,
+            object_app="response",
+            object_model="deployment",
+            object_id=str(pk),
+        ).delete()
+        messages.success(request, "Contract unlinked from deployment.")
+
     return redirect("response:deployment_detail", pk=pk)
 
 

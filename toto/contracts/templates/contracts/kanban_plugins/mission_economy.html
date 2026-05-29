@@ -1,0 +1,88 @@
+{% load i18n %}
+<section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-2xl border p-5 shadow-sm">
+
+  <div class="mb-4 flex items-center justify-between gap-2">
+    <div class="flex items-center gap-2">
+      <i class="fa-solid fa-coins" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+      <h2 class="text-lg font-bold">{% trans "Economy" %}</h2>
+    </div>
+    <a href="{% url 'kanban:mission_economy' economy_mission.pk %}"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="inline-flex items-center gap-1 rounded-lg border px-3 py-1 text-xs font-semibold transition hover:opacity-80">
+      <i class="fa-solid fa-arrow-up-right-from-square"></i>
+      {% trans "Full view" %}
+    </a>
+  </div>
+
+  <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+
+    <!-- Linked Contracts -->
+    <div :class="darkMode ? 'bg-black/10' : 'bg-black/5'" class="rounded-xl p-3 space-y-2">
+      <p class="text-xs font-semibold uppercase tracking-wide opacity-50 flex items-center gap-1">
+        <i class="fa-solid fa-scroll"></i> {% trans "Contracts" %}
+        <span class="ml-auto rounded-full px-2 py-0.5 text-xs font-bold
+          {% if economy_linked_contracts %}bg-blue-100 text-blue-700{% else %}bg-gray-100 text-gray-500{% endif %}">
+          {{ economy_linked_contracts|length }}
+        </span>
+      </p>
+      {% if economy_linked_contracts %}
+        {% for contract in economy_linked_contracts %}
+          <a href="{% url 'contracts:contract_detail' contract.uuid %}"
+             :class="darkMode ? 'bg-black/10 hover:bg-black/20' : 'bg-black/5 hover:bg-black/10'"
+             class="flex items-center justify-between gap-2 rounded px-2 py-1.5 text-xs transition">
+            <span class="font-semibold truncate">{{ contract.name }}</span>
+            {% if contract.status == 'executed' %}
+              <span class="text-green-700 font-semibold shrink-0">{% trans "Active" %}</span>
+            {% elif contract.status == 'pending' %}
+              <span class="text-yellow-700 font-semibold shrink-0">{% trans "Signing" %}</span>
+            {% else %}
+              <span class="opacity-50 shrink-0">{{ contract.get_status_display }}</span>
+            {% endif %}
+          </a>
+        {% endfor %}
+      {% else %}
+        <p class="text-xs opacity-40 text-center py-2">{% trans "None linked" %}</p>
+      {% endif %}
+      <a href="{% url 'kanban:mission_economy' economy_mission.pk %}"
+         class="block text-center text-xs opacity-50 hover:opacity-80 transition pt-1">
+        <i class="fa-solid fa-link mr-1"></i>{% trans "Manage →" %}
+      </a>
+    </div>
+
+    <!-- Practitioners -->
+    <div :class="darkMode ? 'bg-black/10' : 'bg-black/5'" class="rounded-xl p-3 space-y-2">
+      <p class="text-xs font-semibold uppercase tracking-wide opacity-50 flex items-center gap-1">
+        <i class="fa-solid fa-users"></i> {% trans "Practitioners" %}
+        <span class="ml-auto rounded-full px-2 py-0.5 text-xs font-bold
+          {% if economy_practitioner_rows %}bg-blue-100 text-blue-700{% else %}bg-gray-100 text-gray-500{% endif %}">
+          {{ economy_practitioner_rows|length }}
+        </span>
+      </p>
+      {% if economy_practitioner_rows %}
+        {% for row in economy_practitioner_rows %}
+          <div class="flex items-center justify-between gap-2">
+            <div class="min-w-0">
+              <p class="text-xs font-semibold truncate">{{ row.practitioner.person }}</p>
+              <p class="text-xs opacity-50 capitalize">{{ row.practitioner.get_role_display }}</p>
+            </div>
+            {% if row.payroll %}
+              <span class="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-xs font-semibold shrink-0">
+                <i class="fa-solid fa-circle-check"></i>
+              </span>
+            {% else %}
+              <a href="{% url 'contracts:payroll_create' %}"
+                 :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+                 class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold shrink-0 hover:opacity-80 transition"
+                <i class="fa-solid fa-plus"></i> {% trans "Payroll" %}
+              </a>
+            {% endif %}
+          </div>
+        {% endfor %}
+      {% else %}
+        <p class="text-xs opacity-40 text-center py-2">{% trans "No practitioners" %}</p>
+      {% endif %}
+    </div>
+
+  </div>
+</section>

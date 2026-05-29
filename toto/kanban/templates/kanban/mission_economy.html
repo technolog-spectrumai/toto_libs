@@ -1,0 +1,342 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}Economy — {{ mission.title }} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+<div class="mx-auto max-w-7xl space-y-6">
+
+  <!-- Header -->
+  <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+    <div class="space-y-2">
+      <a href="{% url 'kanban:mission_detail' mission.pk %}"
+         class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+        <i class="fa-solid fa-arrow-left"></i>
+        {{ mission.title }}
+      </a>
+      <div>
+        <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+           class="text-xs font-semibold uppercase tracking-wide">
+          {{ project.name }}
+        </p>
+        <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+          <i class="fa-solid fa-coins"></i>
+          {% trans "Economy" %}
+        </h1>
+      </div>
+    </div>
+  </header>
+
+  <!-- Messages -->
+  {% if messages %}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-4 shadow-sm space-y-1">
+    {% for message in messages %}
+    <p class="text-sm font-semibold">{{ message }}</p>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+
+    <!-- Main column -->
+    <div class="lg:col-span-2 space-y-6">
+
+      <!-- ── Linked Contracts ── -->
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border shadow-sm"
+           x-data="{ linkOpen: false }">
+
+        <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+             class="flex items-center justify-between px-5 py-4 border-b">
+          <h2 class="font-bold flex items-center gap-2">
+            <i class="fa-solid fa-scroll opacity-60"></i>
+            {% trans "Linked Contracts" %}
+            <span class="ml-1 rounded-full px-2 py-0.5 text-xs font-bold
+              {% if linked_contracts %}bg-blue-100 text-blue-700{% else %}bg-gray-100 text-gray-500{% endif %}">
+              {{ linked_contracts|length }}
+            </span>
+          </h2>
+          <button type="button" @click="linkOpen = !linkOpen"
+            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+            class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80">
+            <i class="fa-solid fa-link"></i>
+            <span x-text="linkOpen ? '{% trans "Cancel" %}' : '{% trans "Link contract" %}'"></span>
+          </button>
+        </div>
+
+        <!-- Link form -->
+        <div x-show="linkOpen" x-cloak class="px-5 py-4"
+             :class="darkMode ? 'border-accent-1 bg-black/10' : 'border-accent-2 bg-black/5'">
+          <form method="post" class="flex flex-wrap gap-2 items-end">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="link">
+            <div class="flex-1 min-w-40 space-y-1">
+              <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+                {% trans "Contract" %}
+              </label>
+              <select name="contract_id"
+                :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+                class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-1">
+                <option value="">— {% trans "choose" %} —</option>
+                {% for c in all_contracts %}
+                <option value="{{ c.pk }}">{{ c.name }} ({{ c.get_status_display }})</option>
+                {% endfor %}
+              </select>
+            </div>
+            <button type="submit"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-90">
+              <i class="fa-solid fa-link mr-1"></i> {% trans "Link" %}
+            </button>
+          </form>
+        </div>
+
+        {% if linked_contracts %}
+        <div class="divide-y" :class="darkMode ? 'divide-accent-1' : 'divide-accent-2'">
+          {% for contract in linked_contracts %}
+          <div class="flex items-center justify-between gap-4 px-5 py-3">
+            <div class="flex items-center gap-3 min-w-0">
+              <i class="fa-solid fa-scroll shrink-0 opacity-40"></i>
+              <div class="min-w-0">
+                <a href="{% url 'contracts:contract_detail' contract.uuid %}"
+                   :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                   class="font-semibold text-sm truncate hover:underline">
+                  {{ contract.name }}
+                </a>
+                <p class="text-xs opacity-50 capitalize">
+                  {{ contract.metadata.archetype|default:"contract" }} ·
+                  {{ contract.get_status_display }}
+                </p>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              {% if contract.status == 'executed' %}
+              <span class="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-800 px-2 py-0.5 text-xs font-semibold">
+                <i class="fa-solid fa-circle-check"></i> {% trans "Active" %}
+              </span>
+              {% elif contract.status == 'pending' %}
+              <span :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+                    class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold">
+                <i class="fa-solid fa-pen-nib"></i> {% trans "Signing" %}
+              </span>
+              {% else %}
+              <span class="inline-flex items-center gap-1 rounded-full bg-gray-100 text-gray-500 px-2 py-0.5 text-xs font-semibold">
+                {{ contract.get_status_display }}
+              </span>
+              {% endif %}
+              <form method="post" class="inline">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="unlink">
+                <input type="hidden" name="contract_id" value="{{ contract.pk }}">
+                <button type="submit" class="text-xs opacity-40 hover:opacity-80 transition" title="{% trans 'Unlink' %}">
+                  <i class="fa-solid fa-xmark"></i>
+                </button>
+              </form>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="px-6 py-8 text-center text-sm opacity-40">
+          {% trans "No contracts linked yet." %}
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- ── Practitioners & Payroll ── -->
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border shadow-sm">
+        <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+             class="flex items-center justify-between px-5 py-4 border-b">
+          <h2 class="font-bold flex items-center gap-2">
+            <i class="fa-solid fa-users opacity-60"></i>
+            {% trans "Practitioners" %}
+            <span class="ml-1 rounded-full px-2 py-0.5 text-xs font-bold
+              {% if practitioner_rows %}bg-blue-100 text-blue-700{% else %}bg-gray-100 text-gray-500{% endif %}">
+              {{ practitioner_rows|length }}
+            </span>
+          </h2>
+          <a href="{% url 'contracts:payroll_list' %}"
+             class="text-xs underline opacity-60 hover:opacity-80">{% trans "All payroll →" %}</a>
+        </div>
+
+        {% if practitioner_rows %}
+        <div class="divide-y" :class="darkMode ? 'divide-accent-1' : 'divide-accent-2'">
+          {% for row in practitioner_rows %}
+          <div class="px-5 py-4 space-y-2">
+            <div class="flex items-center justify-between gap-3">
+              <div class="flex items-center gap-2 min-w-0">
+                <i class="fa-solid fa-user-gear shrink-0 opacity-40"></i>
+                <div class="min-w-0">
+                  <p class="font-semibold text-sm">{{ row.practitioner.person }}</p>
+                  <p class="text-xs opacity-50 capitalize">{{ row.practitioner.get_role_display }}</p>
+                </div>
+              </div>
+              {% if row.payroll %}
+              <span class="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-800 px-2 py-0.5 text-xs font-semibold shrink-0">
+                <i class="fa-solid fa-circle-check"></i> {% trans "Covered" %}
+              </span>
+              {% else %}
+              <a href="{% url 'contracts:payroll_create' %}"
+                 :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+              class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold shrink-0 hover:opacity-80 transition"
+                <i class="fa-solid fa-plus"></i> {% trans "Create payroll" %}
+              </a>
+              {% endif %}
+            </div>
+            {% if row.payroll %}
+            <div class="ml-7 space-y-1">
+              {% for contract in row.payroll %}
+              <a href="{% url 'contracts:payroll_detail' contract.uuid %}"
+                 :class="darkMode ? 'bg-black/10 hover:bg-black/20' : 'bg-black/5 hover:bg-black/10'"
+                 class="flex items-center justify-between gap-2 rounded px-3 py-1.5 text-xs transition">
+                <span class="font-mono truncate opacity-70">{{ contract.name }}</span>
+                {% if contract.status == 'executed' %}
+                <span class="text-green-700 font-semibold shrink-0">{% trans "Active" %}</span>
+                {% elif contract.status == 'pending' %}
+                <span class="text-yellow-700 font-semibold shrink-0">{% trans "Signing" %}</span>
+                {% else %}
+                <span class="opacity-50 shrink-0">{{ contract.get_status_display }}</span>
+                {% endif %}
+              </a>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="px-6 py-8 text-center text-sm opacity-40">
+          {% trans "No practitioners assigned to tasks in this mission." %}
+        </div>
+        {% endif %}
+      </div>
+
+    </div>
+
+    <!-- Aside column -->
+    <aside class="space-y-6">
+
+      <!-- ── Financial Planning ── -->
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border shadow-sm">
+        <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+             class="px-5 py-4 border-b">
+          <h2 class="font-bold flex items-center gap-2">
+            <i class="fa-solid fa-chart-pie opacity-60"></i>
+            {% trans "Budget Breakdown" %}
+          </h2>
+        </div>
+        <div class="px-5 py-4 space-y-3">
+          {% if budget_summary %}
+            {% for entry in budget_summary %}
+            <div :class="darkMode ? 'bg-black/10' : 'bg-black/5'" class="rounded-lg px-3 py-2 space-y-1">
+              <div class="flex items-center gap-2">
+                {% if entry.archetype == 'payroll' %}
+                  <i class="fa-solid fa-money-check-dollar opacity-50 text-xs"></i>
+                {% elif entry.archetype == 'insurance' %}
+                  <i class="fa-solid fa-shield-halved opacity-50 text-xs"></i>
+                {% elif entry.archetype == 'loan' %}
+                  <i class="fa-solid fa-hand-holding-dollar opacity-50 text-xs"></i>
+                {% else %}
+                  <i class="fa-solid fa-scroll opacity-50 text-xs"></i>
+                {% endif %}
+                <a href="{% url 'contracts:contract_detail' entry.contract.uuid %}"
+                   :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                   class="text-xs font-semibold truncate hover:underline">{{ entry.contract.name }}</a>
+              </div>
+              {% for line in entry.lines %}
+              <div class="flex items-center justify-between gap-2 ml-4">
+                <span class="text-xs opacity-50">{{ line.label }}</span>
+                <span class="text-xs font-mono font-semibold">{{ line.value }}</span>
+              </div>
+              {% endfor %}
+              {% if not entry.lines %}
+              <p class="text-xs opacity-40 ml-4 capitalize">{{ entry.archetype|default:"contract" }}</p>
+              {% endif %}
+            </div>
+            {% endfor %}
+          {% else %}
+            <p class="text-sm text-center opacity-40 py-3">{% trans "Link contracts to see budget data." %}</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- ── Cost History ── -->
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border shadow-sm">
+        <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+             class="px-5 py-4 border-b">
+          <h2 class="font-bold flex items-center gap-2">
+            <i class="fa-solid fa-clock-rotate-left opacity-60"></i>
+            {% trans "Cost History" %}
+          </h2>
+        </div>
+        <div class="divide-y" :class="darkMode ? 'divide-accent-1' : 'divide-accent-2'">
+          {% if cost_history %}
+            {% for event in cost_history %}
+            <div class="px-5 py-3 space-y-0.5">
+              <div class="flex items-start justify-between gap-2">
+                <p class="text-xs font-semibold leading-snug">{{ event.title }}</p>
+                <time class="text-xs opacity-40 shrink-0 tabular-nums">{{ event.created_at|date:"M j" }}</time>
+              </div>
+              <p class="text-xs opacity-50">
+                <span class="capitalize">{{ event.get_kind_display }}</span>
+                {% if event.contract %} · <a href="{% url 'contracts:contract_detail' event.contract.uuid %}"
+                     class="hover:underline">{{ event.contract.name }}</a>{% endif %}
+              </p>
+            </div>
+            {% endfor %}
+          {% else %}
+            <div class="px-6 py-8 text-center text-sm opacity-40">
+              {% trans "No events recorded yet." %}
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- ── Tokenization ── -->
+      {% if tokenization %}
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border shadow-sm">
+        <div class="px-5 py-4 space-y-2">
+          <p class="text-xs font-semibold uppercase tracking-wide opacity-50 flex items-center gap-2">
+            <i class="fa-solid fa-circle-nodes"></i> {% trans "Tokenization" %}
+          </p>
+          <div class="flex items-center justify-between">
+            <span class="text-xs opacity-50">{% trans "Asset" %}</span>
+            <span class="font-mono font-bold text-sm">{{ tokenization.asset.unit_name }}</span>
+          </div>
+          {% if tokenization.status == 'active' %}
+          <span class="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-800 px-2 py-0.5 text-xs font-semibold">
+            <i class="fa-solid fa-circle-check"></i> {% trans "Active" %}
+          </span>
+          {% else %}
+          <span class="inline-flex items-center gap-1 rounded-full bg-red-100 text-red-700 px-2 py-0.5 text-xs font-semibold">
+            {% trans "Defaulted" %}
+          </span>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- ── Contracts link ── -->
+      <a href="{% url 'contracts:contract_list' %}"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-black/10' : 'border-accent-2 bg-bubble-bg-light hover:bg-black/5'"
+         class="flex items-center gap-3 rounded-lg border px-4 py-3 text-sm font-semibold transition shadow-sm">
+        <i class="fa-solid fa-scroll opacity-60"></i>
+        {% trans "All Contracts" %}
+        <i class="fa-solid fa-arrow-right ml-auto opacity-40"></i>
+      </a>
+
+    </aside>
+
+  </div>
+
+</div>
+</section>
+{% endblock %}
