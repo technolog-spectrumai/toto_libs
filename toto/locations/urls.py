@@ -18,5 +18,6 @@ urlpatterns = [
 
     path("addresses/new/", views.address_create, name="address_create"),
     path("routes/save/", views.route_save, name="route_save"),
-    path("locations/search/", views.location_search_api, name="location_search_api")
+    path("locations/search/", views.location_search_api, name="location_search_api"),
+    path("layers/import/", views.api_import_layer, name="api_import_layer"),
 ]

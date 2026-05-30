@@ -25,10 +25,6 @@ class DetectionsConfig(AppConfig):
             FieldMapPlugin.register(detections_map_features)
             FieldMetricsPlugin.register(detections_metrics_section)
 
-        from toto.locations.plugins.map_layer_plugins import LocationMapLayerPlugin
-        from toto.detections.plugins.location_layer_plugins import detections_severity_layer
-        LocationMapLayerPlugin.register(detections_severity_layer)
-
         from toto.detections import predefined_tasks  # noqa: F401 — registers detections workflow tasks
 
 

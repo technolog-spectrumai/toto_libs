@@ -135,10 +135,6 @@ def travel_payload(travel):
     }
 
 
-def _plugin_map_layers() -> list[dict]:
-    """Collect virtual map layers from all registered app plugins."""
-    from toto.locations.plugins.map_layer_plugins import LocationMapLayerPlugin
-    return LocationMapLayerPlugin.get_layers()
 
 
 def map_layer_payload(layer):
@@ -259,16 +255,13 @@ def locations_all(request):
     context = {
         "locations": locations,
         "locations_json": json.dumps(locations),
-        "map_layers_json": json.dumps(
-            [
-                map_layer_payload(layer)
-                for layer in MapLayer.objects
-                .filter(is_active=True)
-                .prefetch_related("polygons")
-                .order_by("name")
-            ]
-            + _plugin_map_layers()
-        ),
+        "map_layers_json": json.dumps([
+            map_layer_payload(layer)
+            for layer in MapLayer.objects
+            .filter(is_active=True)
+            .prefetch_related("polygons")
+            .order_by("name")
+        ]),
         **LocationContextPlugin.get_context(),
     }
 
@@ -724,3 +717,101 @@ def location_search_api(request):
     return JsonResponse({
         "results": forward_geocode_locations(query),
     })
+
+
+# ---------------------------------------------------------------------
+# Layer import
+# ---------------------------------------------------------------------
+
+@login_required
+@require_POST
+def api_import_layer(request):
+    from collections import defaultdict
+    from django.contrib.gis.geos import GEOSGeometry
+    from .models import MapLayerPolygon
+
+    uploaded = request.FILES.get("file")
+    if not uploaded:
+        return JsonResponse({"error": "No file uploaded."}, status=400)
+
+    try:
+        data = json.loads(uploaded.read().decode("utf-8"))
+    except Exception:
+        return JsonResponse({"error": "Invalid GeoJSON — could not parse file."}, status=400)
+
+    if data.get("type") != "FeatureCollection":
+        return JsonResponse({"error": "Expected a GeoJSON FeatureCollection."}, status=400)
+
+    features = data.get("features") or []
+    if not features:
+        return JsonResponse({"error": "File contains no features."}, status=400)
+
+    # Group features by layer_slug property
+    groups: dict[str, list] = defaultdict(list)
+    for feat in features:
+        slug = (feat.get("properties") or {}).get("layer_slug") or "imported-layer"
+        groups[slug].append(feat)
+
+    name_override = request.POST.get("name", "").strip()
+
+    results = []
+    for layer_slug, feats in groups.items():
+        first_props = feats[0].get("properties") or {}
+        # If caller supplied a name and there is only one layer, use it
+        layer_name = (name_override if len(groups) == 1 else "") or first_props.get("layer_name") or layer_slug
+        unit = first_props.get("unit", "")
+
+        raw_values = [
+            (f.get("properties") or {}).get("value")
+            for f in feats
+            if (f.get("properties") or {}).get("value") is not None
+        ]
+        min_val = min(raw_values) if raw_values else None
+        max_val = max(raw_values) if raw_values else None
+
+        layer, _ = MapLayer.objects.update_or_create(
+            slug=layer_slug,
+            defaults={
+                "name": layer_name,
+                "unit": unit,
+                "min_value": min_val,
+                "max_value": max_val,
+                "is_active": True,
+            },
+        )
+        layer.polygons.all().delete()
+
+        _skip_props = {"layer_slug", "layer_name", "id", "name", "value", "unit"}
+        created = 0
+        for feat in feats:
+            geom_data = feat.get("geometry")
+            props = feat.get("properties") or {}
+            value = props.get("value")
+            if geom_data is None or value is None:
+                continue
+
+            try:
+                geom = GEOSGeometry(json.dumps(geom_data), srid=4326)
+            except Exception:
+                continue
+
+            polys = list(geom) if geom.geom_type == "MultiPolygon" else (
+                [geom] if geom.geom_type == "Polygon" else []
+            )
+            feat_name = props.get("name", "")
+            extra = {k: v for k, v in props.items() if k not in _skip_props}
+
+            for poly in polys:
+                MapLayerPolygon.objects.create(
+                    layer=layer,
+                    geometry=poly,
+                    center=poly.centroid,
+                    value=float(value),
+                    name=feat_name,
+                    properties=extra,
+                )
+                created += 1
+
+        results.append({"slug": layer_slug, "name": layer_name, "polygon_count": created})
+
+    return JsonResponse({"imported": results})

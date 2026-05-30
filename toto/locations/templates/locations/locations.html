@@ -56,6 +56,12 @@
 
       clickedPoint: null,
       addressModalOpen: false,
+      importOpen: false,
+      importFile: null,
+      importName: "",
+      importRunning: false,
+      importResult: null,
+      importError: "",
 
       init() {
         this.availableTypes
@@ -408,23 +414,6 @@
           </div>
         </div>
 
-        <a
-          href="{% url 'locations:route_search' %}"
-          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-          class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-          <i class="fa-solid fa-route"></i>
-          Search traversable path
-        </a>
-
-        <a
-          href="{% url 'locations:address_create' %}"
-          :class="darkMode
-            ? 'border-accent-1 bg-bubble-bg-dark'
-            : 'border-accent-2 bg-bubble-bg-light'"
-          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-          <i class="fa-solid fa-location-dot"></i>
-          Add address
-        </a>
       </div>
     </header>
 
@@ -709,6 +698,23 @@
       </div>
     </section>
 
+    <!-- Below-map actions -->
+    <div class="flex flex-wrap gap-2">
+      <a
+        href="{% url 'locations:address_create' %}"
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+        <i class="fa-solid fa-location-dot"></i> Add address
+      </a>
+      <button
+        type="button"
+        @click="importOpen = true"
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+        <i class="fa-solid fa-file-import"></i> Import layer
+      </button>
+    </div>
+
     <div
       class="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4"
       x-show="layerSettingsOpen"
@@ -855,6 +861,113 @@
       </div>
     </div>
   </div>
+
+  <!-- ================================================================ -->
+  <!-- IMPORT LAYER MODAL -->
+  <!-- ================================================================ -->
+  <div x-show="importOpen" x-cloak
+       class="fixed inset-0 z-[9000] flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="importOpen = false"></div>
+
+    <div :class="darkMode ? 'bg-bubble-bg-dark text-text-main-dark border-accent-1' : 'bg-bubble-bg-light text-text-main-light border-accent-2'"
+         class="relative z-10 w-full max-w-md rounded-2xl border shadow-2xl">
+
+      <!-- Header -->
+      <div class="flex items-center justify-between border-b border-current/10 px-5 py-4">
+        <h2 class="flex items-center gap-2 text-lg font-bold">
+          <i class="fa-solid fa-file-import"></i> Import Layer from GeoJSON
+        </h2>
+        <button type="button" @click="importOpen = false"
+                class="text-lg leading-none opacity-50 hover:opacity-100 transition">&times;</button>
+      </div>
+
+      <!-- Body -->
+      <div class="space-y-4 p-5">
+
+        <!-- File picker -->
+        <div>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">GeoJSON file</label>
+          <label class="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-6 text-sm transition hover:bg-current/5"
+                 :class="importFile ? (darkMode ? 'border-accent-dark/60' : 'border-accent-light/60') : (darkMode ? 'border-accent-1' : 'border-accent-2')">
+            <i class="fa-solid text-2xl opacity-40" :class="importFile ? 'fa-file-check' : 'fa-file-arrow-up'"></i>
+            <span x-text="importFile ? importFile.name : 'Click to select a .geojson file'" class="font-semibold"></span>
+            <input type="file" accept=".geojson,application/geo+json,application/json"
+                   class="sr-only"
+                   @change="importFile = $event.target.files[0]; importResult = null; importError = ''">
+          </label>
+        </div>
+
+        <!-- Optional layer name (for single-layer files) -->
+        <div>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">
+            Layer name <span class="font-normal opacity-50">(optional override)</span>
+          </label>
+          <input type="text" x-model="importName" placeholder="Use name from file"
+                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                 class="w-full rounded-lg border px-3 py-2 text-sm">
+        </div>
+
+        <!-- Error -->
+        <div x-show="importError" x-cloak
+             :class="darkMode ? 'border-warn-dark/40 bg-warn-dark/10 text-warn-dark' : 'border-warn-light/40 bg-warn-light/10 text-warn-light'"
+             class="rounded-lg border p-3 text-sm">
+          <i class="fa-solid fa-circle-exclamation mr-2"></i>
+          <span x-text="importError"></span>
+        </div>
+
+        <!-- Result -->
+        <div x-show="importResult" x-cloak class="space-y-3">
+          <p class="flex items-center gap-2 text-sm font-semibold text-green-500">
+            <i class="fa-solid fa-circle-check"></i> Import complete
+          </p>
+          <template x-for="layer in (importResult || [])" :key="layer.slug">
+            <div :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                 class="rounded-lg border px-4 py-2.5 text-sm">
+              <p class="font-semibold" x-text="layer.name"></p>
+              <p class="mt-0.5 text-xs opacity-60">
+                <span x-text="layer.polygon_count"></span> polygon<span x-show="layer.polygon_count !== 1">s</span>
+                &nbsp;·&nbsp; slug: <span x-text="layer.slug"></span>
+              </p>
+            </div>
+          </template>
+          <button type="button" @click="window.location.reload()"
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                  class="inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-bold shadow-sm transition hover:opacity-90">
+            <i class="fa-solid fa-rotate-right"></i> Reload map to see layers
+          </button>
+        </div>
+
+      </div>
+
+      <!-- Footer -->
+      <div x-show="!importResult" class="flex items-center justify-end gap-3 border-t border-current/10 px-5 py-4">
+        <button type="button" @click="importOpen = false"
+                :class="darkMode ? 'border-accent-1 hover:bg-sunken-dark' : 'border-accent-2 hover:bg-sunken-light'"
+                class="rounded-xl border px-4 py-2 text-sm font-semibold transition">
+          Cancel
+        </button>
+        <button type="button"
+                :disabled="!importFile || importRunning"
+                @click="
+                  importRunning = true; importError = ''; importResult = null;
+                  const fd = new FormData();
+                  fd.append('file', importFile);
+                  fd.append('name', importName);
+                  fd.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+                  fetch('{% url "locations:api_import_layer" %}', {method:'POST', body:fd})
+                    .then(r => r.json())
+                    .then(d => { importRunning = false; if (d.error) { importError = d.error; } else { importResult = d.imported; } })
+                    .catch(e => { importRunning = false; importError = e.message; })
+                "
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90 disabled:opacity-40' : 'bg-accent-light text-primary-bg-light hover:opacity-90 disabled:opacity-40'"
+                class="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold shadow-sm transition">
+          <i class="fa-solid" :class="importRunning ? 'fa-spinner fa-spin' : 'fa-file-import'"></i>
+          <span x-text="importRunning ? 'Importing…' : 'Import'"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <script>

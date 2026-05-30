@@ -27,6 +27,11 @@
               {% block tab_locations %}opacity-60{% endblock %}">
       <i class="fa-solid fa-map-location-dot fa-fw"></i> {% trans "Map" %}
     </a>
+    <a href="{% url 'locations:route_search' %}"
+       :class="{% if request.resolver_match.url_name == 'route_search' %}darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'{% else %}'opacity-60 hover:opacity-100'{% endif %}"
+       class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition">
+      <i class="fa-solid fa-route fa-fw"></i> {% trans "Routes" %}
+    </a>
     <a href="{% url 'weather:index' %}"
        :class="{% if request.resolver_match.app_name == 'weather' %}darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'{% else %}'opacity-60 hover:opacity-100'{% endif %}"
        class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition">

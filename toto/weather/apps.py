@@ -17,12 +17,4 @@ class WeatherConfig(AppConfig):
             FieldMapPlugin.register(weather_map_features)
             FieldMetricsPlugin.register(weather_metrics_section)
 
-        from toto.locations.plugins.map_layer_plugins import LocationMapLayerPlugin
-        from toto.weather.plugins.location_layer_plugins import (
-            weather_temperature_layer,
-            weather_precipitation_layer,
-        )
-        LocationMapLayerPlugin.register(weather_temperature_layer)
-        LocationMapLayerPlugin.register(weather_precipitation_layer)
-
         from toto.weather import predefined_tasks  # noqa: F401 — registers weather workflow tasks
