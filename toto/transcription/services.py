@@ -174,6 +174,20 @@ def create_vault_file_from_upload(*, uploaded_file, owner, bucket=None, title: s
 
 
 @transaction.atomic
+def create_source_from_vault_file(*, collection: TranscriptCollection, vault_file, title: str, description: str = "", language: str = "", status: str = TranscriptSource.Status.DRAFT) -> TranscriptSource:
+    if getattr(vault_file, "file_type", None) not in {"audio", "video"}:
+        raise ValidationError("Selected vault file is not an audio or video file.")
+    return TranscriptSource.objects.create(
+        collection=collection,
+        source_file=vault_file,
+        title=title,
+        description=description,
+        language=language,
+        status=status,
+    )
+
+
+@transaction.atomic
 def create_source_from_upload(*, collection: TranscriptCollection, uploaded_file, owner, title: str, description: str = "", language: str = "", status: str = TranscriptSource.Status.DRAFT):
     source_file = create_vault_file_from_upload(
         uploaded_file=uploaded_file,

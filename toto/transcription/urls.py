@@ -9,6 +9,7 @@ urlpatterns = [
     path("collections/", views.collection_list, name="collection_list"),
     path("collections/new/", views.collection_create, name="collection_create"),
     path("upload/", views.upload, name="upload"),
+    path("upload/from-vault/", views.upload_from_vault, name="upload_from_vault"),
     path("demo/", views.demo, name="demo"),
     path("models/", views.model_setup, name="model_setup"),
     path("models/<int:pk>/download/", views.model_download, name="model_download"),

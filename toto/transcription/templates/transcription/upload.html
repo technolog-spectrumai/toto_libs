@@ -8,6 +8,21 @@
   <span>{% trans "Upload" %}</span>
 </div>
 <div class="mx-auto max-w-2xl">
+
+  <!-- Tab toggle -->
+  <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+       class="mb-4 flex gap-1 border-b">
+    <span :class="darkMode ? 'border-current' : 'border-current'"
+          class="inline-flex items-center gap-2 rounded-t border-b-2 border-current px-4 py-2 -mb-px text-sm font-semibold transition">
+      <i class="fa-solid fa-upload"></i> {% trans "Upload file" %}
+    </span>
+    <a href="{% url 'transcription:upload_from_vault' %}"
+       :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+       class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold opacity-50 transition">
+      <i class="fa-solid fa-vault"></i> {% trans "Pick from Vault" %}
+    </a>
+  </div>
+
   <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-6 shadow-sm">
     <div class="mb-6 flex items-center gap-3">
       <div :class="darkMode ? 'bg-accent-dark/20' : 'bg-accent-light/15'" class="flex h-10 w-10 items-center justify-center rounded-xl">

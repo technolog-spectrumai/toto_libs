@@ -4,7 +4,7 @@ from django import forms
 from django.utils.translation import gettext_lazy as _
 
 from .models import SpeechModel, TranscriptCollection, TranscriptSource, TranscriptionJob
-from .services import create_source_from_upload, writable_collections_for_user
+from .services import create_source_from_upload, create_source_from_vault_file, writable_collections_for_user
 
 _INPUT = "w-full rounded-lg border px-3 py-2 text-sm outline-none transition focus:ring-2 focus:ring-current/20"
 _XBIND = (
@@ -92,6 +92,40 @@ class TranscriptUploadForm(forms.Form):
             collection=self.cleaned_data["collection"],
             uploaded_file=self.cleaned_data["media_file"],
             owner=self.user,
+            title=self.cleaned_data["title"],
+            description=self.cleaned_data.get("description") or "",
+            language=self.cleaned_data.get("language") or "",
+            status=self.cleaned_data.get("status") or TranscriptSource.Status.DRAFT,
+        )
+
+
+class TranscriptFromVaultForm(forms.Form):
+    collection = forms.ModelChoiceField(queryset=TranscriptCollection.objects.none(), widget=_select())
+    vault_file = forms.ModelChoiceField(queryset=None, label=_("Audio / video file from vault"), widget=_select())
+    title = forms.CharField(max_length=240, widget=_text(_("Recording title")))
+    description = forms.CharField(widget=_textarea(3, _("Optional description…")), required=False)
+    language = forms.CharField(max_length=16, required=False, widget=_text(_("Optional language, e.g. en or pl")))
+    status = forms.ChoiceField(choices=TranscriptSource.Status.choices, initial=TranscriptSource.Status.DRAFT, widget=_select())
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user = user
+        self.fields["collection"].queryset = writable_collections_for_user(user)
+        try:
+            from toto.vault.models import VaultFile
+            self.fields["vault_file"].queryset = (
+                VaultFile.objects.filter(owner=user, file_type__in=["audio", "video"])
+                .select_related("bucket")
+                .order_by("bucket__name", "title")
+            )
+        except Exception:
+            from django.db.models import QuerySet
+            self.fields["vault_file"].queryset = TranscriptCollection.objects.none()
+
+    def save(self) -> TranscriptSource:
+        return create_source_from_vault_file(
+            collection=self.cleaned_data["collection"],
+            vault_file=self.cleaned_data["vault_file"],
             title=self.cleaned_data["title"],
             description=self.cleaned_data.get("description") or "",
             language=self.cleaned_data.get("language") or "",

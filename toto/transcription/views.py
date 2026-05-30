@@ -14,7 +14,7 @@ from django.views.decorators.http import require_POST
 
 from toto.ui import PageProcessor
 
-from .forms import SpeechModelDownloadForm, TranscriptCollectionForm, TranscriptionJobForm, TranscriptSourceForm, TranscriptUploadForm
+from .forms import SpeechModelDownloadForm, TranscriptCollectionForm, TranscriptionJobForm, TranscriptFromVaultForm, TranscriptSourceForm, TranscriptUploadForm
 from .models import SpeechModel, TranscriptAccessMode, TranscriptCollection, TranscriptEvent, TranscriptSource, TranscriptionJob
 from .queries import jobs_by_day_chart_data, source_stats, top_sources_chart_data, transcription_overview_stats
 from .services import (
@@ -99,6 +99,26 @@ def upload(request):
     if not form.fields["collection"].queryset.exists():
         messages.warning(request, _("Create a collection or ask for writer access before uploading."))
     return _render(request, "transcription/upload.html", {"form": form, "action": _("Upload Media"), "back_url": reverse("transcription:home")})
+
+
+@login_required
+def upload_from_vault(request):
+    if request.method == "POST":
+        form = TranscriptFromVaultForm(request.POST, user=request.user)
+        if form.is_valid():
+            source = form.save()
+            messages.success(request, _("Source created from vault file."))
+            return redirect(source.get_manage_url())
+    else:
+        form = TranscriptFromVaultForm(user=request.user, initial={"collection": request.GET.get("collection")})
+    if not form.fields["collection"].queryset.exists():
+        messages.warning(request, _("Create a collection or ask for writer access before adding sources."))
+    no_audio = not form.fields["vault_file"].queryset.exists()
+    return _render(request, "transcription/upload_from_vault.html", {
+        "form": form,
+        "no_audio": no_audio,
+        "back_url": reverse("transcription:upload"),
+    })
 
 
 def source_detail(request, collection_slug, source_slug):
