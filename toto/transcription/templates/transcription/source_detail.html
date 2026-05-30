@@ -46,10 +46,10 @@
         <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
           <h2 class="font-bold"><i class="fa-solid fa-file-lines mr-2 opacity-60"></i>{% trans "Transcript" %}</h2>
           <div class="flex flex-wrap items-center gap-2 text-xs">
-            <a href="{% url 'transcription:source_export' collection.slug source.slug 'txt' %}" class="rounded-lg border border-current/20 px-3 py-1.5 font-semibold hover:opacity-80">TXT</a>
-            <a href="{% url 'transcription:source_export' collection.slug source.slug 'srt' %}" class="rounded-lg border border-current/20 px-3 py-1.5 font-semibold hover:opacity-80">SRT</a>
-            <a href="{% url 'transcription:source_export' collection.slug source.slug 'vtt' %}" class="rounded-lg border border-current/20 px-3 py-1.5 font-semibold hover:opacity-80">VTT</a>
-            <a href="{% url 'transcription:source_export' collection.slug source.slug 'json' %}" class="rounded-lg border border-current/20 px-3 py-1.5 font-semibold hover:opacity-80">JSON</a>
+            <a href="{% url 'transcription:source_export' collection.slug source.slug 'txt' %}" class="rounded-lg border border-current/20 px-3 py-1.5 font-semibold hover:opacity-80">{% trans "TXT" %}</a>
+            <a href="{% url 'transcription:source_export' collection.slug source.slug 'srt' %}" class="rounded-lg border border-current/20 px-3 py-1.5 font-semibold hover:opacity-80">{% trans "SRT" %}</a>
+            <a href="{% url 'transcription:source_export' collection.slug source.slug 'vtt' %}" class="rounded-lg border border-current/20 px-3 py-1.5 font-semibold hover:opacity-80">{% trans "VTT" %}</a>
+            <a href="{% url 'transcription:source_export' collection.slug source.slug 'json' %}" class="rounded-lg border border-current/20 px-3 py-1.5 font-semibold hover:opacity-80">{% trans "JSON" %}</a>
             {% if vault_buckets %}
             <form method="post" action="{% url 'transcription:source_export_to_vault' collection.slug source.slug %}"
                   class="flex items-center gap-1">
@@ -57,10 +57,10 @@
               <select name="kind"
                 :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
                 class="rounded-lg border px-2 py-1.5 text-xs outline-none focus:ring-1 transition">
-                <option value="txt">TXT</option>
-                <option value="srt">SRT</option>
-                <option value="vtt">VTT</option>
-                <option value="json">JSON</option>
+                <option value="txt">{% trans "TXT" %}</option>
+                <option value="srt">{% trans "SRT" %}</option>
+                <option value="vtt">{% trans "VTT" %}</option>
+                <option value="json">{% trans "JSON" %}</option>
               </select>
               <select name="bucket_id"
                 :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"

@@ -29,7 +29,7 @@
       </div>
       <div class="space-y-1.5">
         <label class="text-sm font-semibold">{% trans "Language" %} <span class="font-normal opacity-50">({% trans "optional" %})</span></label>
-        <input type="text" x-model="language" placeholder="en, pl, de…"
+        <input type="text" x-model="language" placeholder="{% trans 'en, pl, de…' %}"
                :disabled="recording || transcribing"
                :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder-text-main-dark/40' : 'border-accent-2 bg-primary-bg-light text-text-main-light placeholder-text-main-light/40'"
                class="w-full rounded-lg border px-3 py-2 text-sm outline-none transition focus:ring-2 focus:ring-current/20 disabled:opacity-50">

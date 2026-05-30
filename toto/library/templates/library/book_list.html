@@ -15,7 +15,7 @@
         <label class="mb-1 block text-sm font-semibold">{% trans "Search" %}</label>
         <div class="relative">
           <i class="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm opacity-60"></i>
-          <input type="search" name="q" value="{{ request.GET.q }}" placeholder="Title, ISBN, abstract…"
+          <input type="search" name="q" value="{{ request.GET.q }}" placeholder="{% trans 'Title, ISBN, abstract…' %}"
                  :class="darkMode
                    ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark'
                    : 'border-accent-2 bg-primary-bg-light text-text-main-light'"

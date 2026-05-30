@@ -1,7 +1,8 @@
 {% extends "incidents/base.html" %}
+{% load i18n %}
 {% block incidents_title %}New Incident{% endblock %}
 {% block incidents_heading %}New Incident{% endblock %}
-{% block incidents_subtitle %}<p class="mt-2 text-sm opacity-70">Confirm and record a new field incident.</p>{% endblock %}
+{% block incidents_subtitle %}<p class="mt-2 text-sm opacity-70">{% trans "Confirm and record a new field incident." %}</p>{% endblock %}
 
 {% block incidents_content %}
 <div class="mx-auto max-w-2xl">
@@ -16,14 +17,14 @@
          class="rounded-2xl border p-6 shadow-sm space-y-4">
 
       <div>
-        <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">Title *</label>
+        <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Title *" %}</label>
         <input name="title" required
                :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
                class="w-full rounded-lg border px-3 py-2 text-sm">
       </div>
 
       <div>
-        <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">Description</label>
+        <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Description" %}</label>
         <textarea name="description" rows="4"
                   :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
                   class="w-full rounded-lg border px-3 py-2 text-sm"></textarea>
@@ -31,13 +32,13 @@
 
       <div class="grid grid-cols-2 gap-4">
         <div>
-          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">Severity</label>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Severity" %}</label>
           <select name="severity" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="w-full rounded-lg border px-3 py-2 text-sm">
             {% for val, label in severity_choices %}<option value="{{ val }}" {% if val == 'medium' %}selected{% endif %}>{{ label }}</option>{% endfor %}
           </select>
         </div>
         <div>
-          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">Type</label>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Type" %}</label>
           <select name="incident_type" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="w-full rounded-lg border px-3 py-2 text-sm">
             {% for val, label in type_choices %}<option value="{{ val }}">{{ label }}</option>{% endfor %}
           </select>
@@ -45,7 +46,7 @@
       </div>
 
       <div>
-        <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">Category</label>
+        <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Category" %}</label>
         <select name="category" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="w-full rounded-lg border px-3 py-2 text-sm">
           <option value="">— none —</option>
           {% for cat in categories %}<option value="{{ cat.pk }}">{{ cat.name }}</option>{% endfor %}
@@ -54,14 +55,14 @@
 
       <div class="grid grid-cols-2 gap-4">
         <div>
-          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">Address</label>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Address" %}</label>
           <select name="address" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="w-full rounded-lg border px-3 py-2 text-sm">
             <option value="">— none —</option>
             {% for addr in addresses %}<option value="{{ addr.pk }}">{{ addr }}</option>{% endfor %}
           </select>
         </div>
         <div>
-          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">Zone</label>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Zone" %}</label>
           <select name="zone" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="w-full rounded-lg border px-3 py-2 text-sm">
             <option value="">— none —</option>
             {% for z in zones %}<option value="{{ z.pk }}">{{ z.name }}</option>{% endfor %}
@@ -74,13 +75,10 @@
       <button type="submit"
               :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
               class="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold shadow-sm transition hover:opacity-90">
-        <i class="fa-solid fa-plus"></i> Create Incident
-      </button>
+        <i class="fa-solid fa-plus"></i>{% trans "Create Incident" %}</button>
       <a href="{% url 'incidents:incident-list' %}"
          :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
-         class="inline-flex items-center gap-2 rounded-xl border px-5 py-2.5 text-sm font-semibold transition hover:opacity-80">
-        Cancel
-      </a>
+         class="inline-flex items-center gap-2 rounded-xl border px-5 py-2.5 text-sm font-semibold transition hover:opacity-80">{% trans "Cancel" %}</a>
     </div>
   </form>
 </div>

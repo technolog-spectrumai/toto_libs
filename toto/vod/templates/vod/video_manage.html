@@ -38,7 +38,7 @@
           <span :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
                 class="rounded-full border px-2.5 py-0.5 text-xs">{{ video.effective_access_mode }}</span>
           {% if video.hls_ready %}
-            <span class="rounded-full border border-emerald-500 px-2.5 py-0.5 text-xs text-emerald-500">HLS ✓</span>
+            <span class="rounded-full border border-emerald-500 px-2.5 py-0.5 text-xs text-emerald-500">{% trans "HLS ✓" %}</span>
           {% endif %}
         </div>
         {% if video.tags %}

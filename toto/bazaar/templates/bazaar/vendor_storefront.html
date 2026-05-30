@@ -1,13 +1,14 @@
 {% extends "bazaar/base.html" %}
+{% load i18n %}
 {% block bazaar_title %}{{ vendor.display_name }}{% endblock %}
 {% block bazaar_heading %}{{ vendor.display_name }}{% endblock %}
 {% block bazaar_subtitle %}<p class="mt-2 max-w-2xl text-sm opacity-70">{{ vendor.bio|default:"Vendor storefront." }}</p>{% endblock %}
 {% block bazaar_content %}
 <section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">Products</p><p class="mt-2 text-3xl font-bold">{{ metrics.product_count }}</p></article>
-  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">Published</p><p class="mt-2 text-3xl font-bold">{{ metrics.published_count }}</p></article>
-  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">Sales</p><p class="mt-2 text-3xl font-bold">{{ metrics.sales_total }}</p></article>
-  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">Location</p><p class="mt-2 text-sm font-bold">{{ vendor.location|default:"—" }}</p></article>
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Products" %}</p><p class="mt-2 text-3xl font-bold">{{ metrics.product_count }}</p></article>
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Published" %}</p><p class="mt-2 text-3xl font-bold">{{ metrics.published_count }}</p></article>
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Sales" %}</p><p class="mt-2 text-3xl font-bold">{{ metrics.sales_total }}</p></article>
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Location" %}</p><p class="mt-2 text-sm font-bold">{{ vendor.location|default:"—" }}</p></article>
 </section>
 <section class="space-y-4"><h2 class="text-xl font-bold">Products by {{ vendor.display_name }}</h2><div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{% for product in products %}{% include "bazaar/partials/product_card.html" %}{% empty %}{% include "bazaar/partials/empty_state.html" with icon="fa-solid fa-store-slash" message="This vendor has no published products yet." %}{% endfor %}</div></section>
 {% endblock %}

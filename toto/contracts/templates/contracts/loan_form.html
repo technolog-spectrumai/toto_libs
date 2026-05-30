@@ -73,7 +73,7 @@
         <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
           {{ form.loan_asset.label }}
         </label>
-        <p class="text-xs opacity-50">Both disbursement and repayment use this currency.</p>
+        <p class="text-xs opacity-50">{% trans "Both disbursement and repayment use this currency." %}</p>
         {{ form.loan_asset }}
         {% if form.loan_asset.errors %}<p class="text-xs text-warn-light">{{ form.loan_asset.errors.0 }}</p>{% endif %}
       </div>

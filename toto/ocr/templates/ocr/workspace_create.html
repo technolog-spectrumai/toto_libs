@@ -13,11 +13,9 @@
 
     <div>
       <a href="{% url 'ocr:project_list' %}" class="text-sm opacity-50 hover:opacity-100">
-        <i class="fa-solid fa-arrow-left mr-1"></i>Workspaces
-      </a>
+        <i class="fa-solid fa-arrow-left mr-1"></i>{% trans "Workspaces" %}</a>
       <h1 class="mt-2 text-2xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
-        <i class="fa-solid fa-plus mr-2"></i>New OCR Workspace
-      </h1>
+        <i class="fa-solid fa-plus mr-2"></i>{% trans "New OCR Workspace" %}</h1>
     </div>
 
     {% if messages %}
@@ -36,17 +34,17 @@
         {% csrf_token %}
 
         <div>
-          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">Workspace name</label>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Workspace name" %}</label>
           <input
             type="text" name="name" required autofocus
-            placeholder="Document scan project"
+            placeholder="{% trans 'Document scan project' %}"
             :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
             class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none"
           >
         </div>
 
         <div>
-          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">Bucket</label>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Bucket" %}</label>
           <select
             name="bucket_id" required
             :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
@@ -57,7 +55,7 @@
             <option value="{{ bucket.pk }}">{{ bucket.name }} ({{ bucket.owner.username }})</option>
             {% endfor %}
           </select>
-          <p class="mt-1 text-xs opacity-50">Images from this bucket can be added to the workspace.</p>
+          <p class="mt-1 text-xs opacity-50">{% trans "Images from this bucket can be added to the workspace." %}</p>
         </div>
 
         <button
@@ -65,8 +63,7 @@
           :class="darkMode ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90' : 'bg-accent-light text-white hover:opacity-90'"
           class="w-full rounded-lg px-4 py-2 text-sm font-semibold transition"
         >
-          <i class="fa-solid fa-plus mr-1"></i> Create workspace
-        </button>
+          <i class="fa-solid fa-plus mr-1"></i>{% trans "Create workspace" %}</button>
       </form>
     </div>
 

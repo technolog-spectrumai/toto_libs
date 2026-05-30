@@ -1,4 +1,5 @@
 {% extends "assembly/base.html" %}
+{% load i18n %}
 {% load static i18n %}
 
 {% block assembly_title %}Assembly – {{ community.name }}{% endblock %}
@@ -19,11 +20,9 @@
       <div class="space-y-2">
         <div class="flex flex-wrap items-center gap-4">
           <a href="{% url 'capitol:overview' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
-            <i class="fa-solid fa-arrow-left"></i> Capitol
-          </a>
+            <i class="fa-solid fa-arrow-left"></i>{% trans "Capitol" %}</a>
           <a href="{% url 'assembly:overview' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
-            <i class="fa-solid fa-landmark"></i> Assembly
-          </a>
+            <i class="fa-solid fa-landmark"></i>{% trans "Assembly" %}</a>
           <a href="{% url 'socialhub:community_detail' community.slug %}"
             class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
             {{ community.name }}
@@ -31,7 +30,7 @@
         </div>
         <div>
           <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-            class="text-xs font-semibold uppercase tracking-wide">Community Assembly</p>
+            class="text-xs font-semibold uppercase tracking-wide">{% trans "Community Assembly" %}</p>
           <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
             <i class="fa-solid fa-landmark"></i>
             {{ community.name }}
@@ -42,39 +41,29 @@
       <div class="flex flex-wrap gap-2">
         {% if is_read_only %}
           <span class="inline-flex items-center gap-2 rounded-lg border border-link-light/40 bg-link-light/10 px-4 py-2 text-sm font-semibold text-link-light shadow-sm">
-            <i class="fa-solid fa-eye"></i>
-            Observer — read only
-          </span>
+            <i class="fa-solid fa-eye"></i>{% trans "Observer — read only" %}</span>
         {% else %}
           {% if is_federal_agent or is_federal_tribe_member %}
             <span
               :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
               class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm">
-              <i class="fa-solid fa-shield-halved"></i>
-              Tax exempt
-            </span>
+              <i class="fa-solid fa-shield-halved"></i>{% trans "Tax exempt" %}</span>
           {% endif %}
         {% endif %}
         {% if is_senator %}
           <a href="{% url 'assembly:senate_review' community.slug %}"
              class="inline-flex items-center gap-2 rounded-lg border border-purple-400/40 bg-purple-500/10 px-4 py-2 text-sm font-semibold text-purple-600 shadow-sm hover:opacity-80">
-            <i class="fa-solid fa-landmark-dome"></i>
-            Senate
-          </a>
+            <i class="fa-solid fa-landmark-dome"></i>{% trans "Senate" %}</a>
         {% endif %}
         {% if has_voting_rights %}
           <span
             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
             class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm">
-            <i class="fa-solid fa-check-circle text-success-light"></i>
-            Voting rights active
-          </span>
+            <i class="fa-solid fa-check-circle text-success-light"></i>{% trans "Voting rights active" %}</span>
         {% else %}
           <span
             class="inline-flex items-center gap-2 rounded-lg border border-accent-light/40 bg-accent-light/10 px-4 py-2 text-sm font-semibold text-accent-light shadow-sm">
-            <i class="fa-solid fa-triangle-exclamation"></i>
-            Poll tax due
-          </span>
+            <i class="fa-solid fa-triangle-exclamation"></i>{% trans "Poll tax due" %}</span>
         {% endif %}
       </div>
     </header>
@@ -118,9 +107,7 @@
       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
       class="rounded-2xl border p-5 shadow-sm sm:p-6">
       <h2 class="mb-4 flex items-center gap-2 text-lg font-bold">
-        <i class="fa-solid fa-coins"></i>
-        Poll Taxes
-      </h2>
+        <i class="fa-solid fa-coins"></i>{% trans "Poll Taxes" %}</h2>
       <div class="space-y-3">
         {% for item in poll_taxes %}
         <div
@@ -140,20 +127,17 @@
           </div>
           {% if item.paid %}
             <span class="inline-flex items-center gap-1 rounded-lg bg-success-light/15 px-3 py-1.5 text-xs font-semibold text-success-light">
-              <i class="fa-solid fa-check"></i> Paid
-            </span>
+              <i class="fa-solid fa-check"></i>{% trans "Paid" %}</span>
           {% elif has_voting_rights %}
             <span class="inline-flex items-center gap-1 rounded-lg bg-success-light/15 px-3 py-1.5 text-xs font-semibold text-success-light">
-              <i class="fa-solid fa-shield-halved"></i> Exempt
-            </span>
+              <i class="fa-solid fa-shield-halved"></i>{% trans "Exempt" %}</span>
           {% else %}
             <form method="post" action="{% url 'assembly:poll_tax_pay' community.slug item.poll_tax.pk %}">
               {% csrf_token %}
               <button type="submit"
                 :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
                 class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-                <i class="fa-solid fa-money-bill"></i> Pay
-              </button>
+                <i class="fa-solid fa-money-bill"></i>{% trans "Pay" %}</button>
             </form>
           {% endif %}
         </div>
@@ -171,17 +155,14 @@
       <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 class="flex items-center gap-2 text-lg font-bold">
-            <i class="fa-solid fa-scroll"></i>
-            Proposals
-          </h2>
+            <i class="fa-solid fa-scroll"></i>{% trans "Proposals" %}</h2>
           <p class="mt-1 text-xs opacity-60">Quorum: {{ quorum_fraction_pct }}% yes required to pass</p>
         </div>
         {% if not is_read_only %}
         <button type="button" @click="showForm = !showForm"
           :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
           class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-          <i class="fa-solid fa-plus"></i> New Proposal
-        </button>
+          <i class="fa-solid fa-plus"></i>{% trans "New Proposal" %}</button>
         {% endif %}
       </div>
 
@@ -194,7 +175,7 @@
 
           <div class="grid gap-4 sm:grid-cols-2">
             <div>
-              <label class="mb-1 block text-xs font-semibold uppercase opacity-60">Proposal type</label>
+              <label class="mb-1 block text-xs font-semibold uppercase opacity-60">{% trans "Proposal type" %}</label>
               <select name="proposal_type" x-model="proposalType"
                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
                 class="w-full rounded-lg border px-3 py-2 text-sm">
@@ -204,7 +185,7 @@
               </select>
             </div>
             <div>
-              <label class="mb-1 block text-xs font-semibold uppercase opacity-60">Title</label>
+              <label class="mb-1 block text-xs font-semibold uppercase opacity-60">{% trans "Title" %}</label>
               <input type="text" name="title" required
                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
                 class="w-full rounded-lg border px-3 py-2 text-sm">
@@ -212,7 +193,7 @@
           </div>
 
           <div>
-            <label class="mb-1 block text-xs font-semibold uppercase opacity-60">Body / rationale</label>
+            <label class="mb-1 block text-xs font-semibold uppercase opacity-60">{% trans "Body / rationale" %}</label>
             <textarea name="body" rows="3"
               :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
               class="w-full rounded-lg border px-3 py-2 text-sm"></textarea>
@@ -221,8 +202,7 @@
           <!-- Rule: positive / repeal toggle -->
           <div x-show="proposalType === 'rule'" class="flex items-center gap-3">
             <label class="inline-flex cursor-pointer items-center gap-2 text-sm font-semibold">
-              <input type="checkbox" name="is_repeal" value="1" class="h-4 w-4 rounded">
-              This is a <span class="text-warn-light">repeal</span> (removes an existing rule)
+              <input type="checkbox" name="is_repeal" value="1" class="h-4 w-4 rounded">{% trans "This is a" %}<span class="text-warn-light">repeal</span> (removes an existing rule)
             </label>
           </div>
 
@@ -260,7 +240,7 @@
 
               <!-- Searchable asset picker -->
               <div class="relative">
-                <label class="mb-1 block text-xs font-semibold uppercase opacity-60">Asset</label>
+                <label class="mb-1 block text-xs font-semibold uppercase opacity-60">{% trans "Asset" %}</label>
                 <input type="hidden" name="asset_id" :value="assetId">
 
                 <button type="button" @click="open = !open; $nextTick(() => { if (open) $refs.searchInput.focus() })"
@@ -276,7 +256,7 @@
 
                   <!-- Search input -->
                   <div class="p-2">
-                    <input type="text" x-model="assetSearch" placeholder="Search assets…"
+                    <input type="text" x-model="assetSearch" placeholder="{% trans 'Search assets…' %}"
                       @keydown.escape="open = false"
                       x-ref="searchInput"
                       :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
@@ -291,8 +271,7 @@
                           ? (darkMode ? 'bg-accent-dark/20' : 'bg-accent-light/10')
                           : 'hover:opacity-75'"
                         class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold">
-                        <i class="fa-solid fa-layer-group text-xs opacity-60"></i>
-                        All assets <span class="ml-auto text-xs opacity-50">blanket fee</span>
+                        <i class="fa-solid fa-layer-group text-xs opacity-60"></i>{% trans "All assets" %}<span class="ml-auto text-xs opacity-50">blanket fee</span>
                       </button>
                     </li>
                     <li :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-t mx-2"></li>
@@ -311,7 +290,7 @@
                       </li>
                     </template>
 
-                    <li x-show="filtered.length === 0" class="px-3 py-2 text-xs italic opacity-50">No assets found.</li>
+                    <li x-show="filtered.length === 0" class="px-3 py-2 text-xs italic opacity-50">{% trans "No assets found." %}</li>
                   </ul>
                 </div>
 
@@ -326,14 +305,14 @@
                 <input type="number" name="fee_bps" value="0"
                   :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
                   class="w-full rounded-lg border px-3 py-2 text-sm">
-                <p class="mt-1 text-xs opacity-50">Negative values discount on top of the blanket fee.</p>
+                <p class="mt-1 text-xs opacity-50">{% trans "Negative values discount on top of the blanket fee." %}</p>
               </div>
 
             </div>
           </div>
 
           <div>
-            <label class="mb-1 block text-xs font-semibold uppercase opacity-60">Voting closes at (optional)</label>
+            <label class="mb-1 block text-xs font-semibold uppercase opacity-60">{% trans "Voting closes at (optional)" %}</label>
             <div class="flex flex-wrap gap-2">
               <input type="date" name="closes_date"
                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
@@ -342,15 +321,14 @@
                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
                 class="rounded-lg border px-3 py-2 text-sm">
             </div>
-            <p class="mt-1 text-xs opacity-50">Leave date blank for no deadline.</p>
+            <p class="mt-1 text-xs opacity-50">{% trans "Leave date blank for no deadline." %}</p>
           </div>
 
           <div class="flex justify-end">
             <button type="submit"
               :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
               class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-              <i class="fa-solid fa-paper-plane"></i> Submit
-            </button>
+              <i class="fa-solid fa-paper-plane"></i>{% trans "Submit" %}</button>
           </div>
         </form>
       </div>
@@ -368,14 +346,12 @@
                   <p class="font-semibold">{{ item.proposal.title }}</p>
                   {% if item.proposal.proposal_type == 'rule' %}
                     {% if item.proposal.is_repeal %}
-                      <span class="rounded bg-warn-light/15 px-2 py-0.5 text-xs font-semibold text-warn-light">Repeal</span>
+                      <span class="rounded bg-warn-light/15 px-2 py-0.5 text-xs font-semibold text-warn-light">{% trans "Repeal" %}</span>
                     {% else %}
-                      <span class="rounded bg-success-light/15 px-2 py-0.5 text-xs font-semibold text-success-light">New rule</span>
+                      <span class="rounded bg-success-light/15 px-2 py-0.5 text-xs font-semibold text-success-light">{% trans "New rule" %}</span>
                     {% endif %}
                   {% else %}
-                    <span :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="rounded px-2 py-0.5 text-xs font-semibold">
-                      Asset tax
-                    </span>
+                    <span :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="rounded px-2 py-0.5 text-xs font-semibold">{% trans "Asset tax" %}</span>
                   {% endif %}
                   <span class="text-xs opacity-50">{{ item.proposal.get_status_display }}</span>
                 </div>
@@ -396,8 +372,7 @@
               <div class="mt-3 flex flex-wrap gap-2">
                 {% if is_read_only %}
                   <span class="text-xs font-semibold opacity-50">
-                    <i class="fa-solid fa-eye text-xs"></i> Observer
-                  </span>
+                    <i class="fa-solid fa-eye text-xs"></i>{% trans "Observer" %}</span>
                 {% elif item.user_vote %}
                   <span class="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-semibold opacity-60"
                     :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
@@ -417,17 +392,14 @@
                   {% endfor %}
                 {% else %}
                   <span class="text-xs font-semibold text-accent-light">
-                    <i class="fa-solid fa-lock text-xs"></i> Pay poll tax to vote
-                  </span>
+                    <i class="fa-solid fa-lock text-xs"></i>{% trans "Pay poll tax to vote" %}</span>
                 {% endif %}
 
                 {% if not is_read_only and request.user.is_staff %}
                   <form method="post" action="{% url 'assembly:proposal_close' community.slug item.proposal.pk %}">
                     {% csrf_token %}
                     <button type="submit"
-                      class="inline-flex items-center gap-1 rounded-lg border border-warn-light/30 bg-warn-light/10 px-3 py-1.5 text-xs font-semibold text-warn-light transition hover:opacity-80">
-                      Force close
-                    </button>
+                      class="inline-flex items-center gap-1 rounded-lg border border-warn-light/30 bg-warn-light/10 px-3 py-1.5 text-xs font-semibold text-warn-light transition hover:opacity-80">{% trans "Force close" %}</button>
                   </form>
                 {% endif %}
               </div>
@@ -440,14 +412,12 @@
                     <button type="submit"
                       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
                       class="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold hover:opacity-90">
-                      <i class="fa-solid fa-gavel"></i> Confirm Election &amp; Seat Magistrate
-                    </button>
+                      <i class="fa-solid fa-gavel"></i>{% trans "Confirm Election &amp; Seat Magistrate" %}</button>
                   </form>
                 </div>
               {% else %}
                 <div class="mt-2 text-xs opacity-50">
-                  <i class="fa-solid fa-check-circle mr-1"></i>Election confirmed — magistrate seated
-                </div>
+                  <i class="fa-solid fa-check-circle mr-1"></i>{% trans "Election confirmed — magistrate seated" %}</div>
               {% endif %}
             {% endif %}
           </article>
@@ -456,9 +426,7 @@
       {% else %}
         <div
           :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
-          class="rounded-xl border border-dashed p-6 text-center text-sm italic opacity-70">
-          No proposals yet.
-        </div>
+          class="rounded-xl border border-dashed p-6 text-center text-sm italic opacity-70">{% trans "No proposals yet." %}</div>
       {% endif %}
     </section>
 
@@ -469,25 +437,22 @@
       class="rounded-2xl border p-5 shadow-sm space-y-4">
       <div class="flex items-center justify-between">
         <h2 class="flex items-center gap-2 text-lg font-bold">
-          <i class="fa-solid fa-building-columns"></i> Magistrate Election
-        </h2>
+          <i class="fa-solid fa-building-columns"></i>{% trans "Magistrate Election" %}</h2>
         <div class="flex gap-2">
           <a href="{% url 'magistrate:overview' %}"
              :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
              class="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-semibold hover:opacity-80">
-            <i class="fa-solid fa-users-gear"></i> View Magistrates
-          </a>
+            <i class="fa-solid fa-users-gear"></i>{% trans "View Magistrates" %}</a>
           <button type="button" @click="electOpen = !electOpen"
                   :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
                   class="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold hover:opacity-90">
-            <i class="fa-solid fa-plus"></i> Nominate
-          </button>
+            <i class="fa-solid fa-plus"></i>{% trans "Nominate" %}</button>
         </div>
       </div>
 
       <p class="text-xs opacity-60">
         Propose a federal agent to hold a magistrate office. The nomination goes to an assembly vote.
-        Once passed, click <em>Confirm Election</em> on the proposal to seat the magistrate.
+        Once passed, click <em>{% trans "Confirm Election" %}</em> on the proposal to seat the magistrate.
         Only <strong>federal agents</strong> may hold office.
       </p>
 
@@ -498,7 +463,7 @@
           {% csrf_token %}
           <div class="grid gap-3 sm:grid-cols-2">
             <div>
-              <label class="mb-1 block text-xs font-semibold uppercase opacity-60">Nominee (federal agent)</label>
+              <label class="mb-1 block text-xs font-semibold uppercase opacity-60">{% trans "Nominee (federal agent)" %}</label>
               <select name="nominee_id" required
                       :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
                       class="w-full rounded-lg border px-3 py-2 text-sm">
@@ -509,7 +474,7 @@
               </select>
             </div>
             <div>
-              <label class="mb-1 block text-xs font-semibold uppercase opacity-60">Role</label>
+              <label class="mb-1 block text-xs font-semibold uppercase opacity-60">{% trans "Role" %}</label>
               <select name="role_id" required
                       :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
                       class="w-full rounded-lg border px-3 py-2 text-sm">
@@ -520,13 +485,13 @@
               </select>
             </div>
             <div>
-              <label class="mb-1 block text-xs font-semibold uppercase opacity-60">Term (months)</label>
+              <label class="mb-1 block text-xs font-semibold uppercase opacity-60">{% trans "Term (months)" %}</label>
               <input type="number" name="term_months" value="12" min="1" max="60"
                      :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
                      class="w-full rounded-lg border px-3 py-2 text-sm">
             </div>
             <div>
-              <label class="mb-1 block text-xs font-semibold uppercase opacity-60">Voting closes (optional)</label>
+              <label class="mb-1 block text-xs font-semibold uppercase opacity-60">{% trans "Voting closes (optional)" %}</label>
               <input type="date" name="closes_date"
                      :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
                      class="w-full rounded-lg border px-3 py-2 text-sm">
@@ -534,10 +499,10 @@
           </div>
           <div class="flex justify-end gap-2">
             <button type="button" @click="electOpen = false"
-                    class="rounded-lg border border-current/20 px-3 py-1.5 text-xs font-semibold">Cancel</button>
+                    class="rounded-lg border border-current/20 px-3 py-1.5 text-xs font-semibold">{% trans "Cancel" %}</button>
             <button type="submit"
                     :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-                    class="rounded-lg px-4 py-1.5 text-xs font-semibold">Submit Nomination</button>
+                    class="rounded-lg px-4 py-1.5 text-xs font-semibold">{% trans "Submit Nomination" %}</button>
           </div>
         </form>
       </div>
@@ -552,8 +517,7 @@
         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
         class="rounded-2xl border p-5 shadow-sm">
         <h2 class="mb-4 flex items-center gap-2 text-lg font-bold">
-          <i class="fa-solid fa-gavel"></i> Rules
-        </h2>
+          <i class="fa-solid fa-gavel"></i>{% trans "Rules" %}</h2>
         {% if community_rules %}
           <ul class="space-y-2">
             {% for rule in community_rules %}
@@ -566,7 +530,7 @@
             {% endfor %}
           </ul>
         {% else %}
-          <p class="text-sm italic opacity-60">No active rules.</p>
+          <p class="text-sm italic opacity-60">{% trans "No active rules." %}</p>
         {% endif %}
       </section>
 
@@ -575,8 +539,7 @@
         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
         class="rounded-2xl border p-5 shadow-sm">
         <h2 class="mb-4 flex items-center gap-2 text-lg font-bold">
-          <i class="fa-solid fa-percent"></i> Transaction Fees
-        </h2>
+          <i class="fa-solid fa-percent"></i>{% trans "Transaction Fees" %}</h2>
         {% if community_fees %}
           <ul class="space-y-2">
             {% for fee in community_fees %}
@@ -585,7 +548,7 @@
                 class="flex items-center justify-between gap-2 rounded-xl border p-3 text-sm">
                 <div>
                   <p class="font-semibold">
-                    {% if fee.asset %}{{ fee.asset.unit_name }}{% else %}<span class="opacity-60">Blanket (all assets)</span>{% endif %}
+                    {% if fee.asset %}{{ fee.asset.unit_name }}{% else %}<span class="opacity-60">{% trans "Blanket (all assets)" %}</span>{% endif %}
                   </p>
                   <p class="text-xs opacity-50">{{ fee.get_set_by_display }}</p>
                 </div>
@@ -596,7 +559,7 @@
             {% endfor %}
           </ul>
         {% else %}
-          <p class="text-sm italic opacity-60">No active fees.</p>
+          <p class="text-sm italic opacity-60">{% trans "No active fees." %}</p>
         {% endif %}
       </section>
     </div>
@@ -606,9 +569,7 @@
     <section :class="darkMode ? 'border-warn-dark/30 bg-bubble-bg-dark' : 'border-warn-light/30 bg-bubble-bg-light'"
              class="rounded-2xl border p-5 shadow-sm sm:p-6">
       <h2 class="mb-4 flex items-center gap-2 text-lg font-bold">
-        <i class="fa-solid fa-building-columns" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
-        Magistrate Decisions
-        <span class="ml-1 text-xs font-normal opacity-60">— executive actions subject to assembly review</span>
+        <i class="fa-solid fa-building-columns" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>{% trans "Magistrate Decisions" %}<span class="ml-1 text-xs font-normal opacity-60">— executive actions subject to assembly review</span>
       </h2>
       <div class="space-y-2">
         {% for d in magistrate_decisions %}
@@ -637,8 +598,7 @@
                     <button type="submit"
                             :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
                             class="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-semibold hover:opacity-80">
-                      <i class="fa-solid fa-eye text-[10px]"></i> Review
-                    </button>
+                      <i class="fa-solid fa-eye text-[10px]"></i>{% trans "Review" %}</button>
                   </form>
                 {% elif d.reviewed_by %}
                   <span class="text-xs opacity-40"><i class="fa-solid fa-eye mr-1"></i>{{ d.reviewed_by }}</span>
@@ -659,8 +619,7 @@
       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
       class="rounded-2xl border p-5 shadow-sm sm:p-6">
       <h2 class="mb-4 flex items-center gap-2 text-lg font-bold">
-        <i class="fa-solid fa-link"></i> Decision Ledger
-      </h2>
+        <i class="fa-solid fa-link"></i>{% trans "Decision Ledger" %}</h2>
       {% if decisions %}
         <div class="space-y-2">
           {% for d in decisions %}
@@ -678,7 +637,7 @@
           {% endfor %}
         </div>
       {% else %}
-        <p class="text-sm italic opacity-60">No decisions recorded yet.</p>
+        <p class="text-sm italic opacity-60">{% trans "No decisions recorded yet." %}</p>
       {% endif %}
     </section>
 

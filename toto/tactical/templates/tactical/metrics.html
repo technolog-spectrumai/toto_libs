@@ -1,5 +1,6 @@
 {% extends "tactical/base.html" %}
 {% load static %}
+{% load i18n %}
 {% block tactical_title %}Metrics{% endblock %}
 
 {% block tactical_start_script %}
@@ -14,16 +15,15 @@
   <header class="mb-6 flex items-end justify-between gap-4">
     <div>
       <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-         class="text-xs font-semibold uppercase tracking-wide">Tactical</p>
-      <h1 class="mt-1 text-3xl font-bold">Metrics</h1>
-      <p class="mt-1 text-sm opacity-50">Operational overview across all domains.</p>
+         class="text-xs font-semibold uppercase tracking-wide">{% trans "Tactical" %}</p>
+      <h1 class="mt-1 text-3xl font-bold">{% trans "Metrics" %}</h1>
+      <p class="mt-1 text-sm opacity-50">{% trans "Operational overview across all domains." %}</p>
     </div>
     <a href="/tactical/api/metrics/"
        :class="darkMode ? 'border-accent-1/40 bg-bubble-bg-dark text-accent-dark' : 'border-accent-2/40 bg-bubble-bg-light text-accent-light'"
        class="rounded-lg border px-3 py-1.5 text-xs font-semibold hover:opacity-80 transition"
-       title="JSON API for mobile / external clients">
-      <i class="fa-solid fa-code mr-1"></i>API
-    </a>
+       title="{% trans 'JSON API for mobile / external clients' %}">
+      <i class="fa-solid fa-code mr-1"></i>{% trans "API" %}</a>
   </header>
 
   <!-- ── Sections ────────────────────────────────────────────────────── -->
@@ -98,7 +98,7 @@
                 </tr>
                 {% empty %}
                 <tr>
-                  <td colspan="{{ section.table.headers|length }}" class="py-3 text-center opacity-40">No data.</td>
+                  <td colspan="{{ section.table.headers|length }}" class="py-3 text-center opacity-40">{% trans "No data." %}</td>
                 </tr>
                 {% endfor %}
               </tbody>
@@ -119,9 +119,7 @@
     {% empty %}
     <div :class="darkMode ? 'border-accent-1/40' : 'border-accent-2/40'"
          class="rounded-xl border border-dashed px-6 py-12 text-center text-sm opacity-50">
-      <i class="fa-solid fa-plug mb-2 text-2xl block"></i>
-      No metrics plugins registered.
-    </div>
+      <i class="fa-solid fa-plug mb-2 text-2xl block"></i>{% trans "No metrics plugins registered." %}</div>
     {% endfor %}
   </div>
 

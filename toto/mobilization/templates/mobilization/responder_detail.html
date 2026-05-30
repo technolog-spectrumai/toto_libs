@@ -23,12 +23,11 @@
             {% if responder.person.is_federal_agent %}
               <span :class="darkMode ? 'bg-accent-dark/20 text-accent-dark border-accent-dark/30' : 'bg-accent-light/20 text-accent-light border-accent-light/30'"
                     class="rounded border px-2 py-0.5 text-xs font-semibold">
-                <i class="fa-solid fa-id-badge mr-1"></i>Federal Agent
-              </span>
+                <i class="fa-solid fa-id-badge mr-1"></i>{% trans "Federal Agent" %}</span>
             {% endif %}
-            {% if responder.is_trained %}<span class="rounded border border-current/20 px-2 py-0.5 text-xs"><i class="fa-solid fa-graduation-cap mr-1"></i>Trained</span>{% endif %}
-            {% if responder.is_background_checked %}<span class="rounded border border-current/20 px-2 py-0.5 text-xs"><i class="fa-solid fa-shield-check mr-1"></i>Background checked</span>{% endif %}
-            {% if not responder.is_active %}<span :class="darkMode ? 'border-warn-dark/50 text-warn-dark' : 'border-warn-light/50 text-warn-light'" class="rounded border px-2 py-0.5 text-xs">Inactive</span>{% endif %}
+            {% if responder.is_trained %}<span class="rounded border border-current/20 px-2 py-0.5 text-xs"><i class="fa-solid fa-graduation-cap mr-1"></i>{% trans "Trained" %}</span>{% endif %}
+            {% if responder.is_background_checked %}<span class="rounded border border-current/20 px-2 py-0.5 text-xs"><i class="fa-solid fa-shield-check mr-1"></i>{% trans "Background checked" %}</span>{% endif %}
+            {% if not responder.is_active %}<span :class="darkMode ? 'border-warn-dark/50 text-warn-dark' : 'border-warn-light/50 text-warn-light'" class="rounded border px-2 py-0.5 text-xs">{% trans "Inactive" %}</span>{% endif %}
           </div>
         </div>
       </div>

@@ -1,5 +1,6 @@
 {% extends "admin/base_site.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block extrastyle %}
     {{ block.super }}
@@ -25,7 +26,7 @@
 {% block content %}
 <div id="content-main">
 
-    <h2>Cypher Query</h2>
+    <h2>{% trans "Cypher Query" %}</h2>
     <pre>{{ query }}</pre>
 
     <div id="cy"></div>
@@ -41,16 +42,16 @@
             white-space: pre-wrap;
             font-family: monospace;
          ">
-        <em>Click a node or edge to see details…</em>
+        <em>{% trans "Click a node or edge to see details…" %}</em>
     </div>
 
-    <h2>Nodes</h2>
+    <h2>{% trans "Nodes" %}</h2>
     <table class="admin-table">
         <thead>
             <tr>
-                <th>ID</th>
-                <th>Labels</th>
-                <th>Properties</th>
+                <th>{% trans "ID" %}</th>
+                <th>{% trans "Labels" %}</th>
+                <th>{% trans "Properties" %}</th>
             </tr>
         </thead>
         <tbody>
@@ -64,15 +65,15 @@
         </tbody>
     </table>
 
-    <h2>Edges</h2>
+    <h2>{% trans "Edges" %}</h2>
     <table class="admin-table">
         <thead>
             <tr>
-                <th>ID</th>
-                <th>Type</th>
-                <th>Start</th>
-                <th>End</th>
-                <th>Properties</th>
+                <th>{% trans "ID" %}</th>
+                <th>{% trans "Type" %}</th>
+                <th>{% trans "Start" %}</th>
+                <th>{% trans "End" %}</th>
+                <th>{% trans "Properties" %}</th>
             </tr>
         </thead>
         <tbody>
@@ -166,7 +167,7 @@
     }
 
     function clearDetails() {
-        detailsBox.innerHTML = "<em>Click a node or edge to see details…</em>";
+        detailsBox.innerHTML = "<em>{% trans "Click a node or edge to see details…" %}</em>";
     }
 
     cy.on("tap", "node", function(evt) {

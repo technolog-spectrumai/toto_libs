@@ -1,5 +1,6 @@
 {% extends "oya/base.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block title %}Decks | {{ platform.site_name }}{% endblock %}
 
@@ -16,18 +17,12 @@
       <div class="space-y-2">
         <h1
           :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-          class="text-3xl font-bold">
-          Memo Decks
-        </h1>
+          class="text-3xl font-bold">{% trans "Memo Decks" %}</h1>
 
-        <p class="opacity-75">
-          Search lecture decks by title or tag.
-        </p>
+        <p class="opacity-75">{% trans "Search lecture decks by title or tag." %}</p>
       </div>
 
-      <a href="{% url 'core:dashboard' %}" class="text-sm underline hover:opacity-80">
-        Dashboard
-      </a>
+      <a href="{% url 'core:dashboard' %}" class="text-sm underline hover:opacity-80">{% trans "Dashboard" %}</a>
     </div>
 
     <section
@@ -41,7 +36,7 @@
           type="search"
           name="q"
           value="{{ query }}"
-          placeholder="Search decks or tags..."
+          placeholder="{% trans 'Search decks or tags...' %}"
           :class="darkMode
             ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
             : 'bg-primary-bg-light text-text-main-light border-accent-2'"
@@ -53,9 +48,7 @@
             ? 'bg-accent-dark text-primary-bg-dark'
             : 'bg-accent-light text-primary-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded px-4 py-2 font-semibold hover:opacity-90 transition">
-          <i class="fa-solid fa-magnifying-glass"></i>
-          Search
-        </button>
+          <i class="fa-solid fa-magnifying-glass"></i>{% trans "Search" %}</button>
 
         {% if query %}
           <a
@@ -63,9 +56,7 @@
             :class="darkMode
               ? 'bg-primary-bg-dark border-accent-1'
               : 'bg-primary-bg-light border-accent-2'"
-            class="inline-flex items-center justify-center rounded border px-4 py-2 text-sm font-semibold hover:opacity-80 transition">
-            Clear
-          </a>
+            class="inline-flex items-center justify-center rounded border px-4 py-2 text-sm font-semibold hover:opacity-80 transition">{% trans "Clear" %}</a>
         {% endif %}
       </form>
 
@@ -89,9 +80,7 @@
       <div class="flex items-center justify-between gap-4">
         <h2
           :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-          class="text-2xl font-bold">
-          Decks
-        </h2>
+          class="text-2xl font-bold">{% trans "Decks" %}</h2>
 
         <span class="text-sm opacity-60">
           {{ page_obj.start_index }}-{{ page_obj.end_index }} of {{ paginator.count }}
@@ -159,18 +148,14 @@
                     ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark'
                     : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
                   class="inline-flex items-center gap-2 rounded border px-4 py-2 text-sm font-semibold hover:opacity-80 transition">
-                  <i class="fa-solid fa-arrow-left"></i>
-                  Previous
-                </a>
+                  <i class="fa-solid fa-arrow-left"></i>{% trans "Previous" %}</a>
               {% else %}
                 <span
                   :class="darkMode
                     ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark'
                     : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
                   class="inline-flex items-center gap-2 rounded border px-4 py-2 text-sm font-semibold opacity-40">
-                  <i class="fa-solid fa-arrow-left"></i>
-                  Previous
-                </span>
+                  <i class="fa-solid fa-arrow-left"></i>{% trans "Previous" %}</span>
               {% endif %}
 
               {% if page_obj.has_next %}
@@ -179,18 +164,14 @@
                   :class="darkMode
                     ? 'bg-accent-dark text-primary-bg-dark'
                     : 'bg-accent-light text-primary-bg-light'"
-                  class="inline-flex items-center gap-2 rounded px-4 py-2 text-sm font-semibold hover:opacity-90 transition">
-                  Next
-                  <i class="fa-solid fa-arrow-right"></i>
+                  class="inline-flex items-center gap-2 rounded px-4 py-2 text-sm font-semibold hover:opacity-90 transition">{% trans "Next" %}<i class="fa-solid fa-arrow-right"></i>
                 </a>
               {% else %}
                 <span
                   :class="darkMode
                     ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark'
                     : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
-                  class="inline-flex items-center gap-2 rounded border px-4 py-2 text-sm font-semibold opacity-40">
-                  Next
-                  <i class="fa-solid fa-arrow-right"></i>
+                  class="inline-flex items-center gap-2 rounded border px-4 py-2 text-sm font-semibold opacity-40">{% trans "Next" %}<i class="fa-solid fa-arrow-right"></i>
                 </span>
               {% endif %}
             </div>
@@ -202,9 +183,7 @@
             ? 'bg-bubble-bg-dark border-accent-1'
             : 'bg-bubble-bg-light border-accent-2'"
           class="border rounded-lg p-8 text-center shadow-md">
-          <p class="text-sm opacity-70">
-            No decks found.
-          </p>
+          <p class="text-sm opacity-70">{% trans "No decks found." %}</p>
         </div>
       {% endif %}
     </section>

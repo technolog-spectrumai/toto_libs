@@ -1,15 +1,16 @@
 {% extends "detections/base.html" %}
 {% load static %}
+{% load i18n %}
 {% block detections_title %}Dashboard{% endblock %}
 {% block detections_heading %}Detections Dashboard{% endblock %}
-{% block detections_subtitle %}<p class="mt-2 max-w-2xl text-sm opacity-70">Detection health, mitigation coverage, and task assignment signals.</p>{% endblock %}
+{% block detections_subtitle %}<p class="mt-2 max-w-2xl text-sm opacity-70">{% trans "Detection health, mitigation coverage, and task assignment signals." %}</p>{% endblock %}
 {% block detections_start_script %}<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>{% endblock %}
 {% block detections_content %}
 
 <div class="grid gap-4 sm:grid-cols-3">
-  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">Active detections</p><p class="mt-2 text-3xl font-bold">{{ active_count }}</p></article>
-  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">Kanban tasks</p><p class="mt-2 text-3xl font-bold">{{ task_count }}</p></article>
-  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">Need task</p><p class="mt-2 text-3xl font-bold">{{ unassigned_count }}</p></article>
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Active detections" %}</p><p class="mt-2 text-3xl font-bold">{{ active_count }}</p></article>
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Kanban tasks" %}</p><p class="mt-2 text-3xl font-bold">{{ task_count }}</p></article>
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Need task" %}</p><p class="mt-2 text-3xl font-bold">{{ unassigned_count }}</p></article>
 </div>
 
 {{ status_chart_data|json_script:"status-chart-data" }}
@@ -17,18 +18,18 @@
 
 <section class="grid gap-4 lg:grid-cols-2">
   <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm">
-    <h2 class="text-lg font-bold"><i class="fa-solid fa-chart-pie opacity-70"></i> Status</h2>
+    <h2 class="text-lg font-bold"><i class="fa-solid fa-chart-pie opacity-70"></i>{% trans "Status" %}</h2>
     <div class="mt-4 h-72"><canvas id="statusChart"></canvas></div>
   </article>
   <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm">
-    <h2 class="text-lg font-bold"><i class="fa-solid fa-chart-column opacity-70"></i> Severity</h2>
+    <h2 class="text-lg font-bold"><i class="fa-solid fa-chart-column opacity-70"></i>{% trans "Severity" %}</h2>
     <div class="mt-4 h-72"><canvas id="severityChart"></canvas></div>
   </article>
 </section>
 
 {% if recent_detections %}
 <section class="space-y-3">
-  <h2 class="text-xl font-bold">Active Detections</h2>
+  <h2 class="text-xl font-bold">{% trans "Active Detections" %}</h2>
   {% for detection in recent_detections %}
     <a href="{% url 'detections:detection-detail' detection.pk %}" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-sunken-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-sunken-light'" class="flex items-center gap-3 rounded-xl border p-3 shadow-sm transition hover:opacity-90">
       <span

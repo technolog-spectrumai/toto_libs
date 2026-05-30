@@ -1,4 +1,5 @@
 {% extends "admin/base_site.html" %}
+{% load i18n %}
 
 {% block content %}
 <div id="content-main">
@@ -11,10 +12,10 @@
     <table>
       <thead>
         <tr>
-          <th>Title</th>
-          <th>Owner</th>
-          <th>Type</th>
-          <th>Bucket</th>
+          <th>{% trans "Title" %}</th>
+          <th>{% trans "Owner" %}</th>
+          <th>{% trans "Type" %}</th>
+          <th>{% trans "Bucket" %}</th>
         </tr>
       </thead>
       <tbody>
@@ -34,7 +35,7 @@
   <form method="post">
     {% csrf_token %}
     <fieldset class="module aligned">
-      <h2>Decryption settings</h2>
+      <h2>{% trans "Decryption settings" %}</h2>
       {% for field in form %}
         <div class="form-row{% if field.errors %} errors{% endif %}">
           {% if field.errors %}
@@ -53,7 +54,7 @@
 
     <div class="submit-row">
       <input type="submit" value="Decrypt Files" class="default">
-      <a href=".." class="closelink">Cancel</a>
+      <a href=".." class="closelink">{% trans "Cancel" %}</a>
     </div>
   </form>
 

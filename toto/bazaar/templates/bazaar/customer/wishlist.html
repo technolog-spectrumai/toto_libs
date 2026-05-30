@@ -1,5 +1,6 @@
 {% extends "bazaar/base.html" %}
+{% load i18n %}
 {% block bazaar_title %}Wishlist{% endblock %}
 {% block bazaar_heading %}Wishlist{% endblock %}
-{% block bazaar_subtitle %}<p class="mt-2 max-w-2xl text-sm opacity-70">Saved products and procurement ideas.</p>{% endblock %}
+{% block bazaar_subtitle %}<p class="mt-2 max-w-2xl text-sm opacity-70">{% trans "Saved products and procurement ideas." %}</p>{% endblock %}
 {% block bazaar_content %}<div class="space-y-5">{% for wishlist in wishlists %}<section><h2 class="mb-3 text-lg font-bold">{{ wishlist.name }}</h2><div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{% for item in wishlist.items.all %}{% with product=item.product %}{% include "bazaar/partials/product_card.html" %}{% endwith %}{% empty %}{% include "bazaar/partials/empty_state.html" with icon="fa-solid fa-heart" message="This wishlist is empty." %}{% endfor %}</div></section>{% empty %}{% include "bazaar/partials/empty_state.html" with icon="fa-solid fa-heart" message="No wishlists yet." %}{% endfor %}</div>{% endblock %}

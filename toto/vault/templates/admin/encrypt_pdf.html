@@ -1,4 +1,5 @@
 {% extends "admin/base_site.html" %}
+{% load i18n %}
 
 {% block content %}
 <div id="content-main">
@@ -11,9 +12,9 @@
     <table>
       <thead>
         <tr>
-          <th>Title</th>
-          <th>Owner</th>
-          <th>Bucket</th>
+          <th>{% trans "Title" %}</th>
+          <th>{% trans "Owner" %}</th>
+          <th>{% trans "Bucket" %}</th>
         </tr>
       </thead>
       <tbody>
@@ -32,9 +33,8 @@
   <form method="post">
     {% csrf_token %}
     <fieldset class="module aligned">
-      <h2>PDF encryption settings</h2>
-      <p class="help">
-        Set a <strong>user password</strong> to restrict opening the file.
+      <h2>{% trans "PDF encryption settings" %}</h2>
+      <p class="help">{% trans "Set a" %}<strong>user password</strong> to restrict opening the file.
         Set an <strong>owner password</strong> to restrict editing/printing (defaults to user password if left blank).
       </p>
       {% for field in form %}
@@ -55,7 +55,7 @@
 
     <div class="submit-row">
       <input type="submit" value="Encrypt PDFs" class="default">
-      <a href=".." class="closelink">Cancel</a>
+      <a href=".." class="closelink">{% trans "Cancel" %}</a>
     </div>
   </form>
 

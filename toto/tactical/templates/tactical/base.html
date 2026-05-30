@@ -1,4 +1,5 @@
 {% extends "oya/base.html" %}
+{% load i18n %}
 
 {% block title %}{% block tactical_title %}Tactical{% endblock %} | {{ platform.site_name }}{% endblock %}
 
@@ -15,37 +16,32 @@
   <nav :class="darkMode ? 'border-accent-1/30 bg-primary-bg-dark/90' : 'border-accent-2/30 bg-primary-bg-light/90'"
        class="sticky top-0 z-40 flex items-center gap-1 border-b px-4 py-2 backdrop-blur sm:px-6">
     <span :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-          class="mr-3 text-xs font-bold uppercase tracking-widest">Tactical</span>
+          class="mr-3 text-xs font-bold uppercase tracking-widest">{% trans "Tactical" %}</span>
     <a href="{% url 'tactical:command' %}"
        :class="request.resolver_match.url_name == 'command'
          ? (darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light')
          : 'opacity-60 hover:opacity-100'"
        class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition">
-      <i class="fa-solid fa-map fa-fw"></i> Command
-    </a>
+      <i class="fa-solid fa-map fa-fw"></i>{% trans "Command" %}</a>
     <a href="{% url 'tactical:metrics' %}"
        :class="request.resolver_match.url_name == 'metrics'
          ? (darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light')
          : 'opacity-60 hover:opacity-100'"
        class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition">
-      <i class="fa-solid fa-chart-line fa-fw"></i> Metrics
-    </a>
+      <i class="fa-solid fa-chart-line fa-fw"></i>{% trans "Metrics" %}</a>
     <span class="mx-1 h-5 self-center border-l border-current opacity-20"></span>
     <a href="{% url 'incidents:incident-list' %}"
        :class="{% if request.resolver_match.app_name == 'incidents' %}darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'{% else %}'opacity-60 hover:opacity-100'{% endif %}"
        class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition">
-      <i class="fa-solid fa-triangle-exclamation fa-fw"></i> Incidents
-    </a>
+      <i class="fa-solid fa-triangle-exclamation fa-fw"></i>{% trans "Incidents" %}</a>
     <a href="{% url 'mobilization:overview' %}"
        :class="{% if request.resolver_match.app_name == 'mobilization' %}darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'{% else %}'opacity-60 hover:opacity-100'{% endif %}"
        class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition">
-      <i class="fa-solid fa-shield-halved fa-fw"></i> Mobilization
-    </a>
+      <i class="fa-solid fa-shield-halved fa-fw"></i>{% trans "Mobilization" %}</a>
     <a href="{% url 'response:deployment_list' %}"
        :class="{% if request.resolver_match.app_name == 'response' %}darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'{% else %}'opacity-60 hover:opacity-100'{% endif %}"
        class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition">
-      <i class="fa-solid fa-life-ring fa-fw"></i> Response
-    </a>
+      <i class="fa-solid fa-life-ring fa-fw"></i>{% trans "Response" %}</a>
   </nav>
 
   <div class="px-4 py-6 sm:px-6 lg:px-8">

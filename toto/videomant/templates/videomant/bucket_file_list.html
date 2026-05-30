@@ -1,5 +1,6 @@
 {% extends "oya/base.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block title %}{{ bucket.name }} — VideoMant{% endblock %}
 
@@ -15,8 +16,7 @@
     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <a href="{% url 'videomant:bucket_list' %}" class="text-sm opacity-50 hover:opacity-100">
-          <i class="fa-solid fa-arrow-left mr-1"></i>Buckets
-        </a>
+          <i class="fa-solid fa-arrow-left mr-1"></i>{% trans "Buckets" %}</a>
         <h1 class="mt-2 text-2xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
           <i class="fa-solid fa-bucket mr-2"></i>{{ bucket.name }}
         </h1>
@@ -27,8 +27,7 @@
         :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
         class="inline-flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80"
       >
-        <i class="fa-solid fa-list"></i> All jobs
-      </a>
+        <i class="fa-solid fa-list"></i>{% trans "All jobs" %}</a>
     </div>
 
     <!-- Search + filter bar -->
@@ -39,7 +38,7 @@
           type="text"
           name="q"
           value="{{ q }}"
-          placeholder="Search files…"
+          placeholder="{% trans 'Search files…' %}"
           :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
           class="w-full rounded-lg border py-2 pl-8 pr-3 text-sm focus:outline-none"
         >
@@ -50,16 +49,16 @@
         class="rounded-lg border px-3 py-2 text-sm focus:outline-none"
         onchange="this.form.submit()"
       >
-        <option value="" {% if not file_type %}selected{% endif %}>All media</option>
-        <option value="video"  {% if file_type == 'video' %}selected{% endif %}>Video only</option>
-        <option value="audio"  {% if file_type == 'audio' %}selected{% endif %}>Audio only</option>
-        <option value="image"  {% if file_type == 'image' %}selected{% endif %}>Image only</option>
+        <option value="" {% if not file_type %}selected{% endif %}>{% trans "All media" %}</option>
+        <option value="video"  {% if file_type == 'video' %}selected{% endif %}>{% trans "Video only" %}</option>
+        <option value="audio"  {% if file_type == 'audio' %}selected{% endif %}>{% trans "Audio only" %}</option>
+        <option value="image"  {% if file_type == 'image' %}selected{% endif %}>{% trans "Image only" %}</option>
       </select>
       <button
         type="submit"
         :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-white'"
         class="rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-90"
-      >Search</button>
+      >{% trans "Search" %}</button>
     </form>
 
     <!-- File grid -->
@@ -90,7 +89,7 @@
         <!-- Recent job badge -->
         {% if rj %}
         <div class="flex items-center gap-2 text-xs">
-          <span class="opacity-50">Last job:</span>
+          <span class="opacity-50">{% trans "Last job:" %}</span>
           {% if rj.status == 'succeeded' %}
           <span class="rounded-full bg-success-light/20 px-2 py-0.5 text-success-light font-semibold">{{ rj.task_name }}</span>
           {% elif rj.status == 'failed' %}
@@ -112,15 +111,13 @@
           :class="darkMode ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90' : 'bg-accent-light text-white hover:opacity-90'"
           class="flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition"
         >
-          <i class="fa-solid fa-wand-magic-sparkles"></i>
-          Process this file
-        </a>
+          <i class="fa-solid fa-wand-magic-sparkles"></i>{% trans "Process this file" %}</a>
       </div>
       {% endfor %}
     </div>
 
     {% if total == 200 %}
-    <p class="text-center text-xs opacity-40">Showing first 200 files. Use search to narrow down.</p>
+    <p class="text-center text-xs opacity-40">{% trans "Showing first 200 files. Use search to narrow down." %}</p>
     {% endif %}
 
     {% else %}

@@ -54,7 +54,7 @@
           {% trans "Name" %}
         </label>
         <input type="text" name="name" required maxlength="255"
-               placeholder="e.g. AI Usage Token"
+               placeholder="{% trans 'e.g. AI Usage Token' %}"
                :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder:opacity-30' : 'border-accent-2 bg-primary-bg-light text-text-main-light placeholder:opacity-30'"
                class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
       </div>
@@ -63,7 +63,7 @@
           {% trans "Unit name / ticker" %}
         </label>
         <input type="text" name="unit_name" required maxlength="20"
-               placeholder="e.g. AI_TOKEN"
+               placeholder="{% trans 'e.g. AI_TOKEN' %}"
                x-model="unitName"
                @input="unitName = unitName.toUpperCase()"
                :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder:opacity-30' : 'border-accent-2 bg-primary-bg-light text-text-main-light placeholder:opacity-30'"
@@ -74,7 +74,7 @@
           {% trans "Description" %} <span class="font-normal opacity-60">({% trans "optional" %})</span>
         </label>
         <input type="text" name="description" maxlength="500"
-               placeholder="e.g. Credits for AI inference usage"
+               placeholder="{% trans 'e.g. Credits for AI inference usage' %}"
                :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder:opacity-30' : 'border-accent-2 bg-primary-bg-light text-text-main-light placeholder:opacity-30'"
                class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20 sm:col-span-2">
       </div>
@@ -96,7 +96,7 @@
           {% trans "Total supply" %} <span class="font-normal opacity-60">({% trans "display units" %})</span>
         </label>
         <input type="number" name="total_supply" required step="any" min="1"
-               placeholder="e.g. 1000000000"
+               placeholder="{% trans 'e.g. 1000000000' %}"
                value="1000000000"
                :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder:opacity-30' : 'border-accent-2 bg-primary-bg-light text-text-main-light placeholder:opacity-30'"
                class="w-full rounded-lg border px-3 py-2 text-sm font-mono outline-none focus:ring-2 focus:ring-current/20">

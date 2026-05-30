@@ -16,7 +16,7 @@
 
 <div class="console-box">
   <div class="console-box-body">
-    <p>Upload a signed or unsigned backup ZIP and seed this portal from it.</p>
+    <p>{% trans "Upload a signed or unsigned backup ZIP and seed this portal from it." %}</p>
     <form method="post" enctype="multipart/form-data">
       {% csrf_token %}
       {{ apply_form.as_p }}

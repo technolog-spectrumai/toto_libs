@@ -1,3 +1,4 @@
+{% load i18n %}
 <section
   :class="darkMode
     ? 'border-accent-1 bg-bubble-bg-dark'
@@ -7,9 +8,7 @@
   <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
     <div>
       <h2 class="flex items-center gap-2 text-lg font-bold">
-        <i class="{{ community_plugin_icon }}"></i>
-        Community news
-      </h2>
+        <i class="{{ community_plugin_icon }}"></i>{% trans "Community news" %}</h2>
 
       <p class="mt-1 text-sm opacity-70">
         Short updates for {{ community.name }}.
@@ -23,9 +22,7 @@
           ? 'bg-accent-dark text-primary-bg-dark'
           : 'bg-accent-light text-primary-bg-light'"
         class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-        <i class="fa-solid fa-plus"></i>
-        New post
-      </a>
+        <i class="fa-solid fa-plus"></i>{% trans "New post" %}</a>
     {% endif %}
   </div>
 
@@ -75,12 +72,12 @@
             <div class="flex shrink-0 gap-2">
               <a href="{% url 'socialhub:community_news_update' post.pk %}"
                  class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-current/15 transition hover:opacity-80"
-                 title="Edit post">
+                 title="{% trans 'Edit post' %}">
                 <i class="fa-solid fa-pen text-xs"></i>
               </a>
               <a href="{% url 'socialhub:community_news_delete' post.pk %}"
                  class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-current/15 transition hover:opacity-80"
-                 title="Delete post">
+                 title="{% trans 'Delete post' %}">
                 <i class="fa-solid fa-trash text-xs"></i>
               </a>
             </div>
@@ -92,9 +89,7 @@
         :class="darkMode
           ? 'border-accent-1 bg-sunken-dark'
           : 'border-accent-2 bg-sunken-light'"
-        class="rounded-xl border border-dashed p-6 text-center text-sm italic opacity-70">
-        No community news yet.
-      </div>
+        class="rounded-xl border border-dashed p-6 text-center text-sm italic opacity-70">{% trans "No community news yet." %}</div>
     {% endfor %}
   </div>
 </section>

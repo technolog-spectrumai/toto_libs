@@ -20,7 +20,7 @@
       </div>
       {# HLS badge #}
       {% if video.hls_ready %}
-        <span class="absolute bottom-2 right-2 rounded px-1.5 py-0.5 text-xs font-bold bg-black/70 text-white">HLS</span>
+        <span class="absolute bottom-2 right-2 rounded px-1.5 py-0.5 text-xs font-bold bg-black/70 text-white">{% trans "HLS" %}</span>
       {% endif %}
       {# Duration badge #}
       {% if video.duration_seconds %}

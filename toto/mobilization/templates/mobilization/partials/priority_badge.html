@@ -1,19 +1,16 @@
+{% load i18n %}
 {% if priority == "urgent" %}
   <span :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
         class="inline-flex items-center gap-1 text-xs font-semibold">
-    <i class="fa-solid fa-angles-up"></i> Urgent
-  </span>
+    <i class="fa-solid fa-angles-up"></i>{% trans "Urgent" %}</span>
 {% elif priority == "high" %}
   <span :class="darkMode ? 'text-caution-dark' : 'text-caution-light'"
         class="inline-flex items-center gap-1 text-xs font-semibold">
-    <i class="fa-solid fa-angle-up"></i> High
-  </span>
+    <i class="fa-solid fa-angle-up"></i>{% trans "High" %}</span>
 {% elif priority == "low" %}
   <span class="inline-flex items-center gap-1 text-xs font-semibold opacity-60">
-    <i class="fa-solid fa-angle-down"></i> Low
-  </span>
+    <i class="fa-solid fa-angle-down"></i>{% trans "Low" %}</span>
 {% else %}
   <span class="inline-flex items-center gap-1 text-xs font-semibold opacity-70">
-    <i class="fa-solid fa-minus"></i> Normal
-  </span>
+    <i class="fa-solid fa-minus"></i>{% trans "Normal" %}</span>
 {% endif %}

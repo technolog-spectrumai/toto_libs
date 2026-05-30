@@ -1,4 +1,5 @@
 {% extends "oya/base.html" %}
+{% load i18n %}
 
 {% block title %}Authorize {{ client.name }} | {{ platform.site_name }}{% endblock %}
 
@@ -27,9 +28,7 @@
             <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="fa-solid fa-key text-xl"></i>
           </div>
           <div>
-            <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-xs font-semibold uppercase tracking-wide">
-              Authorization request
-            </p>
+            <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-xs font-semibold uppercase tracking-wide">{% trans "Authorization request" %}</p>
             <h1 class="mt-0.5 text-xl font-bold">{{ client.name }}</h1>
           </div>
         </div>
@@ -62,16 +61,12 @@
             type="submit" name="decision" value="approve"
             :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
             class="inline-flex flex-1 items-center justify-center gap-2 rounded-lg px-5 py-3 text-sm font-semibold shadow-sm transition hover:opacity-90">
-            <i class="fa-solid fa-check"></i>
-            Allow
-          </button>
+            <i class="fa-solid fa-check"></i>{% trans "Allow" %}</button>
           <button
             type="submit" name="decision" value="deny"
             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
             class="inline-flex items-center justify-center gap-2 rounded-lg border px-5 py-3 text-sm font-semibold transition hover:opacity-80">
-            <i class="fa-solid fa-xmark"></i>
-            Deny
-          </button>
+            <i class="fa-solid fa-xmark"></i>{% trans "Deny" %}</button>
         </form>
       </div>
 

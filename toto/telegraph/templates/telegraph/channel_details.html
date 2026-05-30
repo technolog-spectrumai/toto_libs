@@ -1,5 +1,6 @@
 {% extends "oya/base.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block title %}{{ channel.name }} · Telegraph{% endblock %}
 
@@ -761,7 +762,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       class="hidden min-h-0 min-w-0 overflow-hidden rounded-lg border p-4 shadow-md lg:flex lg:flex-col">
 
       <div class="flex items-center justify-between border-b border-current/10 pb-3">
-        <a href="{% url 'telegraph:channel_list' %}" class="text-sm font-semibold underline hover:opacity-80">Channels</a>
+        <a href="{% url 'telegraph:channel_list' %}" class="text-sm font-semibold underline hover:opacity-80">{% trans "Channels" %}</a>
         <span class="text-xs opacity-50">{{ all_channels|length }}</span>
       </div>
 
@@ -792,7 +793,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           @click="sidebarOpen = true"
           :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
           class="inline-flex h-9 w-9 items-center justify-center rounded border lg:hidden"
-          aria-label="Open channels">
+          aria-label="{% trans 'Open channels' %}">
           <i class="fa-solid fa-bars text-sm"></i>
         </button>
 
@@ -805,9 +806,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           </div>
         </div>
 
-        <a href="{% url 'telegraph:channel_list' %}" class="hidden shrink-0 text-xs underline opacity-60 hover:opacity-90 sm:inline">
-          All channels
-        </a>
+        <a href="{% url 'telegraph:channel_list' %}" class="hidden shrink-0 text-xs underline opacity-60 hover:opacity-90 sm:inline">{% trans "All channels" %}</a>
 
         {# Encryption chip #}
         <div
@@ -840,8 +839,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             <button type="submit"
               :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
               class="inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-bold transition hover:opacity-90">
-              <i class="fa-solid fa-right-to-bracket"></i> Join
-            </button>
+              <i class="fa-solid fa-right-to-bracket"></i>{% trans "Join" %}</button>
           </form>
         {% elif can_leave %}
           <form method="post" action="{% url 'telegraph:channel_leave' channel.slug %}" class="hidden shrink-0 sm:block">
@@ -849,8 +847,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             <button type="submit"
               :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2 text-text-main-light'"
               class="inline-flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80">
-              <i class="fa-solid fa-right-from-bracket"></i> Leave
-            </button>
+              <i class="fa-solid fa-right-from-bracket"></i>{% trans "Leave" %}</button>
           </form>
         {% endif %}
       </header>
@@ -865,16 +862,14 @@ document.addEventListener("DOMContentLoaded", async () => {
             <a href="{% url 'sso:login' %}?next={{ request.path }}"
               :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
               class="inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-bold transition hover:opacity-90">
-              <i class="fa-solid fa-right-to-bracket"></i> Sign in
-            </a>
+              <i class="fa-solid fa-right-to-bracket"></i>{% trans "Sign in" %}</a>
           {% elif can_join %}
             <form method="post" action="{% url 'telegraph:channel_join' channel.slug %}">
               {% csrf_token %}
               <button type="submit"
                 :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
                 class="inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-bold transition hover:opacity-90">
-                <i class="fa-solid fa-right-to-bracket"></i> Join Channel
-              </button>
+                <i class="fa-solid fa-right-to-bracket"></i>{% trans "Join Channel" %}</button>
             </form>
           {% endif %}
         </div>
@@ -917,9 +912,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             {% endif %}
           </article>
         {% empty %}
-          <div data-empty-messages class="flex h-full items-center justify-center py-12 text-sm opacity-50">
-            No messages yet. Be the first to say something.
-          </div>
+          <div data-empty-messages class="flex h-full items-center justify-center py-12 text-sm opacity-50">{% trans "No messages yet. Be the first to say something." %}</div>
         {% endfor %}
       </div>
 
@@ -948,8 +941,7 @@ document.addEventListener("DOMContentLoaded", async () => {
               <button type="submit"
                 :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
                 class="inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-bold transition hover:opacity-90">
-                <i class="fa-solid fa-right-to-bracket"></i> Join
-              </button>
+                <i class="fa-solid fa-right-to-bracket"></i>{% trans "Join" %}</button>
             </form>
           {% elif can_leave %}
             <form method="post" action="{% url 'telegraph:channel_leave' channel.slug %}">
@@ -957,8 +949,7 @@ document.addEventListener("DOMContentLoaded", async () => {
               <button type="submit"
                 :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2 text-text-main-light'"
                 class="inline-flex items-center gap-1.5 rounded border px-2.5 py-1 text-xs font-semibold transition hover:opacity-80">
-                <i class="fa-solid fa-right-from-bracket"></i> Leave
-              </button>
+                <i class="fa-solid fa-right-from-bracket"></i>{% trans "Leave" %}</button>
             </form>
           {% endif %}
         </div>
@@ -966,18 +957,17 @@ document.addEventListener("DOMContentLoaded", async () => {
         <div id="recording-status-wrap" class="hidden px-1 pb-1">
           <div class="flex items-center gap-2 text-xs">
             <span class="inline-block h-2 w-2 animate-pulse rounded-full bg-warn-light"></span>
-            <span class="opacity-70">Recording</span>
+            <span class="opacity-70">{% trans "Recording" %}</span>
             <span id="recording-timer" class="font-mono">0:00</span>
             <button type="button" id="recording-cancel-button"
               class="ml-auto opacity-50 hover:opacity-90 transition">
-              <i class="fa-solid fa-xmark"></i> Cancel
-            </button>
+              <i class="fa-solid fa-xmark"></i>{% trans "Cancel" %}</button>
           </div>
         </div>
 
         <div id="upload-progress-wrap" class="hidden px-1 pb-1">
           <div class="flex items-center gap-2 text-xs opacity-60">
-            <span>Uploading…</span>
+            <span>{% trans "Uploading…" %}</span>
             <div class="relative h-1.5 flex-1 overflow-hidden rounded-full bg-current/20">
               <div id="upload-progress-bar" class="absolute left-0 top-0 h-full rounded-full bg-current transition-all duration-100" style="width: 0%"></div>
             </div>
@@ -1011,7 +1001,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2 text-text-main-light'"
             class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
             {% if not can_send_messages %}disabled{% endif %}
-            aria-label="Send image">
+            aria-label="{% trans 'Send image' %}">
             <i class="fa-solid fa-image text-sm"></i>
           </button>
 
@@ -1021,7 +1011,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2 text-text-main-light'"
             class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
             {% if not can_send_messages %}disabled{% endif %}
-            aria-label="Record voice message">
+            aria-label="{% trans 'Record voice message' %}">
             <i class="fa-solid fa-microphone text-sm"></i>
           </button>
 
@@ -1031,7 +1021,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2 text-text-main-light'"
             class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
             {% if not can_send_messages %}disabled{% endif %}
-            aria-label="Insert emoji">
+            aria-label="{% trans 'Insert emoji' %}">
             <i class="fa-regular fa-face-smile text-sm"></i>
           </button>
 
@@ -1050,7 +1040,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
             class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl font-semibold transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
             {% if not can_send_messages %}disabled{% endif %}
-            aria-label="Send">
+            aria-label="{% trans 'Send' %}">
             <i class="fa-solid fa-paper-plane text-sm"></i>
           </button>
           </div>{# /flex gap-2 #}
@@ -1064,9 +1054,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       class="hidden min-h-0 min-w-0 overflow-hidden rounded-lg border p-4 shadow-md lg:flex lg:flex-col">
 
       <div class="flex items-center justify-between border-b border-current/10 pb-3">
-        <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-sm font-bold">
-          Members
-        </h2>
+        <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-sm font-bold">{% trans "Members" %}</h2>
         <span class="text-xs opacity-50">{{ participants|length }}</span>
       </div>
 
@@ -1086,11 +1074,11 @@ document.addEventListener("DOMContentLoaded", async () => {
               <p class="text-xs opacity-50">{% if user.type == "ai_agent" %}AI agent{% else %}Human{% endif %}</p>
             </div>
             {% if user.type == "ai_agent" %}
-              <span class="rounded border border-current/15 px-1.5 py-0.5 text-xs opacity-60">AI</span>
+              <span class="rounded border border-current/15 px-1.5 py-0.5 text-xs opacity-60">{% trans "AI" %}</span>
             {% endif %}
           </div>
         {% empty %}
-          <p class="py-4 text-center text-sm opacity-50">No members yet.</p>
+          <p class="py-4 text-center text-sm opacity-50">{% trans "No members yet." %}</p>
         {% endfor %}
       </div>
     </aside>
@@ -1107,7 +1095,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     class="fixed inset-y-0 left-0 z-50 w-72 border-r p-4 shadow-xl lg:hidden">
 
     <div class="flex items-center justify-between border-b border-current/10 pb-3">
-      <span class="text-sm font-semibold">Channels</span>
+      <span class="text-sm font-semibold">{% trans "Channels" %}</span>
       <button type="button" @click="sidebarOpen = false"
         :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
         class="inline-flex h-8 w-8 items-center justify-center rounded border">
@@ -1127,7 +1115,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     <div class="mt-5 border-t border-current/10 pt-4">
       <div class="flex items-center justify-between">
-        <span class="text-sm font-semibold">Members</span>
+        <span class="text-sm font-semibold">{% trans "Members" %}</span>
         <span class="text-xs opacity-50">{{ participants|length }}</span>
       </div>
       <div class="mt-3 space-y-2">
@@ -1147,7 +1135,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             </div>
           </div>
         {% empty %}
-          <p class="text-sm opacity-50">No members yet.</p>
+          <p class="text-sm opacity-50">{% trans "No members yet." %}</p>
         {% endfor %}
       </div>
     </div>

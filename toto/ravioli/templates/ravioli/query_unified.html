@@ -1,5 +1,6 @@
 {% extends "oya/base.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block title %}Knowledge Graph{% endblock %}
 
@@ -25,9 +26,8 @@
     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <h1 class="text-3xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
-          <i class="fa-solid fa-database mr-2 text-2xl"></i>Knowledge Graph
-        </h1>
-        <p class="mt-1 text-sm opacity-60">Run saved Cypher queries against Neo4j and inspect the knowledge graph.</p>
+          <i class="fa-solid fa-database mr-2 text-2xl"></i>{% trans "Knowledge Graph" %}</h1>
+        <p class="mt-1 text-sm opacity-60">{% trans "Run saved Cypher queries against Neo4j and inspect the knowledge graph." %}</p>
       </div>
       {% if request.user.is_superuser %}
       <div class="flex shrink-0 items-center gap-2">
@@ -36,15 +36,13 @@
           :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2 text-text-main-light'"
           class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80"
         >
-          <i class="fa-solid fa-chart-network"></i> Graph Analysis
-        </a>
+          <i class="fa-solid fa-chart-network"></i>{% trans "Graph Analysis" %}</a>
         <a
           href="{% url 'ravioli:projection_sync' %}"
           :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2 text-text-main-light'"
           class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80"
         >
-          <i class="fa-solid fa-arrows-rotate"></i> Sync view
-        </a>
+          <i class="fa-solid fa-arrows-rotate"></i>{% trans "Sync view" %}</a>
       </div>
       {% endif %}
     </div>
@@ -61,8 +59,7 @@
           class="rounded-lg border p-4 shadow-sm"
         >
           <h3 class="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide opacity-60">
-            <i class="fa-solid fa-list"></i> Queries
-          </h3>
+            <i class="fa-solid fa-list"></i>{% trans "Queries" %}</h3>
 
           {% if queries %}
           <div class="space-y-1">
@@ -93,9 +90,7 @@
           <div
             :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
             class="rounded-lg border border-dashed p-5 text-center text-sm italic opacity-60"
-          >
-            No queries saved yet.
-          </div>
+          >{% trans "No queries saved yet." %}</div>
           {% endif %}
 
           <!-- Run button -->
@@ -122,8 +117,7 @@
           class="rounded-lg border p-4 shadow-sm"
         >
           <h3 class="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide opacity-60">
-            <i class="fa-solid fa-chart-bar"></i> Stats
-          </h3>
+            <i class="fa-solid fa-chart-bar"></i>{% trans "Stats" %}</h3>
 
           <div class="space-y-2">
 
@@ -133,7 +127,7 @@
               </div>
               <div>
                 <div class="text-2xl font-bold">{{ queries|length }}</div>
-                <div class="text-xs opacity-60">Saved queries</div>
+                <div class="text-xs opacity-60">{% trans "Saved queries" %}</div>
               </div>
             </div>
 
@@ -143,7 +137,7 @@
               </div>
               <div>
                 <div class="text-2xl font-bold">{{ run_stats.succeeded|default:0 }}</div>
-                <div class="text-xs opacity-60">Runs succeeded</div>
+                <div class="text-xs opacity-60">{% trans "Runs succeeded" %}</div>
               </div>
             </div>
 
@@ -153,7 +147,7 @@
               </div>
               <div>
                 <div class="text-2xl font-bold">{{ run_stats.failed|default:0 }}</div>
-                <div class="text-xs opacity-60">Runs failed</div>
+                <div class="text-xs opacity-60">{% trans "Runs failed" %}</div>
               </div>
             </div>
 
@@ -163,7 +157,7 @@
               </div>
               <div>
                 <div class="text-2xl font-bold">{{ total_nodes }}</div>
-                <div class="text-xs opacity-60">Nodes retrieved</div>
+                <div class="text-xs opacity-60">{% trans "Nodes retrieved" %}</div>
               </div>
             </div>
 
@@ -173,7 +167,7 @@
               </div>
               <div>
                 <div class="text-2xl font-bold">{{ total_edges }}</div>
-                <div class="text-xs opacity-60">Edges retrieved</div>
+                <div class="text-xs opacity-60">{% trans "Edges retrieved" %}</div>
               </div>
             </div>
 
@@ -186,8 +180,7 @@
             :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
             class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80"
           >
-            <i class="fa-solid fa-arrow-left"></i> Dashboard
-          </a>
+            <i class="fa-solid fa-arrow-left"></i>{% trans "Dashboard" %}</a>
         </div>
 
       </aside>
@@ -204,7 +197,7 @@
         >
           <i class="fa-solid fa-triangle-exclamation mt-0.5 shrink-0"></i>
           <div>
-            <span class="font-semibold">Error — </span>
+            <span class="font-semibold">{% trans "Error —" %}</span>
             <span x-text="error"></span>
           </div>
           <button @click="error = null" class="ml-auto shrink-0 text-lg leading-none opacity-60 hover:opacity-100">&times;</button>
@@ -217,8 +210,8 @@
           class="rounded-lg border border-dashed p-12 text-center shadow-sm"
         >
           <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="fa-solid fa-database text-4xl opacity-40"></i>
-          <h2 class="mt-4 text-xl font-bold">Select a query</h2>
-          <p class="mt-1 text-sm opacity-60">Choose a query from the sidebar, then click Run to execute it.</p>
+          <h2 class="mt-4 text-xl font-bold">{% trans "Select a query" %}</h2>
+          <p class="mt-1 text-sm opacity-60">{% trans "Choose a query from the sidebar, then click Run to execute it." %}</p>
         </div>
 
         <!-- Query details card -->
@@ -256,7 +249,7 @@
           </div>
 
           <div class="mt-4 border-t border-current/10 pt-4">
-            <div class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-50">Cypher</div>
+            <div class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-50">{% trans "Cypher" %}</div>
             <pre
               class="overflow-auto rounded-lg border p-4 font-mono text-sm leading-relaxed"
               :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
@@ -272,7 +265,7 @@
             class="rounded-lg border shadow-sm overflow-hidden"
           >
             <div class="flex items-center justify-between border-b border-current/10 px-4 py-2 text-xs opacity-60">
-              <span><i class="fa-solid fa-diagram-project mr-1"></i>Graph</span>
+              <span><i class="fa-solid fa-diagram-project mr-1"></i>{% trans "Graph" %}</span>
               <span x-text="`${nodeCount} nodes · ${edgeCount} edges`"></span>
             </div>
             <div id="cy" style="width:100%;height:580px;"></div>
@@ -299,8 +292,7 @@
               :class="darkMode ? 'border-accent-1 hover:bg-primary-bg-dark' : 'border-accent-2 hover:bg-primary-bg-light'"
               class="rounded-lg border px-2 py-1 text-xs font-semibold transition"
             >
-              <i class="fa-solid fa-xmark"></i> Close
-            </button>
+              <i class="fa-solid fa-xmark"></i>{% trans "Close" %}</button>
           </div>
 
           <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 text-sm">
@@ -318,9 +310,7 @@
             x-show="Object.keys(selectedElement?.props || {}).length === 0"
             :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
             class="rounded-lg border border-dashed p-4 text-center text-sm italic opacity-60"
-          >
-            No properties on this element.
-          </p>
+          >{% trans "No properties on this element." %}</p>
         </article>
 
       </main>

@@ -1,3 +1,4 @@
+{% load i18n %}
 {% if experiences %}
   <div class="space-y-3">
     {% for experience in experiences %}
@@ -27,5 +28,5 @@
     {% endfor %}
   </div>
 {% else %}
-  <p class="text-sm opacity-60">No experiences yet.</p>
+  <p class="text-sm opacity-60">{% trans "No experiences yet." %}</p>
 {% endif %}

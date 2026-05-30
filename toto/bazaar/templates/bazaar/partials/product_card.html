@@ -1,3 +1,4 @@
+{% load i18n %}
 <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="group overflow-hidden rounded-2xl border shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
   <a href="{% url 'bazaar:product-detail' product.slug %}" class="block">
     <div :class="darkMode ? 'bg-sunken-dark' : 'bg-sunken-light'" class="aspect-[4/3] overflow-hidden">
@@ -11,7 +12,7 @@
           <h3 class="line-clamp-2 font-bold">{{ product.name }}</h3>
           <div class="flex shrink-0 flex-col items-end gap-1">
             <span :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="rounded-full border px-2 py-0.5 text-[11px] font-semibold">{{ product.get_product_type_display }}</span>
-            {% if product.is_regulated %}<span class="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700"><i class="fa-solid fa-shield-halved"></i> Regulated</span>{% endif %}
+            {% if product.is_regulated %}<span class="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700"><i class="fa-solid fa-shield-halved"></i>{% trans "Regulated" %}</span>{% endif %}
           </div>
         </div>
         {% if product.vendor %}<p class="mt-1 text-xs opacity-60"><i class="fa-solid fa-user-tag"></i> {{ product.vendor.display_name }}</p>{% endif %}
@@ -23,7 +24,7 @@
           {% if product.compare_at_price %}<p class="text-xs line-through opacity-45">{{ product.compare_at_price }} {{ product.currency }}</p>{% endif %}
           <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-lg font-bold">{{ product.price }} {{ product.currency }}</p>
         </div>
-        <span class="text-xs font-semibold opacity-60">View <i class="fa-solid fa-arrow-right"></i></span>
+        <span class="text-xs font-semibold opacity-60">{% trans "View" %}<i class="fa-solid fa-arrow-right"></i></span>
       </div>
     </div>
   </a>

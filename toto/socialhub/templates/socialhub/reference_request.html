@@ -1,5 +1,6 @@
 {% extends "oya/base.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block title %} Application Endorsement | {{ platform.site_name }}{% endblock %}
 
@@ -50,17 +51,11 @@
             <div>
               <p
                 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-                class="text-xs font-semibold uppercase tracking-wide">
-                Membership endorsement
-              </p>
+                class="text-xs font-semibold uppercase tracking-wide">{% trans "Membership endorsement" %}</p>
 
-              <h1 class="mt-3 max-w-xl text-3xl font-bold leading-tight sm:text-4xl">
-                Ask someone trusted to support this application.
-              </h1>
+              <h1 class="mt-3 max-w-xl text-3xl font-bold leading-tight sm:text-4xl">{% trans "Ask someone trusted to support this application." %}</h1>
 
-              <p class="mt-4 max-w-xl text-sm leading-6 opacity-75 sm:text-base">
-                Send an endorsement request for
-                <span class="font-semibold">{{ application.email }}</span>.
+              <p class="mt-4 max-w-xl text-sm leading-6 opacity-75 sm:text-base">{% trans "Send an endorsement request for" %}<span class="font-semibold">{{ application.email }}</span>.
                 The referrer can review the request and help confirm that this applicant
                 belongs in the selected community.
               </p>
@@ -76,8 +71,8 @@
               <i
                 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
                 class="fa-solid fa-user-check"></i>
-              <p class="mt-2 font-semibold">Choose referrer</p>
-              <p class="mt-1 text-xs opacity-65">Pick who can endorse.</p>
+              <p class="mt-2 font-semibold">{% trans "Choose referrer" %}</p>
+              <p class="mt-1 text-xs opacity-65">{% trans "Pick who can endorse." %}</p>
             </div>
 
             <div
@@ -88,8 +83,8 @@
               <i
                 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
                 class="fa-solid fa-message"></i>
-              <p class="mt-2 font-semibold">Add context</p>
-              <p class="mt-1 text-xs opacity-65">Explain the request.</p>
+              <p class="mt-2 font-semibold">{% trans "Add context" %}</p>
+              <p class="mt-1 text-xs opacity-65">{% trans "Explain the request." %}</p>
             </div>
 
             <div
@@ -100,8 +95,8 @@
               <i
                 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
                 class="fa-solid fa-paper-plane"></i>
-              <p class="mt-2 font-semibold">Send request</p>
-              <p class="mt-1 text-xs opacity-65">Forward for review.</p>
+              <p class="mt-2 font-semibold">{% trans "Send request" %}</p>
+              <p class="mt-1 text-xs opacity-65">{% trans "Forward for review." %}</p>
             </div>
           </div>
         </div>
@@ -112,13 +107,9 @@
         <div class="mx-auto flex h-full max-w-md flex-col justify-center space-y-6">
 
           <div>
-            <h2 class="text-2xl font-bold">
-              Endorsement request
-            </h2>
+            <h2 class="text-2xl font-bold">{% trans "Endorsement request" %}</h2>
 
-            <p class="mt-2 text-sm leading-6 opacity-70">
-              Select the application, choose a referrer, and include a short message.
-            </p>
+            <p class="mt-2 text-sm leading-6 opacity-70">{% trans "Select the application, choose a referrer, and include a short message." %}</p>
           </div>
 
           <form method="POST" class="space-y-5">
@@ -199,18 +190,14 @@
                 ? 'bg-accent-dark text-primary-bg-dark'
                 : 'bg-accent-light text-primary-bg-light'"
               class="inline-flex w-full items-center justify-center gap-2 rounded-lg px-5 py-3 text-sm font-semibold shadow-sm transition hover:opacity-90">
-              <i class="fa-solid fa-paper-plane"></i>
-              Submit Endorsement Request
-            </button>
+              <i class="fa-solid fa-paper-plane"></i>{% trans "Submit Endorsement Request" %}</button>
 
             <div
               :class="darkMode
                 ? 'border-accent-1 bg-sunken-dark'
                 : 'border-accent-2 bg-sunken-light'"
               class="rounded-xl border p-4 text-center text-sm">
-              <p class="opacity-75">
-                The selected referrer will be asked to accept or reject the endorsement request.
-              </p>
+              <p class="opacity-75">{% trans "The selected referrer will be asked to accept or reject the endorsement request." %}</p>
             </div>
           </form>
 

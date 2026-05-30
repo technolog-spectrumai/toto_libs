@@ -253,7 +253,7 @@
       const data = await res.json();
       renderGraph(data);
     } catch (err) {
-      container.innerHTML = '<p class="p-4 text-sm opacity-50">Graph unavailable.</p>';
+      container.innerHTML = '<p class="p-4 text-sm opacity-50">{% trans "Graph unavailable." %}</p>';
     } finally {
       container.style.opacity = "1";
     }

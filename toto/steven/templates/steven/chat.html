@@ -1,4 +1,5 @@
 {% extends 'steven/base.html' %}
+{% load i18n %}
 {% block steven_title %}Chat · {{ agent.name }}{% endblock %}
 {% block steven_content %}
 
@@ -17,18 +18,14 @@
       <span class="text-sm opacity-70 line-clamp-1 max-w-xs">{{ conversation.title|default:"Chat" }}</span>
       {% if agent.graph_rag_enabled %}
         <span class="inline-flex items-center gap-1 rounded border border-current/15 px-2 py-1 text-xs font-semibold">
-          <i class="fa-solid fa-circle-nodes"></i>
-          Graph RAG
-        </span>
+          <i class="fa-solid fa-circle-nodes"></i>{% trans "Graph RAG" %}</span>
       {% endif %}
     </div>
     <a
       href="{% url 'steven:agent_detail' agent.slug %}"
       :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2 text-text-main-light'"
       class="inline-flex items-center gap-2 rounded border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80">
-      <i class="fa-solid fa-plus"></i>
-      New chat
-    </a>
+      <i class="fa-solid fa-plus"></i>{% trans "New chat" %}</a>
   </div>
 </section>
 
@@ -70,7 +67,7 @@
         </div>
       {% endif %}
     {% empty %}
-      <p class="text-sm opacity-50 text-center py-6">No messages yet.</p>
+      <p class="text-sm opacity-50 text-center py-6">{% trans "No messages yet." %}</p>
     {% endfor %}
   </div>
 </section>
@@ -87,7 +84,7 @@
       name="user_prompt"
       rows="3"
       required
-      placeholder="Continue the conversation…"
+      placeholder="{% trans 'Continue the conversation…' %}"
       :class="darkMode
         ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark focus:border-accent-dark'
         : 'border-accent-2 bg-primary-bg-light text-text-main-light focus:border-accent-light'"
@@ -100,9 +97,7 @@
           ? 'bg-accent-dark text-primary-bg-dark'
           : 'bg-accent-light text-primary-bg-light'"
         class="inline-flex items-center gap-2 rounded px-4 py-2 text-sm font-semibold transition hover:opacity-90">
-        <i class="fa-solid fa-paper-plane"></i>
-        Send
-      </button>
+        <i class="fa-solid fa-paper-plane"></i>{% trans "Send" %}</button>
     </div>
   </form>
 </section>

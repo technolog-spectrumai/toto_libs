@@ -1,5 +1,6 @@
 {% extends "oya/base.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block title %}Media Actions — {{ vf.title }}{% endblock %}
 
@@ -18,14 +19,11 @@
       </a>
       {% else %}
       <a href="{% url 'videomant:job_list' %}" class="text-sm opacity-50 hover:opacity-100">
-        <i class="fa-solid fa-arrow-left mr-1"></i>Jobs
-      </a>
+        <i class="fa-solid fa-arrow-left mr-1"></i>{% trans "Jobs" %}</a>
       {% endif %}
       <h1 class="mt-2 text-2xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
-        <i class="fa-solid fa-wand-magic-sparkles mr-2"></i>Media Actions
-      </h1>
-      <p class="mt-1 text-sm opacity-60">
-        File: <span class="font-mono">{{ vf.title }}</span>
+        <i class="fa-solid fa-wand-magic-sparkles mr-2"></i>{% trans "Media Actions" %}</h1>
+      <p class="mt-1 text-sm opacity-60">{% trans "File:" %}<span class="font-mono">{{ vf.title }}</span>
         ({{ vf.file_type }}, {{ vf.file_size_bytes|filesizeformat }})
       </p>
     </div>

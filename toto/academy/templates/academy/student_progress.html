@@ -1,5 +1,6 @@
 {% extends "academy/base.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block academy_title %}My Progress{% endblock %}
 {% block tab_courses %}border-b-2 border-current -mb-px{% endblock %}
@@ -12,18 +13,14 @@
 
     <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
       <div class="space-y-2">
-        <a href="{% url 'academy:course-list' %}" class="text-sm underline hover:opacity-80">
-          Courses
-        </a>
+        <a href="{% url 'academy:course-list' %}" class="text-sm underline hover:opacity-80">{% trans "Courses" %}</a>
 
-        <h1 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-3xl font-bold">
-          My Progress
-        </h1>
+        <h1 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-3xl font-bold">{% trans "My Progress" %}</h1>
 
         {% if person %}
           <p class="opacity-75">{{ person.display_name }}</p>
         {% else %}
-          <p class="opacity-75">No community profile is connected to this account yet.</p>
+          <p class="opacity-75">{% trans "No community profile is connected to this account yet." %}</p>
         {% endif %}
       </div>
 
@@ -32,30 +29,22 @@
           :class="darkMode
             ? 'bg-success-dark text-primary-bg-dark'
             : 'bg-success-light text-primary-bg-light'"
-          class="rounded px-3 py-2 font-semibold">
-          Earned
-        </span>
+          class="rounded px-3 py-2 font-semibold">{% trans "Earned" %}</span>
         <span
           :class="darkMode
             ? 'bg-accent-dark text-primary-bg-dark'
             : 'bg-accent-light text-primary-bg-light'"
-          class="rounded px-3 py-2 font-semibold">
-          Current
-        </span>
+          class="rounded px-3 py-2 font-semibold">{% trans "Current" %}</span>
         <span
           :class="darkMode
             ? 'bg-warn-dark text-primary-bg-dark'
             : 'bg-warn-light text-primary-bg-light'"
-          class="rounded px-3 py-2 font-semibold">
-          Available
-        </span>
+          class="rounded px-3 py-2 font-semibold">{% trans "Available" %}</span>
         <span
           :class="darkMode
             ? 'bg-sunken-dark text-text-main-dark'
             : 'bg-sunken-light text-text-main-light'"
-          class="rounded px-3 py-2 font-semibold">
-          Locked
-        </span>
+          class="rounded px-3 py-2 font-semibold">{% trans "Locked" %}</span>
       </div>
     </div>
 
@@ -81,17 +70,11 @@
             ? 'bg-bubble-bg-dark border-accent-1'
             : 'bg-bubble-bg-light border-accent-2'"
           class="border rounded-lg p-5 shadow-md space-y-3 transition-colors duration-300">
-          <div class="text-xs uppercase tracking-wide opacity-60">
-            Selected Skill
-          </div>
+          <div class="text-xs uppercase tracking-wide opacity-60">{% trans "Selected Skill" %}</div>
 
-          <h2 id="progress-inspector-title" class="text-xl font-bold">
-            Progression
-          </h2>
+          <h2 id="progress-inspector-title" class="text-xl font-bold">{% trans "Progression" %}</h2>
 
-          <p id="progress-inspector-description" class="text-sm opacity-75">
-            Select a skill to see its status and linked course.
-          </p>
+          <p id="progress-inspector-description" class="text-sm opacity-75">{% trans "Select a skill to see its status and linked course." %}</p>
 
           <div id="progress-inspector-status" class="text-xs font-bold uppercase tracking-wide opacity-70"></div>
           <div id="progress-inspector-courses" class="space-y-2"></div>
@@ -102,7 +85,7 @@
             ? 'bg-bubble-bg-dark border-accent-1'
             : 'bg-bubble-bg-light border-accent-2'"
           class="border rounded-lg p-5 shadow-md space-y-4 transition-colors duration-300">
-          <h2 class="text-xl font-bold">Enrolled Courses</h2>
+          <h2 class="text-xl font-bold">{% trans "Enrolled Courses" %}</h2>
 
           <div class="space-y-3">
             {% for course in enrolled_courses %}
@@ -116,7 +99,7 @@
                 <span class="block text-xs opacity-60">{{ course.module_count }} modules</span>
               </a>
             {% empty %}
-              <p class="text-sm opacity-60">No enrolled courses yet.</p>
+              <p class="text-sm opacity-60">{% trans "No enrolled courses yet." %}</p>
             {% endfor %}
           </div>
         </section>
@@ -126,7 +109,7 @@
             ? 'bg-bubble-bg-dark border-accent-1'
             : 'bg-bubble-bg-light border-accent-2'"
           class="border rounded-lg p-5 shadow-md space-y-4 transition-colors duration-300">
-          <h2 class="text-xl font-bold">Earned Skills</h2>
+          <h2 class="text-xl font-bold">{% trans "Earned Skills" %}</h2>
 
           <div class="space-y-3 max-h-80 overflow-y-auto pr-1">
             {% for badge in earned_badges %}
@@ -142,7 +125,7 @@
                 <div class="text-xs opacity-60">{{ badge.group.title }}</div>
               </article>
             {% empty %}
-              <p class="text-sm opacity-60">No earned skills yet.</p>
+              <p class="text-sm opacity-60">{% trans "No earned skills yet." %}</p>
             {% endfor %}
           </div>
         </section>
@@ -152,7 +135,7 @@
             ? 'bg-bubble-bg-dark border-accent-1'
             : 'bg-bubble-bg-light border-accent-2'"
           class="border rounded-lg p-5 shadow-md space-y-4 transition-colors duration-300">
-          <h2 class="text-xl font-bold">Certificates</h2>
+          <h2 class="text-xl font-bold">{% trans "Certificates" %}</h2>
 
           <div class="space-y-3 max-h-80 overflow-y-auto pr-1">
             {% for certificate in certificates %}
@@ -168,7 +151,7 @@
                   </a>
                   {% if certificate.cryptographic_signature %}
                   <span :class="darkMode ? 'text-success-dark' : 'text-success-light'"
-                        class="text-xs shrink-0" title="Cryptographically signed">
+                        class="text-xs shrink-0" title="{% trans 'Cryptographically signed' %}">
                     <i class="fa-solid fa-shield-check"></i>
                   </span>
                   {% endif %}
@@ -181,7 +164,7 @@
                 {% endif %}
               </article>
             {% empty %}
-              <p class="text-sm opacity-60">No certificates yet.</p>
+              <p class="text-sm opacity-60">{% trans "No certificates yet." %}</p>
             {% endfor %}
           </div>
         </section>

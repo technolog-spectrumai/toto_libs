@@ -1,5 +1,6 @@
 {% extends "locations/base.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block locations_title %}Map{% endblock %}
 {% block tab_locations %}bg-accent-dark/10 opacity-100{% endblock %}
@@ -379,15 +380,11 @@
       <div class="min-w-0">
         <p
           :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-          class="text-xs font-semibold uppercase tracking-wide">
-          Spatial overview
-        </p>
+          class="text-xs font-semibold uppercase tracking-wide">{% trans "Spatial overview" %}</p>
 
-        <h1 class="mt-2 text-3xl font-bold sm:text-4xl">Locations</h1>
+        <h1 class="mt-2 text-3xl font-bold sm:text-4xl">{% trans "Locations" %}</h1>
 
-        <p class="mt-2 max-w-2xl text-sm opacity-70">
-          Browse territories, routes, travels, and addresses in one focused map workspace.
-        </p>
+        <p class="mt-2 max-w-2xl text-sm opacity-70">{% trans "Browse territories, routes, travels, and addresses in one focused map workspace." %}</p>
       </div>
 
       <div class="flex flex-col gap-3 sm:min-w-[360px]">
@@ -396,21 +393,21 @@
             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
             class="rounded-lg border p-3 shadow-sm">
             <div class="text-2xl font-bold" x-text="locations.length"></div>
-            <div class="text-xs opacity-65">Total</div>
+            <div class="text-xs opacity-65">{% trans "Total" %}</div>
           </div>
 
           <div
             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
             class="rounded-lg border p-3 shadow-sm">
             <div class="text-2xl font-bold" x-text="mappedLocations.length"></div>
-            <div class="text-xs opacity-65">Mapped</div>
+            <div class="text-xs opacity-65">{% trans "Mapped" %}</div>
           </div>
 
           <div
             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
             class="rounded-lg border p-3 shadow-sm">
             <div class="text-2xl font-bold" x-text="availableTypes.length - 1"></div>
-            <div class="text-xs opacity-65">Types</div>
+            <div class="text-xs opacity-65">{% trans "Types" %}</div>
           </div>
         </div>
 
@@ -423,18 +420,14 @@
         @click="sidebarOpen = true; setTimeout(() => refreshMapSize(), 250)"
         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
         class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-        <i class="fa-solid fa-sliders"></i>
-        Locations
-      </button>
+        <i class="fa-solid fa-sliders"></i>{% trans "Locations" %}</button>
 
       <button
         type="button"
         @click="fitAll"
         :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
         class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-        <i class="fa-solid fa-location-crosshairs"></i>
-        Fit map
-      </button>
+        <i class="fa-solid fa-location-crosshairs"></i>{% trans "Fit map" %}</button>
     </div>
 
     <section class="grid min-h-[76vh] gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
@@ -476,9 +469,7 @@
               : 'bg-bubble-bg-light/95 text-text-main-light border-accent-2'"
             class="flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-1 text-xs font-semibold shadow-sm backdrop-blur transition hover:opacity-90">
             <span class="flex items-center gap-1.5">
-              <i class="fa-solid fa-route opacity-70"></i>
-              Travels &amp; Visits
-            </span>
+              <i class="fa-solid fa-route opacity-70"></i>{% trans "Travels &amp; Visits" %}</span>
             <i class="fa-solid text-[10px] opacity-60" :class="open ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
           </button>
 
@@ -494,7 +485,7 @@
             {% if map_recent_travels %}
             <div class="px-3 pt-3 pb-1">
               <div class="mb-2 flex items-center justify-between gap-2">
-                <span class="text-[10px] font-semibold uppercase tracking-wide opacity-60">Recent Travels</span>
+                <span class="text-[10px] font-semibold uppercase tracking-wide opacity-60">{% trans "Recent Travels" %}</span>
                 <a
                   href="{% url 'travels:travel_create' %}"
                   :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
@@ -526,9 +517,7 @@
               <a
                 href="{% url 'travels:my_travels' %}"
                 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-                class="mt-2 block text-center text-[10px] font-semibold underline-offset-2 hover:underline">
-                View all travels
-              </a>
+                class="mt-2 block text-center text-[10px] font-semibold underline-offset-2 hover:underline">{% trans "View all travels" %}</a>
             </div>
             {% endif %}
 
@@ -539,7 +528,7 @@
             {% if map_recent_visits %}
             <div class="px-3 pt-2 pb-3">
               <div class="mb-2 flex items-center justify-between gap-2">
-                <span class="text-[10px] font-semibold uppercase tracking-wide opacity-60">Recent Visits</span>
+                <span class="text-[10px] font-semibold uppercase tracking-wide opacity-60">{% trans "Recent Visits" %}</span>
                 <a
                   href="{% url 'travels:visit_create' %}"
                   :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
@@ -575,9 +564,7 @@
               <a
                 href="{% url 'travels:my_travels' %}"
                 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-                class="mt-2 block text-center text-[10px] font-semibold underline-offset-2 hover:underline">
-                View all visits
-              </a>
+                class="mt-2 block text-center text-[10px] font-semibold underline-offset-2 hover:underline">{% trans "View all visits" %}</a>
             </div>
             {% endif %}
 
@@ -594,13 +581,13 @@
             class="rounded-lg border p-2 shadow-sm backdrop-blur">
 
             <label class="relative block">
-              <span class="sr-only">Move map to location</span>
+              <span class="sr-only">{% trans "Move map to location" %}</span>
               <i class="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs opacity-50"></i>
 
               <input
                 x-model="mapSearch"
                 type="search"
-                placeholder="Move map to ..."
+                placeholder="{% trans 'Move map to ...' %}"
                 @keydown.enter.prevent="mapSearchResults.length && moveMapToLocation(mapSearchResults[0])"
                 :class="darkMode
                   ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder:text-text-main-dark/50'
@@ -615,9 +602,7 @@
 
               <div
                 x-show="mapSearchLoading"
-                class="rounded-lg border border-current/10 px-3 py-2 text-xs opacity-70">
-                Searching map...
-              </div>
+                class="rounded-lg border border-current/10 px-3 py-2 text-xs opacity-70">{% trans "Searching map..." %}</div>
 
               <div
                 x-show="mapSearchError"
@@ -626,9 +611,7 @@
               </div>
 
               <template x-if="!mapSearchLoading && mapSearchResults.length === 0">
-                <div class="rounded-lg border border-dashed border-current/15 px-3 py-2 text-xs opacity-70">
-                  No location found.
-                </div>
+                <div class="rounded-lg border border-dashed border-current/15 px-3 py-2 text-xs opacity-70">{% trans "No location found." %}</div>
               </template>
 
               <div class="space-y-1">
@@ -683,16 +666,16 @@
           :class="darkMode ? 'bg-bubble-bg-dark/95 text-text-main-dark' : 'bg-bubble-bg-light/95 text-text-main-light'"
           class="absolute bottom-4 right-4 hidden rounded-lg border border-current/10 p-3 text-xs shadow-sm backdrop-blur sm:block">
 
-          <div class="mb-2 font-semibold">Legend</div>
+          <div class="mb-2 font-semibold">{% trans "Legend" %}</div>
 
           <div class="grid gap-1.5">
-            <div class="flex items-center gap-2"><span :style="typeStyle('Territory')" class="h-2.5 w-2.5 rounded-full"></span>Territory</div>
-            <div class="flex items-center gap-2"><span :style="typeStyle('Zone')" class="h-2.5 w-2.5 rounded-full"></span>Zone</div>
-            <div class="flex items-center gap-2"><span :style="typeStyle('Route Chain')" class="h-2.5 w-2.5 rounded-full"></span>Route Chain</div>
-            <div class="flex items-center gap-2"><span :style="typeStyle('Route')" class="h-2.5 w-2.5 rounded-full"></span>Route</div>
-            <div class="flex items-center gap-2"><span :style="typeStyle('Address')" class="h-2.5 w-2.5 rounded-full"></span>Address</div>
-            <div class="flex items-center gap-2"><span :style="typeStyle('Travel')" class="h-2.5 w-2.5 rounded-full"></span>Travel</div>
-            <div class="flex items-center gap-2"><span :style="typeStyle('Visit')" class="h-2.5 w-2.5 rounded-full"></span>Visit</div>
+            <div class="flex items-center gap-2"><span :style="typeStyle('Territory')" class="h-2.5 w-2.5 rounded-full"></span>{% trans "Territory" %}</div>
+            <div class="flex items-center gap-2"><span :style="typeStyle('Zone')" class="h-2.5 w-2.5 rounded-full"></span>{% trans "Zone" %}</div>
+            <div class="flex items-center gap-2"><span :style="typeStyle('Route Chain')" class="h-2.5 w-2.5 rounded-full"></span>{% trans "Route Chain" %}</div>
+            <div class="flex items-center gap-2"><span :style="typeStyle('Route')" class="h-2.5 w-2.5 rounded-full"></span>{% trans "Route" %}</div>
+            <div class="flex items-center gap-2"><span :style="typeStyle('Address')" class="h-2.5 w-2.5 rounded-full"></span>{% trans "Address" %}</div>
+            <div class="flex items-center gap-2"><span :style="typeStyle('Travel')" class="h-2.5 w-2.5 rounded-full"></span>{% trans "Travel" %}</div>
+            <div class="flex items-center gap-2"><span :style="typeStyle('Visit')" class="h-2.5 w-2.5 rounded-full"></span>{% trans "Visit" %}</div>
           </div>
         </div>
       </div>
@@ -704,15 +687,13 @@
         href="{% url 'locations:address_create' %}"
         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
         class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-        <i class="fa-solid fa-location-dot"></i> Add address
-      </a>
+        <i class="fa-solid fa-location-dot"></i>{% trans "Add address" %}</a>
       <button
         type="button"
         @click="importOpen = true"
         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
         class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-        <i class="fa-solid fa-file-import"></i> Import layer
-      </button>
+        <i class="fa-solid fa-file-import"></i>{% trans "Import layer" %}</button>
     </div>
 
     <div
@@ -728,7 +709,7 @@
 
         <div class="flex items-start justify-between gap-3">
           <div>
-            <h2 class="text-lg font-bold">Overlay display</h2>
+            <h2 class="text-lg font-bold">{% trans "Overlay display" %}</h2>
             <p class="mt-1 text-sm opacity-70" x-text="selectedLayer ? selectedLayer.name : 'No layer selected'"></p>
           </div>
 
@@ -736,7 +717,7 @@
             type="button"
             @click="layerSettingsOpen = false"
             class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-current/15 transition hover:opacity-75"
-            aria-label="Close overlay display settings">
+            aria-label="{% trans 'Close overlay display settings' %}">
             <i class="fa-solid fa-xmark"></i>
           </button>
         </div>
@@ -744,7 +725,7 @@
         <div class="mt-5 space-y-5">
           <label class="block">
             <span class="mb-2 flex items-center justify-between gap-3 text-sm font-semibold">
-              <span>Opacity</span>
+              <span>{% trans "Opacity" %}</span>
               <span x-text="`${Math.round(overlayOpacity * 100)}%`"></span>
             </span>
 
@@ -760,8 +741,8 @@
 
           <label class="flex items-center justify-between gap-4">
             <span>
-              <span class="block text-sm font-semibold">Value labels</span>
-              <span class="block text-xs opacity-65">Show numeric labels in overlay polygons.</span>
+              <span class="block text-sm font-semibold">{% trans "Value labels" %}</span>
+              <span class="block text-xs opacity-65">{% trans "Show numeric labels in overlay polygons." %}</span>
             </span>
 
             <input
@@ -774,7 +755,7 @@
           <div
             :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
             class="rounded-lg border p-3 text-sm">
-            <div class="font-semibold">Legend</div>
+            <div class="font-semibold">{% trans "Legend" %}</div>
             <div class="mt-3 grid gap-2" id="overlay-legend"></div>
           </div>
         </div>
@@ -799,18 +780,12 @@
         <div>
           <p
             :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-            class="text-xs font-semibold uppercase tracking-wide">
-            Map point
-          </p>
+            class="text-xs font-semibold uppercase tracking-wide">{% trans "Map point" %}</p>
 
           <h2 class="mt-1 flex items-center gap-2 text-xl font-bold">
-            <i class="fa-solid fa-location-dot"></i>
-            Add address here?
-          </h2>
+            <i class="fa-solid fa-location-dot"></i>{% trans "Add address here?" %}</h2>
 
-          <p class="mt-2 text-sm opacity-70">
-            Save this clicked map position as a reusable address.
-          </p>
+          <p class="mt-2 text-sm opacity-70">{% trans "Save this clicked map position as a reusable address." %}</p>
         </div>
 
         <button
@@ -828,12 +803,12 @@
         class="mt-5 grid grid-cols-2 gap-3 rounded-xl border p-4 text-sm">
 
         <div>
-          <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Latitude</p>
+          <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Latitude" %}</p>
           <p class="mt-1 font-bold" x-text="clickedPoint?.lat || '—'"></p>
         </div>
 
         <div>
-          <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Longitude</p>
+          <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Longitude" %}</p>
           <p class="mt-1 font-bold" x-text="clickedPoint?.lng || '—'"></p>
         </div>
       </div>
@@ -845,9 +820,7 @@
           :class="darkMode
             ? 'border-accent-1 bg-primary-bg-dark'
             : 'border-accent-2 bg-primary-bg-light'"
-          class="inline-flex items-center justify-center rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
-          Cancel
-        </button>
+          class="inline-flex items-center justify-center rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">{% trans "Cancel" %}</button>
 
         <a
           :href="addAddressUrl"
@@ -855,9 +828,7 @@
             ? 'bg-accent-dark text-primary-bg-dark'
             : 'bg-accent-light text-primary-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-          <i class="fa-solid fa-plus"></i>
-          Add address
-        </a>
+          <i class="fa-solid fa-plus"></i>{% trans "Add address" %}</a>
       </div>
     </div>
   </div>
@@ -875,8 +846,7 @@
       <!-- Header -->
       <div class="flex items-center justify-between border-b border-current/10 px-5 py-4">
         <h2 class="flex items-center gap-2 text-lg font-bold">
-          <i class="fa-solid fa-file-import"></i> Import Layer from GeoJSON
-        </h2>
+          <i class="fa-solid fa-file-import"></i>{% trans "Import Layer from GeoJSON" %}</h2>
         <button type="button" @click="importOpen = false"
                 class="text-lg leading-none opacity-50 hover:opacity-100 transition">&times;</button>
       </div>
@@ -886,7 +856,7 @@
 
         <!-- File picker -->
         <div>
-          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">GeoJSON file</label>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "GeoJSON file" %}</label>
           <label class="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-6 text-sm transition hover:bg-current/5"
                  :class="importFile ? (darkMode ? 'border-accent-dark/60' : 'border-accent-light/60') : (darkMode ? 'border-accent-1' : 'border-accent-2')">
             <i class="fa-solid text-2xl opacity-40" :class="importFile ? 'fa-file-check' : 'fa-file-arrow-up'"></i>
@@ -899,10 +869,9 @@
 
         <!-- Optional layer name (for single-layer files) -->
         <div>
-          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">
-            Layer name <span class="font-normal opacity-50">(optional override)</span>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Layer name" %}<span class="font-normal opacity-50">(optional override)</span>
           </label>
-          <input type="text" x-model="importName" placeholder="Use name from file"
+          <input type="text" x-model="importName" placeholder="{% trans 'Use name from file' %}"
                  :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
                  class="w-full rounded-lg border px-3 py-2 text-sm">
         </div>
@@ -918,8 +887,7 @@
         <!-- Result -->
         <div x-show="importResult" x-cloak class="space-y-3">
           <p class="flex items-center gap-2 text-sm font-semibold text-success-light">
-            <i class="fa-solid fa-circle-check"></i> Import complete
-          </p>
+            <i class="fa-solid fa-circle-check"></i>{% trans "Import complete" %}</p>
           <template x-for="layer in (importResult || [])" :key="layer.slug">
             <div :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
                  class="rounded-lg border px-4 py-2.5 text-sm">
@@ -933,8 +901,7 @@
           <button type="button" @click="window.location.reload()"
                   :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
                   class="inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-bold shadow-sm transition hover:opacity-90">
-            <i class="fa-solid fa-rotate-right"></i> Reload map to see layers
-          </button>
+            <i class="fa-solid fa-rotate-right"></i>{% trans "Reload map to see layers" %}</button>
         </div>
 
       </div>
@@ -943,9 +910,7 @@
       <div x-show="!importResult" class="flex items-center justify-end gap-3 border-t border-current/10 px-5 py-4">
         <button type="button" @click="importOpen = false"
                 :class="darkMode ? 'border-accent-1 hover:bg-sunken-dark' : 'border-accent-2 hover:bg-sunken-light'"
-                class="rounded-xl border px-4 py-2 text-sm font-semibold transition">
-          Cancel
-        </button>
+                class="rounded-xl border px-4 py-2 text-sm font-semibold transition">{% trans "Cancel" %}</button>
         <button type="button"
                 :disabled="!importFile || importRunning"
                 @click="
@@ -1108,12 +1073,12 @@
     if (!legend) return;
 
     if (!layer) {
-      legend.innerHTML = '<div class="text-xs opacity-65">Select a layer to see its legend.</div>';
+      legend.innerHTML = '<div class="text-xs opacity-65">{% trans "Select a layer to see its legend." %}</div>';
       return;
     }
 
     if (!layer.polygons.length) {
-      legend.innerHTML = '<div class="text-xs opacity-65">This layer has no polygons yet.</div>';
+      legend.innerHTML = '<div class="text-xs opacity-65">{% trans "This layer has no polygons yet." %}</div>';
       return;
     }
 
@@ -1199,7 +1164,7 @@
               </span>
             `
           })
-        }).bindPopup(`<strong>${escapeHtml(feature.properties.name)}</strong><br>Center marker<br>${feature.properties.value}${escapeHtml(unit)}`));
+        }).bindPopup(`<strong>${escapeHtml(feature.properties.name)}</strong><br>{% trans "Center marker" %}<br>${feature.properties.value}${escapeHtml(unit)}`));
       }
     }).addTo(map);
 
@@ -1263,9 +1228,7 @@
           <a
             href="${escapeAttribute(item.review_url)}"
             style="display: inline-flex; align-items: center; gap: 6px; border: 1px solid currentColor; border-radius: 6px; padding: 4px 8px; font-size: 12px; font-weight: 700; background: transparent; cursor: pointer; text-decoration: none; color: inherit;">
-            <i class="fa-solid fa-star-half-stroke"></i>
-            Review
-          </a>
+            <i class="fa-solid fa-star-half-stroke"></i>{% trans "Review" %}</a>
         </div>
       `;
     }
@@ -1277,9 +1240,7 @@
           <a
             href="${escapeAttribute(item.detail_url)}"
             style="display: inline-flex; align-items: center; gap: 6px; border: 1px solid currentColor; border-radius: 6px; padding: 4px 8px; font-size: 12px; font-weight: 700; background: transparent; cursor: pointer; text-decoration: none; color: inherit;">
-            <i class="fa-solid fa-arrow-right"></i>
-            View
-          </a>
+            <i class="fa-solid fa-arrow-right"></i>{% trans "View" %}</a>
         </div>
       `;
     }
@@ -1293,9 +1254,7 @@
             data-location-name="${escapeAttribute(name)}"
             onclick="zoomToAddressFromPopup(this)"
             style="display: inline-flex; align-items: center; gap: 6px; border: 1px solid currentColor; border-radius: 6px; padding: 4px 8px; font-size: 12px; font-weight: 700; background: transparent; cursor: pointer;">
-            <i class="fa-solid fa-location-crosshairs"></i>
-            Zoom
-          </button>
+            <i class="fa-solid fa-location-crosshairs"></i>{% trans "Zoom" %}</button>
         </div>
       `;
     }

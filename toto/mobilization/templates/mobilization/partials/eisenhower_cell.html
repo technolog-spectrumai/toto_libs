@@ -1,3 +1,4 @@
+{% load i18n %}
 {% comment %}
   Eisenhower quadrant indicator.
   Expects: urgency (1-3), impact (1-3)
@@ -8,13 +9,13 @@
 {% endcomment %}
 {% if urgency == 3 and impact == 3 %}
   <span :class="darkMode ? 'bg-warn-dark/20 text-warn-dark' : 'bg-warn-light/20 text-warn-light'"
-        class="rounded px-2 py-0.5 text-xs font-bold">Q1 Do First</span>
+        class="rounded px-2 py-0.5 text-xs font-bold">{% trans "Q1 Do First" %}</span>
 {% elif urgency == 3 %}
   <span :class="darkMode ? 'bg-caution-dark/20 text-caution-dark' : 'bg-caution-light/20 text-caution-light'"
-        class="rounded px-2 py-0.5 text-xs font-bold">Q2 Schedule</span>
+        class="rounded px-2 py-0.5 text-xs font-bold">{% trans "Q2 Schedule" %}</span>
 {% elif impact == 3 %}
   <span :class="darkMode ? 'bg-accent-dark/20 text-accent-dark' : 'bg-accent-light/20 text-accent-light'"
-        class="rounded px-2 py-0.5 text-xs font-bold">Q3 Delegate</span>
+        class="rounded px-2 py-0.5 text-xs font-bold">{% trans "Q3 Delegate" %}</span>
 {% else %}
-  <span class="rounded border border-current/15 px-2 py-0.5 text-xs opacity-60">Q4 Low</span>
+  <span class="rounded border border-current/15 px-2 py-0.5 text-xs opacity-60">{% trans "Q4 Low" %}</span>
 {% endif %}

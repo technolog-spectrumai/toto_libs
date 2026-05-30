@@ -1,5 +1,6 @@
 {% extends "oya/base.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block title %}Application Submitted | {{ platform.site_name }}{% endblock %}
 
@@ -50,13 +51,9 @@
             <div>
               <p
                 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-                class="text-xs font-semibold uppercase tracking-wide">
-                Application received
-              </p>
+                class="text-xs font-semibold uppercase tracking-wide">{% trans "Application received" %}</p>
 
-              <h1 class="mt-3 max-w-xl text-3xl font-bold leading-tight sm:text-4xl">
-                Thank you for applying.
-              </h1>
+              <h1 class="mt-3 max-w-xl text-3xl font-bold leading-tight sm:text-4xl">{% trans "Thank you for applying." %}</h1>
 
               <p class="mt-4 max-w-xl text-sm leading-6 opacity-75 sm:text-base">
                 We’ve received your application. A confirmation code should arrive by email soon.
@@ -75,8 +72,8 @@
               <i
                 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
                 class="fa-solid fa-envelope-circle-check"></i>
-              <p class="mt-2 font-semibold">Check email</p>
-              <p class="mt-1 text-xs opacity-65">Look for your code.</p>
+              <p class="mt-2 font-semibold">{% trans "Check email" %}</p>
+              <p class="mt-1 text-xs opacity-65">{% trans "Look for your code." %}</p>
             </div>
 
             <div
@@ -87,8 +84,8 @@
               <i
                 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
                 class="fa-solid fa-key"></i>
-              <p class="mt-2 font-semibold">Verify</p>
-              <p class="mt-1 text-xs opacity-65">Submit your code.</p>
+              <p class="mt-2 font-semibold">{% trans "Verify" %}</p>
+              <p class="mt-1 text-xs opacity-65">{% trans "Submit your code." %}</p>
             </div>
 
             <div
@@ -99,8 +96,8 @@
               <i
                 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
                 class="fa-solid fa-door-open"></i>
-              <p class="mt-2 font-semibold">Enter</p>
-              <p class="mt-1 text-xs opacity-65">Access member tools.</p>
+              <p class="mt-2 font-semibold">{% trans "Enter" %}</p>
+              <p class="mt-1 text-xs opacity-65">{% trans "Access member tools." %}</p>
             </div>
           </div>
         </div>
@@ -111,9 +108,7 @@
         <div class="mx-auto flex h-full max-w-md flex-col justify-center space-y-6">
 
           <div>
-            <h2 class="text-2xl font-bold">
-              Next step
-            </h2>
+            <h2 class="text-2xl font-bold">{% trans "Next step" %}</h2>
 
             <p class="mt-2 text-sm leading-6 opacity-70">
               Use your verification code when it arrives. You can also return to login
@@ -140,13 +135,9 @@
                 </div>
 
                 <div>
-                  <p class="font-semibold">
-                    Already have a verification code?
-                  </p>
+                  <p class="font-semibold">{% trans "Already have a verification code?" %}</p>
 
-                  <p class="mt-1 opacity-70">
-                    Submit it now to complete your membership verification.
-                  </p>
+                  <p class="mt-1 opacity-70">{% trans "Submit it now to complete your membership verification." %}</p>
                 </div>
 
                 <a
@@ -155,9 +146,7 @@
                     ? 'bg-accent-dark text-primary-bg-dark'
                     : 'bg-accent-light text-primary-bg-light'"
                   class="inline-flex w-full items-center justify-center gap-2 rounded-lg px-5 py-3 text-sm font-semibold shadow-sm transition hover:opacity-90">
-                  <i class="fa-solid fa-key"></i>
-                  Submit Code
-                </a>
+                  <i class="fa-solid fa-key"></i>{% trans "Submit Code" %}</a>
               </div>
             {% else %}
               <div class="space-y-3">
@@ -172,13 +161,9 @@
                 </div>
 
                 <div>
-                  <p class="font-semibold">
-                    Verification will be available soon.
-                  </p>
+                  <p class="font-semibold">{% trans "Verification will be available soon." %}</p>
 
-                  <p class="mt-1 opacity-70">
-                    Once your application is ready, use the code sent to your email.
-                  </p>
+                  <p class="mt-1 opacity-70">{% trans "Once your application is ready, use the code sent to your email." %}</p>
                 </div>
               </div>
             {% endif %}
@@ -190,16 +175,12 @@
               : 'border-accent-2 bg-sunken-light'"
             class="rounded-xl border p-4 text-center text-sm">
 
-            <p class="opacity-75">
-              Want to sign in instead?
-            </p>
+            <p class="opacity-75">{% trans "Want to sign in instead?" %}</p>
 
             <a
               href="{% url 'core:login' %}"
               :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-              class="mt-1 inline-flex items-center justify-center gap-2 font-semibold underline-offset-4 transition hover:underline hover:opacity-80">
-              Back to Login
-              <i class="fa-solid fa-arrow-right text-xs"></i>
+              class="mt-1 inline-flex items-center justify-center gap-2 font-semibold underline-offset-4 transition hover:underline hover:opacity-80">{% trans "Back to Login" %}<i class="fa-solid fa-arrow-right text-xs"></i>
             </a>
           </div>
 

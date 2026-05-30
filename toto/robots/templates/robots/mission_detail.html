@@ -69,7 +69,7 @@
         if (dark) this.map.getContainer().classList.add('dark-map');
         L.tileLayer(tileUrl, {
           maxZoom: 19,
-          attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; OpenStreetMap contributors',
+          attribution: '&copy; <a href="https://carto.com/">{% trans "CARTO" %}</a> &copy; OpenStreetMap contributors',
         }).addTo(this.map);
 
         const bounds = [];
@@ -121,9 +121,9 @@
           });
           m.bindPopup(`<div class="mission-map-popup">
             <h4>${rb.callsign}</h4>
-            <p><strong>Status:</strong> ${rb.status}</p>
-            <p><strong>Battery:</strong> ${rb.battery}%</p>
-            <p><a href="${rb.url}">Open robot →</a></p>
+            <p><strong>{% trans "Status:" %}</strong> ${rb.status}</p>
+            <p><strong>{% trans "Battery:" %}</strong> ${rb.battery}%</p>
+            <p><a href="${rb.url}">{% trans "Open robot →" %}</a></p>
           </div>`);
           m.addTo(this.map);
           bounds.push([rb.lat, rb.lng]);

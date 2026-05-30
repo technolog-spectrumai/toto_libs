@@ -1,3 +1,4 @@
+{% load i18n %}
 <div
   x-show="openYamlModal"
   x-transition.opacity
@@ -17,7 +18,7 @@
       ✕
     </button>
 
-    <h4 class="text-lg font-semibold mb-3">Data (YAML)</h4>
+    <h4 class="text-lg font-semibold mb-3">{% trans "Data (YAML)" %}</h4>
 
     <pre id="yaml-{{widget_id}}"
          class="whitespace-pre-wrap break-words text-sm p-2 rounded transition-colors duration-300"

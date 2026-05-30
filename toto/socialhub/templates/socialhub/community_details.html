@@ -1,5 +1,6 @@
 {% extends "oya/base.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block title %}{{ community.name }} – {{ platform.site_name }}{% endblock %}
 
@@ -27,16 +28,12 @@
         <a
           href="{% url 'socialhub:profile_list' %}"
           class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
-          <i class="fa-solid fa-arrow-left"></i>
-          Profiles
-        </a>
+          <i class="fa-solid fa-arrow-left"></i>{% trans "Profiles" %}</a>
 
         <div>
           <p
             :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-            class="text-xs font-semibold uppercase tracking-wide">
-            Social Hub
-          </p>
+            class="text-xs font-semibold uppercase tracking-wide">{% trans "Social Hub" %}</p>
 
           <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
             <i class="fa-solid fa-people-group"></i>
@@ -57,9 +54,7 @@
             ? 'bg-accent-dark text-primary-bg-dark'
             : 'bg-accent-light text-primary-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-          <i class="fa-solid fa-sitemap"></i>
-          Org Chart
-        </button>
+          <i class="fa-solid fa-sitemap"></i>{% trans "Org Chart" %}</button>
 
         {% if viewer_is_federal_agent %}
         <a
@@ -68,9 +63,7 @@
             ? 'border-accent-1 bg-bubble-bg-dark'
             : 'border-accent-2 bg-bubble-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-          <i class="fa-solid fa-diagram-project"></i>
-          Administrata
-        </a>
+          <i class="fa-solid fa-diagram-project"></i>{% trans "Administrata" %}</a>
         {% endif %}
 
         <a
@@ -79,9 +72,7 @@
             ? 'border-accent-1 bg-bubble-bg-dark'
             : 'border-accent-2 bg-bubble-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-          <i class="fa-solid fa-users"></i>
-          All profiles
-        </a>
+          <i class="fa-solid fa-users"></i>{% trans "All profiles" %}</a>
 
         {% if community.constitutions.all %}
         <a
@@ -90,9 +81,7 @@
             ? 'border-accent-1 bg-bubble-bg-dark'
             : 'border-accent-2 bg-bubble-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-          <i class="fa-solid fa-scroll"></i>
-          Constitution
-        </a>
+          <i class="fa-solid fa-scroll"></i>{% trans "Constitution" %}</a>
         {% endif %}
       </nav>
     </header>
@@ -132,9 +121,7 @@
           <div class="min-w-0 flex-1">
             <p
               :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-              class="text-xs font-semibold uppercase tracking-wide">
-              Community
-            </p>
+              class="text-xs font-semibold uppercase tracking-wide">{% trans "Community" %}</p>
 
             <h2 class="mt-1 break-words text-2xl font-bold">
               {{ community.name }}
@@ -164,9 +151,7 @@
             : 'border-accent-2 bg-sunken-light'"
           class="rounded-xl border p-4">
           <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
-            <i class="fa-solid fa-seedling"></i>
-            Established
-          </p>
+            <i class="fa-solid fa-seedling"></i>{% trans "Established" %}</p>
           <p class="mt-2 text-sm font-semibold">
             {{ community.established_year|default:"—" }}
           </p>
@@ -178,9 +163,7 @@
             : 'border-accent-2 bg-sunken-light'"
           class="rounded-xl border p-4">
           <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
-            <i class="fa-solid fa-envelope"></i>
-            Email
-          </p>
+            <i class="fa-solid fa-envelope"></i>{% trans "Email" %}</p>
           <p class="mt-2 break-words text-sm font-semibold">
             {{ community.email|default:"—" }}
           </p>
@@ -192,9 +175,7 @@
             : 'border-accent-2 bg-sunken-light'"
           class="rounded-xl border p-4">
           <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
-            <i class="fa-solid fa-location-dot"></i>
-            Location
-          </p>
+            <i class="fa-solid fa-location-dot"></i>{% trans "Location" %}</p>
           <p class="mt-2 break-words text-sm font-semibold">
             {% if community.location %}
               {{ community.location }}
@@ -210,9 +191,7 @@
             : 'border-accent-2 bg-sunken-light'"
           class="rounded-xl border p-4">
           <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
-            <i class="fa-solid fa-compass"></i>
-            Autonomous
-          </p>
+            <i class="fa-solid fa-compass"></i>{% trans "Autonomous" %}</p>
           <p class="mt-2 text-sm font-semibold">
             {{ community.is_autonomous|yesno:"Yes,No" }}
           </p>
@@ -224,9 +203,7 @@
             : 'border-accent-2 bg-sunken-light'"
           class="rounded-xl border p-4">
           <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
-            <i class="fa-solid fa-globe"></i>
-            Foreign
-          </p>
+            <i class="fa-solid fa-globe"></i>{% trans "Foreign" %}</p>
           <p class="mt-2 text-sm font-semibold">
             {{ community.is_foreign|yesno:"Yes,No" }}
           </p>
@@ -238,9 +215,7 @@
             : 'border-accent-2 bg-sunken-light'"
           class="rounded-xl border p-4">
           <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
-            <i class="fa-solid fa-user-shield"></i>
-            Head
-          </p>
+            <i class="fa-solid fa-user-shield"></i>{% trans "Head" %}</p>
           <p class="mt-2 break-words text-sm font-semibold">
             {% if community.head %}
               <a
@@ -261,9 +236,7 @@
             : 'border-accent-2 bg-sunken-light'"
           class="rounded-xl border p-4">
           <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
-            <i class="fa-solid fa-sitemap"></i>
-            Parent Community
-          </p>
+            <i class="fa-solid fa-sitemap"></i>{% trans "Parent Community" %}</p>
           <p class="mt-2 break-words text-sm font-semibold">
             {% if community.parent %}
               <a
@@ -295,13 +268,9 @@
       <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 class="flex items-center gap-2 text-lg font-bold">
-            <i class="fa-solid fa-users"></i>
-            Members
-          </h2>
+            <i class="fa-solid fa-users"></i>{% trans "Members" %}</h2>
 
-          <p class="mt-1 text-sm opacity-70">
-            People connected to this community.
-          </p>
+          <p class="mt-1 text-sm opacity-70">{% trans "People connected to this community." %}</p>
         </div>
 
         <div
@@ -337,9 +306,7 @@
             :class="darkMode
               ? 'border-accent-1 bg-sunken-dark'
               : 'border-accent-2 bg-sunken-light'"
-            class="rounded-xl border border-dashed p-6 text-center text-sm italic opacity-70 sm:col-span-2 lg:col-span-3">
-            No members found.
-          </div>
+            class="rounded-xl border border-dashed p-6 text-center text-sm italic opacity-70 sm:col-span-2 lg:col-span-3">{% trans "No members found." %}</div>
         {% endfor %}
       </div>
     </section>
@@ -370,9 +337,7 @@
 
           <div>
             <h3 class="flex items-center gap-2 text-lg font-bold">
-              <i class="fa-solid fa-sitemap"></i>
-              Org Chart
-            </h3>
+              <i class="fa-solid fa-sitemap"></i>{% trans "Org Chart" %}</h3>
 
             <p class="mt-1 text-sm opacity-70">
               {{ community.name }}

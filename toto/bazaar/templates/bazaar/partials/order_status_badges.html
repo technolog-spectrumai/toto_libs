@@ -1,3 +1,4 @@
+{% load i18n %}
 <div class="flex flex-wrap gap-2 text-xs font-semibold">
   <span :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="rounded-full border px-3 py-1"><i class="fa-solid fa-list-check"></i> {{ order.get_status_display }}</span>
   <span :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="rounded-full border px-3 py-1"><i class="fa-solid fa-credit-card"></i> {{ order.get_payment_status_display }}</span>

@@ -1,5 +1,6 @@
 {% extends "oya/base.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block title %}Not Implemented | {{ platform.site_name }}{% endblock %}
 
@@ -11,14 +12,10 @@
   class="min-h-screen px-4 py-10 transition-colors duration-300">
 
   <div class="max-w-3xl mx-auto text-center">
-    <h1 class="text-4xl font-extrabold mb-6 tracking-tight">
-      Not Implemented – Work in Progress
-    </h1>
+    <h1 class="text-4xl font-extrabold mb-6 tracking-tight">{% trans "Not Implemented – Work in Progress" %}</h1>
 
     <p :class="darkMode ? 'text-text-main-dark' : 'text-text-main-light'"
-       class="text-lg opacity-80 leading-relaxed mb-8">
-      This feature or page is not yet available. We're working on it!
-    </p>
+       class="text-lg opacity-80 leading-relaxed mb-8">{% trans "This feature or page is not yet available. We're working on it!" %}</p>
 
     <!-- Striped Progress Bar -->
     <div class="w-full bg-gray-300 dark:bg-gray-700 rounded-full h-6 overflow-hidden mb-10">

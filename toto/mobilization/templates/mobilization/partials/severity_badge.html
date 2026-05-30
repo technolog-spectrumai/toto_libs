@@ -1,21 +1,18 @@
+{% load i18n %}
 {% if severity == "critical" %}
   <span :class="darkMode ? 'bg-warn-dark/20 text-warn-dark' : 'bg-warn-light/20 text-warn-light'"
         class="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-semibold">
-    <i class="fa-solid fa-circle-exclamation"></i> Critical
-  </span>
+    <i class="fa-solid fa-circle-exclamation"></i>{% trans "Critical" %}</span>
 {% elif severity == "high" %}
   <span :class="darkMode ? 'bg-warn-dark/10 text-warn-dark' : 'bg-warn-light/10 text-warn-light'"
         class="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-semibold">
-    <i class="fa-solid fa-chevron-double-up"></i> High
-  </span>
+    <i class="fa-solid fa-chevron-double-up"></i>{% trans "High" %}</span>
 {% elif severity == "medium" %}
   <span :class="darkMode ? 'bg-caution-dark/20 text-caution-dark' : 'bg-caution-light/20 text-caution-light'"
         class="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-semibold">
-    <i class="fa-solid fa-minus"></i> Medium
-  </span>
+    <i class="fa-solid fa-minus"></i>{% trans "Medium" %}</span>
 {% else %}
   <span :class="darkMode ? 'bg-success-dark/20 text-success-dark' : 'bg-success-light/20 text-success-light'"
         class="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-semibold">
-    <i class="fa-solid fa-chevron-down"></i> Low
-  </span>
+    <i class="fa-solid fa-chevron-down"></i>{% trans "Low" %}</span>
 {% endif %}

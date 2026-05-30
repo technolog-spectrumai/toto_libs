@@ -1,5 +1,6 @@
 {% extends "travels/base.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block travels_title %}Visit Review{% endblock %}
 
@@ -23,25 +24,19 @@
       <a
         href="{% url 'travels:my_travels' %}"
         class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
-        <i class="fa-solid fa-arrow-left"></i>
-        Travels
-      </a>
+        <i class="fa-solid fa-arrow-left"></i>{% trans "Travels" %}</a>
 
       <a
         href="{% url 'locations:locations_all' %}"
         class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
-        <i class="fa-solid fa-map-location-dot"></i>
-        Locations
-      </a>
+        <i class="fa-solid fa-map-location-dot"></i>{% trans "Locations" %}</a>
     </div>
 
     <header class="mt-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
       <div>
         <p
           :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-          class="text-xs font-semibold uppercase tracking-wide">
-          Visit review
-        </p>
+          class="text-xs font-semibold uppercase tracking-wide">{% trans "Visit review" %}</p>
 
         <h1 class="mt-2 text-3xl font-bold sm:text-4xl">
           {{ location }}
@@ -56,9 +51,7 @@
         href="{% url 'travels:visit_create' %}?address={{ location.pk }}"
         :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
         class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-        <i class="fa-solid fa-plus"></i>
-        Add visit
-      </a>
+        <i class="fa-solid fa-plus"></i>{% trans "Add visit" %}</a>
     </header>
 
     <section class="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_400px]">
@@ -75,8 +68,8 @@
 
           <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <h2 class="text-lg font-bold">Visitor reviews</h2>
-              <p class="mt-1 text-sm opacity-70">Real visit notes, scores, and timing for this address.</p>
+              <h2 class="text-lg font-bold">{% trans "Visitor reviews" %}</h2>
+              <p class="mt-1 text-sm opacity-70">{% trans "Real visit notes, scores, and timing for this address." %}</p>
             </div>
 
             <span
@@ -151,7 +144,7 @@
                         {{ review.score }}/5
                       </div>
                     {% else %}
-                      <span class="rounded-full border border-dashed border-current/15 px-3 py-1 text-xs opacity-60">No score</span>
+                      <span class="rounded-full border border-dashed border-current/15 px-3 py-1 text-xs opacity-60">{% trans "No score" %}</span>
                     {% endif %}
 
                     <button
@@ -167,7 +160,7 @@
                 {% if review.review %}
                   <p class="mt-3 text-sm leading-6 opacity-85">{{ review.review }}</p>
                 {% else %}
-                  <p class="mt-3 text-sm italic opacity-60">No written review.</p>
+                  <p class="mt-3 text-sm italic opacity-60">{% trans "No written review." %}</p>
                 {% endif %}
 
                 <!-- Delete confirmation modal -->
@@ -183,7 +176,7 @@
                     :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
                     class="relative z-10 w-full max-w-sm rounded-2xl border p-6 shadow-xl">
 
-                    <h2 class="text-lg font-bold">Delete visit?</h2>
+                    <h2 class="text-lg font-bold">{% trans "Delete visit?" %}</h2>
                     <p class="mt-2 text-sm opacity-70">
                       This will permanently delete
                       {% if review.participant %}{{ review.participant.display_name }}'s{% endif %}
@@ -196,18 +189,14 @@
                         <button
                           type="submit"
                           class="inline-flex items-center gap-2 rounded-lg bg-warn-light px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-warn-light">
-                          <i class="fa-solid fa-trash"></i>
-                          Yes, delete
-                        </button>
+                          <i class="fa-solid fa-trash"></i>{% trans "Yes, delete" %}</button>
                       </form>
 
                       <button
                         type="button"
                         @click="deleteOpen = false"
                         :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
-                        class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
-                        Cancel
-                      </button>
+                        class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">{% trans "Cancel" %}</button>
                     </div>
                   </div>
                 </div>
@@ -215,9 +204,7 @@
             {% empty %}
               <div
                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
-                class="rounded-xl border border-dashed p-6 text-center text-sm opacity-70">
-                No visit reviews yet.
-              </div>
+                class="rounded-xl border border-dashed p-6 text-center text-sm opacity-70">{% trans "No visit reviews yet." %}</div>
             {% endfor %}
           </div>
         </section>
@@ -228,21 +215,21 @@
           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
           class="rounded-lg border p-5 shadow-sm">
 
-          <h2 class="text-lg font-bold">Review summary</h2>
-          <p class="mt-1 text-sm opacity-70">Scores submitted by visitors.</p>
+          <h2 class="text-lg font-bold">{% trans "Review summary" %}</h2>
+          <p class="mt-1 text-sm opacity-70">{% trans "Scores submitted by visitors." %}</p>
 
           <div class="mt-4 grid grid-cols-2 gap-3">
             <div
               :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
               class="rounded-xl border border-current/10 p-4">
-              <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Reviews</p>
+              <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Reviews" %}</p>
               <p class="mt-2 text-2xl font-bold">{{ reviews|length }}</p>
             </div>
 
             <div
               :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
               class="rounded-xl border border-current/10 p-4">
-              <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Average</p>
+              <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Average" %}</p>
               <p class="mt-2 text-2xl font-bold">
                 {% if average_score %}{{ average_score }}/5{% else %}—{% endif %}
               </p>
@@ -268,7 +255,7 @@
                 </div>
               </div>
             {% empty %}
-              <p class="rounded-lg border border-dashed border-current/15 p-4 text-sm opacity-70">No scores yet.</p>
+              <p class="rounded-lg border border-dashed border-current/15 p-4 text-sm opacity-70">{% trans "No scores yet." %}</p>
             {% endfor %}
           </div>
         </div>
@@ -277,14 +264,14 @@
           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
           class="rounded-lg border p-5 shadow-sm">
 
-          <h2 class="mb-3 text-lg font-bold">Submit review</h2>
+          <h2 class="mb-3 text-lg font-bold">{% trans "Submit review" %}</h2>
 
           <form method="post" action="{% url 'travels:submit_visit_review' location.pk %}" class="space-y-3">
             {% csrf_token %}
             <input type="hidden" name="next" value="{{ request.path }}">
 
             <div>
-              <label class="block text-sm font-semibold">Score (optional)</label>
+              <label class="block text-sm font-semibold">{% trans "Score (optional)" %}</label>
               <input
                 type="number"
                 name="score"
@@ -296,11 +283,11 @@
             </div>
 
             <div>
-              <label class="block text-sm font-semibold">Review</label>
+              <label class="block text-sm font-semibold">{% trans "Review" %}</label>
               <textarea
                 name="review"
                 rows="4"
-                placeholder="Write a short note or review..."
+                placeholder="{% trans 'Write a short note or review...' %}"
                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
                 class="mt-1 w-full rounded-lg border px-3 py-2 text-sm outline-none transition focus:ring-2 focus:ring-current/20"></textarea>
             </div>
@@ -308,9 +295,7 @@
             <button
               type="submit"
               :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-              class="w-full rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-              Submit
-            </button>
+              class="w-full rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">{% trans "Submit" %}</button>
           </form>
         </div>
       </aside>

@@ -1,13 +1,12 @@
+{% load i18n %}
 <section
   :class="darkMode ? 'border-caution-dark/40 bg-caution-dark/10' : 'border-caution-light/40 bg-caution-light/10'"
   class="rounded-2xl border p-5 shadow-sm">
   <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
     <div>
       <h2 class="flex items-center gap-2 text-lg font-bold">
-        <i class="fa-solid fa-triangle-exclamation"></i>
-        Detections
-      </h2>
-      <p class="mt-1 text-sm opacity-70">Detection work attached to this mission.</p>
+        <i class="fa-solid fa-triangle-exclamation"></i>{% trans "Detections" %}</h2>
+      <p class="mt-1 text-sm opacity-70">{% trans "Detection work attached to this mission." %}</p>
     </div>
     <span
       :class="darkMode ? 'bg-caution-dark/20 text-caution-dark' : 'bg-caution-light/20 text-caution-light'"

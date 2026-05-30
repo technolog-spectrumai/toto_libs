@@ -1,5 +1,6 @@
 {% extends "oya/base.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block title %}Thank You | {{ platform.site_name }}{% endblock %}
 
@@ -50,17 +51,11 @@
             <div>
               <p
                 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-                class="text-xs font-semibold uppercase tracking-wide">
-                Request sent
-              </p>
+                class="text-xs font-semibold uppercase tracking-wide">{% trans "Request sent" %}</p>
 
-              <h1 class="mt-3 max-w-xl text-3xl font-bold leading-tight sm:text-4xl">
-                Reference request sent.
-              </h1>
+              <h1 class="mt-3 max-w-xl text-3xl font-bold leading-tight sm:text-4xl">{% trans "Reference request sent." %}</h1>
 
-              <p class="mt-4 max-w-xl text-sm leading-6 opacity-75 sm:text-base">
-                You successfully requested a reference for
-                <span class="font-semibold">{{ application.email }}</span>.
+              <p class="mt-4 max-w-xl text-sm leading-6 opacity-75 sm:text-base">{% trans "You successfully requested a reference for" %}<span class="font-semibold">{{ application.email }}</span>.
                 We’ll notify the selected community member and keep the application moving
                 once their endorsement is received.
               </p>
@@ -76,8 +71,8 @@
               <i
                 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
                 class="fa-solid fa-paper-plane"></i>
-              <p class="mt-2 font-semibold">Sent</p>
-              <p class="mt-1 text-xs opacity-65">The request is out.</p>
+              <p class="mt-2 font-semibold">{% trans "Sent" %}</p>
+              <p class="mt-1 text-xs opacity-65">{% trans "The request is out." %}</p>
             </div>
 
             <div
@@ -88,8 +83,8 @@
               <i
                 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
                 class="fa-solid fa-user-check"></i>
-              <p class="mt-2 font-semibold">Review</p>
-              <p class="mt-1 text-xs opacity-65">Member can respond.</p>
+              <p class="mt-2 font-semibold">{% trans "Review" %}</p>
+              <p class="mt-1 text-xs opacity-65">{% trans "Member can respond." %}</p>
             </div>
 
             <div
@@ -100,8 +95,8 @@
               <i
                 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
                 class="fa-solid fa-bell"></i>
-              <p class="mt-2 font-semibold">Update</p>
-              <p class="mt-1 text-xs opacity-65">You’ll be notified.</p>
+              <p class="mt-2 font-semibold">{% trans "Update" %}</p>
+              <p class="mt-1 text-xs opacity-65">{% trans "You’ll be notified." %}</p>
             </div>
           </div>
         </div>
@@ -112,9 +107,7 @@
         <div class="mx-auto flex h-full max-w-md flex-col justify-center space-y-6">
 
           <div>
-            <h2 class="text-2xl font-bold">
-              What happens next?
-            </h2>
+            <h2 class="text-2xl font-bold">{% trans "What happens next?" %}</h2>
 
             <p class="mt-2 text-sm leading-6 opacity-70">
               The community member will review the request. Once they respond,
@@ -140,13 +133,9 @@
               </div>
 
               <div>
-                <p class="font-semibold">
-                  Request completed successfully
-                </p>
+                <p class="font-semibold">{% trans "Request completed successfully" %}</p>
 
-                <p class="mt-1 leading-6 opacity-70">
-                  The reference request for
-                  <span class="font-semibold">{{ application.email }}</span>
+                <p class="mt-1 leading-6 opacity-70">{% trans "The reference request for" %}<span class="font-semibold">{{ application.email }}</span>
                   has been recorded and sent for endorsement.
                 </p>
               </div>
@@ -159,9 +148,7 @@
               ? 'bg-accent-dark text-primary-bg-dark'
               : 'bg-accent-light text-primary-bg-light'"
             class="inline-flex w-full items-center justify-center gap-2 rounded-lg px-5 py-3 text-sm font-semibold shadow-sm transition hover:opacity-90">
-            <i class="fa-solid fa-table-columns"></i>
-            Return to Dashboard
-          </a>
+            <i class="fa-solid fa-table-columns"></i>{% trans "Return to Dashboard" %}</a>
 
         </div>
       </section>

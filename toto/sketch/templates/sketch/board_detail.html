@@ -1,5 +1,6 @@
 {% extends "oya/base.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block title %}Board: {{ board.name }}{% endblock %}
 
@@ -43,7 +44,7 @@
         class="flex items-center gap-2 px-3 py-2 rounded border shadow-sm transition hover:opacity-80"
         :class="darkMode ? 'border-accent-dark' : 'border-accent-light'">
         <i class="fa-solid fa-bars text-lg"></i>
-        <span class="text-sm font-semibold">Tools</span>
+        <span class="text-sm font-semibold">{% trans "Tools" %}</span>
       </button>
 
       <!-- Right Panel Hamburger -->
@@ -52,7 +53,7 @@
         class="flex items-center gap-2 px-3 py-2 rounded border shadow-sm transition hover:opacity-80"
         :class="darkMode ? 'border-accent-dark' : 'border-accent-light'">
         <i class="fa-solid fa-ellipsis-vertical text-lg"></i>
-        <span class="text-sm font-semibold">Actions</span>
+        <span class="text-sm font-semibold">{% trans "Actions" %}</span>
       </button>
 
     </div>
@@ -99,11 +100,9 @@
           <div class="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3"
                :class="darkMode ? 'border-accent-1/50' : 'border-accent-2/50'">
             <div class="flex flex-wrap items-center gap-2 text-xs font-semibold">
-              <span>Sketch Canvas</span>
-              <span class="rounded border border-current/15 px-2 py-0.5 opacity-60">SVG</span>
-              <span data-active-target-badge class="hidden rounded bg-accent-light px-2 py-0.5 text-[10px] uppercase text-primary-bg-light">
-                Active target
-              </span>
+              <span>{% trans "Sketch Canvas" %}</span>
+              <span class="rounded border border-current/15 px-2 py-0.5 opacity-60">{% trans "SVG" %}</span>
+              <span data-active-target-badge class="hidden rounded bg-accent-light px-2 py-0.5 text-[10px] uppercase text-primary-bg-light">{% trans "Active target" %}</span>
             </div>
             <div class="flex flex-wrap items-center gap-2">
               <span id="ai-toolbar-sketch-{{ board.id }}" class="flex items-center gap-2"></span>
@@ -112,17 +111,13 @@
                 onclick="window.painter && window.painter.exportToSVG('{{ board.slug|default:board.id }}.svg')"
                 :class="darkMode ? 'border-accent-1 hover:bg-primary-bg-dark' : 'border-accent-2 hover:bg-primary-bg-light'"
                 class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1 text-xs font-semibold transition">
-                <i class="fa-solid fa-file-export"></i>
-                Export SVG
-              </button>
+                <i class="fa-solid fa-file-export"></i>{% trans "Export SVG" %}</button>
               <button
                 type="button"
                 onclick="window.painter && window.painter.converter && window.openPreviewSvg && window.openPreviewSvg()"
                 :class="darkMode ? 'border-accent-1 hover:bg-primary-bg-dark' : 'border-accent-2 hover:bg-primary-bg-light'"
                 class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1 text-xs font-semibold transition">
-                <i class="fa-solid fa-eye"></i>
-                Preview
-              </button>
+                <i class="fa-solid fa-eye"></i>{% trans "Preview" %}</button>
             </div>
           </div>
           <canvas id="sketch-canvas" resize class="h-[calc(100%-45px)] w-full"></canvas>
@@ -206,9 +201,7 @@
         ]"
       >
         <h2 class="text-lg font-semibold flex items-center gap-2">
-          <i class="fa-solid fa-font"></i>
-          Add Text
-        </h2>
+          <i class="fa-solid fa-font"></i>{% trans "Add Text" %}</h2>
 
         <textarea
           x-model="textInput"
@@ -218,7 +211,7 @@
               : 'bg-white border-gray-300 text-gray-900',
             'w-full h-32 p-3 rounded border text-sm focus:outline-none focus:ring-2 focus:ring-link-light'
           ]"
-          placeholder="Text"
+          placeholder="{% trans 'Text' %}"
         ></textarea>
 
         <div class="grid grid-cols-3 gap-3">
@@ -257,7 +250,7 @@
           </label>
 
           <label class="space-y-1 text-xs font-semibold">
-            <span>Font Size</span>
+            <span>{% trans "Font Size" %}</span>
             <input
               x-model.number="textFontSize"
               type="number"
@@ -275,7 +268,7 @@
         </div>
 
         <label class="space-y-1 text-xs font-semibold block">
-          <span>Font</span>
+          <span>{% trans "Font" %}</span>
           <select
             x-model="textFontFamily"
             :class="[
@@ -336,16 +329,12 @@
               darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2',
               'border px-4 py-2 rounded shadow-sm text-sm font-semibold'
             ]"
-          >
-            Cancel
-          </button>
+          >{% trans "Cancel" %}</button>
 
           <button
             @click="submitText()"
             class="bg-link-light text-white px-4 py-2 rounded shadow-sm text-sm font-semibold hover:bg-link-light"
-          >
-            Add Text
-          </button>
+          >{% trans "Add Text" %}</button>
         </div>
       </div>
     </div>
@@ -367,12 +356,10 @@
         ]"
       >
         <h2 class="text-lg font-semibold flex items-center gap-2">
-          <i class="fa-solid fa-icons"></i>
-          Add Icon
-        </h2>
+          <i class="fa-solid fa-icons"></i>{% trans "Add Icon" %}</h2>
 
         <label class="space-y-1 text-xs font-semibold block">
-          <span>Icon Name</span>
+          <span>{% trans "Icon Name" %}</span>
           <input
             x-model="iconName"
             type="text"
@@ -472,16 +459,12 @@
               darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2',
               'border px-4 py-2 rounded shadow-sm text-sm font-semibold'
             ]"
-          >
-            Cancel
-          </button>
+          >{% trans "Cancel" %}</button>
 
           <button
             @click="submitIcon()"
             class="bg-link-light text-white px-4 py-2 rounded shadow-sm text-sm font-semibold hover:bg-link-light"
-          >
-            Add Icon
-          </button>
+          >{% trans "Add Icon" %}</button>
         </div>
       </div>
     </div>
@@ -503,9 +486,7 @@
         ]"
       >
         <h2 class="text-lg font-semibold flex items-center gap-2">
-          <i class="fa-solid fa-up-right-and-down-left-from-center"></i>
-          Universal Transform
-        </h2>
+          <i class="fa-solid fa-up-right-and-down-left-from-center"></i>{% trans "Universal Transform" %}</h2>
 
         <div class="grid grid-cols-2 gap-3">
           <label class="space-y-1 text-xs font-semibold">
@@ -584,16 +565,12 @@
               darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2',
               'border px-4 py-2 rounded shadow-sm text-sm font-semibold'
             ]"
-          >
-            Cancel
-          </button>
+          >{% trans "Cancel" %}</button>
 
           <button
             @click="submitTransform()"
             class="bg-link-light text-white px-4 py-2 rounded shadow-sm text-sm font-semibold hover:bg-link-light"
-          >
-            Apply
-          </button>
+          >{% trans "Apply" %}</button>
         </div>
       </div>
     </div>
@@ -603,9 +580,7 @@
        :class="darkMode
          ? 'bg-accent-dark text-primary-bg-dark'
          : 'bg-accent-light text-primary-bg-light'"
-       class="inline-block px-4 py-2 rounded font-semibold hover:opacity-90 transition text-sm text-center">
-      Back to Boards
-    </a>
+       class="inline-block px-4 py-2 rounded font-semibold hover:opacity-90 transition text-sm text-center">{% trans "Back to Boards" %}</a>
 
   </div>
 </div>

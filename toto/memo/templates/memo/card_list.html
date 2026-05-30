@@ -1,5 +1,6 @@
 {% extends "oya/base.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block title %} Presentations | {{ platform.site_name }} {% endblock %}
 
@@ -65,7 +66,7 @@
       {% endfor %}
     {% else %}
       <section>
-        <p>No cards in this deck yet.</p>
+        <p>{% trans "No cards in this deck yet." %}</p>
       </section>
     {% endif %}
 

@@ -159,13 +159,13 @@ document.addEventListener("DOMContentLoaded", function () {
   if (p.origin?.geometry) {
     const [lng, lat] = p.origin.geometry.coordinates;
     L.marker([lat, lng], { icon: dotIcon("#60a5fa", 14) })
-      .bindPopup(`<strong>Origin</strong><br>${p.origin.label}`).addTo(map);
+      .bindPopup(`<strong>{% trans "Origin" %}</strong><br>${p.origin.label}`).addTo(map);
     allPoints.push([lat, lng]);
   }
   if (p.destination?.geometry) {
     const [lng, lat] = p.destination.geometry.coordinates;
     L.marker([lat, lng], { icon: dotIcon("#4ade80", 14) })
-      .bindPopup(`<strong>Destination</strong><br>${p.destination.label}`).addTo(map);
+      .bindPopup(`<strong>{% trans "Destination" %}</strong><br>${p.destination.label}`).addTo(map);
     allPoints.push([lat, lng]);
   }
 

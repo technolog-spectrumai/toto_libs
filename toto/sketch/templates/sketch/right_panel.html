@@ -1,3 +1,4 @@
+{% load i18n %}
 <div class="space-y-3"
      x-data="Object.assign(new ImportModalHelper(), {
         syncEnabled: true,
@@ -74,7 +75,7 @@
     class="w-full flex items-center gap-2 px-3 py-2 rounded shadow-sm text-sm font-semibold"
   >
     <i class="fa-solid fa-floppy-disk"></i>
-    <span>Save</span>
+    <span>{% trans "Save" %}</span>
   </button>
 
   <button
@@ -85,7 +86,7 @@
     ]"
   >
     <i class="fa-solid fa-trash"></i>
-    <span>Clear</span>
+    <span>{% trans "Clear" %}</span>
   </button>
 
   <!-- Undo -->
@@ -98,7 +99,7 @@
      @click="painter.undo()"
   >
     <i class="fa-solid fa-arrow-rotate-left"></i>
-    <span>Undo</span>
+    <span>{% trans "Undo" %}</span>
   </button>
 
   <!-- Redo -->
@@ -111,7 +112,7 @@
     @click="painter.redo()"
   >
     <i class="fa-solid fa-arrow-rotate-right"></i>
-    <span>Redo</span>
+    <span>{% trans "Redo" %}</span>
   </button>
 
   <button
@@ -122,7 +123,7 @@
     ]"
   >
     <i class="fa-solid fa-file-export"></i>
-    <span>Export SVG</span>
+    <span>{% trans "Export SVG" %}</span>
   </button>
 
   <!-- Import SVG -->
@@ -134,7 +135,7 @@
     ]"
   >
     <i class="fa-solid fa-file-import"></i>
-    <span>Import SVG</span>
+    <span>{% trans "Import SVG" %}</span>
   </button>
   <button
     @click="openImportModal('mermaid')"
@@ -144,7 +145,7 @@
     ]"
   >
     <i class="fa-solid fa-diagram-project"></i>
-    <span>Import Graph</span>
+    <span>{% trans "Import Graph" %}</span>
   </button>
   <button
     @click="openImportModal('chart')"
@@ -154,7 +155,7 @@
     ]"
   >
     <i class="fa-solid fa-chart-simple"></i>
-    <span>Import Chart</span>
+    <span>{% trans "Import Chart" %}</span>
   </button>
   <button
     @click="openImportModal('formula')"
@@ -164,7 +165,7 @@
     ]"
   >
     <i class="fa-solid fa-square-root-variable"></i>
-    <span>Import Formula</span>
+    <span>{% trans "Import Formula" %}</span>
   </button>
 
 
@@ -189,7 +190,7 @@
 
     <textarea
       x-model="importInput"
-      :placeholder="importConfig.placeholder"
+      :placeholder="{% trans 'importConfig.placeholder' %}"
       :class="[
         darkMode
           ? 'bg-bubble-bg-dark border-accent-1 text-white'
@@ -276,9 +277,7 @@
           darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2',
           'border px-4 py-2 rounded shadow-sm text-sm font-semibold'
         ]"
-      >
-        Cancel
-      </button>
+      >{% trans "Cancel" %}</button>
 
       <button
         @click="submitImport()"
@@ -306,24 +305,18 @@
     ]"
   >
     <h2 class="text-lg font-semibold flex items-center gap-2">
-      <i class="fa-solid fa-file-export"></i>
-      Export Board to SVG
-    </h2>
+      <i class="fa-solid fa-file-export"></i>{% trans "Export Board to SVG" %}</h2>
 
     <template x-if="hasBucket">
-      <p class="text-sm opacity-80">
-        This board is assigned to bucket:
-        <strong x-text="boardBucketName"></strong>
+      <p class="text-sm opacity-80">{% trans "This board is assigned to bucket:" %}<strong x-text="boardBucketName"></strong>
       </p>
     </template>
     <template x-if="!hasBucket">
       <p class="text-sm opacity-60 italic">
-        <i class="fa-solid fa-triangle-exclamation mr-1" :class="darkMode ? 'text-caution-dark' : 'text-caution-light'"></i>
-        No bucket connected — the file will be downloaded directly to your browser.
-      </p>
+        <i class="fa-solid fa-triangle-exclamation mr-1" :class="darkMode ? 'text-caution-dark' : 'text-caution-light'"></i>{% trans "No bucket connected — the file will be downloaded directly to your browser." %}</p>
     </template>
 
-    <label class="text-sm font-semibold">File Name</label>
+    <label class="text-sm font-semibold">{% trans "File Name" %}</label>
     <input
       x-model="exportFileName"
       type="text"
@@ -333,25 +326,21 @@
           : 'bg-bubble-bg-light border-accent-2 text-gray-900',
         'w-full p-2 rounded border text-sm focus:outline-none focus:ring-2'
       ]"
-      placeholder="my-drawing.svg"
+      placeholder="{% trans 'my-drawing.svg' %}"
     />
     <template x-if="exportingSvg">
-      <div class="p-3 rounded bg-link-light/15 text-link-light text-sm">
-        Exporting SVG...
-      </div>
+      <div class="p-3 rounded bg-link-light/15 text-link-light text-sm">{% trans "Exporting SVG..." %}</div>
     </template>
 
     <!-- Download link after export -->
     <template x-if="exportDownloadUrl">
       <div class="p-3 rounded bg-success-light/15 text-success-light text-sm">
-        <p class="font-semibold">Export complete!</p>
+        <p class="font-semibold">{% trans "Export complete!" %}</p>
         <a
           :href="exportDownloadUrl"
           target="_blank"
           class="underline text-link-light hover:text-link-light"
-        >
-          Download SVG
-        </a>
+        >{% trans "Download SVG" %}</a>
       </div>
     </template>
 
@@ -362,9 +351,7 @@
           darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2',
           'border px-4 py-2 rounded shadow-sm text-sm font-semibold'
         ]"
-      >
-        Cancel
-      </button>
+      >{% trans "Cancel" %}</button>
 
       <button
         @click="submitExport()"

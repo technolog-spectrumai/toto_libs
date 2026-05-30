@@ -1,9 +1,9 @@
 {% extends "admin/base_site.html" %}
+{% load i18n %}
 
 {% block content %}
   <div id="content-main">
-    <p>
-      Export <strong>{{ collection.title }}</strong> as a BibTeX <code>.bib</code> file and save it into a Vault bucket.
+    <p>{% trans "Export" %}<strong>{{ collection.title }}</strong> as a BibTeX <code>.bib</code> file and save it into a Vault bucket.
     </p>
 
     <form method="post" novalidate>
@@ -25,11 +25,11 @@
 
       <div class="submit-row">
         <input type="submit" class="default" value="Export to Vault">
-        <a href="{{ back_url }}" class="button cancel-link">Back to collection</a>
+        <a href="{{ back_url }}" class="button cancel-link">{% trans "Back to collection" %}</a>
       </div>
     </form>
 
-    <h2>Preview</h2>
+    <h2>{% trans "Preview" %}</h2>
     <pre style="white-space: pre-wrap; max-height: 34rem; overflow: auto; padding: 1rem; border: 1px solid var(--border-color); background: var(--darkened-bg);">{{ preview }}</pre>
   </div>
 {% endblock %}

@@ -1,7 +1,8 @@
 {% extends "bazaar/base.html" %}
+{% load i18n %}
 {% block bazaar_title %}Cart{% endblock %}
 {% block bazaar_heading %}Cart{% endblock %}
-{% block bazaar_subtitle %}<p class="mt-2 max-w-2xl text-sm opacity-70">Review quantities, apply a coupon, and continue to checkout.</p>{% endblock %}
+{% block bazaar_subtitle %}<p class="mt-2 max-w-2xl text-sm opacity-70">{% trans "Review quantities, apply a coupon, and continue to checkout." %}</p>{% endblock %}
 {% block bazaar_content %}
 {% if cart and cart.items.all %}
 <section class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
@@ -10,17 +11,17 @@
       <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm">
         <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div><p class="font-bold">{{ item.product.name }}</p>{% if item.variant %}<p class="text-xs opacity-60">{{ item.variant.name }}</p>{% endif %}<p class="mt-1 text-sm opacity-70">{{ item.unit_price_snapshot }} {{ cart.currency }} each</p></div>
-          <form method="post" action="{% url 'bazaar:cart-item-update' item.pk %}" class="flex items-center gap-2">{% csrf_token %}<input type="number" name="quantity" value="{{ item.quantity }}" min="0" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="w-20 rounded-lg border px-3 py-2 text-sm"><button :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="rounded-lg border px-3 py-2 text-sm font-semibold">Update</button></form>
+          <form method="post" action="{% url 'bazaar:cart-item-update' item.pk %}" class="flex items-center gap-2">{% csrf_token %}<input type="number" name="quantity" value="{{ item.quantity }}" min="0" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="w-20 rounded-lg border px-3 py-2 text-sm"><button :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="rounded-lg border px-3 py-2 text-sm font-semibold">{% trans "Update" %}</button></form>
           <p class="text-lg font-bold">{{ item.line_total }} {{ cart.currency }}</p>
         </div>
       </article>
     {% endfor %}
   </div>
   <aside :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="h-fit rounded-2xl border p-5 shadow-sm">
-    <h2 class="text-lg font-bold">Summary</h2>
-    <form method="post" class="mt-4 flex gap-2">{% csrf_token %}<input name="coupon_code" placeholder="Coupon" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm"><button class="rounded-lg border border-current/20 px-3 py-2 text-sm font-semibold">Apply</button></form>
-    <div class="mt-5 border-t border-current/10 pt-4 text-sm"><div class="flex justify-between"><span>Items</span><strong>{{ cart.items.count }}</strong></div></div>
-    <a href="{% url 'bazaar:checkout' %}" :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'" class="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm"><i class="fa-solid fa-lock"></i> Checkout</a>
+    <h2 class="text-lg font-bold">{% trans "Summary" %}</h2>
+    <form method="post" class="mt-4 flex gap-2">{% csrf_token %}<input name="coupon_code" placeholder="{% trans 'Coupon' %}" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm"><button class="rounded-lg border border-current/20 px-3 py-2 text-sm font-semibold">{% trans "Apply" %}</button></form>
+    <div class="mt-5 border-t border-current/10 pt-4 text-sm"><div class="flex justify-between"><span>{% trans "Items" %}</span><strong>{{ cart.items.count }}</strong></div></div>
+    <a href="{% url 'bazaar:checkout' %}" :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'" class="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm"><i class="fa-solid fa-lock"></i>{% trans "Checkout" %}</a>
   </aside>
 </section>
 {% else %}{% include "bazaar/partials/empty_state.html" with icon="fa-solid fa-cart-shopping" message="Your cart is empty." action_url="/bazaar/products/" action_label="Browse products" %}{% endif %}

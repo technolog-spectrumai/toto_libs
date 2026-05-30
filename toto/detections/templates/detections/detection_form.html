@@ -1,8 +1,9 @@
 {% extends "detections/base.html" %}
 {% load static %}
+{% load i18n %}
 {% block detections_title %}Add Detection{% endblock %}
 {% block detections_heading %}Add Detection{% endblock %}
-{% block detections_subtitle %}<p class="mt-2 max-w-2xl text-sm opacity-70">Click a point on the map, then fill the detection details.</p>{% endblock %}
+{% block detections_subtitle %}<p class="mt-2 max-w-2xl text-sm opacity-70">{% trans "Click a point on the map, then fill the detection details." %}</p>{% endblock %}
 {% block detections_content %}
 
 <link rel="stylesheet" href="{% static 'vendor/leaflet/leaflet.css' %}">
@@ -13,10 +14,10 @@
   <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="overflow-hidden rounded-2xl border shadow-sm">
     <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
       <div>
-        <h2 class="text-lg font-bold">Map Location</h2>
-        <p id="selected-location-label" class="text-xs opacity-60">No point selected yet.</p>
+        <h2 class="text-lg font-bold">{% trans "Map Location" %}</h2>
+        <p id="selected-location-label" class="text-xs opacity-60">{% trans "No point selected yet." %}</p>
       </div>
-      <button type="button" id="clear-location" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-lg border px-3 py-1.5 text-xs font-semibold"><i class="fa-solid fa-xmark"></i> Clear</button>
+      <button type="button" id="clear-location" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-lg border px-3 py-1.5 text-xs font-semibold"><i class="fa-solid fa-xmark"></i>{% trans "Clear" %}</button>
     </div>
     <div id="detection-create-map" class="h-[34rem] w-full"></div>
   </section>
@@ -29,26 +30,26 @@
       <input type="hidden" id="id_longitude" name="longitude" value="{{ form.longitude.value|default_if_none:'' }}">
 
       <label class="block">
-        <span class="text-xs font-semibold uppercase tracking-wide opacity-60">Title</span>
+        <span class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Title" %}</span>
         <input name="title" value="{{ form.title.value|default_if_none:'' }}" required :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm outline-none">
         {% if form.title.errors %}<span :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" class="mt-1 block text-xs">{{ form.title.errors|join:", " }}</span>{% endif %}
       </label>
 
       <label class="block">
-        <span class="text-xs font-semibold uppercase tracking-wide opacity-60">Location label</span>
-        <input id="id_location_label" name="location_label" value="{{ form.location_label.value|default_if_none:'' }}" placeholder="Gate B, warehouse yard, route marker..." :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm outline-none">
-        {% if form.latitude.errors or form.longitude.errors %}<span :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" class="mt-1 block text-xs">Choose a map point.</span>{% endif %}
+        <span class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Location label" %}</span>
+        <input id="id_location_label" name="location_label" value="{{ form.location_label.value|default_if_none:'' }}" placeholder="{% trans 'Gate B, warehouse yard, route marker...' %}" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm outline-none">
+        {% if form.latitude.errors or form.longitude.errors %}<span :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" class="mt-1 block text-xs">{% trans "Choose a map point." %}</span>{% endif %}
       </label>
 
       <div class="grid gap-3 sm:grid-cols-2">
         <label class="block">
-          <span class="text-xs font-semibold uppercase tracking-wide opacity-60">Type</span>
+          <span class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Type" %}</span>
           <select name="detection_type" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm">
             {% for value, label in form.fields.detection_type.choices %}<option value="{{ value }}" {% if form.detection_type.value == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
           </select>
         </label>
         <label class="block">
-          <span class="text-xs font-semibold uppercase tracking-wide opacity-60">Severity</span>
+          <span class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Severity" %}</span>
           <select name="severity" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm">
             {% for value, label in form.fields.severity.choices %}<option value="{{ value }}" {% if form.severity.value == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
           </select>
@@ -57,32 +58,32 @@
 
       <div class="grid gap-3 sm:grid-cols-2">
         <label class="block">
-          <span class="text-xs font-semibold uppercase tracking-wide opacity-60">Status</span>
+          <span class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Status" %}</span>
           <select name="status" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm">
             {% for value, label in form.fields.status.choices %}<option value="{{ value }}" {% if form.status.value == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
           </select>
         </label>
         <label class="block">
-          <span class="text-xs font-semibold uppercase tracking-wide opacity-60">Detected at</span>
+          <span class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Detected at" %}</span>
           <input type="datetime-local" name="start_time" value="{{ form.start_time.value|default_if_none:'' }}" required :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm outline-none">
           {% if form.start_time.errors %}<span :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" class="mt-1 block text-xs">{{ form.start_time.errors|join:", " }}</span>{% endif %}
         </label>
       </div>
 
       <label class="block">
-        <span class="text-xs font-semibold uppercase tracking-wide opacity-60">Category</span>
+        <span class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Category" %}</span>
         <select name="category" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm">
-          <option value="">Uncategorized</option>
+          <option value="">{% trans "Uncategorized" %}</option>
           {% for value, label in form.fields.category.choices %}{% if value %}<option value="{{ value }}" {% if form.category.value|stringformat:"s" == value|stringformat:"s" %}selected{% endif %}>{{ label }}</option>{% endif %}{% endfor %}
         </select>
       </label>
 
       <label class="block">
-        <span class="text-xs font-semibold uppercase tracking-wide opacity-60">Description</span>
+        <span class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Description" %}</span>
         <textarea name="description" rows="5" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm outline-none">{{ form.description.value|default_if_none:'' }}</textarea>
       </label>
 
-      <button :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'" class="inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold shadow-sm"><i class="fa-solid fa-plus"></i> Create detection</button>
+      <button :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'" class="inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold shadow-sm"><i class="fa-solid fa-plus"></i>{% trans "Create detection" %}</button>
     </div>
   </aside>
 </form>

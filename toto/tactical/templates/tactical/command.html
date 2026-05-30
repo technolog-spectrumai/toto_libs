@@ -1,5 +1,6 @@
 {% extends "tactical/base.html" %}
 {% load static %}
+{% load i18n %}
 {% block tactical_title %}Command{% endblock %}
 
 {% block tactical_start_script %}
@@ -26,7 +27,7 @@
       </div>
       {% endfor %}
     {% empty %}
-    <p class="text-xs opacity-50">No data sources registered.</p>
+    <p class="text-xs opacity-50">{% trans "No data sources registered." %}</p>
     {% endfor %}
   </div>
 
@@ -61,8 +62,7 @@
         {% if section.app_url %}
         <a href="{{ section.app_url }}"
            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-           class="shrink-0 text-xs font-semibold hover:underline underline-offset-2">
-          Manage <i class="fa-solid fa-arrow-right text-[10px]"></i>
+           class="shrink-0 text-xs font-semibold hover:underline underline-offset-2">{% trans "Manage" %}<i class="fa-solid fa-arrow-right text-[10px]"></i>
         </a>
         {% endif %}
       </div>

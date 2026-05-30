@@ -1,5 +1,6 @@
 {% extends "oya/base.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block title %}Polls | {{ platform.site_name }}{% endblock %}
 
@@ -26,25 +27,17 @@
         <a
           href="{% url 'core:dashboard' %}"
           class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
-          <i class="fa-solid fa-arrow-left"></i>
-          Dashboard
-        </a>
+          <i class="fa-solid fa-arrow-left"></i>{% trans "Dashboard" %}</a>
 
         <div>
           <p
             :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-            class="text-xs font-semibold uppercase tracking-wide">
-            Polls
-          </p>
+            class="text-xs font-semibold uppercase tracking-wide">{% trans "Polls" %}</p>
 
           <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
-            <i class="fa-solid fa-square-poll-vertical"></i>
-            Active polls
-          </h1>
+            <i class="fa-solid fa-square-poll-vertical"></i>{% trans "Active polls" %}</h1>
 
-          <p class="mt-2 max-w-2xl text-sm opacity-70">
-            Vote on open questions and review current community results.
-          </p>
+          <p class="mt-2 max-w-2xl text-sm opacity-70">{% trans "Vote on open questions and review current community results." %}</p>
         </div>
       </div>
 
@@ -76,13 +69,9 @@
         <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 class="flex items-center gap-2 text-lg font-bold">
-              <i class="fa-solid fa-inbox"></i>
-              Available polls
-            </h2>
+              <i class="fa-solid fa-inbox"></i>{% trans "Available polls" %}</h2>
 
-            <p class="mt-1 text-sm opacity-70">
-              Select a poll to cast or update your vote.
-            </p>
+            <p class="mt-1 text-sm opacity-70">{% trans "Select a poll to cast or update your vote." %}</p>
           </div>
 
           <a
@@ -91,9 +80,7 @@
               ? 'bg-accent-dark text-primary-bg-dark'
               : 'bg-accent-light text-primary-bg-light'"
             class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-            <i class="fa-solid fa-gauge-high"></i>
-            Dashboard
-          </a>
+            <i class="fa-solid fa-gauge-high"></i>{% trans "Dashboard" %}</a>
         </div>
       </div>
 
@@ -131,9 +118,7 @@
                     :class="darkMode
                       ? 'border-accent-1 bg-primary-bg-dark text-accent-dark'
                       : 'border-accent-2 bg-primary-bg-light text-accent-light'"
-                    class="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-                    Open
-                    <i class="fa-solid fa-arrow-right text-xs transition group-hover:translate-x-0.5"></i>
+                    class="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">{% trans "Open" %}<i class="fa-solid fa-arrow-right text-xs transition group-hover:translate-x-0.5"></i>
                   </a>
                 </div>
               </article>
@@ -156,13 +141,9 @@
                 class="fa-solid fa-square-poll-horizontal text-2xl"></i>
             </div>
 
-            <h2 class="mt-4 text-lg font-bold">
-              No polls available
-            </h2>
+            <h2 class="mt-4 text-lg font-bold">{% trans "No polls available" %}</h2>
 
-            <p class="mt-2 text-sm opacity-70">
-              There are no active polls at the moment.
-            </p>
+            <p class="mt-2 text-sm opacity-70">{% trans "There are no active polls at the moment." %}</p>
 
             <a
               href="{% url 'core:dashboard' %}"
@@ -170,9 +151,7 @@
                 ? 'bg-accent-dark text-primary-bg-dark'
                 : 'bg-accent-light text-primary-bg-light'"
               class="mt-5 inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-              <i class="fa-solid fa-gauge-high"></i>
-              Back to dashboard
-            </a>
+              <i class="fa-solid fa-gauge-high"></i>{% trans "Back to dashboard" %}</a>
           </div>
         {% endif %}
       </div>

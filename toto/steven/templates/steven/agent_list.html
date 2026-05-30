@@ -1,4 +1,5 @@
 {% extends 'steven/base.html' %}
+{% load i18n %}
 {% block steven_title %}Steven Agents{% endblock %}
 {% block steven_content %}
   <div class="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
@@ -60,8 +61,7 @@
           ? 'bg-bubble-bg-dark border-accent-1'
           : 'bg-bubble-bg-light border-accent-2'"
         class="rounded-lg border p-5 shadow-md">
-        <p class="text-sm opacity-75">
-          No active agents yet. Create one in <a href="/admin/" class="underline hover:opacity-80">Django admin</a>.
+        <p class="text-sm opacity-75">{% trans "No active agents yet. Create one in" %}<a href="/admin/" class="underline hover:opacity-80">{% trans "Django admin" %}</a>.
         </p>
       </section>
     {% endfor %}
@@ -72,18 +72,16 @@
       ? 'bg-bubble-bg-dark border-accent-1'
       : 'bg-bubble-bg-light border-accent-2'"
     class="rounded-lg border p-5 shadow-md">
-    <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-2xl font-bold">
-      Recent Runs
-    </h2>
+    <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-2xl font-bold">{% trans "Recent Runs" %}</h2>
 
     <div class="mt-4 overflow-x-auto">
       <table class="w-full min-w-[720px] border-collapse text-left text-sm">
         <thead class="opacity-70">
           <tr>
-            <th class="border-b border-current/15 py-3 pr-4 font-semibold">Agent</th>
-            <th class="border-b border-current/15 py-3 pr-4 font-semibold">Status</th>
-            <th class="border-b border-current/15 py-3 pr-4 font-semibold">Prompt</th>
-            <th class="border-b border-current/15 py-3 pr-4 font-semibold">Created</th>
+            <th class="border-b border-current/15 py-3 pr-4 font-semibold">{% trans "Agent" %}</th>
+            <th class="border-b border-current/15 py-3 pr-4 font-semibold">{% trans "Status" %}</th>
+            <th class="border-b border-current/15 py-3 pr-4 font-semibold">{% trans "Prompt" %}</th>
+            <th class="border-b border-current/15 py-3 pr-4 font-semibold">{% trans "Created" %}</th>
           </tr>
         </thead>
         <tbody>
@@ -100,7 +98,7 @@
         </tr>
       {% empty %}
         <tr>
-          <td colspan="4" class="py-4 text-sm opacity-60">No runs yet.</td>
+          <td colspan="4" class="py-4 text-sm opacity-60">{% trans "No runs yet." %}</td>
         </tr>
       {% endfor %}
         </tbody>

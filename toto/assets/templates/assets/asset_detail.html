@@ -170,7 +170,7 @@
           <div class="space-y-1">
             <label class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Amount" %}</label>
             <input type="number" name="amount" step="any" min="0" required
-                   placeholder="e.g. 100"
+                   placeholder="{% trans 'e.g. 100' %}"
                    :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder:opacity-30' : 'border-accent-2 bg-primary-bg-light text-text-main-light placeholder:opacity-30'"
                    class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
           </div>

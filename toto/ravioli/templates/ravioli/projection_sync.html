@@ -1,4 +1,5 @@
 {% extends "oya/base.html" %}
+{% load i18n %}
 
 {% block title %}Projection Plans{% endblock %}
 
@@ -12,19 +13,13 @@
     <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
       <div class="space-y-2">
         <a href="{% url 'ravioli:query_unified' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
-          <i class="fa-solid fa-arrow-left"></i>
-          Knowledge Graph
-        </a>
+          <i class="fa-solid fa-arrow-left"></i>{% trans "Knowledge Graph" %}</a>
         <div>
           <p
             :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-            class="text-xs font-semibold uppercase tracking-wide">
-            Ravioli
-          </p>
+            class="text-xs font-semibold uppercase tracking-wide">{% trans "Ravioli" %}</p>
           <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
-            <i class="fa-solid fa-code-compare"></i>
-            Projection Plans
-          </h1>
+            <i class="fa-solid fa-code-compare"></i>{% trans "Projection Plans" %}</h1>
         </div>
       </div>
 
@@ -65,12 +60,8 @@
       <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
           <h2 class="flex items-center gap-2 text-xl font-bold">
-            <i class="fa-solid fa-diagram-project"></i>
-            Generate diff
-          </h2>
-          <p class="mt-1 text-sm opacity-70">
-            Build a reviewable projection plan from selected graph labels.
-          </p>
+            <i class="fa-solid fa-diagram-project"></i>{% trans "Generate diff" %}</h2>
+          <p class="mt-1 text-sm opacity-70">{% trans "Build a reviewable projection plan from selected graph labels." %}</p>
         </div>
         <button
           type="submit"
@@ -85,13 +76,9 @@
 
       <div class="mt-6 flex flex-wrap gap-2 text-sm">
         <button type="button" id="select-all" class="inline-flex items-center gap-2 rounded-lg border border-current/20 px-3 py-2 font-semibold transition hover:opacity-80">
-          <i class="fa-solid fa-check-double"></i>
-          Select all
-        </button>
+          <i class="fa-solid fa-check-double"></i>{% trans "Select all" %}</button>
         <button type="button" id="deselect-all" class="inline-flex items-center gap-2 rounded-lg border border-current/20 px-3 py-2 font-semibold transition hover:opacity-80">
-          <i class="fa-solid fa-eraser"></i>
-          Clear
-        </button>
+          <i class="fa-solid fa-eraser"></i>{% trans "Clear" %}</button>
       </div>
 
       <div class="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -123,9 +110,7 @@
       class="rounded-lg border p-6 shadow-sm">
       <div class="flex items-center justify-between gap-4">
         <h2 class="flex items-center gap-2 text-xl font-bold">
-          <i class="fa-solid fa-clock-rotate-left"></i>
-          Recent plans
-        </h2>
+          <i class="fa-solid fa-clock-rotate-left"></i>{% trans "Recent plans" %}</h2>
       </div>
 
       {% if plans %}
@@ -133,11 +118,11 @@
           <table class="min-w-full text-left text-sm">
             <thead class="border-b border-current/10 text-xs uppercase opacity-70">
               <tr>
-                <th class="py-3 pr-4">Plan</th>
-                <th class="py-3 pr-4">Status</th>
-                <th class="py-3 pr-4">Changes</th>
-                <th class="py-3 pr-4">Created</th>
-                <th class="py-3 text-right">Action</th>
+                <th class="py-3 pr-4">{% trans "Plan" %}</th>
+                <th class="py-3 pr-4">{% trans "Status" %}</th>
+                <th class="py-3 pr-4">{% trans "Changes" %}</th>
+                <th class="py-3 pr-4">{% trans "Created" %}</th>
+                <th class="py-3 text-right">{% trans "Action" %}</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-current/10">
@@ -149,9 +134,7 @@
                   <td class="py-3 pr-4">{{ plan.created_at|date:"M d, Y H:i" }}</td>
                   <td class="py-3 text-right">
                     <a href="{% url 'ravioli:projection_plan_detail' plan.pk %}" class="inline-flex items-center justify-center gap-2 rounded-lg border border-current/20 px-3 py-2 font-semibold transition hover:opacity-80">
-                      <i class="fa-solid fa-eye"></i>
-                      Review
-                    </a>
+                      <i class="fa-solid fa-eye"></i>{% trans "Review" %}</a>
                   </td>
                 </tr>
               {% endfor %}
@@ -159,7 +142,7 @@
           </table>
         </div>
       {% else %}
-        <p class="mt-4 text-sm opacity-60">No projection plans yet.</p>
+        <p class="mt-4 text-sm opacity-60">{% trans "No projection plans yet." %}</p>
       {% endif %}
     </section>
   </div>

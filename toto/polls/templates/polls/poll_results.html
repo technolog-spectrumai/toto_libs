@@ -1,5 +1,6 @@
 {% extends "oya/base.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block title %}Poll Results – {{ poll.name }}{% endblock %}
 
@@ -29,16 +30,12 @@
         <a
           href="{% url 'polls:poll_detail' slug=poll.slug %}"
           class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
-          <i class="fa-solid fa-arrow-left"></i>
-          Poll
-        </a>
+          <i class="fa-solid fa-arrow-left"></i>{% trans "Poll" %}</a>
 
         <div>
           <p
             :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-            class="text-xs font-semibold uppercase tracking-wide">
-            Poll results
-          </p>
+            class="text-xs font-semibold uppercase tracking-wide">{% trans "Poll results" %}</p>
 
           <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
             <i class="fa-solid fa-chart-simple"></i>
@@ -58,9 +55,7 @@
             ? 'border-accent-1 bg-bubble-bg-dark text-accent-dark'
             : 'border-accent-2 bg-bubble-bg-light text-accent-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-          <i class="fa-solid fa-check-to-slot"></i>
-          Vote
-        </a>
+          <i class="fa-solid fa-check-to-slot"></i>{% trans "Vote" %}</a>
 
         <a
           href="{% url 'polls:poll_list' %}"
@@ -68,9 +63,7 @@
             ? 'bg-accent-dark text-primary-bg-dark'
             : 'bg-accent-light text-primary-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-          <i class="fa-solid fa-list"></i>
-          All polls
-        </a>
+          <i class="fa-solid fa-list"></i>{% trans "All polls" %}</a>
       </nav>
     </header>
 
@@ -91,17 +84,13 @@
           <div class="min-w-0">
             <p
               :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-              class="text-xs font-semibold uppercase tracking-wide">
-              Question
-            </p>
+              class="text-xs font-semibold uppercase tracking-wide">{% trans "Question" %}</p>
 
             <h2 class="mt-2 break-words text-2xl font-bold leading-tight">
               {{ poll.question_text }}
             </h2>
 
-            <p class="mt-3 text-sm opacity-70">
-              Results overview and vote breakdown for this poll.
-            </p>
+            <p class="mt-3 text-sm opacity-70">{% trans "Results overview and vote breakdown for this poll." %}</p>
           </div>
 
           <div
@@ -112,9 +101,7 @@
 
             <div>
               <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
-                <i class="fa-solid fa-list-check"></i>
-                Options
-              </p>
+                <i class="fa-solid fa-list-check"></i>{% trans "Options" %}</p>
               <p class="mt-2 text-2xl font-bold">
                 {{ results|length }}
               </p>
@@ -122,9 +109,7 @@
 
             <div>
               <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
-                <i class="fa-solid fa-calendar-days"></i>
-                Published
-              </p>
+                <i class="fa-solid fa-calendar-days"></i>{% trans "Published" %}</p>
               <p class="mt-2 text-sm font-bold">
                 {{ poll.pub_date|date:"M j, Y" }}
               </p>
@@ -148,9 +133,7 @@
               ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light')
               : 'hover:opacity-80'"
             class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition">
-            <i class="fa-solid fa-chart-pie"></i>
-            Overview
-          </button>
+            <i class="fa-solid fa-chart-pie"></i>{% trans "Overview" %}</button>
 
           <button
             type="button"
@@ -159,9 +142,7 @@
               ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light')
               : 'hover:opacity-80'"
             class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition">
-            <i class="fa-solid fa-chart-column"></i>
-            Breakdown
-          </button>
+            <i class="fa-solid fa-chart-column"></i>{% trans "Breakdown" %}</button>
         </div>
       </div>
     </section>
@@ -178,13 +159,9 @@
       <div class="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 class="flex items-center gap-2 text-lg font-bold">
-            <i class="fa-solid fa-chart-pie"></i>
-            Results overview
-          </h2>
+            <i class="fa-solid fa-chart-pie"></i>{% trans "Results overview" %}</h2>
 
-          <p class="mt-1 text-sm opacity-70">
-            Share of votes by option.
-          </p>
+          <p class="mt-1 text-sm opacity-70">{% trans "Share of votes by option." %}</p>
         </div>
       </div>
 
@@ -209,13 +186,9 @@
       <div class="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 class="flex items-center gap-2 text-lg font-bold">
-            <i class="fa-solid fa-chart-column"></i>
-            Results breakdown
-          </h2>
+            <i class="fa-solid fa-chart-column"></i>{% trans "Results breakdown" %}</h2>
 
-          <p class="mt-1 text-sm opacity-70">
-            Vote count comparison by option.
-          </p>
+          <p class="mt-1 text-sm opacity-70">{% trans "Vote count comparison by option." %}</p>
         </div>
       </div>
 
@@ -238,13 +211,9 @@
       <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 class="flex items-center gap-2 text-lg font-bold">
-            <i class="fa-solid fa-table-list"></i>
-            Detailed breakdown
-          </h2>
+            <i class="fa-solid fa-table-list"></i>{% trans "Detailed breakdown" %}</h2>
 
-          <p class="mt-1 text-sm opacity-70">
-            Exact votes for every poll option.
-          </p>
+          <p class="mt-1 text-sm opacity-70">{% trans "Exact votes for every poll option." %}</p>
         </div>
 
         <div
@@ -297,9 +266,7 @@
             :class="darkMode
               ? 'border-accent-1 bg-sunken-dark'
               : 'border-accent-2 bg-sunken-light'"
-            class="rounded-xl border border-dashed p-6 text-center text-sm italic opacity-70">
-            No results are available yet.
-          </div>
+            class="rounded-xl border border-dashed p-6 text-center text-sm italic opacity-70">{% trans "No results are available yet." %}</div>
         {% endfor %}
       </div>
     </section>

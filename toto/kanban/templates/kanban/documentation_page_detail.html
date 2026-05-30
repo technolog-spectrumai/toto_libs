@@ -1,4 +1,5 @@
 {% extends "verbena/base_page_detail.html" %}
+{% load i18n %}
 
 {% block page_type %}Documentation{% endblock %}
 
@@ -13,13 +14,11 @@
     {% if page.is_manual %}
       <span :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
             class="inline-flex items-center gap-1 rounded-full border px-3 py-1 font-semibold">
-        <i class="fa-solid fa-book-open"></i> Instruction
-      </span>
+        <i class="fa-solid fa-book-open"></i>{% trans "Instruction" %}</span>
     {% else %}
       <span :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
             class="inline-flex items-center gap-1 rounded-full border px-3 py-1 font-semibold">
-        <i class="fa-solid fa-file-lines"></i> Overview
-      </span>
+        <i class="fa-solid fa-file-lines"></i>{% trans "Overview" %}</span>
     {% endif %}
     <span class="opacity-60">
       <i class="fa-solid fa-bullseye"></i> {{ page.mission.campaign.name }} / {{ page.mission.title }}

@@ -321,7 +321,7 @@ document.querySelectorAll("[data-compile-status]").forEach(el => {
   let html = `${dot}<span class="text-xs font-semibold">${run.status}</span>`;
   if (run.finished_at) html += `<span class="text-[10px] opacity-40 ml-1">${run.finished_at}</span>`;
   if (run.pdf_url && run.status === "success") {
-    html += ` <a href="${run.pdf_url}" target="_blank" class="text-[10px] underline opacity-60 ml-1">PDF</a>`;
+    html += ` <a href="${run.pdf_url}" target="_blank" class="text-[10px] underline opacity-60 ml-1">{% trans "PDF" %}</a>`;
   }
   el.innerHTML = html;
 });

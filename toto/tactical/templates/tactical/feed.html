@@ -1,4 +1,5 @@
 {% extends "tactical/base.html" %}
+{% load i18n %}
 {% block tactical_title %}Feed{% endblock %}
 
 {% block tactical_content %}
@@ -6,9 +7,9 @@
 
   <header class="mb-6">
     <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-       class="text-xs font-semibold uppercase tracking-wide">Tactical</p>
-    <h1 class="mt-1 text-3xl font-bold">Activity Feed</h1>
-    <p class="mt-1 text-sm opacity-50">Newest events across incidents, logistics, and weather.</p>
+       class="text-xs font-semibold uppercase tracking-wide">{% trans "Tactical" %}</p>
+    <h1 class="mt-1 text-3xl font-bold">{% trans "Activity Feed" %}</h1>
+    <p class="mt-1 text-sm opacity-50">{% trans "Newest events across incidents, logistics, and weather." %}</p>
   </header>
 
   {% if events %}
@@ -61,7 +62,7 @@
   <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
        class="rounded-2xl border p-12 text-center shadow-sm">
     <i class="fa-solid fa-bolt text-3xl opacity-20"></i>
-    <p class="mt-3 text-sm opacity-50">No recent activity yet.</p>
+    <p class="mt-3 text-sm opacity-50">{% trans "No recent activity yet." %}</p>
   </div>
   {% endif %}
 

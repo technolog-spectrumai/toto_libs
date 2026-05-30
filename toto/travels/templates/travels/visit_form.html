@@ -1,5 +1,6 @@
 {% extends "travels/base.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block travels_title %}Add Visit{% endblock %}
 
@@ -19,25 +20,17 @@
     <a
       href="{% url 'travels:my_travels' %}"
       class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
-      <i class="fa-solid fa-arrow-left"></i>
-      Travels
-    </a>
+      <i class="fa-solid fa-arrow-left"></i>{% trans "Travels" %}</a>
 
     <header
       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
       class="rounded-2xl border p-5 shadow-sm">
       <p
         :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-        class="text-xs font-semibold uppercase tracking-wide">
-        Visit
-      </p>
+        class="text-xs font-semibold uppercase tracking-wide">{% trans "Visit" %}</p>
       <h1 class="mt-2 flex items-center gap-3 text-3xl font-bold">
-        <i class="fa-solid fa-location-dot"></i>
-        Add visit
-      </h1>
-      <p class="mt-2 text-sm opacity-70">
-        Pick a location on the map, then fill in the visit details.
-      </p>
+        <i class="fa-solid fa-location-dot"></i>{% trans "Add visit" %}</h1>
+      <p class="mt-2 text-sm opacity-70">{% trans "Pick a location on the map, then fill in the visit details." %}</p>
     </header>
 
     <form method="post" id="visit-form">
@@ -55,9 +48,7 @@
 
         <!-- Map picker -->
         <div class="space-y-3">
-          <p class="text-sm font-semibold">
-            Select location
-            <span class="ml-1 text-xs font-normal opacity-60">click a pin on the map</span>
+          <p class="text-sm font-semibold">{% trans "Select location" %}<span class="ml-1 text-xs font-normal opacity-60">click a pin on the map</span>
           </p>
 
           <div
@@ -74,8 +65,8 @@
             id="selected-location-display"
             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
             class="rounded-xl border p-4 text-sm shadow-sm">
-            <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Selected location</p>
-            <p id="selected-location-name" class="mt-1 font-bold opacity-40 italic">None</p>
+            <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Selected location" %}</p>
+            <p id="selected-location-name" class="mt-1 font-bold opacity-40 italic">{% trans "None" %}</p>
           </div>
 
           {% if form.location.errors %}
@@ -147,7 +138,7 @@
               {{ form.score.label }}
             </label>
             {{ form.score }}
-            <p class="text-xs opacity-60">Optional. 1–5.</p>
+            <p class="text-xs opacity-60">{% trans "Optional. 1–5." %}</p>
             {% if form.score.errors %}
               <p class="text-sm text-warn-light">{{ form.score.errors }}</p>
             {% endif %}
@@ -167,17 +158,13 @@
             <a
               href="{% url 'travels:my_travels' %}"
               :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
-              class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-85">
-              Cancel
-            </a>
+              class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-85">{% trans "Cancel" %}</a>
 
             <button
               type="submit"
               :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
               class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-              <i class="fa-solid fa-plus"></i>
-              Add visit
-            </button>
+              <i class="fa-solid fa-plus"></i>{% trans "Add visit" %}</button>
           </div>
         </div>
 

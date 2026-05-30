@@ -1,3 +1,4 @@
+{% load i18n %}
 <div class="space-y-3" x-data="sketchTools" x-init="$store.sketch.darkMode = darkMode">
   <!-- TOP TABS: DRAW + STYLE + TRANSFORM -->
   <div class="flex gap-2 mb-4">
@@ -10,9 +11,7 @@
           : 'opacity-60'
       ]"
       class="flex-1 py-1 text-sm"
-    >
-      Draw
-    </button>
+    >{% trans "Draw" %}</button>
 
     <button
       @click="currentTab = 'style'"
@@ -23,9 +22,7 @@
           : 'opacity-60'
       ]"
       class="flex-1 py-1 text-sm"
-    >
-      Style
-    </button>
+    >{% trans "Style" %}</button>
 
     <button
       @click="currentTab = 'transform'"
@@ -36,9 +33,7 @@
           : 'opacity-60'
       ]"
       class="flex-1 py-1 text-sm"
-    >
-      Transform
-    </button>
+    >{% trans "Transform" %}</button>
   </div>
 
   <!-- DRAW TAB -->
@@ -97,17 +92,17 @@
 
           <!-- Brush Size -->
           <div>
-            <label class="block text-xs font-semibold">Brush Size</label>
+            <label class="block text-xs font-semibold">{% trans "Brush Size" %}</label>
             <input type="range" min="1" max="20"
               x-model="$store.sketch.brushSize"
               @input="setBrushSize($event.target.value)"
               class="w-full border rounded" />
-            <div class="text-xs">Size: <span x-text="$store.sketch.brushSize"></span>px</div>
+            <div class="text-xs">{% trans "Size:" %}<span x-text="$store.sketch.brushSize"></span>px</div>
           </div>
 
           <!-- Brush Color -->
           <div>
-            <label class="block text-xs font-semibold">Color</label>
+            <label class="block text-xs font-semibold">{% trans "Color" %}</label>
             <input type="color"
               x-model="$store.sketch.brushColor"
               @input="setBrushColor($event.target.value)"
@@ -116,25 +111,24 @@
 
           <!-- Brush Style -->
           <div>
-            <label class="block text-xs font-semibold">Style</label>
+            <label class="block text-xs font-semibold">{% trans "Style" %}</label>
             <select
               x-model="$store.sketch.brushStyle"
               @change="setBrushStyle($event.target.value)"
               class="w-full p-1 border rounded">
-              <option value="solid">Solid</option>
-              <option value="dashed">Dashed</option>
+              <option value="solid">{% trans "Solid" %}</option>
+              <option value="dashed">{% trans "Dashed" %}</option>
             </select>
           </div>
 
           <!-- Brush Opacity -->
           <div>
-            <label class="block text-xs font-semibold">Brush Opacity</label>
+            <label class="block text-xs font-semibold">{% trans "Brush Opacity" %}</label>
             <input type="range" min="0" max="1" step="0.01"
               x-model="$store.sketch.brushOpacity"
               @input="setBrushOpacity($event.target.value)"
               class="w-full" />
-            <div class="text-xs">
-              Opacity: <span x-text="Math.round($store.sketch.brushOpacity * 100)"></span>%
+            <div class="text-xs">{% trans "Opacity:" %}<span x-text="Math.round($store.sketch.brushOpacity * 100)"></span>%
             </div>
           </div>
 
@@ -143,13 +137,13 @@
 
       <!-- FILL -->
       <div x-show="['rect','circle'].includes(currentTool)">
-        <label class="block text-sm font-semibold">Fill</label>
+        <label class="block text-sm font-semibold">{% trans "Fill" %}</label>
         <select
           x-model="$store.sketch.fillMode"
           @change="setFillMode($event.target.value)"
           class="w-full p-1 border rounded">
-          <option value="color">Color</option>
-          <option value="none">No Fill</option>
+          <option value="color">{% trans "Color" %}</option>
+          <option value="none">{% trans "No Fill" %}</option>
         </select>
 
         <input type="color"
@@ -157,13 +151,12 @@
           @input="setFillColor($event.target.value)"
           class="w-full h-10 mt-2 border rounded" />
 
-        <label class="block text-sm font-semibold mt-2">Fill Opacity</label>
+        <label class="block text-sm font-semibold mt-2">{% trans "Fill Opacity" %}</label>
         <input type="range" min="0" max="1" step="0.01"
           x-model="$store.sketch.fillOpacity"
           @input="setFillOpacity($event.target.value)"
           class="w-full" />
-        <div class="text-xs">
-          Opacity: <span x-text="Math.round($store.sketch.fillOpacity * 100)"></span>%
+        <div class="text-xs">{% trans "Opacity:" %}<span x-text="Math.round($store.sketch.fillOpacity * 100)"></span>%
         </div>
       </div>
 

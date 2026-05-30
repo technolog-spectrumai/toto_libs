@@ -268,7 +268,7 @@
             <button type="button" @click="pinOpen = false" class="opacity-40 hover:opacity-80 transition text-xl leading-none">&times;</button>
           </div>
           <div class="space-y-1">
-            <label class="block text-xs font-semibold opacity-60 uppercase tracking-wide">PIN</label>
+            <label class="block text-xs font-semibold opacity-60 uppercase tracking-wide">{% trans "PIN" %}</label>
             <input type="password" inputmode="numeric" autocomplete="current-password"
                    x-model="pinValue"
                    @keydown.enter.prevent="submitPin()"

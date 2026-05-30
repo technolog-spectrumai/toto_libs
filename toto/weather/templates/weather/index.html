@@ -1,5 +1,6 @@
 {% extends "weather/base.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block weather_title %}Weather{% endblock %}
 
@@ -511,7 +512,7 @@
         ].filter(Boolean).join("<br>");
         m.bindPopup(`<strong>${escapeHtml(a.name)}</strong><br>${lines}`);
       } else {
-        m.bindPopup(`<strong>${escapeHtml(a.name)}</strong><br><em>No data — click Refresh</em>`);
+        m.bindPopup(`<strong>${escapeHtml(a.name)}</strong><br><em>{% trans "No data — click Refresh" %}</em>`);
       }
       m.addTo(_map);
       _weatherMarkers[a.id] = m;
@@ -713,15 +714,12 @@
     <header class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
       <div>
         <a href="{% url 'locations:locations_all' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
-          <i class="fa-solid fa-arrow-left"></i> Locations
-        </a>
+          <i class="fa-solid fa-arrow-left"></i>{% trans "Locations" %}</a>
         <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-           class="mt-2 text-xs font-semibold uppercase tracking-wide">Spatial</p>
+           class="mt-2 text-xs font-semibold uppercase tracking-wide">{% trans "Spatial" %}</p>
         <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold sm:text-4xl">
-          <i class="fa-solid fa-cloud-sun"></i> Weather
-        </h1>
-        <p class="mt-1 text-sm opacity-65">
-          Current: <span class="font-semibold">{{ current_provider }}</span>
+          <i class="fa-solid fa-cloud-sun"></i>{% trans "Weather" %}</h1>
+        <p class="mt-1 text-sm opacity-65">{% trans "Current:" %}<span class="font-semibold">{{ current_provider }}</span>
           &nbsp;·&nbsp;
           Forecast: <span class="font-semibold">{{ forecast_provider }}</span>
         </p>
@@ -732,8 +730,7 @@
         <button type="button" @click="exportOpen = true"
                 :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-sunken-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-sunken-light'"
                 class="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold shadow-sm transition">
-          <i class="fa-solid fa-file-export"></i> Export Layers
-        </button>
+          <i class="fa-solid fa-file-export"></i>{% trans "Export Layers" %}</button>
 
         <!-- Tab bar -->
         <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
@@ -743,15 +740,13 @@
                     ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light')
                     : 'opacity-60 hover:opacity-100'"
                   class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition">
-            <i class="fa-solid fa-sun"></i> Current
-          </button>
+            <i class="fa-solid fa-sun"></i>{% trans "Current" %}</button>
           <button type="button" @click="activeTab='forecast'"
                   :class="activeTab === 'forecast'
                     ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light')
                     : 'opacity-60 hover:opacity-100'"
                   class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition">
-            <i class="fa-solid fa-calendar-week"></i> Forecast
-          </button>
+            <i class="fa-solid fa-calendar-week"></i>{% trans "Forecast" %}</button>
         </div>
       </div>
     </header>
@@ -769,16 +764,16 @@
           <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
                class="rounded-xl border p-4 shadow-sm">
             <div class="mb-3 flex items-center justify-between gap-2">
-              <h2 class="text-sm font-semibold">Locations</h2>
+              <h2 class="text-sm font-semibold">{% trans "Locations" %}</h2>
               <div class="flex gap-2 text-xs">
-                <button type="button" @click="selectAll()" class="underline underline-offset-2 opacity-65 hover:opacity-100">All</button>
-                <button type="button" @click="clearAll()" class="underline underline-offset-2 opacity-65 hover:opacity-100">None</button>
+                <button type="button" @click="selectAll()" class="underline underline-offset-2 opacity-65 hover:opacity-100">{% trans "All" %}</button>
+                <button type="button" @click="clearAll()" class="underline underline-offset-2 opacity-65 hover:opacity-100">{% trans "None" %}</button>
               </div>
             </div>
 
             <label class="relative mb-2 block">
               <i class="fa-solid fa-magnifying-glass pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs opacity-40"></i>
-              <input x-model="locationSearch" type="search" placeholder="Filter locations…"
+              <input x-model="locationSearch" type="search" placeholder="{% trans 'Filter locations…' %}"
                      :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder:text-text-main-dark/40' : 'border-accent-2 bg-primary-bg-light text-text-main-light placeholder:text-text-main-light/40'"
                      class="w-full rounded-lg border py-1.5 pl-8 pr-2 text-xs outline-none focus:ring-2 focus:ring-current/20">
             </label>
@@ -800,7 +795,7 @@
                   <span class="truncate" x-text="addr.name"></span>
                 </label>
               </template>
-              <p x-show="filteredAddresses.length === 0" class="px-2 py-2 text-xs opacity-40">No matches.</p>
+              <p x-show="filteredAddresses.length === 0" class="px-2 py-2 text-xs opacity-40">{% trans "No matches." %}</p>
             </div>
 
             <p class="mt-2 text-xs opacity-50" x-text="`${selectedIds.length} of ${addresses.length} selected`"></p>
@@ -831,26 +826,26 @@
                 <p class="mb-2 font-semibold truncate" x-text="addr.name"></p>
                 <template x-if="obsFor(addr.id)">
                   <dl class="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-                    <dt class="opacity-55">Temperature</dt>
+                    <dt class="opacity-55">{% trans "Temperature" %}</dt>
                     <dd class="font-semibold" x-text="fmtTemp(obsFor(addr.id).temperature)"></dd>
-                    <dt class="opacity-55">Precipitation</dt>
+                    <dt class="opacity-55">{% trans "Precipitation" %}</dt>
                     <dd class="font-semibold" x-text="fmtPrecip(obsFor(addr.id).precipitation_mm, obsFor(addr.id).precipitation_type)"></dd>
-                    <dt class="opacity-55">Cloud cover</dt>
+                    <dt class="opacity-55">{% trans "Cloud cover" %}</dt>
                     <dd class="font-semibold" x-text="fmtCloud(obsFor(addr.id).cloud_cover)"></dd>
-                    <dt class="opacity-55">Wind</dt>
+                    <dt class="opacity-55">{% trans "Wind" %}</dt>
                     <dd class="font-semibold" x-text="fmtWind(obsFor(addr.id).wind_speed_kmh, obsFor(addr.id).wind_direction_deg)"></dd>
-                    <dt class="opacity-55">Visibility</dt>
+                    <dt class="opacity-55">{% trans "Visibility" %}</dt>
                     <dd class="font-semibold" x-text="fmtVis(obsFor(addr.id).visibility_km)"></dd>
                   </dl>
                 </template>
                 <template x-if="!obsFor(addr.id)">
-                  <p class="text-xs opacity-40">No data — click Refresh</p>
+                  <p class="text-xs opacity-40">{% trans "No data — click Refresh" %}</p>
                 </template>
               </div>
             </template>
 
             <template x-if="!selectedAddresses.length">
-              <p class="text-xs opacity-40">Select locations to see weather data.</p>
+              <p class="text-xs opacity-40">{% trans "Select locations to see weather data." %}</p>
             </template>
           </div>
 
@@ -871,8 +866,7 @@
           {% if not celery_ok %}
           <div class="pointer-events-none absolute bottom-3 right-3 z-[500]">
             <div class="rounded-lg border border-current/10 bg-amber-500/90 px-3 py-2 text-xs font-semibold text-white shadow-sm backdrop-blur">
-              <i class="fa-solid fa-triangle-exclamation mr-1"></i> No Celery worker running
-            </div>
+              <i class="fa-solid fa-triangle-exclamation mr-1"></i>{% trans "No Celery worker running" %}</div>
           </div>
           {% endif %}
         </div>
@@ -903,15 +897,15 @@
                  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
                  class="absolute left-0 top-full z-50 mt-1 w-64 rounded-xl border p-3 shadow-lg">
               <div class="mb-2 flex items-center justify-between text-xs">
-                <span class="font-semibold opacity-60">Locations</span>
+                <span class="font-semibold opacity-60">{% trans "Locations" %}</span>
                 <div class="flex gap-3">
-                  <button type="button" @click="selectAll()" class="underline opacity-60 hover:opacity-100">All</button>
-                  <button type="button" @click="clearAll()" class="underline opacity-60 hover:opacity-100">None</button>
+                  <button type="button" @click="selectAll()" class="underline opacity-60 hover:opacity-100">{% trans "All" %}</button>
+                  <button type="button" @click="clearAll()" class="underline opacity-60 hover:opacity-100">{% trans "None" %}</button>
                 </div>
               </div>
               <label class="relative mb-2 block">
                 <i class="fa-solid fa-magnifying-glass pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs opacity-40"></i>
-                <input x-model="locationSearch" type="search" placeholder="Filter locations…"
+                <input x-model="locationSearch" type="search" placeholder="{% trans 'Filter locations…' %}"
                        :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder:text-text-main-dark/40' : 'border-accent-2 bg-primary-bg-light text-text-main-light placeholder:text-text-main-light/40'"
                        class="w-full rounded-lg border py-1.5 pl-8 pr-2 text-xs outline-none focus:ring-2 focus:ring-current/20">
               </label>
@@ -932,7 +926,7 @@
                     <span class="truncate" x-text="addr.name"></span>
                   </label>
                 </template>
-                <p x-show="filteredAddresses.length === 0" class="px-2 py-2 text-xs opacity-40">No matches.</p>
+                <p x-show="filteredAddresses.length === 0" class="px-2 py-2 text-xs opacity-40">{% trans "No matches." %}</p>
               </div>
               <p class="mt-2 text-xs opacity-50" x-text="`${selectedIds.length} of ${addresses.length} selected`"></p>
             </div>
@@ -942,26 +936,26 @@
           <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
                class="flex flex-wrap items-end gap-3 rounded-xl border px-4 py-3 shadow-sm text-sm">
             <div class="flex flex-col gap-1">
-              <label class="text-xs font-semibold opacity-60">Start date</label>
+              <label class="text-xs font-semibold opacity-60">{% trans "Start date" %}</label>
               <input type="date" x-model="forecastStartDate"
                      :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
                      class="rounded-lg border px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-current/20">
             </div>
             <div class="flex flex-col gap-1">
-              <label class="text-xs font-semibold opacity-60">Start time</label>
+              <label class="text-xs font-semibold opacity-60">{% trans "Start time" %}</label>
               <input type="time" x-model="forecastStartTime"
                      :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
                      class="rounded-lg border px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-current/20">
             </div>
             <span class="pb-1.5 text-xs opacity-40">→</span>
             <div class="flex flex-col gap-1">
-              <label class="text-xs font-semibold opacity-60">End date</label>
+              <label class="text-xs font-semibold opacity-60">{% trans "End date" %}</label>
               <input type="date" x-model="forecastEndDate"
                      :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
                      class="rounded-lg border px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-current/20">
             </div>
             <div class="flex flex-col gap-1">
-              <label class="text-xs font-semibold opacity-60">End time</label>
+              <label class="text-xs font-semibold opacity-60">{% trans "End time" %}</label>
               <input type="time" x-model="forecastEndTime"
                      :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
                      class="rounded-lg border px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-current/20">
@@ -1035,8 +1029,8 @@
           <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
                class="rounded-xl border border-dashed p-10 text-center shadow-sm">
             <i class="fa-solid fa-calendar-week text-3xl opacity-20"></i>
-            <p class="mt-3 text-sm font-semibold opacity-55">No forecast loaded yet.</p>
-            <p class="mt-1 text-xs opacity-40">Select locations and click "Load forecast".</p>
+            <p class="mt-3 text-sm font-semibold opacity-55">{% trans "No forecast loaded yet." %}</p>
+            <p class="mt-1 text-xs opacity-40">{% trans "Select locations and click "Load forecast"." %}</p>
           </div>
         </template>
 
@@ -1058,8 +1052,7 @@
       <!-- Modal header -->
       <div class="flex items-center justify-between border-b border-current/10 px-5 py-4">
         <h2 class="flex items-center gap-2 text-lg font-bold">
-          <i class="fa-solid fa-file-export"></i> Export Layers to Vault
-        </h2>
+          <i class="fa-solid fa-file-export"></i>{% trans "Export Layers to Vault" %}</h2>
         <button type="button" @click="exportOpen = false"
                 class="text-lg leading-none opacity-50 hover:opacity-100 transition">&times;</button>
       </div>
@@ -1069,7 +1062,7 @@
 
         <!-- Layer selection -->
         <div>
-          <p class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-60">Layers</p>
+          <p class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Layers" %}</p>
           <div class="space-y-1.5">
             <template x-for="layer in [
               {slug:'weather-temperature', label:'Temperature', icon:'fa-temperature-half'},
@@ -1094,7 +1087,7 @@
 
         <!-- Target bucket -->
         <div>
-          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">Target Bucket</label>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Target Bucket" %}</label>
           <select x-model="exportBucketId" @change="exportDirectoryId = ''"
                   :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
                   class="w-full rounded-lg border px-3 py-2 text-sm">
@@ -1107,8 +1100,7 @@
 
         <!-- Directory (optional) -->
         <div x-show="exportBucketId">
-          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">
-            Directory <span class="font-normal opacity-50">(optional)</span>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Directory" %}<span class="font-normal opacity-50">(optional)</span>
           </label>
           <select x-model="exportDirectoryId"
                   :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
@@ -1122,10 +1114,9 @@
 
         <!-- Title (optional) -->
         <div>
-          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">
-            File Title <span class="font-normal opacity-50">(optional)</span>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "File Title" %}<span class="font-normal opacity-50">(optional)</span>
           </label>
-          <input type="text" x-model="exportTitle" placeholder="Weather Layers Export"
+          <input type="text" x-model="exportTitle" placeholder="{% trans 'Weather Layers Export' %}"
                  :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
                  class="w-full rounded-lg border px-3 py-2 text-sm">
         </div>
@@ -1148,8 +1139,7 @@
             <a :href="exportDownloadUrl"
                :class="darkMode ? 'bg-success-dark/20 text-success-dark border-success-dark/40' : 'bg-success-light/20 text-success-light border-success-light/40'"
                class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
-              <i class="fa-solid fa-download"></i> Download file
-            </a>
+              <i class="fa-solid fa-download"></i>{% trans "Download file" %}</a>
           </div>
         </div>
       </div>
@@ -1158,9 +1148,7 @@
       <div class="flex items-center justify-end gap-3 border-t border-current/10 px-5 py-4">
         <button type="button" @click="exportOpen = false"
                 :class="darkMode ? 'border-accent-1 hover:bg-sunken-dark' : 'border-accent-2 hover:bg-sunken-light'"
-                class="rounded-xl border px-4 py-2 text-sm font-semibold transition">
-          Close
-        </button>
+                class="rounded-xl border px-4 py-2 text-sm font-semibold transition">{% trans "Close" %}</button>
         <button type="button" @click="startExport()"
                 :disabled="exportIsBusy || !exportLayerSlugs.length || !exportBucketId"
                 :class="darkMode ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90 disabled:opacity-40' : 'bg-accent-light text-primary-bg-light hover:opacity-90 disabled:opacity-40'"

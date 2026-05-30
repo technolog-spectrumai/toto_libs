@@ -1,5 +1,6 @@
 {% extends "oya/base.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block title %}{{ image.filename }}{% endblock %}
 
@@ -38,9 +39,7 @@
           <div>
             <p
               :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-              class="text-xs font-semibold uppercase tracking-wide">
-              OCR Image
-            </p>
+              class="text-xs font-semibold uppercase tracking-wide">{% trans "OCR Image" %}</p>
             <h1 class="mt-1 break-words text-3xl font-bold">{{ image.filename }}</h1>
           </div>
           <div class="flex flex-wrap gap-2 text-xs opacity-75">
@@ -54,9 +53,7 @@
             </span>
             {% if image.processed %}
               <span class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-1">
-                <i class="fa-solid fa-check"></i>
-                Processed
-              </span>
+                <i class="fa-solid fa-check"></i>{% trans "Processed" %}</span>
             {% endif %}
           </div>
         </div>
@@ -75,25 +72,21 @@
             :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
             class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90 disabled:opacity-60">
             <i class="fa-solid fa-eye"></i>
-            <span x-show="!running">Run OCR</span>
-            <span x-show="running">Processing...</span>
+            <span x-show="!running">{% trans "Run OCR" %}</span>
+            <span x-show="running">{% trans "Processing..." %}</span>
           </button>
           <button
             type="button"
             @click="duplicateOpen = true"
             :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
             class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-            <i class="fa-solid fa-copy"></i>
-            Duplicate
-          </button>
+            <i class="fa-solid fa-copy"></i>{% trans "Duplicate" %}</button>
           <button
             type="button"
             @click="deleteOpen = true"
             :class="darkMode ? 'border-warn-dark text-warn-dark' : 'border-warn-light text-warn-light'"
             class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-            <i class="fa-solid fa-trash"></i>
-            Delete
-          </button>
+            <i class="fa-solid fa-trash"></i>{% trans "Delete" %}</button>
         </div>
       </div>
     </header>
@@ -104,9 +97,7 @@
         class="overflow-hidden rounded-lg border shadow-sm">
         <div class="flex items-center justify-between border-b border-current/10 px-5 py-4">
           <h2 class="flex items-center gap-2 text-lg font-bold">
-            <i class="fa-solid fa-image"></i>
-            Image Preview
-          </h2>
+            <i class="fa-solid fa-image"></i>{% trans "Image Preview" %}</h2>
         </div>
         <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="flex min-h-[520px] items-center justify-center p-4">
           <img
@@ -123,9 +114,7 @@
           <div class="flex items-start justify-between gap-3">
             <div>
               <h2 class="flex items-center gap-2 text-lg font-bold">
-                <i class="fa-solid fa-align-left"></i>
-                Extracted Text
-              </h2>
+                <i class="fa-solid fa-align-left"></i>{% trans "Extracted Text" %}</h2>
               <p class="mt-1 text-xs opacity-65">{{ lines|length }} lines</p>
             </div>
             <button
@@ -134,9 +123,7 @@
               @click="bentoOpen = true"
               :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
               class="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45">
-              <i class="fa-solid fa-cubes-stacked"></i>
-              Bento note
-            </button>
+              <i class="fa-solid fa-cubes-stacked"></i>{% trans "Bento note" %}</button>
           </div>
 
           {% if extracted_text %}
@@ -144,9 +131,7 @@
               :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
               class="mt-4 max-h-[420px] overflow-auto whitespace-pre-wrap rounded-lg border p-4 text-sm leading-6 shadow-inner">{{ extracted_text }}</pre>
           {% else %}
-            <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="mt-4 rounded-lg p-5 text-sm opacity-70">
-              No OCR text extracted yet.
-            </div>
+            <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="mt-4 rounded-lg p-5 text-sm opacity-70">{% trans "No OCR text extracted yet." %}</div>
           {% endif %}
         </section>
 
@@ -154,21 +139,19 @@
           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
           class="rounded-lg border p-5 shadow-sm">
           <h2 class="flex items-center gap-2 text-lg font-bold">
-            <i class="fa-solid fa-circle-info"></i>
-            File
-          </h2>
+            <i class="fa-solid fa-circle-info"></i>{% trans "File" %}</h2>
           <dl class="mt-4 space-y-3 text-sm">
             <div class="flex justify-between gap-4">
-              <dt class="opacity-65">MIME</dt>
+              <dt class="opacity-65">{% trans "MIME" %}</dt>
               <dd class="text-right font-semibold">{{ image.mime_type|default:"Unknown" }}</dd>
             </div>
             <div class="flex justify-between gap-4">
-              <dt class="opacity-65">Size</dt>
+              <dt class="opacity-65">{% trans "Size" %}</dt>
               <dd class="text-right font-semibold">{{ image.file_size }} bytes</dd>
             </div>
             {% if image.processed_at %}
               <div class="flex justify-between gap-4">
-                <dt class="opacity-65">Processed</dt>
+                <dt class="opacity-65">{% trans "Processed" %}</dt>
                 <dd class="text-right font-semibold">{{ image.processed_at|date:"M d, Y H:i" }}</dd>
               </div>
             {% endif %}
@@ -183,10 +166,8 @@
       <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 class="flex items-center gap-2 text-xl font-bold">
-            <i class="fa-solid fa-wand-magic-sparkles"></i>
-            Image Transforms
-          </h2>
-          <p class="mt-1 text-sm opacity-70">Apply saved transform recipes to this image.</p>
+            <i class="fa-solid fa-wand-magic-sparkles"></i>{% trans "Image Transforms" %}</h2>
+          <p class="mt-1 text-sm opacity-70">{% trans "Apply saved transform recipes to this image." %}</p>
         </div>
       </div>
 
@@ -213,7 +194,7 @@
                   <div x-data="{ val: {{ p.default_value }} }">
                     <label class="flex justify-between gap-3 text-sm font-semibold">
                       <span>{{ p.key }}</span>
-                      <span class="text-xs opacity-70">Value <strong x-text="val"></strong></span>
+                      <span class="text-xs opacity-70">{% trans "Value" %}<strong x-text="val"></strong></span>
                     </label>
                     <input
                       type="range"
@@ -233,15 +214,13 @@
                   type="submit"
                   :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
                   class="inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-                  <i class="fa-solid fa-play"></i>
-                  Apply transform
-                </button>
+                  <i class="fa-solid fa-play"></i>{% trans "Apply transform" %}</button>
               </form>
             </article>
           {% endfor %}
         </div>
       {% else %}
-        <p class="mt-5 rounded-lg border border-current/10 p-4 text-sm opacity-70">No transforms available.</p>
+        <p class="mt-5 rounded-lg border border-current/10 p-4 text-sm opacity-70">{% trans "No transforms available." %}</p>
       {% endif %}
     </section>
   </div>
@@ -252,16 +231,12 @@
       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
       class="w-full max-w-lg rounded-lg border p-5 shadow-2xl">
       <h2 class="flex items-center gap-2 text-xl font-bold">
-        <i class="fa-solid fa-cubes-stacked"></i>
-        Promote to Bento
-      </h2>
-      <p class="mt-2 text-sm opacity-75">
-        Create a Bento note from the extracted text.
-      </p>
+        <i class="fa-solid fa-cubes-stacked"></i>{% trans "Promote to Bento" %}</h2>
+      <p class="mt-2 text-sm opacity-75">{% trans "Create a Bento note from the extracted text." %}</p>
       <form method="post" action="{% url 'ocr:promote_to_bento' image.id %}" class="mt-5 space-y-4">
         {% csrf_token %}
         <label class="block">
-          <span class="mb-1 block text-sm font-semibold">Note title</span>
+          <span class="mb-1 block text-sm font-semibold">{% trans "Note title" %}</span>
           <input
             type="text"
             name="title"
@@ -271,16 +246,12 @@
             required>
         </label>
         <div class="flex justify-end gap-2">
-          <button type="button" @click="bentoOpen = false" class="rounded-lg border border-current/20 px-4 py-2 text-sm font-semibold transition hover:opacity-80">
-            Cancel
-          </button>
+          <button type="button" @click="bentoOpen = false" class="rounded-lg border border-current/20 px-4 py-2 text-sm font-semibold transition hover:opacity-80">{% trans "Cancel" %}</button>
           <button
             type="submit"
             :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
             class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-            <i class="fa-solid fa-arrow-up-right-from-square"></i>
-            Create note
-          </button>
+            <i class="fa-solid fa-arrow-up-right-from-square"></i>{% trans "Create note" %}</button>
         </div>
       </form>
     </div>
@@ -293,9 +264,7 @@
         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
         class="w-full max-w-lg rounded-lg border p-5 shadow-2xl">
         <h2 class="flex items-center gap-2 text-xl font-bold">
-          <i class="fa-solid fa-circle-info"></i>
-          OCR notice
-        </h2>
+          <i class="fa-solid fa-circle-info"></i>{% trans "OCR notice" %}</h2>
         <div class="mt-4 space-y-3 text-sm">
           {% for message in messages %}
             <div
@@ -313,9 +282,7 @@
             type="button"
             @click="messageOpen = false"
             :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-            class="rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-            OK
-          </button>
+            class="rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">{% trans "OK" %}</button>
         </div>
       </div>
     </div>
@@ -327,22 +294,16 @@
       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
       class="w-full max-w-md rounded-lg border p-5 shadow-2xl">
       <h2 class="flex items-center gap-2 text-xl font-bold">
-        <i class="fa-solid fa-triangle-exclamation"></i>
-        Delete Image
-      </h2>
-      <p class="mt-3 text-sm opacity-75">This action cannot be undone.</p>
+        <i class="fa-solid fa-triangle-exclamation"></i>{% trans "Delete Image" %}</h2>
+      <p class="mt-3 text-sm opacity-75">{% trans "This action cannot be undone." %}</p>
       <form action="{% url 'ocr:image_delete' image.id %}" method="post" class="mt-5 flex justify-end gap-2">
         {% csrf_token %}
-        <button type="button" @click="deleteOpen = false" class="rounded-lg border border-current/20 px-4 py-2 text-sm font-semibold transition hover:opacity-80">
-          Cancel
-        </button>
+        <button type="button" @click="deleteOpen = false" class="rounded-lg border border-current/20 px-4 py-2 text-sm font-semibold transition hover:opacity-80">{% trans "Cancel" %}</button>
         <button
           type="submit"
           :class="darkMode ? 'bg-warn-dark text-primary-bg-dark' : 'bg-warn-light text-primary-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-          <i class="fa-solid fa-trash"></i>
-          Delete
-        </button>
+          <i class="fa-solid fa-trash"></i>{% trans "Delete" %}</button>
       </form>
     </div>
   </div>
@@ -353,13 +314,11 @@
       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
       class="w-full max-w-md rounded-lg border p-5 shadow-2xl">
       <h2 class="flex items-center gap-2 text-xl font-bold">
-        <i class="fa-solid fa-copy"></i>
-        Duplicate Image
-      </h2>
+        <i class="fa-solid fa-copy"></i>{% trans "Duplicate Image" %}</h2>
       <form action="{% url 'ocr:image_duplicate' image.id %}" method="post" class="mt-5 space-y-4">
         {% csrf_token %}
         <label class="block">
-          <span class="mb-1 block text-sm font-semibold">New image name</span>
+          <span class="mb-1 block text-sm font-semibold">{% trans "New image name" %}</span>
           <input
             type="text"
             name="new_name"
@@ -369,16 +328,12 @@
             required>
         </label>
         <div class="flex justify-end gap-2">
-          <button type="button" @click="duplicateOpen = false" class="rounded-lg border border-current/20 px-4 py-2 text-sm font-semibold transition hover:opacity-80">
-            Cancel
-          </button>
+          <button type="button" @click="duplicateOpen = false" class="rounded-lg border border-current/20 px-4 py-2 text-sm font-semibold transition hover:opacity-80">{% trans "Cancel" %}</button>
           <button
             type="submit"
             :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
             class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-            <i class="fa-solid fa-copy"></i>
-            Duplicate
-          </button>
+            <i class="fa-solid fa-copy"></i>{% trans "Duplicate" %}</button>
         </div>
       </form>
     </div>

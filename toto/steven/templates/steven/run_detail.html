@@ -1,4 +1,5 @@
 {% extends 'steven/base.html' %}
+{% load i18n %}
 {% block steven_title %}{{ run.agent.name }} Run #{{ run.pk }}{% endblock %}
 {% block steven_content %}
 <section
@@ -43,14 +44,14 @@
   </div>
 
   <div class="space-y-3">
-    <h3 class="text-lg font-bold">Prompt</h3>
+    <h3 class="text-lg font-bold">{% trans "Prompt" %}</h3>
     <pre
       :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
       class="overflow-x-auto whitespace-pre-wrap rounded-lg border border-current/10 p-4 text-sm">{{ run.user_prompt }}</pre>
   </div>
 
   <div class="space-y-3">
-    <h3 class="text-lg font-bold">Result</h3>
+    <h3 class="text-lg font-bold">{% trans "Result" %}</h3>
     <pre
       :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
       class="overflow-x-auto whitespace-pre-wrap rounded-lg border border-current/10 p-4 text-sm">{{ run.result|default:'No result.' }}</pre>
@@ -58,7 +59,7 @@
 
   {% if run.error %}
     <div class="space-y-3">
-      <h3 class="text-lg font-bold text-warn-light">Error</h3>
+      <h3 class="text-lg font-bold text-warn-light">{% trans "Error" %}</h3>
       <pre
         :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
         class="overflow-x-auto whitespace-pre-wrap rounded-lg border border-warn-light/40 p-4 text-sm">{{ run.error }}</pre>

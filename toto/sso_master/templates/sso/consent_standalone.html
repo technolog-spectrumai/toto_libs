@@ -1,3 +1,4 @@
+{% load i18n %}
 <!doctype html>
 <html lang="en">
 <head>
@@ -7,7 +8,7 @@
 <body>
   <main style="max-width: 640px; margin: 3rem auto; font-family: sans-serif;">
     <h1>Authorize {{ client.name }}</h1>
-    <p>This application wants to sign you in and access these identity claims:</p>
+    <p>{% trans "This application wants to sign you in and access these identity claims:" %}</p>
     <ul>
       {% for item in scope_items %}
         <li>{{ item }}</li>
@@ -16,8 +17,8 @@
     <form method="post" action="{% url 'sso:consent' %}">
       {% csrf_token %}
       <input type="hidden" name="query_string" value="{{ query_string }}">
-      <button type="submit" name="decision" value="approve">Allow</button>
-      <button type="submit" name="decision" value="deny">Deny</button>
+      <button type="submit" name="decision" value="approve">{% trans "Allow" %}</button>
+      <button type="submit" name="decision" value="deny">{% trans "Deny" %}</button>
     </form>
   </main>
 </body>

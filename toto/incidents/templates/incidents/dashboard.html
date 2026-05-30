@@ -1,15 +1,16 @@
 {% extends "incidents/base.html" %}
 {% load static %}
+{% load i18n %}
 {% block incidents_title %}Dashboard{% endblock %}
 {% block incidents_heading %}Incidents Dashboard{% endblock %}
-{% block incidents_subtitle %}<p class="mt-2 max-w-2xl text-sm opacity-70">Confirmed incident health, severity breakdown, and open response signals.</p>{% endblock %}
+{% block incidents_subtitle %}<p class="mt-2 max-w-2xl text-sm opacity-70">{% trans "Confirmed incident health, severity breakdown, and open response signals." %}</p>{% endblock %}
 {% block incidents_start_script %}<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>{% endblock %}
 
 {% block incidents_content %}
 <div class="grid gap-4 sm:grid-cols-3">
-  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">Open incidents</p><p class="mt-2 text-3xl font-bold">{{ open_count }}</p></article>
-  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">Critical</p><p class="mt-2 text-3xl font-bold text-purple-500">{{ critical_count }}</p></article>
-  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">Total incidents</p><p class="mt-2 text-3xl font-bold">{{ total_count }}</p></article>
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Open incidents" %}</p><p class="mt-2 text-3xl font-bold">{{ open_count }}</p></article>
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Critical" %}</p><p class="mt-2 text-3xl font-bold text-purple-500">{{ critical_count }}</p></article>
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Total incidents" %}</p><p class="mt-2 text-3xl font-bold">{{ total_count }}</p></article>
 </div>
 
 {{ status_chart_data|json_script:"status-chart-data" }}
@@ -17,18 +18,18 @@
 
 <section class="grid gap-4 lg:grid-cols-2">
   <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm">
-    <h2 class="text-lg font-bold"><i class="fa-solid fa-chart-pie opacity-70"></i> Status</h2>
+    <h2 class="text-lg font-bold"><i class="fa-solid fa-chart-pie opacity-70"></i>{% trans "Status" %}</h2>
     <div class="mt-4 h-72"><canvas id="statusChart"></canvas></div>
   </article>
   <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm">
-    <h2 class="text-lg font-bold"><i class="fa-solid fa-chart-column opacity-70"></i> Severity</h2>
+    <h2 class="text-lg font-bold"><i class="fa-solid fa-chart-column opacity-70"></i>{% trans "Severity" %}</h2>
     <div class="mt-4 h-72"><canvas id="severityChart"></canvas></div>
   </article>
 </section>
 
 {% if recent_incidents %}
 <section class="space-y-3">
-  <h2 class="text-xl font-bold">Open Incidents</h2>
+  <h2 class="text-xl font-bold">{% trans "Open Incidents" %}</h2>
   {% for incident in recent_incidents %}
     <a href="{% url 'incidents:incident-detail' incident.pk %}" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-sunken-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-sunken-light'" class="flex items-center gap-3 rounded-xl border p-3 shadow-sm transition hover:opacity-90">
       <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold

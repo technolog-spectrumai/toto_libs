@@ -302,8 +302,8 @@ function buildSankeySvg(flows, isDark) {
   let s = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%">`;
 
   // Column labels
-  s += `<text x="${padX + nodeW/2}" y="${padY - 7}" text-anchor="middle" font-size="9" font-weight="700" fill="${labelFill}" letter-spacing="0.1em">FROM</text>`;
-  s += `<text x="${W - padX - nodeW/2}" y="${padY - 7}" text-anchor="middle" font-size="9" font-weight="700" fill="${labelFill}" letter-spacing="0.1em">TO</text>`;
+  s += `<text x="${padX + nodeW/2}" y="${padY - 7}" text-anchor="middle" font-size="9" font-weight="700" fill="${labelFill}" letter-spacing="0.1em">{% trans "FROM" %}</text>`;
+  s += `<text x="${W - padX - nodeW/2}" y="${padY - 7}" text-anchor="middle" font-size="9" font-weight="700" fill="${labelFill}" letter-spacing="0.1em">{% trans "TO" %}</text>`;
 
   // Paths (drawn first, behind nodes)
   for (const f of flows) {

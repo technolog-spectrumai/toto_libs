@@ -151,7 +151,7 @@
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <div class="flex flex-wrap items-center gap-2">
                   {% if iv.is_required %}
-                    <i class="fa-solid fa-asterisk text-xs opacity-60" title="Required"></i>
+                    <i class="fa-solid fa-asterisk text-xs opacity-60" title="{% trans 'Required' %}"></i>
                   {% endif %}
                   <span class="font-semibold text-sm">{{ iv.title }}</span>
                   {% include "mobilization/partials/status_badge.html" with status=iv.status %}
@@ -164,16 +164,14 @@
                       <button type="submit"
                               :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
                               class="rounded-lg border px-2 py-1 text-xs font-semibold hover:opacity-80">
-                        <i class="fa-solid fa-check mr-1"></i>Done
-                      </button>
+                        <i class="fa-solid fa-check mr-1"></i>{% trans "Done" %}</button>
                     </form>
                   {% endif %}
                   {% if iv.status == "done" and not iv.reviewer %}
                     <button type="button" @click="reviewOpen = !reviewOpen"
                             :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
                             class="rounded-lg border px-2 py-1 text-xs font-semibold hover:opacity-80">
-                      <i class="fa-solid fa-star mr-1"></i>Review
-                    </button>
+                      <i class="fa-solid fa-star mr-1"></i>{% trans "Review" %}</button>
                   {% endif %}
                 </div>
               </div>
@@ -660,7 +658,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if (p.kind === "mission") {
           const latlng = [g.coordinates[1], g.coordinates[0]];
           L.marker(latlng, { icon: makeIcon("#6366f1", 16, "square", p.label) })
-            .bindPopup(`<strong>${p.label}</strong><br><em>Mission location</em>`)
+            .bindPopup(`<strong>${p.label}</strong><br><em>{% trans "Mission location" %}</em>`)
             .addTo(mapGroups.mission);
           boundsAccum.extend(latlng);
 

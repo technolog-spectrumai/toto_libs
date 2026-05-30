@@ -114,7 +114,7 @@
             <span class="text-sm group-hover:opacity-80">{{ checkbox.choice_label }}</span>
           </label>
           {% empty %}
-          <p class="text-xs opacity-50">No inventory items available.</p>
+          <p class="text-xs opacity-50">{% trans "No inventory items available." %}</p>
           {% endfor %}
         </div>
         {% endif %}
@@ -139,7 +139,7 @@
             <span class="text-sm group-hover:opacity-80">{{ checkbox.choice_label }}</span>
           </label>
           {% empty %}
-          <p class="text-xs opacity-50">No financial assets available.</p>
+          <p class="text-xs opacity-50">{% trans "No financial assets available." %}</p>
           {% endfor %}
         </div>
         {% endif %}

@@ -764,7 +764,7 @@
                           @click.stop="openCipher(item, 'encrypt')"
                           :class="darkMode ? 'text-accent-dark hover:bg-accent-dark/15' : 'text-accent-light hover:bg-accent-light/15'"
                           class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
-                          :title="`Encrypt ${item.title}`">
+                          :title="{% trans '`Encrypt ${item.title}`' %}">
                     <i class="fa-solid fa-lock text-xs"></i>
                   </button>
 
@@ -773,7 +773,7 @@
                           @click.stop="openEncDownload(item)"
                           :class="darkMode ? 'text-accent-dark hover:bg-accent-dark/15' : 'text-accent-light hover:bg-accent-light/15'"
                           class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
-                          :title="`Download ${item.title}`">
+                          :title="{% trans '`Download ${item.title}`' %}">
                     <i class="fa-solid fa-download text-xs"></i>
                   </button>
 
@@ -782,7 +782,7 @@
                           @click.stop="openRemoveEnc(item)"
                           :class="darkMode ? 'text-caution-dark hover:bg-caution-dark/15' : 'text-caution-light hover:bg-caution-light/15'"
                           class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
-                          :title="`Remove encryption from ${item.title}`">
+                          :title="{% trans '`Remove encryption from ${item.title}`' %}">
                     <i class="fa-solid fa-lock-open text-xs"></i>
                   </button>
 
@@ -791,7 +791,7 @@
                           @click.stop="openMove(item)"
                           :class="darkMode ? 'text-accent-dark hover:bg-accent-dark/15' : 'text-accent-light hover:bg-accent-light/15'"
                           class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
-                          :title="`Move ${item.title}`">
+                          :title="{% trans '`Move ${item.title}`' %}">
                     <i class="fa-solid fa-up-down text-xs"></i>
                   </button>
 
@@ -800,7 +800,7 @@
                           @click.stop="openRename(item)"
                           :class="darkMode ? 'text-accent-dark hover:bg-accent-dark/15' : 'text-accent-light hover:bg-accent-light/15'"
                           class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
-                          :title="`Rename ${item.title}`">
+                          :title="{% trans '`Rename ${item.title}`' %}">
                     <i class="fa-solid fa-pencil text-xs"></i>
                   </button>
 
@@ -808,7 +808,7 @@
                   <button x-show="item.owner === currentUser"
                           @click.stop="openDelete(item)"
                           class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150 text-warn-light hover:bg-warn-light/10"
-                          :title="`Delete ${item.title}`">
+                          :title="{% trans '`Delete ${item.title}`' %}">
                     <i class="fa-solid fa-trash text-xs"></i>
                   </button>
                 </div>

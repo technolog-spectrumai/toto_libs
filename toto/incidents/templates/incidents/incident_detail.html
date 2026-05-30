@@ -1,24 +1,25 @@
 {% extends "incidents/base.html" %}
+{% load i18n %}
 {% block incidents_title %}{{ incident.title }}{% endblock %}
 {% block incidents_heading %}{{ incident.title }}{% endblock %}
 {% block incidents_subtitle %}<p class="mt-2 max-w-2xl text-sm opacity-70">{{ incident.get_incident_type_display }} · {{ incident.get_severity_display }} severity</p>{% endblock %}
 
 {% block incidents_content %}
 <div class="mb-2">
-  <a href="{% url 'incidents:incident-list' %}" class="text-sm underline hover:opacity-80"><i class="fa-solid fa-arrow-left"></i> All incidents</a>
+  <a href="{% url 'incidents:incident-list' %}" class="text-sm underline hover:opacity-80"><i class="fa-solid fa-arrow-left"></i>{% trans "All incidents" %}</a>
 </div>
 
 <section class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
   <div class="space-y-4">
 
     <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm">
-      <h2 class="text-lg font-bold">Description</h2>
-      <div class="prose mt-3 max-w-none opacity-85">{{ incident.description|linebreaks|default:"<em class='opacity-50'>No description.</em>" }}</div>
+      <h2 class="text-lg font-bold">{% trans "Description" %}</h2>
+      <div class="prose mt-3 max-w-none opacity-85">{{ incident.description|linebreaks|default:"<em class='opacity-50'>{% trans "No description." %}</em>" }}</div>
     </article>
 
     {% if incident.source_detection %}
     <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm">
-      <h2 class="text-lg font-bold"><i class="fa-solid fa-bullseye opacity-70"></i> Source Detection</h2>
+      <h2 class="text-lg font-bold"><i class="fa-solid fa-bullseye opacity-70"></i>{% trans "Source Detection" %}</h2>
       <div class="mt-3 flex items-center justify-between gap-4">
         <div>
           <p class="font-semibold text-sm">{{ incident.source_detection.title }}</p>
@@ -27,15 +28,14 @@
         <a href="{% url 'detections:detection-detail' incident.source_detection.pk %}"
            :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
            class="inline-flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition hover:opacity-85">
-          <i class="fa-solid fa-arrow-up-right-from-square"></i> View detection
-        </a>
+          <i class="fa-solid fa-arrow-up-right-from-square"></i>{% trans "View detection" %}</a>
       </div>
     </article>
     {% endif %}
 
     {% if incident.properties %}
     <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm">
-      <h2 class="text-lg font-bold"><i class="fa-solid fa-tags opacity-70"></i> Imported Properties</h2>
+      <h2 class="text-lg font-bold"><i class="fa-solid fa-tags opacity-70"></i>{% trans "Imported Properties" %}</h2>
       <dl class="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
         {% for key, value in incident.properties.items %}
           <dt class="opacity-60 truncate">{{ key }}</dt>
@@ -50,7 +50,7 @@
     <!-- Status update -->
     <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"
              x-data="{status: '{{ incident.status }}', saving: false, statusDisplay: '{{ incident.get_status_display }}'}">
-      <h2 class="text-lg font-bold">Update Status</h2>
+      <h2 class="text-lg font-bold">{% trans "Update Status" %}</h2>
       <div class="mt-3 space-y-2">
         {% for val, label in incident.STATUS_CHOICES %}
         <button type="button"
@@ -75,33 +75,33 @@
 
     <!-- Details -->
     <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm">
-      <h2 class="text-lg font-bold">Details</h2>
+      <h2 class="text-lg font-bold">{% trans "Details" %}</h2>
       <dl class="mt-3 space-y-2 text-sm">
-        <div class="flex justify-between gap-4"><dt class="opacity-60">Type</dt><dd class="font-semibold">{{ incident.get_incident_type_display }}</dd></div>
-        <div class="flex justify-between gap-4"><dt class="opacity-60">Severity</dt>
+        <div class="flex justify-between gap-4"><dt class="opacity-60">{% trans "Type" %}</dt><dd class="font-semibold">{{ incident.get_incident_type_display }}</dd></div>
+        <div class="flex justify-between gap-4"><dt class="opacity-60">{% trans "Severity" %}</dt>
           <dd class="font-semibold
             {% if incident.severity == 'critical' %}text-purple-500
             {% elif incident.severity == 'high' %}text-warn-light
             {% elif incident.severity == 'medium' %}text-amber-500
             {% else %}text-success-light{% endif %}">{{ incident.get_severity_display }}</dd>
         </div>
-        <div class="flex justify-between gap-4"><dt class="opacity-60">Status</dt><dd class="font-semibold">{{ incident.get_status_display }}</dd></div>
-        {% if incident.category %}<div class="flex justify-between gap-4"><dt class="opacity-60">Category</dt><dd class="font-semibold">{{ incident.category.name }}</dd></div>{% endif %}
-        {% if incident.reported_by %}<div class="flex justify-between gap-4"><dt class="opacity-60">Reported by</dt><dd class="font-semibold">{{ incident.reported_by }}</dd></div>{% endif %}
-        {% if incident.confirmed_by %}<div class="flex justify-between gap-4"><dt class="opacity-60">Confirmed by</dt><dd class="font-semibold">{{ incident.confirmed_by.username }}</dd></div>{% endif %}
-        <div class="flex justify-between gap-4"><dt class="opacity-60">Started</dt><dd class="font-semibold">{{ incident.start_time|date:"d M Y H:i" }}</dd></div>
-        {% if incident.confirmed_at %}<div class="flex justify-between gap-4"><dt class="opacity-60">Confirmed</dt><dd class="font-semibold">{{ incident.confirmed_at|date:"d M Y H:i" }}</dd></div>{% endif %}
-        {% if incident.end_time %}<div class="flex justify-between gap-4"><dt class="opacity-60">Ended</dt><dd class="font-semibold">{{ incident.end_time|date:"d M Y H:i" }}</dd></div>{% endif %}
+        <div class="flex justify-between gap-4"><dt class="opacity-60">{% trans "Status" %}</dt><dd class="font-semibold">{{ incident.get_status_display }}</dd></div>
+        {% if incident.category %}<div class="flex justify-between gap-4"><dt class="opacity-60">{% trans "Category" %}</dt><dd class="font-semibold">{{ incident.category.name }}</dd></div>{% endif %}
+        {% if incident.reported_by %}<div class="flex justify-between gap-4"><dt class="opacity-60">{% trans "Reported by" %}</dt><dd class="font-semibold">{{ incident.reported_by }}</dd></div>{% endif %}
+        {% if incident.confirmed_by %}<div class="flex justify-between gap-4"><dt class="opacity-60">{% trans "Confirmed by" %}</dt><dd class="font-semibold">{{ incident.confirmed_by.username }}</dd></div>{% endif %}
+        <div class="flex justify-between gap-4"><dt class="opacity-60">{% trans "Started" %}</dt><dd class="font-semibold">{{ incident.start_time|date:"d M Y H:i" }}</dd></div>
+        {% if incident.confirmed_at %}<div class="flex justify-between gap-4"><dt class="opacity-60">{% trans "Confirmed" %}</dt><dd class="font-semibold">{{ incident.confirmed_at|date:"d M Y H:i" }}</dd></div>{% endif %}
+        {% if incident.end_time %}<div class="flex justify-between gap-4"><dt class="opacity-60">{% trans "Ended" %}</dt><dd class="font-semibold">{{ incident.end_time|date:"d M Y H:i" }}</dd></div>{% endif %}
       </dl>
     </section>
 
     {% if incident.address or incident.zone or incident.geometry %}
     <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm">
-      <h2 class="text-lg font-bold"><i class="fa-solid fa-location-dot opacity-70"></i> Location</h2>
+      <h2 class="text-lg font-bold"><i class="fa-solid fa-location-dot opacity-70"></i>{% trans "Location" %}</h2>
       <dl class="mt-3 space-y-2 text-sm">
-        {% if incident.address %}<div><dt class="opacity-60 text-xs">Address</dt><dd class="font-semibold">{{ incident.address }}</dd></div>{% endif %}
-        {% if incident.zone %}<div><dt class="opacity-60 text-xs">Zone</dt><dd class="font-semibold">{{ incident.zone.name }}</dd></div>{% endif %}
-        {% if incident.geometry and not incident.address %}<div><dt class="opacity-60 text-xs">Coordinates</dt><dd class="font-mono text-xs">{{ incident.geometry.y|floatformat:5 }}, {{ incident.geometry.x|floatformat:5 }}</dd></div>{% endif %}
+        {% if incident.address %}<div><dt class="opacity-60 text-xs">{% trans "Address" %}</dt><dd class="font-semibold">{{ incident.address }}</dd></div>{% endif %}
+        {% if incident.zone %}<div><dt class="opacity-60 text-xs">{% trans "Zone" %}</dt><dd class="font-semibold">{{ incident.zone.name }}</dd></div>{% endif %}
+        {% if incident.geometry and not incident.address %}<div><dt class="opacity-60 text-xs">{% trans "Coordinates" %}</dt><dd class="font-mono text-xs">{{ incident.geometry.y|floatformat:5 }}, {{ incident.geometry.x|floatformat:5 }}</dd></div>{% endif %}
       </dl>
     </section>
     {% endif %}

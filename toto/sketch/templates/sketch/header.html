@@ -1,3 +1,4 @@
+{% load i18n %}
 <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
 
     <!-- Left: Name + Created -->
@@ -18,9 +19,7 @@
                 : 'bg-accent-light text-primary-bg-light'"
             class="px-4 py-2 rounded font-semibold hover:opacity-90 transition text-sm flex items-center gap-2"
         >
-            <i class="fa-solid fa-floppy-disk"></i>
-            Save
-        </button>
+            <i class="fa-solid fa-floppy-disk"></i>{% trans "Save" %}</button>
 
         <!-- Auto‑Save Off -->
         <button
@@ -30,9 +29,7 @@
                 : 'bg-sunken-light text-text-main-light'"
             class="px-4 py-2 rounded font-semibold transition text-sm flex items-center gap-2 shadow-inner"
         >
-            <i class="fa-solid fa-clock"></i>
-            Auto‑Save Off
-        </button>
+            <i class="fa-solid fa-clock"></i>{% trans "Auto‑Save Off" %}</button>
 
         <!-- Auto‑Save On -->
         <button
@@ -42,9 +39,7 @@
                 : 'bg-success-light text-primary-bg-light'"
             class="px-4 py-2 rounded font-semibold transition text-sm flex items-center gap-2 hover:opacity-90 hidden"
         >
-            <i class="fa-solid fa-clock"></i>
-            Auto‑Save On
-        </button>
+            <i class="fa-solid fa-clock"></i>{% trans "Auto‑Save On" %}</button>
 
     </div>
 

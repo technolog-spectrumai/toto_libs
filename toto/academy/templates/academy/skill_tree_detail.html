@@ -1,5 +1,6 @@
 {% extends "academy/base.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block academy_title %}{{ tree.title }}{% endblock %}
 {% block tab_courses %}border-b-2 border-current -mb-px{% endblock %}
@@ -12,9 +13,7 @@
 
     <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
       <div class="space-y-2">
-        <a href="{% url 'academy:skill-forest' %}" class="text-sm underline hover:opacity-80">
-          Skill forest
-        </a>
+        <a href="{% url 'academy:skill-forest' %}" class="text-sm underline hover:opacity-80">{% trans "Skill forest" %}</a>
 
         <h1 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-3xl font-bold">
           {{ tree.title }}
@@ -23,9 +22,7 @@
         <p class="opacity-75">{{ tree.description|default:"No description yet." }}</p>
       </div>
 
-      <a href="{% url 'academy:course-list' %}" class="text-sm underline hover:opacity-80">
-        Courses
-      </a>
+      <a href="{% url 'academy:course-list' %}" class="text-sm underline hover:opacity-80">{% trans "Courses" %}</a>
     </div>
 
     <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
@@ -44,17 +41,13 @@
             ? 'bg-bubble-bg-dark border-accent-1'
             : 'bg-bubble-bg-light border-accent-2'"
           class="border rounded-lg p-5 shadow-md space-y-3 transition-colors duration-300">
-          <div class="text-xs uppercase tracking-wide opacity-60">
-            Selected Skill
-          </div>
+          <div class="text-xs uppercase tracking-wide opacity-60">{% trans "Selected Skill" %}</div>
 
           <h2 id="skill-inspector-title" class="text-xl font-bold">
             {{ tree.title }}
           </h2>
 
-          <p id="skill-inspector-description" class="text-sm opacity-75">
-            Select a skill to see connected courses.
-          </p>
+          <p id="skill-inspector-description" class="text-sm opacity-75">{% trans "Select a skill to see connected courses." %}</p>
 
           <div id="skill-inspector-courses" class="space-y-2"></div>
         </section>
@@ -65,7 +58,7 @@
             : 'bg-bubble-bg-light border-accent-2'"
           class="border rounded-lg p-5 shadow-md space-y-4 transition-colors duration-300">
           <div class="flex items-center justify-between gap-3">
-            <h2 class="text-xl font-bold">Skills</h2>
+            <h2 class="text-xl font-bold">{% trans "Skills" %}</h2>
             <span class="text-xs opacity-60">{{ badges|length }} total</span>
           </div>
 
@@ -108,7 +101,7 @@
                 {% endif %}
               </article>
             {% empty %}
-              <p class="text-sm opacity-60">No skills in this tree yet.</p>
+              <p class="text-sm opacity-60">{% trans "No skills in this tree yet." %}</p>
             {% endfor %}
           </div>
         </section>

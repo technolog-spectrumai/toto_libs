@@ -98,7 +98,7 @@
           <table class="w-full text-sm">
             <thead :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'">
               <tr class="text-left">
-                <th class="px-4 py-3 font-semibold opacity-70">ID</th>
+                <th class="px-4 py-3 font-semibold opacity-70">{% trans "ID" %}</th>
                 <th class="px-4 py-3 font-semibold opacity-70">{% trans "Type" %}</th>
                 <th class="px-4 py-3 font-semibold opacity-70">{% trans "Label" %}</th>
                 <th class="px-4 py-3 font-semibold opacity-70">{% trans "Lambda" %}</th>
@@ -134,10 +134,9 @@
                         <button
                           onclick="openLambdaCode('{{ node.lambda_function.function_name|escapejs }}', {{ node.id }})"
                           class="inline-flex items-center gap-1 rounded border border-current/20 px-1.5 py-0.5 text-xs font-semibold opacity-60 hover:opacity-100 transition-opacity"
-                          title="View lambda code"
+                          title="{% trans 'View lambda code' %}"
                         >
-                          <i class="fa-solid fa-code text-xs"></i> View
-                        </button>
+                          <i class="fa-solid fa-code text-xs"></i>{% trans "View" %}</button>
                       </div>
                     {% elif node.task_name %}
                       <span class="font-mono text-xs opacity-70">{{ node.task_name }}</span>

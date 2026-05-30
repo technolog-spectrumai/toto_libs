@@ -1,4 +1,5 @@
 {% extends "quizzes/base.html" %}
+{% load i18n %}
 
 {% block quizzes_title %}Quizzes{% endblock %}
 
@@ -14,15 +15,12 @@
   <div class="mx-auto max-w-5xl space-y-6">
     <header>
       <a href="{% url 'academy:course-list' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80 mb-2">
-        <i class="fa-solid fa-arrow-left"></i> Academy
-      </a>
+        <i class="fa-solid fa-arrow-left"></i>{% trans "Academy" %}</a>
       <div>
         <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-           class="text-xs font-semibold uppercase tracking-wide">Quizzes</p>
+           class="text-xs font-semibold uppercase tracking-wide">{% trans "Quizzes" %}</p>
         <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
-          <i class="fa-solid fa-circle-question"></i>
-          Quizzes
-        </h1>
+          <i class="fa-solid fa-circle-question"></i>{% trans "Quizzes" %}</h1>
       </div>
     </header>
 
@@ -42,7 +40,7 @@
             </div>
             {% if quiz.is_official %}
               <span :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
-                    class="shrink-0 rounded-full border px-2 py-1 text-xs font-semibold">Official</span>
+                    class="shrink-0 rounded-full border px-2 py-1 text-xs font-semibold">{% trans "Official" %}</span>
             {% endif %}
           </div>
 
@@ -50,16 +48,12 @@
             <a href="{% url 'quizzes:quiz-detail' pk=quiz.pk %}"
                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
                class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-              <i class="fa-solid fa-play"></i>
-              Start
-            </a>
+              <i class="fa-solid fa-play"></i>{% trans "Start" %}</a>
           </div>
         </article>
       {% empty %}
         <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-             class="rounded-lg border border-dashed p-8 text-center text-sm italic opacity-70 md:col-span-2">
-          No published quizzes yet.
-        </div>
+             class="rounded-lg border border-dashed p-8 text-center text-sm italic opacity-70 md:col-span-2">{% trans "No published quizzes yet." %}</div>
       {% endfor %}
     </div>
   </div>

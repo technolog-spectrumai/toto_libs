@@ -70,7 +70,7 @@
         if (dark) this.map.getContainer().classList.add('dark-map');
         L.tileLayer(tileUrl, {
           maxZoom: 19,
-          attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; OpenStreetMap contributors',
+          attribution: '&copy; <a href="https://carto.com/">{% trans "CARTO" %}</a> &copy; OpenStreetMap contributors',
         }).addTo(this.map);
 
         const latLngs = track.map(p => [p.lat, p.lng]);
@@ -91,9 +91,9 @@
           radius: 9, color: '#6366f1', fillColor: '#6366f1', fillOpacity: 0.85, weight: 2,
         });
         latestMarker.bindPopup(`<div class="robot-track-popup">
-          <h4>Latest position</h4>
-          <p><strong>Time:</strong> ${last.ts}</p>
-          ${last.battery != null ? `<p><strong>Battery:</strong> ${last.battery}%</p>` : ''}
+          <h4>{% trans "Latest position" %}</h4>
+          <p><strong>{% trans "Time:" %}</strong> ${last.ts}</p>
+          ${last.battery != null ? `<p><strong>{% trans "Battery:" %}</strong> ${last.battery}%</p>` : ''}
           <p style="opacity:.55">${last.lat.toFixed(5)}, ${last.lng.toFixed(5)}</p>
         </div>`);
         latestMarker.addTo(this.map);

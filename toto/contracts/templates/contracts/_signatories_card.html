@@ -43,8 +43,7 @@
             {% if s.is_cryptographically_signed %}
             <span class="inline-flex items-center gap-1 rounded-full bg-link-light/15 text-link-light px-1.5 py-0.5 text-xs font-semibold"
                   title="{{ s.signing_key.key_id }}">
-              <i class="fa-solid fa-shield-halved"></i> Ed25519
-            </span>
+              <i class="fa-solid fa-shield-halved"></i>{% trans "Ed25519" %}</span>
             {% endif %}
           </p>
           <p class="text-xs opacity-60">

@@ -82,14 +82,12 @@
                 {% if r.is_trained %}
                   <span :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
                         class="flex items-center gap-1 rounded px-2 py-0.5">
-                    <i class="fa-solid fa-graduation-cap opacity-60"></i> Trained
-                  </span>
+                    <i class="fa-solid fa-graduation-cap opacity-60"></i>{% trans "Trained" %}</span>
                 {% endif %}
                 {% if r.is_background_checked %}
                   <span :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
                         class="flex items-center gap-1 rounded px-2 py-0.5">
-                    <i class="fa-solid fa-shield-check opacity-60"></i> Cleared
-                  </span>
+                    <i class="fa-solid fa-shield-check opacity-60"></i>{% trans "Cleared" %}</span>
                 {% endif %}
                 {% for skill in r.skills.all|slice:":3" %}
                   <span class="rounded border border-current/15 px-2 py-0.5 opacity-70">

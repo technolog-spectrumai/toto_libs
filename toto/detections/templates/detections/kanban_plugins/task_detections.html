@@ -1,10 +1,9 @@
+{% load i18n %}
 <section
   :class="darkMode ? 'border-caution-dark/40 bg-caution-dark/10' : 'border-caution-light/40 bg-caution-light/10'"
   class="rounded-lg border p-3">
   <div class="mb-2 flex items-center justify-between gap-3">
-    <p class="text-xs font-semibold uppercase tracking-wide opacity-60">
-      Linked Detections
-    </p>
+    <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Linked Detections" %}</p>
     <span :class="darkMode ? 'text-caution-dark' : 'text-caution-light'" class="text-xs font-bold">
       {{ task_detections|length }}
     </span>
@@ -23,9 +22,7 @@
           href="{% url 'detections:detection-help' detection.pk %}"
           :class="darkMode ? 'border-accent-1 text-accent-dark' : 'border-accent-2 text-accent-light'"
           class="shrink-0 rounded-lg border px-2 py-1 font-semibold hover:opacity-85">
-          <i class="fa-solid fa-handshake-angle"></i>
-          Ask help
-        </a>
+          <i class="fa-solid fa-handshake-angle"></i>{% trans "Ask help" %}</a>
       </div>
     {% endfor %}
   </div>

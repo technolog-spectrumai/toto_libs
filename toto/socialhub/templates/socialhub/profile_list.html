@@ -1,5 +1,6 @@
 {% extends "oya/base.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block title %}Community Members – {{ platform.site_name }}{% endblock %}
 
@@ -26,25 +27,17 @@
         <a
           href="{% url 'core:dashboard' %}"
           class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
-          <i class="fa-solid fa-arrow-left"></i>
-          Dashboard
-        </a>
+          <i class="fa-solid fa-arrow-left"></i>{% trans "Dashboard" %}</a>
 
         <div>
           <p
             :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-            class="text-xs font-semibold uppercase tracking-wide">
-            Social Hub
-          </p>
+            class="text-xs font-semibold uppercase tracking-wide">{% trans "Social Hub" %}</p>
 
           <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
-            <i class="fa-solid fa-users"></i>
-            Community Members
-          </h1>
+            <i class="fa-solid fa-users"></i>{% trans "Community Members" %}</h1>
 
-          <p class="mt-1 text-sm opacity-70">
-            Browse public profiles, communities, patrons, and member details.
-          </p>
+          <p class="mt-1 text-sm opacity-70">{% trans "Browse public profiles, communities, patrons, and member details." %}</p>
         </div>
       </div>
 
@@ -55,9 +48,7 @@
             ? 'bg-accent-dark text-primary-bg-dark'
             : 'bg-accent-light text-primary-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-          <i class="fa-solid fa-id-card"></i>
-          Profiles
-        </a>
+          <i class="fa-solid fa-id-card"></i>{% trans "Profiles" %}</a>
       </nav>
     </header>
 
@@ -71,13 +62,9 @@
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 class="flex items-center gap-2 text-lg font-bold">
-            <i class="fa-solid fa-address-book"></i>
-            Profile directory
-          </h2>
+            <i class="fa-solid fa-address-book"></i>{% trans "Profile directory" %}</h2>
 
-          <p class="mt-1 text-sm opacity-70">
-            View members, communities, join dates, and profile information.
-          </p>
+          <p class="mt-1 text-sm opacity-70">{% trans "View members, communities, join dates, and profile information." %}</p>
         </div>
 
         <div
@@ -106,12 +93,12 @@
               : 'border-accent-2 bg-sunken-light'"
             class="border-b">
             <tr class="text-left">
-              <th class="px-5 py-4 font-semibold">Member</th>
-              <th class="px-5 py-4 font-semibold">Bio</th>
-              <th class="px-5 py-4 font-semibold">Joined</th>
-              <th class="px-5 py-4 font-semibold">Patron</th>
-              <th class="px-5 py-4 font-semibold">Communities</th>
-              <th class="px-5 py-4 font-semibold">Action</th>
+              <th class="px-5 py-4 font-semibold">{% trans "Member" %}</th>
+              <th class="px-5 py-4 font-semibold">{% trans "Bio" %}</th>
+              <th class="px-5 py-4 font-semibold">{% trans "Joined" %}</th>
+              <th class="px-5 py-4 font-semibold">{% trans "Patron" %}</th>
+              <th class="px-5 py-4 font-semibold">{% trans "Communities" %}</th>
+              <th class="px-5 py-4 font-semibold">{% trans "Action" %}</th>
             </tr>
           </thead>
 
@@ -208,17 +195,13 @@
                       ? 'bg-accent-dark text-primary-bg-dark'
                       : 'bg-accent-light text-primary-bg-light'"
                     class="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold shadow-sm transition hover:opacity-90">
-                    <i class="fa-solid fa-eye"></i>
-                    View
-                  </a>
+                    <i class="fa-solid fa-eye"></i>{% trans "View" %}</a>
                 </td>
               </tr>
             {% empty %}
               <tr>
                 <td colspan="6" class="px-5 py-10 text-center text-sm opacity-70">
-                  <i class="fa-regular fa-folder-open mb-3 block text-2xl"></i>
-                  No members found.
-                </td>
+                  <i class="fa-regular fa-folder-open mb-3 block text-2xl"></i>{% trans "No members found." %}</td>
               </tr>
             {% endfor %}
           </tbody>
@@ -274,9 +257,7 @@
                 ? 'border-accent-1 bg-sunken-dark'
                 : 'border-accent-2 bg-sunken-light'"
               class="rounded-xl border p-3">
-              <p class="text-xs font-semibold uppercase tracking-wide opacity-60">
-                Bio
-              </p>
+              <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Bio" %}</p>
               <p class="mt-1 opacity-80">
                 {{ member.bio|default:"—" }}
               </p>
@@ -287,9 +268,7 @@
                 ? 'border-accent-1 bg-sunken-dark'
                 : 'border-accent-2 bg-sunken-light'"
               class="rounded-xl border p-3">
-              <p class="text-xs font-semibold uppercase tracking-wide opacity-60">
-                Patron
-              </p>
+              <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Patron" %}</p>
               <p class="mt-1 font-semibold">
                 {% if member.patron %}
                   <a
@@ -309,9 +288,7 @@
                 ? 'border-accent-1 bg-sunken-dark'
                 : 'border-accent-2 bg-sunken-light'"
               class="rounded-xl border p-3">
-              <p class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-60">
-                Communities
-              </p>
+              <p class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Communities" %}</p>
 
               <div class="flex flex-wrap gap-2">
                 {% for community in member.communities.all %}
@@ -325,9 +302,7 @@
                     {{ community.name }}
                   </a>
                 {% empty %}
-                  <span class="text-sm italic opacity-60">
-                    None
-                  </span>
+                  <span class="text-sm italic opacity-60">{% trans "None" %}</span>
                 {% endfor %}
               </div>
             </div>
@@ -339,9 +314,7 @@
               ? 'bg-accent-dark text-primary-bg-dark'
               : 'bg-accent-light text-primary-bg-light'"
             class="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-            <i class="fa-solid fa-eye"></i>
-            View Profile
-          </a>
+            <i class="fa-solid fa-eye"></i>{% trans "View Profile" %}</a>
         </article>
       {% empty %}
         <div
@@ -349,9 +322,7 @@
             ? 'border-accent-1 bg-bubble-bg-dark'
             : 'border-accent-2 bg-bubble-bg-light'"
           class="rounded-2xl border p-8 text-center text-sm shadow-sm">
-          <i class="fa-regular fa-folder-open mb-3 block text-2xl opacity-70"></i>
-          No members found.
-        </div>
+          <i class="fa-regular fa-folder-open mb-3 block text-2xl opacity-70"></i>{% trans "No members found." %}</div>
       {% endfor %}
     </section>
 
@@ -365,9 +336,7 @@
               ? 'border-accent-1 bg-bubble-bg-dark'
               : 'border-accent-2 bg-bubble-bg-light'"
             class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 font-semibold transition hover:opacity-85">
-            <i class="fa-solid fa-angles-left text-xs"></i>
-            First
-          </a>
+            <i class="fa-solid fa-angles-left text-xs"></i>{% trans "First" %}</a>
 
           <a
             href="?page={{ page_obj.previous_page_number }}"
@@ -375,9 +344,7 @@
               ? 'border-accent-1 bg-bubble-bg-dark'
               : 'border-accent-2 bg-bubble-bg-light'"
             class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 font-semibold transition hover:opacity-85">
-            <i class="fa-solid fa-chevron-left text-xs"></i>
-            Previous
-          </a>
+            <i class="fa-solid fa-chevron-left text-xs"></i>{% trans "Previous" %}</a>
         {% endif %}
 
         <span
@@ -394,9 +361,7 @@
             :class="darkMode
               ? 'border-accent-1 bg-bubble-bg-dark'
               : 'border-accent-2 bg-bubble-bg-light'"
-            class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 font-semibold transition hover:opacity-85">
-            Next
-            <i class="fa-solid fa-chevron-right text-xs"></i>
+            class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 font-semibold transition hover:opacity-85">{% trans "Next" %}<i class="fa-solid fa-chevron-right text-xs"></i>
           </a>
 
           <a
@@ -404,9 +369,7 @@
             :class="darkMode
               ? 'border-accent-1 bg-bubble-bg-dark'
               : 'border-accent-2 bg-bubble-bg-light'"
-            class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 font-semibold transition hover:opacity-85">
-            Last
-            <i class="fa-solid fa-angles-right text-xs"></i>
+            class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 font-semibold transition hover:opacity-85">{% trans "Last" %}<i class="fa-solid fa-angles-right text-xs"></i>
           </a>
         {% endif %}
       </nav>

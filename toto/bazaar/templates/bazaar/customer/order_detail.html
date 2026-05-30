@@ -224,7 +224,7 @@ document.addEventListener('DOMContentLoaded', function () {
   if (payload.delivery && payload.delivery.geometry) {
     var dc = payload.delivery.geometry.coordinates;
     L.marker([dc[1], dc[0]], { icon: houseIcon(isDark ? '#f59e0b' : '#d97706'), zIndexOffset: 1000 })
-      .bindPopup('<strong>Delivery address</strong><br>' + payload.delivery.label)
+      .bindPopup('<strong>{% trans "Delivery address" %}</strong><br>' + payload.delivery.label)
       .addTo(map);
     allPoints.push([dc[1], dc[0]]);
   }
@@ -234,21 +234,21 @@ document.addEventListener('DOMContentLoaded', function () {
     if (s.origin && s.origin.geometry) {
       var coords = s.origin.geometry.coordinates;
       L.marker([coords[1], coords[0]], { icon: dot('#60a5fa', 13) })
-        .bindPopup('<strong>Origin #' + num + '</strong><br>' + s.origin.label)
+        .bindPopup('<strong>{% trans "Origin #' + num + '" %}</strong><br>' + s.origin.label)
         .addTo(map);
       allPoints.push([coords[1], coords[0]]);
     }
     if (s.destination && s.destination.geometry) {
       var coords = s.destination.geometry.coordinates;
       L.marker([coords[1], coords[0]], { icon: dot('#4ade80', 13) })
-        .bindPopup('<strong>Destination #' + num + '</strong><br>' + s.destination.label)
+        .bindPopup('<strong>{% trans "Destination #' + num + '" %}</strong><br>' + s.destination.label)
         .addTo(map);
       allPoints.push([coords[1], coords[0]]);
     }
     if (s.current_location && s.current_location.geometry) {
       var coords = s.current_location.geometry.coordinates;
       L.marker([coords[1], coords[0]], { icon: truckIcon(isDark ? '#818cf8' : '#4f46e5'), zIndexOffset: 900 })
-        .bindPopup('<strong>Package location</strong><br>' + s.current_location.label)
+        .bindPopup('<strong>{% trans "Package location" %}</strong><br>' + s.current_location.label)
         .addTo(map);
       allPoints.push([coords[1], coords[0]]);
     }

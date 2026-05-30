@@ -1,4 +1,5 @@
 {% extends "academy/base.html" %}
+{% load i18n %}
 
 {% block academy_title %}Courses{% endblock %}
 {% block tab_courses %}border-b-2 border-current -mb-px{% endblock %}
@@ -8,15 +9,13 @@
   <a href="{% url 'academy:student-progress' %}"
      :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
      class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90 self-start md:self-end">
-    <i class="fa-solid fa-chart-line"></i>
-    My Progress
-  </a>
+    <i class="fa-solid fa-chart-line"></i>{% trans "My Progress" %}</a>
 {% endif %}
 {% endblock %}
 
 {% block academy_content %}
 <div class="space-y-6">
-  <p class="opacity-75">Explore available learning tracks and unlock skill badges.</p>
+  <p class="opacity-75">{% trans "Explore available learning tracks and unlock skill badges." %}</p>
 
   {% if courses %}
     <div class="grid gap-6 md:grid-cols-2">
@@ -45,14 +44,12 @@
 
           <a href="{% url 'academy:course-detail' slug=course.slug %}"
              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-             class="inline-block px-4 py-2 rounded font-semibold hover:opacity-90 transition">
-            Open Course
-          </a>
+             class="inline-block px-4 py-2 rounded font-semibold hover:opacity-90 transition">{% trans "Open Course" %}</a>
         </article>
       {% endfor %}
     </div>
   {% else %}
-    <p class="opacity-60">No courses available yet.</p>
+    <p class="opacity-60">{% trans "No courses available yet." %}</p>
   {% endif %}
 </div>
 {% endblock %}

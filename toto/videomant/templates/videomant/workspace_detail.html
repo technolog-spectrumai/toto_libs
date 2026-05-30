@@ -1,5 +1,6 @@
 {% extends "oya/base.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block title %}{{ ws.name }} — VideoMant Workspace{% endblock %}
 
@@ -15,13 +16,11 @@
     <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div>
         <a href="{% url 'videomant:workspace_list' %}" class="text-sm opacity-50 hover:opacity-100">
-          <i class="fa-solid fa-arrow-left mr-1"></i>Workspaces
-        </a>
+          <i class="fa-solid fa-arrow-left mr-1"></i>{% trans "Workspaces" %}</a>
         <h1 class="mt-2 text-2xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
           <i class="fa-solid fa-clapperboard mr-2"></i>{{ ws.name }}
         </h1>
-        <p class="text-sm opacity-50 mt-0.5">
-          Bucket: <strong>{{ ws.bucket.name }}</strong> &middot; Owner: {{ ws.owner.username }}
+        <p class="text-sm opacity-50 mt-0.5">{% trans "Bucket:" %}<strong>{{ ws.bucket.name }}</strong> &middot; Owner: {{ ws.owner.username }}
         </p>
         {% if ws.description %}
         <p class="mt-1 text-sm opacity-70">{{ ws.description }}</p>
@@ -33,7 +32,7 @@
         {% csrf_token %}
         <button type="submit"
           class="inline-flex items-center gap-2 rounded-lg border border-warn-light/40 px-3 py-2 text-sm font-semibold text-warn-light transition hover:bg-warn-light/10"
-        ><i class="fa-solid fa-trash"></i> Delete</button>
+        ><i class="fa-solid fa-trash"></i>{% trans "Delete" %}</button>
       </form>
       {% endif %}
     </div>
@@ -43,12 +42,12 @@
       <button @click="tab='files'"
         :class="tab==='files' ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-white') : 'opacity-50 hover:opacity-80'"
         class="rounded-lg px-4 py-1.5 transition">
-        <i class="fa-solid fa-film mr-1"></i>Files <span class="opacity-60">({{ file_rows|length }})</span>
+        <i class="fa-solid fa-film mr-1"></i>{% trans "Files" %}<span class="opacity-60">({{ file_rows|length }})</span>
       </button>
       <button @click="tab='jobs'"
         :class="tab==='jobs' ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-white') : 'opacity-50 hover:opacity-80'"
         class="rounded-lg px-4 py-1.5 transition">
-        <i class="fa-solid fa-list mr-1"></i>Jobs <span class="opacity-60">({{ jobs|length }})</span>
+        <i class="fa-solid fa-list mr-1"></i>{% trans "Jobs" %}<span class="opacity-60">({{ jobs|length }})</span>
       </button>
     </div>
 
@@ -77,7 +76,7 @@
 
           {% if rj %}
           <div class="flex items-center gap-2 text-xs">
-            <span class="opacity-50">Last:</span>
+            <span class="opacity-50">{% trans "Last:" %}</span>
             {% if rj.status == 'succeeded' %}
             <span class="rounded-full bg-success-light/20 px-2 py-0.5 text-success-light font-semibold">{{ rj.task_name }}</span>
             {% elif rj.status == 'failed' %}
@@ -94,8 +93,7 @@
             :class="darkMode ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90' : 'bg-accent-light text-white hover:opacity-90'"
             class="flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition"
           >
-            <i class="fa-solid fa-wand-magic-sparkles"></i> Process
-          </a>
+            <i class="fa-solid fa-wand-magic-sparkles"></i>{% trans "Process" %}</a>
         </div>
         {% endfor %}
       </div>
@@ -105,7 +103,7 @@
         class="rounded-xl border border-dashed p-12 text-center"
       >
         <i class="fa-solid fa-film text-4xl opacity-30"></i>
-        <p class="mt-3 text-sm opacity-50">No video or audio files in bucket <strong>{{ ws.bucket.name }}</strong>.</p>
+        <p class="mt-3 text-sm opacity-50">{% trans "No video or audio files in bucket" %}<strong>{{ ws.bucket.name }}</strong>.</p>
       </div>
       {% endif %}
     </div>
@@ -120,11 +118,11 @@
           <thead>
             <tr class="border-b text-xs" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
               <th class="px-4 py-2 text-left opacity-50">#</th>
-              <th class="px-4 py-2 text-left opacity-50">Task</th>
-              <th class="px-4 py-2 text-left opacity-50">Input</th>
-              <th class="px-4 py-2 text-left opacity-50">Status</th>
-              <th class="px-4 py-2 text-left opacity-50">Output</th>
-              <th class="px-4 py-2 text-left opacity-50">Created</th>
+              <th class="px-4 py-2 text-left opacity-50">{% trans "Task" %}</th>
+              <th class="px-4 py-2 text-left opacity-50">{% trans "Input" %}</th>
+              <th class="px-4 py-2 text-left opacity-50">{% trans "Status" %}</th>
+              <th class="px-4 py-2 text-left opacity-50">{% trans "Output" %}</th>
+              <th class="px-4 py-2 text-left opacity-50">{% trans "Created" %}</th>
             </tr>
           </thead>
           <tbody>
@@ -151,7 +149,7 @@
               <td class="px-4 py-2 text-xs opacity-50">{{ job.created_at|date:"m-d H:i" }}</td>
             </tr>
             {% empty %}
-            <tr><td colspan="6" class="px-4 py-8 text-center opacity-40">No jobs yet — process a file from the Files tab.</td></tr>
+            <tr><td colspan="6" class="px-4 py-8 text-center opacity-40">{% trans "No jobs yet — process a file from the Files tab." %}</td></tr>
             {% endfor %}
           </tbody>
         </table>

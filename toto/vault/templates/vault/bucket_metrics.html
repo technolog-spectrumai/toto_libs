@@ -571,7 +571,7 @@
               <i class="fa-solid fa-folder text-xs"></i>{{ file.directory.name }}
             </span>
           {% else %}
-            <span class="hidden sm:block text-xs opacity-30 shrink-0">Root</span>
+            <span class="hidden sm:block text-xs opacity-30 shrink-0">{% trans "Root" %}</span>
           {% endif %}
 
           <span class="text-xs opacity-50 shrink-0">{{ file.uploaded_at|date:"Y-m-d" }}</span>

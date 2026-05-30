@@ -1,5 +1,6 @@
 {% extends "oya/base.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block title %}{{ profile.display_name }}{% endblock %}
 
@@ -26,25 +27,19 @@
         <a
           href="{% url 'socialhub:profile_list' %}"
           class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
-          <i class="fa-solid fa-arrow-left"></i>
-          Profiles
-        </a>
+          <i class="fa-solid fa-arrow-left"></i>{% trans "Profiles" %}</a>
 
         <div>
           <p
             :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-            class="text-xs font-semibold uppercase tracking-wide">
-            Social Hub
-          </p>
+            class="text-xs font-semibold uppercase tracking-wide">{% trans "Social Hub" %}</p>
 
           <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
             <i class="fa-solid fa-user-astronaut"></i>
             {{ profile.display_name }}
           </h1>
 
-          <p class="mt-1 text-sm opacity-70">
-            Member profile, communities, experiences, and reference activity.
-          </p>
+          <p class="mt-1 text-sm opacity-70">{% trans "Member profile, communities, experiences, and reference activity." %}</p>
         </div>
       </div>
 
@@ -55,9 +50,7 @@
             ? 'bg-accent-dark text-primary-bg-dark'
             : 'bg-accent-light text-primary-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-          <i class="fa-solid fa-users"></i>
-          All profiles
-        </a>
+          <i class="fa-solid fa-users"></i>{% trans "All profiles" %}</a>
         {% if is_own_profile %}
         <a
           href="{% url 'gervazy:my_keys' %}"
@@ -65,9 +58,7 @@
             ? 'border-accent-1 bg-sunken-dark text-text-main-dark'
             : 'border-accent-2 bg-sunken-light text-text-main-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-          <i class="fa-solid fa-key"></i>
-          My Keys
-        </a>
+          <i class="fa-solid fa-key"></i>{% trans "My Keys" %}</a>
         {% endif %}
       </nav>
     </header>
@@ -107,9 +98,7 @@
           <div class="min-w-0 flex-1">
             <p
               :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-              class="text-xs font-semibold uppercase tracking-wide">
-              Profile
-            </p>
+              class="text-xs font-semibold uppercase tracking-wide">{% trans "Profile" %}</p>
 
             <h2 class="mt-1 break-words text-2xl font-bold">
               {{ profile.display_name }}
@@ -120,9 +109,7 @@
                 {{ profile.bio }}
               </p>
             {% else %}
-              <p class="mt-2 text-sm italic opacity-60">
-                No bio provided.
-              </p>
+              <p class="mt-2 text-sm italic opacity-60">{% trans "No bio provided." %}</p>
             {% endif %}
           </div>
         </div>
@@ -136,9 +123,7 @@
             : 'border-accent-2 bg-sunken-light'"
           class="rounded-xl border p-4">
           <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
-            <i class="fa-solid fa-envelope"></i>
-            Email
-          </p>
+            <i class="fa-solid fa-envelope"></i>{% trans "Email" %}</p>
           <p class="mt-2 break-words text-sm font-semibold">
             {{ profile.email|default:"—" }}
           </p>
@@ -150,9 +135,7 @@
             : 'border-accent-2 bg-sunken-light'"
           class="rounded-xl border p-4">
           <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
-            <i class="fa-solid fa-phone"></i>
-            Phone
-          </p>
+            <i class="fa-solid fa-phone"></i>{% trans "Phone" %}</p>
           <p class="mt-2 break-words text-sm font-semibold">
             {{ profile.phone|default:"—" }}
           </p>
@@ -164,9 +147,7 @@
             : 'border-accent-2 bg-sunken-light'"
           class="rounded-xl border p-4">
           <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
-            <i class="fa-solid fa-location-dot"></i>
-            Address
-          </p>
+            <i class="fa-solid fa-location-dot"></i>{% trans "Address" %}</p>
           <p class="mt-2 break-words text-sm font-semibold">
             {{ profile.address|default:"—" }}
           </p>
@@ -178,9 +159,7 @@
             : 'border-accent-2 bg-sunken-light'"
           class="rounded-xl border p-4">
           <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
-            <i class="fa-solid fa-calendar-days"></i>
-            Member since
-          </p>
+            <i class="fa-solid fa-calendar-days"></i>{% trans "Member since" %}</p>
           <p class="mt-2 text-sm font-semibold">
             {{ profile.joined_date|date:"F j, Y" }}
           </p>
@@ -198,13 +177,9 @@
       <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 class="flex items-center gap-2 text-lg font-bold">
-            <i class="fa-solid fa-people-group"></i>
-            Communities
-          </h2>
+            <i class="fa-solid fa-people-group"></i>{% trans "Communities" %}</h2>
 
-          <p class="mt-1 text-sm opacity-70">
-            Communities connected to this profile.
-          </p>
+          <p class="mt-1 text-sm opacity-70">{% trans "Communities connected to this profile." %}</p>
         </div>
 
         <div
@@ -242,9 +217,7 @@
                   : 'bg-accent-light text-primary-bg-light'"
                 class="shrink-0 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold hover:opacity-90"
                 title="Sign the {{ community.name }} constitution">
-                <i class="fa-solid fa-pen-nib"></i>
-                Sign constitution
-              </a>
+                <i class="fa-solid fa-pen-nib"></i>{% trans "Sign constitution" %}</a>
             {% endif %}
           </div>
         {% empty %}
@@ -252,9 +225,7 @@
             :class="darkMode
               ? 'border-accent-1 bg-sunken-dark'
               : 'border-accent-2 bg-sunken-light'"
-            class="rounded-xl border border-dashed p-6 text-center text-sm italic opacity-70 sm:col-span-2">
-            No communities assigned.
-          </div>
+            class="rounded-xl border border-dashed p-6 text-center text-sm italic opacity-70 sm:col-span-2">{% trans "No communities assigned." %}</div>
         {% endfor %}
       </div>
     </section>
@@ -275,13 +246,9 @@
         <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 class="flex items-center gap-2 text-lg font-bold">
-              <i class="fa-solid fa-file-signature"></i>
-              My Reference Requests
-            </h2>
+              <i class="fa-solid fa-file-signature"></i>{% trans "My Reference Requests" %}</h2>
 
-            <p class="mt-1 text-sm opacity-70">
-              Review and respond to pending reference requests.
-            </p>
+            <p class="mt-1 text-sm opacity-70">{% trans "Review and respond to pending reference requests." %}</p>
           </div>
 
           <div
@@ -341,9 +308,7 @@
                           ? 'bg-success-dark text-primary-bg-dark'
                           : 'bg-success-light text-primary-bg-light'"
                         class="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold shadow-sm transition hover:opacity-90">
-                        <i class="fa-solid fa-check"></i>
-                        Accept
-                      </button>
+                        <i class="fa-solid fa-check"></i>{% trans "Accept" %}</button>
                     </form>
 
                     <form method="post" action="{% url 'socialhub:reference_reject' ref.id %}">
@@ -354,9 +319,7 @@
                           ? 'bg-warn-dark text-primary-bg-dark'
                           : 'bg-warn-light text-primary-bg-light'"
                         class="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold shadow-sm transition hover:opacity-90">
-                        <i class="fa-solid fa-xmark"></i>
-                        Reject
-                      </button>
+                        <i class="fa-solid fa-xmark"></i>{% trans "Reject" %}</button>
                     </form>
                   </div>
                 {% endif %}
@@ -367,9 +330,7 @@
               :class="darkMode
                 ? 'border-accent-1 bg-sunken-dark'
                 : 'border-accent-2 bg-sunken-light'"
-              class="rounded-xl border border-dashed p-6 text-center text-sm italic opacity-70">
-              You haven't submitted any references yet.
-            </div>
+              class="rounded-xl border border-dashed p-6 text-center text-sm italic opacity-70">{% trans "You haven't submitted any references yet." %}</div>
           {% endfor %}
         </div>
       </section>

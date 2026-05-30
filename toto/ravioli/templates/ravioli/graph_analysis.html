@@ -1,5 +1,6 @@
 {% extends "oya/base.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block title %}Graph Analysis{% endblock %}
 
@@ -25,17 +26,15 @@
     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <h1 class="text-3xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
-          <i class="fa-solid fa-chart-network mr-2 text-2xl"></i>Graph Analysis
-        </h1>
-        <p class="mt-1 text-sm opacity-60">Run a Cypher query through a workflow and export results to Vault.</p>
+          <i class="fa-solid fa-chart-network mr-2 text-2xl"></i>{% trans "Graph Analysis" %}</h1>
+        <p class="mt-1 text-sm opacity-60">{% trans "Run a Cypher query through a workflow and export results to Vault." %}</p>
       </div>
       <a
         href="{% url 'ravioli:query_unified' %}"
         :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2 text-text-main-light'"
         class="inline-flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80"
       >
-        <i class="fa-solid fa-database"></i> Queries
-      </a>
+        <i class="fa-solid fa-database"></i>{% trans "Queries" %}</a>
     </div>
 
     <!-- Two-column layout -->
@@ -49,14 +48,11 @@
           class="rounded-lg border p-4 shadow-sm space-y-4"
         >
           <h3 class="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide opacity-60">
-            <i class="fa-solid fa-sliders"></i> Configure run
-          </h3>
+            <i class="fa-solid fa-sliders"></i>{% trans "Configure run" %}</h3>
 
           <!-- Query -->
           <div>
-            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">
-              Cypher Query
-            </label>
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Cypher Query" %}</label>
             <select
               x-model="form.query_id"
               :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
@@ -71,9 +67,7 @@
 
           <!-- Workflow -->
           <div>
-            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">
-              Workflow
-            </label>
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Workflow" %}</label>
             <select
               x-model="form.workflow_slug"
               :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
@@ -85,17 +79,14 @@
               {% endfor %}
             </select>
             {% if not workflows %}
-            <p class="mt-1 text-xs opacity-50 italic">
-              No matching workflows. Run <code>ingress_ravioli</code> to seed defaults.
+            <p class="mt-1 text-xs opacity-50 italic">{% trans "No matching workflows. Run" %}<code>ingress_ravioli</code> to seed defaults.
             </p>
             {% endif %}
           </div>
 
           <!-- Bucket -->
           <div>
-            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">
-              Output Bucket
-            </label>
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Output Bucket" %}</label>
             <select
               x-model="form.bucket_id"
               @change="form.directory_id = ''"
@@ -111,8 +102,7 @@
 
           <!-- Directory (optional, filtered by bucket) -->
           <div x-show="form.bucket_id">
-            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">
-              Directory <span class="font-normal opacity-50">(optional)</span>
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Directory" %}<span class="font-normal opacity-50">(optional)</span>
             </label>
             <select
               x-model="form.directory_id"
@@ -128,9 +118,7 @@
 
           <!-- Format -->
           <div>
-            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">
-              Output Format
-            </label>
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Output Format" %}</label>
             <div class="flex gap-2">
               {% for fmt in formats %}
               <label
@@ -148,13 +136,12 @@
 
           <!-- Title -->
           <div>
-            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">
-              File Title <span class="font-normal opacity-50">(optional)</span>
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "File Title" %}<span class="font-normal opacity-50">(optional)</span>
             </label>
             <input
               type="text"
               x-model="form.title"
-              placeholder="Graph Analysis"
+              placeholder="{% trans 'Graph Analysis' %}"
               :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
               class="w-full rounded-lg border px-3 py-2 text-sm"
             >
@@ -182,8 +169,7 @@
             :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
             class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80"
           >
-            <i class="fa-solid fa-arrow-left"></i> Dashboard
-          </a>
+            <i class="fa-solid fa-arrow-left"></i>{% trans "Dashboard" %}</a>
         </div>
 
       </aside>
@@ -199,7 +185,7 @@
           class="flex items-start gap-3 rounded-lg border p-4 text-sm"
         >
           <i class="fa-solid fa-triangle-exclamation mt-0.5 shrink-0"></i>
-          <div><span class="font-semibold">Error — </span><span x-text="error"></span></div>
+          <div><span class="font-semibold">{% trans "Error —" %}</span><span x-text="error"></span></div>
           <button @click="error = null" class="ml-auto shrink-0 text-lg leading-none opacity-60 hover:opacity-100">&times;</button>
         </div>
 
@@ -212,8 +198,7 @@
         >
           <div class="flex items-center justify-between">
             <h2 class="text-lg font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
-              <i class="fa-solid fa-loader mr-1"></i> Run
-              <a
+              <i class="fa-solid fa-loader mr-1"></i>{% trans "Run" %}<a
                 :href="WF_DETAIL_URL.replace('{id}', runId)"
                 class="underline opacity-70 hover:opacity-100 text-base"
                 x-text="'#' + runId"
@@ -255,8 +240,7 @@
               :class="darkMode ? 'bg-success-dark/20 text-success-dark border-success-dark/40' : 'bg-success-light/20 text-success-light border-success-light/40'"
               class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80"
             >
-              <i class="fa-solid fa-download"></i> Download result
-            </a>
+              <i class="fa-solid fa-download"></i>{% trans "Download result" %}</a>
           </div>
         </div>
 
@@ -267,10 +251,8 @@
           class="rounded-lg border border-dashed p-12 text-center shadow-sm"
         >
           <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="fa-solid fa-chart-network text-4xl opacity-30"></i>
-          <h2 class="mt-4 text-xl font-bold">Configure and run</h2>
-          <p class="mt-1 text-sm opacity-60">
-            Choose a query, workflow, output bucket, and format in the sidebar — then click Run Analysis.
-          </p>
+          <h2 class="mt-4 text-xl font-bold">{% trans "Configure and run" %}</h2>
+          <p class="mt-1 text-sm opacity-60">{% trans "Choose a query, workflow, output bucket, and format in the sidebar — then click Run Analysis." %}</p>
         </div>
 
         <!-- Recent runs -->
@@ -280,18 +262,17 @@
           class="rounded-lg border p-4 shadow-sm"
         >
           <h3 class="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide opacity-60">
-            <i class="fa-solid fa-clock-rotate-left"></i> Recent runs
-          </h3>
+            <i class="fa-solid fa-clock-rotate-left"></i>{% trans "Recent runs" %}</h3>
 
           <div class="overflow-x-auto">
             <table class="w-full text-sm">
               <thead>
                 <tr class="border-b border-current/10 text-left text-xs uppercase tracking-wide opacity-50">
-                  <th class="pb-2 pr-4">Run</th>
-                  <th class="pb-2 pr-4">Workflow</th>
-                  <th class="pb-2 pr-4">Status</th>
-                  <th class="pb-2 pr-4">Started</th>
-                  <th class="pb-2">File</th>
+                  <th class="pb-2 pr-4">{% trans "Run" %}</th>
+                  <th class="pb-2 pr-4">{% trans "Workflow" %}</th>
+                  <th class="pb-2 pr-4">{% trans "Status" %}</th>
+                  <th class="pb-2 pr-4">{% trans "Started" %}</th>
+                  <th class="pb-2">{% trans "File" %}</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-current/10">
@@ -322,8 +303,7 @@
                       href="{{ file_data.download_url }}"
                       class="inline-flex items-center gap-1 text-xs underline opacity-70 hover:opacity-100"
                     >
-                      <i class="fa-solid fa-download text-xs"></i> Download
-                    </a>
+                      <i class="fa-solid fa-download text-xs"></i>{% trans "Download" %}</a>
                     {% else %}
                     <span class="text-xs opacity-30">—</span>
                     {% endif %}

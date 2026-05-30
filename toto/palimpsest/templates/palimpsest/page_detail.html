@@ -1,5 +1,6 @@
 {% extends "palimpsest/base.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block palimpsest_title %}{{ page.title }} | Blog | {{ platform.site_name }}{% endblock %}
 
@@ -88,15 +89,11 @@
           <a href="{% url 'palimpsest:section_create' page.slug %}"
              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
              class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-            <i class="fa-solid fa-plus"></i>
-            Section
-          </a>
+            <i class="fa-solid fa-plus"></i>{% trans "Section" %}</a>
           <a href="{% url 'palimpsest:page_update' page.slug %}"
              :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
              class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-            <i class="fa-solid fa-pen-to-square"></i>
-            Edit
-          </a>
+            <i class="fa-solid fa-pen-to-square"></i>{% trans "Edit" %}</a>
         </nav>
       {% endif %}
     </header>
@@ -141,12 +138,12 @@
               <div class="flex shrink-0 gap-2">
                 <a href="{% url 'palimpsest:section_update' page.slug section.pk %}"
                    class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-current/15 transition hover:opacity-80"
-                   title="Edit section">
+                   title="{% trans 'Edit section' %}">
                   <i class="fa-solid fa-pen text-xs"></i>
                 </a>
                 <a href="{% url 'palimpsest:section_delete' page.slug section.pk %}"
                    class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-current/15 transition hover:opacity-80"
-                   title="Delete section">
+                   title="{% trans 'Delete section' %}">
                   <i class="fa-solid fa-trash text-xs"></i>
                 </a>
               </div>
@@ -163,13 +160,11 @@
         <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
              class="rounded-2xl border border-dashed p-10 text-center shadow-sm">
           <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="fa-solid fa-feather-pointed text-3xl"></i>
-          <p class="mt-3 text-sm italic opacity-70">No sections yet.</p>
+          <p class="mt-3 text-sm italic opacity-70">{% trans "No sections yet." %}</p>
           {% if user.is_authenticated %}
             <a href="{% url 'palimpsest:section_create' page.slug %}"
                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-               class="mt-4 inline-flex items-center gap-2 text-sm font-semibold">
-              Add the first section
-              <i class="fa-solid fa-arrow-right text-[10px]"></i>
+               class="mt-4 inline-flex items-center gap-2 text-sm font-semibold">{% trans "Add the first section" %}<i class="fa-solid fa-arrow-right text-[10px]"></i>
             </a>
           {% endif %}
         </div>
@@ -180,15 +175,11 @@
       <a href="{% url 'palimpsest:page_list' %}"
          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-        <i class="fa-solid fa-arrow-left"></i>
-        Blog
-      </a>
+        <i class="fa-solid fa-arrow-left"></i>{% trans "Blog" %}</a>
       {% if user.is_authenticated %}
         <a href="{% url 'palimpsest:page_delete' page.slug %}"
            class="inline-flex items-center justify-center gap-2 rounded-lg border border-current/20 px-4 py-2 text-sm font-semibold opacity-70 transition hover:opacity-100">
-          <i class="fa-solid fa-trash"></i>
-          Delete piece
-        </a>
+          <i class="fa-solid fa-trash"></i>{% trans "Delete piece" %}</a>
       {% endif %}
     </footer>
   </div>

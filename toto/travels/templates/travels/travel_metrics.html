@@ -1,5 +1,6 @@
 {% extends "travels/base.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block travels_title %}Travel Metrics{% endblock %}
 
@@ -24,25 +25,17 @@
         <a
           href="{% url 'travels:my_travels' %}"
           class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
-          <i class="fa-solid fa-arrow-left"></i>
-          Travels
-        </a>
+          <i class="fa-solid fa-arrow-left"></i>{% trans "Travels" %}</a>
 
         <div>
           <p
             :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-            class="text-xs font-semibold uppercase tracking-wide">
-            Travel analytics
-          </p>
+            class="text-xs font-semibold uppercase tracking-wide">{% trans "Travel analytics" %}</p>
 
           <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
-            <i class="fa-solid fa-chart-line"></i>
-            Travel Metrics
-          </h1>
+            <i class="fa-solid fa-chart-line"></i>{% trans "Travel Metrics" %}</h1>
 
-          <p class="mt-1 text-sm opacity-70">
-            Statistics for all recorded travels and location visits.
-          </p>
+          <p class="mt-1 text-sm opacity-70">{% trans "Statistics for all recorded travels and location visits." %}</p>
         </div>
       </div>
 
@@ -53,9 +46,7 @@
             ? 'border-accent-1 bg-bubble-bg-dark'
             : 'border-accent-2 bg-bubble-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-          <i class="fa-solid fa-route"></i>
-          Add travel
-        </a>
+          <i class="fa-solid fa-route"></i>{% trans "Add travel" %}</a>
 
         <a
           href="{% url 'travels:visit_create' %}"
@@ -63,9 +54,7 @@
             ? 'border-accent-1 bg-bubble-bg-dark'
             : 'border-accent-2 bg-bubble-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-          <i class="fa-solid fa-location-dot"></i>
-          Add visit
-        </a>
+          <i class="fa-solid fa-location-dot"></i>{% trans "Add visit" %}</a>
       </nav>
     </header>
 
@@ -75,9 +64,7 @@
         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
         class="rounded-2xl border p-5 shadow-sm">
         <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
-          <i class="fa-solid fa-route"></i>
-          Total travels
-        </p>
+          <i class="fa-solid fa-route"></i>{% trans "Total travels" %}</p>
         <p class="mt-2 text-3xl font-bold">{{ total_travels }}</p>
         <p class="mt-1 text-xs opacity-60">{{ reviewed_travels }} reviewed · {{ travel_review_rate }}%</p>
       </article>
@@ -86,9 +73,7 @@
         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
         class="rounded-2xl border p-5 shadow-sm">
         <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
-          <i class="fa-solid fa-location-dot"></i>
-          Total visits
-        </p>
+          <i class="fa-solid fa-location-dot"></i>{% trans "Total visits" %}</p>
         <p class="mt-2 text-3xl font-bold">{{ total_visits }}</p>
         <p class="mt-1 text-xs opacity-60">{{ reviewed_visits }} reviewed · {{ visit_review_rate }}%</p>
       </article>
@@ -97,39 +82,33 @@
         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
         class="rounded-2xl border p-5 shadow-sm">
         <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
-          <i class="fa-solid fa-star"></i>
-          Avg travel score
-        </p>
+          <i class="fa-solid fa-star"></i>{% trans "Avg travel score" %}</p>
         <p class="mt-2 text-3xl font-bold">
           {% if avg_travel_score %}{{ avg_travel_score }}/5{% else %}—{% endif %}
         </p>
-        <p class="mt-1 text-xs opacity-60">Across scored travels</p>
+        <p class="mt-1 text-xs opacity-60">{% trans "Across scored travels" %}</p>
       </article>
 
       <article
         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
         class="rounded-2xl border p-5 shadow-sm">
         <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
-          <i class="fa-regular fa-star"></i>
-          Avg visit score
-        </p>
+          <i class="fa-regular fa-star"></i>{% trans "Avg visit score" %}</p>
         <p class="mt-2 text-3xl font-bold">
           {% if avg_visit_score %}{{ avg_visit_score }}/5{% else %}—{% endif %}
         </p>
-        <p class="mt-1 text-xs opacity-60">Across scored visits</p>
+        <p class="mt-1 text-xs opacity-60">{% trans "Across scored visits" %}</p>
       </article>
 
       <article
         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
         class="rounded-2xl border p-5 shadow-sm">
         <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
-          <i class="fa-solid fa-clock"></i>
-          Avg stay
-        </p>
+          <i class="fa-solid fa-clock"></i>{% trans "Avg stay" %}</p>
         <p class="mt-2 text-3xl font-bold">
           {% if avg_length_of_stay_display %}{{ avg_length_of_stay_display }}{% else %}—{% endif %}
         </p>
-        <p class="mt-1 text-xs opacity-60">Average length of visit</p>
+        <p class="mt-1 text-xs opacity-60">{% trans "Average length of visit" %}</p>
       </article>
     </section>
 
@@ -139,9 +118,7 @@
         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
         class="rounded-2xl border p-5 shadow-sm">
         <h2 class="mb-4 flex items-center gap-2 text-lg font-bold">
-          <i class="fa-solid fa-chart-simple"></i>
-          Travels by route
-        </h2>
+          <i class="fa-solid fa-chart-simple"></i>{% trans "Travels by route" %}</h2>
 
         {% include "oya/partials/chart.html" with chart_id="travelsByRouteChart" data=travels_by_route_chart_json %}
       </article>
@@ -150,9 +127,7 @@
         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
         class="rounded-2xl border p-5 shadow-sm">
         <h2 class="mb-4 flex items-center gap-2 text-lg font-bold">
-          <i class="fa-solid fa-map-location-dot"></i>
-          Top destinations
-        </h2>
+          <i class="fa-solid fa-map-location-dot"></i>{% trans "Top destinations" %}</h2>
 
         {% include "oya/partials/chart.html" with chart_id="visitsByDestinationChart" data=visits_by_destination_chart_json %}
       </article>
@@ -164,10 +139,8 @@
         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
         class="rounded-2xl border p-5 shadow-sm">
         <h2 class="mb-1 flex items-center gap-2 text-lg font-bold">
-          <i class="fa-solid fa-route"></i>
-          Travel score distribution
-        </h2>
-        <p class="mb-4 text-sm opacity-70">How travels were rated from 1 to 5.</p>
+          <i class="fa-solid fa-route"></i>{% trans "Travel score distribution" %}</h2>
+        <p class="mb-4 text-sm opacity-70">{% trans "How travels were rated from 1 to 5." %}</p>
 
         {% include "oya/partials/chart.html" with chart_id="travelScoreChart" data=travel_score_chart_json %}
       </article>
@@ -176,10 +149,8 @@
         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
         class="rounded-2xl border p-5 shadow-sm">
         <h2 class="mb-1 flex items-center gap-2 text-lg font-bold">
-          <i class="fa-solid fa-location-dot"></i>
-          Visit score distribution
-        </h2>
-        <p class="mb-4 text-sm opacity-70">How visits were rated from 1 to 5.</p>
+          <i class="fa-solid fa-location-dot"></i>{% trans "Visit score distribution" %}</h2>
+        <p class="mb-4 text-sm opacity-70">{% trans "How visits were rated from 1 to 5." %}</p>
 
         {% include "oya/partials/chart.html" with chart_id="visitScoreChart" data=visit_score_chart_json %}
       </article>
@@ -200,12 +171,8 @@
 
         <div>
           <h2 class="flex items-center gap-2 text-lg font-bold">
-            <i class="fa-solid fa-users"></i>
-            Participant activity
-          </h2>
-          <p class="mt-1 text-sm opacity-70">
-            Travels and visits broken down by participant.
-          </p>
+            <i class="fa-solid fa-users"></i>{% trans "Participant activity" %}</h2>
+          <p class="mt-1 text-sm opacity-70">{% trans "Travels and visits broken down by participant." %}</p>
         </div>
 
         <i
@@ -224,9 +191,7 @@
           :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
           class="rounded-2xl border p-5 shadow-sm">
           <h3 class="mb-4 flex items-center gap-2 text-base font-bold">
-            <i class="fa-solid fa-chart-bar"></i>
-            Travels &amp; visits per person
-          </h3>
+            <i class="fa-solid fa-chart-bar"></i>{% trans "Travels &amp; visits per person" %}</h3>
           {% include "oya/partials/chart.html" with chart_id="personChart" data=person_chart_json %}
         </article>
 
@@ -235,9 +200,7 @@
           :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
           class="rounded-2xl border p-5 shadow-sm">
           <h3 class="mb-4 flex items-center gap-2 text-base font-bold">
-            <i class="fa-solid fa-table"></i>
-            Participant breakdown
-          </h3>
+            <i class="fa-solid fa-table"></i>{% trans "Participant breakdown" %}</h3>
 
           <div class="space-y-3">
             {% for person in person_items %}
@@ -245,24 +208,22 @@
                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
                 class="grid grid-cols-3 gap-3 rounded-xl border p-4 text-sm">
                 <div>
-                  <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Participant</p>
+                  <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Participant" %}</p>
                   <p class="mt-1 font-bold">{{ person.name }}</p>
                 </div>
                 <div>
-                  <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Travels</p>
+                  <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Travels" %}</p>
                   <p class="mt-1 font-bold">{{ person.travel_count }}</p>
                 </div>
                 <div>
-                  <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Visits</p>
+                  <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Visits" %}</p>
                   <p class="mt-1 font-bold">{{ person.visit_count }}</p>
                 </div>
               </div>
             {% empty %}
               <div
                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
-                class="rounded-xl border border-dashed p-6 text-center text-sm opacity-70">
-                No participant data available.
-              </div>
+                class="rounded-xl border border-dashed p-6 text-center text-sm opacity-70">{% trans "No participant data available." %}</div>
             {% endfor %}
           </div>
         </article>
@@ -276,9 +237,7 @@
       class="rounded-2xl border p-5 shadow-sm">
 
       <h2 class="mb-4 flex items-center gap-2 text-lg font-bold">
-        <i class="fa-solid fa-road"></i>
-        Route breakdown
-      </h2>
+        <i class="fa-solid fa-road"></i>{% trans "Route breakdown" %}</h2>
 
       <div class="space-y-3">
         {% for route in route_items %}
@@ -304,9 +263,7 @@
         {% empty %}
           <div
             :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
-            class="rounded-xl border border-dashed p-6 text-center text-sm opacity-70">
-            No route data available.
-          </div>
+            class="rounded-xl border border-dashed p-6 text-center text-sm opacity-70">{% trans "No route data available." %}</div>
         {% endfor %}
       </div>
     </section>
@@ -317,9 +274,7 @@
       class="rounded-2xl border p-5 shadow-sm">
 
       <h2 class="mb-4 flex items-center gap-2 text-lg font-bold">
-        <i class="fa-solid fa-map-pin"></i>
-        Top destinations
-      </h2>
+        <i class="fa-solid fa-map-pin"></i>{% trans "Top destinations" %}</h2>
 
       <div class="space-y-3">
         {% for dest in destination_items %}
@@ -353,9 +308,7 @@
         {% empty %}
           <div
             :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
-            class="rounded-xl border border-dashed p-6 text-center text-sm opacity-70">
-            No destination data available.
-          </div>
+            class="rounded-xl border border-dashed p-6 text-center text-sm opacity-70">{% trans "No destination data available." %}</div>
         {% endfor %}
       </div>
     </section>

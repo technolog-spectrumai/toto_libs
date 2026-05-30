@@ -1,4 +1,5 @@
 {% extends 'steven/base.html' %}
+{% load i18n %}
 {% block steven_title %}{{ agent.name }}{% endblock %}
 {% block steven_content %}
 <section
@@ -8,9 +9,7 @@
   class="rounded-lg border p-6 shadow-md">
   <div class="grid gap-6 lg:grid-cols-[1fr_1.15fr]">
     <div class="space-y-4">
-      <a href="{% url 'steven:agent_list' %}" class="text-sm underline hover:opacity-80">
-        All agents
-      </a>
+      <a href="{% url 'steven:agent_list' %}" class="text-sm underline hover:opacity-80">{% trans "All agents" %}</a>
 
       <div class="flex items-start gap-4">
         {% if agent.avatar %}
@@ -47,17 +46,13 @@
           <span
             :class="darkMode ? 'border-accent-1 text-accent-dark' : 'border-accent-2 text-accent-light'"
             class="inline-flex items-center gap-1 rounded border px-2 py-1 font-semibold">
-            <i class="fa-solid fa-circle-nodes"></i>
-            Graph RAG
-          </span>
+            <i class="fa-solid fa-circle-nodes"></i>{% trans "Graph RAG" %}</span>
           <span class="inline-flex items-center gap-1 rounded border border-current/15 px-2 py-1 opacity-75">
             {{ agent.graph_rag_max_nodes }} node limit · depth {{ agent.graph_rag_depth }}
           </span>
         {% else %}
           <span class="inline-flex items-center gap-1 rounded border border-current/15 px-2 py-1 opacity-60">
-            <i class="fa-solid fa-circle-nodes"></i>
-            Graph RAG off
-          </span>
+            <i class="fa-solid fa-circle-nodes"></i>{% trans "Graph RAG off" %}</span>
         {% endif %}
       </div>
 
@@ -73,7 +68,7 @@
             </span>
           {% endif %}
         {% empty %}
-          <span class="text-sm opacity-60">No tools enabled.</span>
+          <span class="text-sm opacity-60">{% trans "No tools enabled." %}</span>
         {% endfor %}
       </div>
     </div>
@@ -98,9 +93,7 @@
               ? 'bg-accent-dark text-primary-bg-dark'
               : 'bg-accent-light text-primary-bg-light'"
             class="inline-flex items-center justify-center gap-2 rounded px-4 py-2 text-sm font-semibold transition hover:opacity-90">
-            <i class="fa-solid fa-play"></i>
-            Run Agent
-          </button>
+            <i class="fa-solid fa-play"></i>{% trans "Run Agent" %}</button>
 
           <button
             type="submit"
@@ -109,9 +102,7 @@
               ? 'border-accent-1 text-text-main-dark'
               : 'border-accent-2 text-text-main-light'"
             class="inline-flex items-center justify-center gap-2 rounded border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
-            <i class="fa-solid fa-comments"></i>
-            Start Chat
-          </button>
+            <i class="fa-solid fa-comments"></i>{% trans "Start Chat" %}</button>
         </div>
       </form>
     </div>
@@ -123,18 +114,16 @@
     ? 'bg-bubble-bg-dark border-accent-1'
     : 'bg-bubble-bg-light border-accent-2'"
   class="rounded-lg border p-5 shadow-md">
-  <h3 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-2xl font-bold">
-    Run History
-  </h3>
+  <h3 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-2xl font-bold">{% trans "Run History" %}</h3>
 
   <div class="mt-4 overflow-x-auto">
     <table class="w-full min-w-[720px] border-collapse text-left text-sm">
       <thead class="opacity-70">
         <tr>
-          <th class="border-b border-current/15 py-3 pr-4 font-semibold">ID</th>
-          <th class="border-b border-current/15 py-3 pr-4 font-semibold">Status</th>
-          <th class="border-b border-current/15 py-3 pr-4 font-semibold">Prompt</th>
-          <th class="border-b border-current/15 py-3 pr-4 font-semibold">Created</th>
+          <th class="border-b border-current/15 py-3 pr-4 font-semibold">{% trans "ID" %}</th>
+          <th class="border-b border-current/15 py-3 pr-4 font-semibold">{% trans "Status" %}</th>
+          <th class="border-b border-current/15 py-3 pr-4 font-semibold">{% trans "Prompt" %}</th>
+          <th class="border-b border-current/15 py-3 pr-4 font-semibold">{% trans "Created" %}</th>
         </tr>
       </thead>
       <tbody>
@@ -149,7 +138,7 @@
       </tr>
     {% empty %}
       <tr>
-        <td colspan="4" class="py-4 text-sm opacity-60">No runs for this agent.</td>
+        <td colspan="4" class="py-4 text-sm opacity-60">{% trans "No runs for this agent." %}</td>
       </tr>
     {% endfor %}
       </tbody>

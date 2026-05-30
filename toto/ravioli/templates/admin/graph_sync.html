@@ -1,12 +1,13 @@
 {% extends "admin/change_list.html" %}
+{% load i18n %}
 
 {% block content %}
 <form method="post" action="run-sync/">
     {% csrf_token %}
-    <h3>Select models to sync</h3>
+    <h3>{% trans "Select models to sync" %}</h3>
 
-    <button type="button" class="button" id="select-all">Select All</button>
-    <button type="button" class="button" id="deselect-all">Deselect All</button>
+    <button type="button" class="button" id="select-all">{% trans "Select All" %}</button>
+    <button type="button" class="button" id="deselect-all">{% trans "Deselect All" %}</button>
 
     <br><br>
 
@@ -22,7 +23,7 @@
     {% endfor %}
 
     <br>
-    <button type="submit" class="button">Run Sync</button>
+    <button type="submit" class="button">{% trans "Run Sync" %}</button>
 </form>
 
 <script>

@@ -1,5 +1,6 @@
 {% extends "palimpsest/base.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block palimpsest_title %}{{ title }} | Blog | {{ platform.site_name }}{% endblock %}
 
@@ -11,21 +12,17 @@
   <div class="mx-auto max-w-4xl space-y-6">
     <a href="{% if page %}{{ page.get_absolute_url }}{% else %}{% url 'palimpsest:page_list' %}{% endif %}"
        class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
-      <i class="fa-solid fa-arrow-left"></i>
-      Blog
-    </a>
+      <i class="fa-solid fa-arrow-left"></i>{% trans "Blog" %}</a>
 
     <header :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
             class="rounded-2xl border p-5 shadow-sm">
       <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-         class="text-xs font-semibold uppercase tracking-wide">Writing desk</p>
+         class="text-xs font-semibold uppercase tracking-wide">{% trans "Writing desk" %}</p>
       <h1 class="mt-2 flex items-center gap-3 text-3xl font-bold">
         <i class="{{ icon|default:'fa-solid fa-feather-pointed' }}"></i>
         {{ title }}
       </h1>
-      <p class="mt-2 text-sm opacity-70">
-        Shape the piece metadata here. Add and arrange the actual writing as sections.
-      </p>
+      <p class="mt-2 text-sm opacity-70">{% trans "Shape the piece metadata here. Add and arrange the actual writing as sections." %}</p>
     </header>
 
     <form method="post"
@@ -57,9 +54,7 @@
       <div class="flex flex-wrap items-center justify-end gap-3 pt-2">
         <a href="{% if page %}{{ page.get_absolute_url }}{% else %}{% url 'palimpsest:page_list' %}{% endif %}"
            :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
-           class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-85">
-          Cancel
-        </a>
+           class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-85">{% trans "Cancel" %}</a>
         <button type="submit"
                 :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
                 class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">

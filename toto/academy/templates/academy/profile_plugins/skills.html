@@ -1,3 +1,4 @@
+{% load i18n %}
 <section
   :class="darkMode
     ? 'border-accent-1 bg-bubble-bg-dark'
@@ -13,7 +14,7 @@
 
   {% if student_badges %}
     <div class="mb-6">
-      <p class="mb-3 text-xs font-semibold uppercase tracking-wide opacity-60">Skill Badges</p>
+      <p class="mb-3 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Skill Badges" %}</p>
 
       <div class="flex flex-wrap gap-2">
         {% for badge in student_badges %}
@@ -32,7 +33,7 @@
 
   {% if certificates %}
     <div>
-      <p class="mb-3 text-xs font-semibold uppercase tracking-wide opacity-60">Certificates</p>
+      <p class="mb-3 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Certificates" %}</p>
 
       <div class="space-y-3">
         {% for cert in certificates %}

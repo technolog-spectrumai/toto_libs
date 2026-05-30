@@ -19,7 +19,7 @@
     <div class="mx-auto flex max-w-7xl items-center gap-4">
       <a href="{% url 'vod:home' %}" class="flex shrink-0 items-center gap-2 font-bold tracking-tight">
         <i class="fa-solid fa-video" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
-        <span>VOD</span>
+        <span>{% trans "VOD" %}</span>
       </a>
 
       <nav class="hidden gap-1 md:flex">

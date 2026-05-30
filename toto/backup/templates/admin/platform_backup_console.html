@@ -22,11 +22,11 @@
 
 <div class="console-box">
   <div class="console-box-body">
-    <p>Select apps and create a backup ZIP. You can download it now or store it for remote API pull.</p>
+    <p>{% trans "Select apps and create a backup ZIP. You can download it now or store it for remote API pull." %}</p>
     <form method="post">
       {% csrf_token %}
 
-      <p><strong>Apps:</strong></p>
+      <p><strong>{% trans "Apps:" %}</strong></p>
       {% if backup_form.apps.errors %}
         <p class="field-error">{{ backup_form.apps.errors.as_text }}</p>
       {% endif %}
@@ -38,16 +38,15 @@
         {% endfor %}
       </ul>
 
-      <p><strong>Options:</strong></p>
+      <p><strong>{% trans "Options:" %}</strong></p>
       <div class="option-row">
         <label>
-          <input type="checkbox" name="sign_backup" value="1" checked> Sign backup
-        </label>
+          <input type="checkbox" name="sign_backup" value="1" checked>{% trans "Sign backup" %}</label>
       </div>
 
       <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;">
-        <button type="submit" class="default">Create &amp; download backup</button>
-        <button type="submit" name="store_backup" value="1">Create stored backup</button>
+        <button type="submit" class="default">{% trans "Create &amp; download backup" %}</button>
+        <button type="submit" name="store_backup" value="1">{% trans "Create stored backup" %}</button>
       </div>
     </form>
   </div>

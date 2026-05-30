@@ -5,7 +5,7 @@
 {% block robots_content %}
 <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
   <form method="get" class="flex gap-2">
-    <input name="q" value="{{ query }}" placeholder="Search fleets..." :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border px-3 py-2 text-sm outline-none">
+    <input name="q" value="{{ query }}" placeholder="{% trans 'Search fleets...' %}" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border px-3 py-2 text-sm outline-none">
     <button class="rounded-lg border border-current/20 px-4 py-2 text-sm font-semibold">{% trans "Search" %}</button>
   </form>
   <a href="{% url 'robots:fleet_create' %}" :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'" class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm"><i class="fa-solid fa-plus"></i>{% trans "New fleet" %}</a>

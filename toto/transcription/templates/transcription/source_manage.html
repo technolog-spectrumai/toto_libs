@@ -22,7 +22,7 @@
         <div class="flex flex-wrap gap-2">
           <span :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="rounded-full border px-2.5 py-0.5 text-xs">{{ source.get_status_display }}</span>
           <span :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="rounded-full border px-2.5 py-0.5 text-xs">{{ source.effective_access_mode }}</span>
-          {% if source.has_transcript %}<span class="rounded-full border border-emerald-500 px-2.5 py-0.5 text-xs text-emerald-500">Transcript ✓</span>{% endif %}
+          {% if source.has_transcript %}<span class="rounded-full border border-emerald-500 px-2.5 py-0.5 text-xs text-emerald-500">{% trans "Transcript ✓" %}</span>{% endif %}
         </div>
         {% if source.description %}<p class="line-clamp-3 text-sm opacity-70">{{ source.description }}</p>{% endif %}
       </div>
@@ -34,10 +34,10 @@
         <a href="{% url 'transcription:source_edit' collection.slug source.slug %}" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition hover:opacity-80"><i class="fa-solid fa-pen-to-square"></i>{% trans "Edit metadata" %}</a>
         <a href="{{ source.get_absolute_url }}" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition hover:opacity-80"><i class="fa-solid fa-eye"></i>{% trans "View" %}</a>
         {% if source.has_transcript %}
-          <a href="{% url 'transcription:source_export' collection.slug source.slug 'txt' %}" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition hover:opacity-80"><i class="fa-solid fa-download"></i>TXT</a>
-          <a href="{% url 'transcription:source_export' collection.slug source.slug 'srt' %}" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition hover:opacity-80"><i class="fa-solid fa-download"></i>SRT</a>
-          <a href="{% url 'transcription:source_export' collection.slug source.slug 'vtt' %}" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition hover:opacity-80"><i class="fa-solid fa-download"></i>VTT</a>
-          <a href="{% url 'transcription:source_export' collection.slug source.slug 'json' %}" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition hover:opacity-80"><i class="fa-solid fa-download"></i>JSON</a>
+          <a href="{% url 'transcription:source_export' collection.slug source.slug 'txt' %}" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition hover:opacity-80"><i class="fa-solid fa-download"></i>{% trans "TXT" %}</a>
+          <a href="{% url 'transcription:source_export' collection.slug source.slug 'srt' %}" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition hover:opacity-80"><i class="fa-solid fa-download"></i>{% trans "SRT" %}</a>
+          <a href="{% url 'transcription:source_export' collection.slug source.slug 'vtt' %}" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition hover:opacity-80"><i class="fa-solid fa-download"></i>{% trans "VTT" %}</a>
+          <a href="{% url 'transcription:source_export' collection.slug source.slug 'json' %}" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition hover:opacity-80"><i class="fa-solid fa-download"></i>{% trans "JSON" %}</a>
         {% endif %}
       </div>
       <form method="post" action="{% url 'transcription:start_transcription' collection.slug source.slug %}"

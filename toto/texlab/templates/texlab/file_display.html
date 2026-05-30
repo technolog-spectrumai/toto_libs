@@ -26,7 +26,7 @@
 
     <!-- ── Breadcrumb ──────────────────────────────────────── -->
     <nav class="flex items-center gap-2 text-xs opacity-60 select-none">
-      <a href="{% url 'texlab:workspace_list' %}" class="hover:opacity-90 underline underline-offset-2">Workspaces</a>
+      <a href="{% url 'texlab:workspace_list' %}" class="hover:opacity-90 underline underline-offset-2">{% trans "Workspaces" %}</a>
       <i class="fa-solid fa-chevron-right text-[9px]"></i>
       <a href="{% url 'texlab:workspace_detail' workspace.slug %}" class="hover:opacity-90 underline underline-offset-2">{{ workspace.name }}</a>
       <i class="fa-solid fa-chevron-right text-[9px]"></i>
@@ -56,18 +56,18 @@
       <div class="flex items-center gap-1.5 flex-wrap">
 
         <!-- Read-only toggle -->
-        <button id="toggle-readonly" title="Toggle read-only" class="toolbar-btn border">
+        <button id="toggle-readonly" title="{% trans 'Toggle read-only' %}" class="toolbar-btn border">
           <i id="lock-icon" class="fa-solid fa-lock-open"></i>
         </button>
 
         <!-- Sync toggle -->
-        <button id="toggle-sync" title="Toggle live sync" class="toolbar-btn border">
+        <button id="toggle-sync" title="{% trans 'Toggle live sync' %}" class="toolbar-btn border">
           <i id="sync-icon" class="fa-solid fa-arrows-rotate"></i>
         </button>
 
         {% if can_compile %}
         <!-- Images picker -->
-        <button id="open-images-modal" title="Bucket images" class="toolbar-btn border">
+        <button id="open-images-modal" title="{% trans 'Bucket images' %}" class="toolbar-btn border">
           <i class="fa-solid fa-images"></i>
         </button>
         {% endif %}
@@ -75,25 +75,25 @@
         <div class="h-5 w-px opacity-20 bg-current"></div>
 
         <!-- Save -->
-        <button id="save-file" title="Save"
+        <button id="save-file" title="{% trans 'Save' %}"
           :class="darkMode ? 'bg-success-dark text-primary-bg-dark' : 'bg-success-light text-primary-bg-light'"
           class="toolbar-btn-primary">
           <i class="fa-solid fa-floppy-disk"></i>
-          <span class="hidden sm:inline">Save</span>
+          <span class="hidden sm:inline">{% trans "Save" %}</span>
         </button>
 
         {% if can_compile %}
         <!-- Compile -->
-        <button id="compile-file" title="Compile to PDF"
+        <button id="compile-file" title="{% trans 'Compile to PDF' %}"
           :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
           class="toolbar-btn-primary">
           <i class="fa-solid fa-gears"></i>
-          <span class="hidden sm:inline">Compile</span>
+          <span class="hidden sm:inline">{% trans "Compile" %}</span>
         </button>
         {% endif %}
 
         <!-- Delete -->
-        <button id="delete-file" title="Delete file"
+        <button id="delete-file" title="{% trans 'Delete file' %}"
           :class="darkMode ? 'bg-warn-dark text-primary-bg-dark' : 'bg-warn-light text-primary-bg-light'"
           class="toolbar-btn-primary">
           <i class="fa-solid fa-trash"></i>
@@ -125,7 +125,7 @@
           <div id="status-running" class="hidden items-center gap-2">
             <i class="fa-solid fa-spinner fa-spin shrink-0"
                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
-            <span class="font-semibold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">Compiling</span>
+            <span class="font-semibold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">{% trans "Compiling" %}</span>
             <span id="status-running-detail" class="text-xs opacity-60">queued</span>
           </div>
 
@@ -133,10 +133,10 @@
           <div id="status-success" class="hidden items-center gap-2">
             <i class="fa-solid fa-circle-check shrink-0"
                :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
-            <span class="font-semibold" :class="darkMode ? 'text-success-dark' : 'text-success-light'">Compiled</span>
+            <span class="font-semibold" :class="darkMode ? 'text-success-dark' : 'text-success-light'">{% trans "Compiled" %}</span>
             <a id="status-pdf-link" href="#" target="_blank"
                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-               class="underline underline-offset-2 hover:opacity-80">Open PDF</a>
+               class="underline underline-offset-2 hover:opacity-80">{% trans "Open PDF" %}</a>
           </div>
 
           <!-- Error -->
@@ -144,7 +144,7 @@
             <div class="flex items-center gap-2 cursor-pointer" id="status-error-header">
               <i class="fa-solid fa-circle-xmark shrink-0"
                  :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
-              <span class="font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">Compile error</span>
+              <span class="font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{% trans "Compile error" %}</span>
               <span class="text-xs opacity-60">click to expand log</span>
               <i id="status-chevron" class="fa-solid fa-chevron-down text-xs opacity-60 ml-auto transition-transform"></i>
             </div>
@@ -155,9 +155,7 @@
         <a id="status-workflow-link" href="#" target="_blank"
            :class="darkMode ? 'border-accent-1 bg-primary-bg-dark/50 text-text-main-dark' : 'border-accent-2 bg-primary-bg-light/50 text-text-main-light'"
            class="hidden shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold transition hover:opacity-80">
-          <i class="fa-solid fa-diagram-project opacity-70"></i>
-          Workflow run
-        </a>
+          <i class="fa-solid fa-diagram-project opacity-70"></i>{% trans "Workflow run" %}</a>
 
       </div>
 
@@ -217,7 +215,7 @@
           {% if run.pdf_url %}
           <a href="{{ run.pdf_url }}" target="_blank"
              :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-             class="text-xs underline underline-offset-2 shrink-0 hover:opacity-80">PDF</a>
+             class="text-xs underline underline-offset-2 shrink-0 hover:opacity-80">{% trans "PDF" %}</a>
           {% endif %}
 
           <!-- Workflow run link -->
@@ -249,16 +247,12 @@
       <div>
         <p class="text-[10px] font-semibold uppercase tracking-widest opacity-50">Bucket · {{ workspace.bucket.name }}</p>
         <h2 class="mt-0.5 flex items-center gap-2 text-lg font-bold">
-          <i class="fa-solid fa-images opacity-70"></i>
-          Images
-        </h2>
+          <i class="fa-solid fa-images opacity-70"></i>{% trans "Images" %}</h2>
       </div>
       <div class="flex items-center gap-2">
         <button id="refresh-images"
                 class="inline-flex items-center gap-1.5 rounded-lg border border-current/20 px-3 py-1.5 text-xs font-semibold transition hover:opacity-75">
-          <i class="fa-solid fa-arrows-rotate text-[10px]"></i>
-          Refresh
-        </button>
+          <i class="fa-solid fa-arrows-rotate text-[10px]"></i>{% trans "Refresh" %}</button>
         <button id="close-images-modal"
                 class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-current/15 transition hover:opacity-75">
           <i class="fa-solid fa-xmark"></i>
@@ -267,8 +261,7 @@
     </div>
 
     <!-- Hint -->
-    <p class="px-6 pt-3 text-xs opacity-55">
-      Click an image to insert <code class="font-mono">\includegraphics[width=\linewidth]{…}</code> at cursor.
+    <p class="px-6 pt-3 text-xs opacity-55">{% trans "Click an image to insert" %}<code class="font-mono">\includegraphics[width=\linewidth]{…}</code> at cursor.
       Add <code class="font-mono">\usepackage{graphicx}</code> to your preamble.
     </p>
 
@@ -276,7 +269,7 @@
     <div id="images-grid"
          class="flex flex-col overflow-y-auto px-6 py-2 divide-y divide-current/10"
          style="max-height: 55vh;">
-      <span class="text-center text-xs opacity-40 italic py-8">Loading…</span>
+      <span class="text-center text-xs opacity-40 italic py-8">{% trans "Loading…" %}</span>
     </div>
 
     <!-- Footer -->
@@ -284,9 +277,7 @@
       <span id="images-count" class="text-xs opacity-50"></span>
       <button id="close-images-modal-footer"
               :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
-              class="rounded-lg border px-4 py-1.5 text-sm font-semibold transition hover:opacity-80">
-        Close
-      </button>
+              class="rounded-lg border px-4 py-1.5 text-sm font-semibold transition hover:opacity-80">{% trans "Close" %}</button>
     </div>
   </div>
 </div>
@@ -621,7 +612,7 @@ document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal()
 
 async function loadImages() {
   imagesLoaded = false;
-  imagesGrid.innerHTML = '<span class="col-span-full text-center text-xs opacity-40 italic py-8">Loading…</span>';
+  imagesGrid.innerHTML = '<span class="col-span-full text-center text-xs opacity-40 italic py-8">{% trans "Loading…" %}</span>';
   document.getElementById("images-count").textContent = "";
 
   let data;
@@ -629,14 +620,14 @@ async function loadImages() {
     const res = await fetch(imagesUrl, { credentials: "same-origin" });
     data = await res.json();
   } catch {
-    imagesGrid.innerHTML = '<span class="col-span-full text-center text-xs text-warn-light py-8">Failed to load images.</span>';
+    imagesGrid.innerHTML = '<span class="col-span-full text-center text-xs text-warn-light py-8">{% trans "Failed to load images." %}</span>';
     return;
   }
 
   const images = (data.images || []).slice(0, 20);
 
   if (images.length === 0) {
-    imagesGrid.innerHTML = '<span class="col-span-full text-center text-xs opacity-40 italic py-8">No images in this bucket yet.</span>';
+    imagesGrid.innerHTML = '<span class="col-span-full text-center text-xs opacity-40 italic py-8">{% trans "No images in this bucket yet." %}</span>';
     return;
   }
 

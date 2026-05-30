@@ -10,7 +10,7 @@
     <form method="get" class="space-y-4">
       <div>
         <label class="mb-1 block text-sm font-semibold" for="q">{% trans "Search" %}</label>
-        <input id="q" name="q" value="{{ query }}" placeholder="Callsign, serial, model..." :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'" class="w-full rounded-lg border px-3 py-2 text-sm outline-none">
+        <input id="q" name="q" value="{{ query }}" placeholder="{% trans 'Callsign, serial, model...' %}" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'" class="w-full rounded-lg border px-3 py-2 text-sm outline-none">
       </div>
       <div>
         <label class="mb-1 block text-sm font-semibold" for="status">{% trans "Status" %}</label>

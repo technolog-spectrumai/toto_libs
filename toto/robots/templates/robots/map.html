@@ -101,11 +101,11 @@
           marker.bindPopup(`
             <div class="robot-map-popup">
               <h3>${robot.callsign} · ${robot.name}</h3>
-              <p><strong>Status:</strong> ${robot.status_label}</p>
-              <p><strong>Battery:</strong> ${robot.battery_percent}%</p>
-              <p><strong>Model:</strong> ${robot.model || '—'}</p>
-              <p><strong>Location:</strong> ${robot.current_location || robot.home_base || '—'}</p>
-              <p><a href="${robot.detail_url}">Open robot</a></p>
+              <p><strong>{% trans "Status:" %}</strong> ${robot.status_label}</p>
+              <p><strong>{% trans "Battery:" %}</strong> ${robot.battery_percent}%</p>
+              <p><strong>{% trans "Model:" %}</strong> ${robot.model || '—'}</p>
+              <p><strong>{% trans "Location:" %}</strong> ${robot.current_location || robot.home_base || '—'}</p>
+              <p><a href="${robot.detail_url}">{% trans "Open robot" %}</a></p>
             </div>
           `);
           marker.addTo(this.layers.robots);
@@ -123,9 +123,9 @@
           marker.bindPopup(`
             <div class="robot-map-popup">
               <h3>⚡ ${dock.name}</h3>
-              <p><strong>Slots:</strong> ${dock.slot_count}</p>
-              <p><strong>Power:</strong> ${dock.power_kw || '—'} kW</p>
-              <p><strong>Location:</strong> ${dock.location || '—'}</p>
+              <p><strong>{% trans "Slots:" %}</strong> ${dock.slot_count}</p>
+              <p><strong>{% trans "Power:" %}</strong> ${dock.power_kw || '—'} kW</p>
+              <p><strong>{% trans "Location:" %}</strong> ${dock.location || '—'}</p>
             </div>
           `);
           marker.addTo(this.layers.docks);
@@ -142,7 +142,7 @@
           const routeLatLngs = this.latLngsFromGeometry(routeGeometry);
           if (routeLatLngs.length > 1) {
             const route = L.polyline(routeLatLngs, { color, weight: 4, opacity: 0.72 });
-            route.bindPopup(`<strong>${mission.title}</strong><br>${mission.status_label}<br><a href="${mission.detail_url}">Open mission</a>`);
+            route.bindPopup(`<strong>${mission.title}</strong><br>${mission.status_label}<br><a href="${mission.detail_url}">{% trans "Open mission" %}</a>`);
             route.addTo(this.layers.missions);
             routeLatLngs.forEach(p => bounds.push(p));
           }
@@ -194,21 +194,21 @@
 <div x-data="robotMapExplorer()" x-init="init()" class="grid gap-4 lg:grid-cols-[340px_minmax(0,1fr)]">
   <aside :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border p-5 shadow-sm">
     <div class="grid grid-cols-3 gap-2 text-center text-sm">
-      <div class="rounded-lg border border-current/10 p-3"><div class="text-xl font-bold">{{ robot_count }}</div><div class="text-xs opacity-60">Robots</div></div>
-      <div class="rounded-lg border border-current/10 p-3"><div class="text-xl font-bold">{{ mission_count }}</div><div class="text-xs opacity-60">Missions</div></div>
-      <div class="rounded-lg border border-current/10 p-3"><div class="text-xl font-bold">{{ dock_count }}</div><div class="text-xs opacity-60">Docks</div></div>
+      <div class="rounded-lg border border-current/10 p-3"><div class="text-xl font-bold">{{ robot_count }}</div><div class="text-xs opacity-60">{% trans "Robots" %}</div></div>
+      <div class="rounded-lg border border-current/10 p-3"><div class="text-xl font-bold">{{ mission_count }}</div><div class="text-xs opacity-60">{% trans "Missions" %}</div></div>
+      <div class="rounded-lg border border-current/10 p-3"><div class="text-xl font-bold">{{ dock_count }}</div><div class="text-xs opacity-60">{% trans "Docks" %}</div></div>
     </div>
 
     <div class="mt-5 space-y-3">
-      <label class="flex items-center gap-3 text-sm font-semibold"><input type="checkbox" x-model="showRobots" @change="refresh()"> Show robots</label>
-      <label class="flex items-center gap-3 text-sm font-semibold"><input type="checkbox" x-model="showMissions" @change="refresh()"> Show missions and routes</label>
-      <label class="flex items-center gap-3 text-sm font-semibold"><input type="checkbox" x-model="showDocks" @change="refresh()"> Show charging docks</label>
+      <label class="flex items-center gap-3 text-sm font-semibold"><input type="checkbox" x-model="showRobots" @change="refresh()">{% trans "Show robots" %}</label>
+      <label class="flex items-center gap-3 text-sm font-semibold"><input type="checkbox" x-model="showMissions" @change="refresh()">{% trans "Show missions and routes" %}</label>
+      <label class="flex items-center gap-3 text-sm font-semibold"><input type="checkbox" x-model="showDocks" @change="refresh()">{% trans "Show charging docks" %}</label>
     </div>
 
     <div class="mt-5">
-      <label class="mb-1 block text-sm font-semibold">Focus mission</label>
+      <label class="mb-1 block text-sm font-semibold">{% trans "Focus mission" %}</label>
       <select x-model="activeMissionId" @change="refresh()" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'" class="w-full rounded-lg border px-3 py-2 text-sm outline-none">
-        <option value="">All missions</option>
+        <option value="">{% trans "All missions" %}</option>
         <template x-for="mission in payload.missions" :key="mission.id">
           <option :value="mission.id" x-text="mission.title"></option>
         </template>
@@ -216,8 +216,8 @@
     </div>
 
     <div class="mt-5 space-y-2">
-      <a href="{% url 'robots:mission_create' %}" class="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-current/20 px-4 py-2 text-sm font-semibold hover:opacity-80"><i class="fa-solid fa-route"></i> New mission</a>
-      <a href="{% url 'robots:robot_create' %}" class="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-current/20 px-4 py-2 text-sm font-semibold hover:opacity-80"><i class="fa-solid fa-robot"></i> New robot</a>
+      <a href="{% url 'robots:mission_create' %}" class="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-current/20 px-4 py-2 text-sm font-semibold hover:opacity-80"><i class="fa-solid fa-route"></i>{% trans "New mission" %}</a>
+      <a href="{% url 'robots:robot_create' %}" class="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-current/20 px-4 py-2 text-sm font-semibold hover:opacity-80"><i class="fa-solid fa-robot"></i>{% trans "New robot" %}</a>
     </div>
 
     <div class="mt-5 text-xs leading-6 opacity-70">

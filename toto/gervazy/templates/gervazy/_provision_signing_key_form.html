@@ -1,12 +1,13 @@
+{% load i18n %}
 <form method="post" action="{% url 'gervazy:provision_signing_key' %}"
       :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
       class="rounded-xl border p-4 shadow-sm space-y-3">
   {% csrf_token %}
-  <p class="text-xs font-semibold opacity-70">Strongbox password — used only to decrypt your private key in memory. Never stored.</p>
+  <p class="text-xs font-semibold opacity-70">{% trans "Strongbox password — used only to decrypt your private key in memory. Never stored." %}</p>
 
   <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
     <div class="flex-1">
-      <label class="mb-1 block text-xs font-semibold opacity-70">Strongbox</label>
+      <label class="mb-1 block text-xs font-semibold opacity-70">{% trans "Strongbox" %}</label>
       <select name="strongbox_id"
               :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
               class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2">
@@ -18,7 +19,7 @@
       </select>
     </div>
     <div class="flex-1">
-      <label class="mb-1 block text-xs font-semibold opacity-70">Password *</label>
+      <label class="mb-1 block text-xs font-semibold opacity-70">{% trans "Password *" %}</label>
       <input type="password" name="password" required autocomplete="current-password"
              :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
              class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"

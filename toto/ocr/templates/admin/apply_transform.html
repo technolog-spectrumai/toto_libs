@@ -1,4 +1,5 @@
 {% extends "admin/base_site.html" %}
+{% load i18n %}
 
 {% block content %}
 <h1>Apply Transform to {{ image.filename }}</h1>
@@ -7,8 +8,8 @@
     {% csrf_token %}
     {{ form.as_p }}
 
-    <button type="submit" class="default">Apply</button>
+    <button type="submit" class="default">{% trans "Apply" %}</button>
 </form>
 
-<p><a href="{{ request.META.HTTP_REFERER }}">Back</a></p>
+<p><a href="{{ request.META.HTTP_REFERER }}">{% trans "Back" %}</a></p>
 {% endblock %}

@@ -1,5 +1,6 @@
 {% extends "oya/base.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block title %}Apply for Membership | {{ platform.site_name }}{% endblock %}
 
@@ -52,9 +53,7 @@
                 Join {{ platform.site_name }}
               </p>
 
-              <h1 class="mt-3 max-w-xl text-3xl font-bold leading-tight sm:text-4xl">
-                Start with the right community.
-              </h1>
+              <h1 class="mt-3 max-w-xl text-3xl font-bold leading-tight sm:text-4xl">{% trans "Start with the right community." %}</h1>
 
               <p class="mt-4 max-w-xl text-sm leading-6 opacity-75 sm:text-base">
                 Send a membership request, choose the community you want to join,
@@ -72,8 +71,8 @@
               <i
                 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
                 class="fa-solid fa-envelope-open-text"></i>
-              <p class="mt-2 font-semibold">Apply</p>
-              <p class="mt-1 text-xs opacity-65">Submit your request.</p>
+              <p class="mt-2 font-semibold">{% trans "Apply" %}</p>
+              <p class="mt-1 text-xs opacity-65">{% trans "Submit your request." %}</p>
             </div>
 
             <div
@@ -84,8 +83,8 @@
               <i
                 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
                 class="fa-solid fa-people-group"></i>
-              <p class="mt-2 font-semibold">Connect</p>
-              <p class="mt-1 text-xs opacity-65">Choose your community.</p>
+              <p class="mt-2 font-semibold">{% trans "Connect" %}</p>
+              <p class="mt-1 text-xs opacity-65">{% trans "Choose your community." %}</p>
             </div>
 
             <div
@@ -96,8 +95,8 @@
               <i
                 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
                 class="fa-solid fa-key"></i>
-              <p class="mt-2 font-semibold">Verify</p>
-              <p class="mt-1 text-xs opacity-65">Use your access code.</p>
+              <p class="mt-2 font-semibold">{% trans "Verify" %}</p>
+              <p class="mt-1 text-xs opacity-65">{% trans "Use your access code." %}</p>
             </div>
           </div>
         </div>
@@ -108,13 +107,9 @@
         <div class="mx-auto max-w-md space-y-6">
 
           <div>
-            <h2 class="text-2xl font-bold">
-              Apply for membership
-            </h2>
+            <h2 class="text-2xl font-bold">{% trans "Apply for membership" %}</h2>
 
-            <p class="mt-2 text-sm opacity-70">
-              Tell us where you belong, and we’ll start your application.
-            </p>
+            <p class="mt-2 text-sm opacity-70">{% trans "Tell us where you belong, and we’ll start your application." %}</p>
           </div>
 
           <form method="POST" class="space-y-5">
@@ -181,9 +176,7 @@
                 ? 'bg-accent-dark text-primary-bg-dark'
                 : 'bg-accent-light text-primary-bg-light'"
               class="inline-flex w-full items-center justify-center gap-2 rounded-lg px-5 py-3 text-sm font-semibold shadow-sm transition hover:opacity-90">
-              <i class="fa-solid fa-paper-plane"></i>
-              Submit Application
-            </button>
+              <i class="fa-solid fa-paper-plane"></i>{% trans "Submit Application" %}</button>
 
             <div
               :class="darkMode
@@ -191,30 +184,20 @@
                 : 'border-accent-2 bg-sunken-light'"
               class="space-y-3 rounded-xl border p-4 text-center text-sm">
 
-              <p class="opacity-75">
-                Already have access?
-                <a
+              <p class="opacity-75">{% trans "Already have access?" %}<a
                   href="{% url 'core:login' %}"
                   :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-                  class="font-semibold underline-offset-4 transition hover:underline hover:opacity-80">
-                  Log in instead
-                </a>
+                  class="font-semibold underline-offset-4 transition hover:underline hover:opacity-80">{% trans "Log in instead" %}</a>
               </p>
 
               {% if username %}
-                <p class="opacity-75">
-                  Already have a verification code?
-                  <a
+                <p class="opacity-75">{% trans "Already have a verification code?" %}<a
                     href="{% url 'socialhub:membership_verification' username %}"
                     :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-                    class="font-semibold underline-offset-4 transition hover:underline hover:opacity-80">
-                    Submit Code
-                  </a>
+                    class="font-semibold underline-offset-4 transition hover:underline hover:opacity-80">{% trans "Submit Code" %}</a>
                 </p>
               {% else %}
-                <p class="text-xs opacity-60">
-                  Verification becomes available after submitting your application.
-                </p>
+                <p class="text-xs opacity-60">{% trans "Verification becomes available after submitting your application." %}</p>
               {% endif %}
             </div>
           </form>

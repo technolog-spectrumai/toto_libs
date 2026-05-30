@@ -1,3 +1,4 @@
+{% load i18n %}
 {% if agent %}
 <div
   x-data="{ open: false, loading: false, activeTarget: 'No active target' }"
@@ -95,7 +96,7 @@
         class="flex items-center gap-1.5 border-t border-current/10 pt-2 text-[11px] font-semibold"
       >
         <i class="fa-solid fa-bullseye text-[10px]"></i>
-        <span>Active target:</span>
+        <span>{% trans "Active target:" %}</span>
         <span x-text="activeTarget"></span>
       </div>
     </form>
@@ -106,7 +107,7 @@
     @click="open = !open"
     :class="darkMode ? 'bg-accent-dark text-primary-bg-dark shadow-accent-dark/30' : 'bg-accent-light text-primary-bg-light shadow-accent-light/30'"
     class="flex items-center gap-2 rounded-full px-5 py-3 text-sm font-bold shadow-lg transition hover:scale-105 active:scale-95"
-    title="Ask AI"
+    title="{% trans 'Ask AI' %}"
   >
     <i class="fa-solid fa-robot"></i>
     <span x-text="open ? 'Close' : 'Ask AI'"></span>
@@ -124,13 +125,13 @@ document.body.addEventListener("htmx:responseError", event => {
 
 {% elif steven_debug %}
 <!-- DEBUG: agent not seeded — run manage.py ingress_steven -->
-<div class="fixed bottom-6 right-6 z-50" title="Steven: no active agent found. Run: manage.py ingress_steven">
+<div class="fixed bottom-6 right-6 z-50" title="{% trans 'Steven: no active agent found. Run: manage.py ingress_steven' %}">
   <button
     disabled
     class="flex items-center gap-2 rounded-full px-5 py-3 text-sm font-bold shadow-lg opacity-40 cursor-not-allowed bg-gray-500 text-white"
   >
     <i class="fa-solid fa-robot"></i>
-    <span>Ask AI</span>
+    <span>{% trans "Ask AI" %}</span>
   </button>
   <div class="mt-1 text-center text-[10px] font-mono text-gray-500">
     no agent — run ingress_steven

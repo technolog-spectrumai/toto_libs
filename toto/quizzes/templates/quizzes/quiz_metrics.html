@@ -1,5 +1,6 @@
 {% extends "quizzes/base.html" %}
 {% load static %}
+{% load i18n %}
 
 {% block quizzes_title %}Quiz Metrics – {{ quiz.title }}{% endblock %}
 
@@ -26,7 +27,7 @@
 
         <div>
           <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-             class="text-xs font-semibold uppercase tracking-wide">Quiz Metrics</p>
+             class="text-xs font-semibold uppercase tracking-wide">{% trans "Quiz Metrics" %}</p>
           <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
             <i class="fa-solid fa-chart-bar"></i>
             {{ quiz.title }}
@@ -40,34 +41,32 @@
       <a href="{% url 'quizzes:quiz-detail' pk=quiz.pk %}"
          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-accent-dark' : 'border-accent-2 bg-bubble-bg-light text-accent-light'"
          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-        <i class="fa-solid fa-circle-question"></i>
-        View quiz
-      </a>
+        <i class="fa-solid fa-circle-question"></i>{% trans "View quiz" %}</a>
     </header>
 
     <!-- Summary cards -->
     <section class="grid grid-cols-2 gap-4 sm:grid-cols-4">
       <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
                class="rounded-2xl border p-5 shadow-sm">
-        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Attempts</p>
+        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Attempts" %}</p>
         <p class="mt-2 text-3xl font-bold">{{ total_attempts }}</p>
       </article>
 
       <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
                class="rounded-2xl border p-5 shadow-sm">
-        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Completed</p>
+        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Completed" %}</p>
         <p class="mt-2 text-3xl font-bold">{{ completed_attempts }}</p>
       </article>
 
       <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
                class="rounded-2xl border p-5 shadow-sm">
-        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Questions</p>
+        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Questions" %}</p>
         <p class="mt-2 text-3xl font-bold">{{ questions_stats|length }}</p>
       </article>
 
       <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
                class="rounded-2xl border p-5 shadow-sm">
-        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Owner</p>
+        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Owner" %}</p>
         <p class="mt-2 text-sm font-bold">{{ quiz.owner.display_name|default:"—" }}</p>
       </article>
     </section>
@@ -87,7 +86,7 @@
             </span>
           </div>
           {% if qs.question.is_multiple_choice %}
-            <p class="mt-1 text-xs opacity-60">Multiple choice</p>
+            <p class="mt-1 text-xs opacity-60">{% trans "Multiple choice" %}</p>
           {% endif %}
         </div>
 
@@ -128,9 +127,7 @@
       </section>
     {% empty %}
       <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-           class="rounded-2xl border border-dashed p-8 text-center text-sm italic opacity-70">
-        No questions in this quiz yet.
-      </div>
+           class="rounded-2xl border border-dashed p-8 text-center text-sm italic opacity-70">{% trans "No questions in this quiz yet." %}</div>
     {% endfor %}
 
     <!-- Trait aggregation -->
@@ -138,10 +135,8 @@
       <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
                class="rounded-2xl border p-5 shadow-sm">
         <h2 class="flex items-center gap-2 text-lg font-bold mb-5">
-          <i class="fa-solid fa-star"></i>
-          Trait distribution
-        </h2>
-        <p class="mb-4 text-sm opacity-70">Cumulative trait scores from all completed attempts.</p>
+          <i class="fa-solid fa-star"></i>{% trans "Trait distribution" %}</h2>
+        <p class="mb-4 text-sm opacity-70">{% trans "Cumulative trait scores from all completed attempts." %}</p>
         <div :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
              class="rounded-xl border p-4">
           {% include "oya/partials/chart.html" with chart_id="traitChart" data=trait_chart_json %}

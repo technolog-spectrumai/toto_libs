@@ -1,3 +1,4 @@
+{% load i18n %}
 <div class="rounded-lg border border-current/10 p-4">
   <div class="flex items-center justify-between gap-3">
     <h3 class="flex items-center gap-2 text-sm font-bold uppercase opacity-75">
@@ -24,7 +25,7 @@
             <p class="mt-1 break-all opacity-60">{{ item.ravioli_uuid }}</p>
           {% endif %}
           {% if item.endpoint_changed %}
-            <p class="mt-2 font-semibold">Endpoint changed</p>
+            <p class="mt-2 font-semibold">{% trans "Endpoint changed" %}</p>
           {% endif %}
           {% if item.changes %}
             <dl class="mt-3 space-y-2">
@@ -39,10 +40,10 @@
         </article>
       {% endfor %}
       {% if items|length > 40 %}
-        <p class="text-xs opacity-60">Showing first 40.</p>
+        <p class="text-xs opacity-60">{% trans "Showing first 40." %}</p>
       {% endif %}
     </div>
   {% else %}
-    <p class="mt-4 text-sm opacity-60">No changes.</p>
+    <p class="mt-4 text-sm opacity-60">{% trans "No changes." %}</p>
   {% endif %}
 </div>

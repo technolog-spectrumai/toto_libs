@@ -1,3 +1,4 @@
+{% load i18n %}
 {% extends detections_parent_template %}
 
 {% block tactical_title %}{% block detections_title %}Detections{% endblock %}{% endblock %}
@@ -9,23 +10,22 @@
 
   <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
     <div class="space-y-1">
-      <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-xs font-semibold uppercase tracking-wide">Detections</p>
+      <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-xs font-semibold uppercase tracking-wide">{% trans "Detections" %}</p>
       <h1 class="flex items-center gap-3 text-3xl font-bold">
         <i class="fa-solid fa-bullseye"></i>
         {% block detections_heading %}Detections{% endblock %}
       </h1>
-      {% block detections_subtitle %}<p class="mt-1 max-w-2xl text-sm opacity-70">Field detections, mitigation tasks, and assignment support.</p>{% endblock %}
+      {% block detections_subtitle %}<p class="mt-1 max-w-2xl text-sm opacity-70">{% trans "Field detections, mitigation tasks, and assignment support." %}</p>{% endblock %}
     </div>
     <nav class="flex flex-wrap gap-2">
-      <a href="{% url 'detections:detection-list' %}" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"><i class="fa-solid fa-triangle-exclamation"></i> Detections</a>
+      <a href="{% url 'detections:detection-list' %}" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"><i class="fa-solid fa-triangle-exclamation"></i>{% trans "Detections" %}</a>
       {% if request.user.is_authenticated %}
-        <a href="{% url 'detections:detection-create' %}" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"><i class="fa-solid fa-location-crosshairs"></i> Add</a>
-        <a href="{% url 'detections:dashboard' %}" :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'" class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
+        <a href="{% url 'detections:detection-create' %}" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"><i class="fa-solid fa-location-crosshairs"></i>{% trans "Add" %}</a>
+        <a href="{% url 'detections:dashboard' %}" :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'" class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90"><i class="fa-solid fa-gauge-high"></i>{% trans "Dashboard" %}</a>
         <button type="button" x-data @click="$dispatch('open-det-export')"
                 :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-sunken-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-sunken-light'"
                 class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition">
-          <i class="fa-solid fa-file-export"></i> Export Layers
-        </button>
+          <i class="fa-solid fa-file-export"></i>{% trans "Export Layers" %}</button>
       {% endif %}
     </nav>
   </header>
@@ -53,8 +53,7 @@
       <!-- Modal header -->
       <div class="flex items-center justify-between border-b border-current/10 px-5 py-4">
         <h2 class="flex items-center gap-2 text-lg font-bold">
-          <i class="fa-solid fa-file-export"></i> Export Layers to Vault
-        </h2>
+          <i class="fa-solid fa-file-export"></i>{% trans "Export Layers to Vault" %}</h2>
         <button type="button" @click="isOpen = false"
                 class="text-lg leading-none opacity-50 hover:opacity-100 transition">&times;</button>
       </div>
@@ -64,7 +63,7 @@
 
         <!-- Layer selection -->
         <div>
-          <p class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-60">Layers</p>
+          <p class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Layers" %}</p>
           <div class="space-y-1.5">
             <template x-for="layer in availableLayers" :key="layer.slug">
               <label class="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 transition"
@@ -87,7 +86,7 @@
 
         <!-- Target bucket -->
         <div>
-          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">Target Bucket</label>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Target Bucket" %}</label>
           <select x-model="bucketId" @change="directoryId = ''"
                   :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
                   class="w-full rounded-lg border px-3 py-2 text-sm">
@@ -100,8 +99,7 @@
 
         <!-- Directory (optional) -->
         <div x-show="bucketId">
-          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">
-            Directory <span class="font-normal opacity-50">(optional)</span>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Directory" %}<span class="font-normal opacity-50">(optional)</span>
           </label>
           <select x-model="directoryId"
                   :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
@@ -115,10 +113,9 @@
 
         <!-- Title (optional) -->
         <div>
-          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">
-            File Title <span class="font-normal opacity-50">(optional)</span>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "File Title" %}<span class="font-normal opacity-50">(optional)</span>
           </label>
-          <input type="text" x-model="title" placeholder="Detections Layers Export"
+          <input type="text" x-model="title" placeholder="{% trans 'Detections Layers Export' %}"
                  :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
                  class="w-full rounded-lg border px-3 py-2 text-sm">
         </div>
@@ -141,8 +138,7 @@
             <a :href="downloadUrl"
                :class="darkMode ? 'bg-success-dark/20 text-success-dark border-success-dark/40' : 'bg-success-light/20 text-success-light border-success-light/40'"
                class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
-              <i class="fa-solid fa-download"></i> Download file
-            </a>
+              <i class="fa-solid fa-download"></i>{% trans "Download file" %}</a>
           </div>
         </div>
       </div>
@@ -151,9 +147,7 @@
       <div class="flex items-center justify-end gap-3 border-t border-current/10 px-5 py-4">
         <button type="button" @click="isOpen = false"
                 :class="darkMode ? 'border-accent-1 hover:bg-sunken-dark' : 'border-accent-2 hover:bg-sunken-light'"
-                class="rounded-xl border px-4 py-2 text-sm font-semibold transition">
-          Close
-        </button>
+                class="rounded-xl border px-4 py-2 text-sm font-semibold transition">{% trans "Close" %}</button>
         <button type="button" @click="startExport()"
                 :disabled="isBusy || !layerSlugs.length || !bucketId"
                 :class="darkMode ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90 disabled:opacity-40' : 'bg-accent-light text-primary-bg-light hover:opacity-90 disabled:opacity-40'"
