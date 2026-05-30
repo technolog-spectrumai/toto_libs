@@ -28,6 +28,7 @@ from .services import (
     readable_sources_for_user,
     record_event,
     run_transcription_with_timeout,
+    save_transcript_artifact,
     start_speech_model_download,
     transcribe_demo_file,
     user_can_create_collections,
@@ -107,7 +108,14 @@ def source_detail(request, collection_slug, source_slug):
         record_event(request=request, source=source, event=TranscriptEvent.EventKind.IMPRESSION)
     can_manage = user_is_transcription_manager(request.user, source.collection)
     related = source.collection.sources.filter(status=TranscriptSource.Status.TRANSCRIBED).exclude(pk=source.pk).select_related("source_file").order_by("position", "title")[:8]
-    return _render(request, "transcription/source_detail.html", {"source": source, "collection": source.collection, "access": decision, "can_manage": can_manage, "related_sources": related})
+    vault_buckets = []
+    if request.user.is_authenticated and decision.allowed:
+        try:
+            from toto.vault.models import Bucket
+            vault_buckets = list(Bucket.objects.filter(owner=request.user).order_by("name"))
+        except Exception:
+            pass
+    return _render(request, "transcription/source_detail.html", {"source": source, "collection": source.collection, "access": decision, "can_manage": can_manage, "related_sources": related, "vault_buckets": vault_buckets})
 
 
 @login_required
@@ -236,6 +244,38 @@ def source_export(request, collection_slug, source_slug, kind):
     response = HttpResponse(content, content_type=content_type)
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response
+
+
+@login_required
+@require_POST
+def source_export_to_vault(request, collection_slug, source_slug):
+    source = get_object_or_404(TranscriptSource.objects.select_related("collection"), collection__slug=collection_slug, slug=source_slug)
+    decision = can_access_source(request.user, source)
+    if not decision.allowed:
+        messages.error(request, _("You cannot export this transcript."))
+        return redirect(source.get_absolute_url())
+    kind = request.POST.get("kind", "txt").lower()
+    bucket_id = request.POST.get("bucket_id", "").strip()
+    try:
+        from toto.vault.models import Bucket
+        from django.core.files.base import ContentFile
+        content, _ct, filename = export_transcript(source, kind)
+        bucket = get_object_or_404(Bucket, pk=bucket_id, owner=request.user)
+        from toto.vault.models import VaultFile
+        VaultFile.objects.create(
+            owner=request.user,
+            title=f"{source.title} ({kind.upper()})",
+            bucket=bucket,
+            file=ContentFile(content.encode("utf-8") if isinstance(content, str) else content, name=filename),
+            file_type="text",
+            is_public=False,
+            is_encrypted=False,
+        )
+        record_event(request=request, source=source, event=TranscriptEvent.EventKind.EXPORT, metadata={"kind": kind, "vault": True})
+        messages.success(request, f"Saved {filename} to bucket \"{bucket.name}\".")
+    except Exception as exc:
+        messages.error(request, str(exc))
+    return redirect(source.get_absolute_url())
 
 
 @require_POST
