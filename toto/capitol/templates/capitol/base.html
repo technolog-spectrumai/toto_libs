@@ -65,6 +65,15 @@
         <i class="fa-solid fa-landmark"></i>
         {% trans "Assembly" %}
       </a>
+      {% if selected_community.assembly_config.is_bicameral %}
+      <a href="{% url 'senate:community_senate' selected_community.slug %}"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                {% block tab_senate %}opacity-50{% endblock %}">
+        <i class="fa-solid fa-landmark-dome"></i>
+        {% trans "Senate" %}
+      </a>
+      {% endif %}
       <a href="{% url 'tribunal:dashboard' %}"
          :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
          class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition

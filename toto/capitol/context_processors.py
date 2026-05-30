@@ -5,7 +5,7 @@ from .community_session import get_community_slug
 def capitol_community(request):
     if not request.user.is_authenticated:
         return {}
-    communities = list(Community.objects.order_by("name"))
+    communities = list(Community.objects.select_related("assembly_config").order_by("name"))
     if not communities:
         return {"communities": [], "selected_community": None}
     slug = get_community_slug(request.user.pk)

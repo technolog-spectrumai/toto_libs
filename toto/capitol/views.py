@@ -158,6 +158,8 @@ def set_community(request):
         _set_community(request.user.pk, slug)
         if section == "assembly":
             return redirect("assembly:community_assembly", slug=slug)
+        if section == "senate":
+            return redirect("senate:community_senate", slug=slug)
         if section == "treasury":
             community = Community.objects.get(slug=slug)
             return redirect("treasury:detail", pk=community.pk)

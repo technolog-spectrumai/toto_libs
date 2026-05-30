@@ -108,6 +108,12 @@ class Command(BaseCommand):
             default=False,
             help="Re-seed even if data already exists.",
         )
+        parser.add_argument(
+            "--full",
+            action="store_true",
+            default=False,
+            help="Full ingress mode (accepted for compatibility with ingress_all; no extra behaviour).",
+        )
 
     def handle(self, *args, **options):
         self._check_tariff()
