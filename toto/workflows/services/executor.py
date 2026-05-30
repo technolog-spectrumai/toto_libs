@@ -39,6 +39,10 @@ from ..output import normalize_workflow_output
 log = logging.getLogger(__name__)
 
 
+class _AsyncDispatched:
+    """Sentinel returned by _run_predefined_task when the task was sent to Celery."""
+
+
 def _get_kernel_client():
     mock_cls = getattr(settings, "WORKFLOW_KERNEL_CLIENT", None)
     if mock_cls is not None:
@@ -106,6 +110,8 @@ class WorkflowExecutor:
             node_run.workflow_run.save(update_fields=["status"])
             return
 
+        if isinstance(output, _AsyncDispatched):
+            return
         self._complete_node_run(node_run, output)
 
     def execute_lambda_node_run(self, node_run_id: int) -> dict:
@@ -247,12 +253,27 @@ class WorkflowExecutor:
 
         return create_report_from_node_run(node_run)
 
+    def complete_predefined_node_run(self, node_run_id: int, output: dict) -> None:
+        node_run = WorkflowNodeRun.objects.select_related("node", "workflow_run").get(pk=node_run_id)
+        self._complete_node_run(node_run, output)
+
     def _run_predefined_task(self, node_run: WorkflowNodeRun) -> dict:
-        from toto.workflows.predefined_tasks import run
+        from toto.workflows.predefined_tasks import get_celery_task, run
 
         task_name = node_run.node.task_name
         if not task_name:
             raise ValueError("Predefined task node has no task_name set.")
+
+        celery_name = get_celery_task(task_name)
+        if celery_name:
+            from celery import current_app
+            result = current_app.send_task(celery_name, args=[node_run.id])
+            node_run.celery_task_id = result.id
+            node_run.status = WorkflowNodeRun.RUNNING
+            node_run.started_at = timezone.now()
+            node_run.save(update_fields=["celery_task_id", "status", "started_at"])
+            return _AsyncDispatched()
+
         return run(task_name, node_run.input_data or {})
 
     def _activate_outgoing_edges(self, node_run: WorkflowNodeRun) -> None:

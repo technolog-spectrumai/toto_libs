@@ -8,6 +8,7 @@ lambda output: {"data": {...}, "routes": [...]} — routes is optional.
 """
 
 _registry: dict[str, callable] = {}
+_celery_registry: dict[str, str] = {}  # task_name -> celery task name
 
 
 def register(name: str):
@@ -15,6 +16,14 @@ def register(name: str):
         _registry[name] = fn
         return fn
     return decorator
+
+
+def register_celery(task_name: str, celery_name: str) -> None:
+    _celery_registry[task_name] = celery_name
+
+
+def get_celery_task(task_name: str) -> str | None:
+    return _celery_registry.get(task_name)
 
 
 def run(name: str, input_data: dict) -> dict:
