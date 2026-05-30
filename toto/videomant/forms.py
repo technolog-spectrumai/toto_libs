@@ -38,19 +38,55 @@ class CompressForm(forms.Form):
 
 
 class ResizeForm(forms.Form):
+    preserve_aspect_ratio = forms.BooleanField(
+        required=False,
+        initial=True,
+        widget=forms.CheckboxInput(attrs={
+            "class": "rounded border",
+            "x-bind:class": _XBIND,
+            "x-model": "preserve",
+        }),
+        help_text="Provide only one dimension; the other is computed automatically.",
+    )
     width = forms.IntegerField(
+        required=False,
         initial=1280,
-        widget=forms.NumberInput(attrs=_w({"placeholder": "1280"})),
+        widget=forms.NumberInput(attrs=_w({"placeholder": "1280", "x-bind:required": "!preserve"})),
     )
     height = forms.IntegerField(
-        initial=-2,
-        help_text="Use -2 to preserve aspect ratio.",
-        widget=forms.NumberInput(attrs=_w({"placeholder": "-2"})),
+        required=False,
+        widget=forms.NumberInput(attrs=_w({"placeholder": "720", "x-bind:required": "!preserve"})),
     )
     output_name = forms.CharField(
         initial="resized",
         widget=forms.TextInput(attrs=_w({"placeholder": "resized"})),
     )
+
+    def clean(self):
+        data = super().clean()
+        preserve = data.get("preserve_aspect_ratio", False)
+        width = data.get("width")
+        height = data.get("height")
+
+        if preserve:
+            if width and height:
+                raise forms.ValidationError(
+                    "Provide only one dimension (width or height) when preserving aspect ratio."
+                )
+            if not width and not height:
+                raise forms.ValidationError(
+                    "Provide either width or height when preserving aspect ratio."
+                )
+            # Fill the unconstrained dimension with -2 (ffmpeg auto-scale)
+            data["width"] = width or -2
+            data["height"] = height or -2
+        else:
+            if not width:
+                self.add_error("width", "Width is required when not preserving aspect ratio.")
+            if not height:
+                self.add_error("height", "Height is required when not preserving aspect ratio.")
+
+        return data
 
 
 class CutForm(forms.Form):
@@ -121,25 +157,60 @@ class GifForm(forms.Form):
 
 
 class ConcatForm(forms.Form):
-    input_file_ids = forms.CharField(
-        label="VaultFile IDs (comma-separated)",
-        widget=forms.TextInput(attrs=_w({"placeholder": "1, 2, 3"})),
-        help_text="IDs of VaultFile records to concatenate, in order.",
-    )
+    """
+    When bucket_files is provided (workspace context), renders a multi-select
+    of real files. Otherwise falls back to a comma-separated ID text field.
+    """
+
     reencode = forms.BooleanField(
         required=False,
         initial=False,
         widget=forms.CheckboxInput(attrs={"class": "rounded border", "x-bind:class": _XBIND}),
-        help_text="Re-encode (slower but handles incompatible streams).",
+        help_text="Re-encode (slower, but handles incompatible streams).",
     )
     output_name = forms.CharField(
         initial="merged",
         widget=forms.TextInput(attrs=_w({"placeholder": "merged"})),
     )
 
-    def clean_input_file_ids(self):
-        raw = self.cleaned_data["input_file_ids"]
-        try:
-            return [int(x.strip()) for x in raw.split(",") if x.strip()]
-        except ValueError:
-            raise forms.ValidationError("Enter comma-separated integer IDs.")
+    def __init__(self, *args, bucket_files=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._has_bucket = bool(bucket_files)
+        if bucket_files:
+            choices = [(vf.id, f"{vf.title} ({vf.file_type})") for vf in bucket_files]
+            self.fields["extra_file_ids"] = forms.MultipleChoiceField(
+                label="Add files from bucket",
+                choices=choices,
+                required=False,
+                widget=forms.SelectMultiple(attrs={
+                    "class": (
+                        "w-full rounded-lg border px-3 py-2 text-sm focus:outline-none "
+                        "min-h-[120px]"
+                    ),
+                    "x-bind:class": _XBIND,
+                }),
+                help_text="Hold Ctrl / ⌘ to select multiple. Files are appended after the primary file in order.",
+            )
+        else:
+            self.fields["extra_file_ids"] = forms.CharField(
+                label="Additional VaultFile IDs (comma-separated)",
+                required=False,
+                widget=forms.TextInput(attrs=_w({"placeholder": "2, 3, 4"})),
+                help_text="IDs to append after the primary file.",
+            )
+
+    def clean_extra_file_ids(self):
+        raw = self.cleaned_data.get("extra_file_ids") or []
+        if self._has_bucket:
+            try:
+                return [int(x) for x in raw]
+            except (ValueError, TypeError):
+                raise forms.ValidationError("Invalid file selection.")
+        if isinstance(raw, str):
+            if not raw.strip():
+                return []
+            try:
+                return [int(x.strip()) for x in raw.split(",") if x.strip()]
+            except ValueError:
+                raise forms.ValidationError("Enter comma-separated integer IDs.")
+        return []

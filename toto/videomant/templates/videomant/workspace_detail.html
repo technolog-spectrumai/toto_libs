@@ -1,0 +1,163 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block title %}{{ ws.name }} — VideoMant Workspace{% endblock %}
+
+{% block content %}
+<div
+  x-data="{ darkMode: localStorage.getItem('darkMode') === 'true', tab: 'files' }"
+  x-bind:class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-5 py-8 transition-colors duration-300"
+>
+  <div class="mx-auto max-w-6xl space-y-6">
+
+    <!-- Header -->
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div>
+        <a href="{% url 'videomant:workspace_list' %}" class="text-sm opacity-50 hover:opacity-100">
+          <i class="fa-solid fa-arrow-left mr-1"></i>Workspaces
+        </a>
+        <h1 class="mt-2 text-2xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+          <i class="fa-solid fa-clapperboard mr-2"></i>{{ ws.name }}
+        </h1>
+        <p class="text-sm opacity-50 mt-0.5">
+          Bucket: <strong>{{ ws.bucket.name }}</strong> &middot; Owner: {{ ws.owner.username }}
+        </p>
+        {% if ws.description %}
+        <p class="mt-1 text-sm opacity-70">{{ ws.description }}</p>
+        {% endif %}
+      </div>
+      {% if request.user == ws.owner %}
+      <form method="post" action="{% url 'videomant:workspace_delete' ws.slug %}"
+            onsubmit="return confirm('Delete this workspace? Jobs are kept.')">
+        {% csrf_token %}
+        <button type="submit"
+          class="inline-flex items-center gap-2 rounded-lg border border-red-500/40 px-3 py-2 text-sm font-semibold text-red-400 transition hover:bg-red-500/10"
+        ><i class="fa-solid fa-trash"></i> Delete</button>
+      </form>
+      {% endif %}
+    </div>
+
+    <!-- Tab switcher -->
+    <div class="flex gap-2 text-sm font-semibold">
+      <button @click="tab='files'"
+        :class="tab==='files' ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-white') : 'opacity-50 hover:opacity-80'"
+        class="rounded-lg px-4 py-1.5 transition">
+        <i class="fa-solid fa-film mr-1"></i>Files <span class="opacity-60">({{ file_rows|length }})</span>
+      </button>
+      <button @click="tab='jobs'"
+        :class="tab==='jobs' ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-white') : 'opacity-50 hover:opacity-80'"
+        class="rounded-lg px-4 py-1.5 transition">
+        <i class="fa-solid fa-list mr-1"></i>Jobs <span class="opacity-60">({{ jobs|length }})</span>
+      </button>
+    </div>
+
+    <!-- FILES TAB -->
+    <div x-show="tab==='files'">
+      {% if file_rows %}
+      <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {% for vf, rj in file_rows %}
+        <div
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="rounded-xl border p-4 shadow-sm space-y-3"
+        >
+          <div class="flex items-start gap-3">
+            <div :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="mt-0.5 text-xl shrink-0">
+              {% if vf.file_type == 'video' %}<i class="fa-solid fa-film"></i>
+              {% elif vf.file_type == 'audio' %}<i class="fa-solid fa-music"></i>
+              {% else %}<i class="fa-solid fa-image"></i>{% endif %}
+            </div>
+            <div class="min-w-0 flex-1">
+              <p class="truncate font-semibold text-sm" title="{{ vf.title }}">{{ vf.title }}</p>
+              <p class="text-xs opacity-50 mt-0.5">
+                {{ vf.file_type|upper }} &middot; {{ vf.file_size_bytes|filesizeformat }}
+              </p>
+            </div>
+          </div>
+
+          {% if rj %}
+          <div class="flex items-center gap-2 text-xs">
+            <span class="opacity-50">Last:</span>
+            {% if rj.status == 'succeeded' %}
+            <span class="rounded-full bg-green-500/20 px-2 py-0.5 text-green-400 font-semibold">{{ rj.task_name }}</span>
+            {% elif rj.status == 'failed' %}
+            <span class="rounded-full bg-red-500/20 px-2 py-0.5 text-red-400 font-semibold">failed</span>
+            {% else %}
+            <span class="rounded-full bg-blue-500/20 px-2 py-0.5 text-blue-400 font-semibold">{{ rj.status }}</span>
+            {% endif %}
+            <a href="{% url 'videomant:job_detail' rj.pk %}" class="underline opacity-50 hover:opacity-100 ml-auto">#{{ rj.pk }}</a>
+          </div>
+          {% endif %}
+
+          <a
+            href="{% url 'videomant:vault_file_actions' vf.pk %}?ws={{ ws.slug }}"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90' : 'bg-accent-light text-white hover:opacity-90'"
+            class="flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition"
+          >
+            <i class="fa-solid fa-wand-magic-sparkles"></i> Process
+          </a>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-xl border border-dashed p-12 text-center"
+      >
+        <i class="fa-solid fa-film text-4xl opacity-30"></i>
+        <p class="mt-3 text-sm opacity-50">No video or audio files in bucket <strong>{{ ws.bucket.name }}</strong>.</p>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- JOBS TAB -->
+    <div x-show="tab==='jobs'">
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-xl border shadow-sm overflow-x-auto"
+      >
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b text-xs" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+              <th class="px-4 py-2 text-left opacity-50">#</th>
+              <th class="px-4 py-2 text-left opacity-50">Task</th>
+              <th class="px-4 py-2 text-left opacity-50">Input</th>
+              <th class="px-4 py-2 text-left opacity-50">Status</th>
+              <th class="px-4 py-2 text-left opacity-50">Output</th>
+              <th class="px-4 py-2 text-left opacity-50">Created</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for job in jobs %}
+            <tr class="border-b last:border-b-0" :class="darkMode ? 'border-accent-1 hover:bg-white/5' : 'border-accent-2 hover:bg-black/5'">
+              <td class="px-4 py-2">
+                <a href="{% url 'videomant:job_detail' job.pk %}" class="font-mono underline opacity-60 hover:opacity-100">#{{ job.pk }}</a>
+              </td>
+              <td class="px-4 py-2 font-mono text-xs">{{ job.task_name }}</td>
+              <td class="px-4 py-2 text-xs opacity-60 max-w-[140px] truncate">{{ job.input_file.title|default:"—" }}</td>
+              <td class="px-4 py-2">
+                {% if job.status == 'succeeded' %}<span class="rounded-full bg-green-500/20 px-2 py-0.5 text-xs text-green-400 font-semibold">ok</span>
+                {% elif job.status == 'failed' %}<span class="rounded-full bg-red-500/20 px-2 py-0.5 text-xs text-red-400 font-semibold">fail</span>
+                {% elif job.status == 'running' %}<span class="rounded-full bg-blue-500/20 px-2 py-0.5 text-xs text-blue-400 font-semibold"><i class="fa-solid fa-spinner fa-spin"></i></span>
+                {% else %}<span class="rounded-full bg-yellow-500/20 px-2 py-0.5 text-xs text-yellow-400 font-semibold">{{ job.status }}</span>{% endif %}
+              </td>
+              <td class="px-4 py-2">
+                {% if job.output_file %}
+                <a href="{{ job.output_file.file.url }}" class="text-xs underline opacity-60 hover:opacity-100" target="_blank">
+                  <i class="fa-solid fa-download mr-1"></i>{{ job.output_file.title }}
+                </a>
+                {% else %}—{% endif %}
+              </td>
+              <td class="px-4 py-2 text-xs opacity-50">{{ job.created_at|date:"m-d H:i" }}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="6" class="px-4 py-8 text-center opacity-40">No jobs yet — process a file from the Files tab.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

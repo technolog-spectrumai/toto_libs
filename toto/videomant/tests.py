@@ -702,7 +702,130 @@ class ViewTests(TestCase):
         self.assertEqual(MediaJob.objects.count(), before + 1)
         job = MediaJob.objects.filter(task_name="videomant.compress").last()
         self.assertIsNotNone(job)
+        self.assertIsNone(job.workspace)  # no workspace passed → no link
         self.assertRedirects(resp, f"/videomant/jobs/{job.pk}/", fetch_redirect_response=False)
+
+    def test_enqueue_compress_links_workspace(self):
+        from toto.vault.models import Bucket
+        from .models import Workspace
+        bucket = Bucket.objects.create(name="WsBk2", owner=self.user, slug="wsbk2")
+        ws = Workspace.objects.create(name="WS Link", bucket=bucket, owner=self.user)
+        vf = self._make_vf()
+        with patch("toto.videomant.tasks_direct.run_direct_job.delay"):
+            self.client.post(
+                f"/videomant/vault/{vf.pk}/compress/",
+                {"compress-quality": "medium", "compress-output_name": "out", "ws_slug": ws.slug},
+            )
+        job = MediaJob.objects.filter(task_name="videomant.compress", workspace=ws).last()
+        self.assertIsNotNone(job)
+
+    def test_enqueue_concat_uses_primary_plus_extras(self):
+        from toto.vault.models import VaultFile
+        from django.core.files.base import ContentFile
+        import os
+        os.makedirs("/tmp/media_test/vault/files", exist_ok=True)
+        vf2 = VaultFile(owner=self.user, title="second.mp4", file_type="video")
+        vf2.file.save("second.mp4", ContentFile(b"x"), save=True)
+        vf = self._make_vf()
+        with patch("toto.videomant.tasks_direct.run_direct_job.delay"):
+            self.client.post(
+                f"/videomant/vault/{vf.pk}/concat/",
+                {
+                    "concat-reencode": "",
+                    "concat-output_name": "merged",
+                    "concat-extra_file_ids": str(vf2.pk),
+                },
+            )
+        job = MediaJob.objects.filter(task_name="videomant.concat").last()
+        self.assertIsNotNone(job)
+        self.assertIn(vf.pk, job.input_files)
+        self.assertIn(vf2.pk, job.input_files)
+
+    def test_bucket_list_renders(self):
+        from toto.vault.models import Bucket
+        Bucket.objects.create(name="TestBucket", owner=self.user, slug="testbucket")
+        resp = self.client.get("/videomant/browse/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "TestBucket")
+
+    def test_bucket_file_list_renders(self):
+        from toto.vault.models import Bucket
+        bucket = Bucket.objects.create(name="MediaBucket", owner=self.user, slug="mediabucket")
+        vf = self._make_vf()
+        vf.bucket = bucket
+        vf.save()
+        resp = self.client.get(f"/videomant/browse/{bucket.pk}/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "MediaBucket")
+
+    def test_bucket_file_list_search(self):
+        from toto.vault.models import Bucket
+        bucket = Bucket.objects.create(name="SearchBucket", owner=self.user, slug="searchbucket")
+        vf = self._make_vf()
+        vf.bucket = bucket
+        vf.title = "UniqueTitle999"
+        vf.save()
+        resp = self.client.get(f"/videomant/browse/{bucket.pk}/?q=UniqueTitle999")
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "UniqueTitle999")
+
+    # Workspace views
+    def _make_bucket(self, name="TestBucket", slug="testbucket"):
+        from toto.vault.models import Bucket
+        return Bucket.objects.create(name=name, owner=self.user, slug=slug)
+
+    def test_workspace_list_renders(self):
+        resp = self.client.get("/videomant/workspaces/")
+        self.assertEqual(resp.status_code, 200)
+
+    def test_workspace_create_blocked_for_non_federal(self):
+        regular = User.objects.create_user("notfederal_ws", password="x")
+        c = DjangoClient()
+        c.login(username="notfederal_ws", password="x")
+        patcher = patch("toto.ui.page.PageProcessor._get_config", return_value=None)
+        patcher.start()
+        try:
+            resp = c.post("/videomant/workspaces/create/", {"name": "ws", "bucket_id": "1"})
+            self.assertRedirects(resp, "/videomant/workspaces/", fetch_redirect_response=False)
+        finally:
+            patcher.stop()
+
+    def test_workspace_create_allowed_for_superuser(self):
+        bucket = self._make_bucket()
+        resp = self.client.post("/videomant/workspaces/create/", {
+            "name": "My WS",
+            "bucket_id": str(bucket.pk),
+            "description": "",
+        })
+        from .models import Workspace
+        self.assertTrue(Workspace.objects.filter(name="My WS").exists())
+
+    def test_workspace_detail_renders(self):
+        from .models import Workspace
+        bucket = self._make_bucket(name="WsBucket", slug="wsbucket")
+        ws = Workspace.objects.create(name="Test WS", bucket=bucket, owner=self.user)
+        resp = self.client.get(f"/videomant/workspaces/{ws.slug}/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Test WS")
+
+    def test_workspace_slug_auto_generated(self):
+        from .models import Workspace
+        bucket = self._make_bucket(name="SlugBucket", slug="slugbucket")
+        ws = Workspace.objects.create(name="My Workspace", bucket=bucket, owner=self.user)
+        self.assertEqual(ws.slug, "my-workspace")
+
+    def test_workspace_access_denied_for_other_user(self):
+        from .models import Workspace
+        other = User.objects.create_user("other_ws", password="x")
+        bucket = self._make_bucket(name="PrivBucket", slug="privbucket")
+        ws = Workspace.objects.create(name="Private WS", bucket=bucket, owner=other)
+        resp = self.client.get(f"/videomant/workspaces/{ws.slug}/")
+        self.assertEqual(resp.status_code, 404)
+
+    def test_bucket_list_requires_login(self):
+        c = DjangoClient()
+        resp = c.get("/videomant/browse/")
+        self.assertIn(resp.status_code, [301, 302])
 
     def test_enqueue_cut_validates_form(self):
         vf = self._make_vf()

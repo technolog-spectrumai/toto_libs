@@ -23,6 +23,10 @@ class OcrProject(models.Model):
     bucket = models.ForeignKey(Bucket, on_delete=models.CASCADE, related_name="ocr_projects")
     allowed_users = models.ManyToManyField(User, related_name="shared_ocr_projects", blank=True)
 
+    class Meta:
+        verbose_name = "Workspace"
+        verbose_name_plural = "Workspaces"
+
     def user_has_access(self, user):
         return (
             user == self.bucket.owner or

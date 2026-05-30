@@ -14,6 +14,13 @@ from .forms import ApplyTransformForm
 from toto.bento.models import IdeaBox
 
 
+def _is_federal_tribe_member(user) -> bool:
+    try:
+        return user.community_profile.communities.filter(is_federal_tribe=True).exists()
+    except Exception:
+        return False
+
+
 # ---------------------------------------------------------
 # ACCESS HELPERS
 # ---------------------------------------------------------
@@ -56,7 +63,45 @@ class OcrProjectListView(LoginRequiredMixin, ListView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        context["can_create"] = (
+            _is_federal_tribe_member(self.request.user)
+            or self.request.user.is_superuser
+        )
         return PageProcessor().decorate(context, self.request)
+
+
+@login_required
+def workspace_create(request):
+    if not (_is_federal_tribe_member(request.user) or request.user.is_superuser):
+        messages.error(request, "Only federal tribe members can create workspaces.")
+        return redirect("ocr:project_list")
+
+    from toto.vault.models import Bucket
+    from django.utils.text import slugify as _slugify
+
+    if request.method == "POST":
+        name = request.POST.get("name", "").strip()
+        bucket_id = request.POST.get("bucket_id", "").strip()
+        if not name or not bucket_id:
+            messages.error(request, "Name and bucket are required.")
+        else:
+            try:
+                bucket = Bucket.objects.get(pk=bucket_id)
+            except Bucket.DoesNotExist:
+                messages.error(request, "Bucket not found.")
+                bucket = None
+            if bucket:
+                base_slug = _slugify(name) or "workspace"
+                slug, n = base_slug, 1
+                while OcrProject.objects.filter(slug=slug).exists():
+                    slug = f"{base_slug}-{n}"; n += 1
+                ws = OcrProject.objects.create(name=name, slug=slug, bucket=bucket)
+                messages.success(request, f"Workspace \"{ws.name}\" created.")
+                return redirect("ocr:project_detail", slug=ws.slug)
+
+    buckets = Bucket.objects.all().order_by("name")
+    context = {"buckets": buckets}
+    return render(request, "ocr/workspace_create.html", PageProcessor().decorate(context, request))
 
 
 # ---------------------------------------------------------

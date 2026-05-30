@@ -12,9 +12,15 @@
   <div class="mx-auto max-w-3xl space-y-6">
 
     <div>
+      {% if ws %}
+      <a href="{% url 'videomant:workspace_detail' ws.slug %}" class="text-sm opacity-50 hover:opacity-100">
+        <i class="fa-solid fa-arrow-left mr-1"></i>{{ ws.name }}
+      </a>
+      {% else %}
       <a href="{% url 'videomant:job_list' %}" class="text-sm opacity-50 hover:opacity-100">
         <i class="fa-solid fa-arrow-left mr-1"></i>Jobs
       </a>
+      {% endif %}
       <h1 class="mt-2 text-2xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
         <i class="fa-solid fa-wand-magic-sparkles mr-2"></i>Media Actions
       </h1>
@@ -45,6 +51,7 @@
         <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide opacity-60">{{ action|upper }}</h2>
         <form method="post" action="{{ url }}" class="space-y-4">
           {% csrf_token %}
+          {% if ws_slug %}<input type="hidden" name="ws_slug" value="{{ ws_slug }}">{% endif %}
           {% for field in form %}
           <div>
             <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">

@@ -5,6 +5,7 @@ app_name = "ocr"
 
 urlpatterns = [
     path("", views.OcrProjectListView.as_view(), name="project_list"),
+    path("create/", views.workspace_create, name="workspace_create"),
     path("<slug:slug>/", views.OcrProjectDetailView.as_view(), name="project_detail"),
 
     path("image/<int:image_id>/", views.OcrImageDetailView.as_view(), name="image_detail"),

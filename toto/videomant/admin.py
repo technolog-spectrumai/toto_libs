@@ -1,7 +1,15 @@
 from django.contrib import admin
 from django.utils.html import format_html
 
-from .models import MediaJob, ProbeResult
+from .models import MediaJob, ProbeResult, Workspace
+
+
+@admin.register(Workspace)
+class WorkspaceAdmin(admin.ModelAdmin):
+    list_display = ["id", "name", "slug", "owner", "bucket", "created_at"]
+    search_fields = ["name", "slug"]
+    raw_id_fields = ["owner", "bucket"]
+    readonly_fields = ["slug", "created_at"]
 
 
 def _requeue_failed(modeladmin, request, queryset):

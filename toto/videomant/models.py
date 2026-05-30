@@ -1,6 +1,37 @@
 from django.contrib.auth.models import User
 from django.db import models
 from django.utils import timezone
+from django.utils.text import slugify
+
+
+class Workspace(models.Model):
+    name        = models.CharField(max_length=200)
+    slug        = models.SlugField(max_length=220, unique=True, blank=True)
+    description = models.TextField(blank=True)
+    bucket      = models.ForeignKey("vault.Bucket", on_delete=models.CASCADE, related_name="videomant_workspaces")
+    owner       = models.ForeignKey(User, on_delete=models.CASCADE, related_name="videomant_workspaces")
+    allowed_users = models.ManyToManyField(User, blank=True, related_name="shared_videomant_workspaces")
+    created_at  = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Workspace"
+        verbose_name_plural = "Workspaces"
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            base = slugify(self.name) or "workspace"
+            slug, n = base, 1
+            while Workspace.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                slug = f"{base}-{n}"; n += 1
+            self.slug = slug
+        super().save(*args, **kwargs)
+
+    def user_has_access(self, user):
+        return user == self.owner or self.allowed_users.filter(pk=user.pk).exists()
+
+    def __str__(self):
+        return f"{self.name} ({self.owner.username})"
 
 
 class MediaJob(models.Model):
@@ -12,6 +43,7 @@ class MediaJob(models.Model):
         CANCELED  = "canceled",  "Canceled"
 
     owner          = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="media_jobs")
+    workspace      = models.ForeignKey(Workspace, on_delete=models.SET_NULL, null=True, blank=True, related_name="jobs")
     task_name      = models.CharField(max_length=100)
     workflow_run   = models.ForeignKey("workflows.WorkflowRun",     on_delete=models.SET_NULL, null=True, blank=True, related_name="media_jobs")
     workflow_node_run = models.ForeignKey("workflows.WorkflowNodeRun", on_delete=models.SET_NULL, null=True, blank=True, related_name="media_jobs")

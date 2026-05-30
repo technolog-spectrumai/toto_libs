@@ -29,20 +29,29 @@
           </p>
           <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
             <i class="fa-solid fa-eye"></i>
-            {% trans "OCR Projects" %}
+            {% trans "OCR Workspaces" %}
           </h1>
         </div>
       </div>
 
-      {% if projects %}
+      <div class="flex items-center gap-3">
+        {% if projects %}
         <div
           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
           class="flex items-center gap-2 self-start rounded-lg border px-4 py-2 text-sm shadow-sm md:self-auto">
           <i class="fa-solid fa-folder-open opacity-60"></i>
           <span class="font-bold">{{ projects|length }}</span>
-          <span class="opacity-65">{% trans "projects" %}</span>
+          <span class="opacity-65">{% trans "workspaces" %}</span>
         </div>
-      {% endif %}
+        {% endif %}
+        {% if can_create %}
+        <a
+          href="{% url 'ocr:workspace_create' %}"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-white'"
+          class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-90"
+        ><i class="fa-solid fa-plus"></i> {% trans "New workspace" %}</a>
+        {% endif %}
+      </div>
     </header>
 
     <!-- List -->

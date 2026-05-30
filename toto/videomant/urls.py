@@ -5,6 +5,12 @@ app_name = "videomant"
 
 urlpatterns = [
     path("", views.job_list, name="job_list"),
+    path("browse/", views.bucket_list, name="bucket_list"),
+    path("browse/<int:bucket_pk>/", views.bucket_file_list, name="bucket_file_list"),
+    path("workspaces/", views.workspace_list, name="workspace_list"),
+    path("workspaces/create/", views.workspace_create, name="workspace_create"),
+    path("workspaces/<slug:slug>/", views.workspace_detail, name="workspace_detail"),
+    path("workspaces/<slug:slug>/delete/", views.workspace_delete, name="workspace_delete"),
     path("jobs/<int:pk>/", views.job_detail, name="job_detail"),
     path("jobs/<int:pk>/status.json", views.job_status_json, name="job_status_json"),
     path("vault/<int:file_id>/actions/", views.vault_file_actions, name="vault_file_actions"),
