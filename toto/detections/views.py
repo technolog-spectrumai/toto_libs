@@ -17,9 +17,17 @@ from .services import (
 )
 
 
+def _detections_parent_template():
+    from django.apps import apps
+    if apps.is_installed("toto.tactical"):
+        return "tactical/base.html"
+    return "detections/base_standalone.html"
+
+
 class DetectionsContextMixin:
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        context["detections_parent_template"] = _detections_parent_template()
         return PageProcessor().decorate(context, self.request)
 
 
@@ -115,6 +123,7 @@ class DetectionCreateView(LoginRequiredMixin, DetectionsContextMixin, View):
         detections = Detection.objects.select_related("category", "address", "zone", "route")[:100]
         context = {
             "form": form,
+            "detections_parent_template": _detections_parent_template(),
             "detection_features": [
                 feature for feature in (
                     detection_map_feature(detection)
@@ -166,6 +175,7 @@ class DetectionHelpView(LoginRequiredMixin, DetectionsContextMixin, View):
         context = PageProcessor().decorate({
             "detection": detection,
             "form": form,
+            "detections_parent_template": _detections_parent_template(),
         }, request)
         return render(request, self.template_name, context)
 

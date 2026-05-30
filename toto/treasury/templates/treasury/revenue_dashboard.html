@@ -1,11 +1,12 @@
 {% extends "treasury/base.html" %}
+{% load static %}
 {% load i18n %}
 
 {% block treasury_title %}{% trans "Revenue" %}{% endblock %}
 {% block tab_revenue %}border-b-2 border-current -mb-px{% endblock %}
 
 {% block start_script %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
 <style>[x-cloak]{display:none!important}</style>
 {% endblock %}
 

@@ -187,6 +187,10 @@ class ApplyUsageStatementForm(forms.Form):
         self.fields["tariff"].queryset = Tariff.objects.filter(status=TariffStatus.ACTIVE).order_by("name")
         self.fields["issued_to"].queryset = User.objects.filter(is_active=True).order_by("username")
 
+        _css = "w-full rounded-lg border px-3 py-2 text-sm outline-none transition focus:ring-1 oya-form-field"
+        for field in self.fields.values():
+            field.widget.attrs["class"] = _css
+
     def clean(self):
         cleaned = super().clean()
         usage_file = cleaned.get("usage_file")

@@ -376,7 +376,7 @@ def metrics(request):
         price = sub.price
         if not price:
             continue
-        factor = INTERVAL_MONTHS.get(price.billing_interval, None)
+        factor = INTERVAL_MONTHS.get(price.interval, None)
         if factor is None:
             continue
         plan_name = sub.plan.code if sub.plan else "?"

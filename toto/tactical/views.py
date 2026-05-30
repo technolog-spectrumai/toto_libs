@@ -8,6 +8,8 @@ from toto.core.page import PageProcessor
 
 
 def _page(context, request):
+    from django.apps import apps
+    context.setdefault("detections_enabled", apps.is_installed("toto.detections"))
     return PageProcessor().decorate(context, request)
 
 

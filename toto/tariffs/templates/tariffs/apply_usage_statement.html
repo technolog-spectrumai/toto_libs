@@ -24,7 +24,18 @@
           {% trans "Apply Tariff to Usage Statement" %}
         </h2>
       </div>
-      <form method="post" class="space-y-4 p-5">
+      <form method="post" class="space-y-4 p-5"
+            x-effect="
+              $el.querySelectorAll('.oya-form-field').forEach(el => {
+                if (darkMode) {
+                  el.classList.add('border-accent-1', 'bg-primary-bg-dark', 'text-text-main-dark');
+                  el.classList.remove('border-accent-2', 'bg-primary-bg-light', 'text-text-main-light');
+                } else {
+                  el.classList.add('border-accent-2', 'bg-primary-bg-light', 'text-text-main-light');
+                  el.classList.remove('border-accent-1', 'bg-primary-bg-dark', 'text-text-main-dark');
+                }
+              })
+            ">
         {% csrf_token %}
 
         {% for field in form %}

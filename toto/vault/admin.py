@@ -47,15 +47,14 @@ class StorageProviderAdmin(admin.ModelAdmin):
 @admin.register(Bucket)
 class BucketAdmin(admin.ModelAdmin):
     list_display = ('name', 'slug', 'owner', 'storage_backend', 'provider',
-                    'tariff', 'storage_quota_mb', 'connection_url_display')
+                    'storage_quota_mb', 'connection_url_display')
     search_fields = ('name', 'owner__username')
     list_filter = ('owner', 'storage_backend', 'provider')
     ordering = ('owner', 'name')
-    autocomplete_fields = ('tariff',)
     readonly_fields = ('connection_url_display',)
     fieldsets = (
         (None, {
-            'fields': ('name', 'slug', 'owner', 'tariff', 'storage_quota_mb'),
+            'fields': ('name', 'slug', 'owner', 'storage_quota_mb'),
         }),
         ('Storage backend', {
             'fields': ('storage_backend', 'provider', 'storage_config', 'public_base_url'),

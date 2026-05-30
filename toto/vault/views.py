@@ -412,27 +412,29 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
         else:
             location = "Root"
 
-        # ── Upload cost estimate from bucket tariff ────────────────────────
+        # ── Upload cost estimate from active tariff ───────────────────────
         upload_cost = None
-        tariff = gateway.bucket.tariff if gateway.bucket_id else None
-        if tariff:
-            items = {
-                item.metric.code: item
-                for item in tariff.items.filter(active=True).select_related("metric", "charged_asset")
-            }
-            size_mb = Decimal(str(uploaded_file.size)) / Decimal("1048576")
-            cost = Decimal("0")
-            token = None
-            req_item = items.get("storage.request")
-            xfer_item = items.get("storage.transfer_mb")
-            if req_item:
-                cost += req_item.price_per_unit_display
-                token = token or (req_item.charged_asset.unit_name if req_item.charged_asset else None)
-            if xfer_item:
-                cost += (size_mb * xfer_item.price_per_unit_display).quantize(Decimal("0.000001"))
-                token = token or (xfer_item.charged_asset.unit_name if xfer_item.charged_asset else None)
-            if token and cost > 0:
-                upload_cost = f"{cost:.6f} {token}"
+        if _vault_tariff:
+            try:
+                items = {
+                    item.metric.code: item
+                    for item in _vault_tariff.items.filter(active=True).select_related("metric", "charged_asset")
+                }
+                size_mb = Decimal(str(uploaded_file.size)) / Decimal("1048576")
+                cost = Decimal("0")
+                token = None
+                req_item = items.get("storage.request")
+                xfer_item = items.get("storage.transfer_mb")
+                if req_item:
+                    cost += req_item.price_per_unit_display
+                    token = token or (req_item.charged_asset.unit_name if req_item.charged_asset else None)
+                if xfer_item:
+                    cost += (size_mb * xfer_item.price_per_unit_display).quantize(Decimal("0.000001"))
+                    token = token or (xfer_item.charged_asset.unit_name if xfer_item.charged_asset else None)
+                if token and cost > 0:
+                    upload_cost = f"{cost:.6f} {token}"
+            except Exception:
+                pass
 
         return JsonResponse({
             "result": {
@@ -1108,13 +1110,17 @@ class GenerateInvoiceView(LoginRequiredMixin, View):
 
     def _bucket(self, bucket_slug):
         return get_object_or_404(
-            Bucket.objects.select_related("tariff", "owner"),
+            Bucket.objects.select_related("owner"),
             slug=bucket_slug,
         )
 
+    def _get_tariff(self, bucket):
+        from toto.metering.charge import get_tariff_for_user
+        return get_tariff_for_user(bucket.owner, "vault")
+
     def _estimate(self, bucket):
         """Return (amount, currency, usage_mb, item_or_None) from tariff + storage."""
-        tariff = bucket.tariff
+        tariff = self._get_tariff(bucket)
         if not tariff:
             return Decimal("0.00"), "TOKEN", 0.0, None
 
@@ -1140,7 +1146,7 @@ class GenerateInvoiceView(LoginRequiredMixin, View):
 
     def get(self, request, bucket_slug):
         bucket = self._bucket(bucket_slug)
-        tariff = bucket.tariff
+        tariff = self._get_tariff(bucket)
         if not tariff:
             messages.warning(request, "This bucket has no tariff assigned.")
             return redirect("vault:bucket_metrics", bucket_slug=bucket_slug)
@@ -1164,14 +1170,15 @@ class GenerateInvoiceView(LoginRequiredMixin, View):
         from toto.invoice.models import Invoice as InvoiceModel
 
         bucket = self._bucket(bucket_slug)
-        if not bucket.tariff:
+        tariff = self._get_tariff(bucket)
+        if not tariff:
             messages.error(request, "This bucket has no tariff assigned.")
             return redirect("vault:bucket_metrics", bucket_slug=bucket_slug)
 
         amount, currency, usage_mb, _ = self._estimate(bucket)
         month = date.today().strftime("%B %Y")
         title = f"Storage Invoice — {bucket.name} — {month}"
-        description = f"Storage billing for {bucket.name} ({bucket.tariff.code}). {usage_mb} MB used."
+        description = f"Storage billing for {bucket.name} ({tariff.code}). {usage_mb} MB used."
 
         inv = InvoiceModel.objects.create(
             issued_to=bucket.owner,
