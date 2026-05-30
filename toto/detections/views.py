@@ -113,6 +113,10 @@ class DetectionDetailView(DetectionsContextMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["handles"] = self.object.handles.select_related("assigned_to")
+        try:
+            context["promoted_incident_pk"] = str(self.object.promoted_incident.pk)
+        except Exception:
+            context["promoted_incident_pk"] = ""
         return context
 
 

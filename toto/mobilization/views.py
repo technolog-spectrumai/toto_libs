@@ -292,7 +292,7 @@ def report_detail(request, pk):
     report = get_object_or_404(
         MobilizationReport.objects.select_related(
             "community", "incident_type", "submitted_by", "reviewed_by", "enacted_by"
-        ).prefetch_related("evidence_links__detection", "mobilization_events"),
+        ).prefetch_related("evidence_links__incident", "mobilization_events"),
         pk=pk,
     )
     person = _person(request)
@@ -301,7 +301,7 @@ def report_detail(request, pk):
     return _render(request, "mobilization/report_detail.html", {
         "report": report,
         "can_enact": can_enact,
-        "evidence": report.evidence_links.select_related("detection", "added_by").all(),
+        "evidence": report.evidence_links.select_related("incident", "added_by").all(),
         "linked_events": report.mobilization_events.select_related("community").all(),
     })
 
@@ -468,7 +468,7 @@ def event_detail(request, pk):
             ("deployments",     "Deployments",      "fa-solid fa-users-gear",          "accent"),
             ("evac_routes",     "Evac Routes",       "fa-solid fa-route",               "success"),
             ("emergency_zones", "Emergency Zones",   "fa-solid fa-triangle-exclamation","warn"),
-            ("detections",      "Detections",        "fa-solid fa-circle-exclamation",  "caution"),
+            ("incidents",       "Incidents",         "fa-solid fa-circle-exclamation",  "caution"),
             ("campaign_zone",   "Campaign Zone",     "fa-solid fa-draw-polygon",        "accent"),
         ],
         "evac_routes": evac_routes,
@@ -581,28 +581,30 @@ def event_map_data(request, pk):
                 "geometry": geom,
             })
 
-    from toto.detections.models import Detection
-    detections = Detection.objects.filter(
+    from toto.incidents.models import Incident
+    incidents = Incident.objects.filter(
         mobilization_evidence__report__mobilization_events=event
     ).distinct().select_related("address", "zone")
-    for det in detections:
+    for inc in incidents:
         pt = None
         try:
-            if det.address and det.address.geometry:
-                pt = json.loads(det.address.geometry.geojson)
-            elif det.zone and det.zone.geometry:
-                pt = json.loads(det.zone.geometry.centroid.geojson)
+            geom = inc.map_geometry
+            if geom:
+                if geom.geom_type == "Point":
+                    pt = json.loads(geom.geojson)
+                else:
+                    pt = json.loads(geom.centroid.geojson)
         except Exception:
             pt = None
         if pt:
             features.append({
                 "type": "Feature",
                 "properties": {
-                    "kind": "detection",
-                    "label": det.title,
-                    "severity": det.severity,
-                    "detection_type": det.detection_type,
-                    "status": det.status,
+                    "kind": "incident",
+                    "label": inc.title,
+                    "severity": inc.severity,
+                    "incident_type": inc.incident_type,
+                    "status": inc.status,
                 },
                 "geometry": pt,
             })

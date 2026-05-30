@@ -1,0 +1,72 @@
+{% extends "incidents/base.html" %}
+{% load static %}
+{% block incidents_title %}Dashboard{% endblock %}
+{% block incidents_heading %}Incidents Dashboard{% endblock %}
+{% block incidents_subtitle %}<p class="mt-2 max-w-2xl text-sm opacity-70">Confirmed incident health, severity breakdown, and open response signals.</p>{% endblock %}
+{% block incidents_start_script %}<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>{% endblock %}
+
+{% block incidents_content %}
+<div class="grid gap-4 sm:grid-cols-3">
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">Open incidents</p><p class="mt-2 text-3xl font-bold">{{ open_count }}</p></article>
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">Critical</p><p class="mt-2 text-3xl font-bold text-purple-500">{{ critical_count }}</p></article>
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide opacity-60">Total incidents</p><p class="mt-2 text-3xl font-bold">{{ total_count }}</p></article>
+</div>
+
+{{ status_chart_data|json_script:"status-chart-data" }}
+{{ severity_chart_data|json_script:"severity-chart-data" }}
+
+<section class="grid gap-4 lg:grid-cols-2">
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm">
+    <h2 class="text-lg font-bold"><i class="fa-solid fa-chart-pie opacity-70"></i> Status</h2>
+    <div class="mt-4 h-72"><canvas id="statusChart"></canvas></div>
+  </article>
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm">
+    <h2 class="text-lg font-bold"><i class="fa-solid fa-chart-column opacity-70"></i> Severity</h2>
+    <div class="mt-4 h-72"><canvas id="severityChart"></canvas></div>
+  </article>
+</section>
+
+{% if recent_incidents %}
+<section class="space-y-3">
+  <h2 class="text-xl font-bold">Open Incidents</h2>
+  {% for incident in recent_incidents %}
+    <a href="{% url 'incidents:incident-detail' incident.pk %}" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-sunken-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-sunken-light'" class="flex items-center gap-3 rounded-xl border p-3 shadow-sm transition hover:opacity-90">
+      <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold
+        {% if incident.severity == 'critical' %}bg-purple-500/20 text-purple-500
+        {% elif incident.severity == 'high' %}bg-red-500/20 text-red-500
+        {% elif incident.severity == 'medium' %}bg-amber-500/20 text-amber-500
+        {% else %}bg-green-500/20 text-green-500{% endif %}">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+      </span>
+      <div class="min-w-0 flex-1">
+        <p class="truncate font-semibold text-sm">{{ incident.title }}</p>
+        <p class="text-xs opacity-55">{{ incident.get_severity_display }} · {{ incident.get_status_display }}{% if incident.location_label %} · {{ incident.location_label }}{% endif %}</p>
+      </div>
+      <span class="text-xs opacity-50">{{ incident.start_time|date:"d M" }}</span>
+    </a>
+  {% endfor %}
+</section>
+{% endif %}
+
+<script>
+(function() {
+  const themeColors = {{ theme.theme.colors|safe }};
+  const isDark = localStorage.getItem("darkMode") === "true";
+  const textColor = isDark ? themeColors["text-main-dark"] : themeColors["text-main-light"];
+  const gridColor = isDark ? themeColors["accent-1"] : themeColors["accent-2"];
+  const palette = ["#22c55e","#f59e0b","#ef4444","#7c3aed"];
+  const statusData = JSON.parse(document.getElementById("status-chart-data").textContent);
+  const severityData = JSON.parse(document.getElementById("severity-chart-data").textContent);
+  new Chart(document.getElementById("statusChart"), {
+    type: "doughnut",
+    data: {labels: statusData.labels, datasets: [{data: statusData.data, backgroundColor: palette}]},
+    options: {responsive:true, maintainAspectRatio:false, plugins:{legend:{labels:{color:textColor}}}},
+  });
+  new Chart(document.getElementById("severityChart"), {
+    type: "bar",
+    data: {labels: severityData.labels, datasets: [{label:"Incidents", data:severityData.data, backgroundColor:palette}]},
+    options: {responsive:true, maintainAspectRatio:false, plugins:{legend:{labels:{color:textColor}}}, scales:{x:{ticks:{color:textColor},grid:{color:gridColor}},y:{beginAtZero:true,ticks:{color:textColor},grid:{color:gridColor}}}},
+  });
+})();
+</script>
+{% endblock %}

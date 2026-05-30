@@ -1,0 +1,13 @@
+{% extends "oya/base.html" %}
+
+{% block tactical_title %}{% block incidents_title %}Incidents{% endblock %}{% endblock %}
+{% block tactical_start_script %}{% block incidents_start_script %}{% endblock %}{% endblock %}
+
+{% block content %}
+<div :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+     class="min-h-screen transition-colors duration-300">
+  <div class="mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-6">
+    {% block tactical_content %}{% endblock %}
+  </div>
+</div>
+{% endblock %}

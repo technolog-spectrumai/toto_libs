@@ -65,7 +65,7 @@ class ResponderSkillAdmin(admin.ModelAdmin):
 class MobilizationReportEvidenceInline(admin.TabularInline):
     model = MobilizationReportEvidence
     extra = 0
-    fields = ("detection", "evidence_role", "weight", "note", "added_by")
+    fields = ("incident", "evidence_role", "weight", "note", "added_by")
     readonly_fields = ("added_at",)
 
 
@@ -80,9 +80,9 @@ class MobilizationReportAdmin(admin.ModelAdmin):
 
 @admin.register(MobilizationReportEvidence)
 class MobilizationReportEvidenceAdmin(admin.ModelAdmin):
-    list_display = ("report", "detection", "evidence_role", "weight", "added_by", "added_at")
+    list_display = ("report", "incident", "evidence_role", "weight", "added_by", "added_at")
     list_filter = ("evidence_role", "weight")
-    search_fields = ("report__title", "detection__title")
+    search_fields = ("report__title", "incident__title")
     readonly_fields = ("added_at",)
 
 

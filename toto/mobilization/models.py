@@ -267,10 +267,12 @@ class MobilizationReportEvidence(models.Model):
         on_delete=models.CASCADE,
         related_name="evidence_links",
     )
-    detection = models.ForeignKey(
-        "detections.Detection",
+    incident = models.ForeignKey(
+        "incidents.Incident",
         on_delete=models.CASCADE,
         related_name="mobilization_evidence",
+        null=True,
+        blank=True,
     )
     evidence_role = models.CharField(max_length=20, choices=EVIDENCE_ROLE_CHOICES, default="supporting")
     weight = models.CharField(max_length=10, choices=WEIGHT_CHOICES, default="normal")
@@ -285,14 +287,14 @@ class MobilizationReportEvidence(models.Model):
     added_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = [("report", "detection")]
+        unique_together = [("report", "incident")]
         indexes = [
             models.Index(fields=["report", "evidence_role"]),
             models.Index(fields=["report", "weight"]),
         ]
 
     def __str__(self):
-        return f"{self.get_evidence_role_display()} evidence for {self.report}: {self.detection}"
+        return f"{self.get_evidence_role_display()} evidence for {self.report}: {self.incident}"
 
 
 class MobilizationEvent(models.Model):

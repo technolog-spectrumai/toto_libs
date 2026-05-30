@@ -15,16 +15,6 @@ class DetectionsConfig(AppConfig):
         from toto.core.plugin_autodiscover import autodiscover_plugins
         autodiscover_plugins('plugins.location_plugins')
 
-        from django.apps import apps
-        if apps.is_installed("toto.tactical"):
-            from toto.tactical.plugins import FieldMapPlugin, FieldMetricsPlugin
-            from toto.detections.plugins.field_plugins import (
-                detections_map_features,
-                detections_metrics_section,
-            )
-            FieldMapPlugin.register(detections_map_features)
-            FieldMetricsPlugin.register(detections_metrics_section)
-
         from toto.detections import predefined_tasks  # noqa: F401 — registers detections workflow tasks
 
 

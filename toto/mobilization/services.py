@@ -35,17 +35,17 @@ def can_enact_report(person, report):
     return community.senior_members.filter(pk=person.pk).exists()
 
 
-def create_report_from_detection(community, detection, submitted_by, **kwargs):
-    """Create a MobilizationReport pre-linked to a detection as primary evidence."""
+def create_report_from_incident(community, incident, submitted_by, **kwargs):
+    """Create a MobilizationReport pre-linked to an incident as primary evidence."""
     report = MobilizationReport.objects.create(
         community=community,
         submitted_by=submitted_by,
-        severity=detection.severity if hasattr(detection, "severity") else "low",
+        severity=incident.severity if hasattr(incident, "severity") else "low",
         **kwargs,
     )
     MobilizationReportEvidence.objects.create(
         report=report,
-        detection=detection,
+        incident=incident,
         evidence_role="primary",
         weight="high",
         added_by=submitted_by,
@@ -53,11 +53,11 @@ def create_report_from_detection(community, detection, submitted_by, **kwargs):
     return report
 
 
-def add_detection_evidence(report, detection, added_by=None, **kwargs):
-    """Add a detection as evidence to a report; update severity afterward."""
+def add_incident_evidence(report, incident, added_by=None, **kwargs):
+    """Add an incident as evidence to a report; update severity afterward."""
     evidence, created = MobilizationReportEvidence.objects.get_or_create(
         report=report,
-        detection=detection,
+        incident=incident,
         defaults={"added_by": added_by, **kwargs},
     )
     if not created:
@@ -69,15 +69,15 @@ def add_detection_evidence(report, detection, added_by=None, **kwargs):
 
 
 def update_report_severity_from_evidence(report):
-    """Recalculate report severity from attached detections."""
-    evidence_qs = report.evidence_links.select_related("detection").all()
+    """Recalculate report severity from attached incidents."""
+    evidence_qs = report.evidence_links.select_related("incident").all()
     if not evidence_qs.exists():
         return
 
     score = 0
     for ev in evidence_qs:
-        detection = ev.detection
-        det_severity = getattr(detection, "severity", "low")
+        incident = ev.incident
+        det_severity = getattr(incident, "severity", "low")
         base = _SEVERITY_ORDER.get(det_severity, 0)
         bump = _ROLE_SEVERITY_BUMP.get(ev.evidence_role, 0)
         weight_factor = {"low": 0.5, "normal": 1.0, "high": 1.5}.get(ev.weight, 1.0)

@@ -1,0 +1,29 @@
+{% extends incidents_parent_template %}
+
+{% block tactical_title %}{% block incidents_title %}Incidents{% endblock %}{% endblock %}
+{% block tactical_start_script %}{% block incidents_start_script %}{% endblock %}{% endblock %}
+
+{% block tactical_content %}
+<div class="mx-auto max-w-7xl space-y-6">
+
+  <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+    <div class="space-y-1">
+      <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-xs font-semibold uppercase tracking-wide">Incidents</p>
+      <h1 class="flex items-center gap-3 text-3xl font-bold">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+        {% block incidents_heading %}Incidents{% endblock %}
+      </h1>
+      {% block incidents_subtitle %}<p class="mt-1 max-w-2xl text-sm opacity-70">Confirmed field incidents requiring response.</p>{% endblock %}
+    </div>
+    <nav class="flex flex-wrap gap-2">
+      <a href="{% url 'incidents:incident-list' %}" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"><i class="fa-solid fa-triangle-exclamation"></i> Incidents</a>
+      {% if request.user.is_authenticated %}
+        <a href="{% url 'incidents:incident-create' %}" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"><i class="fa-solid fa-plus"></i> New</a>
+        <a href="{% url 'incidents:dashboard' %}" :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'" class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
+      {% endif %}
+    </nav>
+  </header>
+
+  {% block incidents_content %}{% endblock %}
+</div>
+{% endblock %}
