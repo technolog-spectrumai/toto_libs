@@ -1,0 +1,119 @@
+{% extends "tariffs/base.html" %}
+{% load i18n %}
+
+{% block tariffs_title %}{% trans "Metering Events" %}{% endblock %}
+
+{% block tariffs_content %}
+<div class="space-y-6">
+
+  <!-- Summary -->
+  <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-4 text-center shadow-sm">
+      <p class="text-2xl font-bold">{{ total_events }}</p>
+      <p class="mt-1 text-xs opacity-60">{% trans "Total events" %}</p>
+    </div>
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-4 text-center shadow-sm">
+      <p class="text-2xl font-bold">{{ total_apps }}</p>
+      <p class="mt-1 text-xs opacity-60">{% trans "Apps with events" %}</p>
+    </div>
+  </div>
+
+  <!-- Per-app breakdown -->
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border shadow-sm">
+    <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+         class="px-5 py-4 border-b">
+      <h2 class="font-bold flex items-center gap-2">
+        <i class="fa-solid fa-layer-group opacity-60"></i>
+        {% trans "Per-app event totals" %}
+      </h2>
+    </div>
+    {% if rows %}
+    <table class="min-w-full text-sm">
+      <thead>
+        <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-b">
+          <th class="px-5 py-3 text-left text-xs font-semibold uppercase opacity-60">{% trans "App" %}</th>
+          <th class="px-5 py-3 text-left text-xs font-semibold uppercase opacity-60">{% trans "Model" %}</th>
+          <th class="px-5 py-3 text-right text-xs font-semibold uppercase opacity-60">{% trans "Events" %}</th>
+          <th class="px-5 py-3 text-left text-xs font-semibold uppercase opacity-60">{% trans "Latest metric" %}</th>
+          <th class="px-5 py-3 text-left text-xs font-semibold uppercase opacity-60">{% trans "Latest at" %}</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y" :class="darkMode ? 'divide-accent-1' : 'divide-accent-2'">
+        {% for row in rows %}
+        <tr>
+          <td class="px-5 py-3 font-mono text-xs">{{ row.app_label }}</td>
+          <td class="px-5 py-3 text-xs opacity-70">{{ row.model }}</td>
+          <td class="px-5 py-3 text-right font-bold tabular-nums">{{ row.count }}</td>
+          <td class="px-5 py-3 text-xs opacity-70">{{ row.latest.metric_code|default:"—" }}</td>
+          <td class="px-5 py-3 text-xs opacity-50 tabular-nums">
+            {% if row.latest.occurred_at %}{{ row.latest.occurred_at|date:"Y-m-d H:i" }}{% else %}—{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="px-6 py-10 text-center text-sm opacity-40">
+      {% trans "No metering event models found. Apps record events by subclassing AbstractUsageEvent." %}
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Recent events -->
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border shadow-sm">
+    <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+         class="px-5 py-4 border-b">
+      <h2 class="font-bold flex items-center gap-2">
+        <i class="fa-solid fa-clock-rotate-left opacity-60"></i>
+        {% trans "Recent events (latest 50)" %}
+      </h2>
+    </div>
+    {% if recent_events %}
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-sm">
+        <thead>
+          <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-b">
+            <th class="px-5 py-3 text-left text-xs font-semibold uppercase opacity-60">{% trans "Metric" %}</th>
+            <th class="px-5 py-3 text-right text-xs font-semibold uppercase opacity-60">{% trans "Qty" %}</th>
+            <th class="px-5 py-3 text-left text-xs font-semibold uppercase opacity-60">{% trans "Unit" %}</th>
+            <th class="px-5 py-3 text-left text-xs font-semibold uppercase opacity-60">{% trans "Source" %}</th>
+            <th class="px-5 py-3 text-left text-xs font-semibold uppercase opacity-60">{% trans "Status" %}</th>
+            <th class="px-5 py-3 text-left text-xs font-semibold uppercase opacity-60">{% trans "At" %}</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y" :class="darkMode ? 'divide-accent-1' : 'divide-accent-2'">
+          {% for ev in recent_events %}
+          <tr>
+            <td class="px-5 py-2 font-mono text-xs">{{ ev.metric_code }}</td>
+            <td class="px-5 py-2 text-right tabular-nums text-xs">{{ ev.quantity }}</td>
+            <td class="px-5 py-2 text-xs opacity-60">{{ ev.unit|default:"—" }}</td>
+            <td class="px-5 py-2 text-xs opacity-60 truncate max-w-xs">{{ ev.source_type|default:"—" }}</td>
+            <td class="px-5 py-2 text-xs">
+              <span class="rounded-full px-2 py-0.5 text-xs font-semibold
+                {% if ev.status == 'recorded' %}bg-green-100 text-green-800
+                {% elif ev.status == 'voided' %}bg-gray-100 text-gray-500
+                {% else %}bg-yellow-100 text-yellow-800{% endif %}">
+                {{ ev.status }}
+              </span>
+            </td>
+            <td class="px-5 py-2 text-xs opacity-50 tabular-nums whitespace-nowrap">
+              {% if ev.occurred_at %}{{ ev.occurred_at|date:"m-d H:i" }}{% else %}—{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="px-6 py-10 text-center text-sm opacity-40">
+      {% trans "No events recorded yet." %}
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

@@ -145,6 +145,10 @@ Hello from TexLab!
         self.stdout.write(self.style.SUCCESS("✅ TexLab seeding complete."))
 
     def _check_tariff(self):
+        from django.apps import apps as django_apps
+        if not django_apps.is_installed("toto.tariffs"):
+            self.stdout.write("  toto.tariffs not installed — skipping tariff check.")
+            return
         from toto.tariffs.models import Tariff
         if Tariff.objects.filter(code="TEXLAB-STANDARD").exists():
             self.stdout.write("  [texlab] TEXLAB-STANDARD tariff: ready.")

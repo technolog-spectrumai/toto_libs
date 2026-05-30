@@ -237,6 +237,10 @@ class Command(IngressCommand):
         self.stdout.write(self.style.SUCCESS("📊 Created query result entry"))
 
     def _check_tariff(self):
+        from django.apps import apps as django_apps
+        if not django_apps.is_installed("toto.tariffs"):
+            self.stdout.write("  toto.tariffs not installed — skipping tariff check.")
+            return
         from toto.tariffs.models import Tariff
         if Tariff.objects.filter(code="NEO4J-GRAPH").exists():
             self.stdout.write("  [ravioli] NEO4J-GRAPH tariff: ready.")

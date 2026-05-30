@@ -234,6 +234,10 @@ class Command(IngressCommand):
                 self.stdout.write(self.style.WARNING(f"  Tool already exists: {tool.get_key_display()}"))
 
     def _check_tariff(self):
+        from django.apps import apps as django_apps
+        if not django_apps.is_installed("toto.tariffs"):
+            self.stdout.write("  toto.tariffs not installed — skipping tariff check.")
+            return
         from toto.tariffs.models import Tariff
         if Tariff.objects.filter(code="AI-INFERENCE").exists():
             self.stdout.write("  [steven] AI-INFERENCE tariff: ready.")

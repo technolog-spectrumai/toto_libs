@@ -179,22 +179,19 @@ def start_transcription(request, collection_slug, source_slug):
         messages.error(request, _("No Celery workers are running. Run synchronously or start a worker first."))
         return redirect(source.get_manage_url())
     # ── Tariff balance check before transcription ────────────────────────────
-    _transcription_tariff = None
-    try:
-        from toto.tariffs.charge import (
-            InsufficientBalanceError, check_user_can_act, get_tariff_for_user,
-        )
-        _transcription_tariff = get_tariff_for_user(request.user, "transcription")
-        if _transcription_tariff:
-            # estimate duration in minutes; default 1 if unknown
-            _duration_min = max(1, (source.duration_seconds or 60) // 60)
+    from toto.metering.charge import (
+        InsufficientBalanceError, check_user_can_act, get_tariff_for_user,
+    )
+    _transcription_tariff = get_tariff_for_user(request.user, "transcription")
+    if _transcription_tariff:
+        # estimate duration in minutes; default 1 if unknown
+        _duration_min = max(1, (source.duration_seconds or 60) // 60)
+        try:
             check_user_can_act(request.user, _transcription_tariff,
                                "transcription.minutes", _duration_min, unit="minutes")
-    except InsufficientBalanceError as _exc:
-        messages.error(request, str(_exc))
-        return redirect(source.get_manage_url())
-    except Exception:
-        _transcription_tariff = None
+        except InsufficientBalanceError as _exc:
+            messages.error(request, str(_exc))
+            return redirect(source.get_manage_url())
 
     job = create_transcription_job(
         source=source,
@@ -207,14 +204,14 @@ def start_transcription(request, collection_slug, source_slug):
     record_event(request=request, source=source, event=TranscriptEvent.EventKind.TRANSCRIBE)
 
     # ── Charge after job created (actual minutes from source duration) ────────
-    try:
-        if _transcription_tariff:
-            from toto.tariffs.charge import charge_user as _charge
+    if _transcription_tariff:
+        from toto.metering.charge import charge_user as _charge
+        try:
             _actual_min = max(1, (source.duration_seconds or 60) // 60)
             _charge(request.user, _transcription_tariff, "transcription.minutes", _actual_min,
                     unit="minutes", source_type="transcription.TranscriptionJob", source_id=str(job.pk))
-    except Exception:
-        pass
+        except Exception:
+            pass
 
     if run_async:
         from .tasks import run_transcription_job

@@ -5,6 +5,8 @@ from . import views
 app_name = "tariffs"
 
 urlpatterns = [
+    # Metering overview (raw usage events from all apps)
+    path("metering/", views.metering_overview, name="metering_overview"),
     # Tariffs
     path("", views.tariff_list, name="tariff_list"),
     path("new/", views.tariff_create, name="tariff_create"),

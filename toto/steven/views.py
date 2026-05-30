@@ -162,34 +162,32 @@ def quick_ask(request, slug):
         return HttpResponse('<span class="opacity-50 italic">No prompt provided.</span>')
 
     # ── Tariff balance check before AI run ───────────────────────────────────
-    try:
-        from toto.tariffs.charge import (
-            InsufficientBalanceError, check_user_can_act, get_tariff_for_user,
-        )
-        _steven_tariff = get_tariff_for_user(request.user, "steven")
-        if _steven_tariff:
+    from toto.metering.charge import (
+        InsufficientBalanceError, check_user_can_act, get_tariff_for_user,
+    )
+    _steven_tariff = get_tariff_for_user(request.user, "steven")
+    if _steven_tariff:
+        try:
             check_user_can_act(request.user, _steven_tariff, "ai.agent_run", 1)
-    except InsufficientBalanceError as _exc:
-        return HttpResponse(
-            f'<span class="opacity-70"><i class="fa-solid fa-circle-xmark mr-1 text-red-500"></i>'
-            f'Insufficient balance: {_exc}</span>',
-            status=402,
-        )
-    except Exception:
-        _steven_tariff = None
+        except InsufficientBalanceError as _exc:
+            return HttpResponse(
+                f'<span class="opacity-70"><i class="fa-solid fa-circle-xmark mr-1 text-red-500"></i>'
+                f'Insufficient balance: {_exc}</span>',
+                status=402,
+            )
 
     agent_run = AgentRun(agent=agent, user_prompt=user_prompt)
     agent_run.save()
     create_agent_session(agent).run(agent_run)
 
     # ── Charge after run ─────────────────────────────────────────────────────
-    try:
-        if _steven_tariff:
-            from toto.tariffs.charge import charge_user as _charge
+    if _steven_tariff:
+        from toto.metering.charge import charge_user as _charge
+        try:
             _charge(request.user, _steven_tariff, "ai.agent_run", 1,
                     source_type="steven.AgentRun", source_id=str(agent_run.pk))
-    except Exception:
-        pass
+        except Exception:
+            pass
 
     if agent_run.status == "failed":
         return HttpResponse(

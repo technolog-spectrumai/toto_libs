@@ -675,6 +675,51 @@ def price_usage_statement_json(request):
         return JsonResponse({"error": str(exc)}, status=400)
 
 
+def metering_overview(request):
+    """
+    Aggregate view of raw metering events across all installed apps.
+
+    Queries every AbstractUsageEvent subclass registered in the app registry
+    to show per-app event counts and the 50 most recent events globally.
+    """
+    from django.apps import apps as django_apps
+    from toto.metering.models import AbstractUsageEvent
+
+    rows = []
+    recent_events = []
+
+    for model in django_apps.get_models():
+        if model is AbstractUsageEvent:
+            continue
+        if not issubclass(model, AbstractUsageEvent):
+            continue
+        app_label = model._meta.app_label
+        count = model.objects.count()
+        latest = model.objects.order_by("-occurred_at").values("metric_code", "quantity", "unit", "occurred_at", "source_type").first()
+        rows.append({
+            "app_label": app_label,
+            "model": model.__name__,
+            "count": count,
+            "latest": latest,
+        })
+        recent_events += list(
+            model.objects.order_by("-occurred_at").values(
+                "metric_code", "quantity", "unit", "occurred_at",
+                "source_type", "source_id", "description", "status",
+            )[:20]
+        )
+
+    rows.sort(key=lambda r: r["app_label"])
+    recent_events.sort(key=lambda e: e["occurred_at"] or "", reverse=True)
+
+    return _render(request, "tariffs/metering_overview.html", {
+        "rows": rows,
+        "recent_events": recent_events[:50],
+        "total_apps": len(rows),
+        "total_events": sum(r["count"] for r in rows),
+    })
+
+
 def _decimal_safe(obj):
     """Recursively convert Decimal to str for JSON serialisation."""
     from decimal import Decimal

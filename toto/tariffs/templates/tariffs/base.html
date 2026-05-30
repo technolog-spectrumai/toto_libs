@@ -21,7 +21,12 @@
     <a href="{% url 'tariffs:metrics' %}"
        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
        class="inline-flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80">
-      <i class="fa-solid fa-gauge-high"></i>{% trans "Metering" %}
+      <i class="fa-solid fa-gauge-high"></i>{% trans "Metrics" %}
+    </a>
+    <a href="{% url 'tariffs:metering_overview' %}"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="inline-flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80">
+      <i class="fa-solid fa-wave-square"></i>{% trans "Metering Events" %}
     </a>
     <a href="{% url 'tariffs:tariff_application_list' %}"
        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
