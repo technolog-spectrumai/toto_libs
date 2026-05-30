@@ -135,6 +135,12 @@ def travel_payload(travel):
     }
 
 
+def _plugin_map_layers() -> list[dict]:
+    """Collect virtual map layers from all registered app plugins."""
+    from toto.locations.plugins.map_layer_plugins import LocationMapLayerPlugin
+    return LocationMapLayerPlugin.get_layers()
+
+
 def map_layer_payload(layer):
     return {
         "id": layer.pk,
@@ -253,13 +259,16 @@ def locations_all(request):
     context = {
         "locations": locations,
         "locations_json": json.dumps(locations),
-        "map_layers_json": json.dumps([
-            map_layer_payload(layer)
-            for layer in MapLayer.objects
-            .filter(is_active=True)
-            .prefetch_related("polygons")
-            .order_by("name")
-        ]),
+        "map_layers_json": json.dumps(
+            [
+                map_layer_payload(layer)
+                for layer in MapLayer.objects
+                .filter(is_active=True)
+                .prefetch_related("polygons")
+                .order_by("name")
+            ]
+            + _plugin_map_layers()
+        ),
         **LocationContextPlugin.get_context(),
     }
 
