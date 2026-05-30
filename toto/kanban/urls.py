@@ -12,9 +12,6 @@ from .views import (
     demote_task,
     SprintMetricsView,
     DocumentationPageDetailView,
-    project_tokenize,
-    project_tokenization_default,
-    mission_economy,
 )
 
 app_name = "kanban"
@@ -53,12 +50,6 @@ urlpatterns = [
     ),
 
     path(
-        "mission/<int:pk>/economy/",
-        mission_economy,
-        name="mission_economy",
-    ),
-
-    path(
         "project/<int:pk>/task/new/",
         TaskCreateView.as_view(),
         name="task_create",
@@ -94,15 +85,4 @@ urlpatterns = [
         name="sprint_metrics",
     ),
 
-    path(
-        "project/<int:pk>/tokenize/",
-        project_tokenize,
-        name="project_tokenize",
-    ),
-
-    path(
-        "project/tokenization/<int:pk>/default/",
-        project_tokenization_default,
-        name="project_tokenization_default",
-    ),
 ]

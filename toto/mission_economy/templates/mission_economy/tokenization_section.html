@@ -101,7 +101,7 @@
 
         <form
           method="post"
-          action="{% url 'kanban:project_tokenization_default' tokenization.pk %}">
+          action="{% url 'mission_economy:project_tokenization_default' tokenization.pk %}">
           {% csrf_token %}
           <div class="grid gap-3 sm:grid-cols-2">
             <div>
@@ -152,7 +152,7 @@
     </div>
 
     <a
-      href="{% url 'kanban:project_tokenize' project.pk %}"
+      href="{% url 'mission_economy:project_tokenize' project.pk %}"
       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
       class="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
       <i class="fa-solid fa-wand-magic-sparkles"></i>

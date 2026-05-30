@@ -91,15 +91,17 @@
           {% trans "Sprints" %}
         </a>
 
+        {% for tab in mission_tabs %}
         <a
-          href="{% url 'kanban:mission_economy' mission.pk %}"
+          href="{{ tab.url }}"
           :class="darkMode
             ? 'border-accent-1 bg-bubble-bg-dark'
             : 'border-accent-2 bg-bubble-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-          <i class="fa-solid fa-coins"></i>
-          {% trans "Economy" %}
+          <i class="{{ tab.icon }}"></i>
+          {{ tab.title }}
         </a>
+        {% endfor %}
       </nav>
     </header>
 

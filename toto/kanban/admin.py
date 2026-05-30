@@ -8,8 +8,7 @@ from django.utils.timezone import now
 from .models import (
     Project, Column, Task, Sprint, Mission, Campaign,
     DocumentationPage, DocumentationSection,
-    Practitioner, PractitionerAllowance, ProjectCommitment,
-    ProjectTokenization,
+    Practitioner, ProjectCommitment,
 )
 from toto.core.batch import BatchAction
 from toto.events.models import ScheduledEvent
@@ -52,23 +51,7 @@ class ProjectAdmin(admin.ModelAdmin):
     commitment_count.short_description = "Practitioners"
 
 
-@admin.register(ProjectTokenization)
-class ProjectTokenizationAdmin(admin.ModelAdmin):
-    list_display = ("project", "asset", "status", "supervisor", "created_at")
-    list_filter = ("status",)
-    search_fields = ("project__name", "asset__unit_name")
-    raw_id_fields = ("project", "asset", "supervisor", "defaulted_by")
-    readonly_fields = ("created_at",)
-
-
 # ── Practitioner ──────────────────────────────────────────────────────────────
-
-class PractitionerAllowanceInline(admin.TabularInline):
-    model = PractitionerAllowance
-    extra = 0
-    fields = ("allowance_type", "asset", "amount_base_units", "payer_account", "recipient_account", "active")
-    raw_id_fields = ("asset", "payer_account", "recipient_account")
-
 
 class PractitionerCommitmentInline(admin.TabularInline):
     model = ProjectCommitment
@@ -82,8 +65,8 @@ class PractitionerAdmin(admin.ModelAdmin):
     list_display = ("person", "role", "is_active")
     list_filter = ("role", "is_active")
     search_fields = ("person__display_name",)
-    raw_id_fields = ("person", "default_income_account")
-    inlines = [PractitionerAllowanceInline, PractitionerCommitmentInline]
+    raw_id_fields = ("person",)
+    inlines = [PractitionerCommitmentInline]
 
 
 @admin.register(ProjectCommitment)
@@ -92,13 +75,6 @@ class ProjectCommitmentAdmin(admin.ModelAdmin):
     list_filter = ("is_active", "project")
     search_fields = ("practitioner__person__display_name", "project__name")
     raw_id_fields = ("practitioner", "project")
-
-
-@admin.register(PractitionerAllowance)
-class PractitionerAllowanceAdmin(admin.ModelAdmin):
-    list_display = ("practitioner", "allowance_type", "asset", "amount_base_units", "active", "valid_from", "valid_until")
-    list_filter = ("allowance_type", "active")
-    raw_id_fields = ("practitioner", "asset", "payer_account", "recipient_account")
 
 
 # ── Column ────────────────────────────────────────────────────────────────────
