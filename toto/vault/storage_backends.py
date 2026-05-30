@@ -1,23 +1,35 @@
 """
 Per-bucket pluggable storage driver for the Vault app.
 
-Local buckets delegate to Django's configured default_storage.
-S3-compatible buckets use boto3 with an optional endpoint_url for OVH, MinIO, etc.
+Backends
+--------
+  local        — Django's configured default_storage (filesystem, etc.)
+  s3           — boto3-backed S3-compatible store (AWS, OVH, MinIO, …)
+  remote_toto  — another toto server's Vault API (read/write via HTTP)
 
-Credentials are never stored in the database.  The S3 driver reads them from
-the standard boto3 credential chain:
-  1. Environment variables (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY)
-  2. ~/.aws/credentials, or a named profile via storage_config["aws_profile"]
+Credentials are NEVER stored in the database.
+
+S3 credentials come from the standard boto3 chain:
+  1. AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY env vars
+  2. ~/.aws/credentials or a named profile via storage_config["aws_profile"]
   3. IAM instance role / container credentials
+
+Remote-toto token comes from the env var named in storage_config["api_token_env"]
+(default: TOTO_REMOTE_API_TOKEN).
 
 Non-secret S3 config lives in Bucket.storage_config:
   bucket_name       required — the S3 bucket name
-  endpoint_url      optional — override for OVH / MinIO / custom providers
+  endpoint_url      optional — provider endpoint; resolved from Bucket.provider if absent
   region_name       optional
   prefix            optional — path prefix for all object keys, default "vault/"
   use_ssl           optional — bool, default True
   addressing_style  optional — "path" | "virtual" | "auto", default "auto"
   aws_profile       optional — named boto3 credentials profile
+
+remote_toto config in Bucket.storage_config:
+  server_url        required — base URL of the remote toto instance
+  bucket_slug       required — slug of the bucket on the remote server
+  api_token_env     optional — env var holding the API token (default TOTO_REMOTE_API_TOKEN)
 """
 from __future__ import annotations
 
@@ -188,13 +200,95 @@ class S3CompatibleVaultStorageDriver(BaseVaultStorageDriver):
 
 
 # ---------------------------------------------------------------------------
+# Remote Toto driver
+# ---------------------------------------------------------------------------
+
+class RemoteTotoStorageDriver(BaseVaultStorageDriver):
+    """
+    Reads/writes files from another toto server's Vault file API.
+
+    The API token is read from the environment variable named by
+    storage_config["api_token_env"] (default: TOTO_REMOTE_API_TOKEN).
+    """
+
+    def __init__(self, server_url: str, bucket_slug: str, api_token: str):
+        self._base = server_url.rstrip("/")
+        self._slug = bucket_slug
+        self._token = api_token
+        self._session = None
+
+    def _get_session(self):
+        if self._session is None:
+            try:
+                import requests as req
+            except ImportError:
+                raise RuntimeError(
+                    "requests is required for remote_toto backend: pip install requests"
+                )
+            self._session = req.Session()
+            if self._token:
+                self._session.headers["Authorization"] = f"Token {self._token}"
+        return self._session
+
+    def _files_url(self, key: str = "") -> str:
+        base = f"{self._base}/api/vault/buckets/{self._slug}/files/"
+        return f"{base}{key}" if key else base
+
+    def read(self, name: str) -> bytes:
+        resp = self._get_session().get(self._files_url(name))
+        resp.raise_for_status()
+        return resp.content
+
+    def save(self, name: str, content: bytes) -> str:
+        import io
+        resp = self._get_session().post(
+            self._files_url(),
+            files={"file": (_safe_filename(name), io.BytesIO(content))},
+        )
+        resp.raise_for_status()
+        return resp.json()["key"]
+
+    def exists(self, name: str) -> bool:
+        resp = self._get_session().head(self._files_url(name))
+        return resp.status_code == 200
+
+    def delete(self, name: str) -> None:
+        try:
+            self._get_session().delete(self._files_url(name)).raise_for_status()
+        except Exception as exc:
+            logger.warning("remote_toto delete failed for %r: %s", name, exc)
+
+
+# ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
 
 def get_bucket_storage(bucket) -> BaseVaultStorageDriver:
     """Return the appropriate storage driver for *bucket*."""
     backend = getattr(bucket, "storage_backend", None) or "local"
-    config = getattr(bucket, "storage_config", None) or {}
+    config: dict = getattr(bucket, "storage_config", None) or {}
+
     if backend == "s3":
-        return S3CompatibleVaultStorageDriver(config)
+        merged = dict(config)
+        # Fill in provider defaults when the bucket has a linked provider
+        # and the config does not already override these values.
+        if not merged.get("endpoint_url") and getattr(bucket, "provider_id", None):
+            provider = bucket.provider
+            region = merged.get("region_name") or provider.default_region
+            endpoint_url = provider.resolve_endpoint_url(region=region)
+            if endpoint_url:
+                merged["endpoint_url"] = endpoint_url
+            if not merged.get("addressing_style"):
+                merged["addressing_style"] = provider.addressing_style
+            if "use_ssl" not in merged:
+                merged["use_ssl"] = provider.use_ssl
+        return S3CompatibleVaultStorageDriver(merged)
+
+    if backend == "remote_toto":
+        server_url = config.get("server_url", "")
+        bucket_slug = config.get("bucket_slug", "")
+        token_env = config.get("api_token_env", "TOTO_REMOTE_API_TOKEN")
+        api_token = os.environ.get(token_env, "")
+        return RemoteTotoStorageDriver(server_url, bucket_slug, api_token)
+
     return LocalVaultStorageDriver()

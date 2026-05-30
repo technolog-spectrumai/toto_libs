@@ -5,31 +5,86 @@ from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.utils import timezone
 from django.utils.html import format_html
 
-from .models import VaultFile, Bucket, FileGateway, VaultDirectory, BucketCopyLog
+from .models import VaultFile, Bucket, FileGateway, VaultDirectory, BucketCopyLog, StorageProvider
 from toto.core.batch import BatchAction
+
+
+@admin.register(StorageProvider)
+class StorageProviderAdmin(admin.ModelAdmin):
+    list_display = ('display_name', 'name', 'endpoint_url_template', 'default_region',
+                    'addressing_style', 'use_ssl', 'is_builtin', 'bucket_count')
+    list_filter = ('addressing_style', 'use_ssl', 'is_builtin')
+    search_fields = ('name', 'display_name')
+    ordering = ('display_name',)
+    readonly_fields = ('is_builtin',)
+
+    fieldsets = (
+        (None, {
+            'fields': ('name', 'display_name', 'is_builtin'),
+        }),
+        ('Endpoint', {
+            'fields': ('endpoint_url_template', 'default_region'),
+            'description': (
+                'Use {region} or {account_id} as placeholders in the endpoint URL. '
+                'Leave endpoint blank for AWS (it uses default routing).'
+            ),
+        }),
+        ('Connection defaults', {
+            'fields': ('addressing_style', 'use_ssl'),
+        }),
+    )
+
+    def bucket_count(self, obj):
+        return obj.buckets.count()
+    bucket_count.short_description = 'Buckets'
+
+    def has_delete_permission(self, request, obj=None):
+        if obj and obj.is_builtin:
+            return False
+        return super().has_delete_permission(request, obj)
 
 
 @admin.register(Bucket)
 class BucketAdmin(admin.ModelAdmin):
-    list_display = ('name', 'slug', 'owner', 'storage_backend', 'tariff', 'storage_quota_mb')
+    list_display = ('name', 'slug', 'owner', 'storage_backend', 'provider',
+                    'tariff', 'storage_quota_mb', 'connection_url_display')
     search_fields = ('name', 'owner__username')
-    list_filter = ('owner', 'storage_backend')
+    list_filter = ('owner', 'storage_backend', 'provider')
     ordering = ('owner', 'name')
     autocomplete_fields = ('tariff',)
+    readonly_fields = ('connection_url_display',)
     fieldsets = (
         (None, {
             'fields': ('name', 'slug', 'owner', 'tariff', 'storage_quota_mb'),
         }),
         ('Storage backend', {
-            'fields': ('storage_backend', 'storage_config'),
+            'fields': ('storage_backend', 'provider', 'storage_config', 'public_base_url'),
             'description': (
-                'For S3-compatible backends supply non-secret config here: '
-                'bucket_name, endpoint_url, region_name, prefix, use_ssl, '
-                'addressing_style, aws_profile. '
-                'Access keys and secrets must come from environment variables.'
+                'Choose a backend and, for S3, select a provider preset. '
+                'Supply non-secret overrides in storage_config (bucket_name, region_name, prefix, …). '
+                'For remote_toto: storage_config needs server_url + bucket_slug. '
+                'Credentials must come from environment variables.'
             ),
         }),
+        ('Connection URL', {
+            'fields': ('connection_url_display',),
+            'description': 'Shareable, credential-free URL for this bucket.',
+            'classes': ('collapse',),
+        }),
     )
+
+    def connection_url_display(self, obj):
+        if not obj.pk:
+            return '—'
+        try:
+            url = obj.get_connection_url()
+            return format_html(
+                '<code style="user-select:all">{}</code>',
+                url,
+            )
+        except Exception as exc:
+            return f'(error: {exc})'
+    connection_url_display.short_description = 'Connection URL'
 
 
 @admin.register(VaultFile)

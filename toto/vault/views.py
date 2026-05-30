@@ -1182,3 +1182,82 @@ class GenerateInvoiceView(LoginRequiredMixin, View):
         )
         messages.success(request, f"Invoice '{inv.title}' generated.")
         return redirect("invoice:invoice_list")
+
+
+# ============================================================
+# Bucket connection URL + remote import
+# ============================================================
+
+class BucketConnectionUrlView(LoginRequiredMixin, View):
+    """
+    GET  /vault/buckets/<slug>/connection-url/
+    Returns the credential-free connection URL for a bucket owned by the
+    current user. Suitable for sharing with another toto instance.
+    """
+
+    def get(self, request, bucket_slug):
+        bucket = get_object_or_404(Bucket, slug=bucket_slug, owner=request.user)
+        from .connection import BucketConnectionSpec
+        spec = BucketConnectionSpec.from_bucket(bucket)
+        return JsonResponse({
+            "url": spec.to_url(),
+            "backend": spec.backend,
+            "provider": spec.provider,
+            "bucket_name": spec.bucket_name,
+        })
+
+
+class RemoteBucketImportView(LoginRequiredMixin, View):
+    """
+    POST /vault/buckets/import-remote/
+    Body: {"url": "toto://other-server.example.com/vault/buckets/my-slug/",
+           "name": "Optional display name"}
+
+    Creates (or updates) a local Bucket that proxies to the remote toto
+    server via RemoteTotoStorageDriver.  Only toto:// URLs are accepted —
+    S3 buckets are configured directly via the admin.
+    """
+
+    def post(self, request):
+        try:
+            data = json.loads(request.body)
+        except (json.JSONDecodeError, TypeError):
+            return JsonResponse({"error": "Invalid JSON body."}, status=400)
+
+        raw_url = (data.get("url") or "").strip()
+        name = (data.get("name") or "").strip()
+
+        if not raw_url:
+            return JsonResponse({"error": "'url' is required."}, status=400)
+
+        from .connection import BucketConnectionSpec
+        try:
+            spec = BucketConnectionSpec.from_url(raw_url)
+        except ValueError as exc:
+            return JsonResponse({"error": str(exc)}, status=400)
+
+        if spec.backend != "remote_toto":
+            return JsonResponse(
+                {"error": "Only toto:// URLs are accepted. Configure S3 buckets via the admin."},
+                status=400,
+            )
+
+        if not name:
+            name = f"Remote: {spec.bucket_name}"
+
+        slug = slugify(name)
+        bucket, created = Bucket.objects.get_or_create(
+            slug=slug,
+            defaults={
+                "name": name,
+                "owner": request.user,
+                "storage_backend": "remote_toto",
+                "storage_config": spec.to_storage_config(),
+            },
+        )
+        if not created:
+            bucket.storage_backend = "remote_toto"
+            bucket.storage_config = spec.to_storage_config()
+            bucket.save(update_fields=["storage_backend", "storage_config"])
+
+        return JsonResponse({"slug": bucket.slug, "created": created}, status=201 if created else 200)

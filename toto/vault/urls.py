@@ -8,6 +8,7 @@ from .views import (
     EncryptFileView, DecryptFileView, EncryptedDownloadView,
     MoveFileView, RenameFileView, DeleteFileView,
     GenerateInvoiceView,
+    BucketConnectionUrlView, RemoteBucketImportView,
 )
 
 app_name = "vault"
@@ -30,4 +31,6 @@ urlpatterns = [
     path("file/delete/", DeleteFileView.as_view(), name="delete_file"),
     path("invoices/", RedirectView.as_view(pattern_name="invoice:invoice_list", permanent=False), name="invoice_list"),
     path("invoices/generate/<slug:bucket_slug>/", GenerateInvoiceView.as_view(), name="generate_invoice"),
+    path("buckets/<slug:bucket_slug>/connection-url/", BucketConnectionUrlView.as_view(), name="bucket_connection_url"),
+    path("buckets/import-remote/", RemoteBucketImportView.as_view(), name="bucket_import_remote"),
 ]

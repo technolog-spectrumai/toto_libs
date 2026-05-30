@@ -14,6 +14,57 @@ from django.urls import reverse
 class StorageBackend(models.TextChoices):
     LOCAL = "local", "Local"
     S3 = "s3", "S3-compatible"
+    REMOTE_TOTO = "remote_toto", "Remote Toto Server"
+
+
+class StorageProvider(models.Model):
+    """
+    A named S3-compatible provider preset (AWS, OVH, MinIO, …).
+    Seeded by ingress_storage_providers; user-extensible via admin.
+    """
+
+    name = models.SlugField(max_length=64, unique=True)
+    display_name = models.CharField(max_length=128)
+    endpoint_url_template = models.CharField(
+        max_length=256,
+        blank=True,
+        help_text=(
+            "Endpoint URL, optionally with {region} or {account_id} placeholders. "
+            "Leave blank for AWS default routing."
+        ),
+    )
+    default_region = models.CharField(max_length=64, blank=True)
+    addressing_style = models.CharField(
+        max_length=8,
+        choices=[("path", "Path"), ("virtual", "Virtual"), ("auto", "Auto")],
+        default="auto",
+    )
+    use_ssl = models.BooleanField(default=True)
+    is_builtin = models.BooleanField(
+        default=True,
+        help_text="Seeded by ingress — safe to re-run ingress to reset.",
+    )
+
+    class Meta:
+        verbose_name = "Storage Provider"
+        verbose_name_plural = "Storage Providers"
+        ordering = ["display_name"]
+
+    def __str__(self):
+        return self.display_name
+
+    def resolve_endpoint_url(self, region: str = "", account_id: str = "", **kwargs) -> str:
+        """Interpolate placeholders in the endpoint template. Returns empty string for AWS."""
+        if not self.endpoint_url_template:
+            return ""
+        try:
+            return self.endpoint_url_template.format(
+                region=region or self.default_region,
+                account_id=account_id,
+                **kwargs,
+            )
+        except KeyError:
+            return self.endpoint_url_template
 
 
 class Bucket(models.Model):
@@ -33,7 +84,7 @@ class Bucket(models.Model):
         help_text="Billing tariff for this bucket. Defaults to FILE-STORAGE when blank.",
     )
     storage_backend = models.CharField(
-        max_length=8,
+        max_length=16,
         choices=StorageBackend.choices,
         default=StorageBackend.LOCAL,
         help_text="Storage backend for files in this bucket.",
@@ -42,9 +93,26 @@ class Bucket(models.Model):
         default=dict,
         blank=True,
         help_text=(
-            "Non-secret backend config: bucket_name, endpoint_url, region_name, "
-            "prefix, use_ssl, addressing_style, aws_profile. "
+            "Non-secret backend config. "
+            "S3: bucket_name, region_name, prefix, use_ssl, addressing_style, aws_profile. "
+            "remote_toto: server_url, bucket_slug, api_token_env. "
             "Credentials must come from environment variables, not this field."
+        ),
+    )
+    provider = models.ForeignKey(
+        StorageProvider,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="buckets",
+        help_text="Provider preset used when storage_backend is S3-compatible.",
+    )
+    public_base_url = models.URLField(
+        blank=True,
+        default="",
+        help_text=(
+            "Optional CDN or public base URL (e.g. https://cdn.example.com/vault/). "
+            "When set, get_public_file_url() returns a direct link per file."
         ),
     )
 
@@ -55,6 +123,16 @@ class Bucket(models.Model):
 
     def __str__(self):
         return f"Bucket {self.name}"
+
+    def get_connection_url(self) -> str:
+        from toto.vault.connection import BucketConnectionSpec
+        return BucketConnectionSpec.from_bucket(self).to_url()
+
+    def get_public_file_url(self, file_key: str) -> str:
+        if not self.public_base_url:
+            return ""
+        base = self.public_base_url.rstrip("/")
+        return f"{base}/{file_key}"
 
 
 class VaultFile(models.Model):
