@@ -21,10 +21,256 @@
       {% if request.user.is_authenticated %}
         <a href="{% url 'detections:detection-create' %}" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"><i class="fa-solid fa-location-crosshairs"></i> Add</a>
         <a href="{% url 'detections:dashboard' %}" :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'" class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
+        <button type="button" x-data @click="$dispatch('open-det-export')"
+                :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-sunken-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-sunken-light'"
+                class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition">
+          <i class="fa-solid fa-file-export"></i> Export Layers
+        </button>
       {% endif %}
     </nav>
   </header>
 
   {% block detections_content %}{% endblock %}
+
 </div>
+
+<!-- ================================================================ -->
+<!-- DETECTIONS EXPORT LAYERS MODAL -->
+<!-- ================================================================ -->
+<div
+  x-data="detectionsExportModal()"
+  x-init="init()"
+  @open-det-export.window="open()"
+  class="contents">
+
+  <div x-show="isOpen" x-cloak
+       class="fixed inset-0 z-[9000] flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="isOpen = false"></div>
+
+    <div :class="darkMode ? 'bg-bubble-bg-dark text-text-main-dark border-accent-1' : 'bg-bubble-bg-light text-text-main-light border-accent-2'"
+         class="relative z-10 w-full max-w-md rounded-2xl border shadow-2xl">
+
+      <!-- Modal header -->
+      <div class="flex items-center justify-between border-b border-current/10 px-5 py-4">
+        <h2 class="flex items-center gap-2 text-lg font-bold">
+          <i class="fa-solid fa-file-export"></i> Export Layers to Vault
+        </h2>
+        <button type="button" @click="isOpen = false"
+                class="text-lg leading-none opacity-50 hover:opacity-100 transition">&times;</button>
+      </div>
+
+      <!-- Modal body -->
+      <div class="space-y-4 p-5">
+
+        <!-- Layer selection -->
+        <div>
+          <p class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-60">Layers</p>
+          <div class="space-y-1.5">
+            <template x-for="layer in availableLayers" :key="layer.slug">
+              <label class="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 transition"
+                     :class="layerSlugs.includes(layer.slug)
+                       ? (darkMode ? 'bg-accent-dark/15' : 'bg-accent-light/10')
+                       : 'hover:bg-current/5'">
+                <span class="flex h-4 w-4 shrink-0 items-center justify-center rounded border transition"
+                      :class="layerSlugs.includes(layer.slug)
+                        ? (darkMode ? 'border-transparent bg-accent-dark' : 'border-transparent bg-accent-light')
+                        : (darkMode ? 'border-accent-1' : 'border-accent-2')"
+                      @click="toggleLayer(layer.slug)">
+                  <i class="fa-solid fa-check text-[9px] text-white" x-show="layerSlugs.includes(layer.slug)"></i>
+                </span>
+                <i class="fa-solid text-sm opacity-60" :class="layer.icon"></i>
+                <span class="text-sm font-semibold" x-text="layer.label"></span>
+              </label>
+            </template>
+          </div>
+        </div>
+
+        <!-- Target bucket -->
+        <div>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">Target Bucket</label>
+          <select x-model="bucketId" @change="directoryId = ''"
+                  :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+                  class="w-full rounded-lg border px-3 py-2 text-sm">
+            <option value="">— select bucket —</option>
+            <template x-for="b in buckets" :key="b.id">
+              <option :value="b.id" x-text="b.name"></option>
+            </template>
+          </select>
+        </div>
+
+        <!-- Directory (optional) -->
+        <div x-show="bucketId">
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">
+            Directory <span class="font-normal opacity-50">(optional)</span>
+          </label>
+          <select x-model="directoryId"
+                  :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+                  class="w-full rounded-lg border px-3 py-2 text-sm">
+            <option value="">— root of bucket —</option>
+            <template x-for="d in filteredDirectories" :key="d.id">
+              <option :value="d.id" x-text="d.path"></option>
+            </template>
+          </select>
+        </div>
+
+        <!-- Title (optional) -->
+        <div>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">
+            File Title <span class="font-normal opacity-50">(optional)</span>
+          </label>
+          <input type="text" x-model="title" placeholder="Detections Layers Export"
+                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+                 class="w-full rounded-lg border px-3 py-2 text-sm">
+        </div>
+
+        <!-- Error -->
+        <div x-show="exportError" x-cloak
+             :class="darkMode ? 'border-warn-dark/40 bg-warn-dark/10 text-warn-dark' : 'border-warn-light/40 bg-warn-light/10 text-warn-light'"
+             class="rounded-lg border p-3 text-sm">
+          <i class="fa-solid fa-circle-exclamation mr-2"></i>
+          <span x-text="exportError"></span>
+        </div>
+
+        <!-- Progress / download -->
+        <div x-show="runId" x-cloak class="space-y-2">
+          <div class="flex items-center gap-2 text-sm">
+            <i class="fa-solid" :class="isBusy ? 'fa-spinner fa-spin opacity-60' : (downloadUrl ? 'fa-circle-check text-green-500' : 'fa-circle-xmark text-red-500')"></i>
+            <span x-text="isBusy ? 'Exporting…' : (downloadUrl ? 'Export complete' : 'Export failed')" class="font-semibold"></span>
+          </div>
+          <div x-show="downloadUrl" x-cloak>
+            <a :href="downloadUrl"
+               :class="darkMode ? 'bg-success-dark/20 text-success-dark border-success-dark/40' : 'bg-success-light/20 text-success-light border-success-light/40'"
+               class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+              <i class="fa-solid fa-download"></i> Download file
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal footer -->
+      <div class="flex items-center justify-end gap-3 border-t border-current/10 px-5 py-4">
+        <button type="button" @click="isOpen = false"
+                :class="darkMode ? 'border-accent-1 hover:bg-sunken-dark' : 'border-accent-2 hover:bg-sunken-light'"
+                class="rounded-xl border px-4 py-2 text-sm font-semibold transition">
+          Close
+        </button>
+        <button type="button" @click="startExport()"
+                :disabled="isBusy || !layerSlugs.length || !bucketId"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90 disabled:opacity-40' : 'bg-accent-light text-primary-bg-light hover:opacity-90 disabled:opacity-40'"
+                class="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold shadow-sm transition">
+          <i class="fa-solid" :class="isBusy ? 'fa-spinner fa-spin' : 'fa-file-export'"></i>
+          <span x-text="isBusy ? 'Exporting…' : 'Export'"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script id="det-export-buckets"     type="application/json">{{ export_buckets_json|safe }}</script>
+<script id="det-export-directories" type="application/json">{{ export_directories_json|safe }}</script>
+
+<script>
+const _DET_EXPORT_URL  = "{% url 'detections:api_export_layers' %}";
+const _DET_STATUS_URL  = "{% url 'detections:api_export_run_status' 99999 %}".replace('/99999/', '/{id}/');
+const _DET_CSRF        = "{{ csrf_token }}";
+
+function detectionsExportModal() {
+  return {
+    isOpen: false,
+    availableLayers: [
+      {slug: 'detections-severity', label: 'Detection Severity', icon: 'fa-triangle-exclamation'},
+    ],
+    layerSlugs: ['detections-severity'],
+    bucketId: '',
+    directoryId: '',
+    title: '',
+    buckets: [],
+    allDirectories: [],
+    runId: null,
+    status: '',
+    downloadUrl: null,
+    exportError: '',
+    _timer: null,
+
+    init() {
+      this.buckets = JSON.parse(document.getElementById('det-export-buckets').textContent);
+      this.allDirectories = JSON.parse(document.getElementById('det-export-directories').textContent);
+    },
+
+    open() { this.isOpen = true; },
+
+    get filteredDirectories() {
+      if (!this.bucketId) return [];
+      return this.allDirectories.filter(d => String(d.bucket_id) === String(this.bucketId));
+    },
+
+    get isBusy() {
+      return this.status === 'running' || this.status === 'pending';
+    },
+
+    toggleLayer(slug) {
+      if (this.layerSlugs.includes(slug)) {
+        this.layerSlugs = this.layerSlugs.filter(s => s !== slug);
+      } else {
+        this.layerSlugs = [...this.layerSlugs, slug];
+      }
+    },
+
+    async startExport() {
+      if (!this.layerSlugs.length || !this.bucketId) return;
+      this.exportError = '';
+      this.downloadUrl = null;
+      this.runId = null;
+      this.status = 'pending';
+      this._stopPoll();
+      try {
+        const res = await fetch(_DET_EXPORT_URL, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json', 'X-CSRFToken': _DET_CSRF},
+          body: JSON.stringify({
+            layer_slugs: this.layerSlugs,
+            bucket_id: this.bucketId,
+            directory_id: this.directoryId || null,
+            title: this.title || null,
+          }),
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        this.runId = data.run_id;
+        this.status = 'running';
+        this._startPoll();
+      } catch (e) {
+        this.exportError = e.message || 'Failed to start export.';
+        this.status = 'failed';
+      }
+    },
+
+    _startPoll() {
+      this._timer = setInterval(async () => {
+        try {
+          const url = _DET_STATUS_URL.replace('{id}', this.runId);
+          const data = await (await fetch(url)).json();
+          this.status = data.status;
+          if (data.status === 'completed') {
+            this._stopPoll();
+            this.downloadUrl = data.download_url || null;
+          } else if (data.status === 'failed') {
+            this._stopPoll();
+            this.exportError = data.error || 'Export workflow failed.';
+          }
+        } catch (e) {
+          this._stopPoll();
+          this.exportError = e.message;
+          this.status = 'failed';
+        }
+      }, 2000);
+    },
+
+    _stopPoll() {
+      if (this._timer) { clearInterval(this._timer); this._timer = null; }
+    },
+  };
+}
+</script>
+
 {% endblock %}

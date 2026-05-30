@@ -1,9 +1,13 @@
+import json
+
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import Count, Q
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views import View
 from django.views.generic import DetailView, ListView, TemplateView
+from django.views.decorators.http import require_POST
 
 from toto.core.page import PageProcessor
 
@@ -26,8 +30,18 @@ def _detections_parent_template():
 
 class DetectionsContextMixin:
     def get_context_data(self, **kwargs):
+        from toto.vault.models import Bucket, VaultDirectory
         context = super().get_context_data(**kwargs)
         context["detections_parent_template"] = _detections_parent_template()
+        buckets = list(Bucket.objects.all().order_by("name"))
+        directories = list(
+            VaultDirectory.objects.select_related("bucket").order_by("bucket__name", "name")
+        )
+        context["export_buckets_json"] = json.dumps([{"id": b.id, "name": b.name} for b in buckets])
+        context["export_directories_json"] = json.dumps([
+            {"id": d.id, "bucket_id": d.bucket_id, "path": d.full_path()}
+            for d in directories
+        ])
         return PageProcessor().decorate(context, self.request)
 
 
@@ -214,3 +228,78 @@ class DetectionDashboardView(LoginRequiredMixin, DetectionsContextMixin, Templat
             },
         })
         return context
+
+
+@require_POST
+def api_export_layers(request):
+    """Trigger a detections layer export workflow run."""
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required."}, status=401)
+
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({"error": "Invalid JSON."}, status=400)
+
+    bucket_id = data.get("bucket_id")
+    if not bucket_id:
+        return JsonResponse({"error": "Select a target bucket."}, status=400)
+
+    layer_slugs = data.get("layer_slugs") or []
+    if not layer_slugs:
+        return JsonResponse({"error": "Select at least one layer."}, status=400)
+
+    from toto.celery_utils import celery_available
+    if not celery_available():
+        return JsonResponse({"error": "No Celery worker running."}, status=503)
+
+    from toto.workflows.api import trigger_workflow
+    from toto.workflows.models import Workflow
+    from toto.detections.predefined_tasks import DETECTIONS_EXPORT_SLUG
+
+    try:
+        run = trigger_workflow(DETECTIONS_EXPORT_SLUG, {
+            "data": {
+                "layer_slugs": layer_slugs,
+                "bucket_id": int(bucket_id),
+                "directory_id": int(data["directory_id"]) if data.get("directory_id") else None,
+                "title": data.get("title", "").strip() or None,
+                "owner_id": request.user.pk,
+            }
+        })
+        return JsonResponse({"run_id": run.id})
+    except Workflow.DoesNotExist:
+        return JsonResponse(
+            {"error": "Export workflow not seeded. Run: manage.py seed_detections_workflows"},
+            status=503,
+        )
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=500)
+
+
+def api_export_run_status(request, run_id):
+    """Check a workflow run status and return download_url when available."""
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required."}, status=401)
+
+    from toto.workflows.models import WorkflowNodeRun, WorkflowRun
+
+    try:
+        run = WorkflowRun.objects.get(pk=run_id)
+    except WorkflowRun.DoesNotExist:
+        return JsonResponse({"error": "Run not found."}, status=404)
+
+    error = ""
+    if run.status == WorkflowRun.FAILED:
+        failed_node = run.node_runs.exclude(error="").select_related("node").first()
+        if failed_node:
+            error = failed_node.error
+
+    download_url = None
+    for nr in run.node_runs.filter(status=WorkflowNodeRun.COMPLETED).select_related("node"):
+        file_data = ((nr.output_data or {}).get("data") or {})
+        if file_data.get("download_url"):
+            download_url = file_data["download_url"]
+            break
+
+    return JsonResponse({"status": run.status, "error": error, "download_url": download_url})

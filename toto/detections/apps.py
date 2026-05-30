@@ -29,6 +29,8 @@ class DetectionsConfig(AppConfig):
         from toto.detections.plugins.location_layer_plugins import detections_severity_layer
         LocationMapLayerPlugin.register(detections_severity_layer)
 
+        from toto.detections import predefined_tasks  # noqa: F401 — registers detections workflow tasks
+
 
 def _detection_map_items():
     import json

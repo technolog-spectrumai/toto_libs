@@ -25,7 +25,16 @@ class Command(IngressCommand):
         skills = self._ensure_skills()
         detections = self._ensure_detections(categories, addresses, people)
         tasks = self._ensure_kanban_tasks(detections, people, skills)
+        self._seed_workflows()
         self.stdout.write(self.style.SUCCESS(f"Detections ingress complete ({len(tasks)} tasks)."))
+
+    def _seed_workflows(self):
+        from django.core.management import call_command
+        from io import StringIO
+        out = StringIO()
+        call_command("seed_detections_workflows", stdout=out, stderr=out)
+        for line in out.getvalue().splitlines():
+            self.stdout.write(f"  {line}")
 
     def _point(self, longitude, latitude):
         point = Point(longitude, latitude)

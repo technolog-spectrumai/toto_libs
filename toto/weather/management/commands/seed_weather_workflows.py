@@ -16,6 +16,7 @@ class Command(BaseCommand):
             WEATHER_CURRENT_LAMBDA,
             WEATHER_FORECAST_LAMBDA,
         )
+        from toto.weather.predefined_tasks import WEATHER_EXPORT_SLUG, WEATHER_EXPORT_TASK
 
         self._seed_workflow(
             slug=WEATHER_CURRENT_SLUG,
@@ -31,7 +32,42 @@ class Command(BaseCommand):
             lambda_name="weather_fetch_forecast",
             lambda_content=WEATHER_FORECAST_LAMBDA,
         )
+        self._seed_export_workflow(WEATHER_EXPORT_SLUG, WEATHER_EXPORT_TASK)
         self.stdout.write(self.style.SUCCESS("Weather workflows seeded."))
+
+    def _seed_export_workflow(self, slug, task_name):
+        from toto.workflows.models import Workflow, WorkflowNode
+
+        wf, created = Workflow.objects.get_or_create(
+            slug=slug,
+            defaults={
+                "name": "Weather — Export Layers",
+                "description": "Exports weather map layers (temperature, precipitation) to a Vault file.",
+            },
+        )
+        if created:
+            WorkflowNode.objects.create(
+                workflow=wf,
+                node_type=WorkflowNode.PREDEFINED_TASK,
+                label="Export weather layers to Vault",
+                task_name=task_name,
+                position_x=0,
+                position_y=0,
+            )
+            self.stdout.write(f"  Created export workflow: {slug}")
+        else:
+            if not wf.nodes.filter(task_name=task_name).exists():
+                WorkflowNode.objects.create(
+                    workflow=wf,
+                    node_type=WorkflowNode.PREDEFINED_TASK,
+                    label="Export weather layers to Vault",
+                    task_name=task_name,
+                    position_x=0,
+                    position_y=0,
+                )
+                self.stdout.write(f"  Added missing node to export workflow: {slug}")
+            else:
+                self.stdout.write(f"  Export workflow exists: {slug}")
 
     def _seed_workflow(self, *, slug, name, description, lambda_name, lambda_content):
         from toto.workflows.models import LambdaFunction, Workflow, WorkflowNode

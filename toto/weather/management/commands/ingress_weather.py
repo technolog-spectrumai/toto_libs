@@ -10,6 +10,15 @@ class Command(IngressCommand):
     def process(self):
         self._check_tariff()
         self._ensure_settings()
+        self._seed_workflows()
+
+    def _seed_workflows(self):
+        from django.core.management import call_command
+        from io import StringIO
+        out = StringIO()
+        call_command("seed_weather_workflows", stdout=out, stderr=out)
+        for line in out.getvalue().splitlines():
+            self.stdout.write(f"  {line}")
 
     def _check_tariff(self):
         from django.apps import apps as django_apps

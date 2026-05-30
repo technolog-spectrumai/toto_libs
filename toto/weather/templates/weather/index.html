@@ -20,8 +20,11 @@
     loadForecast:  "{% url 'weather:api_load_forecast' %}",
     forecast:      "{% url 'weather:api_forecast' %}",
     runStatus:     "/weather/api/run/{id}/status/",
+    exportLayers:  "{% url 'weather:api_export_layers' %}",
     csrfToken:     "{{ csrf_token }}",
   };
+  window._exportBuckets     = JSON.parse(`{{ buckets_json|escapejs }}`);
+  window._exportDirectories = JSON.parse(`{{ directories_json|escapejs }}`);
 
   function weatherApp() {
     return {
@@ -58,6 +61,26 @@
 
       // ── map ───────────────────────────────────────────────────────
       mapReady: false,
+
+      // ── export modal ──────────────────────────────────────────────
+      exportOpen: false,
+      exportLayerSlugs: ["weather-temperature", "weather-precipitation"],
+      exportBucketId: "",
+      exportDirectoryId: "",
+      exportTitle: "",
+      exportRunId: null,
+      exportStatus: "",
+      exportDownloadUrl: null,
+      exportError: "",
+      exportBuckets: window._exportBuckets || [],
+      exportDirectories: window._exportDirectories || [],
+      get exportFilteredDirectories() {
+        if (!this.exportBucketId) return [];
+        return this.exportDirectories.filter(d => String(d.bucket_id) === String(this.exportBucketId));
+      },
+      get exportIsBusy() {
+        return this.exportStatus === "running" || this.exportStatus === "pending";
+      },
 
       // ── computed ──────────────────────────────────────────────────
 
@@ -270,6 +293,58 @@
 
       obsFor(addressId) {
         return this.currentObs[String(addressId)] || null;
+      },
+
+      async startExport() {
+        if (!this.exportLayerSlugs.length || !this.exportBucketId) return;
+        this.exportError = "";
+        this.exportDownloadUrl = null;
+        this.exportStatus = "pending";
+        this.exportRunId = null;
+        try {
+          const resp = await _post(window._weatherUrls.exportLayers, {
+            layer_slugs: this.exportLayerSlugs,
+            bucket_id: this.exportBucketId,
+            directory_id: this.exportDirectoryId || null,
+            title: this.exportTitle || null,
+          });
+          if (resp.error) throw new Error(resp.error);
+          this.exportRunId = resp.run_id;
+          this.exportStatus = "running";
+          this._pollExport();
+        } catch (e) {
+          this.exportError = e.message || "Failed to start export.";
+          this.exportStatus = "failed";
+        }
+      },
+
+      _pollExport() {
+        const timer = setInterval(async () => {
+          try {
+            const url = window._weatherUrls.runStatus.replace("{id}", this.exportRunId);
+            const s = await (await fetch(url)).json();
+            this.exportStatus = s.status;
+            if (s.status === "completed") {
+              clearInterval(timer);
+              this.exportDownloadUrl = s.download_url || null;
+            } else if (s.status === "failed") {
+              clearInterval(timer);
+              this.exportError = s.error || "Export workflow failed.";
+            }
+          } catch (e) {
+            clearInterval(timer);
+            this.exportError = e.message;
+            this.exportStatus = "failed";
+          }
+        }, 2000);
+      },
+
+      toggleExportLayer(slug) {
+        if (this.exportLayerSlugs.includes(slug)) {
+          this.exportLayerSlugs = this.exportLayerSlugs.filter(s => s !== slug);
+        } else {
+          this.exportLayerSlugs = [...this.exportLayerSlugs, slug];
+        }
       },
 
       fmtTemp(v) { return v != null ? `${v.toFixed(1)}°C` : "—"; },
@@ -652,23 +727,32 @@
         </p>
       </div>
 
-      <!-- Tab bar -->
-      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-           class="inline-flex rounded-xl border p-1 shadow-sm">
-        <button type="button" @click="activeTab = 'current'"
-                :class="activeTab === 'current'
-                  ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light')
-                  : 'opacity-60 hover:opacity-100'"
-                class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition">
-          <i class="fa-solid fa-sun"></i> Current
+      <!-- Header actions -->
+      <div class="flex flex-wrap items-center gap-2">
+        <button type="button" @click="exportOpen = true"
+                :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-sunken-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-sunken-light'"
+                class="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold shadow-sm transition">
+          <i class="fa-solid fa-file-export"></i> Export Layers
         </button>
-        <button type="button" @click="activeTab = 'forecast'"
-                :class="activeTab === 'forecast'
-                  ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light')
-                  : 'opacity-60 hover:opacity-100'"
-                class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition">
-          <i class="fa-solid fa-calendar-week"></i> Forecast
-        </button>
+
+        <!-- Tab bar -->
+        <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="inline-flex rounded-xl border p-1 shadow-sm">
+          <button type="button" @click="activeTab = 'current'"
+                  :class="activeTab === 'current'
+                    ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light')
+                    : 'opacity-60 hover:opacity-100'"
+                  class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition">
+            <i class="fa-solid fa-sun"></i> Current
+          </button>
+          <button type="button" @click="activeTab='forecast'"
+                  :class="activeTab === 'forecast'
+                    ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light')
+                    : 'opacity-60 hover:opacity-100'"
+                  class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition">
+            <i class="fa-solid fa-calendar-week"></i> Forecast
+          </button>
+        </div>
       </div>
     </header>
 
@@ -960,6 +1044,134 @@
     </div>
 
   </div>
+
+  <!-- ================================================================ -->
+  <!-- EXPORT LAYERS MODAL -->
+  <!-- ================================================================ -->
+  <div x-show="exportOpen" x-cloak
+       class="fixed inset-0 z-[9000] flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="exportOpen = false"></div>
+
+    <div :class="darkMode ? 'bg-bubble-bg-dark text-text-main-dark border-accent-1' : 'bg-bubble-bg-light text-text-main-light border-accent-2'"
+         class="relative z-10 w-full max-w-md rounded-2xl border shadow-2xl">
+
+      <!-- Modal header -->
+      <div class="flex items-center justify-between border-b border-current/10 px-5 py-4">
+        <h2 class="flex items-center gap-2 text-lg font-bold">
+          <i class="fa-solid fa-file-export"></i> Export Layers to Vault
+        </h2>
+        <button type="button" @click="exportOpen = false"
+                class="text-lg leading-none opacity-50 hover:opacity-100 transition">&times;</button>
+      </div>
+
+      <!-- Modal body -->
+      <div class="space-y-4 p-5">
+
+        <!-- Layer selection -->
+        <div>
+          <p class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-60">Layers</p>
+          <div class="space-y-1.5">
+            <template x-for="layer in [
+              {slug:'weather-temperature', label:'Temperature', icon:'fa-temperature-half'},
+              {slug:'weather-precipitation', label:'Precipitation', icon:'fa-cloud-rain'},
+            ]" :key="layer.slug">
+              <label class="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 transition"
+                     :class="exportLayerSlugs.includes(layer.slug)
+                       ? (darkMode ? 'bg-accent-dark/15' : 'bg-accent-light/10')
+                       : 'hover:bg-current/5'">
+                <span class="flex h-4 w-4 shrink-0 items-center justify-center rounded border transition"
+                      :class="exportLayerSlugs.includes(layer.slug)
+                        ? (darkMode ? 'border-transparent bg-accent-dark' : 'border-transparent bg-accent-light')
+                        : (darkMode ? 'border-accent-1' : 'border-accent-2')">
+                  <i class="fa-solid fa-check text-[9px] text-white" x-show="exportLayerSlugs.includes(layer.slug)"></i>
+                </span>
+                <i class="fa-solid text-sm opacity-60" :class="layer.icon"></i>
+                <span class="text-sm font-semibold" x-text="layer.label"></span>
+              </label>
+            </template>
+          </div>
+        </div>
+
+        <!-- Target bucket -->
+        <div>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">Target Bucket</label>
+          <select x-model="exportBucketId" @change="exportDirectoryId = ''"
+                  :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                  class="w-full rounded-lg border px-3 py-2 text-sm">
+            <option value="">— select bucket —</option>
+            <template x-for="b in exportBuckets" :key="b.id">
+              <option :value="b.id" x-text="b.name"></option>
+            </template>
+          </select>
+        </div>
+
+        <!-- Directory (optional) -->
+        <div x-show="exportBucketId">
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">
+            Directory <span class="font-normal opacity-50">(optional)</span>
+          </label>
+          <select x-model="exportDirectoryId"
+                  :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                  class="w-full rounded-lg border px-3 py-2 text-sm">
+            <option value="">— root of bucket —</option>
+            <template x-for="d in exportFilteredDirectories" :key="d.id">
+              <option :value="d.id" x-text="d.path"></option>
+            </template>
+          </select>
+        </div>
+
+        <!-- Title (optional) -->
+        <div>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">
+            File Title <span class="font-normal opacity-50">(optional)</span>
+          </label>
+          <input type="text" x-model="exportTitle" placeholder="Weather Layers Export"
+                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                 class="w-full rounded-lg border px-3 py-2 text-sm">
+        </div>
+
+        <!-- Error -->
+        <div x-show="exportError" x-cloak
+             :class="darkMode ? 'border-warn-dark/40 bg-warn-dark/10 text-warn-dark' : 'border-warn-light/40 bg-warn-light/10 text-warn-light'"
+             class="rounded-lg border p-3 text-sm">
+          <i class="fa-solid fa-circle-exclamation mr-2"></i>
+          <span x-text="exportError"></span>
+        </div>
+
+        <!-- Progress / download -->
+        <div x-show="exportRunId" x-cloak class="space-y-2">
+          <div class="flex items-center gap-2 text-sm">
+            <i class="fa-solid" :class="exportIsBusy ? 'fa-spinner fa-spin opacity-60' : (exportDownloadUrl ? 'fa-circle-check text-green-500' : 'fa-circle-xmark text-red-500')"></i>
+            <span x-text="exportIsBusy ? 'Exporting…' : (exportDownloadUrl ? 'Export complete' : 'Export failed')" class="font-semibold"></span>
+          </div>
+          <div x-show="exportDownloadUrl" x-cloak>
+            <a :href="exportDownloadUrl"
+               :class="darkMode ? 'bg-success-dark/20 text-success-dark border-success-dark/40' : 'bg-success-light/20 text-success-light border-success-light/40'"
+               class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+              <i class="fa-solid fa-download"></i> Download file
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal footer -->
+      <div class="flex items-center justify-end gap-3 border-t border-current/10 px-5 py-4">
+        <button type="button" @click="exportOpen = false"
+                :class="darkMode ? 'border-accent-1 hover:bg-sunken-dark' : 'border-accent-2 hover:bg-sunken-light'"
+                class="rounded-xl border px-4 py-2 text-sm font-semibold transition">
+          Close
+        </button>
+        <button type="button" @click="startExport()"
+                :disabled="exportIsBusy || !exportLayerSlugs.length || !exportBucketId"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90 disabled:opacity-40' : 'bg-accent-light text-primary-bg-light hover:opacity-90 disabled:opacity-40'"
+                class="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold shadow-sm transition">
+          <i class="fa-solid" :class="exportIsBusy ? 'fa-spinner fa-spin' : 'fa-file-export'"></i>
+          <span x-text="exportIsBusy ? 'Exporting…' : 'Export'"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <script>

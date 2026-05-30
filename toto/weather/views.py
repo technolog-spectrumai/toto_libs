@@ -42,12 +42,24 @@ def weather_index(request):
         for a in addresses
     ])
 
+    from toto.vault.models import Bucket, VaultDirectory
+    buckets = list(Bucket.objects.all().order_by("name"))
+    directories = list(VaultDirectory.objects.select_related("bucket").order_by("bucket__name", "name"))
+    buckets_json = json.dumps([{"id": b.id, "name": b.name} for b in buckets])
+    directories_json = json.dumps([
+        {"id": d.id, "bucket_id": d.bucket_id, "path": d.full_path()}
+        for d in directories
+    ])
+
     context = _decorate({
         "addresses": addresses,
         "addresses_json": addresses_json,
         "celery_ok": celery_available(),
         "current_provider": settings_obj.get_current_provider_display(),
         "forecast_provider": settings_obj.get_forecast_provider_display(),
+        "buckets_json": buckets_json,
+        "directories_json": directories_json,
+        "export_formats": ["json", "csv", "geojson"],
     }, request)
     return render(request, "weather/index.html", context)
 
@@ -214,8 +226,8 @@ def api_forecast_data(request):
 
 @login_required(login_url=reverse_lazy("core:login"))
 def api_run_status(request, run_id):
-    """Check a workflow run status (for polling)."""
-    from toto.workflows.models import WorkflowRun
+    """Check a workflow run status (for polling). Also returns download_url for export runs."""
+    from toto.workflows.models import WorkflowNodeRun, WorkflowRun
 
     try:
         run = WorkflowRun.objects.get(pk=run_id)
@@ -228,5 +240,56 @@ def api_run_status(request, run_id):
         if failed_node:
             error = failed_node.error
 
-    return JsonResponse({"status": run.status, "error": error})
+    download_url = None
+    for nr in run.node_runs.filter(status=WorkflowNodeRun.COMPLETED).select_related("node"):
+        file_data = ((nr.output_data or {}).get("data") or {})
+        if file_data.get("download_url"):
+            download_url = file_data["download_url"]
+            break
+
+    return JsonResponse({"status": run.status, "error": error, "download_url": download_url})
+
+
+@login_required(login_url=reverse_lazy("core:login"))
+@require_POST
+def api_export_layers(request):
+    """Trigger a weather layer export workflow run."""
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({"error": "Invalid JSON."}, status=400)
+
+    bucket_id = data.get("bucket_id")
+    if not bucket_id:
+        return JsonResponse({"error": "Select a target bucket."}, status=400)
+
+    layer_slugs = data.get("layer_slugs") or []
+    if not layer_slugs:
+        return JsonResponse({"error": "Select at least one layer."}, status=400)
+
+    if not celery_available():
+        return JsonResponse({"error": "No Celery worker running."}, status=503)
+
+    from toto.workflows.api import trigger_workflow
+    from toto.workflows.models import Workflow
+    from toto.weather.predefined_tasks import WEATHER_EXPORT_SLUG
+
+    try:
+        run = trigger_workflow(WEATHER_EXPORT_SLUG, {
+            "data": {
+                "layer_slugs": layer_slugs,
+                "bucket_id": int(bucket_id),
+                "directory_id": int(data["directory_id"]) if data.get("directory_id") else None,
+                "title": data.get("title", "").strip() or None,
+                "owner_id": request.user.pk,
+            }
+        })
+        return JsonResponse({"run_id": run.id})
+    except Workflow.DoesNotExist:
+        return JsonResponse(
+            {"error": "Export workflow not seeded. Run: manage.py seed_weather_workflows"},
+            status=503,
+        )
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=500)
 

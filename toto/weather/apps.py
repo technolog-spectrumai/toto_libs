@@ -24,3 +24,5 @@ class WeatherConfig(AppConfig):
         )
         LocationMapLayerPlugin.register(weather_temperature_layer)
         LocationMapLayerPlugin.register(weather_precipitation_layer)
+
+        from toto.weather import predefined_tasks  # noqa: F401 — registers weather workflow tasks
