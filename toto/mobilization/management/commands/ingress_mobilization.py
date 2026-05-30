@@ -331,11 +331,11 @@ class Command(IngressCommand):
         # Grab optional linked models (may not exist yet)
         routes = self._get_routes()
         inventory_items = self._get_inventory_items()
-        detections = self._get_detections()
+        incidents = self._get_incidents()
 
         created_deployments = []
         for scenario in SCENARIOS:
-            deps = self._create_scenario(scenario, responders, communities, type_cache, routes, inventory_items, detections)
+            deps = self._create_scenario(scenario, responders, communities, type_cache, routes, inventory_items, incidents)
             created_deployments.extend(deps)
 
         self._award_achievements(responders, achievement_cache, created_deployments)
@@ -450,19 +450,19 @@ class Command(IngressCommand):
         except Exception:
             return []
 
-    def _get_detections(self):
+    def _get_incidents(self):
         try:
-            from toto.detections.models import Detection
-            detections = list(Detection.objects.all()[:10])
-            if detections:
-                print(f"  ℹ  Found {len(detections)} detections for evidence seeding.")
-            return detections
+            from toto.incidents.models import Incident
+            incidents = list(Incident.objects.all()[:10])
+            if incidents:
+                print(f"  ℹ  Found {len(incidents)} incidents for evidence seeding.")
+            return incidents
         except Exception:
             return []
 
     # ── Main scenario builder ─────────────────────────────────────────────
 
-    def _create_scenario(self, scenario, responders, communities, type_cache, routes, inventory_items, detections):  # noqa: C901
+    def _create_scenario(self, scenario, responders, communities, type_cache, routes, inventory_items, incidents):  # noqa: C901
         community = random.choice(communities)
         coordinator = random.choice(responders).person if responders else None
         incident_type = IncidentType.objects.filter(slug=scenario["incident"]).first()
@@ -494,12 +494,12 @@ class Command(IngressCommand):
             },
         )
 
-        # Seed report evidence from available detections
-        if detections and scenario["report_status"] in ("enacted", "closed", "reviewed"):
-            for det in random.sample(detections, min(2, len(detections))):
+        # Seed report evidence from available incidents
+        if incidents and scenario["report_status"] in ("enacted", "closed", "reviewed"):
+            for inc in random.sample(incidents, min(2, len(incidents))):
                 MobilizationReportEvidence.objects.get_or_create(
                     report=report,
-                    detection=det,
+                    incident=inc,
                     defaults={
                         "evidence_role": random.choice(["primary", "supporting", "context"]),
                         "weight": random.choice(["normal", "high"]),
