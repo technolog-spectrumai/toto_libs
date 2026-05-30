@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.db import models
 from django.utils import timezone
@@ -51,6 +52,12 @@ class Person(DomainEntity):
     digital_signature = models.TextField(
         blank=True,
         help_text="Base64-encoded PNG of the person's handwritten signature.",
+    )
+    preferred_language = models.CharField(
+        max_length=10,
+        choices=settings.LANGUAGES,
+        default="en",
+        blank=True,
     )
 
     class Meta:

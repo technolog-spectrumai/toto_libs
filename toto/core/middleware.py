@@ -1,8 +1,47 @@
 import time
+from django.conf import settings
 from django.core.cache import cache
 from django.shortcuts import redirect
 from django.urls import reverse
+from django.utils import translation
 from toto.core.models import Platform
+
+_VALID_LANG_CODES = None
+
+
+def _get_valid_langs():
+    global _VALID_LANG_CODES
+    if _VALID_LANG_CODES is None:
+        _VALID_LANG_CODES = {code for code, _ in getattr(settings, "LANGUAGES", [])}
+    return _VALID_LANG_CODES
+
+
+class ProfileLanguageMiddleware:
+    """
+    For authenticated users: activate preferred_language from their Person profile
+    unless they have an explicit per-session language cookie set.
+    Anonymous users continue to use normal Django locale behaviour.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        if request.user.is_authenticated:
+            # Respect an explicit cookie-based or session-based language choice.
+            cookie_lang = request.COOKIES.get(settings.LANGUAGE_COOKIE_NAME, "")
+            session_lang = ""
+            if hasattr(request, "session"):
+                session_lang = request.session.get("_language", "")
+            if not cookie_lang and not session_lang:
+                try:
+                    lang = request.user.community_profile.preferred_language
+                    if lang and lang in _get_valid_langs():
+                        translation.activate(lang)
+                        request.LANGUAGE_CODE = lang
+                except Exception:
+                    pass
+        return self.get_response(request)
 
 
 class PlatformMiddleware:

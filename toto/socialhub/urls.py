@@ -1,5 +1,5 @@
 from django.urls import path
-from toto.socialhub.views.profile import ProfileListView, ProfileDetailView
+from toto.socialhub.views.profile import ProfileListView, ProfileDetailView, set_preferred_language
 from toto.socialhub.views.community import (
     CommunityListView,
     CommunityDetailView,
@@ -22,6 +22,7 @@ app_name = "socialhub"
 urlpatterns = [
     path("profiles/", ProfileListView.as_view(), name="profile_list"),
     path("profiles/<slug:slug>/", ProfileDetailView.as_view(), name="profile_details"),
+    path("profiles/language/set/", set_preferred_language, name="set_preferred_language"),
 
     path("communities/", CommunityListView.as_view(), name="community_list"),
     path("communities/<slug:community_slug>/news/new/", community_news_create, name="community_news_create"),

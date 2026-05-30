@@ -167,6 +167,41 @@
       </div>
     </section>
 
+    {% if is_own_profile %}
+    {% get_available_languages as available_languages %}
+    <!-- Language Preference -->
+    <section
+      :class="darkMode
+        ? 'border-accent-1 bg-bubble-bg-dark'
+        : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-2xl border p-5 shadow-sm sm:p-6">
+
+      <h2 class="flex items-center gap-2 text-lg font-bold mb-4">
+        <i class="fa-solid fa-language"></i>{% trans "Preferred Language" %}</h2>
+
+      <form method="post" action="{% url 'socialhub:set_preferred_language' %}">
+        {% csrf_token %}
+        <div class="flex flex-wrap gap-3">
+          {% for lang_code, lang_name in available_languages %}
+          {% with "lang/"|add:lang_code|add:".svg" as flag_path %}
+          <button
+            type="submit"
+            name="language"
+            value="{{ lang_code }}"
+            :class="darkMode
+              ? '{% if profile.preferred_language == lang_code %}bg-accent-dark text-primary-bg-dark{% else %}border-accent-1 bg-sunken-dark text-text-main-dark{% endif %}'
+              : '{% if profile.preferred_language == lang_code %}bg-accent-light text-primary-bg-light{% else %}border-accent-2 bg-sunken-light text-text-main-light{% endif %}'"
+            class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+            <img src="{% static flag_path %}" alt="{{ lang_name }}" class="h-4 w-6 rounded-sm object-cover">
+            {{ lang_name }}
+          </button>
+          {% endwith %}
+          {% endfor %}
+        </div>
+      </form>
+    </section>
+    {% endif %}
+
     <!-- Communities -->
     <section
       :class="darkMode
