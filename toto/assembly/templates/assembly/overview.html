@@ -24,9 +24,7 @@
       empty: !_currentData.datasets || _currentData.datasets.length === 0,
       init() {
         if (this.empty) return;
-        const isDark = document.documentElement.dataset.theme === 'dark'
-          || document.body.classList.contains('dark')
-          || window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const isDark = localStorage.getItem('darkMode') === 'true';
         const { grid, tick } = _chartColors(isDark);
         new Chart(document.getElementById('feeCurrentChart'), {
           type: 'bar',
@@ -51,9 +49,7 @@
       empty: !_historyData.labels || _historyData.labels.length < 2,
       init() {
         if (this.empty) return;
-        const isDark = document.documentElement.dataset.theme === 'dark'
-          || document.body.classList.contains('dark')
-          || window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const isDark = localStorage.getItem('darkMode') === 'true';
         const { grid, tick } = _chartColors(isDark);
         new Chart(document.getElementById('feeHistoryChart'), {
           type: 'line',

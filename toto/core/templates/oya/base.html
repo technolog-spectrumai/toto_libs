@@ -77,6 +77,19 @@
   </div>
   {% endif %}
 
+  <!-- Back link -->
+  {% if last_visited_url and last_visited_name %}
+  <div :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
+       class="border-b px-4 py-1.5 sm:px-6 lg:px-8">
+    <a href="{{ last_visited_url }}"
+       :class="darkMode ? 'text-accent-dark hover:opacity-80' : 'text-accent-light hover:opacity-80'"
+       class="inline-flex items-center gap-1.5 text-xs font-semibold transition">
+      <i class="fa-solid fa-arrow-left text-[10px]"></i>
+      {{ last_visited_name }}
+    </a>
+  </div>
+  {% endif %}
+
   <!-- Main Content -->
   <main class="flex-grow">
     {% block content %}{% endblock %}
