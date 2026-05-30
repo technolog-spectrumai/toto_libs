@@ -1,0 +1,152 @@
+{% extends "treasury/base.html" %}
+{% load i18n %}
+
+{% block treasury_title %}{% trans "Revenue" %}{% endblock %}
+{% block tab_revenue %}border-b-2 border-current -mb-px{% endblock %}
+
+{% block start_script %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<style>[x-cloak]{display:none!important}</style>
+{% endblock %}
+
+{% block treasury_content %}
+<div class="space-y-6" x-data="revDash()" x-init="init()">
+
+  <!-- Summary card -->
+  <div class="grid grid-cols-2 gap-4 sm:grid-cols-3">
+    <div :class="darkMode?'border-accent-1 bg-bubble-bg-dark':'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-4 shadow-sm">
+      <p class="text-2xl font-bold tabular-nums">{{ total_revenue }}</p>
+      <p class="mt-1 text-xs opacity-60">{% trans "Total base units (all streams)" %}</p>
+    </div>
+    <div :class="darkMode?'border-accent-1 bg-bubble-bg-dark':'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-4 shadow-sm">
+      <p class="text-2xl font-bold tabular-nums">{{ streams|length }}</p>
+      <p class="mt-1 text-xs opacity-60">{% trans "Revenue streams" %}</p>
+    </div>
+  </div>
+
+  {% if not has_data %}
+  <div :class="darkMode?'border-accent-1 bg-bubble-bg-dark':'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-10 text-center text-sm opacity-40 shadow-sm">
+    {% trans "No revenue data yet. Revenue will appear here once tariff charges, subscription payments, or tax fees are recorded." %}
+  </div>
+  {% else %}
+
+  <!-- Series toggles -->
+  <div :class="darkMode?'border-accent-1 bg-bubble-bg-dark':'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-4 shadow-sm">
+    <p class="mb-3 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Series — click to toggle" %}</p>
+    <div class="flex flex-wrap gap-2" id="rev-toggles"></div>
+  </div>
+
+  <!-- History chart -->
+  <div :class="darkMode?'border-accent-1 bg-bubble-bg-dark':'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5 shadow-sm">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="font-bold flex items-center gap-2">
+        <i class="fa-solid fa-chart-area opacity-60"></i>
+        {% trans "Revenue history — last 13 months" %}
+      </h2>
+      <label class="flex items-center gap-2 text-xs font-semibold cursor-pointer select-none">
+        <input type="checkbox" x-model="showProj" @change="renderProj()" class="rounded">
+        {% trans "Show 3-month projection" %}
+      </label>
+    </div>
+    <div class="relative" style="height:360px">
+      <canvas id="revChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Projection (conditionally shown) -->
+  <div x-show="showProj" x-cloak
+       :class="darkMode?'border-accent-1 bg-bubble-bg-dark':'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5 shadow-sm">
+    <h2 class="font-bold flex items-center gap-2 mb-4">
+      <i class="fa-solid fa-chart-mixed opacity-60"></i>
+      {% trans "3-month projection (linear trend)" %}
+    </h2>
+    <div class="relative" style="height:240px">
+      <canvas id="projChart"></canvas>
+    </div>
+  </div>
+
+  {% endif %}
+</div>
+
+<script>
+function revDash() {
+  return {
+    showProj: false,
+    revChart: null,
+    projChart: null,
+
+    init() {
+      const labels  = {{ chart_labels|safe }};
+      const datasets = {{ chart_datasets|safe }};
+      const futureLabels = {{ future_months|safe }};
+      const projDs = {{ proj_datasets|safe }};
+
+      const isDark = document.documentElement.classList.contains('dark');
+      const grid   = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)';
+      const ticks  = isDark ? 'rgba(255,255,255,0.5)'  : 'rgba(0,0,0,0.5)';
+
+      // History
+      const hCtx = document.getElementById('revChart');
+      if (!hCtx) return;
+      this.revChart = new Chart(hCtx, {
+        type: 'line',
+        data: { labels, datasets },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: { label: c => ` ${c.dataset.label}: ${c.parsed.y.toLocaleString()}` } },
+          },
+          scales: {
+            x: { stacked: false, grid: { color: grid }, ticks: { color: ticks } },
+            y: { stacked: false, beginAtZero: true, grid: { color: grid }, ticks: { color: ticks } },
+          },
+        },
+      });
+
+      // Projection
+      const pCtx = document.getElementById('projChart');
+      this.projChart = new Chart(pCtx, {
+        type: 'bar',
+        data: { labels: futureLabels, datasets: projDs },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { color: grid }, ticks: { color: ticks } },
+            y: { beginAtZero: true, grid: { color: grid }, ticks: { color: ticks } },
+          },
+        },
+      });
+
+      // Series toggles
+      const container = document.getElementById('rev-toggles');
+      datasets.forEach((ds, i) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.style.cssText = `border-color:${ds.borderColor};color:${ds.borderColor}`;
+        btn.className = 'inline-flex items-center gap-1.5 rounded border px-3 py-1 text-xs font-semibold transition hover:opacity-70';
+        btn.innerHTML = `<span class="inline-block h-2 w-2 rounded-full" style="background:${ds.borderColor}"></span>${ds.label}`;
+        btn.addEventListener('click', () => {
+          const m = this.revChart.getDatasetMeta(i);
+          m.hidden = m.hidden === null ? true : !m.hidden;
+          this.revChart.update();
+          btn.style.opacity = m.hidden ? '0.3' : '1';
+        });
+        container.appendChild(btn);
+      });
+    },
+
+    renderProj() { /* x-show handles visibility */ },
+  };
+}
+</script>
+{% endblock %}

@@ -26,26 +26,40 @@
       <i class="fa-solid fa-chart-pie"></i>
       {% trans "Overview" %}
     </a>
-    <a href="{% url 'tariffs:tariff_list' %}"
+    <a href="{% url 'treasury:revenue' %}"
+       :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+       class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+              {% block tab_revenue %}opacity-50{% endblock %}">
+      <i class="fa-solid fa-chart-line"></i>
+      {% trans "Revenue" %}
+    </a>
+    <a href="{% url 'tariffs:metrics' %}"
        :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
        class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
               {% block tab_tariffs %}opacity-50{% endblock %}">
       <i class="fa-solid fa-receipt"></i>
       {% trans "Tariffs" %}
     </a>
-    <a href="{% url 'subscriptions:plan_list' %}"
+    <a href="{% url 'subscriptions:metrics' %}"
        :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
        class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
               {% block tab_subscriptions %}opacity-50{% endblock %}">
       <i class="fa-solid fa-repeat"></i>
       {% trans "Subscriptions" %}
     </a>
-    <a href="{% url 'contracts:payroll_list' %}"
+    <a href="{% url 'payroll:metrics' %}"
        :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
        class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
               {% block tab_payroll %}opacity-50{% endblock %}">
       <i class="fa-solid fa-money-check-dollar"></i>
       {% trans "Payroll" %}
+    </a>
+    <a href="{% url 'treasury:taxes' %}"
+       :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+       class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+              {% block tab_taxes %}opacity-50{% endblock %}">
+      <i class="fa-solid fa-percent"></i>
+      {% trans "Taxes" %}
     </a>
   </nav>
 

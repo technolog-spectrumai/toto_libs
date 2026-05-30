@@ -347,10 +347,64 @@ def invoice_pay(request, uid):
 # ---------------------------------------------------------------------------
 
 def metrics(request):
-    status_counts = {row["status"]: row["count"] for row in Subscription.objects.values("status").annotate(count=Count("id"))}
-    invoice_counts = {row["status"]: row["count"] for row in SubscriptionInvoice.objects.values("status").annotate(count=Count("id"))}
-    by_plan = Subscription.objects.values("plan__code", "plan__name").annotate(count=Count("id")).order_by("-count")[:20]
-    return _render(request, "subscriptions/metrics.html", {"status_counts": status_counts, "invoice_counts": invoice_counts, "by_plan": by_plan})
+    from django.db.models.functions import TruncMonth
+    from django.utils import timezone as tz
+    import json as _json
+
+    status_counts = {
+        row["status"]: row["count"]
+        for row in Subscription.objects.values("status").annotate(count=Count("id"))
+    }
+    invoice_counts = {
+        row["status"]: row["count"]
+        for row in SubscriptionInvoice.objects.values("status").annotate(count=Count("id"))
+    }
+    by_plan = (
+        Subscription.objects
+        .values("plan__code", "plan__name")
+        .annotate(count=Count("id"))
+        .order_by("-count")[:20]
+    )
+
+    # MRR — sum of active subscription amounts normalised to monthly
+    INTERVAL_MONTHS = {
+        "once": None, "daily": 1/30, "weekly": 1/4.33,
+        "monthly": 1, "quarterly": 1/3, "yearly": 1/12, "custom": None,
+    }
+    mrr_by_plan: dict = {}
+    for sub in Subscription.objects.filter(status="active").select_related("price"):
+        price = sub.price
+        if not price:
+            continue
+        factor = INTERVAL_MONTHS.get(price.billing_interval, None)
+        if factor is None:
+            continue
+        plan_name = sub.plan.code if sub.plan else "?"
+        mrr_by_plan[plan_name] = mrr_by_plan.get(plan_name, 0) + int(price.amount_base_units * factor)
+    total_mrr = sum(mrr_by_plan.values())
+
+    # Monthly payment totals (last 13 months)
+    cutoff = tz.now() - tz.timedelta(days=395)
+    monthly_payments = list(
+        SubscriptionPayment.objects
+        .filter(status="succeeded", created_at__gte=cutoff)
+        .annotate(month=TruncMonth("created_at"))
+        .values("month")
+        .annotate(total=Sum("amount_base_units"))
+        .order_by("month")
+    )
+    chart_labels = [r["month"].strftime("%Y-%m") for r in monthly_payments if r["month"]]
+    chart_data   = [r["total"] for r in monthly_payments]
+
+    return _render(request, "subscriptions/metrics.html", {
+        "status_counts": status_counts,
+        "invoice_counts": invoice_counts,
+        "by_plan": by_plan,
+        "mrr_by_plan": mrr_by_plan,
+        "total_mrr": total_mrr,
+        "chart_labels": _json.dumps(chart_labels),
+        "chart_data": _json.dumps(chart_data),
+    })
 
 
 @login_required

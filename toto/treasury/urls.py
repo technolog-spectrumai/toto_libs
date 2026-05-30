@@ -8,4 +8,6 @@ urlpatterns = [
     path("<int:pk>/", views.community_detail, name="detail"),
     path("<int:pk>/flow.json", views.community_flow_json, name="flow_json"),
     path("<int:pk>/history.json", views.community_history_json, name="history_json"),
+    path("revenue/", views.revenue_dashboard, name="revenue"),
+    path("taxes/", views.taxes_overview, name="taxes"),
 ]

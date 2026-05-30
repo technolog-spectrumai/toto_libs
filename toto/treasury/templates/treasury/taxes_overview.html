@@ -1,0 +1,129 @@
+{% extends "treasury/base.html" %}
+{% load i18n %}
+
+{% block treasury_title %}{% trans "Taxes" %}{% endblock %}
+{% block tab_taxes %}border-b-2 border-current -mb-px{% endblock %}
+
+{% block treasury_content %}
+<div class="space-y-6">
+
+{% if not taxes_enabled %}
+<div :class="darkMode?'border-accent-1 bg-bubble-bg-dark':'border-accent-2 bg-bubble-bg-light'"
+     class="rounded-lg border p-10 text-center text-sm opacity-40 shadow-sm">
+  {% trans "toto.taxes is not installed. Add it to INSTALLED_APPS to enable transaction fee policies." %}
+</div>
+{% else %}
+
+  <!-- Summary card -->
+  <div :class="darkMode?'border-accent-1 bg-bubble-bg-dark':'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-4 shadow-sm">
+    <p class="text-2xl font-bold tabular-nums">{{ total_collected }}</p>
+    <p class="mt-1 text-xs opacity-60">{% trans "Total fees collected (all assets, base units)" %}</p>
+  </div>
+
+  <!-- Fee policies -->
+  <div :class="darkMode?'border-accent-1 bg-bubble-bg-dark':'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border shadow-sm">
+    <div :class="darkMode?'border-accent-1':'border-accent-2'"
+         class="flex items-center justify-between px-5 py-4 border-b">
+      <h2 class="font-bold flex items-center gap-2">
+        <i class="fa-solid fa-percent opacity-60"></i>
+        {% trans "Fee policies" %}
+        <span class="ml-1 rounded-full px-2 py-0.5 text-xs font-bold
+          {% if policies %}bg-blue-100 text-blue-700{% else %}bg-gray-100 text-gray-500{% endif %}">
+          {{ policies|length }}
+        </span>
+      </h2>
+      <a href="{% url 'admin:taxes_transactionfeepolicy_add' %}"
+         :class="darkMode?'bg-accent-dark text-primary-bg-dark':'bg-accent-light text-primary-bg-light'"
+         class="inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-semibold transition hover:opacity-90">
+        <i class="fa-solid fa-plus"></i> {% trans "Add policy" %}
+      </a>
+    </div>
+    {% if policies %}
+    <table class="min-w-full text-sm">
+      <thead>
+        <tr :class="darkMode?'border-accent-1':'border-accent-2'" class="border-b">
+          <th class="px-5 py-3 text-left text-xs font-semibold uppercase opacity-60">{% trans "Name" %}</th>
+          <th class="px-5 py-3 text-left text-xs font-semibold uppercase opacity-60">{% trans "Asset" %}</th>
+          <th class="px-5 py-3 text-right text-xs font-semibold uppercase opacity-60">{% trans "Rate (bps)" %}</th>
+          <th class="px-5 py-3 text-right text-xs font-semibold uppercase opacity-60">{% trans "Fixed fee" %}</th>
+          <th class="px-5 py-3 text-left text-xs font-semibold uppercase opacity-60">{% trans "Scope" %}</th>
+          <th class="px-5 py-3 text-left text-xs font-semibold uppercase opacity-60">{% trans "Receiving account" %}</th>
+          <th class="px-5 py-3 text-center text-xs font-semibold uppercase opacity-60">{% trans "Active" %}</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y" :class="darkMode?'divide-accent-1':'divide-accent-2'">
+        {% for policy in policies %}
+        <tr>
+          <td class="px-5 py-3 font-semibold text-sm">{{ policy.name }}</td>
+          <td class="px-5 py-3 font-mono text-xs">{{ policy.asset.unit_name }}</td>
+          <td class="px-5 py-3 text-right tabular-nums text-xs">
+            {{ policy.fee_rate_bps }}
+            {% if policy.fee_rate_bps %}
+            <span class="opacity-40">({{ policy.fee_rate_bps|floatformat:2 }}‱ = {{ policy.fee_rate_bps|floatformat:4 }}%)</span>
+            {% endif %}
+          </td>
+          <td class="px-5 py-3 text-right tabular-nums text-xs">{{ policy.fixed_amount_base_units }}</td>
+          <td class="px-5 py-3 text-xs capitalize opacity-70">{{ policy.get_scope_display }}</td>
+          <td class="px-5 py-3 text-xs font-mono opacity-70">{{ policy.receiving_account.code|default:policy.receiving_account.name }}</td>
+          <td class="px-5 py-3 text-center">
+            {% if policy.active %}
+            <span class="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-800 px-2 py-0.5 text-xs font-semibold">
+              <i class="fa-solid fa-circle-check"></i>
+            </span>
+            {% else %}
+            <span class="text-xs opacity-30">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="px-6 py-10 text-center text-sm opacity-40">
+      {% trans "No fee policies defined yet. Use the admin to create policies." %}
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Recent fee charges -->
+  <div :class="darkMode?'border-accent-1 bg-bubble-bg-dark':'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border shadow-sm">
+    <div :class="darkMode?'border-accent-1':'border-accent-2'" class="px-5 py-4 border-b">
+      <h2 class="font-bold flex items-center gap-2">
+        <i class="fa-solid fa-clock-rotate-left opacity-60"></i>
+        {% trans "Recent fee charges" %}
+      </h2>
+    </div>
+    {% if recent_fees %}
+    <table class="min-w-full text-sm">
+      <thead>
+        <tr :class="darkMode?'border-accent-1':'border-accent-2'" class="border-b">
+          <th class="px-5 py-3 text-left text-xs font-semibold uppercase opacity-60">{% trans "Policy" %}</th>
+          <th class="px-5 py-3 text-left text-xs font-semibold uppercase opacity-60">{% trans "Asset" %}</th>
+          <th class="px-5 py-3 text-right text-xs font-semibold uppercase opacity-60">{% trans "Fee (base units)" %}</th>
+          <th class="px-5 py-3 text-right text-xs font-semibold uppercase opacity-60">{% trans "Tx amount" %}</th>
+          <th class="px-5 py-3 text-left text-xs font-semibold uppercase opacity-60">{% trans "At" %}</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y" :class="darkMode?'divide-accent-1':'divide-accent-2'">
+        {% for fee in recent_fees %}
+        <tr>
+          <td class="px-5 py-2 text-xs">{{ fee.policy.name }}</td>
+          <td class="px-5 py-2 font-mono text-xs">{{ fee.asset.unit_name }}</td>
+          <td class="px-5 py-2 text-right tabular-nums text-xs font-semibold">{{ fee.amount_base_units }}</td>
+          <td class="px-5 py-2 text-right tabular-nums text-xs opacity-60">{{ fee.transaction_amount_base_units }}</td>
+          <td class="px-5 py-2 text-xs opacity-50 tabular-nums whitespace-nowrap">{{ fee.created_at|date:"Y-m-d H:i" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="px-6 py-10 text-center text-sm opacity-40">{% trans "No fee charges recorded yet." %}</div>
+    {% endif %}
+  </div>
+
+{% endif %}
+</div>
+{% endblock %}
