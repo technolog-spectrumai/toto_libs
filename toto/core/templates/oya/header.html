@@ -1,4 +1,6 @@
 {% load i18n %}
+{% get_current_language as LANGUAGE_CODE %}
+{% get_available_languages as LANGUAGES %}
 <header x-data="{ navOpen: false }"
         :class="darkMode
           ? `bg-appbar-bg-dark text-appbar-text-dark {{ platform.theme.header.dark }}`
@@ -53,8 +55,23 @@
       <button @click="darkMode = !darkMode; localStorage.setItem('darkMode', darkMode); location.reload();"
               class="site-theme-toggle-button flex items-center gap-2 px-3 py-1 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
         <i :class="darkMode ? 'fas fa-moon' : 'fas fa-sun'" class="text-base"></i>
-        <span x-text="!darkMode ? 'Light Mode' : 'Dark Mode'"></span>
+        <span
+          data-light="{% trans 'Light Mode' %}"
+          data-dark="{% trans 'Dark Mode' %}"
+          x-text="!darkMode ? $el.dataset.light : $el.dataset.dark"></span>
       </button>
+
+      <!-- Language Switcher -->
+      <form action="{% url 'set_language' %}" method="post" title="{% trans 'Language' %}">
+        {% csrf_token %}
+        <input name="next" type="hidden" value="{{ request.get_full_path }}">
+        <select name="language" onchange="this.form.submit()"
+                class="flex items-center px-2 py-1 rounded text-sm font-medium shadow-sm transition hover:opacity-90 bg-transparent border border-current cursor-pointer">
+          {% for lang in LANGUAGES %}
+          <option value="{{ lang.0 }}" {% if lang.0 == LANGUAGE_CODE %}selected{% endif %}>{{ lang.1 }}</option>
+          {% endfor %}
+        </select>
+      </form>
     </div>
 
     <!-- Mobile Menu Toggle -->
@@ -102,8 +119,23 @@
       <button @click="darkMode = !darkMode; localStorage.setItem('darkMode', darkMode); location.reload();"
               class="site-theme-toggle-button flex items-center gap-2 px-3 py-2 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
         <i :class="darkMode ? 'fas fa-moon' : 'fas fa-sun'" class="text-base"></i>
-        <span x-text="!darkMode ? 'Light Mode' : 'Dark Mode'"></span>
+        <span
+          data-light="{% trans 'Light Mode' %}"
+          data-dark="{% trans 'Dark Mode' %}"
+          x-text="!darkMode ? $el.dataset.light : $el.dataset.dark"></span>
       </button>
+
+      <!-- Language Switcher (Mobile) -->
+      <form action="{% url 'set_language' %}" method="post" title="{% trans 'Language' %}">
+        {% csrf_token %}
+        <input name="next" type="hidden" value="{{ request.get_full_path }}">
+        <select name="language" onchange="this.form.submit()"
+                class="flex items-center px-2 py-2 rounded text-sm font-medium shadow-sm transition hover:opacity-90 bg-transparent border border-current cursor-pointer w-full">
+          {% for lang in LANGUAGES %}
+          <option value="{{ lang.0 }}" {% if lang.0 == LANGUAGE_CODE %}selected{% endif %}>{{ lang.1 }}</option>
+          {% endfor %}
+        </select>
+      </form>
     </div>
   </div>
 </header>
