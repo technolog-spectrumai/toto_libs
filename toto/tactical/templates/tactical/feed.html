@@ -8,7 +8,7 @@
     <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
        class="text-xs font-semibold uppercase tracking-wide">Tactical</p>
     <h1 class="mt-1 text-3xl font-bold">Activity Feed</h1>
-    <p class="mt-1 text-sm opacity-50">Newest events across detections, logistics, and weather.</p>
+    <p class="mt-1 text-sm opacity-50">Newest events across incidents, logistics, and weather.</p>
   </header>
 
   {% if events %}
@@ -20,7 +20,7 @@
     <li class="mb-4 ml-6">
       <!-- dot -->
       <span class="absolute -left-[11px] flex h-5 w-5 items-center justify-center rounded-full ring-4
-        {% if ev.type == 'detection' %}
+        {% if ev.type == 'incident' %}
           {% if ev.color == 'warn' %}ring-warn-dark/20 bg-warn-dark{% elif ev.color == 'caution' %}ring-amber-400/20 bg-amber-400{% else %}ring-green-500/20 bg-green-500{% endif %}
         {% elif ev.type == 'package' %}ring-blue-500/20 bg-blue-500
         {% else %}ring-sky-400/20 bg-sky-400{% endif %}"
@@ -46,7 +46,7 @@
           </time>
         </div>
         <span class="mt-1.5 inline-block rounded-full px-2 py-0.5 text-xs font-semibold
-          {% if ev.type == 'detection' %}
+          {% if ev.type == 'incident' %}
             {% if ev.color == 'warn' %}bg-red-500/15 text-red-500{% elif ev.color == 'caution' %}bg-amber-400/15 text-amber-500{% else %}bg-green-500/15 text-green-600{% endif %}
           {% elif ev.type == 'package' %}bg-blue-500/15 text-blue-500
           {% else %}bg-sky-400/15 text-sky-500{% endif %}">

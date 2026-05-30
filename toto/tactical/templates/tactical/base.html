@@ -31,13 +31,11 @@
       <i class="fa-solid fa-chart-line fa-fw"></i> Metrics
     </a>
     <span class="mx-1 h-5 self-center border-l border-current opacity-20"></span>
-    {% if detections_enabled %}
-    <a href="{% url 'detections:detection-list' %}"
-       :class="{% if request.resolver_match.app_name == 'detections' %}darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'{% else %}'opacity-60 hover:opacity-100'{% endif %}"
+    <a href="{% url 'incidents:incident-list' %}"
+       :class="{% if request.resolver_match.app_name == 'incidents' %}darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'{% else %}'opacity-60 hover:opacity-100'{% endif %}"
        class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition">
-      <i class="fa-solid fa-bullseye fa-fw"></i> Detections
+      <i class="fa-solid fa-shield-exclamation fa-fw"></i> Incidents
     </a>
-    {% endif %}
     <a href="{% url 'mobilization:overview' %}"
        :class="{% if request.resolver_match.app_name == 'mobilization' %}darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'{% else %}'opacity-60 hover:opacity-100'{% endif %}"
        class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition">

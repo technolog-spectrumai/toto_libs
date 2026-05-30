@@ -8,12 +8,7 @@ class DetectionsConfig(AppConfig):
 
     def ready(self):
         from toto.locations.plugins.map_plugins import LocationMapPlugin
-        from toto.locations.plugins.sidebar_plugins import LocationSidebarPlugin
-
         LocationMapPlugin.register(_detection_map_items)
-
-        from toto.core.plugin_autodiscover import autodiscover_plugins
-        autodiscover_plugins('plugins.location_plugins')
 
         from toto.detections import predefined_tasks  # noqa: F401 — registers detections workflow tasks
 
@@ -23,10 +18,9 @@ def _detection_map_items():
     try:
         from toto.detections.models import Detection
         items = []
-        qs = Detection.objects.select_related('address', 'zone', 'route', 'category').filter(
+        for det in Detection.objects.select_related('address', 'zone', 'route', 'category').filter(
             status__in=['new', 'acknowledged', 'handling'],
-        )
-        for det in qs:
+        ):
             geom = det.map_geometry
             if not geom:
                 continue

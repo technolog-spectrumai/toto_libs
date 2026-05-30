@@ -22,9 +22,6 @@ from .services import (
 
 
 def _detections_parent_template():
-    from django.apps import apps
-    if apps.is_installed("toto.tactical"):
-        return "tactical/base.html"
     return "detections/base_standalone.html"
 
 

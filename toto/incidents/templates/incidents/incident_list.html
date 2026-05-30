@@ -1,9 +1,11 @@
 {% extends "incidents/base.html" %}
+{% load static %}
 {% block incidents_title %}Incidents{% endblock %}
 {% block incidents_heading %}Incidents{% endblock %}
 
 {% block incidents_start_script %}
-<style>[x-cloak]{display:none!important}</style>
+<link rel="stylesheet" href="{% static 'vendor/leaflet/leaflet.css' %}">
+<script src="{% static 'vendor/leaflet/leaflet.js' %}"></script>
 <script>
 window._incidentImportUrl = "{% url 'incidents:api-import' %}";
 window._incidentImportCsrf = "{{ csrf_token }}";
@@ -11,34 +13,35 @@ window._incidentImportCsrf = "{{ csrf_token }}";
 {% endblock %}
 
 {% block incidents_content %}
+{{ incident_features|json_script:"incident-features" }}
 
-<!-- Import modal trigger -->
-<div x-data="incidentImport()" x-cloak>
-  <div class="flex flex-wrap items-center gap-2 mb-4">
-    <button type="button" @click="open = true"
-            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-            class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-      <i class="fa-solid fa-file-import"></i> Import from GeoJSON
-    </button>
-
-    <!-- Filters -->
-    <form method="get" class="flex flex-wrap gap-2">
-      <select name="status" onchange="this.form.submit()"
-              :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
-              class="rounded-lg border px-3 py-2 text-sm">
-        <option value="">All statuses</option>
-        {% for val, label in status_choices %}<option value="{{ val }}" {% if active_status == val %}selected{% endif %}>{{ label }}</option>{% endfor %}
-      </select>
-      <select name="severity" onchange="this.form.submit()"
-              :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
-              class="rounded-lg border px-3 py-2 text-sm">
-        <option value="">All severities</option>
-        {% for val, label in severity_choices %}<option value="{{ val }}" {% if active_severity == val %}selected{% endif %}>{{ label }}</option>{% endfor %}
-      </select>
-    </form>
+<!-- Map -->
+<section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="overflow-hidden rounded-2xl border shadow-sm">
+  <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+    <div>
+      <h2 class="text-lg font-bold">Incident Map</h2>
+      <p class="text-xs opacity-60">Current filtered incidents with saved geometry.</p>
+    </div>
+    <div class="flex gap-2">
+      <button type="button" @click="importOpen = true"
+              x-data="{importOpen: false}"
+              :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+              class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+        <i class="fa-solid fa-file-import"></i> Import GeoJSON
+      </button>
+      <a href="{% url 'incidents:incident-create' %}"
+         :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+         class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+        <i class="fa-solid fa-plus"></i> New incident
+      </a>
+    </div>
   </div>
+  <div id="incidents-map" class="h-[28rem] w-full"></div>
+</section>
 
-  <!-- Import modal -->
+<!-- Import modal (standalone x-data so it works outside the button scope) -->
+<div x-data="incidentImport()" x-cloak>
   <div x-show="open" class="fixed inset-0 z-[9000] flex items-center justify-center p-4">
     <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="open = false"></div>
     <div :class="darkMode ? 'bg-bubble-bg-dark text-text-main-dark border-accent-1' : 'bg-bubble-bg-light text-text-main-light border-accent-2'"
@@ -56,12 +59,12 @@ window._incidentImportCsrf = "{{ csrf_token }}";
           <input type="file" accept=".geojson,application/geo+json,application/json" class="sr-only"
                  @change="file = $event.target.files[0]; result = null; error = ''">
         </label>
-        <div x-show="error" x-cloak
+        <div x-show="error"
              :class="darkMode ? 'border-warn-dark/40 bg-warn-dark/10 text-warn-dark' : 'border-warn-light/40 bg-warn-light/10 text-warn-light'"
              class="rounded-lg border p-3 text-sm">
           <i class="fa-solid fa-circle-exclamation mr-2"></i><span x-text="error"></span>
         </div>
-        <div x-show="result" x-cloak class="rounded-lg border border-green-500/30 bg-green-500/10 p-3 text-sm text-green-500 space-y-1">
+        <div x-show="result" class="rounded-lg border border-green-500/30 bg-green-500/10 p-3 text-sm text-green-500 space-y-1">
           <p class="font-semibold"><i class="fa-solid fa-circle-check mr-1"></i> Import complete</p>
           <p x-text="`Created: ${result?.created ?? 0} · Skipped: ${result?.skipped ?? 0}`"></p>
           <template x-if="result?.errors?.length"><p class="text-xs opacity-75" x-text="'Errors: ' + result.errors.join('; ')"></p></template>
@@ -83,43 +86,127 @@ window._incidentImportCsrf = "{{ csrf_token }}";
   </div>
 </div>
 
-{% if incidents %}
-  <div class="space-y-2">
-    {% for incident in incidents %}
-      <a href="{% url 'incidents:incident-detail' incident.pk %}"
-         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-sunken-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-sunken-light'"
-         class="flex items-center gap-4 rounded-xl border p-4 shadow-sm transition hover:opacity-90">
-        <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold
-          {% if incident.severity == 'critical' %}bg-purple-500/20 text-purple-500
-          {% elif incident.severity == 'high' %}bg-red-500/20 text-red-500
-          {% elif incident.severity == 'medium' %}bg-amber-500/20 text-amber-500
-          {% else %}bg-green-500/20 text-green-500{% endif %}">
-          <i class="fa-solid fa-triangle-exclamation"></i>
-        </span>
-        <div class="min-w-0 flex-1">
-          <p class="truncate font-semibold text-sm">{{ incident.title }}</p>
-          <p class="text-xs opacity-55">{{ incident.get_severity_display }} · {{ incident.get_incident_type_display }} · {{ incident.get_status_display }}{% if incident.location_label %} · {{ incident.location_label }}{% endif %}</p>
+<!-- Filters -->
+<form method="get"
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="grid gap-3 rounded-2xl border p-4 shadow-sm md:grid-cols-[160px_160px_auto]">
+  <select name="status"
+          :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+          class="rounded-lg border px-3 py-2 text-sm">
+    <option value="">All statuses</option>
+    {% for val, label in status_choices %}<option value="{{ val }}" {% if active_status == val %}selected{% endif %}>{{ label }}</option>{% endfor %}
+  </select>
+  <select name="severity"
+          :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+          class="rounded-lg border px-3 py-2 text-sm">
+    <option value="">All severities</option>
+    {% for val, label in severity_choices %}<option value="{{ val }}" {% if active_severity == val %}selected{% endif %}>{{ label }}</option>{% endfor %}
+  </select>
+  <button :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="rounded-lg px-4 py-2 text-sm font-semibold shadow-sm">
+    <i class="fa-solid fa-filter"></i> Filter
+  </button>
+</form>
+
+<!-- Incident list -->
+<div class="space-y-3">
+  {% for incident in incidents %}
+    {% with sev=incident.severity %}
+    <a href="{% url 'incidents:incident-detail' incident.pk %}"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-sunken-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-sunken-light'"
+       class="group flex items-start gap-4 rounded-2xl border p-4 shadow-sm transition hover:-translate-y-px hover:shadow-md">
+      <span class="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold
+        {% if sev == 'critical' %}bg-purple-500/20 text-purple-500
+        {% elif sev == 'high' %}bg-red-500/20 text-red-500
+        {% elif sev == 'medium' %}bg-amber-500/20 text-amber-500
+        {% else %}bg-green-500/20 text-green-500{% endif %}">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+      </span>
+      <div class="min-w-0 flex-1">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="font-bold group-hover:underline">{{ incident.title }}</span>
+          <span :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                class="rounded-full border px-2 py-0.5 text-[11px] font-semibold">{{ incident.get_incident_type_display }}</span>
+          <span class="rounded-full px-2 py-0.5 text-[11px] font-semibold
+            {% if sev == 'critical' %}bg-purple-500/15 text-purple-500
+            {% elif sev == 'high' %}bg-red-500/15 text-red-500
+            {% elif sev == 'medium' %}bg-amber-500/15 text-amber-500
+            {% else %}bg-green-500/15 text-green-500{% endif %}">
+            {{ incident.get_severity_display }}
+          </span>
+          <span :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                class="rounded-full border px-2 py-0.5 text-[11px]">{{ incident.get_status_display }}</span>
         </div>
-        <span class="shrink-0 text-xs opacity-50">{{ incident.created_at|date:"d M Y" }}</span>
-      </a>
-    {% endfor %}
-  </div>
-  {% if is_paginated %}
-    <div class="flex gap-2">
-      {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}" class="rounded-lg border px-3 py-2 text-sm">Previous</a>{% endif %}
-      {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}" class="rounded-lg border px-3 py-2 text-sm">Next</a>{% endif %}
+        <div class="mt-1 flex flex-wrap gap-3 text-xs opacity-55">
+          {% if incident.location_label %}<span><i class="fa-solid fa-location-dot"></i> {{ incident.location_label }}</span>{% endif %}
+          {% if incident.category %}<span><i class="fa-solid fa-tag"></i> {{ incident.category.name }}</span>{% endif %}
+          {% if incident.source_detection %}<span><i class="fa-solid fa-bullseye"></i> Promoted</span>{% endif %}
+          <span><i class="fa-regular fa-clock"></i> {{ incident.created_at|date:"d M Y H:i" }}</span>
+        </div>
+      </div>
+    </a>
+    {% endwith %}
+  {% empty %}
+    <div class="py-16 text-center opacity-50">
+      <i class="fa-solid fa-triangle-exclamation text-4xl"></i>
+      <p class="mt-3 font-semibold">No incidents match your filters.</p>
     </div>
-  {% endif %}
-{% else %}
-  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-       class="rounded-xl border border-dashed p-12 text-center">
-    <i class="fa-solid fa-triangle-exclamation text-3xl opacity-20"></i>
-    <p class="mt-3 text-sm font-semibold opacity-55">No incidents{% if active_status or active_severity %} matching filters{% endif %}.</p>
-    <p class="mt-1 text-xs opacity-40">Import from GeoJSON or create one manually.</p>
-  </div>
+  {% endfor %}
+</div>
+
+{% if is_paginated %}
+  <nav class="flex justify-center gap-2">
+    {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border px-4 py-2 text-sm font-semibold">Previous</a>{% endif %}
+    <span class="px-4 py-2 text-sm opacity-60">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+    {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-lg border px-4 py-2 text-sm font-semibold">Next</a>{% endif %}
+  </nav>
 {% endif %}
 
 <script>
+(() => {
+  const el = document.getElementById("incidents-map");
+  if (!el || typeof L === "undefined") return;
+  const features = JSON.parse(document.getElementById("incident-features").textContent || "[]");
+  const map = L.map(el).setView([52.1, 19.4], 6);
+  const isDark = localStorage.getItem("darkMode") === "true";
+  const themeColors = {{ theme.theme.colors|safe }};
+  L.tileLayer(
+    isDark
+      ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+      : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    { maxZoom: 19 }
+  ).addTo(map);
+
+  const severityColor = {
+    critical: "#7c3aed",
+    high: isDark ? themeColors["warn-dark"] : themeColors["warn-light"],
+    medium: isDark ? themeColors["caution-dark"] : themeColors["caution-light"],
+    low: isDark ? themeColors["success-dark"] : themeColors["success-light"],
+  };
+  const fallback = isDark ? themeColors["accent-dark"] : themeColors["accent-light"];
+  const stroke = isDark ? themeColors["text-main-dark"] : themeColors["text-main-light"];
+
+  const layers = [];
+  features.forEach(item => {
+    if (!item.geometry) return;
+    const col = severityColor[item.severity] || fallback;
+    const layer = L.geoJSON(item.geometry, {
+      style: { color: col, weight: 3 },
+      pointToLayer: (_f, latlng) => L.circleMarker(latlng, {
+        radius: 8, color: stroke, weight: 1, fillColor: col, fillOpacity: 0.9,
+      }),
+    });
+    const link = item.url ? `<a href="${item.url}"><strong>${item.title}</strong></a>` : `<strong>${item.title}</strong>`;
+    layer.bindPopup(`${link}<br>${item.type} · ${item.status}${item.location ? `<br>${item.location}` : ""}`);
+    layer.addTo(map);
+    layers.push(layer);
+  });
+  if (layers.length) {
+    const bounds = L.featureGroup(layers).getBounds();
+    if (bounds.isValid()) map.fitBounds(bounds, { padding: [24, 24] });
+  }
+})();
+
 function incidentImport() {
   return {
     open: false, file: null, running: false, result: null, error: '',
@@ -130,7 +217,7 @@ function incidentImport() {
       fd.append('file', this.file);
       fd.append('csrfmiddlewaretoken', window._incidentImportCsrf);
       try {
-        const r = await fetch(window._incidentImportUrl, {method: 'POST', body: fd});
+        const r = await fetch(window._incidentImportUrl, { method: 'POST', body: fd });
         const d = await r.json();
         if (d.error) { this.error = d.error; } else { this.result = d; }
       } catch(e) { this.error = e.message; }

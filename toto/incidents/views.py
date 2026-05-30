@@ -16,9 +16,24 @@ from .models import Incident, IncidentCategory
 
 def _parent_template():
     from django.apps import apps
-    if apps.is_installed("toto.tactical"):
-        return "tactical/base.html"
-    return "incidents/base_standalone.html"
+    return "tactical/base.html" if apps.is_installed("toto.tactical") else "incidents/base_standalone.html"
+
+
+def _incident_map_feature(incident):
+    from toto.locations.views import geometry_json
+    geom = incident.map_geometry
+    if not geom:
+        return None
+    return {
+        "id": str(incident.pk),
+        "title": incident.title,
+        "type": incident.get_incident_type_display(),
+        "severity": incident.severity,
+        "status": incident.get_status_display(),
+        "location": incident.location_label or "",
+        "url": incident.get_absolute_url(),
+        "geometry": geometry_json(geom),
+    }
 
 
 class IncidentsContextMixin:
@@ -54,6 +69,9 @@ class IncidentListView(IncidentsContextMixin, LoginRequiredMixin, ListView):
         context["severity_choices"] = Incident.SEVERITY_CHOICES
         context["active_status"] = self.request.GET.get("status", "")
         context["active_severity"] = self.request.GET.get("severity", "")
+        context["incident_features"] = [
+            f for f in (_incident_map_feature(inc) for inc in context["incidents"]) if f
+        ]
         return context
 
 

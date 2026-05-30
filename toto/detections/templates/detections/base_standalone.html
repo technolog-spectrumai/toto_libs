@@ -1,15 +1,5 @@
-{% extends "oya/base.html" %}
-{% load i18n %}
+{% extends "locations/base.html" %}
 
-{% block title %}{% block tactical_title %}Detections{% endblock %} | {{ platform.site_name }}{% endblock %}
-
-{% block start_script %}{% block tactical_start_script %}{% endblock %}{% endblock %}
-
-{% block content %}
-<div :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
-     class="min-h-screen transition-colors duration-300">
-  <div class="px-4 py-6 sm:px-6 lg:px-8">
-    {% block tactical_content %}{% endblock %}
-  </div>
-</div>
-{% endblock %}
+{% block locations_title %}{% block tactical_title %}Detections{% endblock %}{% endblock %}
+{% block locations_start_script %}{% block tactical_start_script %}{% endblock %}{% endblock %}
+{% block locations_content %}{% block tactical_content %}{% endblock %}{% endblock %}

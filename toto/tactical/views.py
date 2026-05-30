@@ -1,5 +1,3 @@
-import json
-
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import JsonResponse
 from django.views.generic import TemplateView
@@ -8,8 +6,6 @@ from toto.core.page import PageProcessor
 
 
 def _page(context, request):
-    from django.apps import apps
-    context.setdefault("detections_enabled", apps.is_installed("toto.detections"))
     return PageProcessor().decorate(context, request)
 
 

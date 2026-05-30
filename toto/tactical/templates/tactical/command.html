@@ -99,7 +99,7 @@ function fieldCommand() {
       {id: "route",          label: "Routes",          visible: true,  color: "#f59e0b"},
       {id: "address",        label: "Addresses",       visible: true,  color: "#10b981"},
       {id: "map_layer",      label: "Map Layers",      visible: true,  color: "#06b6d4"},
-      {id: "detection",      label: "Detections",      visible: true,  color: "#ef4444"},
+      {id: "incident",       label: "Incidents",        visible: true,  color: "#7c3aed"},
       {id: "transport",      label: "Transports",      visible: true,  color: "#3b82f6"},
       {id: "inventory_site", label: "Inventory Sites", visible: true,  color: "#22c55e"},
       {id: "weather",        label: "Weather",         visible: true,  color: "#0ea5e9"},
@@ -150,8 +150,8 @@ function fieldCommand() {
           const [lng, lat] = f.geometry.coordinates;
           let marker;
 
-          if (p.layer === "detection") {
-            const col = p.color || "#ef4444";
+          if (p.layer === "incident") {
+            const col = p.color || "#7c3aed";
             marker = L.circleMarker([lat, lng], {
               radius: 8, color: col, fillColor: col, fillOpacity: 0.8, weight: 2,
             });
@@ -187,7 +187,7 @@ function fieldCommand() {
         } else if (f.geometry.type === "Polygon" || f.geometry.type === "MultiPolygon") {
           const layer = L.geoJSON(f, {
             style: {
-              color: p.layer === "detection" ? (p.color || "#ef4444")
+              color: p.layer === "incident" ? (p.color || "#7c3aed")
                    : p.layer === "zone" ? "#8b5cf6"
                    : p.layer === "territory" ? "#6366f1"
                    : p.layer === "map_layer" ? "#06b6d4"
