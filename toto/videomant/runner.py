@@ -256,7 +256,7 @@ class MediaJobRunner:
 
         if job.task_name == "videomant.resize":
             out = os.path.join(tmpdir, f"{output_name}.mp4")
-            return builders.build_resize(input_path, out, int(params.get("width", 1280)), int(params.get("height", -2))), out, f"{output_name}.mp4", "video/mp4"
+            return builders.build_resize(input_path, out, int(params.get("width", -2)), int(params.get("height", -2))), out, f"{output_name}.mp4", "video/mp4"
 
         if job.task_name == "videomant.cut":
             out = os.path.join(tmpdir, f"{output_name}.mp4")

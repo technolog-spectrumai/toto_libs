@@ -43,9 +43,10 @@ def build_compress(input_path: str, output_path: str, quality: str = "medium") -
 def build_resize(
     input_path: str,
     output_path: str,
-    width: int = 1280,
+    width: int = -2,
     height: int = -2,
 ) -> list[str]:
+    # -2 means "auto, keep divisible by 2" — ffmpeg computes it from the other dimension.
     scale = f"{width}:{height}"
     return [
         "ffmpeg", "-y",

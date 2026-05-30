@@ -169,6 +169,14 @@ class Lesson(models.Model):
         on_delete=models.PROTECT,
         related_name="academy_lessons",
     )
+    video_file = models.ForeignKey(
+        "vault.VaultFile",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="academy_lessons",
+        help_text="Optional video for this lesson (from Vault).",
+    )
     attached_quizzes = models.ManyToManyField(
         "quizzes.Quiz",
         related_name="academy_lessons",

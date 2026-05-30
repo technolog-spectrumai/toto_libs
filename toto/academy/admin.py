@@ -279,6 +279,7 @@ class LessonAdmin(admin.ModelAdmin):
         "module",
         "owner",
         "lecture",
+        "has_video",
         "slug",
         "quiz_count",
         "order",
@@ -307,6 +308,11 @@ class LessonAdmin(admin.ModelAdmin):
         "lecture",
         "attached_quizzes",
     )
+    raw_id_fields = ("video_file",)
+
+    @admin.display(description="Video", boolean=True)
+    def has_video(self, obj):
+        return obj.video_file_id is not None
 
     @admin.display(description="Quizzes")
     def quiz_count(self, obj):

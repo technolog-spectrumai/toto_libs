@@ -243,6 +243,7 @@ class CourseListView(AcademyContextMixin, ListView):
             .prefetch_related(
                 "modules",
                 "modules__lessons",
+                "modules__lessons__video_file",
                 "modules__unlocks_badge",
             )
             .filter(is_virtual=False)
@@ -382,6 +383,7 @@ class CourseDetailView(AcademyContextMixin, DetailView):
             .prefetch_related(
                 "lessons",
                 "lessons__lecture",
+                "lessons__video_file",
                 "lessons__owner",
                 "lessons__owner__person",
                 "attached_quizzes",

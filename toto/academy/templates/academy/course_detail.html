@@ -173,9 +173,19 @@
                       </a>
                     {% endif %}
                   </div>
-                  <a href="{% url 'memo:card-list' slug=lesson.lecture.slug %}"
-                     :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-                     class="shrink-0 px-3 py-1 rounded text-xs font-semibold">Lecture</a>
+                  <div class="flex shrink-0 gap-2">
+                    {% if lesson.video_file %}
+                    <a href="{{ lesson.video_file.file.url }}"
+                       :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2 text-text-main-light'"
+                       class="px-3 py-1 rounded border text-xs font-semibold inline-flex items-center gap-1"
+                       target="_blank">
+                      <i class="fa-solid fa-play"></i> Video
+                    </a>
+                    {% endif %}
+                    <a href="{% url 'memo:card-list' slug=lesson.lecture.slug %}"
+                       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                       class="shrink-0 px-3 py-1 rounded text-xs font-semibold">Lecture</a>
+                  </div>
                 </div>
               {% endfor %}
             {% else %}
@@ -261,9 +271,19 @@
               </a>
             {% endif %}
           </div>
-          <a href="{% url 'memo:card-list' slug=lesson.lecture.slug %}"
-             :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-             class="px-3 py-1 rounded text-xs font-semibold">Lecture</a>
+          <div class="flex shrink-0 gap-2">
+            {% if lesson.video_file %}
+            <a href="{{ lesson.video_file.file.url }}"
+               :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2 text-text-main-light'"
+               class="px-3 py-1 rounded border text-xs font-semibold inline-flex items-center gap-1"
+               target="_blank">
+              <i class="fa-solid fa-play"></i> Video
+            </a>
+            {% endif %}
+            <a href="{% url 'memo:card-list' slug=lesson.lecture.slug %}"
+               :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+               class="px-3 py-1 rounded text-xs font-semibold">Lecture</a>
+          </div>
         </div>
       {% empty %}
         <p class="text-sm opacity-60">No lessons available.</p>

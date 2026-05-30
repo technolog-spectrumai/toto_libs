@@ -55,8 +55,17 @@ class BuilderArgvTests(SimpleTestCase):
         self.assertIn("12", argv)
 
     def test_resize_default_scale(self):
+        # default: both -2 (auto) — caller must pass at least one real dimension via form
         argv = build_resize("/tmp/in.mp4", "/tmp/out.mp4")
+        self.assertTrue(any("-2:-2" in a for a in argv))
+
+    def test_resize_width_only_preserves_ar(self):
+        argv = build_resize("/tmp/in.mp4", "/tmp/out.mp4", width=1280, height=-2)
         self.assertTrue(any("1280:-2" in a for a in argv))
+
+    def test_resize_height_only_preserves_ar(self):
+        argv = build_resize("/tmp/in.mp4", "/tmp/out.mp4", width=-2, height=720)
+        self.assertTrue(any("-2:720" in a for a in argv))
 
     def test_resize_custom_scale(self):
         argv = build_resize("/tmp/in.mp4", "/tmp/out.mp4", width=640, height=360)
@@ -140,6 +149,51 @@ class BuilderArgvTests(SimpleTestCase):
 # ---------------------------------------------------------------------------
 # Client safety tests
 # ---------------------------------------------------------------------------
+
+class ResizeFormTests(SimpleTestCase):
+    def _post(self, data):
+        from .forms import ResizeForm
+        return ResizeForm(data, prefix="resize")
+
+    def test_preserve_with_width_only_valid(self):
+        form = self._post({"resize-preserve_aspect_ratio": "on", "resize-width": "1280", "resize-output_name": "out"})
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data["width"], 1280)
+        self.assertEqual(form.cleaned_data["height"], -2)
+
+    def test_preserve_with_height_only_valid(self):
+        form = self._post({"resize-preserve_aspect_ratio": "on", "resize-height": "720", "resize-output_name": "out"})
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data["width"], -2)
+        self.assertEqual(form.cleaned_data["height"], 720)
+
+    def test_preserve_with_both_dimensions_invalid(self):
+        form = self._post({
+            "resize-preserve_aspect_ratio": "on",
+            "resize-width": "1280",
+            "resize-height": "720",
+            "resize-output_name": "out",
+        })
+        self.assertFalse(form.is_valid())
+        self.assertTrue(any("one dimension" in e for e in form.non_field_errors()))
+
+    def test_preserve_with_neither_dimension_invalid(self):
+        form = self._post({"resize-preserve_aspect_ratio": "on", "resize-output_name": "out"})
+        self.assertFalse(form.is_valid())
+        self.assertTrue(any("either width or height" in e for e in form.non_field_errors()))
+
+    def test_no_preserve_both_required(self):
+        form = self._post({"resize-output_name": "out"})
+        self.assertFalse(form.is_valid())
+        self.assertIn("width", form.errors)
+        self.assertIn("height", form.errors)
+
+    def test_no_preserve_with_both_valid(self):
+        form = self._post({"resize-width": "640", "resize-height": "360", "resize-output_name": "out"})
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data["width"], 640)
+        self.assertEqual(form.cleaned_data["height"], 360)
+
 
 class ValidateArgvTests(SimpleTestCase):
     def test_valid_argv_passes(self):

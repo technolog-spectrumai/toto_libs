@@ -49,15 +49,32 @@
         class="rounded-lg border p-5 shadow-sm"
       >
         <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide opacity-60">{{ action|upper }}</h2>
-        <form method="post" action="{{ url }}" class="space-y-4">
+        {# resize gets its own Alpine scope so preserve_aspect_ratio checkbox drives reactivity #}
+        <form method="post" action="{{ url }}" class="space-y-4"
+          {% if action == 'resize' %}x-data="{ preserve: true }"{% endif %}
+        >
           {% csrf_token %}
           {% if ws_slug %}<input type="hidden" name="ws_slug" value="{{ ws_slug }}">{% endif %}
+          {% if form.non_field_errors %}
+          <div class="rounded bg-red-500/10 px-3 py-2 text-sm text-red-400 space-y-1">
+            {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+          </div>
+          {% endif %}
           {% for field in form %}
-          <div>
-            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">
-              {{ field.label }}
+          <div
+            {% if action == 'resize' and field.name == 'height' %}
+              :class="preserve ? 'opacity-40 pointer-events-none select-none' : 'opacity-100'"
+            {% endif %}
+          >
+            {% if field.field.widget.input_type == 'checkbox' %}
+            <label class="flex items-center gap-2 text-sm cursor-pointer">
+              {{ field }}
+              <span class="text-xs font-semibold uppercase tracking-wide opacity-60">{{ field.label }}</span>
             </label>
+            {% else %}
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ field.label }}</label>
             {{ field }}
+            {% endif %}
             {% if field.help_text %}
             <p class="mt-0.5 text-xs opacity-50">{{ field.help_text }}</p>
             {% endif %}
