@@ -25,7 +25,7 @@
 <script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
 <script>
 (function(){
-  const isDark = document.documentElement.classList.contains('dark') || window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const isDark = localStorage.getItem('darkMode') === 'true';
   const grid = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
   const tick = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)';
   Chart.defaults.color = tick;

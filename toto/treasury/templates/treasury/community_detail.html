@@ -172,7 +172,7 @@ function treasuryDashboard() {
       const rightNodes = pos(outNodes, W - colW / 2);
       const cx = midX, cy = H / 2;
 
-      const dark = document.documentElement.classList.contains('dark');
+      const dark = localStorage.getItem('darkMode') === 'true';
       const textCol = dark ? '#e2e8f0' : '#1a202c';
       const alpha   = dark ? 0.25 : 0.18;
 
